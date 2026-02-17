@@ -1,0 +1,101 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets.yaml
+config.local.yaml
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Fetched markdown files and documentation sources
+WebUI/rag_sources/**/*.md
+WebUI/rag_sources/**/meta.json
+WebUI/rag_sources/**/pages/
+Apple-Developer-Documentation-Offline-Archive-main/
+*.md
+!README.md
+!TODO.md
+!LLM_Code_Evaluation.md
+!ARCHITECTURE.md
+!CHANGELOG.md
+
+# Qdrant data
+qdrant_data/
+qdrant_storage/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+.cache/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Project-specific
+last_collection.txt
+WebUI/last_collection.txt
+*.db
+*.sqlite
+*.sqlite3
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json

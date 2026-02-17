@@ -1,0 +1,16 @@
+# RAG pipeline + crawl
+flask
+requests
+qdrant-client
+langchain-text-splitters
+lxml
+
+# Crawler: default (Crawl4AI) or optional Playwright for doc sites with code blocks
+crawl4ai
+
+# Optional: better code-block preservation in HTML→markdown (recommended for Apple docs)
+html2text
+
+# Optional: use crawler="playwright" + doc_only in SOURCES for developer.apple.com
+# pip install playwright && playwright install chromium
+playwright

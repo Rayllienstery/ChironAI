@@ -1,0 +1,179 @@
+"""
+Ingest local Markdown files (e.g. from Apple-Developer-Documentation-Offline-Archive)
+into Qdrant: chunk -> embed (Ollama) -> upsert.
+Same payload shape as app.py (text + source) so rag_client/rag_proxy work unchanged.
+
+Embedding model and endpoint are shared with the main RAG pipeline:
+- Model name: taken from RAG_EMBED_MODEL (defaults to "mxbai-embed-large").
+- Embed URL: taken from OLLAMA_EMBED_URL (defaults to "http://localhost:11434/api/embed").
+
+To switch to another embedding model or Ollama host, change ONLY these env vars –
+the rest of the pipeline (including rag_client.py and app.py) will keep working.
+
+Usage:
+  python ingest_markdown.py C:\path\to\Apple-Developer-Documentation-Offline-Archive\markdown
+  python ingest_markdown.py C:\path\to\markdown --collection apple_docs
+"""
+
+import os
+import re
+import sys
+import requests
+from pathlib import Path
+
+from qdrant_client import QdrantClient
+from qdrant_client.http.models import VectorParams, Distance, PointStruct
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+# Shared embedding configuration with app.py / rag_client.py
+QDRANT_URL = "http://localhost:6333"
+OLLAMA_EMBED_URL = os.getenv("OLLAMA_EMBED_URL", "http://localhost:11434/api/embed")
+EMBED_MODEL_NAME = os.getenv("RAG_EMBED_MODEL", "mxbai-embed-large")
+EMBED_BATCH_SIZE = 8
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 200
+COLLECTION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_collection.txt")
+
+
+def get_embeddings(texts: list[str], model_name: str = EMBED_MODEL_NAME) -> list:
+    """
+    Call Ollama /api/embed in batches; returns list of vectors (same order as texts).
+
+    This is the ONLY place that knows about the embedding model/endpoint for local
+    markdown ingestion. To switch models/endpoints:
+    - Update RAG_EMBED_MODEL / OLLAMA_EMBED_URL env vars; OR
+    - Pass a specific `model_name` argument if you really need a one-off override.
+
+    Expected Ollama /api/embed response format:
+    {
+      "embeddings": [
+        [float, float, ...],  # one vector per input text
+        ...
+      ]
+    }
+    """
+    if not texts:
+        return []
+    out: list = []
+    for i in range(0, len(texts), EMBED_BATCH_SIZE):
+        batch = texts[i : i + EMBED_BATCH_SIZE]
+        r = requests.post(
+            OLLAMA_EMBED_URL,
+            json={"model": model_name, "input": batch},
+            timeout=120,
+        )
+        r.raise_for_status()
+        data = r.json()
+        vectors = data.get("embeddings", [])
+        if len(vectors) != len(batch):
+            raise RuntimeError(
+                f"Ollama returned {len(vectors)} embeddings for batch size {len(batch)}"
+            )
+        out.extend(vectors)
+    return out
+
+
+def collection_name_from_path(root: Path) -> str:
+    """Derive Qdrant collection name from markdown root path (e.g. .../markdown -> markdown)."""
+    name = root.name if root.name else "markdown"
+    slug = re.sub(r"[^a-zA-Z0-9_-]", "_", name)[:63]
+    return slug or "markdown"
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python ingest_markdown.py <path_to_markdown_folder> [--collection NAME]")
+        print("Example: python ingest_markdown.py C:\\path\\to\\Apple-Developer-Documentation-Offline-Archive\\markdown")
+        sys.exit(1)
+
+    root = Path(sys.argv[1]).resolve()
+    if not root.is_dir():
+        print(f"Not a directory: {root}")
+        sys.exit(1)
+
+    collection = None
+    args = sys.argv[2:]
+    for i, arg in enumerate(args):
+        if arg == "--collection" and i + 1 < len(args):
+            collection = args[i + 1].strip()
+            break
+    if not collection:
+        collection = collection_name_from_path(root)
+
+    md_files = list(root.rglob("*.md"))
+    if not md_files:
+        print(f"No .md files under {root}")
+        sys.exit(1)
+
+    print(f"Markdown root: {root}")
+    print(f"Collection: {collection}")
+    print(f"Files: {len(md_files)}")
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+        separators=["\n## ", "\n### ", "\n\n", "\n", " "],
+    )
+
+    qclient = QdrantClient(url=QDRANT_URL)
+    point_id = 1
+    created = False
+    total_chunks = 0
+
+    for idx, md_path in enumerate(md_files, 1):
+        try:
+            content = md_path.read_text(encoding="utf-8", errors="replace")
+        except Exception as e:
+            print(f"  Skip {md_path}: {e}")
+            continue
+
+        chunks = splitter.split_text(content)
+        if not chunks:
+            continue
+
+        texts = [c.strip() for c in chunks if c.strip()]
+        if not texts:
+            continue
+
+        embeddings = get_embeddings(texts)
+        if len(embeddings) != len(texts):
+            print(f"  Embedding count mismatch for {md_path}, skip")
+            continue
+
+        if not created:
+            dim = len(embeddings[0])
+            qclient.recreate_collection(
+                collection,
+                vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
+            )
+            created = True
+            print(f"  Created collection '{collection}' (dim={dim})")
+
+        rel_path = str(md_path.relative_to(root))
+        points = [
+            PointStruct(
+                id=point_id + j,
+                vector=vec,
+                payload={"text": texts[j], "source": rel_path},
+            )
+            for j, vec in enumerate(embeddings)
+        ]
+        point_id += len(points)
+        total_chunks += len(points)
+
+        qclient.upsert(collection_name=collection, points=points)
+        if idx % 50 == 0 or idx == len(md_files):
+            print(f"  [{idx}/{len(md_files)}] {rel_path} -> {len(points)} chunks (total {total_chunks})")
+
+    try:
+        with open(COLLECTION_FILE, "w", encoding="utf-8") as f:
+            f.write(collection)
+        print(f"  last_collection.txt -> {collection}")
+    except Exception as e:
+        print(f"  Warning: could not write last_collection.txt: {e}")
+
+    print(f"Done. {total_chunks} chunks in collection '{collection}'.")
+
+
+if __name__ == "__main__":
+    main()
