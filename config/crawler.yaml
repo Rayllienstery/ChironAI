@@ -1,0 +1,76 @@
+## Crawler configuration
+##
+## This file controls web crawling behavior: concurrency, timeouts, retries,
+## and which paths are crawled or excluded. Adjust these based on target site
+## rate limits and your network capacity.
+##
+## Keys:
+## - concurrency: parallel fetch limit (higher = faster but more load).
+## - goto_timeout_ms: page load timeout in milliseconds.
+## - dom_ready_wait_ms: wait after DOM ready for SPA rendering (Apple Docs).
+## - max_retries_429: retry attempts for rate limit (429) responses.
+## - backoff_base_sec: exponential backoff base (2^attempt seconds).
+## - backoff_max_sec: maximum backoff delay cap.
+## - framework_root_prefixes: URL path prefixes to crawl (whitelist).
+## - excluded_path_substrings: path substrings to skip (blacklist).
+
+crawler:
+  # Concurrency and timeouts
+  concurrency: 6
+  goto_timeout_ms: 30000
+  dom_ready_wait_ms: 2500
+  
+  # Retry configuration for 429 (rate limit)
+  max_retries_429: 3
+  backoff_base_sec: 2
+  backoff_max_sec: 60
+  
+  # Framework root prefixes (only crawl these paths)
+  framework_root_prefixes:
+    - /documentation/swift
+    - /documentation/swift/concurrency
+    - /documentation/swiftui
+    - /documentation/uikit
+    - /documentation/appkit
+    - /documentation/foundation
+    - /documentation/combine
+    - /documentation/tvuikit
+    - /documentation/watchkit
+    - /documentation/webkit
+    - /documentation/widgetkit
+    - /documentation/uniformtypeidentifiers
+    - /documentation/usernotifications
+    - /documentation/usernotificationsui
+    - /documentation/vision
+    - /documentation/visionkit
+    - /documentation/weatherkit
+    - /documentation/weatherkitrestapi
+    - /documentation/passkit
+    - /documentation/walletorders
+    - /documentation/workoutkit
+    - /documentation/coredata
+    - /documentation/cloudkit
+    - /documentation/xctest
+    - /documentation/xcuiautomation
+    - /documentation/xcode
+    - /documentation/xcodecloud
+    - /documentation/xcodekit
+    - /documentation/xcselect
+    - /documentation/watchconnectivity
+    - /documentation/xpc
+    - /documentation/videotoolbox
+    - /documentation/virtualization
+    - /documentation/wifiaware
+    - /documentation/wi_fi_infrastructure
+    - /documentation/visionos
+    - /documentation/visualintelligence
+    - /documentation/webkitjs
+    - /documentation/backgroundtasks
+    - /documentation/network
+  
+  # Excluded path substrings (skip these during crawl)
+  excluded_path_substrings:
+    - /release-notes
+    - /wwdc
+    - /topics/
+    - /collections/

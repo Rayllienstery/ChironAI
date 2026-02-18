@@ -1,0 +1,31 @@
+## Server and Qdrant configuration
+##
+## This file controls where the Flask RAG proxy listens and how it connects
+## to Qdrant. For remote access from Zed or other tools, adjust the host/port
+## and make sure your firewall rules are updated.
+##
+## Keys:
+## - server.host: bind address for rag_proxy (0.0.0.0 to accept LAN clients).
+## - server.port: TCP port for rag_proxy (default 8080).
+## - qdrant.url: base URL of Qdrant HTTP API.
+## - qdrant.collection_name: logical collection name for dev docs.
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+## WebUI (Flask app for crawl/index UI)
+## - webui.port: port for tmrag start (default 5000).
+webui:
+  port: 5000
+
+## Logging (rag_proxy, RAG routes)
+## - logging.level: DEBUG | INFO | WARNING | ERROR (default INFO). Override with env LOG_LEVEL.
+## - File errors: logs/webui_errors.log (clean one-line or JSON Lines if LOG_FORMAT=json).
+logging:
+  level: INFO
+
+qdrant:
+  url: "http://localhost:6333"
+  collection_name: "dev_docs"
+

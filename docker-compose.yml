@@ -1,0 +1,17 @@
+# Qdrant for TMRagFetcher (RAG vector store).
+# start_webui.cmd runs: docker-compose up -d
+# Config: config/server.yaml (qdrant.url = http://localhost:6333)
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  qdrant_storage:

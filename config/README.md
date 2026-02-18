@@ -1,0 +1,136 @@
+# Configuration Guide
+
+## Overview
+
+TMRagFetcher uses YAML-based configuration files organized by domain. All configs support environment variable overrides for local experimentation without modifying files.
+
+## Structure
+
+```
+config/
+├── rag.yaml          # RAG context limits, model ID, reasoning levels
+├── retrieval.yaml    # Vector search, reranking, query preprocessing
+├── crawler.yaml      # Web crawling concurrency, timeouts, path filters
+├── indexing.yaml     # Content filtering, chunking, embedding batch sizes
+├── models.yaml       # Ollama endpoints, model names, generation options
+└── server.yaml       # Flask server host/port, Qdrant connection
+```
+
+## Usage
+
+### In Python Code
+
+```python
+from config import (
+    get_rag_int,
+    get_retrieval_int,
+    get_crawler_int,
+    get_indexing_int,
+    get_ollama_chat_model,
+    get_qdrant_url,
+    # ... etc
+)
+
+# Get integer config with default
+top_k = get_rag_int("top_k", 4)
+
+# Get model name (env override supported)
+model = get_ollama_chat_model()
+```
+
+### Environment Overrides
+
+Most configs can be overridden via environment variables:
+
+```bash
+# Override Ollama model
+export OLLAMA_CHAT_MODEL="custom-model:tag"
+
+# Override Qdrant URL
+export QDRANT_URL="http://remote-host:6333"
+
+# Override server port
+export SERVER_PORT=9000
+```
+
+## Configuration Files
+
+### rag.yaml
+Controls RAG context size and model behavior:
+- `context_chunk_chars`: Max chars per chunk (default: 1000)
+- `context_total_chars`: Total context limit (default: 7000)
+- `top_k`: Candidates per search (default: 4)
+- `confidence_threshold`: Min score for "confirmed" RAG (default: 0.75)
+- `model_id`: OpenAI-compatible model ID (default: "rag-ollama")
+- `reasoning_level_models`: Model name substrings supporting reasoning levels
+
+### retrieval.yaml
+Controls query processing and vector search:
+- `max_embed_text_length`: Max chars sent to embedding model (default: 400)
+- `top_k`: Default candidates per search (default: 8)
+- `multi_chunk_top_k`: Top-K for multi-chunk queries (default: 16)
+- `rerank_max_candidates`: Candidates sent to rerank LLM (default: 12)
+- `final_context_k`: Chunks actually used in prompt (default: 4)
+- `doc_type_preferred_for_qa`: Document types prioritized for Q&A
+- `doc_type_weight`: Scoring weights by document type
+- `multi_chunk_keywords`: Keywords triggering multi-chunk retrieval
+- `retrieval_stop_words`: Words stripped from queries
+- `rerank_model`: LLM model for reranking
+
+### crawler.yaml
+Controls web crawling behavior:
+- `concurrency`: Parallel fetch limit (default: 6)
+- `goto_timeout_ms`: Page load timeout (default: 30000)
+- `dom_ready_wait_ms`: Wait after DOM ready for SPA (default: 2500)
+- `max_retries_429`: Retry attempts for rate limits (default: 3)
+- `backoff_base_sec`: Exponential backoff base (default: 2)
+- `backoff_max_sec`: Max backoff delay (default: 60)
+- `framework_root_prefixes`: URL path prefixes to crawl (whitelist)
+- `excluded_path_substrings`: Path substrings to skip (blacklist)
+
+### indexing.yaml
+Controls content filtering and chunking:
+- `min_content_length`: Min body content to index (default: 400)
+- `chunk_max_size`: Max chars per chunk (default: 1200)
+- `chunk_min_size`: Min chars per chunk (default: 300)
+- `min_chunk_words`: Min word count per chunk (default: 25)
+- `min_chunk_alpha_ratio`: Min alphabetic ratio (default: 0.2)
+- `batch_upsert_size`: Qdrant upsert batch size (default: 200)
+- `embed_batch_size`: Embedding batch size (default: 6)
+- `embed_request_timeout`: Embedding timeout seconds (default: 300)
+- `exclude_filename_substrings`: Filename patterns to skip
+- `exclude_content_substrings`: Content markers for low-value pages
+- `local_ingest`: Separate config for `ingest_markdown_local.py`
+
+### models.yaml
+Controls Ollama endpoints and models:
+- `chat_url`: `/api/chat` endpoint URL
+- `generate_url`: `/api/generate` endpoint URL
+- `embed_url`: `/api/embed` endpoint URL
+- `chat_model`: Model name for chat completion
+- `embed_model`: Model name for embeddings
+- `timeout_seconds`: Default HTTP timeout
+- `chat_options`: Default generation options (num_predict, temperature, top_p)
+
+### server.yaml
+Controls server and Qdrant connection:
+- `server.host`: Flask bind address (default: "0.0.0.0")
+- `server.port`: Flask port (default: 8080)
+- `qdrant.url`: Qdrant HTTP API URL (default: "http://localhost:6333")
+- `qdrant.collection_name`: Collection name (default: "dev_docs")
+
+## Best Practices
+
+1. **Don't commit sensitive data**: Use environment variables for API keys, tokens, or production URLs.
+2. **Version control configs**: Keep YAML files in Git for reproducibility.
+3. **Document changes**: Update YAML comments when adding new parameters.
+4. **Test defaults**: Ensure default values work out-of-the-box for new users.
+5. **Use typed getters**: Always use `get_*_int()`, `get_*_float()`, etc. for type safety.
+
+## Future Improvements
+
+- [ ] Add config validation (type checking, range validation)
+- [ ] Add config schema documentation (JSON Schema)
+- [ ] Add example configs for different scenarios (dev, prod, testing)
+- [ ] Add config hot-reload support (reload on file change)
+- [ ] Add config diff tool (compare configs across environments)

@@ -7,8 +7,6 @@ from apple_docs_extract import build_apple_doc_page, render_apple_doc_to_markdow
 
 # Test problematic overview pages
 DOC_URL = "https://developer.apple.com/documentation/swiftui/view"
-# DOC_URL = "https://developer.apple.com/documentation/TechnologyOverviews/adopting-liquid-glass"
-# DOC_URL = "https://developer.apple.com/documentation/uikit"
 
 
 def download_and_convert_single_page(url: str = DOC_URL) -> str:
@@ -78,6 +76,8 @@ def download_and_convert_single_page(url: str = DOC_URL) -> str:
 
 
 if __name__ == "__main__":
-    output_path = download_and_convert_single_page()
+    import sys
+    url = sys.argv[1] if len(sys.argv) > 1 else DOC_URL
+    output_path = download_and_convert_single_page(url)
     print(f"Markdown saved to: {output_path}")
 

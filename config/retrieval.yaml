@@ -1,0 +1,94 @@
+## Retrieval configuration
+##
+## This file controls how queries are processed, vector search is performed,
+## and results are reranked. These parameters directly affect RAG quality.
+##
+## Keys:
+## - max_embed_text_length: maximum characters sent to embedding model (model limit).
+## - top_k: default number of candidates per vector search.
+## - multi_chunk_top_k: top_k when query suggests multiple chunks needed.
+## - multi_chunk_final_k: final chunks returned for multi-chunk queries.
+## - rerank_max_candidates: how many candidates to send to rerank LLM.
+## - final_context_k: how many chunks actually go into the prompt.
+## - doc_type_preferred_for_qa: document types prioritized for Q&A.
+## - doc_type_weight: scoring weights for different document types.
+## - multi_chunk_keywords: keywords that trigger multi-chunk retrieval.
+## - retrieval_stop_words: words stripped from queries before embedding.
+## - rerank_model: LLM model used for reranking (can differ from chat model).
+
+retrieval:
+  # Embedding query preprocessing
+  max_embed_text_length: 400
+  
+  # Vector search parameters
+  top_k: 8
+  multi_chunk_top_k: 16
+  multi_chunk_final_k: 8
+  
+  # Reranking parameters
+  rerank_max_candidates: 12
+  final_context_k: 4
+  
+  # Doc type preferences for QA
+  doc_type_preferred_for_qa:
+    - conceptual
+    - overview
+    - tutorial
+    - documentation
+    - howto
+  
+  doc_type_weight:
+    conceptual: 3
+    overview: 2
+    tutorial: 1
+    documentation: 1
+    howto: 1
+    release_notes: -2
+    news: -2
+  
+  # Keywords that suggest user needs more chunks
+  multi_chunk_keywords:
+    - compare
+    - comparison
+    - сравни
+    - сравнение
+    - difference
+    - разница
+    - explain fully
+    - fully explain
+    - подробно объясни
+    - lifecycle
+    - жизненный цикл
+    - all ways
+    - all options
+    - все способы
+    - list all
+    - перечисли все
+    - step by step
+    - пошагово
+    - overview of
+    - обзор
+  
+  # Stop words for query preprocessing
+  retrieval_stop_words:
+    - please
+    - can you
+    - could you
+    - would you
+    - tell me
+    - explain
+    - show me
+    - give me
+    - how to
+    - how do
+    - what is
+    - what are
+    - что такое
+    - как
+    - объясни
+    - покажи
+    - дай
+    - расскажи
+  
+  # Rerank model (for LLM-based reranking)
+  rerank_model: "danielsheep/devstral-small-2-24b-instruct:Q6_K"

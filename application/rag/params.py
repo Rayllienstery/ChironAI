@@ -1,0 +1,65 @@
+"""
+Unified RAG parameters and wiring for CLI and HTTP proxy.
+
+Single place for: prompt (prefix/suffix), context limits, confidence threshold,
+model name, and wired dependencies (rag_repo, embed_provider, rerank_client, chat_client).
+Used by rag_client.py and api.http.rag_routes so both share the same logic.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Any, NamedTuple, Optional
+
+from application.container import wire_rag_use_cases
+
+try:
+    from config import get_ollama_chat_model, get_rag_float, get_rag_int
+    from config.rag_prompts import get_rag_system_prompt
+except ImportError:
+    get_rag_int = lambda k, d: d  # type: ignore
+    get_rag_float = lambda k, d: d  # type: ignore
+    get_ollama_chat_model = lambda: "rag-ollama"  # type: ignore
+    get_rag_system_prompt = lambda prompt_name=None: ("", "\n=================================\n")  # type: ignore
+
+
+class RAGAnswerParams(NamedTuple):
+    """All parameters needed to run answer_question / prepare_ollama_messages."""
+
+    system_prefix: str
+    system_suffix: str
+    context_chunk_chars: int
+    context_total_chars: int
+    confidence_threshold: float
+    model_name: str
+    log_preview_chars: int  # for HTTP logging only; CLI may ignore
+
+
+def get_rag_answer_params(webui_dir: Optional[str] = None) -> tuple[RAGAnswerParams, Any, Any, Any, Any]:
+    """
+    Return (params, rag_repo, embed_provider, rerank_client, chat_client) for RAG.
+
+    Single source for prompt, config limits, and wired services. Use this in
+    rag_client and rag_routes so search, filtering, and chunk handling stay unified.
+    """
+    prefix, suffix = get_rag_system_prompt()
+    context_chunk_chars = get_rag_int("context_chunk_chars", 1000)
+    context_total_chars = get_rag_int("context_total_chars", 7000)
+    confidence_threshold = get_rag_float("confidence_threshold", 0.75)
+    model_name = get_ollama_chat_model()
+    log_preview_chars = get_rag_int("log_preview_chars", 800)
+
+    params = RAGAnswerParams(
+        system_prefix=prefix,
+        system_suffix=suffix,
+        context_chunk_chars=context_chunk_chars,
+        context_total_chars=context_total_chars,
+        confidence_threshold=confidence_threshold,
+        model_name=model_name,
+        log_preview_chars=log_preview_chars,
+    )
+    rag_repo, embed_provider, rerank_client, chat_client = wire_rag_use_cases(webui_dir=webui_dir)
+    return params, rag_repo, embed_provider, rerank_client, chat_client
+
+
+__all__ = ["RAGAnswerParams", "get_rag_answer_params"]

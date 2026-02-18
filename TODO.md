@@ -9,22 +9,14 @@
 **Критический приоритет** — базовые задачи для стабильной работы и поддержки проекта.
 
 - [x] **Rename project** — переименовать проект в соответствии с финальным названием. ✅ Переименовано в **TMRagFetcher**.
-- [ ] **Git** — настроить Git-репозиторий, .gitignore, структуру коммитов.
-- [ ] **Configs to the separated file** — вынести все конфигурации (URL Ollama/Qdrant, модели, лимиты RAG, пороги) в отдельный конфиг-файл (YAML/JSON или env).
-- [ ] **One CLI** — создать единый CLI для всех операций (краулинг, индексация, запуск прокси, тесты).
-- [ ] **User friendly log** — улучшить логирование: структурированные логи, user-friendly формат, фильтрация по уровню.
+- [x] **Git** — настроить Git-репозиторий, .gitignore, структуру коммитов. ✅ Git-репозиторий инициализирован локально, `.gitignore` настроен.
+- [x] **Configs to the separated file** — вынести все конфигурации (URL Ollama/Qdrant, модели, лимиты RAG, пороги) в отдельный конфиг-файл (YAML/JSON или env). ✅ Вынесено в `config/*.yaml` + `config/__init__.py` с геттерами и дефолтами.
+- [x] **One CLI** — создать единый CLI для всех операций (краулинг, индексация, запуск прокси, тесты). ✅ Реализовано: `python tmrag.py` / `python -m api.cli` с подкомандами start, crawl, index, rebuild, update, ingest, proxy, test, test-single.
+- [x] **User friendly log** — улучшить логирование: структурированные логи, user-friendly формат, фильтрация по уровню. ✅ Реализовано: чистый однострочный формат ошибок (source= stage= error_type= message=) и ответа RAG (model= len= preview=); JSON Lines в файл при LOG_FORMAT=json; лог чанков RAG (INFO=сводка, DEBUG=по чанкам); LOG_LEVEL / config/server.logging.level; логгер trag.rag для консоли; webui_errors.log с ротацией.
 - [ ] **Refactor code** — рефакторинг кода: типизация, единообразие стиля, разделение ответственности.
-- [ ] **Modular architecture** — полностью разобрать код на модули согласно **Layered Architecture** (Presentation → Application → Domain → Infrastructure):
-  - **Presentation layer** (`api/`): Flask routes, request/response handlers, API validation
-  - **Application layer** (`services/`): use cases, orchestration (RAG search, prompt building, reasoning level determination)
-  - **Domain layer** (`domain/`): entities (RAGChunk, Query), interfaces (IRAGRepository, ILLMClient), domain logic
-  - **Infrastructure layer** (`infrastructure/`): Qdrant client, Ollama client, file I/O, embedding service
-  - **Config layer** (`config/`): configuration management, env variables, settings
-  - **Utils** (`utils/`): helpers, formatters, validators
-  - Зависимости: Infrastructure → Domain ← Application → Presentation (Domain не зависит от внешних слоёв)
-- [ ] **Move prompt to the Md file** — вынести промпт (`RAG_SYSTEM_PREFIX`) в отдельный Markdown-файл (например `prompts/system_rag_v1.md`) для версионирования и удобного редактирования.
-- [ ] **Unify rag client and proxy** — унифицировать логику RAG между `rag_client.py` и `rag_proxy.py`: общая логика поиска, фильтрации, обработки чанков (через Application layer после модуляризации).
-- [ ] **Update todo according this changes** — обновить `TODO.md` в соответствии с выполнением задач MVP.
+- [x] **Modular architecture** — полностью разобрать код на модули согласно **Layered Architecture** (Presentation → Application → Domain → Infrastructure). ✅ Реализовано: `api/` (HTTP routes, CLI), `application/` (RAG/crawl use cases, container), `domain/` (entities, services, ports, errors), `infrastructure/` (Ollama, Qdrant, FS, crawl, logging), `config/`, `utils/`, `tests/`. См. `docs/ARCHITECTURE.md` и план в `.cursor/plans/`.
+- [x] **Move prompt to the Md file** — вынести промпт в Markdown-файлы в `prompts/` (например `prompts/system_rag_v1.md`) для версионирования и удобного редактирования; поддержка множества промптов и переключение по имени файла (`config/rag.yaml` → `rag.prompt`, env `RAG_PROMPT`). ✅ Реализовано: `config/rag_prompts.get_rag_system_prompt(prompt_name=None)`, `list_rag_prompt_names()`, `load_prompt(name)`; см. `prompts/README.md`.
+- [x] **Unify rag client and proxy** — унифицировать логику RAG между `rag_client.py` и `rag_proxy.py`: общая логика поиска, фильтрации, обработки чанков (через Application layer). ✅ Реализовано: `application.rag.params.get_rag_answer_params(webui_dir)` — единая точка для промпта, лимитов контекста и зависимостей; `rag_client` и `api.http.rag_routes` вызывают её; `rag_proxy.py` только `create_app(webui_dir)`.
 
 ---
 
@@ -53,7 +45,7 @@
 
 ### 1.1 Гибридный поиск
 - [ ] **Qdrant hybrid** — добавить keyword/BM25 поиск по тем же чанкам (или по полю `text`), комбинировать с векторным (RRF или взвешенная сумма). Для точных запросов (имя API, версия) keyword часто бьёт лучше.
-- [ ] **Query expansion** — перед эмбеддингом генерировать 1–2 варианта запроса (синонимы, раскрытие аббревиатур: `@Observable` → `Observable macro`, `MVVM` → `Model View ViewModel`), искать по каждому, мержить результаты с дедупликацией.
+- [ ] **Query expansion** — перед эмбеддингом генерировать 2-3 варианта запроса (синонимы, раскрытие аббревиатур: `@Observable` → `Observable macro`, `MVVM` → `Model View ViewModel`), искать по каждому, мержить результаты с дедупликацией.
 
 ### 1.2 Чанкинг и контекст
 - [ ] **Семантический чанкинг** — при индексации резать по границам секций/параграфов (заголовок + абзац), а не только по размеру; сохранять `section_path` в payload и при необходимости фильтровать по нему.
@@ -70,7 +62,8 @@
 ## 2. Промпт
 
 ### 2.1 Содержание
-- [ ] **Версионирование промпта** — хранить `RAG_SYSTEM_PREFIX` в отдельном файле (например `prompts/system_rag_v1.txt`) и подгружать при старте; вести CHANGELOG изменений промпта для воспроизводимости.
+- [x] **Версионирование промпта** — хранить промпты в `prompts/*.md`, подгружать при старте по имени (`rag.prompt` / `RAG_PROMPT`). ✅ Реализовано; для воспроизводимости — версионировать изменения в Git; при необходимости вести CHANGELOG в `prompts/`.
+- [ ] **Два режима промптов: Swift 5 и Swift 6** — реализовать два варианта системного промпта (Swift 5 vs Swift 6), чтобы не путать систему: в одном — правила и принципы под Swift 5, в другом — под Swift 6 (strict concurrency, изоляция, Sendable и т.д.). Переключение режима — через WebUI (выбор в интерфейсе), чтобы пользователь явно указывал целевую версию языка.
 - [ ] **A/B тесты** — возможность передавать вариант промпта через query param или header (например `X-Prompt-Variant: short`) для сравнения качества без деплоя.
 - [ ] **Явный запрет выдуманных API** — при отсутствии в RAG не генерировать конкретные сигнатуры (например `glassEffect(_:in:)`) без пометки «интерпретация»; при необходимости ужесточить формулировку в блоке «ДАННЫЕ ИЗ RAG».
 
@@ -114,6 +107,7 @@
 
 - [ ] **Метрики** — счётчики: число запросов, число запросов с пустым RAG, число с низким confidence; опционально экспорт в Prometheus/StatsD.
 - [ ] **Логирование** — структурированные логи (JSON) с полями: query_hash, num_chunks, max_score, model, latency_ms, stream; для отладки и анализа.
+- [ ] **Отдельный error‑логгер WebUI** — выделенный логгер для ошибок WebUI (например, `webui_errors.log`): HTTP‑ошибки, исключения при крауле/индексации, ошибки конфигов. Настроить ротацию логов и минимальный формат (timestamp, level, source, message, traceback_id).
 - [ ] **Health check** — endpoint `GET /health`: проверка доступности Ollama и Qdrant; возвращать 503 при недоступности одного из них.
 - [ ] **Конфиг** — единый конфиг (YAML/JSON или env): URL Ollama/Qdrant, имена моделей, лимиты RAG, порог confidence, включение веб-поиска.
 
@@ -147,6 +141,7 @@
 ## 10. WebUI для RAG Proxy
 
 - [ ] **WebUI-оболочка над прокси** — простое веб-приложение (отдельный фронтенд или шаблоны Flask) поверх `/v1/chat/completions` с:
+  - переключателем **режима промпта (Swift 5 / Swift 6)** — выбор целевой версии языка, чтобы не смешивать правила Swift 5 и Swift 6 в одном промпте;
   - формой ввода запроса, выбора модели (если появятся), регулировкой `temperature`, `top_p`, `reasoning_level` и флага «только код»;
   - отображением RAG-чанков (score, rerank_score, URL, doc_type, версии iOS/Swift) для каждого запроса;
   - встроенным просмотром логов RAG-прокси (preview запросов/ответов, latency, статусы ошибок);

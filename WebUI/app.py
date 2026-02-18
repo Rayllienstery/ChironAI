@@ -1,7 +1,13 @@
 from flask import Flask, request, Response
 import os
 import re
+import sys
 import threading
+
+# Project root (for domain/config) when running from WebUI.
+_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
 import asyncio
 import concurrent.futures
 import time
@@ -67,6 +73,14 @@ from qdrant_client.http.models import (
 from qdrant_client.http.exceptions import ResponseHandlingException
 
 from langchain_text_splitters import HTMLSemanticPreservingSplitter
+
+from domain.services.chunking import (
+    CHUNK_MAX_SIZE,
+    CHUNK_MIN_SIZE,
+    chunk_quality_ok,
+    split_markdown_into_chunks,
+)
+from domain.services.metadata_inference import extract_versions, infer_metadata
 
 
 app = Flask(__name__)
@@ -1142,458 +1156,9 @@ def _write_collection_file(name: str) -> None:
 
 
 # Chunk size limits (chars) for RAG
-CHUNK_MAX_SIZE = 1200
-CHUNK_MIN_SIZE = 300
-
-# Minimum word count and alpha ratio for a chunk to be indexed (filters nav blobs, empty chunks).
-MIN_CHUNK_WORDS = 25
-MIN_CHUNK_ALPHA_RATIO = 0.2
-
 # Qdrant upsert batch size (points). We batch vectors across files to reduce
 # HTTP roundtrips while keeping memory usage predictable.
 BATCH_UPSERT_SIZE = 200
-
-
-def _chunk_quality_ok(text: str) -> bool:
-    """
-    Return False if the chunk is too short or mostly non-alphabetic (nav/footer noise).
-    """
-    if not text or not text.strip():
-        return False
-    words = text.split()
-    if len(words) < MIN_CHUNK_WORDS:
-        return False
-    alpha = sum(1 for c in text if c.isalpha())
-    total = sum(1 for c in text if not c.isspace())
-    if total == 0:
-        return False
-    if alpha / total < MIN_CHUNK_ALPHA_RATIO:
-        return False
-    return True
-
-
-def _split_markdown_into_chunks(
-    md: str,
-    max_chunk_size: int = CHUNK_MAX_SIZE,
-    min_chunk_size: int = CHUNK_MIN_SIZE,
-) -> list[tuple[str, list[str]]]:
-    """
-    Split markdown into chunks with section_path (heading hierarchy).
-    Returns list of (chunk_text, section_path). section_path is e.g. ["Concurrency", "Actors"].
-    Prefers starting new chunks at headings; enforces min/max chunk size.
-    """
-    if not md:
-        return []
-    paragraphs = [p.strip() for p in md.split("\n\n") if p.strip()]
-    chunks: list[tuple[str, list[str]]] = []
-    current: list[str] = []
-    current_len = 0
-    section_path: list[str] = []
-
-    def _flush():
-        nonlocal current, current_len
-        if not current:
-            return
-        text = "\n\n".join(current)
-        chunks.append((text, list(section_path)))
-        current = []
-        current_len = 0
-
-    for p in paragraphs:
-        stripped = p.lstrip()
-        is_heading = stripped.startswith("#")
-        if is_heading:
-            depth = 0
-            while depth < len(stripped) and stripped[depth] == "#":
-                depth += 1
-            title = stripped[depth:].strip()
-            if depth >= 1 and title:
-                section_path = section_path[: depth - 1] + [title]
-
-            if current and current_len >= max_chunk_size * 0.5:
-                _flush()
-            current.append(p)
-            current_len += len(p) + 2
-            continue
-
-        if current_len + len(p) + 2 > max_chunk_size and current:
-            _flush()
-            current = [p]
-            current_len = len(p) + 2
-        else:
-            current.append(p)
-            current_len += len(p) + 2
-
-    _flush()
-
-    # Merge adjacent chunks below min_chunk_size when same section_path
-    merged: list[tuple[str, list[str]]] = []
-    i = 0
-    while i < len(chunks):
-        text, path = chunks[i]
-        while (
-            i + 1 < len(chunks)
-            and len(text) < min_chunk_size
-            and chunks[i + 1][1] == path
-            and len(text) + 2 + len(chunks[i + 1][0]) <= max_chunk_size
-        ):
-            i += 1
-            text += "\n\n" + chunks[i][0]
-        merged.append((text, path))
-        i += 1
-    return merged
-
-
-_IOS_VERSION_RE = re.compile(r"\biOS\s+(\d+(?:\.\d+)*)\+?", re.IGNORECASE)
-_SWIFT_VERSION_RE = re.compile(r"\bSwift\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
-
-
-def _extract_versions(text: str) -> tuple[list[str], list[str]]:
-    """
-    Extract iOS and Swift version markers from a chunk of text.
-    Returns (ios_versions, swift_versions) as sorted unique strings.
-    """
-    ios = {m.group(1) for m in _IOS_VERSION_RE.finditer(text or "")}
-    swift = {m.group(1) for m in _SWIFT_VERSION_RE.finditer(text or "")}
-    return sorted(ios), sorted(swift)
-
-
-def infer_metadata(
-    source_id: str,
-    filename: str,
-    url: str | None,
-    section_path: list[str],
-    text: str,
-) -> dict[str, str]:
-    """
-    Infer high-level metadata for a chunk in a stable, extensible way.
-
-    Stable keys (string values only):
-    - language: swift / objc / rust / js / ts / shell / dockerfile / unknown
-    - technology: swiftui / uikit / foundation / concurrency / distributed / nodejs / express / ... / unknown
-    - domain: framework_guide / api_ref / language_guide / app_store / tooling / infra / policy / ml / graphics / networking / documentation
-    - product: ios / ipados / macos / tvos / watchos / visionos / server / tooling / unknown
-    - doc_type: documentation / howto / sample_code / policy / legal / marketing / help_center
-
-    Heuristics are intentionally conservative: we only set what we can infer
-    with high confidence from the current Apple dev docs structure. For future
-    sources (Rust, Node, etc.) extend the blocks below without changing callers.
-    """
-    # Defaults: safe, documentation-centric.
-    language = "unknown"
-    technology = "unknown"
-    domain = "documentation"
-    product = "unknown"
-    doc_type = "documentation"
-
-    lower_name = (filename or "").lower()
-    lower_url = (url or "").lower()
-
-    # 1. Base hints from source_id (primary partitioning of the corpus).
-    if source_id == "apple_documentation":
-        language = "swift"
-        domain = "framework_guide"
-        product = "ios"
-        if "/documentation/swift" in lower_url:
-            technology = "swift"
-            domain = "language_guide"
-        elif "/documentation/uikit" in lower_url:
-            technology = "uikit"
-        elif "/documentation/swiftui" in lower_url:
-            technology = "swiftui"
-        elif "/documentation/combine" in lower_url:
-            technology = "combine"
-        elif "/documentation/swiftdata" in lower_url:
-            technology = "swiftdata"
-        elif "/documentation/foundation" in lower_url:
-            technology = "foundation"
-        elif "/documentation/widgetkit" in lower_url:
-            technology = "widgetkit"
-        elif "/documentation/coredata" in lower_url:
-            technology = "coredata"
-        elif "/documentation/quartzcore" in lower_url:
-            technology = "core_animation"
-        elif "/documentation/avfoundation" in lower_url:
-            technology = "avfoundation"
-        elif "/documentation/mapkit" in lower_url:
-            technology = "mapkit"
-        elif "/documentation/coregraphics" in lower_url:
-            technology = "coregraphics"
-        elif "/documentation/storekit" in lower_url:
-            technology = "storekit"
-            domain = "app_store"
-        elif "/documentation/xcode" in lower_url:
-            technology = "xcode"
-            domain = "tooling"
-            product = "tooling"
-        else:
-            technology = "foundation"
-    elif source_id == "swift_docs":
-        language = "swift"
-        domain = "language_guide"
-        # Swift docs cover multiple platforms; leave product unknown.
-    elif source_id == "swift_whats_new":
-        language = "swift"
-        technology = "swift"
-        domain = "language_guide"
-        product = "ios"
-        doc_type = "release_notes"
-    elif source_id == "swiftui_whats_new":
-        language = "swift"
-        technology = "swiftui"
-        domain = "framework_guide"
-        product = "ios"
-        doc_type = "release_notes"
-    elif source_id == "ios_whats_new":
-        language = "swift"
-        technology = "uikit"
-        domain = "framework_guide"
-        product = "ios"
-        doc_type = "release_notes"
-    elif source_id in {
-        "apple_uikit",
-        "swiftui_docs",
-        "combine_docs",
-        "swiftdata_docs",
-        "foundation_docs",
-        "coredata_docs",
-        "coreanimation_docs",
-        "avfoundation_docs",
-        "mapkit_docs",
-        "coregraphics_docs",
-        "storekit_docs",
-    }:
-        language = "swift"
-        domain = "framework_guide"
-        product = "ios"
-        if source_id == "apple_uikit":
-            technology = "uikit"
-        elif source_id == "swiftui_docs":
-            technology = "swiftui"
-        elif source_id == "combine_docs":
-            technology = "combine"
-        elif source_id == "swiftdata_docs":
-            technology = "swiftdata"
-        elif source_id == "foundation_docs":
-            technology = "foundation"
-        elif source_id == "coredata_docs":
-            technology = "coredata"
-        elif source_id == "coreanimation_docs":
-            technology = "core_animation"
-        elif source_id == "avfoundation_docs":
-            technology = "avfoundation"
-        elif source_id == "mapkit_docs":
-            technology = "mapkit"
-        elif source_id == "coregraphics_docs":
-            technology = "coregraphics"
-        elif source_id == "storekit_docs":
-            technology = "storekit"
-            domain = "app_store"
-    elif source_id == "wwdc_sessions_2024":
-        language = "swift"
-        technology = "wwdc_sessions"
-        domain = "framework_guide"
-    elif source_id == "xcode_docs":
-        language = "swift"
-        technology = "xcode"
-        domain = "tooling"
-        product = "tooling"
-    elif source_id == "swift_org_docs":
-        language = "swift"
-        domain = "language_guide"
-    # Community sites / blogs.
-    elif source_id in {
-        "hws_swift",
-        "swiftbysundell_articles",
-        "kodeco_ios",
-        "objc_io_issues",
-        "nshipster_articles",
-    }:
-        language = "swift"
-        # Architecture & framework guidance by default.
-        domain = "framework_guide"
-        doc_type = "howto"
-    # Third-party service docs.
-    elif source_id in {"firebase_ios", "stripe_ios"}:
-        language = "swift"
-        domain = "tooling"
-        product = "ios"
-    # Point-Free ecosystem.
-    elif source_id.startswith("pf_"):
-        language = "swift"
-        domain = "framework_guide"
-        product = "ios"
-        if source_id == "pf_tca":
-            technology = "tca"
-        elif source_id == "pf_dependencies":
-            technology = "dependencies"
-        elif source_id == "pf_navigation":
-            technology = "navigation"
-        elif source_id == "pf_sharing":
-            technology = "sharing"
-        elif source_id == "pf_snapshot_testing":
-            technology = "snapshot_testing"
-            domain = "tooling"
-        elif source_id == "pf_identified_collections":
-            technology = "identified_collections"
-        elif source_id == "pf_clocks":
-            technology = "clocks"
-            domain = "tooling"
-    # Popular iOS libraries on GitHub.
-    elif source_id.startswith("gh_"):
-        language = "swift"
-        domain = "framework_guide"
-        product = "ios"
-        if source_id == "gh_alamofire":
-            technology = "networking"
-        elif source_id == "gh_moya":
-            technology = "networking"
-        elif source_id in {"gh_kingfisher", "gh_sdwebimage"}:
-            technology = "image_loading"
-        elif source_id == "gh_snapkit":
-            technology = "layout"
-        elif source_id == "gh_swiftlint":
-            technology = "linting"
-            domain = "tooling"
-        elif source_id == "gh_realm_swift":
-            technology = "persistence"
-        elif source_id == "gh_rxswift":
-            technology = "reactive"
-        elif source_id == "gh_combineext":
-            technology = "combine"
-        elif source_id in {"gh_quick", "gh_nimble"}:
-            technology = "testing"
-            domain = "tooling"
-    # Future multi-language hooks (extend as new sources appear).
-    elif source_id == "rust_docs":
-        language = "rust"
-        domain = "language_guide"
-        product = "server"
-    elif source_id == "node_docs":
-        language = "js"
-        technology = "nodejs"
-        domain = "framework_guide"
-        product = "server"
-
-    # 2. Filename / path heuristics (local archive naming, slugs).
-    if "swiftui" in lower_name:
-        technology = "swiftui"
-        domain = "framework_guide"
-        # SwiftUI is cross‑platform, but most questions are iOS-centric.
-        if product == "unknown":
-            product = "ios"
-    if "uikit" in lower_name:
-        technology = "uikit"
-        domain = "framework_guide"
-        if product == "unknown":
-            product = "ios"
-    if "combine" in lower_name:
-        technology = "combine"
-        domain = "framework_guide"
-    if "concurrency" in lower_name or "actors" in lower_name:
-        technology = "concurrency"
-        domain = "language_guide"
-    if "distributed" in lower_name:
-        technology = "distributed"
-        # Distributed Swift docs live between language + infra.
-        if domain == "documentation":
-            domain = "language_guide"
-    if "foundation" in lower_name and technology == "unknown":
-        technology = "foundation"
-        domain = "framework_guide"
-
-    # App Store / commerce / distribution.
-    if any(k in lower_name for k in ("storekit", "in-app-purchase", "in_app_purchase")):
-        technology = "storekit"
-        domain = "app_store"
-        product = "ios"
-    if "testflight" in lower_name:
-        domain = "app_store"
-        product = "ios"
-    if "app-store" in lower_name or "appstore" in lower_name:
-        domain = "app_store"
-        if product == "unknown":
-            product = "ios"
-
-    # Tooling.
-    if "xcode" in lower_name and technology == "unknown":
-        technology = "xcode"
-        domain = "tooling"
-        product = "tooling"
-    if "playgrounds" in lower_name:
-        technology = "swift_playgrounds"
-        domain = "tooling"
-        product = "tooling"
-
-    # Document type by filename hints.
-    if any(k in lower_name for k in ("sample", "example", "snippet")):
-        doc_type = "sample_code"
-    if any(k in lower_name for k in ("how-to", "howto", "guide")) and doc_type == "documentation":
-        doc_type = "howto"
-    if any(k in lower_name for k in ("policy", "policies", "guidelines", "review")):
-        domain = "policy"
-        doc_type = "policy"
-    if any(k in lower_name for k in ("terms", "agreement", "license", "licence")):
-        doc_type = "legal"
-
-    # 3. URL-based refinement (current Apple developer site patterns).
-    if "/documentation/swift/" in lower_url:
-        language = "swift"
-        domain = "language_guide"
-    if "/documentation/uikit" in lower_url:
-        technology = "uikit"
-        domain = "framework_guide"
-        if product == "unknown":
-            product = "ios"
-    if "/documentation/swiftui" in lower_url:
-        technology = "swiftui"
-        domain = "framework_guide"
-        if product == "unknown":
-            product = "ios"
-    if "/documentation/foundation" in lower_url and technology == "unknown":
-        technology = "foundation"
-        domain = "framework_guide"
-    if "/documentation/storekit" in lower_url:
-        technology = "storekit"
-        domain = "app_store"
-        product = "ios"
-    if "testflight" in lower_url:
-        domain = "app_store"
-        product = "ios"
-    if "app-store" in lower_url or "/app-store/" in lower_url or "/appstore/" in lower_url:
-        domain = "app_store"
-        if product == "unknown":
-            product = "ios"
-    if "/xcode/" in lower_url or "/xcode-playgrounds" in lower_url:
-        technology = "xcode"
-        domain = "tooling"
-        product = "tooling"
-
-    # 4. Section path (logical headings from the markdown).
-    if section_path:
-        root = (section_path[0] or "").lower()
-        if "swift playgrounds" in root:
-            technology = "swift_playgrounds"
-            domain = "tooling"
-            product = "tooling"
-        if "testflight" in root:
-            domain = "app_store"
-            product = "ios"
-        if "app store" in root or "appstore" in root:
-            domain = "app_store"
-            if product == "unknown":
-                product = "ios"
-
-    # 5. Text-based heuristics can be added later if really needed; keep this
-    # function fast and deterministic for now.
-
-    return {
-        "language": language,
-        "technology": technology,
-        "domain": domain,
-        "product": product,
-        "doc_type": doc_type,
-    }
 
 
 def _ensure_qdrant_collection(qclient: QdrantClient, dim: int) -> None:
@@ -2070,10 +1635,10 @@ def index_markdown(
                 _save_meta(source_id, meta)
             continue
 
-        chunks_with_paths = _split_markdown_into_chunks(
+        chunks_with_paths = split_markdown_into_chunks(
             md, max_chunk_size=CHUNK_MAX_SIZE, min_chunk_size=CHUNK_MIN_SIZE
         )
-        chunks_with_paths = [(t, p) for t, p in chunks_with_paths if _chunk_quality_ok(t)]
+        chunks_with_paths = [(t, p) for t, p in chunks_with_paths if chunk_quality_ok(t)]
         if not chunks_with_paths:
             log(f"⚠️ [index] No chunks produced for {filename}")
             skipped_files.append(
@@ -2152,7 +1717,7 @@ def index_markdown(
                 continue
 
             point_id = _point_id_from_hash(chunk_hash)
-            ios_versions, swift_versions = _extract_versions(chunk_text)
+            ios_versions, swift_versions = extract_versions(chunk_text)
             meta_extra = infer_metadata(
                 source_id=source_id,
                 filename=filename,
@@ -2412,13 +1977,14 @@ if __name__ == "__main__":
     import sys
 
     parser = argparse.ArgumentParser(
-        description="RAG pipeline: crawl → markdown store → index → Qdrant"
+        description="RAG pipeline: crawl → markdown store → index → Qdrant; or start WebUI."
     )
     parser.add_argument(
         "command",
         nargs="?",
-        choices=["crawl", "index", "rebuild", "update"],
+        choices=["start", "crawl", "index", "rebuild", "update"],
         help=(
+            "start: run WebUI (Flask); "
             "crawl: update markdown store; "
             "index: index dirty pages; "
             "rebuild: drop + full re-index; "
@@ -2446,6 +2012,12 @@ if __name__ == "__main__":
 
     if args.command is None:
         parser.print_help()
+        sys.exit(0)
+
+    if args.command == "start":
+        from config import get_webui_port
+        port = get_webui_port()
+        app.run(host="0.0.0.0", port=port)
         sys.exit(0)
 
     # CLI режим: включаем прогресс-бары и отключаем накопление SSE-лога
