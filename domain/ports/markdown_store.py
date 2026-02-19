@@ -7,13 +7,13 @@ Implementations (filesystem) live in infrastructure.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Protocol
 
 
 class MarkdownStore(Protocol):
     """Port for persisting and reading markdown and per-source metadata."""
 
-    def read_markdown(self, source_id: str, filename: str) -> Optional[str]:
+    def read_markdown(self, source_id: str, filename: str) -> str | None:
         """Read markdown content for a file. Returns None if not found."""
         ...
 
@@ -21,15 +21,15 @@ class MarkdownStore(Protocol):
         """Write markdown content for a file."""
         ...
 
-    def read_meta(self, source_id: str) -> Dict[str, Any]:
+    def read_meta(self, source_id: str) -> dict[str, Any]:
         """Read metadata (e.g. meta.json) for a source. Returns {} if not found."""
         ...
 
-    def write_meta(self, source_id: str, meta: Dict[str, Any]) -> None:
+    def write_meta(self, source_id: str, meta: dict[str, Any]) -> None:
         """Write metadata for a source."""
         ...
 
-    def list_filenames(self, source_id: str) -> List[str]:
+    def list_filenames(self, source_id: str) -> list[str]:
         """List markdown filenames for a source."""
         ...
 

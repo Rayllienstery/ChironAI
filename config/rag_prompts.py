@@ -159,6 +159,48 @@ def get_rag_system_prompt(prompt_name: str | None = None) -> tuple[str, str]:
     return load_prompt(prompt_name)
 
 
+def get_rag_system_prompt_swift_mode(
+    prompt_name: str | None = None,
+    swift_mode: str | None = None,
+) -> tuple[str, str]:
+    """
+    Return (system_prefix, system_suffix) for RAG with Swift 5/6 mode support.
+    
+    Args:
+        prompt_name: Name of prompt file (stem of prompts/*.md). If None, uses config default.
+        swift_mode: "swift5", "swift6", or None/"default" for default behavior.
+    
+    Returns:
+        (prefix, suffix) tuple with Swift mode-specific modifications.
+    """
+    prefix, suffix = get_rag_system_prompt(prompt_name)
+    
+    if swift_mode in ("swift5", "swift6"):
+        # Add Swift version-specific instruction at the beginning
+        swift_header = "\n---------- SWIFT VERSION MODE ----------\n"
+        if swift_mode == "swift5":
+            swift_header += (
+                "Целевая версия: Swift 5.x. "
+                "Используй правила Swift 5: нет строгой проверки конкуренции компилятором, "
+                "можно использовать ObservableObject/@Published для SwiftUI, "
+                "нет обязательного Sendable на границах изоляции. "
+                "Принципы 6-11 (строгая конкуренция Swift 6) применяются только если явно указано Swift 6.\n"
+            )
+        elif swift_mode == "swift6":
+            swift_header += (
+                "Целевая версия: Swift 6.0+. "
+                "ОБЯЗАТЕЛЬНО соблюдай строгую конкуренцию (принципы 6-11): "
+                "Sendable на границах изоляции, @Observable для SwiftUI (не ObservableObject), "
+                "все изменения @Observable свойств на MainActor, "
+                "UIKit + @Observable требует UIObservationTrackingEnabled и MainActor для всех изменений. "
+                "Принципы 6-11 применяются ВСЕГДА для Swift 6.\n"
+            )
+        prefix = swift_header + prefix
+    # For "default" or None, return as-is (prompt already contains both Swift 5 and 6 guidance)
+    
+    return prefix, suffix
+
+
 __all__ = [
     "PROMPTS_DIR",
     "DEFAULT_SUFFIX",
@@ -167,4 +209,5 @@ __all__ = [
     "list_rag_prompt_names",
     "load_prompt",
     "get_rag_system_prompt",
+    "get_rag_system_prompt_swift_mode",
 ]

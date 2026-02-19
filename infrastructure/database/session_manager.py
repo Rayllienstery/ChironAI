@@ -1,0 +1,97 @@
+"""
+Session management for WebUI.
+"""
+
+from __future__ import annotations
+
+import os
+import sqlite3
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+_SCHEMA_PATH = Path(__file__).parent / "schema.sql"
+
+
+class SessionManager:
+    """Manages WebUI sessions in SQLite database."""
+
+    def __init__(self, db_path: str | Path):
+        self.db_path = Path(db_path)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._init_db()
+
+    def _init_db(self) -> None:
+        """Initialize database schema."""
+        with sqlite3.connect(self.db_path) as conn:
+            schema = _SCHEMA_PATH.read_text(encoding="utf-8")
+            conn.executescript(schema)
+            conn.commit()
+
+    def get_or_create_session(self, session_id: Optional[str] = None) -> dict[str, str]:
+        """
+        Get existing session or create new one.
+        
+        Returns:
+            dict with 'id', 'created_at', 'last_activity'
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            
+            if session_id:
+                cursor = conn.execute(
+                    "SELECT id, created_at, last_activity FROM sessions WHERE id = ?",
+                    (session_id,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    # Update last activity
+                    conn.execute(
+                        "UPDATE sessions SET last_activity = CURRENT_TIMESTAMP WHERE id = ?",
+                        (session_id,),
+                    )
+                    conn.commit()
+                    return {
+                        "id": row["id"],
+                        "created_at": row["created_at"],
+                        "last_activity": row["last_activity"],
+                    }
+            
+            # Create new session
+            new_id = str(uuid.uuid4())
+            now = datetime.utcnow().isoformat()
+            conn.execute(
+                "INSERT INTO sessions (id, created_at, last_activity) VALUES (?, ?, ?)",
+                (new_id, now, now),
+            )
+            conn.commit()
+            return {
+                "id": new_id,
+                "created_at": now,
+                "last_activity": now,
+            }
+
+    def update_activity(self, session_id: str) -> None:
+        """Update last activity timestamp for session."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "UPDATE sessions SET last_activity = CURRENT_TIMESTAMP WHERE id = ?",
+                (session_id,),
+            )
+            conn.commit()
+
+
+# Global instance
+_session_manager: Optional[SessionManager] = None
+
+
+def get_session_manager(db_path: Optional[str] = None) -> SessionManager:
+    """Get or create global SessionManager instance."""
+    global _session_manager
+    if _session_manager is None:
+        if db_path is None:
+            db_path = os.getenv("WEBUI_DB_PATH", "logs/webui.db")
+        _session_manager = SessionManager(db_path)
+    return _session_manager
+

@@ -13,14 +13,13 @@ sources without changing callers.
 from __future__ import annotations
 
 import re
-from typing import List, Optional
 
 
 _IOS_VERSION_RE = re.compile(r"\biOS\s+(\d+(?:\.\d+)*)\+?", re.IGNORECASE)
 _SWIFT_VERSION_RE = re.compile(r"\bSwift\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
 
 
-def extract_versions(text: str) -> tuple[List[str], List[str]]:
+def extract_versions(text: str) -> tuple[list[str], list[str]]:
     """
     Extract iOS and Swift version markers from a chunk of text.
     Returns (ios_versions, swift_versions) as sorted unique strings.
@@ -33,8 +32,8 @@ def extract_versions(text: str) -> tuple[List[str], List[str]]:
 def infer_metadata(
     source_id: str,
     filename: str,
-    url: Optional[str],
-    section_path: List[str],
+    url: str | None,
+    section_path: list[str],
     text: str,
 ) -> dict[str, str]:
     """

@@ -12,7 +12,6 @@ import logging
 import os
 import sys
 import uuid
-from typing import Optional
 
 from flask import Flask, Response, jsonify, request
 
@@ -21,8 +20,8 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from application.rag.params import get_rag_answer_params
-from application.rag.use_cases import answer_question, prepare_ollama_messages
+from application.rag.params import RAGDependencies, get_rag_answer_params
+from application.rag.use_cases import answer_question, build_rag_context, prepare_ollama_messages
 from domain.entities.rag import RagQuestionRequest
 from domain.services.prompt_builder import determine_reasoning_level, last_user_content
 from infrastructure.logging.webui_error_logger import log_webui_error
@@ -37,9 +36,9 @@ def _log_rag_error(stage: str, error: Exception) -> None:
 
 
 def create_app(
-    webui_dir: Optional[str] = None,
-    system_prefix: Optional[str] = None,
-    system_suffix: Optional[str] = None,
+    webui_dir: str | None = None,
+    system_prefix: str | None = None,
+    system_suffix: str | None = None,
 ) -> Flask:
     """
     Create Flask app with RAG routes.
@@ -47,7 +46,7 @@ def create_app(
     system_prefix/suffix: optional overrides for RAG system prompt; if None use config (same as rag_client).
     """
     app = Flask(__name__)
-    params, rag_repo, embed_provider, rerank_client, chat_client = get_rag_answer_params(webui_dir=webui_dir)
+    params, deps = get_rag_answer_params(webui_dir=webui_dir)
     prefix = system_prefix if system_prefix is not None else params.system_prefix
     suffix = system_suffix if system_suffix is not None else params.system_suffix
     context_chunk_chars = params.context_chunk_chars
@@ -55,13 +54,23 @@ def create_app(
     confidence_threshold = params.confidence_threshold
     ollama_model = params.model_name
     log_preview = params.log_preview_chars
+    rag_repo = deps.rag_repo
+    embed_provider = deps.embed_provider
+    rerank_client = deps.rerank_client
+    chat_client = deps.chat_client
 
     @app.route("/")
     def index() -> Response:
-        body = """<!DOCTYPE html><html><head><meta charset="utf-8"><title>RAG Proxy</title></head>
-<body><h1>RAG Proxy</h1><p>OpenAI-compatible RAG (Ollama + Qdrant).</p>
-<ul><li><code>GET /v1/models</code></li><li><code>POST /v1/chat/completions</code></li></ul></body></html>"""
-        return Response(body, mimetype="text/html; charset=utf-8")
+        """Redirect root to WebUI."""
+        return Response(
+            '<!DOCTYPE html><html><head><meta http-equiv="refresh" '
+            'content="0; url=/webui"></head><body>'
+            '<p>Redirecting to <a href="/webui">/webui</a>...</p>'
+            "</body></html>",
+            status=302,
+            headers={"Location": "/webui"},
+            mimetype="text/html; charset=utf-8",
+        )
 
     @app.route("/v1", methods=["GET"])
     def v1_root() -> Response:
@@ -90,6 +99,7 @@ def create_app(
         stream = body.get("stream", False)
         model = body.get("model") or RAG_MODEL_ID
         explicit_reasoning = body.get("reasoning_level") or body.get("reasoning")
+        include_rag_metadata = body.get("include_rag_metadata", False)
         if not messages:
             return jsonify({"error": "messages is required"}), 400
         last_user = last_user_content(messages)
@@ -97,6 +107,22 @@ def create_app(
         reasoning_level = determine_reasoning_level(
             last_user, context_length, ollama_model, explicit_reasoning
         )
+        
+        # Build RAG context if metadata is requested
+        rag_ctx = None
+        if include_rag_metadata:
+            try:
+                rag_ctx = build_rag_context(
+                    last_user,
+                    rag_repo,
+                    embed_provider,
+                    rerank_client,
+                    context_chunk_chars,
+                    context_total_chars,
+                )
+            except Exception as e:
+                _RAG_LOG.warning(f"Failed to build RAG context for metadata: {e}")
+                rag_ctx = None
         try:
             req = RagQuestionRequest(
                 messages=messages,
@@ -189,13 +215,23 @@ def create_app(
             "message": {"role": "assistant", "content": answer.content},
             "finish_reason": answer.finish_reason,
         }
-        return jsonify({
+        response_data = {
             "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
             "object": "chat.completion",
             "created": 0,
             "model": answer.model,
             "choices": [choice],
-        })
+        }
+        
+        # Add RAG metadata if requested
+        if include_rag_metadata and rag_ctx:
+            response_data["rag_metadata"] = {
+                "chunks_info": rag_ctx.chunks_info,
+                "max_score": rag_ctx.max_score,
+                "chunks_count": len(rag_ctx.chunks_info),
+            }
+        
+        return jsonify(response_data)
 
     return app
 

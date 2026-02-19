@@ -3,7 +3,8 @@ flask
 requests
 qdrant-client
 langchain-text-splitters
-lxml
+lxml>=6.0.0; platform_system != "Windows"
+lxml>=6.0.0; platform_system == "Windows" and python_version >= "3.11"
 
 # Crawler: default (Crawl4AI) or optional Playwright for doc sites with code blocks
 crawl4ai

@@ -13,7 +13,7 @@ No HTTP or infrastructure here; callers use this to prepare input and process ou
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 
 def shorten_for_rerank(text: str, max_len: int = 300) -> str:
@@ -29,7 +29,7 @@ def shorten_for_rerank(text: str, max_len: int = 300) -> str:
 
 def build_rerank_prompt(
     question: str,
-    candidate_texts: List[Tuple[int, str]],
+    candidate_texts: list[tuple[int, str]],
     max_snippet_len: int = 300,
 ) -> str:
     """
@@ -38,7 +38,7 @@ def build_rerank_prompt(
     candidate_texts: list of (1-based_index, text) for each candidate.
     Returns a single string (Russian instructions + question + numbered snippets).
     """
-    lines: List[str] = []
+    lines: list[str] = []
     for idx, txt in candidate_texts:
         snippet = shorten_for_rerank(txt, max_snippet_len)
         lines.append(f"{idx}: {snippet}")
@@ -60,7 +60,7 @@ def build_rerank_prompt(
 Не добавляй никакого текста до или после JSON."""
 
 
-def parse_rerank_order(raw_response: str) -> List[int] | None:
+def parse_rerank_order(raw_response: str) -> list[int] | None:
     """
     Parse the rerank LLM response into a list of 1-based indices.
 
@@ -79,10 +79,10 @@ def parse_rerank_order(raw_response: str) -> List[int] | None:
 
 
 def reorder_hits_by_indices(
-    candidates: List[Dict[str, Any]],
-    order_1based: List[int],
-    all_hits: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    candidates: list[dict[str, Any]],
+    order_1based: list[int],
+    all_hits: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """
     Reorder candidates by order_1based (1-based indices), append any not in order,
     then append the rest of all_hits (beyond candidates).
@@ -96,7 +96,7 @@ def reorder_hits_by_indices(
         return list(all_hits)
     indexed = {i + 1: h for i, h in enumerate(candidates)}
     seen_ids: set[int] = set()
-    new_order: List[Dict[str, Any]] = []
+    new_order: list[dict[str, Any]] = []
     for n in order_1based:
         h = indexed.get(n)
         if h is not None and id(h) not in seen_ids:
@@ -111,9 +111,9 @@ def reorder_hits_by_indices(
 
 
 def apply_rerank_scores_and_cut(
-    hits: List[Dict[str, Any]],
+    hits: list[dict[str, Any]],
     final_k: int,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Annotate each hit with rerank_score = 1 / rank (1-based rank),
     then return the first final_k hits.

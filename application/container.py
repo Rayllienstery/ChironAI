@@ -9,7 +9,8 @@ or from use_cases with pre-wired dependencies.
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+
+from domain.ports import ChatLLMClient, EmbeddingProvider, RagRepository, RerankClient
 
 try:
     from config import (
@@ -36,8 +37,8 @@ from infrastructure.qdrant.rag_repository_impl import QdrantRagRepository
 
 
 def default_rag_repository(
-    collection_file: Optional[str] = None,
-    qdrant_url: Optional[str] = None,
+    collection_file: str | None = None,
+    qdrant_url: str | None = None,
     default_collection: str = "webcrawl",
 ) -> QdrantRagRepository:
     """Build default RagRepository (Qdrant)."""
@@ -49,8 +50,8 @@ def default_rag_repository(
 
 
 def default_embed_provider(
-    embed_url: Optional[str] = None,
-    model: Optional[str] = None,
+    embed_url: str | None = None,
+    model: str | None = None,
 ) -> OllamaEmbeddingProvider:
     """Build default EmbeddingProvider (Ollama)."""
     return OllamaEmbeddingProvider(
@@ -60,8 +61,8 @@ def default_embed_provider(
 
 
 def default_rerank_client(
-    generate_url: Optional[str] = None,
-    model: Optional[str] = None,
+    generate_url: str | None = None,
+    model: str | None = None,
 ) -> OllamaRerankClient:
     """Build default RerankClient (Ollama generate)."""
     return OllamaRerankClient(
@@ -71,8 +72,8 @@ def default_rerank_client(
 
 
 def default_chat_client(
-    chat_url: Optional[str] = None,
-    model: Optional[str] = None,
+    chat_url: str | None = None,
+    model: str | None = None,
 ) -> OllamaChatClient:
     """Build default ChatLLMClient (Ollama chat)."""
     return OllamaChatClient(
@@ -87,9 +88,9 @@ def default_markdown_store(base_dir: str) -> FileMarkdownStore:
 
 
 def wire_rag_use_cases(
-    collection_file: Optional[str] = None,
-    webui_dir: Optional[str] = None,
-) -> tuple[Any, Any, Any, Any]:
+    collection_file: str | None = None,
+    webui_dir: str | None = None,
+) -> tuple[RagRepository, EmbeddingProvider, RerankClient, ChatLLMClient]:
     """
     Return (rag_repo, embed_provider, rerank_client, chat_client) for RAG use cases.
     If collection_file is None and webui_dir is set, uses webui_dir/last_collection.txt.

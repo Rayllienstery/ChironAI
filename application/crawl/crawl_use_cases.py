@@ -8,15 +8,16 @@ the use-case API so CLI can call it with injected dependencies.
 
 from __future__ import annotations
 
-from typing import Any, Callable, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from domain.entities.crawl import CrawlSource
 
 
 def run_crawl_all_sources(
-    sources: List[CrawlSource],
+    sources: list[CrawlSource],
     crawl_fn: Callable[[str], Any],
-    markdown_store: Any,
+    markdown_store: Any,  # MarkdownStore - kept as Any for now as this is a stub
 ) -> str:
     """
     Crawl all sources and update markdown store.
@@ -29,7 +30,7 @@ def run_crawl_all_sources(
 
 
 def run_index_all_sources(
-    sources: List[str],
+    sources: list[str],
     index_fn: Callable[..., Any],
     dry_run: bool = False,
     force_reindex_chunks: bool = False,

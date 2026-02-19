@@ -7,8 +7,8 @@ No infrastructure dependencies.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -22,10 +22,10 @@ class RagChunk:
     payload: raw payload (text, url, path, doc_type, ios_versions, swift_versions, etc.).
     """
 
-    id: Any
+    id: str | int
     score: float
-    payload: Dict[str, Any]
-    rerank_score: Optional[float] = None
+    payload: dict[str, Any]
+    rerank_score: float | None = None
 
     @property
     def text(self) -> str:
@@ -47,7 +47,7 @@ class RagContext:
     """
 
     context_text: str
-    chunks_info: List[Dict[str, Any]]
+    chunks_info: list[dict[str, Any]]
     max_score: float = 0.0
 
 
@@ -55,10 +55,10 @@ class RagContext:
 class RagQuestionRequest:
     """Request for answering a question with RAG."""
 
-    messages: List[Dict[str, Any]]
-    model: Optional[str] = None
+    messages: list[dict[str, Any]]
+    model: str | None = None
     stream: bool = False
-    reasoning_level: Optional[str] = None
+    reasoning_level: str | None = None
 
 
 @dataclass

@@ -1,0 +1,46 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  background: var(--md-sys-color-surface);
+  padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+  box-shadow: var(--md-sys-elevation-level1);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.app-header h1 {
+  font: var(--md-sys-typescale-headline-medium-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.app-main {
+  flex: 1;
+  padding: var(--md-sys-spacing-lg);
+  overflow-y: auto;
+}
+
+/* Material Web Components base styles */
+md-filled-button,
+md-outlined-button,
+md-text-button {
+  --md-filled-button-container-color: var(--md-sys-color-primary);
+  --md-filled-button-label-text-color: var(--md-sys-color-on-primary);
+  --md-outlined-button-outline-color: var(--md-sys-color-outline);
+  --md-text-button-label-text-color: var(--md-sys-color-primary);
+}
+
+md-filled-text-field,
+md-outlined-text-field {
+  --md-filled-text-field-container-color: var(--md-sys-color-surface-variant);
+  --md-outlined-text-field-outline-color: var(--md-sys-color-outline);
+}
+
+md-tabs {
+  --md-tab-container-color: var(--md-sys-color-surface);
+  --md-primary-tab-label-text-color: var(--md-sys-color-on-surface);
+  --md-primary-tab-active-indicator-color: var(--md-sys-color-primary);
+}
+

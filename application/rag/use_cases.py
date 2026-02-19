@@ -8,11 +8,10 @@ and injected ports (RagRepository, EmbeddingProvider, RerankClient, ChatLLMClien
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any
 
 from domain.entities.rag import RagAnswerResponse, RagContext, RagQuestionRequest
-
-_rag_log = logging.getLogger("trag.rag")
+from domain.ports import ChatLLMClient, EmbeddingProvider, RagRepository, RerankClient
 from domain.services.prompt_builder import (
     build_context_block,
     build_system_content,
@@ -38,6 +37,8 @@ from domain.services.retrieval import (
     query_for_retrieval,
 )
 
+_rag_log = logging.getLogger("trag.rag")
+
 try:
     from config import get_retrieval_int
 except ImportError:
@@ -47,10 +48,10 @@ DEFAULT_TOP_K = 8
 
 def _apply_rerank(
     question: str,
-    hits: List[Dict[str, Any]],
-    rerank_client: Any,
+    hits: list[dict[str, Any]],
+    rerank_client: RerankClient | None,
     final_k: int,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Apply LLM rerank and cut to final_k. Uses domain rerank logic + rerank_client."""
     if not hits:
         return []
@@ -71,11 +72,11 @@ def _apply_rerank(
 
 def search_rag(
     question: str,
-    rag_repo: Any,
-    embed_provider: Any,
-    rerank_client: Any,
-    top_k: Optional[int] = None,
-) -> List[Dict[str, Any]]:
+    rag_repo: RagRepository,
+    embed_provider: EmbeddingProvider,
+    rerank_client: RerankClient | None,
+    top_k: int | None = None,
+) -> list[dict[str, Any]]:
     """
     Run RAG retrieval for a question: query_for_retrieval -> embed -> search -> rerank.
     Returns list of hits with id, score, payload, rerank_score.
@@ -94,7 +95,7 @@ def search_rag(
         results.sort(key=doc_type_priority, reverse=True)
         return _apply_rerank(question, results, rerank_client, final_k)
     ios_q, swift_q = parse_versions_from_question(question)
-    extra_results: List[Dict[str, Any]] = []
+    extra_results: list[dict[str, Any]] = []
     for v in swift_q:
         qv = f"Swift {v} version RELEASE"
         vec_v = embed_provider.embed(qv)
@@ -114,7 +115,7 @@ def search_rag(
     ios_set = set(ios_q)
     swift_set = set(swift_q)
 
-    def _score(h: Dict[str, Any]) -> int:
+    def _score(h: dict[str, Any]) -> int:
         payload = h.get("payload") or {}
         ios_payload = set(payload.get("ios_versions") or [])
         swift_payload = set(payload.get("swift_versions") or [])
@@ -135,9 +136,9 @@ def search_rag(
 
 def build_rag_context(
     question: str,
-    rag_repo: Any,
-    embed_provider: Any,
-    rerank_client: Any,
+    rag_repo: RagRepository,
+    embed_provider: EmbeddingProvider,
+    rerank_client: RerankClient | None,
     context_chunk_chars: int,
     context_total_chars: int,
 ) -> RagContext:
@@ -180,17 +181,17 @@ def build_rag_context(
 
 def answer_question(
     request: RagQuestionRequest,
-    rag_repo: Any,
-    embed_provider: Any,
-    rerank_client: Any,
-    chat_client: Any,
+    rag_repo: RagRepository,
+    embed_provider: EmbeddingProvider,
+    rerank_client: RerankClient | None,
+    chat_client: ChatLLMClient,
     system_prefix: str,
     system_suffix: str,
     context_chunk_chars: int,
     context_total_chars: int,
     confidence_threshold: float,
     model_name: str,
-    reasoning_level: Optional[str] = None,
+    reasoning_level: str | None = None,
 ) -> RagAnswerResponse:
     """
     Answer a question with RAG: build_rag_context -> build_system_content -> chat.
@@ -234,17 +235,17 @@ def answer_question(
 
 def prepare_ollama_messages(
     request: RagQuestionRequest,
-    rag_repo: Any,
-    embed_provider: Any,
-    rerank_client: Any,
+    rag_repo: RagRepository,
+    embed_provider: EmbeddingProvider,
+    rerank_client: RerankClient | None,
     system_prefix: str,
     system_suffix: str,
     context_chunk_chars: int,
     context_total_chars: int,
     confidence_threshold: float,
     model_name: str,
-    reasoning_level: Optional[str] = None,
-) -> tuple[List[Dict[str, Any]], str]:
+    reasoning_level: str | None = None,
+) -> tuple[list[dict[str, Any]], str]:
     """
     Build RAG context and Ollama message list (for streaming or custom chat).
     Returns (ollama_messages, model).

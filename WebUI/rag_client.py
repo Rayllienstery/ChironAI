@@ -22,14 +22,14 @@ def main() -> None:
         print("Вопрос не задан.")
         return
     webui_dir = os.path.dirname(os.path.abspath(__file__))
-    params, rag_repo, embed_provider, rerank_client, chat_client = get_rag_answer_params(webui_dir=webui_dir)
+    params, deps = get_rag_answer_params(webui_dir=webui_dir)
     req = RagQuestionRequest(messages=[{"role": "user", "content": question}], model=None)
     response = answer_question(
         req,
-        rag_repo,
-        embed_provider,
-        rerank_client,
-        chat_client,
+        deps.rag_repo,
+        deps.embed_provider,
+        deps.rerank_client,
+        deps.chat_client,
         params.system_prefix,
         params.system_suffix,
         params.context_chunk_chars,

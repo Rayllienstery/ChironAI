@@ -11,7 +11,7 @@ No HTTP or infrastructure; callers supply prefix/suffix and config thresholds.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from domain.value_objects import REASONING_LEVEL_VALUES, ReasoningLevel
 
@@ -26,7 +26,7 @@ COMPLEX_REASONING_KEYWORDS = [
 ]
 
 
-def last_user_content(messages: List[Dict[str, Any]]) -> str:
+def last_user_content(messages: list[dict[str, Any]]) -> str:
     """
     Extract text from the last user message.
     content may be string or array of parts (OpenAI format).
@@ -47,8 +47,8 @@ def determine_reasoning_level(
     user_message: str,
     context_length: int,
     model_name: str,
-    explicit: Optional[str] = None,
-) -> Optional[ReasoningLevel]:
+    explicit: str | None = None,
+) -> ReasoningLevel | None:
     """
     Determine reasoning level for GPT-OSS models.
 
@@ -80,7 +80,7 @@ def determine_reasoning_level(
     return "medium"
 
 
-def framework_filter(query: str, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def framework_filter(query: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     When the user clearly asks for one UI framework, keep only chunks from that framework.
     Uses url/path to detect UIKit vs SwiftUI docs. Returns all results if no clear preference.
@@ -102,10 +102,10 @@ def framework_filter(query: str, results: List[Dict[str, Any]]) -> List[Dict[str
 
 
 def build_context_block(
-    hits: List[Dict[str, Any]],
+    hits: list[dict[str, Any]],
     chunk_chars: int,
     total_chars: int,
-) -> tuple[str, List[Dict[str, Any]], float]:
+) -> tuple[str, list[dict[str, Any]], float]:
     """
     Build RAG context text and chunks_info from search hits.
     Returns (context_text, chunks_info, max_score).
@@ -113,8 +113,8 @@ def build_context_block(
     if not hits:
         return "", [], 0.0
     max_score = max(h.get("score", 0.0) for h in hits)
-    parts: List[str] = []
-    chunks_info: List[Dict[str, Any]] = []
+    parts: list[str] = []
+    chunks_info: list[dict[str, Any]] = []
     total = 0
     for idx, h in enumerate(hits, start=1):
         if total >= total_chars:
@@ -156,7 +156,7 @@ def build_system_content(
     context_block: str,
     max_retrieval_score: float,
     confidence_threshold: float,
-    reasoning_level: Optional[ReasoningLevel],
+    reasoning_level: ReasoningLevel | None,
     model_name: str,
 ) -> str:
     """

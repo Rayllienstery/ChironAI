@@ -1,55 +1,185 @@
 @echo off
-setlocal
-REM TMRagFetcher: start Docker (if needed), Qdrant, then WebUI.
+REM TMRagFetcher: start Docker (if needed), Qdrant, Ollama check, then RAG proxy with WebUI.
 REM Place in project root. Double-click or run from cmd.
 
-cd /d "%~dp0"
+REM If launched by double-click, restart in a persistent window
+if "%~1"=="" (
+  cmd /k "%~f0" _restarted
+  exit /b
+)
 
-echo [1/3] Checking Docker...
+setlocal enabledelayedexpansion
+
+REM Ensure we're in the script directory
+cd /d "%~dp0" 2>nul
+if not exist "%~dp0tmrag.py" (
+  echo ERROR: Cannot find tmrag.py in script directory: %~dp0
+  echo Please ensure start_webui.cmd is in the project root directory.
+  echo.
+  pause
+  exit /b 1
+)
+
+echo ========================================
+echo TMRagFetcher - Starting RAG Proxy WebUI
+echo ========================================
+echo.
+
+REM [1/4] Check Docker
+echo [1/4] Checking Docker...
+docker --version >nul 2>&1
+set DOCKER_VER=!errorlevel!
+if not "!DOCKER_VER!"=="0" (
+  echo ERROR: Docker command not found or not accessible.
+  echo Please install Docker Desktop and ensure it is in your PATH.
+  echo.
+  pause
+  exit /b 1
+)
+
 docker info >nul 2>&1
-if %errorlevel% neq 0 (
-  echo Docker is not running. Starting Docker Desktop...
-  if exist "C:\Program Files\Docker\Docker\Docker Desktop.exe" (
-    start "" "C:\Program Files\Docker\Docker\Docker Desktop.exe"
-    echo Waiting for Docker to be ready (up to 90 sec)...
-    set /a count=0
-    :wait_docker
-    timeout /t 5 /nobreak >nul
-    docker info >nul 2>&1
-    if %errorlevel% equ 0 goto :docker_ready
-    set /a count+=1
-    if %count% geq 18 goto :docker_timeout
-    goto :wait_docker
-    :docker_timeout
-    echo Docker did not start in time. Start Docker Desktop manually and run this script again.
-    pause
-    exit /b 1
-    :docker_ready
-    echo Docker is ready.
-  ) else (
-    echo Docker Desktop not found. Install Docker or start it manually, then run this script again.
-    pause
-    exit /b 1
-  )
-)
+set DOCKER_CHECK=!errorlevel!
+if not "!DOCKER_CHECK!"=="0" goto :docker_not_running
+echo Docker is running.
+goto :docker_done
 
-echo [2/3] Checking Qdrant on http://localhost:6333 ...
-powershell -NoProfile -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:6333' -UseBasicParsing -TimeoutSec 2; exit 0 } catch { exit 1 }" >nul 2>&1
-if %errorlevel% equ 0 (
-  echo Qdrant is already running at localhost:6333.
-) else (
-  echo Qdrant not responding. Starting existing container "qdrant"...
-  docker start qdrant
-  if %errorlevel% neq 0 (
-    echo Failed to start container "qdrant". Create it once: docker run -d -p 6333:6333 --name qdrant qdrant/qdrant
-    pause
-    exit /b 1
-  )
-  echo Waiting 10 sec for Qdrant...
-  timeout /t 10 /nobreak >nul
-  echo Qdrant started.
-)
+:docker_not_running
+echo Docker is not running. Attempting to start Docker Desktop...
+set "DOCKER_EXE=C:\Program Files\Docker\Docker\Docker Desktop.exe"
+if not exist "!DOCKER_EXE!" goto :docker_not_found
+start "" "!DOCKER_EXE!"
+echo Waiting for Docker to be ready (up to 90 seconds)...
+set /a count=0
+:wait_docker_webui
+timeout /t 5 /nobreak >nul 2>nul
+docker info >nul 2>&1
+if "!errorlevel!"=="0" goto :docker_ready_webui
+set /a count+=1
+if !count! geq 18 goto :docker_timeout_webui
+goto :wait_docker_webui
 
-echo [3/3] Starting WebUI (tmrag start)...
-python tmrag.py start
+:docker_timeout_webui
+echo.
+echo ERROR: Docker did not start within 90 seconds.
+echo Please start Docker Desktop manually and run this script again.
+echo.
 pause
+exit /b 1
+
+:docker_ready_webui
+echo Docker is ready.
+goto :docker_done
+
+:docker_not_found
+echo ERROR: Docker Desktop executable not found at expected location.
+echo Please install Docker Desktop or start it manually, then run this script again.
+echo.
+pause
+exit /b 1
+
+:docker_done
+
+echo.
+
+REM [2/4] Check Qdrant
+echo [2/4] Checking Qdrant on http://localhost:6333 ...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:6333' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; exit 0 } catch { exit 1 }" >nul 2>&1
+set QDRANT_CHECK=!errorlevel!
+if "!QDRANT_CHECK!"=="0" goto :qdrant_ok
+echo Qdrant is not responding. Attempting to start container "qdrant"...
+docker start qdrant >nul 2>&1
+set DOCKER_START=!errorlevel!
+if not "!DOCKER_START!"=="0" goto :qdrant_fail
+echo Waiting 10 seconds for Qdrant to start...
+timeout /t 10 /nobreak >nul 2>nul
+echo Qdrant started.
+goto :qdrant_done
+
+:qdrant_fail
+echo.
+echo ERROR: Failed to start Qdrant container "qdrant".
+echo.
+echo To create the container, run:
+echo   docker run -d -p 6333:6333 --name qdrant qdrant/qdrant
+echo.
+pause
+exit /b 1
+
+:qdrant_ok
+echo Qdrant is already running at localhost:6333.
+:qdrant_done
+
+echo.
+
+REM [3/4] Check Ollama
+echo [3/4] Checking Ollama on http://localhost:11434 ...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:11434' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; exit 0 } catch { exit 1 }" >nul 2>&1
+set OLLAMA_CHECK=!errorlevel!
+if "!OLLAMA_CHECK!"=="0" (
+  echo Ollama is already running at localhost:11434.
+) else (
+  echo.
+  echo WARNING: Ollama is not responding on http://localhost:11434
+  echo Please ensure Ollama is running before using the RAG proxy.
+  echo You can start Ollama manually or install it from https://ollama.ai
+  echo.
+  echo Continuing anyway, but RAG proxy may fail if Ollama is not available.
+  timeout /t 3 /nobreak >nul 2>nul
+)
+
+echo.
+
+REM [4/4] Start RAG proxy
+echo [4/4] Starting RAG proxy with WebUI (tmrag proxy)...
+python --version >nul 2>&1
+set PY_VER=!errorlevel!
+if not "!PY_VER!"=="0" (
+  echo ERROR: Python not found or not accessible.
+  echo Please install Python and ensure it is in your PATH.
+  echo.
+  pause
+  exit /b 1
+)
+
+if not exist "tmrag.py" (
+  echo ERROR: tmrag.py not found in current directory.
+  echo Please ensure start_webui.cmd is in the project root directory.
+  echo.
+  pause
+  exit /b 1
+)
+
+echo.
+echo ========================================
+echo Starting RAG proxy server with WebUI...
+echo ========================================
+echo.
+echo WebUI will be available at:
+echo   http://localhost:8080/webui
+echo.
+echo API endpoints:
+echo   http://localhost:8080/v1/chat/completions
+echo   http://localhost:8080/v1/models
+echo.
+echo The window will remain open to show server logs.
+echo Press Ctrl+C to stop the server.
+echo.
+echo.
+
+python tmrag.py proxy
+set PROXY_EXIT_CODE=!errorlevel!
+
+echo.
+echo ========================================
+if not "!PROXY_EXIT_CODE!"=="0" (
+  echo ERROR: RAG proxy failed to start
+  echo Exit code: !PROXY_EXIT_CODE!
+  echo ========================================
+  echo Check the error messages above for details.
+) else (
+  echo RAG proxy stopped normally.
+  echo ========================================
+)
+echo.
+pause
+exit /b !PROXY_EXIT_CODE!

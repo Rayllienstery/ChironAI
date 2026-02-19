@@ -6,8 +6,6 @@ Maps HTTP/requests errors to domain.errors.EmbeddingError.
 
 from __future__ import annotations
 
-from typing import List
-
 import requests
 
 from domain.errors import EmbeddingError
@@ -32,7 +30,7 @@ class OllamaEmbeddingProvider:
         self._url = base_url or get_ollama_embed_url()
         self._model = model or get_ollama_embed_model()
 
-    def embed(self, text: str) -> List[float]:
+    def embed(self, text: str) -> list[float]:
         """Embed a single text. Raises EmbeddingError on failure."""
         if len(text) > MAX_EMBED_TEXT_LENGTH:
             text = text[:MAX_EMBED_TEXT_LENGTH]
@@ -58,7 +56,7 @@ class OllamaEmbeddingProvider:
         except (ValueError, TypeError) as e:
             raise EmbeddingError(str(e)) from e
 
-    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Embed multiple texts. Raises EmbeddingError on failure."""
         if not texts:
             return []

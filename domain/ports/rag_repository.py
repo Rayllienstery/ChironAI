@@ -7,7 +7,7 @@ Implementations (e.g. Qdrant) live in infrastructure.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Protocol
 
 
 class RagRepository(Protocol):
@@ -19,10 +19,10 @@ class RagRepository(Protocol):
 
     def search(
         self,
-        vector: List[float],
+        vector: list[float],
         top_k: int,
-        filter_dict: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        filter_dict: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Search for similar points by vector.
         Returns list of hits with "id", "score", "payload" (at least "text").

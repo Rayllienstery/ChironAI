@@ -7,15 +7,15 @@ Implementations (Playwright, crawl4ai) live in infrastructure.
 
 from __future__ import annotations
 
-from typing import List, Protocol
+from typing import Protocol
 
-from domain.entities.crawl import CrawlSource, CrawlResult
+from domain.entities.crawl import CrawlResult, CrawlSource
 
 
 class CrawlRunner(Protocol):
     """Port for crawling a configured source."""
 
-    def crawl(self, source: CrawlSource) -> List[CrawlResult]:
+    def crawl(self, source: CrawlSource) -> list[CrawlResult]:
         """
         Crawl the given source and return list of results (URL + HTML/content).
         Raises domain.errors.CrawlError on failure.

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 def _ensure_dir(path: str) -> None:
@@ -30,7 +30,7 @@ class FileMarkdownStore:
     def _meta_path(self, source_id: str) -> str:
         return os.path.join(self._base_dir, source_id, "meta.json")
 
-    def read_markdown(self, source_id: str, filename: str) -> Optional[str]:
+    def read_markdown(self, source_id: str, filename: str) -> str | None:
         """Read markdown content. Returns None if not found."""
         path = os.path.join(self._pages_dir(source_id), filename)
         if not os.path.isfile(path):
@@ -49,7 +49,7 @@ class FileMarkdownStore:
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
 
-    def read_meta(self, source_id: str) -> Dict[str, Any]:
+    def read_meta(self, source_id: str) -> dict[str, Any]:
         """Read meta.json. Returns {} if not found."""
         path = self._meta_path(source_id)
         if not os.path.isfile(path):
@@ -61,7 +61,7 @@ class FileMarkdownStore:
         except (OSError, json.JSONDecodeError):
             return {}
 
-    def write_meta(self, source_id: str, meta: Dict[str, Any]) -> None:
+    def write_meta(self, source_id: str, meta: dict[str, Any]) -> None:
         """Write meta.json."""
         root = self._source_root(source_id)
         _ensure_dir(root)
@@ -69,7 +69,7 @@ class FileMarkdownStore:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
 
-    def list_filenames(self, source_id: str) -> List[str]:
+    def list_filenames(self, source_id: str) -> list[str]:
         """List markdown filenames in pages/ for the source."""
         pages = self._pages_dir(source_id)
         if not os.path.isdir(pages):

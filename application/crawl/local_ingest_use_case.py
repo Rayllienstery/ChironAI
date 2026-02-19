@@ -7,16 +7,16 @@ and index writer (Qdrant). Uses domain chunking and metadata inference.
 
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any
 
 
 def ingest_markdown_folder(
     markdown_dir: str,
     source_id: str,
-    embed_provider: Any,
-    index_writer: Any,
-    chunking_service: Any,
-    metadata_inference: Any,
+    embed_provider: Any,  # EmbeddingProvider - kept as Any for now as this is a stub
+    index_writer: Any,  # Index writer interface - kept as Any for now as this is a stub
+    chunking_service: Any,  # Chunking service - kept as Any for now as this is a stub
+    metadata_inference: Any,  # Metadata inference - kept as Any for now as this is a stub
 ) -> dict[str, Any]:
     """
     Read markdown files from markdown_dir, chunk, embed, and upsert to index.

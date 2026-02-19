@@ -11,8 +11,6 @@ Configurable via config.get_indexing_* with sensible defaults.
 
 from __future__ import annotations
 
-from typing import List, Tuple
-
 try:
     from config import get_indexing_float, get_indexing_int  # type: ignore
 except ImportError:
@@ -48,7 +46,7 @@ def split_markdown_into_chunks(
     md: str,
     max_chunk_size: int | None = None,
     min_chunk_size: int | None = None,
-) -> List[Tuple[str, List[str]]]:
+) -> list[tuple[str, list[str]]]:
     """
     Split markdown into chunks with section_path (heading hierarchy).
     Returns list of (chunk_text, section_path). section_path is e.g. ["Concurrency", "Actors"].
@@ -60,10 +58,10 @@ def split_markdown_into_chunks(
     if not md:
         return []
     paragraphs = [p.strip() for p in md.split("\n\n") if p.strip()]
-    chunks: List[Tuple[str, List[str]]] = []
-    current: List[str] = []
+    chunks: list[tuple[str, list[str]]] = []
+    current: list[str] = []
     current_len = 0
-    section_path: List[str] = []
+    section_path: list[str] = []
 
     def _flush() -> None:
         nonlocal current, current_len
@@ -98,7 +96,7 @@ def split_markdown_into_chunks(
             current_len += len(p) + 2
     _flush()
 
-    merged: List[Tuple[str, List[str]]] = []
+    merged: list[tuple[str, list[str]]] = []
     i = 0
     while i < len(chunks):
         text, path = chunks[i]

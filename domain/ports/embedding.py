@@ -7,17 +7,17 @@ Implementations (e.g. Ollama /api/embed) live in infrastructure.
 
 from __future__ import annotations
 
-from typing import List, Protocol
+from typing import Protocol
 
 
 class EmbeddingProvider(Protocol):
     """Port for generating embeddings from text."""
 
-    def embed(self, text: str) -> List[float]:
+    def embed(self, text: str) -> list[float]:
         """Embed a single text. Raises domain.errors.EmbeddingError on failure."""
         ...
 
-    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Embed multiple texts. Raises domain.errors.EmbeddingError on failure."""
         ...
 

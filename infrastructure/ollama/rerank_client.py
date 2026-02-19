@@ -6,8 +6,6 @@ Calls Ollama generate API with the rerank prompt; returns raw response string.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import requests
 
 try:
@@ -20,11 +18,11 @@ except ImportError:
 class OllamaRerankClient:
     """Rerank LLM client using Ollama /api/generate."""
 
-    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None) -> None:
+    def __init__(self, base_url: str | None = None, model: str | None = None) -> None:
         self._url = base_url or get_ollama_generate_url()
         self._model = model or get_ollama_rerank_model()
 
-    def rerank(self, question: str, prompt_text: str) -> Optional[str]:
+    def rerank(self, question: str, prompt_text: str) -> str | None:
         """Send rerank prompt and return raw response. Returns None on failure."""
         try:
             resp = requests.post(

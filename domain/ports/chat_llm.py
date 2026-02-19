@@ -7,7 +7,7 @@ Implementations (e.g. Ollama /api/chat) live in infrastructure.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Protocol
 
 
 class ChatLLMClient(Protocol):
@@ -15,10 +15,10 @@ class ChatLLMClient(Protocol):
 
     def chat(
         self,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         model: str,
         stream: bool = False,
-        options: Optional[Dict[str, Any]] = None,
+        options: dict[str, Any] | None = None,
     ) -> str:
         """
         Send messages and return the assistant reply as a string.

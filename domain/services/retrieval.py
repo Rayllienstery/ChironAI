@@ -15,7 +15,7 @@ can be tuned without changing code.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any
 
 import re
 
@@ -28,7 +28,7 @@ from config import (  # type: ignore
 
 # --- Configuration-backed constants -------------------------------------------------
 
-_DEFAULT_STOP_WORDS: List[str] = [
+_DEFAULT_STOP_WORDS: list[str] = [
     "please",
     "can you",
     "could you",
@@ -49,18 +49,18 @@ _DEFAULT_STOP_WORDS: List[str] = [
     "расскажи",
 ]
 
-RETRIEVAL_STOP_WORDS: Tuple[str, ...] = tuple(
+RETRIEVAL_STOP_WORDS: tuple[str, ...] = tuple(
     get_retrieval_list("retrieval_stop_words", _DEFAULT_STOP_WORDS)
 )
 
-DOC_TYPE_PREFERRED_FOR_QA: Tuple[str, ...] = tuple(
+DOC_TYPE_PREFERRED_FOR_QA: tuple[str, ...] = tuple(
     get_retrieval_list(
         "doc_type_preferred_for_qa",
         ["conceptual", "overview", "tutorial", "documentation", "howto"],
     )
 )
 
-DOC_TYPE_WEIGHT: Dict[str, int] = get_retrieval_dict(
+DOC_TYPE_WEIGHT: dict[str, int] = get_retrieval_dict(
     "doc_type_weight",
     {
         "conceptual": 3,
@@ -73,7 +73,7 @@ DOC_TYPE_WEIGHT: Dict[str, int] = get_retrieval_dict(
     },
 )
 
-MULTI_CHUNK_KEYWORDS: Tuple[str, ...] = tuple(
+MULTI_CHUNK_KEYWORDS: tuple[str, ...] = tuple(
     get_retrieval_list(
         "multi_chunk_keywords",
         [
@@ -113,7 +113,7 @@ _IOS_VERSION_Q_RE = re.compile(r"\biOS\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
 _SWIFT_VERSION_Q_RE = re.compile(r"\bSwift\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
 
 
-def parse_versions_from_question(question: str) -> Tuple[List[str], List[str]]:
+def parse_versions_from_question(question: str) -> tuple[list[str], list[str]]:
     """
     Extract explicit iOS/Swift versions mentioned in the question.
 
@@ -177,7 +177,7 @@ def query_for_retrieval(question: str) -> str:
     # For version questions, bias retrieval toward version/release chunks.
     ios_q, swift_q = parse_versions_from_question(question)
     if ios_q or swift_q or "версия" in q_raw.lower() or "version" in q_raw.lower() or "последняя" in q_raw.lower():
-        extra_parts: List[str] = []
+        extra_parts: list[str] = []
         for v in swift_q:
             extra_parts.append(f"Swift {v} version RELEASE")
         for v in ios_q:
@@ -199,7 +199,7 @@ def need_more_chunks(question: str) -> bool:
     return any(kw in q for kw in MULTI_CHUNK_KEYWORDS)
 
 
-def build_qdrant_filter(question: str) -> Dict[str, Any] | None:
+def build_qdrant_filter(question: str) -> dict[str, Any] | None:
     """
     Build Qdrant metadata filter for doc_type-preferred retrieval.
 
@@ -222,7 +222,7 @@ def build_qdrant_filter(question: str) -> Dict[str, Any] | None:
     return {"should": conditions}
 
 
-def doc_type_priority(hit: Dict[str, Any]) -> int:
+def doc_type_priority(hit: dict[str, Any]) -> int:
     """
     Compute priority score for a hit based on its doc_type.
 

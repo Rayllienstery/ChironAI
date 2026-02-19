@@ -8,7 +8,7 @@ Collection name is read from a file (e.g. last_collection.txt) or default.
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
@@ -26,7 +26,7 @@ class QdrantRagRepository:
     def __init__(
         self,
         base_url: str | None = None,
-        collection_file: Optional[str] = None,
+        collection_file: str | None = None,
         default_collection: str = "webcrawl",
     ) -> None:
         self._url = (base_url or get_qdrant_url()).rstrip("/")
@@ -47,13 +47,13 @@ class QdrantRagRepository:
 
     def search(
         self,
-        vector: List[float],
+        vector: list[float],
         top_k: int,
-        filter_dict: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        filter_dict: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """Search for similar points. Returns list of hits with id, score, payload."""
         coll = self.get_collection_name()
-        body: Dict[str, Any] = {
+        body: dict[str, Any] = {
             "vector": vector,
             "limit": top_k,
             "with_payload": True,

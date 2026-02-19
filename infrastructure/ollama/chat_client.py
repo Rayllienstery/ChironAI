@@ -6,7 +6,8 @@ Maps HTTP/requests errors to domain errors.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterator, List, Optional
+from collections.abc import Iterator
+from typing import Any
 
 import requests
 
@@ -25,7 +26,7 @@ class OllamaChatClient:
         self,
         base_url: str | None = None,
         model: str | None = None,
-        default_options: Optional[Dict[str, Any]] = None,
+        default_options: dict[str, Any] | None = None,
     ) -> None:
         self._url = base_url or get_ollama_chat_url()
         self._model = model or get_ollama_chat_model()
@@ -33,10 +34,10 @@ class OllamaChatClient:
 
     def chat(
         self,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         model: str,
         stream: bool = False,
-        options: Optional[Dict[str, Any]] = None,
+        options: dict[str, Any] | None = None,
     ) -> str:
         """Send messages and return the assistant reply. Non-stream only for string return."""
         use_model = model or self._model
@@ -69,9 +70,9 @@ class OllamaChatClient:
 
     def stream_chat(
         self,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         model: str,
-        options: Optional[Dict[str, Any]] = None,
+        options: dict[str, Any] | None = None,
     ) -> Iterator[str]:
         """Stream chat: yield content chunks from Ollama NDJSON stream."""
         use_model = model or self._model

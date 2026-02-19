@@ -9,9 +9,11 @@ Used by rag_client.py and api.http.rag_routes so both share the same logic.
 from __future__ import annotations
 
 import os
-from typing import Any, NamedTuple, Optional
+from dataclasses import dataclass
+from typing import NamedTuple
 
 from application.container import wire_rag_use_cases
+from domain.ports import ChatLLMClient, EmbeddingProvider, RagRepository, RerankClient
 
 try:
     from config import get_ollama_chat_model, get_rag_float, get_rag_int
@@ -35,7 +37,17 @@ class RAGAnswerParams(NamedTuple):
     log_preview_chars: int  # for HTTP logging only; CLI may ignore
 
 
-def get_rag_answer_params(webui_dir: Optional[str] = None) -> tuple[RAGAnswerParams, Any, Any, Any, Any]:
+@dataclass
+class RAGDependencies:
+    """Wired dependencies for RAG use cases."""
+
+    rag_repo: RagRepository
+    embed_provider: EmbeddingProvider
+    rerank_client: RerankClient
+    chat_client: ChatLLMClient
+
+
+def get_rag_answer_params(webui_dir: str | None = None) -> tuple[RAGAnswerParams, RAGDependencies]:
     """
     Return (params, rag_repo, embed_provider, rerank_client, chat_client) for RAG.
 
@@ -59,7 +71,13 @@ def get_rag_answer_params(webui_dir: Optional[str] = None) -> tuple[RAGAnswerPar
         log_preview_chars=log_preview_chars,
     )
     rag_repo, embed_provider, rerank_client, chat_client = wire_rag_use_cases(webui_dir=webui_dir)
-    return params, rag_repo, embed_provider, rerank_client, chat_client
+    deps = RAGDependencies(
+        rag_repo=rag_repo,
+        embed_provider=embed_provider,
+        rerank_client=rerank_client,
+        chat_client=chat_client,
+    )
+    return params, deps
 
 
-__all__ = ["RAGAnswerParams", "get_rag_answer_params"]
+__all__ = ["RAGAnswerParams", "RAGDependencies", "get_rag_answer_params"]
