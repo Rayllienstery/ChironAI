@@ -11,9 +11,6 @@
   margin-bottom: var(--md-sys-spacing-md);
 }
 
-.logs-header h2 {
-  font: var(--md-sys-typescale-headline-medium-font);
-}
 
 .logs-controls {
   display: flex;
@@ -64,9 +61,9 @@
 }
 
 .log-entry.log-warning {
-  background: #FEF3C7;
-  border-left-color: #F59E0B;
-  color: #92400E;
+  background: var(--md-sys-color-tertiary-container);
+  border-left-color: var(--md-sys-color-tertiary);
+  color: var(--md-sys-color-on-tertiary-container);
 }
 
 .log-entry.log-info {
@@ -115,4 +112,5 @@
   text-align: center;
   color: var(--md-sys-color-on-surface-variant);
 }
+
 

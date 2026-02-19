@@ -15,5 +15,4 @@ echo.
 echo Build completed successfully!
 echo The React app is ready in the dist/ folder.
 echo.
-pause
 

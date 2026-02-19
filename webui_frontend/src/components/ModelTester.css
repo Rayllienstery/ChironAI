@@ -17,10 +17,6 @@
   overflow-y: auto;
 }
 
-.tester-settings-panel h3 {
-  font: var(--md-sys-typescale-title-large-font);
-  margin-bottom: var(--md-sys-spacing-md);
-}
 
 .tester-chat-panel {
   display: flex;
@@ -36,11 +32,6 @@
   padding: var(--md-sys-spacing-md);
 }
 
-.chat-input-section h3,
-.chat-response-section h3 {
-  font: var(--md-sys-typescale-title-large-font);
-  margin-bottom: var(--md-sys-spacing-sm);
-}
 
 .chat-input-section textarea {
   width: 100%;

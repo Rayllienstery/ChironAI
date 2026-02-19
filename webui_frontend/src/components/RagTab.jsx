@@ -65,6 +65,12 @@ function RagTab() {
 
   const isRunning = status?.running;
 
+  const handleOpenDashboard = () => {
+    const url = status?.url || 'http://localhost:6333';
+    const dashboardUrl = `${url}/dashboard#/collections`;
+    window.open(dashboardUrl, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div className="rag-tab">
       <div className="rag-header">
@@ -99,6 +105,15 @@ function RagTab() {
             disabled={busy}
           >
             Refresh
+          </button>
+          <button
+            type="button"
+            className="rag-button ghost"
+            onClick={handleOpenDashboard}
+            disabled={!status?.url}
+            title="Open Qdrant Dashboard in new tab"
+          >
+            Open Dashboard
           </button>
         </div>
       </div>
@@ -142,8 +157,10 @@ function RagTab() {
               <tr>
                 <th>Name</th>
                 <th>Vectors</th>
+                <th>Segments</th>
                 <th>Shards</th>
                 <th>Replication</th>
+                <th>Vectors Config</th>
                 <th>On Disk</th>
               </tr>
             </thead>
@@ -152,8 +169,20 @@ function RagTab() {
                 <tr key={col.name}>
                   <td>{col.name}</td>
                   <td>{col.points_count ?? '—'}</td>
+                  <td>{col.segments_count ?? '—'}</td>
                   <td>{col.shards_count ?? '—'}</td>
                   <td>{col.replication_factor ?? '—'}</td>
+                  <td>
+                    {col.vectors_config ? (
+                      <div className="vectors-config">
+                        <span className="vector-badge">{col.vectors_config.name || 'Default'}</span>
+                        <span className="vector-badge">{col.vectors_config.size}</span>
+                        <span className="vector-badge">{col.vectors_config.distance || '—'}</span>
+                      </div>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td>{col.on_disk ? 'Yes' : 'No'}</td>
                 </tr>
               ))}

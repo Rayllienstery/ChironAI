@@ -2,11 +2,6 @@
   max-width: 800px;
 }
 
-.model-settings h2 {
-  font: var(--md-sys-typescale-headline-medium-font);
-  margin-bottom: var(--md-sys-spacing-lg);
-}
-
 .settings-form {
   display: flex;
   flex-direction: column;

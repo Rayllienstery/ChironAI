@@ -2,6 +2,7 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  background: var(--md-sys-color-background);
 }
 
 .app-header {
@@ -20,6 +21,7 @@
   flex: 1;
   padding: var(--md-sys-spacing-lg);
   overflow-y: auto;
+  background: var(--md-sys-color-background);
 }
 
 /* Material Web Components base styles */
@@ -42,5 +44,40 @@ md-tabs {
   --md-tab-container-color: var(--md-sys-color-surface);
   --md-primary-tab-label-text-color: var(--md-sys-color-on-surface);
   --md-primary-tab-active-indicator-color: var(--md-sys-color-primary);
+}
+
+/* Unified tab view headers */
+.tab-view h2,
+.model-settings h2,
+.rag-tab h2,
+.logs-tab h2,
+.settings-tab h2 {
+  font: var(--md-sys-typescale-headline-medium-font);
+  color: var(--md-sys-color-on-surface);
+  margin-bottom: var(--md-sys-spacing-lg);
+}
+
+.tab-view h3,
+.model-tester h3,
+.rag-tab h3,
+.settings-tab h3 {
+  font: var(--md-sys-typescale-title-large-font);
+  color: var(--md-sys-color-on-surface);
+  margin-bottom: var(--md-sys-spacing-md);
+}
+
+/* Unified button styles with border in dark theme */
+:root.theme-dark .save-button,
+:root.theme-dark .send-button,
+:root.theme-dark .debug-log-toggle,
+:root.theme-dark .debug-log-controls button,
+:root.theme-dark .rag-button.primary {
+  border: 1px solid var(--md-sys-color-background) !important;
+}
+
+:root.theme-dark .rag-button:not(.primary),
+:root.theme-dark .logs-controls button {
+  border: 1px solid var(--md-sys-color-background) !important;
+  color: var(--md-sys-color-on-surface) !important;
 }
 

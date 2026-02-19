@@ -36,6 +36,7 @@ from infrastructure.logging.webui_error_logger import get_webui_error_logger
 from api.http.webui_session import log_to_database
 
 import requests
+from qdrant_client import QdrantClient
 
 # In-memory buffer for dev console (last 50 requests)
 _REQUEST_BUFFER: deque[dict[str, Any]] = deque(maxlen=50)
@@ -577,27 +578,28 @@ def update_settings() -> Any:
 
 @webui_bp.route("/rag/status", methods=["GET"])
 def rag_status() -> Any:
-  """Return Qdrant / RAG status (is running, version, collections count)."""
-  url = get_qdrant_url().rstrip("/")
-  status: dict[str, Any] = {"url": url, "running": False}
-  try:
-      resp = requests.get(f"{url}/collections", timeout=3)
-      status["http_status"] = resp.status_code
-      if resp.ok:
-          data = resp.json() or {}
-          collections = data.get("result", {}).get("collections", [])
-          status["running"] = True
-          status["collections_count"] = len(collections)
-      try:
-          version_resp = requests.get(f"{url}/cluster", timeout=3)
-          if version_resp.ok:
-              vdata = version_resp.json() or {}
-              status["version"] = vdata.get("result", {}).get("status", {}).get("version")
-      except Exception:
-          pass
-  except Exception as e:
-      status["error"] = str(e)
-  return jsonify(status)
+    """Return Qdrant / RAG status (is running, version, collections count)."""
+    url = get_qdrant_url().rstrip("/")
+    status: dict[str, Any] = {"url": url, "running": False}
+    try:
+        resp = requests.get(f"{url}/collections", timeout=3)
+        status["http_status"] = resp.status_code
+        if resp.ok:
+            data = resp.json() or {}
+            collections = data.get("result", {}).get("collections", [])
+            status["running"] = True
+            status["collections_count"] = len(collections)
+        try:
+            version_resp = requests.get(f"{url}/cluster", timeout=3)
+            if version_resp.ok:
+                vdata = version_resp.json() or {}
+                status["version"] = vdata.get("result", {}).get("status", {}).get("version")
+        except Exception:
+            pass
+    except Exception as e:
+        status["error"] = str(e)
+        _WEBUI_LOG.warning(f"Failed to get Qdrant status: {e}")
+    return jsonify(status)
 
 
 @webui_bp.route("/rag/collections", methods=["GET"])
@@ -605,39 +607,84 @@ def rag_collections() -> Any:
     """Return detailed information about Qdrant collections."""
     url = get_qdrant_url().rstrip("/")
     try:
+        # First get list of collections via HTTP API
         resp = requests.get(f"{url}/collections", timeout=5)
         if not resp.ok:
+            _WEBUI_LOG.warning("Qdrant /collections returned %s: %s", resp.status_code, resp.text)
             return jsonify({"collections": [], "error": f"HTTP {resp.status_code}"}), resp.status_code
         data = resp.json() or {}
-        collections = data.get("result", {}).get("collections", [])
+
+        raw_collections = data.get("result", {}).get("collections", []) if isinstance(data, dict) else []
+        names: list[str] = []
+        for col in raw_collections:
+            if isinstance(col, dict):
+                name = col.get("name")
+            else:
+                name = str(col)
+            if name:
+                names.append(name)
+
+        # Use official QdrantClient to fetch rich info for each collection
+        client = QdrantClient(url=url)
 
         detailed: list[dict[str, Any]] = []
-        for col in collections:
-            name = col.get("name")
-            if not name:
-                continue
+        for name in names:
             try:
-                c_resp = requests.get(f"{url}/collections/{name}", timeout=5)
-                if not c_resp.ok:
-                    detailed.append({"name": name})
-                    continue
-                c_data = c_resp.json() or {}
-                result = c_data.get("result", {})
-                config = result.get("config", {})
-                status = result.get("status", {})
+                info = client.get_collection(name)
+                # info.config.params contains shard/replication/ondisk
+                params = getattr(getattr(info, "config", None), "params", None)
+                points_count = getattr(info, "points_count", None)
+                shards_count = getattr(params, "shard_number", None) if params else None
+                replication_factor = getattr(params, "replication_factor", None) if params else None
+                on_disk = bool(getattr(params, "on_disk_payload", False)) if params else False
+                
+                # Get segments count
+                segments_count = getattr(info, "segments_count", None)
+                
+                # Extract vectors config
+                vectors_config = None
+                vectors_info = getattr(params, "vectors", None) if params else None
+                if vectors_info:
+                    # Check if it's NamedVectors (dict) or VectorParams (single vector)
+                    if isinstance(vectors_info, dict):
+                        # NamedVectors: multiple named vectors
+                        # Take the first one or "Default" if exists
+                        vector_name = "Default" if "Default" in vectors_info else next(iter(vectors_info.keys()), None)
+                        if vector_name:
+                            vec_params = vectors_info[vector_name]
+                            if hasattr(vec_params, "size") and hasattr(vec_params, "distance"):
+                                vectors_config = {
+                                    "name": vector_name,
+                                    "size": getattr(vec_params, "size"),
+                                    "distance": str(getattr(vec_params, "distance", "")).split(".")[-1] if hasattr(vec_params, "distance") else None,
+                                }
+                    else:
+                        # Single VectorParams
+                        if hasattr(vectors_info, "size") and hasattr(vectors_info, "distance"):
+                            vectors_config = {
+                                "name": "Default",
+                                "size": getattr(vectors_info, "size"),
+                                "distance": str(getattr(vectors_info, "distance", "")).split(".")[-1] if hasattr(vectors_info, "distance") else None,
+                            }
+
                 detailed.append(
                     {
                         "name": name,
-                        "points_count": status.get("points_count"),
-                        "shards_count": config.get("shard_number"),
-                        "replication_factor": config.get("replication_factor"),
-                        "on_disk": bool(config.get("on_disk_payload")),
+                        "points_count": points_count,
+                        "shards_count": shards_count,
+                        "replication_factor": replication_factor,
+                        "on_disk": on_disk,
+                        "segments_count": segments_count,
+                        "vectors_config": vectors_config,
                     }
                 )
-            except Exception:
+            except Exception as e:
+                _WEBUI_LOG.warning("Failed to get collection %s via QdrantClient: %s", name, e)
                 detailed.append({"name": name})
+
         return jsonify({"collections": detailed})
     except Exception as e:
+        _WEBUI_LOG.error("Failed to get Qdrant collections: %s", e, exc_info=True)
         return jsonify({"collections": [], "error": str(e)}), 500
 
 

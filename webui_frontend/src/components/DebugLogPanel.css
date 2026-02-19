@@ -16,7 +16,6 @@
 }
 
 .debug-log-toggle:hover {
-  background: var(--md-sys-color-primary);
   opacity: 0.9;
 }
 
@@ -98,8 +97,8 @@
 }
 
 .debug-log-content .log-entry.log-warning {
-  background: #FEF3C7;
-  color: #92400E;
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
 }
 
 .debug-log-content .log-entry.log-info {
@@ -129,4 +128,5 @@
   color: var(--md-sys-color-on-surface-variant);
   font-style: italic;
 }
+
 

@@ -1,11 +1,9 @@
 .settings-tab {
   max-width: 800px;
+  background: var(--md-sys-color-background);
+  color: var(--md-sys-color-on-surface);
 }
 
-.settings-tab h2 {
-  font: var(--md-sys-typescale-headline-medium-font);
-  margin-bottom: var(--md-sys-spacing-lg);
-}
 
 .settings-form {
   display: flex;
@@ -22,6 +20,7 @@
 .form-group label {
   font: var(--md-sys-typescale-label-large-font);
   color: var(--md-sys-color-on-surface);
+  font-weight: 500;
 }
 
 .form-group input {
@@ -40,13 +39,13 @@
   border: none;
   border-radius: var(--md-sys-shape-corner-medium);
   font: var(--md-sys-typescale-label-large-font);
+  font-weight: 500;
   cursor: pointer;
   margin-top: var(--md-sys-spacing-md);
-  transition: background 0.2s;
+  transition: background 0.2s, opacity 0.2s;
 }
 
 .save-button:hover:not(:disabled) {
-  background: var(--md-sys-color-primary);
   opacity: 0.9;
 }
 
@@ -60,4 +59,70 @@
   text-align: center;
   color: var(--md-sys-color-on-surface-variant);
 }
+
+.settings-section {
+  margin-bottom: var(--md-sys-spacing-xl);
+  padding-bottom: var(--md-sys-spacing-lg);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.settings-section:last-child {
+  border-bottom: none;
+}
+
+
+.radio-group {
+  display: flex;
+  gap: var(--md-sys-spacing-md);
+  flex-wrap: wrap;
+}
+
+.radio-option {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-xs);
+  cursor: pointer;
+  font: var(--md-sys-typescale-body-medium-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.radio-option span {
+  color: var(--md-sys-color-on-surface);
+}
+
+.radio-option input[type="radio"] {
+  cursor: pointer;
+  accent-color: var(--md-sys-color-primary);
+}
+
+.color-picker {
+  display: flex;
+  gap: var(--md-sys-spacing-sm);
+  flex-wrap: wrap;
+}
+
+.color-option {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 2px solid var(--md-sys-color-outline-variant);
+  background: var(--color-preview);
+  cursor: pointer;
+  padding: 0;
+  position: relative;
+  transition: transform 0.2s, border-color 0.2s;
+}
+
+.color-option:hover {
+  transform: scale(1.1);
+  border-color: var(--md-sys-color-outline);
+}
+
+.color-option.active {
+  border-color: var(--color-preview);
+  background: var(--color-preview);
+  border-width: 3px;
+  transform: scale(1.15);
+}
+
 

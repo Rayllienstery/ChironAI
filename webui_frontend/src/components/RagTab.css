@@ -10,9 +10,6 @@
   align-items: center;
 }
 
-.rag-header h2 {
-  font: var(--md-sys-typescale-headline-medium-font);
-}
 
 .rag-actions {
   display: flex;
@@ -28,15 +25,15 @@
 }
 
 .rag-status-badge.running {
-  background: #dcfce7;
-  color: #166534;
-  border-color: #22c55e;
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-color: var(--md-sys-color-primary);
 }
 
 .rag-status-badge.stopped {
-  background: #fee2e2;
-  color: #b91c1c;
-  border-color: #f97373;
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+  border-color: var(--md-sys-color-error);
 }
 
 .rag-button {
@@ -85,13 +82,14 @@
 
 .rag-status-card .value {
   font: var(--md-sys-typescale-body-medium-font);
+  color: var(--md-sys-color-on-surface);
 }
 
 .rag-error {
   padding: var(--md-sys-spacing-sm);
   border-radius: var(--md-sys-shape-corner-small);
-  background: #fee2e2;
-  color: #b91c1c;
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
 }
 
 .rag-collections {
@@ -116,11 +114,13 @@
   padding: 8px 12px;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   text-align: left;
+  color: var(--md-sys-color-on-surface);
 }
 
 .collections-table th {
   font: var(--md-sys-typescale-label-medium-font);
   color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-variant);
 }
 
 .empty-state {
@@ -135,13 +135,20 @@
   color: var(--md-sys-color-on-surface-variant);
 }
 
-{
-  "cells": [],
-  "metadata": {
-    "language_info": {
-      "name": "python"
-    }
-  },
-  "nbformat": 4,
-  "nbformat_minor": 2
+.vectors-config {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
 }
+
+.vector-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+
+
