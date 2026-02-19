@@ -79,45 +79,60 @@
   overflow-y: auto;
   padding: var(--md-sys-spacing-xs);
   font-family: 'Courier New', monospace;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
 .debug-log-content .log-entry {
-  display: flex;
-  gap: var(--md-sys-spacing-xs);
-  padding: 2px var(--md-sys-spacing-xs);
-  margin-bottom: 1px;
+  padding: var(--md-sys-spacing-xs);
+  margin-bottom: 2px;
   border-radius: var(--md-sys-shape-corner-extra-small);
+  border-left: 3px solid transparent;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
 }
 
 .debug-log-content .log-entry.log-error {
-  background: var(--md-sys-color-error-container);
-  color: var(--md-sys-color-on-error-container);
+  border-left-color: var(--md-sys-color-error);
 }
 
 .debug-log-content .log-entry.log-warning {
-  background: var(--md-sys-color-tertiary-container);
-  color: var(--md-sys-color-on-tertiary-container);
+  border-left-color: var(--md-sys-color-tertiary);
 }
 
 .debug-log-content .log-entry.log-info {
-  background: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-on-primary-container);
+  border-left-color: var(--md-sys-color-primary);
+}
+
+.debug-log-content .log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+
+.debug-log-content .log-title {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-xs);
+}
+
+.debug-log-content .log-icon {
+  font-size: 14px;
+}
+
+.debug-log-content .log-summary {
+  font-size: 13px;
 }
 
 .debug-log-content .log-timestamp {
   color: var(--md-sys-color-on-surface-variant);
-  min-width: 80px;
-}
-
-.debug-log-content .log-level {
-  font-weight: 700;
-  min-width: 60px;
+  font-size: 11px;
 }
 
 .debug-log-content .log-message {
-  flex: 1;
   white-space: pre-wrap;
   word-break: break-word;
 }

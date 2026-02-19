@@ -1,21 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import Tabs from './components/Tabs';
-import ModelSettings from './components/ModelSettings';
 import LogsTab from './components/LogsTab';
 import SettingsTab from './components/SettingsTab';
 import ModelTester from './components/ModelTester';
 import RagTab from './components/RagTab';
 import DebugLogPanel from './components/DebugLogPanel';
-import { getSession, getSettings } from './services/api';
+import {
+  getSession,
+  getSettings,
+  getRagStatus,
+  getOllamaStatus,
+  startRag,
+  stopRag,
+  startOllama,
+  stopOllama,
+  stopServer,
+} from './services/api';
 import './styles/app.css';
 
 function App() {
-  const [activeTab, setActiveTab] = useState('model-settings');
+  const [activeTab, setActiveTab] = useState('settings');
   const [sessionId, setSessionId] = useState(null);
   const [debugLogOpen, setDebugLogOpen] = useState(false);
   const [themeMode, setThemeMode] = useState('system');
   const [lightAccent, setLightAccent] = useState('purple');
   const [darkAccent, setDarkAccent] = useState('cyan');
+  const [ollamaStatus, setOllamaStatus] = useState({ running: null, url: null });
+  const [ragStatusInfo, setRagStatusInfo] = useState({ running: null, url: null });
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(true);
 
   useEffect(() => {
     // Initialize session
@@ -44,6 +57,26 @@ function App() {
       mediaQuery.removeEventListener('change', handleSystemThemeChange);
     };
   }, [themeMode, lightAccent, darkAccent]);
+
+  useEffect(() => {
+    // Load backend statuses on mount
+    const loadStatuses = async () => {
+      setStatusLoading(true);
+      try {
+        const [ollama, rag] = await Promise.all([
+          getOllamaStatus().catch(() => ({ running: false })),
+          getRagStatus().catch(() => ({ running: false })),
+        ]);
+        setOllamaStatus(ollama);
+        setRagStatusInfo(rag);
+      } catch {
+        // ignore
+      } finally {
+        setStatusLoading(false);
+      }
+    };
+    loadStatuses();
+  }, []);
 
   const loadThemeSettings = async () => {
     try {
@@ -86,7 +119,6 @@ function App() {
   };
 
   const tabs = [
-    { id: 'model-settings', label: 'Model Settings' },
     { id: 'logs', label: 'Logs' },
     { id: 'model-tester', label: 'Model Tester' },
     { id: 'rag', label: 'RAG / Qdrant' },
@@ -95,8 +127,6 @@ function App() {
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'model-settings':
-        return <ModelSettings sessionId={sessionId} />;
       case 'logs':
         return <LogsTab sessionId={sessionId} />;
       case 'settings':
@@ -115,10 +145,147 @@ function App() {
     }
   };
 
+  const handleOllamaStartStop = async (action) => {
+    setStatusBusy(true);
+    try {
+      if (action === 'start') {
+        await startOllama();
+      } else {
+        await stopOllama();
+      }
+      const status = await getOllamaStatus().catch(() => ({ running: false }));
+      setOllamaStatus(status);
+    } catch (e) {
+      console.error('Failed to change Ollama status', e);
+    } finally {
+      setStatusBusy(false);
+    }
+  };
+
+  const handleRagStartStop = async (action) => {
+    setStatusBusy(true);
+    try {
+      if (action === 'start') {
+        await startRag();
+      } else {
+        await stopRag();
+      }
+      const status = await getRagStatus().catch(() => ({ running: false }));
+      setRagStatusInfo(status);
+    } catch (e) {
+      console.error('Failed to change RAG status', e);
+    } finally {
+      setStatusBusy(false);
+    }
+  };
+
+  const handleServerStop = async () => {
+    if (!window.confirm('Stop WebUI server? Current session will be closed.')) {
+      return;
+    }
+    try {
+      await stopServer();
+      // Дадим серверу время корректно завершиться
+      setTimeout(() => {
+        // Попробуем закрыть вкладку (сработает, если окно было открыто скриптом)
+        window.close();
+      }, 300);
+    } catch (e) {
+      console.error('Failed to stop WebUI server', e);
+    }
+  };
+
+  const openOllamaUI = () => {
+    if (ollamaStatus?.url) {
+      window.open(ollamaStatus.url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const openRagUI = () => {
+    if (ragStatusInfo?.url) {
+      const base = ragStatusInfo.url.replace(/\/+$/, '');
+      const url = `${base}/dashboard#/collections`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   return (
     <div className="app">
       <header className="app-header">
-        <h1>RAG Proxy WebUI</h1>
+        <h1>TMRAG</h1>
+        <div className="app-header-status">
+          <div className="status-pill">
+            <span className={`status-dot ${statusLoading ? 'updating' : (ollamaStatus.running ? 'running' : 'stopped')}`} />
+            <span className="status-label">Ollama</span>
+            {statusLoading ? (
+              <span className="status-text status-text-updating">
+                Updating status
+                <span className="status-spinner" />
+              </span>
+            ) : (
+              <span className="status-text">
+                {ollamaStatus.running ? 'Running' : 'Stopped'}
+              </span>
+            )}
+            <button
+              type="button"
+              className="status-button"
+              disabled={statusBusy || statusLoading}
+              onClick={() => handleOllamaStartStop(ollamaStatus.running ? 'stop' : 'start')}
+            >
+              {ollamaStatus.running ? 'Stop' : 'Start'}
+            </button>
+            {!statusLoading && ollamaStatus.running && ollamaStatus.url && (
+              <button
+                type="button"
+                className="status-link-button"
+                title="Open Ollama UI"
+                onClick={openOllamaUI}
+              >
+                🔗
+              </button>
+            )}
+          </div>
+          <div className="status-pill">
+            <span className={`status-dot ${statusLoading ? 'updating' : (ragStatusInfo.running ? 'running' : 'stopped')}`} />
+            <span className="status-label">RAG / Qdrant</span>
+            {statusLoading ? (
+              <span className="status-text status-text-updating">
+                Updating status
+                <span className="status-spinner" />
+              </span>
+            ) : (
+              <span className="status-text">
+                {ragStatusInfo.running ? 'Running' : 'Stopped'}
+              </span>
+            )}
+            <button
+              type="button"
+              className="status-button"
+              disabled={statusBusy || statusLoading}
+              onClick={() => handleRagStartStop(ragStatusInfo.running ? 'stop' : 'start')}
+            >
+              {ragStatusInfo.running ? 'Stop' : 'Start'}
+            </button>
+            {!statusLoading && ragStatusInfo.running && ragStatusInfo.url && (
+              <button
+                type="button"
+                className="status-link-button"
+                title="Open RAG / Qdrant UI"
+                onClick={openRagUI}
+              >
+                🔗
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            className="server-stop-button"
+            onClick={handleServerStop}
+          >
+            Stop WebUI
+          </button>
+        </div>
       </header>
       
       <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />

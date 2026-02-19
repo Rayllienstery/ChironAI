@@ -99,6 +99,21 @@ export async function testerChat(sessionId, messages, options = {}) {
   return response.json();
 }
 
+export async function testerPromptPreview(options = {}) {
+  const response = await fetch(`${API_BASE}/tester/prompt-preview`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(options),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to get prompt preview');
+  }
+  return response.json();
+}
+
 export async function getLogs(sessionId, options = {}) {
   const params = new URLSearchParams({
     session_id: sessionId,
@@ -167,6 +182,47 @@ export async function stopRag() {
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || 'Failed to stop RAG server');
+  }
+  return response.json();
+}
+
+export async function getOllamaStatus() {
+  const response = await fetch(`${API_BASE}/ollama/status`);
+  if (!response.ok) {
+    throw new Error('Failed to get Ollama status');
+  }
+  return response.json();
+}
+
+export async function startOllama() {
+  const response = await fetch(`${API_BASE}/ollama/start`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to start Ollama server');
+  }
+  return response.json();
+}
+
+export async function stopOllama() {
+  const response = await fetch(`${API_BASE}/ollama/stop`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to stop Ollama server');
+  }
+  return response.json();
+}
+
+export async function stopServer() {
+  const response = await fetch(`${API_BASE}/server/stop`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to stop WebUI server');
   }
   return response.json();
 }

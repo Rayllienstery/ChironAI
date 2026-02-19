@@ -1,3 +1,10 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--md-sys-color-background);
+  border: none;
+}
+
 .app {
   min-height: 100vh;
   display: flex;
@@ -8,8 +15,134 @@
 .app-header {
   background: var(--md-sys-color-surface);
   padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
-  box-shadow: var(--md-sys-elevation-level1);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  box-shadow: none;
+  border-bottom: none;
+}
+
+:root.theme-dark .app-header {
+  box-shadow: none;
+  border-bottom: none;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-lg);
+}
+
+.app-header-status {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-md);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-xs);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--md-sys-color-surface-variant);
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--md-sys-color-outline-variant);
+}
+
+.status-dot.running {
+  background: var(--md-sys-color-primary);
+}
+
+.status-dot.stopped {
+  background: var(--md-sys-color-error);
+}
+
+.status-dot.updating {
+  background: var(--md-sys-color-outline-variant);
+}
+
+.status-label {
+  font: var(--md-sys-typescale-label-medium-font);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.status-text {
+  font: var(--md-sys-typescale-label-medium-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.status-text-updating {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.status-spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid var(--md-sys-color-outline-variant);
+  border-top-color: var(--md-sys-color-primary);
+  animation: status-spin 0.8s linear infinite;
+}
+
+@keyframes status-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.status-button {
+  margin-left: var(--md-sys-spacing-xs);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-small-font);
+  cursor: pointer;
+}
+
+.status-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.status-link-button {
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.status-link-button:hover {
+  opacity: 0.9;
+}
+
+.server-stop-button {
+  padding: 4px 12px;
+  border-radius: var(--md-sys-shape-corner-small);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-medium-font);
+  cursor: pointer;
+}
+
+.server-stop-button:hover {
+  opacity: 0.9;
 }
 
 .app-header h1 {
@@ -66,18 +199,14 @@ md-tabs {
   margin-bottom: var(--md-sys-spacing-md);
 }
 
-/* Unified button styles with border in dark theme */
+/* Unified button styles with border and text color in dark theme */
 :root.theme-dark .save-button,
 :root.theme-dark .send-button,
 :root.theme-dark .debug-log-toggle,
 :root.theme-dark .debug-log-controls button,
-:root.theme-dark .rag-button.primary {
+:root.theme-dark .logs-controls button,
+:root.theme-dark .rag-button {
   border: 1px solid var(--md-sys-color-background) !important;
-}
-
-:root.theme-dark .rag-button:not(.primary),
-:root.theme-dark .logs-controls button {
-  border: 1px solid var(--md-sys-color-background) !important;
-  color: var(--md-sys-color-on-surface) !important;
+  color: var(--md-sys-color-background) !important;
 }
 

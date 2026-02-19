@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getSettings, updateSettings } from '../services/api';
+import ModelSettings from './ModelSettings';
 import './SettingsTab.css';
 
 const ACCENT_COLORS = [
@@ -108,6 +109,11 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange }) {
       <h2>Settings</h2>
       
       <div className="settings-form">
+        <div className="settings-section">
+          <h3>Model Settings</h3>
+          <ModelSettings />
+        </div>
+
         <div className="settings-section">
           <h3>Theme</h3>
           

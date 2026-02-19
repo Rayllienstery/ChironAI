@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getModels, getPrompts, getTesterSettings, updateTesterSettings, testerChat } from '../services/api';
+import { getModels, getPrompts, getTesterSettings, updateTesterSettings, testerChat, testerPromptPreview } from '../services/api';
 import { marked } from 'marked';
 import './ModelTester.css';
 
@@ -18,6 +18,9 @@ function ModelTester({ sessionId }) {
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(true);
+  const [stats, setStats] = useState(null);
+  const [promptPreview, setPromptPreview] = useState('');
+  const [promptLoading, setPromptLoading] = useState(false);
   const responseRef = useRef(null);
 
   useEffect(() => {
@@ -77,6 +80,8 @@ function ModelTester({ sessionId }) {
     
     setLoading(true);
     setResponse('');
+    setStats(null);
+    setPromptPreview('');
     
     try {
       const result = await testerChat(sessionId, [
@@ -94,6 +99,15 @@ function ModelTester({ sessionId }) {
         const content = result.choices[0].message.content;
         setResponse(marked.parse(content));
       }
+
+      if (result.usage || typeof result.latency_ms === 'number') {
+        setStats({
+          latencyMs: typeof result.latency_ms === 'number' ? result.latency_ms : null,
+          promptTokens: result.usage?.prompt_tokens ?? null,
+          completionTokens: result.usage?.completion_tokens ?? null,
+          totalTokens: result.usage?.total_tokens ?? null,
+        });
+      }
     } catch (error) {
       setResponse(`Error: ${error.message}`);
     } finally {
@@ -101,6 +115,21 @@ function ModelTester({ sessionId }) {
       if (responseRef.current) {
         responseRef.current.scrollTop = responseRef.current.scrollHeight;
       }
+    }
+  };
+
+  const handlePreviewPrompt = async () => {
+    setPromptLoading(true);
+    try {
+      const result = await testerPromptPreview({
+        prompt_name: settings.prompt_name || undefined,
+        swift_mode: settings.swift_mode,
+      });
+      setPromptPreview(result.system_prompt || '');
+    } catch (error) {
+      setPromptPreview(`Error: ${error.message}`);
+    } finally {
+      setPromptLoading(false);
     }
   };
 
@@ -207,17 +236,65 @@ function ModelTester({ sessionId }) {
             <h3>Query</h3>
             <textarea
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPromptPreview('');
+              }}
               placeholder="Enter your test query..."
               rows="4"
             />
-            <button
-              onClick={handleSend}
-              disabled={loading || !query.trim()}
-              className="send-button"
-            >
-              {loading ? 'Sending...' : 'Send'}
-            </button>
+            <div className="chat-input-actions">
+              <button
+                onClick={handleSend}
+                disabled={loading || !query.trim()}
+                className="send-button"
+              >
+                {loading ? 'Sending...' : 'Send'}
+              </button>
+              <button
+                type="button"
+                className="preview-button"
+                disabled={promptLoading}
+                onClick={handlePreviewPrompt}
+              >
+                {promptLoading ? 'Previewing...' : 'Preview Prompt'}
+              </button>
+              <div className="tester-stats">
+                {loading && (
+                  <span className="tester-spinner" aria-label="Running model" />
+                )}
+                {!loading && stats && (
+                  <span className="tester-stats-text">
+                    {stats.latencyMs != null && (
+                      <span className="tester-stat-pill">
+                        ⏱ {(stats.latencyMs / 1000).toFixed(2)} s
+                      </span>
+                    )}
+                    {stats.totalTokens != null && (
+                      <span className="tester-stat-pill">
+                        🔢 {stats.totalTokens} tokens
+                      </span>
+                    )}
+                  </span>
+                )}
+              </div>
+            </div>
+            {promptPreview && (
+              <div className="prompt-preview">
+                <div className="prompt-preview-header">
+                  <span>System Prompt Preview</span>
+                  <button
+                    type="button"
+                    className="prompt-preview-close"
+                    aria-label="Close prompt preview"
+                    onClick={() => setPromptPreview('')}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <pre>{promptPreview}</pre>
+              </div>
+            )}
           </div>
 
           <div className="chat-response-section">

@@ -44,7 +44,7 @@
   border-radius: var(--md-sys-shape-corner-medium);
   padding: var(--md-sys-spacing-md);
   font-family: 'Courier New', monospace;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .log-entry {
@@ -52,47 +52,48 @@
   margin-bottom: var(--md-sys-spacing-xs);
   border-radius: var(--md-sys-shape-corner-extra-small);
   border-left: 3px solid transparent;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
 }
 
 .log-entry.log-error {
-  background: var(--md-sys-color-error-container);
   border-left-color: var(--md-sys-color-error);
-  color: var(--md-sys-color-on-error-container);
 }
 
 .log-entry.log-warning {
-  background: var(--md-sys-color-tertiary-container);
   border-left-color: var(--md-sys-color-tertiary);
-  color: var(--md-sys-color-on-tertiary-container);
 }
 
 .log-entry.log-info {
-  background: var(--md-sys-color-primary-container);
   border-left-color: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary-container);
 }
 
 .log-header {
   display: flex;
-  gap: var(--md-sys-spacing-sm);
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: var(--md-sys-spacing-xs);
   font-weight: 600;
 }
 
-.log-level {
-  font-weight: 700;
+.log-title {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-xs);
+}
+
+.log-icon {
+  font-size: 14px;
+}
+
+.log-summary {
+  font-size: 13px;
 }
 
 .log-timestamp {
   color: var(--md-sys-color-on-surface-variant);
   font-size: 11px;
-}
-
-.log-source,
-.log-error-type {
-  font-size: 11px;
-  margin-bottom: var(--md-sys-spacing-xs);
-  color: var(--md-sys-color-on-surface-variant);
 }
 
 .log-message {

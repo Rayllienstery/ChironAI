@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from typing import Any, Dict, Optional
 
+from infrastructure.database import get_logs_repository
+
 
 def _clean_message(source: str, error: Exception, extra: Optional[Dict[str, Any]] = None) -> str:
     """One-line user-friendly: source= stage= error_type= message=."""
@@ -93,17 +95,52 @@ def log_webui_error(
 ) -> None:
     """
     Log an error at the WebUI boundary (HTTP/CLI).
-    source: e.g. "rag_routes.chat_completions"
-    Writes clean one-line to file (or JSON Lines if LOG_FORMAT=json). Includes exc_info.
+
+    - Writes to rotating file via `webui_errors` logger.
+    - Additionally mirrors a simplified entry into the SQLite `logs` table
+      with `session_id='system'` so that it is visible in WebUI logs.
+
+    `source` is a short string like "rag_routes.chat_completions".
     """
     use_json_fmt = use_json if use_json is not None else (os.getenv("LOG_FORMAT", "").lower() == "json")
     log = logger or get_webui_error_logger(use_json=use_json_fmt)
+
+    # Prepare clean message once so we can reuse it for file + DB
+    clean_msg = _clean_message(source, error, extra)
+
+    # 1) File logging
     if use_json_fmt:
         msg = _json_message(source, error, extra, include_tb=True)
         log.error(msg)
     else:
-        msg = _clean_message(source, error, extra)
-        log.error(msg, exc_info=True)
+        log.error(clean_msg, exc_info=True)
+
+    # 2) Mirror into SQLite logs so it appears in WebUI (debug panel, Logs tab)
+    try:
+        logs_repo = get_logs_repository()
+
+        # Detect high-level category for easier filtering on UI
+        message_text = str(error).lower()
+        category = None
+        if "ollama" in message_text or "port=11434" in message_text or "11434" in message_text:
+            category = "ollama"
+
+        metadata: Dict[str, Any] = dict(extra or {})
+        if category and "category" not in metadata:
+            metadata["category"] = category
+
+        # Use a global/system session so logs are shared across WebUI sessions
+        logs_repo.add_log(
+            session_id="system",
+            level="ERROR",
+            message=clean_msg,
+            source=category or source,
+            error_type=type(error).__name__,
+            metadata=metadata or None,
+        )
+    except Exception:
+        # Never let logging failures break the main flow
+        log.debug("Failed to mirror WebUI error into SQLite logs", exc_info=True)
 
 
 __all__ = ["get_webui_error_logger", "log_webui_error"]

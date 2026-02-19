@@ -6,6 +6,7 @@ import './LogsTab.css';
 function LogsTab({ sessionId }) {
   const [logs, setLogs] = useState([]);
   const [levelFilter, setLevelFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const logsEndRef = useRef(null);
 
@@ -36,6 +37,7 @@ function LogsTab({ sessionId }) {
     try {
       const data = await getLogs(sessionId, {
         level: levelFilter || undefined,
+        source: sourceFilter || undefined,
         limit: 100,
       });
       setLogs(data.logs || []);
@@ -53,6 +55,52 @@ function LogsTab({ sessionId }) {
 
   const getLevelClass = (level) => {
     return `log-entry log-${level.toLowerCase()}`;
+  };
+
+  const getLevelIcon = (level) => {
+    const lvl = (level || '').toUpperCase();
+    if (lvl === 'ERROR') return '⛔';
+    if (lvl === 'WARNING') return '⚠️';
+    return 'ℹ️';
+  };
+
+  const buildTitle = (log) => {
+    const level = log.level || '';
+    const sourceRaw = log.source || '';
+    const type = log.error_type || '';
+    const msg = log.message || '';
+
+    // Try to extract a short error code like "WinError 10061"
+    let code = '';
+    const winMatch = msg.match(/WinError\s+\d+/);
+    if (winMatch) {
+      code = winMatch[0];
+    }
+
+    const mainSource =
+      sourceRaw === 'ollama'
+        ? 'ollama'
+        : (sourceRaw.split('.')[0] || 'unknown');
+
+    const parts = [];
+    if (code) {
+      parts.push(`[${code}]`);
+    }
+    parts.push(`Source: ${mainSource}`);
+    if (type || level) {
+      parts.push(`Type: ${type || level}`);
+    }
+    return parts.join(' | ');
+  };
+
+  const buildMessage = (log) => {
+    const msg = log.message || '';
+    const idx = msg.indexOf('message=');
+    if (idx === -1) {
+      return msg;
+    }
+    const extracted = msg.slice(idx + 'message='.length).trim();
+    return extracted;
   };
 
   const formatTimestamp = (timestamp) => {
@@ -82,6 +130,15 @@ function LogsTab({ sessionId }) {
             <option value="WARNING">WARNING</option>
             <option value="INFO">INFO</option>
           </select>
+          <select
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+          >
+            <option value="">All Sources</option>
+            <option value="ollama">Ollama</option>
+            <option value="rag_routes.chat_completions">rag_routes</option>
+            <option value="webui_routes">webui_routes</option>
+          </select>
           <button onClick={loadLogs}>Refresh</button>
         </div>
       </div>
@@ -95,16 +152,13 @@ function LogsTab({ sessionId }) {
           logs.map((log) => (
             <div key={log.id} className={getLevelClass(log.level)}>
               <div className="log-header">
-                <span className="log-level">[{log.level}]</span>
+                <div className="log-title">
+                  <span className="log-icon">{getLevelIcon(log.level)}</span>
+                  <span className="log-summary">{buildTitle(log)}</span>
+                </div>
                 <span className="log-timestamp">{formatTimestamp(log.timestamp)}</span>
               </div>
-              {log.source && (
-                <div className="log-source">Source: {log.source}</div>
-              )}
-              {log.error_type && (
-                <div className="log-error-type">Type: {log.error_type}</div>
-              )}
-              <div className="log-message">{log.message}</div>
+              <div className="log-message">{buildMessage(log)}</div>
             </div>
           ))
         )}

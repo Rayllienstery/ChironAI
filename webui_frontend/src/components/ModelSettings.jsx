@@ -66,8 +66,6 @@ function ModelSettings({ sessionId }) {
 
   return (
     <div className="model-settings">
-      <h2>Model Settings</h2>
-      
       <div className="settings-form">
         <div className="form-group">
           <label>Model</label>

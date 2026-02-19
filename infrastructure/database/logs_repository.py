@@ -60,6 +60,8 @@ class LogsRepository:
         level: Optional[str] = None,
         limit: int = 100,
         since_id: Optional[int] = None,
+        source: Optional[str] = None,
+        include_system: bool = True,
     ) -> list[dict[str, Any]]:
         """
         Get logs for a session.
@@ -76,8 +78,14 @@ class LogsRepository:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             
-            query = "SELECT * FROM logs WHERE session_id = ?"
-            params: list[Any] = [session_id]
+            # Always include logs for the current session and, optionally,
+            # system-wide logs (session_id='system') so global errors are visible.
+            if include_system:
+                query = "SELECT * FROM logs WHERE (session_id = ? OR session_id = 'system')"
+                params: list[Any] = [session_id]
+            else:
+                query = "SELECT * FROM logs WHERE session_id = ?"
+                params = [session_id]
             
             if since_id is not None:
                 query += " AND id > ?"
@@ -86,6 +94,10 @@ class LogsRepository:
             if level:
                 query += " AND level = ?"
                 params.append(level)
+
+            if source:
+                query += " AND source = ?"
+                params.append(source)
             
             query += " ORDER BY id DESC LIMIT ?"
             params.append(limit)

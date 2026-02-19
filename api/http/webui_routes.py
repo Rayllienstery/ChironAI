@@ -12,7 +12,7 @@ import logging
 import os
 import sys
 import time
-from subprocess import run
+from subprocess import run, Popen
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -114,6 +114,7 @@ def get_logs() -> Any:
         session_id = request.args.get("session_id")
         limit = int(request.args.get("limit", 100))
         level = request.args.get("level", "").upper() or None
+        source = request.args.get("source") or None
         since_id = request.args.get("since_id")
         
         if not session_id:
@@ -125,6 +126,7 @@ def get_logs() -> Any:
             level=level,
             limit=limit,
             since_id=int(since_id) if since_id else None,
+            source=source,
         )
         
         return jsonify({"logs": logs})
@@ -486,9 +488,12 @@ def tester_chat() -> Any:
                 params.context_total_chars,
             )
             
+            # Use the actual Ollama model name here; "rag-ollama" is the logical
+            # OpenAI-compatible model id, not an Ollama model. Passing it here
+            # causes 404 MODEL_NOT_FOUND from Ollama.
             req = RagQuestionRequest(
                 messages=messages,
-                model="rag-ollama",
+                model=ollama_model,
                 stream=False,
                 reasoning_level=reasoning_level,
             )
@@ -525,9 +530,26 @@ def tester_chat() -> Any:
             options["top_p"] = float(top_p)
         
         # Call chat
-        content = chat_client.chat(ollama_messages, use_model, stream=False, options=options if options else None)
+        content = chat_client.chat(
+            ollama_messages,
+            use_model,
+            stream=False,
+            options=options if options else None,
+        )
         
         latency_ms = int((time.time() - start_time) * 1000)
+
+        # Rough token accounting (approximate, for diagnostics / UX only)
+        def _approx_tokens(text: str) -> int:
+            # Simple heuristic: 1 token ≈ 4 characters
+            if not text:
+                return 0
+            return max(1, int(len(text) / 4))
+
+        prompt_text = " ".join((m.get("content") or "") for m in messages if isinstance(m, dict))
+        prompt_tokens = _approx_tokens(prompt_text)
+        completion_tokens = _approx_tokens(content or "")
+        total_tokens = prompt_tokens + completion_tokens
         
         # Build response
         response_data: dict[str, Any] = {
@@ -535,6 +557,12 @@ def tester_chat() -> Any:
             "object": "chat.completion",
             "created": int(time.time()),
             "model": use_model,
+            "latency_ms": latency_ms,
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+            },
             "choices": [{
                 "index": 0,
                 "message": {"role": "assistant", "content": content or ""},
@@ -545,6 +573,24 @@ def tester_chat() -> Any:
         return jsonify(response_data)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.tester_chat", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/tester/prompt-preview", methods=["POST"])
+def tester_prompt_preview() -> Any:
+    """Return the system prompt that will be used for Model Tester."""
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        prompt_name = body.get("prompt_name") or get_rag_prompt_name()
+        swift_mode = body.get("swift_mode", "default")
+        prefix, _ = get_rag_system_prompt_swift_mode(prompt_name, swift_mode)
+        return jsonify({
+            "prompt_name": prompt_name,
+            "swift_mode": swift_mode,
+            "system_prompt": prefix or "",
+        })
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.tester_prompt_preview", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
@@ -724,6 +770,117 @@ def rag_stop() -> Any:
     ok, output = _run_docker_command(["stop", name])
     status = 200 if ok else 500
     return jsonify({"ok": ok, "output": output, "container": name}), status
+
+
+def _get_ollama_url() -> str:
+    return os.getenv("OLLAMA_URL", "http://localhost:11434")
+
+
+@webui_bp.route("/ollama/status", methods=["GET"])
+def ollama_status() -> Any:
+    """Check if Ollama server is reachable on port 11434 (or OLLAMA_URL)."""
+    url = _get_ollama_url().rstrip("/")
+    status: dict[str, Any] = {"url": url, "running": False}
+    try:
+        resp = requests.get(f"{url}/api/tags", timeout=3)
+        status["http_status"] = resp.status_code
+        if resp.ok:
+            status["running"] = True
+    except Exception as e:
+        status["error"] = str(e)
+        _WEBUI_LOG.warning(f"Failed to get Ollama status: {e}")
+    return jsonify(status)
+
+
+def _start_ollama_process() -> tuple[bool, str]:
+    """Best-effort start of ollama serve as background process."""
+    try:
+        # Cross-platform detached process
+        kwargs: dict[str, Any] = {"stdout": None, "stderr": None}
+        if os.name == "nt":
+            # Windows: DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+            kwargs["creationflags"] = 0x00000008 | 0x00000200
+        else:
+            kwargs["start_new_session"] = True
+        Popen(["ollama", "serve"], **kwargs)
+        return True, "ollama serve started"
+    except Exception as e:
+        return False, str(e)
+
+
+def _stop_ollama_process() -> tuple[bool, str]:
+    """
+    Best-effort stop of Ollama server.
+
+    On Windows uses taskkill; on POSIX uses pkill. If commands are not available,
+    this will fail gracefully.
+    """
+    try:
+        if os.name == "nt":
+            proc = run(
+                ["taskkill", "/IM", "ollama.exe", "/F"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        else:
+            proc = run(
+                ["pkill", "-f", "ollama"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        ok = proc.returncode == 0
+        output = proc.stdout.strip() or proc.stderr.strip()
+        return ok, output or "ok" if ok else "failed"
+    except Exception as e:
+        return False, str(e)
+
+
+@webui_bp.route("/ollama/start", methods=["POST"])
+def ollama_start() -> Any:
+    """Try to start Ollama server (ollama serve)."""
+    ok, output = _start_ollama_process()
+    status = 200 if ok else 500
+    return jsonify({"ok": ok, "output": output}), status
+
+
+@webui_bp.route("/ollama/stop", methods=["POST"])
+def ollama_stop() -> Any:
+    """Try to stop Ollama server process."""
+    ok, output = _stop_ollama_process()
+    status = 200 if ok else 500
+    return jsonify({"ok": ok, "output": output}), status
+
+
+def _shutdown_server() -> None:
+    """
+    Trigger server shutdown.
+
+    - If running under Werkzeug dev server, call its shutdown hook.
+    - Otherwise (e.g. started from a different WSGI runner), fall back to os._exit(0)
+      to terminate the process on this request.
+    """
+    func = request.environ.get("werkzeug.server.shutdown")
+    if func is not None:
+        func()
+        return
+
+    # Fallback: hard-exit the process. This is acceptable here because this
+    # server is intended for local/dev usage, started via start_webui.bat.
+    os._exit(0)
+
+
+@webui_bp.route("/server/stop", methods=["POST"])
+def server_stop() -> Any:
+    """Stop the WebUI / RAG Proxy Flask server."""
+    try:
+        _WEBUI_LOG.info("Received WebUI shutdown request")
+        _shutdown_server()
+        return jsonify({"status": "stopping"})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.server_stop", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 
 __all__ = ["webui_bp"]
