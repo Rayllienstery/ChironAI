@@ -8,6 +8,7 @@ and injected ports (RagRepository, EmbeddingProvider, RerankClient, ChatLLMClien
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from domain.entities.rag import RagAnswerResponse, RagContext, RagQuestionRequest
@@ -35,6 +36,7 @@ from domain.services.retrieval import (
     need_more_chunks,
     parse_versions_from_question,
     query_for_retrieval,
+    should_skip_rag_search,
 )
 
 _rag_log = logging.getLogger("trag.rag")
@@ -76,37 +78,57 @@ def search_rag(
     embed_provider: EmbeddingProvider,
     rerank_client: RerankClient | None,
     top_k: int | None = None,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, float]]:
     """
     Run RAG retrieval for a question: query_for_retrieval -> embed -> search -> rerank.
-    Returns list of hits with id, score, payload, rerank_score.
+    Returns (list of hits with id, score, payload, rerank_score, timings dict with embed_s, search_s, rerank_s).
     """
+    timings: dict[str, float] = {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0}
     if top_k is None:
         top_k = MULTI_CHUNK_TOP_K if need_more_chunks(question) else get_retrieval_int("top_k", DEFAULT_TOP_K)
     search_query = query_for_retrieval(question)
+    t0 = time.perf_counter()
     vec = embed_provider.embed(search_query)
+    timings["embed_s"] += time.perf_counter() - t0
     filter_dict = build_qdrant_filter(question)
     k = max(top_k, RERANK_MAX_CANDIDATES) if not is_version_question(question) else top_k
+    t0 = time.perf_counter()
     results = rag_repo.search(vec, top_k=k, filter_dict=filter_dict)
     if filter_dict and not results:
         results = rag_repo.search(vec, top_k=k, filter_dict=None)
+    timings["search_s"] += time.perf_counter() - t0
     final_k = MULTI_CHUNK_FINAL_K if need_more_chunks(question) else FINAL_CONTEXT_K
     if not is_version_question(question):
         results.sort(key=doc_type_priority, reverse=True)
-        return _apply_rerank(question, results, rerank_client, final_k)
+        t0 = time.perf_counter()
+        results = _apply_rerank(question, results, rerank_client, final_k)
+        timings["rerank_s"] += time.perf_counter() - t0
+        return results, timings
     ios_q, swift_q = parse_versions_from_question(question)
     extra_results: list[dict[str, Any]] = []
     for v in swift_q:
         qv = f"Swift {v} version RELEASE"
+        t0 = time.perf_counter()
         vec_v = embed_provider.embed(qv)
+        timings["embed_s"] += time.perf_counter() - t0
+        t0 = time.perf_counter()
         extra_results.extend(rag_repo.search(vec_v, top_k=6))
+        timings["search_s"] += time.perf_counter() - t0
     for v in ios_q:
         qv = f"iOS {v} version RELEASE"
+        t0 = time.perf_counter()
         vec_v = embed_provider.embed(qv)
+        timings["embed_s"] += time.perf_counter() - t0
+        t0 = time.perf_counter()
         extra_results.extend(rag_repo.search(vec_v, top_k=6))
+        timings["search_s"] += time.perf_counter() - t0
     if not extra_results:
+        t0 = time.perf_counter()
         vec_version = embed_provider.embed("Swift version release number RELEASE")
+        timings["embed_s"] += time.perf_counter() - t0
+        t0 = time.perf_counter()
         extra_results.extend(rag_repo.search(vec_version, top_k=8))
+        timings["search_s"] += time.perf_counter() - t0
     seen_ids = {r["id"] for r in results}
     for r in extra_results:
         if r["id"] not in seen_ids:
@@ -131,7 +153,10 @@ def search_rag(
     if ios_set or swift_set:
         results.sort(key=_score, reverse=True)
         results.sort(key=doc_type_priority, reverse=True)
-    return _apply_rerank(question, results, rerank_client, final_k)
+    t0 = time.perf_counter()
+    results = _apply_rerank(question, results, rerank_client, final_k)
+    timings["rerank_s"] += time.perf_counter() - t0
+    return results, timings
 
 
 def build_rag_context(
@@ -141,17 +166,23 @@ def build_rag_context(
     rerank_client: RerankClient | None,
     context_chunk_chars: int,
     context_total_chars: int,
-) -> RagContext:
+    top_k: int | None = None,
+) -> tuple[RagContext, dict[str, float]]:
     """
     Build RAG context for a question: search_rag -> framework_filter -> build_context_block.
-    Returns RagContext (context_text, chunks_info, max_score).
+    Returns (RagContext (context_text, chunks_info, max_score), timings dict with embed_s, search_s, rerank_s, total_rag_s).
     """
+    empty_timings: dict[str, float] = {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0}
     if not question or not question.strip():
-        return RagContext("", [], 0.0)
+        return RagContext("", [], 0.0), empty_timings
+    if should_skip_rag_search(question):
+        _rag_log.debug("RAG skipped for query (greeting or no RAG-required keyword)")
+        return RagContext("", [], 0.0), empty_timings
     try:
-        results = search_rag(question, rag_repo, embed_provider, rerank_client)
+        results, timings = search_rag(question, rag_repo, embed_provider, rerank_client, top_k=top_k)
+        timings["total_rag_s"] = timings["embed_s"] + timings["search_s"] + timings["rerank_s"]
         if not results:
-            return RagContext("", [], 0.0)
+            return RagContext("", [], 0.0), timings
         results = framework_filter(question, results)
         context_text, chunks_info, max_score = build_context_block(
             results, context_chunk_chars, context_total_chars
@@ -160,10 +191,14 @@ def build_rag_context(
         if count:
             sources = list({c.get("doc_type") or "N/A" for c in chunks_info})
             _rag_log.info(
-                "RAG chunks count=%s max_score=%.2f sources=%s",
+                "RAG chunks count=%s max_score=%.2f sources=%s embed_s=%.2f search_s=%.2f rerank_s=%.2f total_rag_s=%.2f",
                 count,
                 max_score,
                 ",".join(str(s) for s in sources[:5]),
+                timings["embed_s"],
+                timings["search_s"],
+                timings["rerank_s"],
+                timings["total_rag_s"],
             )
             for c in chunks_info:
                 _rag_log.debug(
@@ -174,9 +209,9 @@ def build_rag_context(
                     (c.get("url") or "N/A")[:60],
                     c.get("doc_type") or "N/A",
                 )
-        return RagContext(context_text=context_text, chunks_info=chunks_info, max_score=max_score)
+        return RagContext(context_text=context_text, chunks_info=chunks_info, max_score=max_score), timings
     except Exception:
-        return RagContext("", [], 0.0)
+        return RagContext("", [], 0.0), empty_timings
 
 
 def answer_question(
@@ -198,7 +233,7 @@ def answer_question(
     Returns RagAnswerResponse (content, model, finish_reason).
     """
     last_user = last_user_content(request.messages)
-    ctx = build_rag_context(
+    ctx, _ = build_rag_context(
         last_user,
         rag_repo,
         embed_provider,
@@ -251,7 +286,7 @@ def prepare_ollama_messages(
     Returns (ollama_messages, model).
     """
     last_user = last_user_content(request.messages)
-    ctx = build_rag_context(
+    ctx, _ = build_rag_context(
         last_user,
         rag_repo,
         embed_provider,

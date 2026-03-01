@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getLogs } from '../services/api';
+import { getLogs, getProxyLogs } from '../services/api';
 import { startLogPolling, stopLogPolling } from '../services/logs';
 import './LogsTab.css';
 
 function LogsTab({ sessionId }) {
+  const [viewMode, setViewMode] = useState('logs'); // 'logs' or 'proxy'
   const [logs, setLogs] = useState([]);
   const [levelFilter, setLevelFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
@@ -11,37 +12,67 @@ function LogsTab({ sessionId }) {
   const logsEndRef = useRef(null);
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (viewMode === 'logs' && !sessionId) return;
 
     loadLogs();
 
-    // Start auto-update polling
-    startLogPolling(sessionId, (newLogs) => {
-      setLogs(prev => {
-        const existingIds = new Set(prev.map(log => log.id));
-        const uniqueNewLogs = newLogs.filter(log => !existingIds.has(log.id));
-        return [...prev, ...uniqueNewLogs].slice(-500); // Keep last 500
-      });
-      scrollToBottom();
-    }, 3000);
+    if (viewMode === 'logs' && sessionId) {
+      // Start auto-update polling only for regular logs
+      startLogPolling(sessionId, (newLogs) => {
+        setLogs(prev => {
+          const existingIds = new Set(prev.map(log => log.id));
+          const uniqueNewLogs = newLogs.filter(log => !existingIds.has(log.id));
+          const hadNewLogs = uniqueNewLogs.length > 0;
+          const updated = [...prev, ...uniqueNewLogs].slice(-500); // Keep last 500
+          // Only scroll if new logs were added and user is near bottom
+          if (hadNewLogs) {
+            setTimeout(() => scrollToBottom(), 100);
+          }
+          return updated;
+        });
+      }, 3000);
 
-    return () => {
-      stopLogPolling();
-    };
-  }, [sessionId, levelFilter]);
+      return () => {
+        stopLogPolling();
+      };
+    } else if (viewMode === 'proxy') {
+      // Poll proxy logs every 3 seconds
+      const interval = setInterval(() => {
+        loadLogs();
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [sessionId, levelFilter, viewMode]);
 
   const loadLogs = async () => {
-    if (!sessionId) return;
-    
     setLoading(true);
     try {
-      const data = await getLogs(sessionId, {
-        level: levelFilter || undefined,
-        source: sourceFilter || undefined,
-        limit: 100,
-      });
-      setLogs(data.logs || []);
-      scrollToBottom();
+      if (viewMode === 'proxy') {
+        const data = await getProxyLogs({
+          limit: 100,
+        });
+        const newLogs = data.logs || [];
+        const hadNewLogs = logs.length > 0 && newLogs.length > logs.length;
+        setLogs(newLogs);
+        // Only scroll on initial load or if new logs were added
+        if (logs.length === 0 || hadNewLogs) {
+          setTimeout(() => scrollToBottom(), 100);
+        }
+      } else {
+        if (!sessionId) return;
+        const data = await getLogs(sessionId, {
+          level: levelFilter || undefined,
+          source: sourceFilter || undefined,
+          limit: 100,
+        });
+        const newLogs = data.logs || [];
+        const hadNewLogs = logs.length > 0 && newLogs.length > logs.length;
+        setLogs(newLogs);
+        // Only scroll on initial load or if new logs were added
+        if (logs.length === 0 || hadNewLogs) {
+          setTimeout(() => scrollToBottom(), 100);
+        }
+      }
     } catch (error) {
       console.error('Failed to load logs:', error);
     } finally {
@@ -50,7 +81,16 @@ function LogsTab({ sessionId }) {
   };
 
   const scrollToBottom = () => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Only scroll if user is already near the bottom (within 150px)
+    const container = document.querySelector('.logs-content');
+    if (container) {
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+      if (isNearBottom) {
+        logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+    } else {
+      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   const getLevelClass = (level) => {
@@ -112,55 +152,224 @@ function LogsTab({ sessionId }) {
     }
   };
 
-  if (!sessionId) {
+  const renderProxyLog = (log) => {
+    // Safely parse metadata
+    let metadata = {};
+    try {
+      if (log.metadata) {
+        if (typeof log.metadata === 'string') {
+          metadata = JSON.parse(log.metadata);
+        } else {
+          metadata = log.metadata;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to parse metadata:', e);
+      metadata = {};
+    }
+    
+    const ragContext = metadata.rag_context || {};
+    const chunksCount = ragContext.chunks_count || 0;
+    const maxScore = ragContext.max_score;
+    const chunksInfo = Array.isArray(ragContext.chunks_info) ? ragContext.chunks_info : [];
+    
+    return (
+      <div key={log.id} className="log-entry log-info proxy-log-entry">
+        <div className="log-header">
+          <div className="log-title">
+            <span className="log-icon">ℹ️</span>
+            <span className="log-summary">Proxy Request</span>
+          </div>
+          <span className="log-timestamp">{formatTimestamp(log.timestamp)}</span>
+        </div>
+        <div className="proxy-log-content">
+          <div className="proxy-log-section">
+            <strong>User Query:</strong>
+            <div className="proxy-log-text">{metadata.user_query || 'N/A'}</div>
+          </div>
+          <div className="proxy-log-section">
+            <strong>Response Preview:</strong>
+            <div className="proxy-log-text">{metadata.response_preview || 'N/A'}</div>
+          </div>
+          <div className="proxy-log-metrics">
+            <div className="proxy-log-metric">
+              <span className="metric-label">Model:</span>
+              <span className="metric-value">{metadata.model || 'N/A'}</span>
+            </div>
+            <div className="proxy-log-metric">
+              <span className="metric-label">Latency:</span>
+              <span className="metric-value">{metadata.latency_ms || 0}ms</span>
+            </div>
+            <div className="proxy-log-metric">
+              <span className="metric-label">Prompt Tokens:</span>
+              <span className="metric-value">{metadata.prompt_tokens || 0}</span>
+            </div>
+            <div className="proxy-log-metric">
+              <span className="metric-label">Completion Tokens:</span>
+              <span className="metric-value">{metadata.completion_tokens || 0}</span>
+            </div>
+            <div className="proxy-log-metric">
+              <span className="metric-label">Total Tokens:</span>
+              <span className="metric-value">{metadata.total_tokens || 0}</span>
+            </div>
+          </div>
+          {metadata.rag_steps && (
+            <div className="proxy-log-section proxy-log-rag-steps">
+              <strong>RAG steps (time)</strong>
+              <span className="proxy-log-rag-hint"> — this request only</span>
+              <div className="proxy-log-rag-steps-values">
+                embed {Number(metadata.rag_steps.embed_s ?? 0).toFixed(2)}s
+                {' | '}
+                search {Number(metadata.rag_steps.search_s ?? 0).toFixed(2)}s
+                {' | '}
+                rerank {Number(metadata.rag_steps.rerank_s ?? 0).toFixed(2)}s
+                {metadata.rag_steps.total_rag_s != null && (
+                  <> (total RAG {Number(metadata.rag_steps.total_rag_s).toFixed(2)}s)</>
+                )}
+              </div>
+            </div>
+          )}
+          {chunksCount > 0 && (
+            <div className="proxy-log-section">
+              <strong>RAG Context:</strong>
+              <div className="proxy-log-rag-info">
+                <div className="rag-metric">Chunks: {chunksCount}</div>
+                <div className="rag-metric">
+                  Max Score: {typeof maxScore === 'number' ? maxScore.toFixed(3) : (maxScore || 'N/A')}
+                </div>
+                <div className="rag-metric">Context Length: {ragContext.context_length || 0} chars</div>
+                {chunksInfo.length > 0 && (
+                  <div className="rag-chunks-preview">
+                    <strong>Top Chunks ({chunksInfo.length}):</strong>
+                    <div className="rag-chunks-list">
+                      {chunksInfo.map((chunk, idx) => {
+                        const chunkScore = chunk?.score;
+                        const docType = chunk?.doc_type || 'N/A';
+                        const url = chunk?.url || '';
+                        const textLength = chunk?.text_length || 0;
+                        const rerankScore = chunk?.rerank_score;
+                        return (
+                          <div key={idx} className="rag-chunk-item">
+                            <div className="chunk-header">
+                              <div className="chunk-left">
+                                <span className="chunk-index">#{idx + 1}</span>
+                                <span className="chunk-doc-type">{docType}</span>
+                              </div>
+                              <div className="chunk-right">
+                                <span className="chunk-score-badge">
+                                  <span className="score-label">Score:</span>
+                                  <span className="score-value">
+                                    {typeof chunkScore === 'number' ? chunkScore.toFixed(4) : (chunkScore || 'N/A')}
+                                  </span>
+                                </span>
+                                {textLength > 0 && (
+                                  <span className="chunk-length-badge">
+                                    <span className="score-label">Length:</span>
+                                    <span className="score-value">{textLength} chars</span>
+                                  </span>
+                                )}
+                                {typeof rerankScore === 'number' && (
+                                  <span className="chunk-rerank-badge">
+                                    <span className="score-label">Rerank:</span>
+                                    <span className="score-value">{rerankScore.toFixed(4)}</span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {url && (
+                              <div className="chunk-url-container">
+                                <span className="chunk-url" title={url}>
+                                  {url}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  if (viewMode === 'proxy') {
+    // Proxy logs don't require sessionId
+  } else if (!sessionId) {
     return <div className="loading">No session available</div>;
   }
 
   return (
     <div className="logs-tab">
       <div className="logs-header">
-        <h2>Logs</h2>
+        <div className="logs-header-left">
+          <h2>Logs</h2>
+          <div className="logs-view-toggle">
+            <button
+              className={viewMode === 'logs' ? 'active' : ''}
+              onClick={() => setViewMode('logs')}
+            >
+              Logs
+            </button>
+            <button
+              className={viewMode === 'proxy' ? 'active' : ''}
+              onClick={() => setViewMode('proxy')}
+            >
+              Proxy Logs
+            </button>
+          </div>
+        </div>
         <div className="logs-controls">
-          <select
-            value={levelFilter}
-            onChange={(e) => setLevelFilter(e.target.value)}
-          >
-            <option value="">All Levels</option>
-            <option value="ERROR">ERROR</option>
-            <option value="WARNING">WARNING</option>
-            <option value="INFO">INFO</option>
-          </select>
-          <select
-            value={sourceFilter}
-            onChange={(e) => setSourceFilter(e.target.value)}
-          >
-            <option value="">All Sources</option>
-            <option value="ollama">Ollama</option>
-            <option value="rag_routes.chat_completions">rag_routes</option>
-            <option value="webui_routes">webui_routes</option>
-          </select>
+          {viewMode === 'logs' && (
+            <>
+              <select
+                value={levelFilter}
+                onChange={(e) => setLevelFilter(e.target.value)}
+              >
+                <option value="">All Levels</option>
+                <option value="ERROR">ERROR</option>
+                <option value="WARNING">WARNING</option>
+                <option value="INFO">INFO</option>
+              </select>
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+              >
+                <option value="">All Sources</option>
+                <option value="ollama">Ollama</option>
+                <option value="rag_routes.chat_completions">rag_routes</option>
+                <option value="webui_routes">webui_routes</option>
+              </select>
+            </>
+          )}
           <button onClick={loadLogs}>Refresh</button>
         </div>
       </div>
 
       <div className="logs-content">
         {loading && logs.length === 0 ? (
-          <div className="loading">Loading logs...</div>
+          <div className="loading">Loading {viewMode === 'proxy' ? 'proxy ' : ''}logs...</div>
         ) : logs.length === 0 ? (
-          <div className="empty-state">No logs found</div>
+          <div className="empty-state">No {viewMode === 'proxy' ? 'proxy ' : ''}logs found</div>
         ) : (
-          logs.map((log) => (
-            <div key={log.id} className={getLevelClass(log.level)}>
-              <div className="log-header">
-                <div className="log-title">
-                  <span className="log-icon">{getLevelIcon(log.level)}</span>
-                  <span className="log-summary">{buildTitle(log)}</span>
+          logs.map((log) => 
+            viewMode === 'proxy' ? renderProxyLog(log) : (
+              <div key={log.id} className={getLevelClass(log.level)}>
+                <div className="log-header">
+                  <div className="log-title">
+                    <span className="log-icon">{getLevelIcon(log.level)}</span>
+                    <span className="log-summary">{buildTitle(log)}</span>
+                  </div>
+                  <span className="log-timestamp">{formatTimestamp(log.timestamp)}</span>
                 </div>
-                <span className="log-timestamp">{formatTimestamp(log.timestamp)}</span>
+                <div className="log-message">{buildMessage(log)}</div>
               </div>
-              <div className="log-message">{buildMessage(log)}</div>
-            </div>
-          ))
+            )
+          )
         )}
         <div ref={logsEndRef} />
       </div>

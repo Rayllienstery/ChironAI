@@ -26,9 +26,78 @@ html, body {
 
 .app-header {
   display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-sm);
+}
+
+.app-header-row {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--md-sys-spacing-lg);
+}
+
+.app-header-metrics {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--md-sys-spacing-sm);
+}
+
+.metric-card {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-xs);
+  padding: 4px 10px;
+  border-radius: var(--md-sys-shape-corner-small);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: transparent;
+  font-size: 12px;
+}
+
+.metric-card .metric-label {
+  color: var(--md-sys-color-on-surface-variant);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.metric-card .metric-value {
+  color: var(--md-sys-color-on-surface);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.metric-card .sparkline {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.metric-card-combined {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-sm);
+}
+
+.metric-card-combined .metric-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-xs);
+}
+
+.metric-card-combined .metric-segment .metric-label {
+  margin: 0;
+}
+
+.metric-card-combined .metric-sep {
+  color: var(--md-sys-color-outline-variant);
+  font-size: 12px;
+  user-select: none;
+}
+
+.sparkline-empty {
+  flex-shrink: 0;
 }
 
 .app-header-status {

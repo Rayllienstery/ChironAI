@@ -63,6 +63,17 @@ class OllamaChatClient:
             msg = data.get("message") or {}
             content = msg.get("content") if isinstance(msg, dict) else None
             return (content or "").strip()
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 405:
+                raise RuntimeError(
+                    f"Ollama endpoint method not allowed (405): {self._url}. "
+                    f"This usually means the endpoint doesn't support POST method or the URL is incorrect. "
+                    f"Model: {use_model}. "
+                    f"Try checking Ollama API documentation or verify the endpoint URL."
+                ) from e
+            raise RuntimeError(
+                f"Ollama chat API error (model={use_model}, url={self._url}, status={e.response.status_code}): {e}"
+            ) from e
         except requests.exceptions.RequestException as e:
             raise RuntimeError(
                 f"Ollama chat API error (model={use_model}, url={self._url}): {e}"
@@ -83,13 +94,35 @@ class OllamaChatClient:
             "stream": True,
             "options": opts,
         }
-        resp = requests.post(
-            self._url,
-            json=payload,
-            stream=True,
-            timeout=300,
-        )
-        resp.raise_for_status()
+        try:
+            resp = requests.post(
+                self._url,
+                json=payload,
+                stream=True,
+                timeout=300,
+            )
+            resp.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                raise RuntimeError(
+                    f"Ollama endpoint not found (404): {self._url}. "
+                    f"Please check if Ollama is running and the URL is correct. "
+                    f"Model: {use_model}"
+                ) from e
+            elif e.response.status_code == 405:
+                raise RuntimeError(
+                    f"Ollama endpoint method not allowed (405): {self._url}. "
+                    f"This usually means the endpoint doesn't support POST method or the URL is incorrect. "
+                    f"Model: {use_model}. "
+                    f"Try checking Ollama API documentation or verify the endpoint URL."
+                ) from e
+            raise RuntimeError(
+                f"Ollama chat API error (model={use_model}, url={self._url}, status={e.response.status_code}): {e}"
+            ) from e
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(
+                f"Ollama chat API error (model={use_model}, url={self._url}): {e}"
+            ) from e
         for line in resp.iter_lines(decode_unicode=True):
             if not line:
                 continue

@@ -21,7 +21,7 @@
   --md-sys-color-error-container: #FFDAD6;
   --md-sys-color-on-error-container: #410002;
   
-  --md-sys-color-surface: #FFFBFE;
+  --md-sys-color-surface: #FFFFFF;
   --md-sys-color-on-surface: #1C1B1F;
   --md-sys-color-surface-variant: #E7E0EC;
   --md-sys-color-on-surface-variant: #49454F;
@@ -29,7 +29,7 @@
   --md-sys-color-outline: #79747E;
   --md-sys-color-outline-variant: #CAC4D0;
   
-  --md-sys-color-background: #FFFBFE;
+  --md-sys-color-background: #FAFAFA;
   --md-sys-color-on-background: #1C1B1F;
   
   /* Elevation */

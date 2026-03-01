@@ -72,6 +72,7 @@
   border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-surface);
   box-shadow: var(--md-sys-elevation-level1);
+  border: none;
 }
 
 .rag-status-card .label {
@@ -94,6 +95,11 @@
 
 .rag-collections {
   margin-top: var(--md-sys-spacing-md);
+  background: var(--md-sys-color-surface);
+  border-radius: var(--md-sys-shape-corner-large);
+  padding: var(--md-sys-spacing-lg);
+  box-shadow: var(--md-sys-elevation-level1);
+  border: none;
 }
 
 .collections-header {
@@ -120,7 +126,7 @@
 .collections-table th {
   font: var(--md-sys-typescale-label-medium-font);
   color: var(--md-sys-color-on-surface-variant);
-  background: var(--md-sys-color-surface-variant);
+  background: transparent;
 }
 
 .empty-state {

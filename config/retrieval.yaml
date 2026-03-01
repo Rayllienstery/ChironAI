@@ -14,6 +14,8 @@
 ## - doc_type_weight: scoring weights for different document types.
 ## - multi_chunk_keywords: keywords that trigger multi-chunk retrieval.
 ## - retrieval_stop_words: words stripped from queries before embedding.
+## - skip_rag_greetings: exact-match phrases that skip RAG (e.g. hi, hello).
+## - rag_required_keywords: substrings that require RAG (project, Apple tech, code analysis).
 ## - rerank_model: LLM model used for reranking (can differ from chat model).
 
 retrieval:
@@ -89,6 +91,51 @@ retrieval:
     - покажи
     - дай
     - расскажи
+  
+  # Exact-match greetings: skip RAG when normalized query equals one of these
+  skip_rag_greetings:
+    - hi
+    - hello
+    - hey
+    - привет
+    - здравствуй
+    - good morning
+    - good evening
+  
+  # RAG required: run RAG only when query contains at least one of these substrings
+  rag_required_keywords:
+    - swift
+    - swiftui
+    - uikit
+    - objective-c
+    - objc
+    - xcode
+    - ios
+    - macos
+    - combine
+    - cocoa
+    - appkit
+    - watchos
+    - tvos
+    - uiviewcontroller
+    - view model
+    - project
+    - codebase
+    - repository
+    - our code
+    - наш проект
+    - репозиторий
+    - analyze
+    - review this code
+    - explain this code
+    - разбери
+    - проанализируй
+    - code snippet
+    - этот код
+    - код
+    - observation
+    - observable
+    - observation tracking
   
   # Rerank model (for LLM-based reranking)
   rerank_model: "danielsheep/devstral-small-2-24b-instruct:Q6_K"

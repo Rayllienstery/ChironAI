@@ -99,73 +99,85 @@ COLLECTION_FILE = os.path.join(BASE_DIR, "last_collection.txt")
 # Single logical collection for all dev docs (RAG)
 RAG_COLLECTION_NAME = "dev_docs"
 
-# Single source: Apple Developer documentation only, depth 4.
-# Uses Playwright for JS-rendered pages and RAG-optimized pipeline (apple_docs_fetcher + apple_docs_extract).
-# seed_urls: extra entry points so the crawler discovers pages even when the index page is SPA with few DOM links.
-SOURCES = [
-    {
-        "id": "apple_documentation",
-        "url": "https://developer.apple.com/documentation",
-        "max_depth": 2,
-        "crawler": "playwright",
-        "doc_only": True,
-        "seed_urls": [
-            # Ядро языка и базовых фреймворков
-            "https://developer.apple.com/documentation/swift",
-            "https://developer.apple.com/documentation/swift/concurrency",   # Swift Concurrency
-            "https://developer.apple.com/documentation/swiftui",
-            "https://developer.apple.com/documentation/uikit",            # UIKit
-            "https://developer.apple.com/documentation/appkit",           # macOS UI (логично иметь)
-            "https://developer.apple.com/documentation/foundation",
-            "https://developer.apple.com/documentation/combine",
+# Load SOURCES from YAML config file
+def _load_sources_from_yaml() -> list[dict]:
+    """Load crawl sources from config/sources.yaml."""
+    try:
+        from pathlib import Path
+        try:
+            import yaml
+        except ImportError:
+            # Fallback if yaml not available
+            return _get_default_sources()
+        
+        # Try to find config directory relative to project root
+        project_root = Path(BASE_DIR).parent
+        config_path = project_root / "config" / "sources.yaml"
+        
+        if not config_path.is_file():
+            # Fallback: use default hardcoded source
+            return _get_default_sources()
+        
+        with config_path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        
+        sources = data.get("sources", [])
+        # Ensure seed_urls is always a list
+        for source in sources:
+            if "seed_urls" not in source:
+                source["seed_urls"] = []
+            elif not isinstance(source["seed_urls"], list):
+                source["seed_urls"] = []
+        
+        return sources if sources else _get_default_sources()
+    except Exception as e:
+        # Use print since log() may not be defined during module import
+        print(f"⚠️ Failed to load sources from YAML: {e}, using default", file=sys.stderr)
+        return _get_default_sources()
 
-            # UI / Platform core (Группа A)
-            "https://developer.apple.com/documentation/tvuikit",          # TVUIKit
-            "https://developer.apple.com/documentation/watchkit",         # WatchKit
-            "https://developer.apple.com/documentation/webkit",           # WebKit
-            "https://developer.apple.com/documentation/widgetkit",        # WidgetKit
-            "https://developer.apple.com/documentation/uniformtypeidentifiers",  # Uniform Type Identifiers
 
-            # Notifications
-            "https://developer.apple.com/documentation/usernotifications",       # User Notifications
-            "https://developer.apple.com/documentation/usernotificationsui",     # User Notifications UI
+def _get_default_sources() -> list[dict]:
+    """Return default hardcoded source configuration."""
+    return [
+        {
+            "id": "apple_documentation",
+            "url": "https://developer.apple.com/documentation",
+            "max_depth": 2,
+            "crawler": "playwright",
+            "doc_only": True,
+            "seed_urls": [],
+        }
+    ]
 
-            # Vision / Media / Data / Persistence (Группа A)
-            "https://developer.apple.com/documentation/vision",           # Vision
-            "https://developer.apple.com/documentation/visionkit",        # VisionKit
-            "https://developer.apple.com/documentation/weatherkit",       # WeatherKit (native)
-            "https://developer.apple.com/documentation/weatherkitrestapi",# WeatherKit REST API (если есть отдельный раздел)
-            "https://developer.apple.com/documentation/passkit",          # Wallet passes / Apple Pay / Wallet
-            "https://developer.apple.com/documentation/walletorders",     # Wallet Orders (новый фреймворк)
-            "https://developer.apple.com/documentation/workoutkit",       # WorkoutKit
-            "https://developer.apple.com/documentation/coredata",         # Core Data
-            "https://developer.apple.com/documentation/cloudkit",         # CloudKit
 
-            # Tooling / Dev infra (Группа A)
-            "https://developer.apple.com/documentation/xctest",           # XCTest
-            "https://developer.apple.com/documentation/xcuiautomation",   # XCUIAutomation
-            "https://developer.apple.com/documentation/xcode",            # Xcode
-            "https://developer.apple.com/documentation/xcodecloud",       # Xcode Cloud
-            "https://developer.apple.com/documentation/xcodekit",         # XcodeKit
-            "https://developer.apple.com/documentation/xcselect",         # xcselect
+def _save_sources_to_yaml(sources: list[dict]) -> bool:
+    """Save crawl sources to config/sources.yaml. Returns True on success."""
+    try:
+        from pathlib import Path
+        try:
+            import yaml
+        except ImportError:
+            return False
+        
+        project_root = Path(BASE_DIR).parent
+        config_path = project_root / "config" / "sources.yaml"
+        
+        # Ensure config directory exists
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        data = {"sources": sources}
+        with config_path.open("w", encoding="utf-8") as f:
+            yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        
+        return True
+    except Exception as e:
+        # Use print since this may be called before log() is available
+        print(f"❌ Failed to save sources to YAML: {e}", file=sys.stderr)
+        return False
 
-            # System / integration (Группа A)
-            "https://developer.apple.com/documentation/watchconnectivity",# Watch Connectivity
-            "https://developer.apple.com/documentation/xpc",              # XPC
 
-            # Условно полезные (Группа B) — чтобы были входные точки
-            "https://developer.apple.com/documentation/videotoolbox",     # Video Toolbox
-            "https://developer.apple.com/documentation/virtualization",   # Virtualization
-            "https://developer.apple.com/documentation/wifiaware",        # Wi‑Fi Aware
-            "https://developer.apple.com/documentation/wi_fi_infrastructure",  # Wi‑Fi Infrastructure (если есть такой раздел)
-            "https://developer.apple.com/documentation/visionos",         # visionOS (основной раздел)
-            "https://developer.apple.com/documentation/visualintelligence",    # Visual Intelligence
-            "https://developer.apple.com/documentation/webkitjs",         # WebKit JS
-            "https://developer.apple.com/documentation/backgroundtasks",  # BackgroundTasks
-            "https://developer.apple.com/documentation/network",          # Network.framework
-        ],
-    },
-]
+# Load sources on module import
+SOURCES = _load_sources_from_yaml()
 
 # # Single-URL SOURCES for pipeline parity test (app.py vs app_tester.py)
 # SOURCES = [
@@ -1286,6 +1298,9 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
     if not dry_run:
         _ensure_dir(pages_dir)
     
+    # Use seed_urls from meta.json if available, otherwise from source dict
+    seed_urls = meta.get("seed_urls") or source.get("seed_urls") or []
+    
     changed_count = 0
     url_status: dict[str, str] = {}
     ordered_urls: list[str] = []
@@ -1427,7 +1442,7 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
             results = asyncio.run(
                 run_async_crawl_playwright(
                     start_url, max_depth, allowed_prefix, doc_only,
-                    extra_seed_urls=source.get("seed_urls") or [],
+                    extra_seed_urls=seed_urls,
                     on_page_processed=on_page_callback if not dry_run else None,
                 )
             )

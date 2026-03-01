@@ -1,18 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getModels, getPrompts, getTesterSettings, updateTesterSettings, testerChat, testerPromptPreview } from '../services/api';
+import { getModels, getPrompts, getTesterSettings, updateTesterSettings, testerChat, testerPromptPreview, getRagCollections } from '../services/api';
 import { marked } from 'marked';
 import './ModelTester.css';
 
 function ModelTester({ sessionId }) {
   const [models, setModels] = useState([]);
   const [prompts, setPrompts] = useState([]);
+  const [collections, setCollections] = useState([]);
   const [settings, setSettings] = useState({
+    model: '',
     prompt_name: '',
     swift_mode: 'default',
     temperature: 0.0,
     top_p: 0.1,
     reasoning_level: '',
     use_rag: true,
+    top_k: 4,
+    rag_collection: '',
   });
   const [query, setQuery] = useState('');
   const [response, setResponse] = useState('');
@@ -21,6 +25,8 @@ function ModelTester({ sessionId }) {
   const [stats, setStats] = useState(null);
   const [promptPreview, setPromptPreview] = useState('');
   const [promptLoading, setPromptLoading] = useState(false);
+  const [ragChunks, setRagChunks] = useState(null);
+  const [ragCollapsed, setRagCollapsed] = useState(false);
   const responseRef = useRef(null);
 
   useEffect(() => {
@@ -32,12 +38,17 @@ function ModelTester({ sessionId }) {
 
   const loadData = async () => {
     try {
-      const [modelsData, promptsData] = await Promise.all([
+      const [modelsData, promptsData, collectionsData] = await Promise.all([
         getModels(),
         getPrompts(),
+        getRagCollections().catch(() => ({ collections: [] })),
       ]);
       setModels(modelsData);
-      setPrompts(promptsData.prompts || []);
+      // getPrompts() returns { prompts: [...], swift_modes: [...] }
+      const promptsList = promptsData?.prompts || [];
+      console.log('Loaded prompts:', promptsList);
+      setPrompts(promptsList);
+      setCollections(collectionsData?.collections || []);
     } catch (error) {
       console.error('Failed to load data:', error);
     }
@@ -82,17 +93,21 @@ function ModelTester({ sessionId }) {
     setResponse('');
     setStats(null);
     setPromptPreview('');
+    setRagChunks(null);
     
     try {
       const result = await testerChat(sessionId, [
         { role: 'user', content: query }
       ], {
+        model: settings.model || undefined,
         prompt_name: settings.prompt_name || undefined,
         swift_mode: settings.swift_mode !== 'default' ? settings.swift_mode : undefined,
         temperature: settings.temperature > 0 ? settings.temperature : undefined,
         top_p: settings.top_p > 0 ? settings.top_p : undefined,
         reasoning_level: settings.reasoning_level || undefined,
         use_rag: settings.use_rag,
+        top_k: settings.use_rag ? settings.top_k : undefined,
+        collection_name: settings.use_rag && settings.rag_collection ? settings.rag_collection : undefined,
       });
       
       if (result.choices && result.choices[0]) {
@@ -106,7 +121,14 @@ function ModelTester({ sessionId }) {
           promptTokens: result.usage?.prompt_tokens ?? null,
           completionTokens: result.usage?.completion_tokens ?? null,
           totalTokens: result.usage?.total_tokens ?? null,
+          contextChars: result.rag_metadata?.context_chars ?? null,
         });
+      }
+
+      if (settings.use_rag && result.rag_metadata) {
+        setRagChunks(result.rag_metadata.chunks_info || []);
+      } else {
+        setRagChunks(null);
       }
     } catch (error) {
       setResponse(`Error: ${error.message}`);
@@ -133,6 +155,26 @@ function ModelTester({ sessionId }) {
     }
   };
 
+  const cleanChunkText = (text) => {
+    if (!text) return '';
+
+    return text
+      .split('\n')
+      .filter((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return false;
+
+        const lower = trimmed.toLowerCase();
+        if (trimmed.startsWith('<!--')) return false;
+        if (lower.startsWith('meta:')) return false;
+        if (lower.startsWith('url:')) return false;
+
+        return true;
+      })
+      .join('\n')
+      .trim();
+  };
+
   if (!sessionId) {
     return <div className="loading">No session available</div>;
   }
@@ -148,18 +190,41 @@ function ModelTester({ sessionId }) {
           <h3>Test Settings</h3>
           
           <div className="form-group">
+            <label>Model</label>
+            <select
+              value={settings.model}
+              onChange={(e) => handleSettingChange('model', e.target.value)}
+            >
+              <option value="">Default (rag-ollama)</option>
+              {models.map((model) => (
+                <option key={model.id || model.name} value={model.id || model.name}>
+                  {model.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
             <label>Prompt Template</label>
             <select
               value={settings.prompt_name}
               onChange={(e) => handleSettingChange('prompt_name', e.target.value)}
+              className="prompt-template-select"
             >
-              <option value="">Default</option>
-              {prompts.map((prompt) => (
-                <option key={prompt.id} value={prompt.name}>
-                  {prompt.name}
-                </option>
-              ))}
+              <option value="">Default (system_rag_v1)</option>
+              {prompts
+                .filter((p) => p.name && p.name.toLowerCase() !== 'readme')
+                .map((prompt) => (
+                  <option key={prompt.id || prompt.name} value={prompt.name}>
+                    {prompt.name}
+                  </option>
+                ))}
             </select>
+            {settings.prompt_name && (
+              <div className="prompt-template-info">
+                Selected: <strong>{settings.prompt_name}</strong>
+              </div>
+            )}
           </div>
 
           <div className="form-group">
@@ -215,6 +280,24 @@ function ModelTester({ sessionId }) {
             </select>
           </div>
 
+          <div className="form-group">
+            <label>
+              Top K: {settings.top_k}
+            </label>
+            <input
+              type="range"
+              min="1"
+              max="20"
+              step="1"
+              value={settings.top_k}
+              onChange={(e) => handleSettingChange('top_k', parseInt(e.target.value, 10))}
+              disabled={!settings.use_rag}
+            />
+            <div className="form-hint">
+              Number of RAG chunks to retrieve (1-20)
+            </div>
+          </div>
+
           <div className="form-group checkbox-group">
             <label>
               <input
@@ -225,6 +308,26 @@ function ModelTester({ sessionId }) {
               Use RAG
             </label>
           </div>
+
+          {settings.use_rag && (
+            <div className="form-group">
+              <label>RAG Collection</label>
+              <select
+                value={settings.rag_collection || ''}
+                onChange={(e) => handleSettingChange('rag_collection', e.target.value)}
+              >
+                <option value="">Default Collection</option>
+                {collections.map((col) => (
+                  <option key={col.name} value={col.name}>
+                    {col.name} ({col.points_count || 0} vectors)
+                  </option>
+                ))}
+              </select>
+              <div className="form-hint">
+                Select Qdrant collection for RAG retrieval
+              </div>
+            </div>
+          )}
 
           <button onClick={handleSaveSettings} className="save-button">
             Save Settings
@@ -270,9 +373,14 @@ function ModelTester({ sessionId }) {
                         ⏱ {(stats.latencyMs / 1000).toFixed(2)} s
                       </span>
                     )}
-                    {stats.totalTokens != null && (
+                    {stats.promptTokens != null && stats.completionTokens != null && (
                       <span className="tester-stat-pill">
-                        🔢 {stats.totalTokens} tokens
+                        🔢 {stats.promptTokens} in / {stats.completionTokens} out
+                      </span>
+                    )}
+                    {stats.contextChars != null && (
+                      <span className="tester-stat-pill">
+                        📚 {stats.contextChars} context chars
                       </span>
                     )}
                   </span>
@@ -296,6 +404,60 @@ function ModelTester({ sessionId }) {
               </div>
             )}
           </div>
+
+          {settings.use_rag && ragChunks && (
+            <div className="rag-chunks-section">
+              <div className="rag-chunks-header">
+                <h3>RAG Chunks</h3>
+                <button
+                  type="button"
+                  className="rag-chunks-toggle"
+                  onClick={() => setRagCollapsed((prev) => !prev)}
+                  aria-expanded={!ragCollapsed}
+                  aria-label={ragCollapsed ? 'Expand RAG chunks' : 'Collapse RAG chunks'}
+                >
+                  {ragCollapsed ? '▾' : '▴'}
+                </button>
+              </div>
+              {!ragCollapsed && (
+                <div className="rag-chunks-list">
+                  {ragChunks.length === 0 ? (
+                    <div className="rag-chunk-empty">No relevant fragments from RAG.</div>
+                  ) : (
+                    ragChunks.map((chunk, index) => {
+                      const textToShow = cleanChunkText(chunk.text_preview || chunk.text);
+
+                      return (
+                        <div key={index} className="rag-chunk-item">
+                          <div className="rag-chunk-header">
+                            <span className="rag-chunk-index">#{chunk.index ?? index + 1}</span>
+                            {chunk.score != null && (
+                              <span className="rag-chunk-score">
+                                score: {Number(chunk.score).toFixed(3)}
+                              </span>
+                            )}
+                            {chunk.rerank_score != null && (
+                              <span className="rag-chunk-rerank">
+                                rerank: {Number(chunk.rerank_score).toFixed(3)}
+                              </span>
+                            )}
+                          </div>
+                          {chunk.url && chunk.url !== 'N/A' && (
+                            <div className="rag-chunk-url">{chunk.url}</div>
+                          )}
+                          {textToShow && (
+                            <div className="rag-chunk-text">
+                              {textToShow}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="chat-response-section">
             <h3>Response</h3>

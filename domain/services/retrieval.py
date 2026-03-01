@@ -108,6 +108,55 @@ MULTI_CHUNK_FINAL_K: int = get_retrieval_int("multi_chunk_final_k", 8)
 
 MAX_EMBED_TEXT_LENGTH: int = get_retrieval_int("max_embed_text_length", 400)
 
+_DEFAULT_SKIP_GREETINGS: list[str] = [
+    "hi",
+    "hello",
+    "hey",
+    "привет",
+    "здравствуй",
+]
+SKIP_RAG_GREETINGS: tuple[str, ...] = tuple(
+    get_retrieval_list("skip_rag_greetings", _DEFAULT_SKIP_GREETINGS)
+)
+
+_DEFAULT_RAG_REQUIRED_KEYWORDS: list[str] = [
+    "swift",
+    "swiftui",
+    "uikit",
+    "objective-c",
+    "objc",
+    "xcode",
+    "ios",
+    "macos",
+    "combine",
+    "cocoa",
+    "appkit",
+    "watchos",
+    "tvos",
+    "uiviewcontroller",
+    "view model",
+    "project",
+    "codebase",
+    "repository",
+    "our code",
+    "наш проект",
+    "репозиторий",
+    "analyze",
+    "review this code",
+    "explain this code",
+    "разбери",
+    "проанализируй",
+    "code snippet",
+    "этот код",
+    "код",
+    "observation",
+    "observable",
+    "observation tracking",
+]
+RAG_REQUIRED_KEYWORDS: tuple[str, ...] = tuple(
+    get_retrieval_list("rag_required_keywords", _DEFAULT_RAG_REQUIRED_KEYWORDS)
+)
+
 
 _IOS_VERSION_Q_RE = re.compile(r"\biOS\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
 _SWIFT_VERSION_Q_RE = re.compile(r"\bSwift\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
@@ -191,6 +240,21 @@ def query_for_retrieval(question: str) -> str:
     return out
 
 
+def should_skip_rag_search(question: str) -> bool:
+    """
+    True when RAG should be skipped: greeting (exact match) or no RAG-required
+    keyword in the query (not about project, Apple tech, or code analysis).
+    """
+    q = (question or "").strip().lower()
+    if not q:
+        return False
+    if q in SKIP_RAG_GREETINGS:
+        return True
+    if not any(kw in q for kw in RAG_REQUIRED_KEYWORDS):
+        return True
+    return False
+
+
 def need_more_chunks(question: str) -> bool:
     """
     True if the question likely needs multiple chunks (compare, lifecycle, list all etc.).
@@ -244,8 +308,11 @@ __all__ = [
     "MULTI_CHUNK_TOP_K",
     "MULTI_CHUNK_FINAL_K",
     "MAX_EMBED_TEXT_LENGTH",
+    "SKIP_RAG_GREETINGS",
+    "RAG_REQUIRED_KEYWORDS",
     "parse_versions_from_question",
     "is_version_question",
+    "should_skip_rag_search",
     "query_for_retrieval",
     "need_more_chunks",
     "build_qdrant_filter",

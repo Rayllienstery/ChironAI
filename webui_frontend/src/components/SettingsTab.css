@@ -62,12 +62,15 @@
 
 .settings-section {
   margin-bottom: var(--md-sys-spacing-xl);
-  padding-bottom: var(--md-sys-spacing-lg);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  padding: var(--md-sys-spacing-lg);
+  background: var(--md-sys-color-surface);
+  border-radius: var(--md-sys-shape-corner-large);
+  box-shadow: var(--md-sys-elevation-level1);
+  border: none;
 }
 
 .settings-section:last-child {
-  border-bottom: none;
+  margin-bottom: 0;
 }
 
 

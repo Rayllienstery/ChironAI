@@ -39,13 +39,19 @@ from infrastructure.qdrant.rag_repository_impl import QdrantRagRepository
 def default_rag_repository(
     collection_file: str | None = None,
     qdrant_url: str | None = None,
-    default_collection: str = "webcrawl",
+    default_collection: str | None = None,
+    collection_name: str | None = None,
 ) -> QdrantRagRepository:
     """Build default RagRepository (Qdrant)."""
+    from config import QDRANT_CONFIG  # local import to avoid circulars
+
+    # collection_name takes precedence over default_collection for explicit selection
+    collection = collection_name or default_collection or QDRANT_CONFIG.get("collection_name", "webcrawl")
+
     return QdrantRagRepository(
         base_url=qdrant_url or get_qdrant_url(),
         collection_file=collection_file,
-        default_collection=default_collection,
+        default_collection=collection,
     )
 
 
@@ -90,14 +96,16 @@ def default_markdown_store(base_dir: str) -> FileMarkdownStore:
 def wire_rag_use_cases(
     collection_file: str | None = None,
     webui_dir: str | None = None,
+    collection_name: str | None = None,
 ) -> tuple[RagRepository, EmbeddingProvider, RerankClient, ChatLLMClient]:
     """
     Return (rag_repo, embed_provider, rerank_client, chat_client) for RAG use cases.
     If collection_file is None and webui_dir is set, uses webui_dir/last_collection.txt.
+    collection_name: explicit collection name to use (overrides collection_file and default).
     """
     if collection_file is None and webui_dir:
         collection_file = os.path.join(webui_dir, "last_collection.txt")
-    rag_repo = default_rag_repository(collection_file=collection_file)
+    rag_repo = default_rag_repository(collection_file=collection_file, collection_name=collection_name)
     embed_provider = default_embed_provider()
     rerank_client = default_rerank_client()
     chat_client = default_chat_client()

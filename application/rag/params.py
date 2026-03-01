@@ -47,12 +47,14 @@ class RAGDependencies:
     chat_client: ChatLLMClient
 
 
-def get_rag_answer_params(webui_dir: str | None = None) -> tuple[RAGAnswerParams, RAGDependencies]:
+def get_rag_answer_params(webui_dir: str | None = None, collection_name: str | None = None) -> tuple[RAGAnswerParams, RAGDependencies]:
     """
     Return (params, rag_repo, embed_provider, rerank_client, chat_client) for RAG.
 
     Single source for prompt, config limits, and wired services. Use this in
     rag_client and rag_routes so search, filtering, and chunk handling stay unified.
+    
+    collection_name: explicit Qdrant collection name to use for RAG retrieval.
     """
     prefix, suffix = get_rag_system_prompt()
     context_chunk_chars = get_rag_int("context_chunk_chars", 1000)
@@ -70,7 +72,7 @@ def get_rag_answer_params(webui_dir: str | None = None) -> tuple[RAGAnswerParams
         model_name=model_name,
         log_preview_chars=log_preview_chars,
     )
-    rag_repo, embed_provider, rerank_client, chat_client = wire_rag_use_cases(webui_dir=webui_dir)
+    rag_repo, embed_provider, rerank_client, chat_client = wire_rag_use_cases(webui_dir=webui_dir, collection_name=collection_name)
     deps = RAGDependencies(
         rag_repo=rag_repo,
         embed_provider=embed_provider,

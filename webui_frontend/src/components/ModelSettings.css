@@ -46,6 +46,13 @@
   cursor: pointer;
 }
 
+.setting-warning {
+  margin: var(--md-sys-spacing-xs) 0 0 0;
+  font-size: 0.875rem;
+  color: var(--md-sys-color-on-surface-variant, #666);
+  font-style: italic;
+}
+
 .save-button {
   padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
   background: var(--md-sys-color-primary);

@@ -14,6 +14,7 @@ function ModelSettings({ sessionId }) {
     reasoning_level: '',
     code_only: false,
     include_rag_metadata: true,
+    rerank_for_rag: false,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -31,7 +32,11 @@ function ModelSettings({ sessionId }) {
       ]);
       
       setModels(modelsData);
-      setPrompts(promptsData.prompts || []);
+      // Filter out README prompt - it is documentation-only and should not be selectable
+      const promptList = (promptsData.prompts || []).filter(
+        (p) => p.name && p.name.toLowerCase() !== 'readme'
+      );
+      setPrompts(promptList);
       
       if (settingsData) {
         setSettings(prev => ({ ...prev, ...settingsData }));
@@ -88,11 +93,13 @@ function ModelSettings({ sessionId }) {
             onChange={(e) => handleChange('prompt_name', e.target.value)}
           >
             <option value="">Default</option>
-            {prompts.map((prompt) => (
-              <option key={prompt.id} value={prompt.name}>
-                {prompt.name}
-              </option>
-            ))}
+            {prompts
+              .filter((prompt) => prompt.name && prompt.name.toLowerCase() !== 'readme')
+              .map((prompt) => (
+                <option key={prompt.id || prompt.name} value={prompt.name}>
+                  {prompt.name}
+                </option>
+              ))}
           </select>
         </div>
 
@@ -169,6 +176,20 @@ function ModelSettings({ sessionId }) {
             />
             Include RAG metadata
           </label>
+        </div>
+
+        <div className="form-group checkbox-group">
+          <label>
+            <input
+              type="checkbox"
+              checked={settings.rerank_for_rag}
+              onChange={(e) => handleChange('rerank_for_rag', e.target.checked)}
+            />
+            Rerank for RAG
+          </label>
+          <p className="setting-warning">
+            Improves answer quality but slows down requests; ideally use a dedicated rerank model.
+          </p>
         </div>
 
         <button

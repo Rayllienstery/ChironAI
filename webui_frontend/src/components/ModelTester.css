@@ -11,10 +11,11 @@
 
 .tester-settings-panel {
   background: var(--md-sys-color-surface);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-medium);
+  border: none;
+  border-radius: var(--md-sys-shape-corner-large);
   padding: var(--md-sys-spacing-md);
   overflow-y: auto;
+  box-shadow: var(--md-sys-elevation-level1);
 }
 
 
@@ -27,9 +28,10 @@
 .chat-input-section,
 .chat-response-section {
   background: var(--md-sys-color-surface);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-medium);
+  border: none;
+  border-radius: var(--md-sys-shape-corner-large);
   padding: var(--md-sys-spacing-md);
+  box-shadow: var(--md-sys-elevation-level1);
 }
 
 
@@ -164,6 +166,82 @@
   font-family: 'Courier New', monospace;
 }
 
+.rag-chunks-section {
+  margin-top: var(--md-sys-spacing-md);
+  background: transparent;
+  border-radius: var(--md-sys-shape-corner-large);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  padding: var(--md-sys-spacing-md);
+}
+
+.rag-chunks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-sm);
+  margin-bottom: var(--md-sys-spacing-sm);
+}
+
+.rag-chunks-toggle {
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.rag-chunks-toggle:hover {
+  background: var(--md-sys-color-surface-variant);
+}
+
+.rag-chunks-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-xs);
+}
+
+.rag-chunk-item {
+  padding: var(--md-sys-spacing-xs);
+  border-radius: var(--md-sys-shape-corner-small);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: transparent;
+}
+
+.rag-chunk-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-sys-spacing-xs);
+  margin-bottom: 2px;
+  font: var(--md-sys-typescale-label-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.rag-chunk-index {
+  font-weight: 600;
+}
+
+.rag-chunk-url {
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
+  margin-bottom: 2px;
+  word-break: break-all;
+}
+
+.rag-chunk-text {
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface);
+  white-space: pre-wrap;
+}
+
+.rag-chunk-empty {
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+  font-style: italic;
+}
+
 .response-content {
   max-height: 500px;
   overflow-y: auto;
@@ -218,6 +296,22 @@
   align-items: center;
   gap: var(--md-sys-spacing-sm);
   cursor: pointer;
+}
+
+.form-hint {
+  font-size: 0.75rem;
+  color: var(--md-sys-color-on-surface-variant);
+  margin-top: 4px;
+}
+
+.prompt-template-select {
+  width: 100%;
+}
+
+.prompt-template-info {
+  margin-top: 4px;
+  font-size: 0.875rem;
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 .checkbox-group input[type="checkbox"] {

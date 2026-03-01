@@ -25,7 +25,8 @@ export async function getPrompts() {
     throw new Error('Failed to get prompts');
   }
   const data = await response.json();
-  return data.prompts;
+  // Return the full data object so we can access both prompts and swift_modes if needed
+  return data;
 }
 
 export async function getConfig() {
@@ -126,6 +127,17 @@ export async function getLogs(sessionId, options = {}) {
   return response.json();
 }
 
+export async function getProxyLogs(options = {}) {
+  const params = new URLSearchParams({
+    ...options,
+  });
+  const response = await fetch(`${API_BASE}/proxy-logs?${params}`);
+  if (!response.ok) {
+    throw new Error('Failed to get proxy logs');
+  }
+  return response.json();
+}
+
 export async function getSettings() {
   const response = await fetch(`${API_BASE}/settings`);
   if (!response.ok) {
@@ -194,6 +206,14 @@ export async function getOllamaStatus() {
   return response.json();
 }
 
+export async function getDashboardMetrics() {
+  const response = await fetch(`${API_BASE}/dashboard-metrics`);
+  if (!response.ok) {
+    throw new Error('Failed to get dashboard metrics');
+  }
+  return response.json();
+}
+
 export async function startOllama() {
   const response = await fetch(`${API_BASE}/ollama/start`, {
     method: 'POST',
@@ -223,6 +243,209 @@ export async function stopServer() {
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || 'Failed to stop WebUI server');
+  }
+  return response.json();
+}
+
+export async function getPromptContent(name) {
+  const response = await fetch(`${API_BASE}/prompts/${encodeURIComponent(name)}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to get prompt content');
+  }
+  return response.json();
+}
+
+export async function createPrompt({ sourceName, name, content }) {
+  const response = await fetch(`${API_BASE}/prompts`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ source_name: sourceName, name, content }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to create prompt');
+  }
+  return response.json();
+}
+
+export async function updatePrompt(name, { newName, content }) {
+  const response = await fetch(`${API_BASE}/prompts/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ new_name: newName, content }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to update prompt');
+  }
+  return response.json();
+}
+
+export async function deletePrompt(name) {
+  const response = await fetch(`${API_BASE}/prompts/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to delete prompt');
+  }
+  return response.json();
+}
+
+export async function getTrashPrompts() {
+  const response = await fetch(`${API_BASE}/prompts/trash`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to get trash prompts');
+  }
+  return response.json();
+}
+
+export async function getTrashPromptContent(trashName) {
+  const response = await fetch(`${API_BASE}/prompts/trash/${encodeURIComponent(trashName)}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to get trash prompt content');
+  }
+  return response.json();
+}
+
+export async function updateTrashPrompt(trashName, content) {
+  const response = await fetch(`${API_BASE}/prompts/trash/${encodeURIComponent(trashName)}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ content }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to update trash prompt');
+  }
+  return response.json();
+}
+
+export async function restorePrompt(trashName) {
+  const response = await fetch(`${API_BASE}/prompts/trash/${encodeURIComponent(trashName)}/restore`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to restore prompt');
+  }
+  return response.json();
+}
+
+export async function clearTrash() {
+  const response = await fetch(`${API_BASE}/prompts/trash`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to clear trash');
+  }
+  return response.json();
+}
+
+// Crawler / Indexer API
+export async function getCrawlerSources() {
+  const response = await fetch(`${API_BASE}/crawler/sources`);
+  if (!response.ok) {
+    throw new Error('Failed to get crawler sources');
+  }
+  return response.json();
+}
+
+export async function getCrawlerSourcePages(sourceId) {
+  const response = await fetch(`${API_BASE}/crawler/sources/${encodeURIComponent(sourceId)}/pages`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to get source pages');
+  }
+  return response.json();
+}
+
+export async function getCrawlerSourceStats(sourceId) {
+  const response = await fetch(`${API_BASE}/crawler/sources/${encodeURIComponent(sourceId)}/stats`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to get source stats');
+  }
+  return response.json();
+}
+
+export async function createCollection(config) {
+  const response = await fetch(`${API_BASE}/crawler/create-collection`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to create collection');
+  }
+  return response.json();
+}
+
+export async function crawlSource(sourceId) {
+  const response = await fetch(`${API_BASE}/crawler/sources/${encodeURIComponent(sourceId)}/crawl`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || `Failed to start crawl for source ${sourceId}`);
+  }
+  return response.json();
+}
+
+export async function getCrawlStatus(sourceId) {
+  const response = await fetch(`${API_BASE}/crawler/sources/${encodeURIComponent(sourceId)}/crawl/status`);
+  if (!response.ok) {
+    throw new Error(`Failed to get crawl status for source ${sourceId}`);
+  }
+  return response.json();
+}
+
+export async function addCrawlerSource(sourceConfig) {
+  const response = await fetch(`${API_BASE}/crawler/sources`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(sourceConfig),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to add source');
+  }
+  return response.json();
+}
+
+export async function getCrawlerSource(sourceId) {
+  const response = await fetch(`${API_BASE}/crawler/sources/${encodeURIComponent(sourceId)}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || `Failed to get source ${sourceId}`);
+  }
+  return response.json();
+}
+
+export async function updateCrawlerSource(sourceId, sourceConfig) {
+  const response = await fetch(`${API_BASE}/crawler/sources/${encodeURIComponent(sourceId)}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(sourceConfig),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || `Failed to update source ${sourceId}`);
   }
   return response.json();
 }
