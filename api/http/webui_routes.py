@@ -1372,6 +1372,48 @@ def rag_stop() -> Any:
     return jsonify({"ok": ok, "output": output, "container": name}), status
 
 
+def _get_open_webui_container_name() -> str:
+    return os.getenv("OPEN_WEBUI_CONTAINER_NAME", "open-webui")
+
+
+def _get_open_webui_url() -> str:
+    return os.getenv("OPEN_WEBUI_URL", "http://localhost:3000").rstrip("/")
+
+
+@webui_bp.route("/open-webui/status", methods=["GET"])
+def open_webui_status() -> Any:
+    """Return Open WebUI container status (reachable at OPEN_WEBUI_URL)."""
+    url = _get_open_webui_url()
+    status: dict[str, Any] = {"url": url, "running": False}
+    try:
+        resp = requests.get(url, timeout=3)
+        status["http_status"] = resp.status_code
+        if resp.ok:
+            status["running"] = True
+    except Exception as e:
+        status["error"] = str(e)
+        _WEBUI_LOG.debug("Open WebUI status check failed: %s", e)
+    return jsonify(status)
+
+
+@webui_bp.route("/open-webui/start", methods=["POST"])
+def open_webui_start() -> Any:
+    """Try to start Open WebUI Docker container."""
+    name = _get_open_webui_container_name()
+    ok, output = _run_docker_command(["start", name])
+    status = 200 if ok else 500
+    return jsonify({"ok": ok, "output": output, "container": name}), status
+
+
+@webui_bp.route("/open-webui/stop", methods=["POST"])
+def open_webui_stop() -> Any:
+    """Try to stop Open WebUI Docker container."""
+    name = _get_open_webui_container_name()
+    ok, output = _run_docker_command(["stop", name])
+    status = 200 if ok else 500
+    return jsonify({"ok": ok, "output": output, "container": name}), status
+
+
 def _get_ollama_url() -> str:
     return os.getenv("OLLAMA_URL", "http://localhost:11434")
 

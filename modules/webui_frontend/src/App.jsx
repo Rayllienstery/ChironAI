@@ -13,11 +13,14 @@ import {
   getSettings,
   getRagStatus,
   getOllamaStatus,
+  getOpenWebUiStatus,
   getDashboardMetrics,
   startRag,
   stopRag,
   startOllama,
   stopOllama,
+  startOpenWebUi,
+  stopOpenWebUi,
   stopServer,
 } from './services/api';
 import Sparkline from './components/Sparkline';
@@ -34,6 +37,7 @@ function App() {
   const [darkAccent, setDarkAccent] = useState('cyan');
   const [ollamaStatus, setOllamaStatus] = useState({ running: null, url: null });
   const [ragStatusInfo, setRagStatusInfo] = useState({ running: null, url: null });
+  const [openWebUiStatus, setOpenWebUiStatus] = useState({ running: null, url: null });
   const [statusBusy, setStatusBusy] = useState(false);
   const [statusLoading, setStatusLoading] = useState(true);
   const [dashboardMetrics, setDashboardMetrics] = useState(null);
@@ -76,12 +80,14 @@ function App() {
     const loadStatuses = async () => {
       setStatusLoading(true);
       try {
-        const [ollama, rag] = await Promise.all([
+        const [ollama, rag, openWebUi] = await Promise.all([
           getOllamaStatus().catch(() => ({ running: false })),
           getRagStatus().catch(() => ({ running: false })),
+          getOpenWebUiStatus().catch(() => ({ running: false })),
         ]);
         setOllamaStatus(ollama);
         setRagStatusInfo(rag);
+        setOpenWebUiStatus(openWebUi);
       } catch {
         // ignore
       } finally {
@@ -258,6 +264,29 @@ function App() {
     }
   };
 
+  const handleOpenWebUiStartStop = async (action) => {
+    setStatusBusy(true);
+    try {
+      if (action === 'start') {
+        await startOpenWebUi();
+      } else {
+        await stopOpenWebUi();
+      }
+      const status = await getOpenWebUiStatus().catch(() => ({ running: false }));
+      setOpenWebUiStatus(status);
+    } catch (e) {
+      console.error('Failed to change Open WebUI status', e);
+    } finally {
+      setStatusBusy(false);
+    }
+  };
+
+  const openOpenWebUiUI = () => {
+    if (openWebUiStatus?.url) {
+      window.open(openWebUiStatus.url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   return (
     <div className="app">
       <header className="app-header">
@@ -323,6 +352,38 @@ function App() {
                 className="status-link-button"
                 title="Open RAG / Qdrant UI"
                 onClick={openRagUI}
+              >
+                🔗
+              </button>
+            )}
+          </div>
+          <div className="status-pill">
+            <span className={`status-dot ${statusLoading ? 'updating' : (openWebUiStatus.running ? 'running' : 'stopped')}`} />
+            <span className="status-label">Open WebUI</span>
+            {statusLoading ? (
+              <span className="status-text status-text-updating">
+                Updating status
+                <span className="status-spinner" />
+              </span>
+            ) : (
+              <span className="status-text">
+                {openWebUiStatus.running ? 'Running' : 'Stopped'}
+              </span>
+            )}
+            <button
+              type="button"
+              className="status-button"
+              disabled={statusBusy || statusLoading}
+              onClick={() => handleOpenWebUiStartStop(openWebUiStatus.running ? 'stop' : 'start')}
+            >
+              {openWebUiStatus.running ? 'Stop' : 'Start'}
+            </button>
+            {!statusLoading && openWebUiStatus.running && openWebUiStatus.url && (
+              <button
+                type="button"
+                className="status-link-button"
+                title="Open Open WebUI"
+                onClick={openOpenWebUiUI}
               >
                 🔗
               </button>

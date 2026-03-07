@@ -4,6 +4,10 @@
 
 The codebase is organized in layers: **Presentation → Application → Domain → Infrastructure**, with **Config** and **Utils** as cross-cutting concerns.
 
+**Target layout:** The repository is moving to a **modular structure**: each major domain (RAG, MD ingestion, crawler, WebUI backend/frontend) lives as a separate project under `modules/`, with shared config and contracts under `core/`. See [MODULAR_STRUCTURE.md](MODULAR_STRUCTURE.md) for the full target architecture.
+
+**Current (legacy) layout:**
+
 ```
 api/                 — Presentation (HTTP routes, CLI entrypoints)
 application/         — Application (use cases, container/wiring)
@@ -12,6 +16,9 @@ infrastructure/      — Infrastructure (Qdrant, Ollama, FS, crawl, logging)
 config/              — Configuration (YAML + env)
 utils/               — Pure helpers
 tests/               — Pytest (domain, application, api, infrastructure)
+
+modules/             — (Target) Separate projects: rag_service, md_ingestion_service, crawler_service, webui_backend, webui_frontend
+core/                — (Target) config, shared, contracts
 ```
 
 ## Data flow

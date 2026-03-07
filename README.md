@@ -50,6 +50,23 @@ python tmrag.py test-single [url]  # один Apple doc
 
 ---
 
+## Modular layout (optional)
+
+The repo is organized into **modules** (see [docs/MODULAR_STRUCTURE.md](docs/MODULAR_STRUCTURE.md) and [modules/README.md](modules/README.md)):
+
+| Location | Purpose |
+|----------|---------|
+| `modules/rag_service/` | RAG pipeline (retrieval, rerank, prompt, LLM). HTTP on 5001. |
+| `modules/md_ingestion_service/` | Markdown ingestion and filtering; outputs to RAG. |
+| `modules/crawler_service/` | Crawl sources; pushes to md_ingestion. |
+| `modules/webui_backend/` | WebUI API (dashboard, settings, logs); calls other services via HTTP. |
+| `modules/webui_frontend/` | React SPA; talks only to webui_backend. |
+| `core/config`, `core/contracts`, `core/shared` | Shared config and inter-module contracts. |
+
+Run from project root with `PYTHONPATH=.` so `config` and modules resolve. Legacy entrypoints (`tmrag.py`, `api/`, `WebUI/rag_proxy.py`) remain; they can be gradually switched to the modular stack.
+
+---
+
 ## MVP
 
 - [x] **Rename project** — переименовать проект в соответствии с финальным названием. ✅ Переименовано в **TMRagFetcher**.

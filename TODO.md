@@ -17,6 +17,8 @@
 - [x] **Modular architecture** — полностью разобрать код на модули согласно **Layered Architecture** (Presentation → Application → Domain → Infrastructure). ✅ Реализовано: `api/` (HTTP routes, CLI), `application/` (RAG/crawl use cases, container), `domain/` (entities, services, ports, errors), `infrastructure/` (Ollama, Qdrant, FS, crawl, logging), `config/`, `utils/`, `tests/`. См. `docs/ARCHITECTURE.md` и план в `.cursor/plans/`.
 - [x] **Move prompt to the Md file** — вынести промпт в Markdown-файлы в `prompts/` (например `prompts/system_rag_v1.md`) для версионирования и удобного редактирования; поддержка множества промптов и переключение по имени файла (`config/rag.yaml` → `rag.prompt`, env `RAG_PROMPT`). ✅ Реализовано: `config/rag_prompts.get_rag_system_prompt(prompt_name=None)`, `list_rag_prompt_names()`, `load_prompt(name)`; см. `prompts/README.md`.
 - [x] **Unify rag client and proxy** — унифицировать логику RAG между `rag_client.py` и `rag_proxy.py`: общая логика поиска, фильтрации, обработки чанков (через Application layer). ✅ Реализовано: `application.rag.params.get_rag_answer_params(webui_dir)` — единая точка для промпта, лимитов контекста и зависимостей; `rag_client` и `api.http.rag_routes` вызывают её; `rag_proxy.py` только `create_app(webui_dir)`.
+ - [ ] WebUI для простого чатинга с выбором моделей, историей чатов и так далее
+ - [ ] Возможность сгенерировать модель с выбранным промптом и параметрами для ОЛЛАМА
 
 ---
 

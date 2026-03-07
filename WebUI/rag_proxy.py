@@ -32,7 +32,8 @@ logging.basicConfig(
 )
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
-WEBUI_FRONTEND_DIR = os.path.join(PROJECT_ROOT, "webui_frontend")
+# Frontend moved to modules/webui_frontend
+WEBUI_FRONTEND_DIR = os.path.join(PROJECT_ROOT, "modules", "webui_frontend")
 
 app = create_app(webui_dir=BASE_DIR)
 
@@ -58,7 +59,7 @@ def webui_index():
     if os.path.exists(index_path):
         with open(index_path, "r", encoding="utf-8") as f:
             return f.read()
-    return "WebUI not found. Please ensure webui_frontend/dist/index.html or webui_frontend/index.html exists.", 404
+    return "WebUI not found. Please ensure modules/webui_frontend/dist/index.html exists (run npm run build in modules/webui_frontend).", 404
 
 @app.route("/webui/<path:filename>")
 def webui_static(filename):

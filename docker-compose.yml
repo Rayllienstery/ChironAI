@@ -1,6 +1,11 @@
-# Qdrant for TMRagFetcher (RAG vector store).
-# start_webui.cmd runs: docker-compose up -d
+# TMRagFetcher: Qdrant + optional modular services.
+# Start infra: docker-compose up -d
 # Config: config/server.yaml (qdrant.url = http://localhost:6333)
+#
+# Modular layout (see docs/MODULAR_STRUCTURE.md):
+# - rag_service (port 5001), md_ingestion_service (5002), crawler_service (5003), webui_backend (5000)
+# - Frontend: modules/webui_frontend (build and serve via webui_backend or proxy)
+# Run Python services from repo root with PYTHONPATH=. or install each module.
 
 services:
   qdrant:
@@ -12,6 +17,15 @@ services:
     volumes:
       - qdrant_storage:/qdrant/storage
     restart: unless-stopped
+
+  # Optional: run RAG service in container (uncomment and build)
+  # rag_service:
+  #   build: ./modules/rag_service
+  #   ports: ["5001:5001"]
+  #   environment:
+  #     QDRANT_URL: http://qdrant:6333
+  #     OLLAMA_EMBED_URL: http://host.docker.internal:11434/api/embed
+  #   depends_on: [qdrant]
 
 volumes:
   qdrant_storage:

@@ -236,6 +236,36 @@ export async function stopOllama() {
   return response.json();
 }
 
+export async function getOpenWebUiStatus() {
+  const response = await fetch(`${API_BASE}/open-webui/status`);
+  if (!response.ok) {
+    throw new Error('Failed to get Open WebUI status');
+  }
+  return response.json();
+}
+
+export async function startOpenWebUi() {
+  const response = await fetch(`${API_BASE}/open-webui/start`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to start Open WebUI');
+  }
+  return response.json();
+}
+
+export async function stopOpenWebUi() {
+  const response = await fetch(`${API_BASE}/open-webui/stop`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to stop Open WebUI');
+  }
+  return response.json();
+}
+
 export async function stopServer() {
   const response = await fetch(`${API_BASE}/server/stop`, {
     method: 'POST',

@@ -1,0 +1,2 @@
+# MD Ingestion service. Run with project root on PYTHONPATH if using rag_service chunking.
+requests>=2.28
