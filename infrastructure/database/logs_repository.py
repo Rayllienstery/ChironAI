@@ -62,22 +62,28 @@ class LogsRepository:
         since_id: Optional[int] = None,
         source: Optional[str] = None,
         include_system: bool = True,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """
         Get logs for a session.
-        
+
         Args:
             session_id: Session ID
             level: Filter by level (ERROR, WARNING, INFO, etc.)
             limit: Maximum number of logs to return
             since_id: Only return logs with ID > since_id (for incremental updates)
-        
+            source: Filter by source
+            include_system: Include system session logs
+            from_date: Only return logs with timestamp >= from_date (ISO or YYYY-MM-DD)
+            to_date: Only return logs with timestamp <= to_date (ISO or YYYY-MM-DD)
+
         Returns:
             List of log dicts
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            
+
             # Always include logs for the current session and, optionally,
             # system-wide logs (session_id='system') so global errors are visible.
             if include_system:
@@ -86,11 +92,11 @@ class LogsRepository:
             else:
                 query = "SELECT * FROM logs WHERE session_id = ?"
                 params = [session_id]
-            
+
             if since_id is not None:
                 query += " AND id > ?"
                 params.append(since_id)
-            
+
             if level:
                 query += " AND level = ?"
                 params.append(level)
@@ -98,7 +104,15 @@ class LogsRepository:
             if source:
                 query += " AND source = ?"
                 params.append(source)
-            
+
+            if from_date is not None:
+                query += " AND timestamp >= ?"
+                params.append(from_date)
+
+            if to_date is not None:
+                query += " AND timestamp <= ?"
+                params.append(to_date)
+
             query += " ORDER BY id DESC LIMIT ?"
             params.append(limit)
             

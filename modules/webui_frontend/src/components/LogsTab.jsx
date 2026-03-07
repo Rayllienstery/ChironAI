@@ -1,7 +1,68 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { getLogs, getProxyLogs } from '../services/api';
 import { startLogPolling, stopLogPolling } from '../services/logs';
+import ProxyLogsAnalytics from './ProxyLogsAnalytics';
 import './LogsTab.css';
+
+const PROXY_LOGS_ANALYTICS_LIMIT = 5000;
+
+function getDateRangeForProxyLogs(period, selectedDate) {
+  const now = new Date();
+  if (selectedDate) {
+    const d = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+    const from = new Date(d);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(d);
+    to.setHours(23, 59, 59, 999);
+    return { from: from.toISOString(), to: to.toISOString() };
+  }
+  switch (period) {
+    case 'day': {
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+      return { from: start.toISOString(), to: now.toISOString() };
+    }
+    case 'week': {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 6);
+      start.setHours(0, 0, 0, 0);
+      return { from: start.toISOString(), to: now.toISOString() };
+    }
+    case 'month': {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { from: start.toISOString(), to: now.toISOString() };
+    }
+    case 'year': {
+      const start = new Date(now.getFullYear(), 0, 1);
+      return { from: start.toISOString(), to: now.toISOString() };
+    }
+    default:
+      return {};
+  }
+}
+
+function getPeriodLabel(period, selectedDate) {
+  const formatDate = (date) => date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+  if (selectedDate) {
+    return formatDate(selectedDate);
+  }
+  const now = new Date();
+  switch (period) {
+    case 'day':
+      return formatDate(now);
+    case 'week': {
+      const weekStart = new Date(now);
+      weekStart.setDate(weekStart.getDate() - 6);
+      return `${formatDate(weekStart)} – ${formatDate(now)}`;
+    }
+    case 'month':
+      return now.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    case 'year':
+      return String(now.getFullYear());
+    default:
+      return 'All time';
+  }
+}
 
 function LogsTab({ sessionId }) {
   const [viewMode, setViewMode] = useState('logs'); // 'logs' or 'proxy'
@@ -9,79 +70,11 @@ function LogsTab({ sessionId }) {
   const [levelFilter, setLevelFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
   const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState('day');
+  const [selectedDate, setSelectedDate] = useState(null);
   const logsEndRef = useRef(null);
 
-  useEffect(() => {
-    if (viewMode === 'logs' && !sessionId) return;
-
-    loadLogs();
-
-    if (viewMode === 'logs' && sessionId) {
-      // Start auto-update polling only for regular logs
-      startLogPolling(sessionId, (newLogs) => {
-        setLogs(prev => {
-          const existingIds = new Set(prev.map(log => log.id));
-          const uniqueNewLogs = newLogs.filter(log => !existingIds.has(log.id));
-          const hadNewLogs = uniqueNewLogs.length > 0;
-          const updated = [...prev, ...uniqueNewLogs].slice(-500); // Keep last 500
-          // Only scroll if new logs were added and user is near bottom
-          if (hadNewLogs) {
-            setTimeout(() => scrollToBottom(), 100);
-          }
-          return updated;
-        });
-      }, 3000);
-
-      return () => {
-        stopLogPolling();
-      };
-    } else if (viewMode === 'proxy') {
-      // Poll proxy logs every 3 seconds
-      const interval = setInterval(() => {
-        loadLogs();
-      }, 3000);
-      return () => clearInterval(interval);
-    }
-  }, [sessionId, levelFilter, viewMode]);
-
-  const loadLogs = async () => {
-    setLoading(true);
-    try {
-      if (viewMode === 'proxy') {
-        const data = await getProxyLogs({
-          limit: 100,
-        });
-        const newLogs = data.logs || [];
-        const hadNewLogs = logs.length > 0 && newLogs.length > logs.length;
-        setLogs(newLogs);
-        // Only scroll on initial load or if new logs were added
-        if (logs.length === 0 || hadNewLogs) {
-          setTimeout(() => scrollToBottom(), 100);
-        }
-      } else {
-        if (!sessionId) return;
-        const data = await getLogs(sessionId, {
-          level: levelFilter || undefined,
-          source: sourceFilter || undefined,
-          limit: 100,
-        });
-        const newLogs = data.logs || [];
-        const hadNewLogs = logs.length > 0 && newLogs.length > logs.length;
-        setLogs(newLogs);
-        // Only scroll on initial load or if new logs were added
-        if (logs.length === 0 || hadNewLogs) {
-          setTimeout(() => scrollToBottom(), 100);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load logs:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const scrollToBottom = () => {
-    // Only scroll if user is already near the bottom (within 150px)
     const container = document.querySelector('.logs-content');
     if (container) {
       const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
@@ -92,6 +85,67 @@ function LogsTab({ sessionId }) {
       logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   };
+
+  const loadLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      if (viewMode === 'proxy') {
+        const { from, to } = getDateRangeForProxyLogs(period, selectedDate);
+        const data = await getProxyLogs({
+          from: from || undefined,
+          to: to || undefined,
+          limit: PROXY_LOGS_ANALYTICS_LIMIT,
+        });
+        const newLogs = data.logs || [];
+        setLogs((prev) => {
+          const hadNewLogs = prev.length > 0 && newLogs.length > prev.length;
+          if (prev.length === 0 || hadNewLogs) setTimeout(() => scrollToBottom(), 100);
+          return newLogs;
+        });
+      } else {
+        if (!sessionId) return;
+        const data = await getLogs(sessionId, {
+          level: levelFilter || undefined,
+          source: sourceFilter || undefined,
+          limit: 100,
+        });
+        const newLogs = data.logs || [];
+        setLogs((prev) => {
+          const hadNewLogs = prev.length > 0 && newLogs.length > prev.length;
+          if (prev.length === 0 || hadNewLogs) setTimeout(() => scrollToBottom(), 100);
+          return newLogs;
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load logs:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [viewMode, period, selectedDate, sessionId, levelFilter, sourceFilter]);
+
+  useEffect(() => {
+    if (viewMode === 'logs' && !sessionId) return;
+
+    loadLogs();
+
+    if (viewMode === 'logs' && sessionId) {
+      startLogPolling(sessionId, (newLogs) => {
+        setLogs(prev => {
+          const existingIds = new Set(prev.map(log => log.id));
+          const uniqueNewLogs = newLogs.filter(log => !existingIds.has(log.id));
+          const hadNewLogs = uniqueNewLogs.length > 0;
+          const updated = [...prev, ...uniqueNewLogs].slice(-500);
+          if (hadNewLogs) setTimeout(() => scrollToBottom(), 100);
+          return updated;
+        });
+      }, 3000);
+      return () => stopLogPolling();
+    }
+    if (viewMode === 'proxy') {
+      const interval = setInterval(loadLogs, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [sessionId, levelFilter, viewMode, period, selectedDate, loadLogs]);
 
   const getLevelClass = (level) => {
     return `log-entry log-${level.toLowerCase()}`;
@@ -297,12 +351,6 @@ function LogsTab({ sessionId }) {
     );
   };
 
-  if (viewMode === 'proxy') {
-    // Proxy logs don't require sessionId
-  } else if (!sessionId) {
-    return <div className="loading">No session available</div>;
-  }
-
   return (
     <div className="logs-tab">
       <div className="logs-header">
@@ -350,8 +398,22 @@ function LogsTab({ sessionId }) {
         </div>
       </div>
 
+      {viewMode === 'proxy' && (
+        <ProxyLogsAnalytics
+          logs={logs}
+          period={period}
+          onPeriodChange={setPeriod}
+          selectedDate={selectedDate}
+          onDateSelect={setSelectedDate}
+          onDateReset={() => setSelectedDate(null)}
+          periodLabel={getPeriodLabel(period, selectedDate)}
+        />
+      )}
+
       <div className="logs-content">
-        {loading && logs.length === 0 ? (
+        {viewMode === 'logs' && !sessionId ? (
+          <div className="loading">No session available. Session is loading or could not be created.</div>
+        ) : loading && logs.length === 0 ? (
           <div className="loading">Loading {viewMode === 'proxy' ? 'proxy ' : ''}logs...</div>
         ) : logs.length === 0 ? (
           <div className="empty-state">No {viewMode === 'proxy' ? 'proxy ' : ''}logs found</div>

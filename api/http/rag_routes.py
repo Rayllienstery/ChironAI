@@ -19,10 +19,31 @@ from flask import Flask, Response, jsonify, request
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
+# So that "from rag_service ..." works (rag_service package lives in modules/rag_service).
+_MODULES_RAG = os.path.join(_ROOT, "modules", "rag_service")
+if _MODULES_RAG not in sys.path:
+    sys.path.insert(0, _MODULES_RAG)
 
 from application.rag.params import RAGDependencies, get_rag_answer_params
 from application.rag.use_cases import answer_question, build_rag_context, prepare_ollama_messages
 from domain.entities.rag import RagQuestionRequest
+
+try:
+    from rag_service.infrastructure.keyword_collections_sqlite import get_keyword_collections_repository
+except ImportError:
+    get_keyword_collections_repository = None  # type: ignore[assignment]
+
+
+def _get_rag_required_keywords_from_module() -> list[str] | None:
+    """Return flat list of enabled keywords from rag_service module, or None to use config default."""
+    if get_keyword_collections_repository is None:
+        return None
+    try:
+        repo = get_keyword_collections_repository()
+        flat = repo.get_enabled_keywords_flat()
+        return flat if flat else None
+    except Exception:
+        return None
 from domain.services.prompt_builder import determine_reasoning_level, last_user_content
 from infrastructure.logging.webui_error_logger import log_webui_error
 from infrastructure.database import get_session_manager, get_logs_repository
@@ -141,7 +162,8 @@ def create_app(
         # Proxy: do not read settings from DB here so RAG never fails (e.g. DB path differs).
         # RAG always runs (embed + search); rerank is off for proxy. Use WebUI /chat for rerank + settings.
         effective_rerank_client = None
-        
+        rag_keywords = _get_rag_required_keywords_from_module()
+
         # Build RAG context for logging (always, not just for metadata)
         rag_ctx_for_log = None
         rag_timings: dict[str, float] = {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0}
@@ -153,6 +175,7 @@ def create_app(
                 effective_rerank_client,
                 context_chunk_chars,
                 context_total_chars,
+                rag_required_keywords=rag_keywords,
             )
             if rag_timings:
                 set_latest_request_rag_steps(rag_timings)
@@ -197,6 +220,7 @@ def create_app(
                 confidence_threshold,
                 ollama_model,
                 reasoning_level=reasoning_level,
+                rag_required_keywords=rag_keywords,
             )
             # Ensure use_model is not "rag-ollama" - use config model if needed
             if use_model == "rag-ollama":
@@ -304,6 +328,7 @@ def create_app(
                 confidence_threshold,
                 ollama_model,
                 reasoning_level=reasoning_level,
+                rag_required_keywords=rag_keywords,
             )
         except Exception as e:
             log_webui_error("rag_routes.chat_completions", e, {"stage": "chat"})

@@ -128,9 +128,12 @@ export async function getLogs(sessionId, options = {}) {
 }
 
 export async function getProxyLogs(options = {}) {
-  const params = new URLSearchParams({
-    ...options,
-  });
+  const params = new URLSearchParams();
+  const { limit, since_id, from, to } = options;
+  if (limit != null) params.set('limit', String(limit));
+  if (since_id != null) params.set('since_id', String(since_id));
+  if (from != null && from !== '') params.set('from', from);
+  if (to != null && to !== '') params.set('to', to);
   const response = await fetch(`${API_BASE}/proxy-logs?${params}`);
   if (!response.ok) {
     throw new Error('Failed to get proxy logs');
@@ -172,6 +175,38 @@ export async function getRagCollections() {
   const response = await fetch(`${API_BASE}/rag/collections`);
   if (!response.ok) {
     throw new Error('Failed to get RAG collections');
+  }
+  return response.json();
+}
+
+export async function getRagKeywordCollections() {
+  const response = await fetch(`${API_BASE}/rag-keyword-collections`);
+  if (!response.ok) {
+    throw new Error('Failed to get RAG keyword collections');
+  }
+  return response.json();
+}
+
+export async function saveRagKeywordCollections(payload) {
+  const response = await fetch(`${API_BASE}/rag-keyword-collections`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to save RAG keyword collections');
+  }
+  return response.json();
+}
+
+export async function deleteRagKeywordCollection(collectionId) {
+  const response = await fetch(`${API_BASE}/rag-keyword-collections/${encodeURIComponent(collectionId)}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to delete collection');
   }
   return response.json();
 }

@@ -115,6 +115,21 @@ class TestShouldSkipRagSearch:
     def test_returns_false_for_observation_tracking(self) -> None:
         assert should_skip_rag_search("Updating views automatically with observation tracking") is False
 
+    def test_uses_custom_keywords_when_provided(self) -> None:
+        custom = ["foo", "bar"]
+        assert should_skip_rag_search("hello", rag_required_keywords=custom) is True
+        assert should_skip_rag_search("tell me about foo", rag_required_keywords=custom) is False
+        assert should_skip_rag_search("bar is great", rag_required_keywords=custom) is False
+
+    def test_custom_keywords_case_insensitive(self) -> None:
+        custom = ["Swift"]
+        assert should_skip_rag_search("what is swift?", rag_required_keywords=custom) is False
+        assert should_skip_rag_search("SWIFT and iOS", rag_required_keywords=custom) is False
+        assert should_skip_rag_search("weather", rag_required_keywords=custom) is True
+
+    def test_empty_custom_keywords_skips_when_no_default_match(self) -> None:
+        assert should_skip_rag_search("weather", rag_required_keywords=[]) is True
+
 
 class TestBuildQdrantFilter:
     def test_returns_none_when_empty_question(self) -> None:

@@ -1,5 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component } from 'react';
 import Tabs from './components/Tabs';
+
+class TabErrorBoundary extends Component {
+  state = { hasError: false, error: null };
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="app-main" style={{ padding: 24 }}>
+          <h2>Something went wrong</h2>
+          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {this.state.error?.message ?? String(this.state.error)}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import DashboardTab from './components/DashboardTab';
 import LogsTab from './components/LogsTab';
 import SettingsTab from './components/SettingsTab';
@@ -473,7 +493,13 @@ function App() {
       <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
       
       <main className="app-main">
-        {sessionId ? renderTabContent() : <div className="loading">Initializing session...</div>}
+        {sessionId ? (
+          <TabErrorBoundary>
+            {renderTabContent()}
+          </TabErrorBoundary>
+        ) : (
+          <div className="loading">Initializing session...</div>
+        )}
       </main>
 
       {sessionId && (

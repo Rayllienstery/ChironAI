@@ -1,6 +1,7 @@
 .logs-tab {
   display: flex;
   flex-direction: column;
+  min-height: 400px;
   height: calc(100vh - 200px);
 }
 
@@ -71,6 +72,7 @@
 
 .logs-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   background: var(--md-sys-color-surface);
   border: none;
@@ -137,16 +139,21 @@
 }
 
 .empty-state {
-  padding: var(--md-sys-spacing-xl);
+  padding: var(--md-sys-spacing-xl, 24px);
   text-align: center;
-  color: var(--md-sys-color-on-surface-variant);
+  color: var(--md-sys-color-on-surface-variant, #666);
   font-style: italic;
+  min-height: 60px;
 }
 
 .loading {
-  padding: var(--md-sys-spacing-xl);
+  padding: var(--md-sys-spacing-xl, 24px);
   text-align: center;
-  color: var(--md-sys-color-on-surface-variant);
+  color: var(--md-sys-color-on-surface-variant, #666);
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Proxy Logs Styles */
@@ -376,6 +383,259 @@
 .score-value {
   font-weight: 600;
   font-size: 12px;
+}
+
+/* Proxy Logs Analytics */
+.proxy-logs-analytics {
+  margin-bottom: var(--md-sys-spacing-lg);
+  padding: var(--md-sys-spacing-md);
+  background: var(--md-sys-color-surface-container-low);
+  border-radius: var(--md-sys-shape-corner-medium);
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.proxy-logs-analytics-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--md-sys-spacing-md);
+  margin-bottom: var(--md-sys-spacing-md);
+}
+
+.proxy-logs-period-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-sys-spacing-xs);
+}
+
+.proxy-logs-period-tabs button {
+  padding: var(--md-sys-spacing-xs) var(--md-sys-spacing-sm);
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-small);
+  font: var(--md-sys-typescale-label-medium-font);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.proxy-logs-period-tabs button:hover {
+  border-color: var(--md-sys-color-primary);
+}
+
+.proxy-logs-period-tabs button.active {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border-color: var(--md-sys-color-primary);
+}
+
+.proxy-logs-period-label {
+  font-size: var(--md-sys-typescale-body-medium-size);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.proxy-logs-analytics-calendar-row {
+  margin-bottom: var(--md-sys-spacing-md);
+}
+
+.proxy-logs-analytics-summary {
+  margin: 0 0 var(--md-sys-spacing-md);
+  font-size: 13px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.proxy-logs-pies {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--md-sys-spacing-lg);
+  margin-bottom: var(--md-sys-spacing-lg);
+}
+
+.proxy-logs-pie-block {
+  min-width: 0;
+  padding: var(--md-sys-spacing-sm);
+  background: var(--md-sys-color-surface);
+  border-radius: var(--md-sys-shape-corner-small);
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.proxy-logs-pie-title {
+  margin: 0 0 var(--md-sys-spacing-sm);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.proxy-logs-tops {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--md-sys-spacing-md);
+}
+
+.proxy-logs-top-block {
+  padding: var(--md-sys-spacing-sm);
+  background: var(--md-sys-color-surface);
+  border-radius: var(--md-sys-shape-corner-small);
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.proxy-logs-top-title {
+  margin: 0 0 var(--md-sys-spacing-xs);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.proxy-logs-top-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.proxy-logs-top-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-xs);
+  padding: 2px 0;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.proxy-logs-top-list li:last-child {
+  border-bottom: none;
+}
+
+.proxy-logs-top-value {
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+  flex-shrink: 0;
+}
+
+.proxy-logs-top-label {
+  color: var(--md-sys-color-on-surface-variant);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+.proxy-logs-top-empty {
+  color: var(--md-sys-color-on-surface-variant);
+  font-style: italic;
+}
+
+/* Calendar */
+.proxy-logs-calendar {
+  display: inline-block;
+  padding: var(--md-sys-spacing-sm);
+  background: var(--md-sys-color-surface);
+  border-radius: var(--md-sys-shape-corner-small);
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.proxy-logs-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--md-sys-spacing-sm);
+  gap: var(--md-sys-spacing-sm);
+}
+
+.proxy-logs-calendar-nav {
+  padding: var(--md-sys-spacing-xs) var(--md-sys-spacing-sm);
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-small);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.proxy-logs-calendar-nav:hover {
+  border-color: var(--md-sys-color-primary);
+}
+
+.proxy-logs-calendar-month {
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.proxy-logs-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 4px;
+  font-size: 10px;
+  color: var(--md-sys-color-on-surface-variant);
+  text-align: center;
+}
+
+.proxy-logs-calendar-weekday {
+  padding: 2px 0;
+}
+
+.proxy-logs-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 28px);
+  gap: 2px;
+}
+
+.proxy-logs-calendar-day {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  border: 1px solid transparent;
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.proxy-logs-calendar-day.empty {
+  cursor: default;
+  visibility: hidden;
+}
+
+.proxy-logs-calendar-day:not(.empty):hover {
+  background: var(--md-sys-color-surface-variant);
+  border-color: var(--md-sys-color-outline);
+}
+
+.proxy-logs-calendar-day.today {
+  border-color: var(--md-sys-color-primary);
+  font-weight: 600;
+}
+
+.proxy-logs-calendar-day.selected {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border-color: var(--md-sys-color-primary);
+}
+
+.proxy-logs-calendar-day.selected:hover {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+.proxy-logs-calendar-reset {
+  margin-top: var(--md-sys-spacing-sm);
+  padding: var(--md-sys-spacing-xs) var(--md-sys-spacing-sm);
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-small);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.proxy-logs-calendar-reset:hover {
+  border-color: var(--md-sys-color-primary);
 }
 
 

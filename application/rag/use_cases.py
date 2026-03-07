@@ -167,15 +167,17 @@ def build_rag_context(
     context_chunk_chars: int,
     context_total_chars: int,
     top_k: int | None = None,
+    rag_required_keywords: list[str] | None = None,
 ) -> tuple[RagContext, dict[str, float]]:
     """
     Build RAG context for a question: search_rag -> framework_filter -> build_context_block.
     Returns (RagContext (context_text, chunks_info, max_score), timings dict with embed_s, search_s, rerank_s, total_rag_s).
+    If rag_required_keywords is provided, it is used to decide when to skip RAG (no keyword in query); else config default.
     """
     empty_timings: dict[str, float] = {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0}
     if not question or not question.strip():
         return RagContext("", [], 0.0), empty_timings
-    if should_skip_rag_search(question):
+    if should_skip_rag_search(question, rag_required_keywords=rag_required_keywords):
         _rag_log.debug("RAG skipped for query (greeting or no RAG-required keyword)")
         return RagContext("", [], 0.0), empty_timings
     try:
@@ -227,6 +229,7 @@ def answer_question(
     confidence_threshold: float,
     model_name: str,
     reasoning_level: str | None = None,
+    rag_required_keywords: list[str] | None = None,
 ) -> RagAnswerResponse:
     """
     Answer a question with RAG: build_rag_context -> build_system_content -> chat.
@@ -240,6 +243,7 @@ def answer_question(
         rerank_client,
         context_chunk_chars,
         context_total_chars,
+        rag_required_keywords=rag_required_keywords,
     )
     system_content = build_system_content(
         system_prefix,
@@ -280,6 +284,7 @@ def prepare_ollama_messages(
     confidence_threshold: float,
     model_name: str,
     reasoning_level: str | None = None,
+    rag_required_keywords: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """
     Build RAG context and Ollama message list (for streaming or custom chat).
@@ -293,6 +298,7 @@ def prepare_ollama_messages(
         rerank_client,
         context_chunk_chars,
         context_total_chars,
+        rag_required_keywords=rag_required_keywords,
     )
     system_content = build_system_content(
         system_prefix,

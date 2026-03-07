@@ -88,6 +88,40 @@ def test_build_rag_context_uses_rag_when_keyword_present() -> None:
     assert len(search_calls) >= 1
 
 
+def test_build_rag_context_with_custom_keywords_skips_when_no_match() -> None:
+    search_calls: list[int] = []
+    repo = MockRagRepo(search_call_count=search_calls)
+    ctx, _ = build_rag_context(
+        "what is the weather?",
+        repo,
+        MockEmbed(),
+        MockRerank(),
+        500,
+        2000,
+        rag_required_keywords=["swift", "ios", "code"],
+    )
+    assert ctx.context_text == ""
+    assert ctx.chunks_info == []
+    assert len(search_calls) == 0
+
+
+def test_build_rag_context_with_custom_keywords_uses_rag_when_match() -> None:
+    search_calls: list[int] = []
+    repo = MockRagRepo(search_call_count=search_calls)
+    ctx, _ = build_rag_context(
+        "explain Swift",
+        repo,
+        MockEmbed(),
+        MockRerank(),
+        500,
+        2000,
+        rag_required_keywords=["swift", "ios"],
+    )
+    assert ctx.context_text != ""
+    assert len(ctx.chunks_info) >= 1
+    assert len(search_calls) >= 1
+
+
 def test_search_rag_returns_list() -> None:
     results, timings = search_rag("SwiftUI View", MockRagRepo(), MockEmbed(), MockRerank())
     assert isinstance(results, list)

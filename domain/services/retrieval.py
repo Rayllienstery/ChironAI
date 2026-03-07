@@ -240,17 +240,26 @@ def query_for_retrieval(question: str) -> str:
     return out
 
 
-def should_skip_rag_search(question: str) -> bool:
+def should_skip_rag_search(
+    question: str,
+    rag_required_keywords: list[str] | None = None,
+) -> bool:
     """
     True when RAG should be skipped: greeting (exact match) or no RAG-required
     keyword in the query (not about project, Apple tech, or code analysis).
+    If rag_required_keywords is provided, use it (normalized to lower); else use RAG_REQUIRED_KEYWORDS.
     """
     q = (question or "").strip().lower()
     if not q:
         return False
     if q in SKIP_RAG_GREETINGS:
         return True
-    if not any(kw in q for kw in RAG_REQUIRED_KEYWORDS):
+    keywords = (
+        [k.lower() for k in (rag_required_keywords or []) if k]
+        if rag_required_keywords is not None
+        else RAG_REQUIRED_KEYWORDS
+    )
+    if not any(kw in q for kw in keywords):
         return True
     return False
 

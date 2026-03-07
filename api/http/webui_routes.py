@@ -24,9 +24,19 @@ from flask import Blueprint, jsonify, request
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
+# So that "from rag_service ..." works (rag_service package lives in modules/rag_service).
+_MODULES_RAG = os.path.join(_ROOT, "modules", "rag_service")
+if _MODULES_RAG not in sys.path:
+    sys.path.insert(0, _MODULES_RAG)
 
 from application.rag.params import RAGDependencies, get_rag_answer_params
 from application.rag.use_cases import build_rag_context, prepare_ollama_messages
+
+try:
+    from rag_service.infrastructure.keyword_collections_sqlite import get_keyword_collections_repository
+except ImportError:
+    get_keyword_collections_repository = None  # type: ignore[assignment]
+
 from config import get_ollama_chat_model, get_qdrant_url, get_rag_float, get_rag_int, get_rag_prompt_name
 from config.rag_prompts import (
     get_rag_system_prompt_swift_mode,
@@ -42,6 +52,20 @@ TRASH_DIR = PROMPTS_DIR / ".trash"
 def is_readme_name(name: str) -> bool:
     """Check if a prompt name is README (case-insensitive)."""
     return name.lower() == "readme"
+
+
+def _get_rag_required_keywords_from_module() -> list[str] | None:
+    """Return flat list of enabled keywords from rag_service module, or None to use config default."""
+    if get_keyword_collections_repository is None:
+        return None
+    try:
+        repo = get_keyword_collections_repository()
+        flat = repo.get_enabled_keywords_flat()
+        return flat if flat else None
+    except Exception:
+        return None
+
+
 from domain.entities.rag import RagQuestionRequest
 from domain.services.prompt_builder import determine_reasoning_level, last_user_content
 from infrastructure.database import get_session_manager, get_logs_repository, get_settings_repository
@@ -536,7 +560,9 @@ def get_proxy_logs() -> Any:
     try:
         limit = int(request.args.get("limit", 100))
         since_id = request.args.get("since_id")
-        
+        from_date = request.args.get("from")
+        to_date = request.args.get("to")
+
         logs_repo = get_logs_repository()
         logs = logs_repo.get_logs(
             session_id="proxy",
@@ -544,8 +570,10 @@ def get_proxy_logs() -> Any:
             limit=limit,
             since_id=int(since_id) if since_id else None,
             source="proxy",
+            from_date=from_date or None,
+            to_date=to_date or None,
         )
-        
+
         return jsonify({"logs": logs})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_proxy_logs", exc_info=True)
@@ -678,6 +706,7 @@ def webui_chat() -> Any:
             )
         
         # Build RAG context to get chunks_info
+        rag_keywords = _get_rag_required_keywords_from_module()
         ctx, rag_timings = build_rag_context(
             last_user,
             rag_repo,
@@ -685,6 +714,7 @@ def webui_chat() -> Any:
             effective_rerank_client,
             params.context_chunk_chars,
             params.context_total_chars,
+            rag_required_keywords=rag_keywords,
         )
         if rag_timings:
             set_latest_request_rag_steps(rag_timings)
@@ -710,10 +740,8 @@ def webui_chat() -> Any:
             params.confidence_threshold,
             ollama_model,
             reasoning_level=reasoning_level,
+            rag_required_keywords=rag_keywords,
         )
-        # Ensure use_model is not "rag-ollama" - use config model if needed
-        if use_model == "rag-ollama":
-            use_model = params.model_name
         # Ensure use_model is not "rag-ollama" - use config model if needed
         if use_model == "rag-ollama":
             use_model = params.model_name
@@ -992,6 +1020,7 @@ def tester_chat() -> Any:
                 )
             
             top_k_override = top_k if top_k is not None else None
+            rag_keywords = _get_rag_required_keywords_from_module()
             ctx, rag_timings = build_rag_context(
                 last_user,
                 rag_repo,
@@ -1000,6 +1029,7 @@ def tester_chat() -> Any:
                 params.context_chunk_chars,
                 params.context_total_chars,
                 top_k=top_k_override,
+                rag_required_keywords=rag_keywords,
             )
             if rag_timings:
                 set_latest_request_rag_steps(rag_timings)
@@ -1029,6 +1059,7 @@ def tester_chat() -> Any:
                 params.confidence_threshold,
                 ollama_model,
                 reasoning_level=reasoning_level,
+                rag_required_keywords=rag_keywords,
             )
             # Ensure use_model is not "rag-ollama" - use config model if needed
             if use_model == "rag-ollama":
@@ -1154,6 +1185,76 @@ def update_settings() -> Any:
         return jsonify({"status": "ok"})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.update_settings", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/rag-keyword-collections", methods=["GET"])
+def get_rag_keyword_collections() -> Any:
+    """Return all RAG trigger keyword collections (from rag_service module)."""
+    if get_keyword_collections_repository is None:
+        return jsonify({"collections": []})
+    try:
+        repo = get_keyword_collections_repository()
+        collections = repo.get_all()
+        return jsonify({"collections": collections})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_rag_keyword_collections", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/rag-keyword-collections", methods=["POST"])
+def update_rag_keyword_collections() -> Any:
+    """Create or update a collection, or replace all. Body: single {id?, name, enabled, keywords} or {collections: [...]}."""
+    if get_keyword_collections_repository is None:
+        return jsonify({"error": "Keyword collections not available"}), 503
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        repo = get_keyword_collections_repository()
+        if "collections" in body:
+            # Replace all: upsert each (use None for id when creating new), then delete IDs no longer in list
+            new_list = body["collections"]
+            existing_ids = {c["id"] for c in repo.get_all()}
+            new_ids = set()
+            for c in new_list:
+                cid = c.get("id")
+                if cid is None or (isinstance(cid, str) and cid.startswith("new-")):
+                    cid = None
+                elif cid not in existing_ids:
+                    cid = None
+                saved_id = repo.save_collection(
+                    cid,
+                    c.get("name", ""),
+                    bool(c.get("enabled", True)),
+                    c.get("keywords", []),
+                )
+                new_ids.add(saved_id)
+            for cid in existing_ids - new_ids:
+                repo.delete_collection(cid)
+            return jsonify({"status": "ok", "collections": repo.get_all()})
+        # Single collection create/update
+        cid = repo.save_collection(
+            body.get("id"),
+            body.get("name", ""),
+            bool(body.get("enabled", True)),
+            body.get("keywords", []),
+        )
+        return jsonify({"status": "ok", "id": cid, "collections": repo.get_all()})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.update_rag_keyword_collections", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/rag-keyword-collections/<collection_id>", methods=["DELETE"])
+def delete_rag_keyword_collection(collection_id: str) -> Any:
+    """Delete a RAG keyword collection."""
+    if get_keyword_collections_repository is None:
+        return jsonify({"error": "Keyword collections not available"}), 503
+    try:
+        repo = get_keyword_collections_repository()
+        repo.delete_collection(collection_id)
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.delete_rag_keyword_collection", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
