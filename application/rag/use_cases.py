@@ -212,7 +212,8 @@ def build_rag_context(
                     c.get("doc_type") or "N/A",
                 )
         return RagContext(context_text=context_text, chunks_info=chunks_info, max_score=max_score), timings
-    except Exception:
+    except Exception as e:
+        _rag_log.exception("RAG build_rag_context failed: %s", e)
         return RagContext("", [], 0.0), empty_timings
 
 
@@ -230,21 +231,26 @@ def answer_question(
     model_name: str,
     reasoning_level: str | None = None,
     rag_required_keywords: list[str] | None = None,
+    rag_context: RagContext | None = None,
 ) -> RagAnswerResponse:
     """
-    Answer a question with RAG: build_rag_context -> build_system_content -> chat.
+    Answer a question with RAG: build_rag_context (or use rag_context) -> build_system_content -> chat.
     Returns RagAnswerResponse (content, model, finish_reason).
+    When rag_context is provided, RAG retrieval is skipped and the given context is used.
     """
-    last_user = last_user_content(request.messages)
-    ctx, _ = build_rag_context(
-        last_user,
-        rag_repo,
-        embed_provider,
-        rerank_client,
-        context_chunk_chars,
-        context_total_chars,
-        rag_required_keywords=rag_required_keywords,
-    )
+    if rag_context is not None:
+        ctx = rag_context
+    else:
+        last_user = last_user_content(request.messages)
+        ctx, _ = build_rag_context(
+            last_user,
+            rag_repo,
+            embed_provider,
+            rerank_client,
+            context_chunk_chars,
+            context_total_chars,
+            rag_required_keywords=rag_required_keywords,
+        )
     system_content = build_system_content(
         system_prefix,
         system_suffix,
@@ -285,21 +291,26 @@ def prepare_ollama_messages(
     model_name: str,
     reasoning_level: str | None = None,
     rag_required_keywords: list[str] | None = None,
+    rag_context: RagContext | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """
-    Build RAG context and Ollama message list (for streaming or custom chat).
+    Build RAG context (unless rag_context provided) and Ollama message list (for streaming or custom chat).
     Returns (ollama_messages, model).
+    When rag_context is provided, RAG retrieval is skipped and the given context is used.
     """
-    last_user = last_user_content(request.messages)
-    ctx, _ = build_rag_context(
-        last_user,
-        rag_repo,
-        embed_provider,
-        rerank_client,
-        context_chunk_chars,
-        context_total_chars,
-        rag_required_keywords=rag_required_keywords,
-    )
+    if rag_context is not None:
+        ctx = rag_context
+    else:
+        last_user = last_user_content(request.messages)
+        ctx, _ = build_rag_context(
+            last_user,
+            rag_repo,
+            embed_provider,
+            rerank_client,
+            context_chunk_chars,
+            context_total_chars,
+            rag_required_keywords=rag_required_keywords,
+        )
     system_content = build_system_content(
         system_prefix,
         system_suffix,

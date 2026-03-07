@@ -135,6 +135,11 @@ def get_rag_float(key: str, default: float) -> float:
         return default
 
 
+def get_proxy_rerank_enabled() -> bool:
+    """Return whether rerank is enabled for the proxy (no DB required). Default False."""
+    return bool(RAG_CONFIG.get("proxy_rerank_enabled", False))
+
+
 def get_retrieval_int(key: str, default: int) -> int:
     """Helper to get integer retrieval config with default."""
     try:

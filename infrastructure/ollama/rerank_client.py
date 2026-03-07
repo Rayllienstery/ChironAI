@@ -6,6 +6,8 @@ Calls Ollama generate API with the rerank prompt; returns raw response string.
 
 from __future__ import annotations
 
+import logging
+
 import requests
 
 try:
@@ -13,6 +15,8 @@ try:
 except ImportError:
     get_ollama_generate_url = lambda: "http://localhost:11434/api/generate"  # type: ignore
     get_ollama_rerank_model = lambda: "devstral-ios"  # type: ignore
+
+_rerank_log = logging.getLogger("trag.rerank")
 
 
 class OllamaRerankClient:
@@ -37,7 +41,8 @@ class OllamaRerankClient:
             )
             resp.raise_for_status()
             return (resp.json().get("response") or "").strip()
-        except Exception:
+        except Exception as e:
+            _rerank_log.warning("Rerank failed (%s): %s", type(e).__name__, e)
             return None
 
 

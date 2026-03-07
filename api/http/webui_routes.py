@@ -741,6 +741,7 @@ def webui_chat() -> Any:
             ollama_model,
             reasoning_level=reasoning_level,
             rag_required_keywords=rag_keywords,
+            rag_context=ctx,
         )
         # Ensure use_model is not "rag-ollama" - use config model if needed
         if use_model == "rag-ollama":
@@ -798,7 +799,7 @@ def webui_chat() -> Any:
             "timestamp": datetime.now().isoformat(),
             "request": {
                 "messages": messages,
-                "model": model,
+                "model": use_model,
                 "temperature": temperature,
                 "top_p": top_p,
                 "reasoning_level": reasoning_level,
@@ -1060,6 +1061,7 @@ def tester_chat() -> Any:
                 ollama_model,
                 reasoning_level=reasoning_level,
                 rag_required_keywords=rag_keywords,
+                rag_context=ctx,
             )
             # Ensure use_model is not "rag-ollama" - use config model if needed
             if use_model == "rag-ollama":

@@ -28,13 +28,17 @@ class QdrantRagRepository:
         base_url: str | None = None,
         collection_file: str | None = None,
         default_collection: str = "webcrawl",
+        explicit_collection: str | None = None,
     ) -> None:
         self._url = (base_url or get_qdrant_url()).rstrip("/")
         self._collection_file = collection_file
         self._default_collection = default_collection
+        self._explicit_collection = (explicit_collection or "").strip() or None
 
     def get_collection_name(self) -> str:
-        """Return current collection name (from file or default)."""
+        """Return current collection name. Explicit collection overrides file and default."""
+        if self._explicit_collection:
+            return self._explicit_collection
         if self._collection_file and os.path.isfile(self._collection_file):
             try:
                 with open(self._collection_file, encoding="utf-8") as f:

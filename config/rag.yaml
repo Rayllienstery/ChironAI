@@ -27,4 +27,6 @@ rag:
     - "gpt-oss"
     - "gpt-oss-20b"
     - "gpt-oss-120b"
+  ## Enable rerank in proxy (no DB required; uses config rerank model). Default false.
+  proxy_rerank_enabled: false
 

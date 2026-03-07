@@ -25,9 +25,13 @@ if _MODULES_RAG not in sys.path:
     sys.path.insert(0, _MODULES_RAG)
 
 from application.rag.params import RAGDependencies, get_rag_answer_params
-from application.rag.use_cases import answer_question, build_rag_context, prepare_ollama_messages
+from application.rag.use_cases import build_rag_context, prepare_ollama_messages
 from domain.entities.rag import RagQuestionRequest
 
+try:
+    from config import get_proxy_rerank_enabled
+except ImportError:
+    get_proxy_rerank_enabled = lambda: False  # type: ignore[assignment]
 try:
     from rag_service.infrastructure.keyword_collections_sqlite import get_keyword_collections_repository
 except ImportError:
@@ -153,15 +157,23 @@ def create_app(
         
         # If model is "rag-ollama", use config model instead (rag-ollama is just a proxy identifier)
         actual_model = ollama_model if requested_model == "rag-ollama" or requested_model == RAG_MODEL_ID else requested_model
-        
-        # NOTE: RAG is ALWAYS used in this proxy endpoint.
-        # Both prepare_ollama_messages() and answer_question() internally call build_rag_context()
-        # to retrieve relevant context from the RAG database and include it in the system prompt.
-        # There is no way to bypass RAG when using this proxy endpoint.
-        
-        # Proxy: do not read settings from DB here so RAG never fails (e.g. DB path differs).
-        # RAG always runs (embed + search); rerank is off for proxy. Use WebUI /chat for rerank + settings.
-        effective_rerank_client = None
+
+        # Optional: use request-scoped collection and deps when client sends collection_name
+        request_collection = (body.get("collection_name") or "").strip() or None
+        if request_collection:
+            req_params, req_deps = get_rag_answer_params(webui_dir=webui_dir, collection_name=request_collection)
+            prefix = system_prefix if system_prefix is not None else req_params.system_prefix
+            suffix = system_suffix if system_suffix is not None else req_params.system_suffix
+            context_chunk_chars = req_params.context_chunk_chars
+            context_total_chars = req_params.context_total_chars
+            confidence_threshold = req_params.confidence_threshold
+            ollama_model = req_params.model_name
+            rag_repo = req_deps.rag_repo
+            embed_provider = req_deps.embed_provider
+            rerank_client = req_deps.rerank_client
+
+        # Proxy: do not read settings from DB; rerank is configurable via proxy_rerank_enabled.
+        effective_rerank_client = rerank_client if get_proxy_rerank_enabled() else None
         rag_keywords = _get_rag_required_keywords_from_module()
 
         # Build RAG context for logging (always, not just for metadata)
@@ -197,8 +209,7 @@ def create_app(
             rag_context_data = None
         set_proxy_status(STATUS_PREPARING_RESPONSE)
         
-        # Build RAG context if metadata is requested (for response metadata only)
-        # Note: This is separate from the RAG context used in prepare_ollama_messages/answer_question
+        # Reuse the same RAG context for messages (single RAG call per request)
         rag_ctx = rag_ctx_for_log if (include_rag_metadata and rag_ctx_for_log) else None
         try:
             req = RagQuestionRequest(
@@ -207,7 +218,6 @@ def create_app(
                 stream=stream,
                 reasoning_level=reasoning_level,
             )
-            # prepare_ollama_messages ALWAYS uses RAG - it calls build_rag_context() internally
             ollama_messages, use_model = prepare_ollama_messages(
                 req,
                 rag_repo,
@@ -221,6 +231,7 @@ def create_app(
                 ollama_model,
                 reasoning_level=reasoning_level,
                 rag_required_keywords=rag_keywords,
+                rag_context=rag_ctx_for_log,
             )
             # Ensure use_model is not "rag-ollama" - use config model if needed
             if use_model == "rag-ollama":
@@ -314,22 +325,7 @@ def create_app(
             )
         try:
             set_proxy_status(STATUS_RESPONSE)
-            # answer_question ALWAYS uses RAG - it calls build_rag_context() internally
-            answer = answer_question(
-                req,
-                rag_repo,
-                embed_provider,
-                effective_rerank_client,
-                chat_client,
-                prefix,
-                suffix,
-                context_chunk_chars,
-                context_total_chars,
-                confidence_threshold,
-                ollama_model,
-                reasoning_level=reasoning_level,
-                rag_required_keywords=rag_keywords,
-            )
+            content = chat_client.chat(ollama_messages, use_model, stream=False, options=None)
         except Exception as e:
             log_webui_error("rag_routes.chat_completions", e, {"stage": "chat"})
             _log_rag_error("chat", e)
@@ -338,28 +334,28 @@ def create_app(
             set_proxy_status(STATUS_IDLE)
             set_latest_request_seconds(time.time() - start_time)
         _prompt_text = " ".join((m.get("content") or "") for m in ollama_messages if isinstance(m, dict))
-        _total_tokens_approx = max(1, int(len(_prompt_text) / 4)) + max(1, int(len(answer.content or "") / 4))
+        _total_tokens_approx = max(1, int(len(_prompt_text) / 4)) + max(1, int(len(content or "") / 4))
         set_latest_request_total_tokens(_total_tokens_approx)
-        content_len = len(answer.content or "")
-        content_preview = (answer.content or "")[:log_preview]
+        content_len = len(content or "")
+        content_preview = (content or "")[:log_preview]
         if content_len > log_preview:
             content_preview += "..."
         _RAG_LOG.info(
             "RAG response model=%s len=%s preview=%s",
-            answer.model,
+            use_model,
             content_len,
             content_preview,
         )
         choice = {
             "index": 0,
-            "message": {"role": "assistant", "content": answer.content},
-            "finish_reason": answer.finish_reason,
+            "message": {"role": "assistant", "content": content},
+            "finish_reason": "stop",
         }
         response_data = {
             "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
             "object": "chat.completion",
             "created": 0,
-            "model": answer.model,
+            "model": use_model,
             "choices": [choice],
         }
         

@@ -83,7 +83,7 @@ def determine_reasoning_level(
 def framework_filter(query: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     When the user clearly asks for one UI framework, keep only chunks from that framework.
-    Uses url/path to detect UIKit vs SwiftUI docs. Returns all results if no clear preference.
+    Uses url, path, doc_type, and source to detect UIKit vs SwiftUI docs. Returns all results if no clear preference.
     """
     q = (query or "").lower()
     uikit_asked = "uikit" in q and "swiftui" not in q
@@ -96,7 +96,9 @@ def framework_filter(query: str, results: list[dict[str, Any]]) -> list[dict[str
         payload = h.get("payload") or {}
         url = (payload.get("url") or "").lower()
         path = (payload.get("path") or "").lower()
-        if needle in url or needle in path:
+        doc_type = (payload.get("doc_type") or "").lower()
+        source = (payload.get("source") or "").lower()
+        if needle in url or needle in path or needle in doc_type or needle in source:
             filtered.append(h)
     return filtered if filtered else list(results)
 

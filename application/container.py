@@ -42,16 +42,16 @@ def default_rag_repository(
     default_collection: str | None = None,
     collection_name: str | None = None,
 ) -> QdrantRagRepository:
-    """Build default RagRepository (Qdrant)."""
+    """Build default RagRepository (Qdrant). When collection_name is set, it is used as explicit_collection (overrides file)."""
     from config import QDRANT_CONFIG  # local import to avoid circulars
 
-    # collection_name takes precedence over default_collection for explicit selection
-    collection = collection_name or default_collection or QDRANT_CONFIG.get("collection_name", "webcrawl")
+    default = default_collection or QDRANT_CONFIG.get("collection_name", "webcrawl")
 
     return QdrantRagRepository(
         base_url=qdrant_url or get_qdrant_url(),
         collection_file=collection_file,
-        default_collection=collection,
+        default_collection=default,
+        explicit_collection=collection_name,
     )
 
 
