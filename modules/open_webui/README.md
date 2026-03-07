@@ -33,7 +33,7 @@ When the main WebUI checks or controls Open WebUI, it uses:
 | Variable | Default | Description |
 |----------|--------|-------------|
 | `OPEN_WEBUI_CONTAINER_NAME` | `open-webui` | Docker container name for start/stop |
-| `OPEN_WEBUI_URL` | `http://localhost:3000` | URL to open in browser and to check status (health/root) |
+| `OPEN_WEBUI_URL` | `http://localhost:3000` | URL to open in browser (link button) |
 
 Set these if your container has another name or is exposed on a different host/port.
 
@@ -43,7 +43,7 @@ Set these if your container has another name or is exposed on a different host/p
   - **Running** / **Stopped**
   - **Start** / **Stop** — starts or stops the Docker container
   - **Link** — opens Open WebUI in a new tab (`OPEN_WEBUI_URL`)
-- Status is determined by an HTTP request to `OPEN_WEBUI_URL`; start/stop use `docker start` / `docker stop` on `OPEN_WEBUI_CONTAINER_NAME`.
+- **Status is determined by Docker**: the backend runs `docker ps --filter name=<OPEN_WEBUI_CONTAINER_NAME>`. If a matching container is listed (e.g. `open-webui` or `open-webui-open-webui-1`), status is **Running**. Start/stop use `docker start` / `docker stop` on that container name.
 
 ## API (backend)
 

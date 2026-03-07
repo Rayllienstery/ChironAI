@@ -238,10 +238,11 @@ export async function stopOllama() {
 
 export async function getOpenWebUiStatus() {
   const response = await fetch(`${API_BASE}/open-webui/status`);
+  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error('Failed to get Open WebUI status');
+    return { running: false, url: data.url ?? null };
   }
-  return response.json();
+  return { running: Boolean(data.running), url: data.url ?? null };
 }
 
 export async function startOpenWebUi() {

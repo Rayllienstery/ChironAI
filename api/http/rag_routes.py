@@ -348,6 +348,31 @@ def create_app(
         
         return jsonify(response_data)
 
+    # Open WebUI status/start/stop: same pattern as RAG (docker), registered on app so always available
+    from api.http.webui_routes import (
+        open_webui_status,
+        open_webui_start,
+        open_webui_stop,
+        webui_bp,
+    )
+    app.add_url_rule(
+        "/api/webui/open-webui/status",
+        view_func=open_webui_status,
+        methods=["GET"],
+    )
+    app.add_url_rule(
+        "/api/webui/open-webui/start",
+        view_func=open_webui_start,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/api/webui/open-webui/stop",
+        view_func=open_webui_stop,
+        methods=["POST"],
+    )
+
+    app.register_blueprint(webui_bp)
+
     return app
 
 

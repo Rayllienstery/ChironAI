@@ -85,6 +85,10 @@ from domain.services.metadata_inference import extract_versions, infer_metadata
 
 app = Flask(__name__)
 
+# Register shared WebUI API (status, RAG, Ollama, Open WebUI, crawler, etc.)
+from api.http.webui_routes import webui_bp
+app.register_blueprint(webui_bp)
+
 # Global variables (for legacy /crawl UI and logging)
 log_queue = []
 stop_flag = False

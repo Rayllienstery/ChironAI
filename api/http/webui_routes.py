@@ -1380,23 +1380,48 @@ def _get_open_webui_url() -> str:
     return os.getenv("OPEN_WEBUI_URL", "http://localhost:3000").rstrip("/")
 
 
-@webui_bp.route("/open-webui/status", methods=["GET"])
+def _is_open_webui_container_running() -> bool:
+    """Return True if a Docker container whose name matches OPEN_WEBUI_CONTAINER_NAME is running (docker ps)."""
+    name = _get_open_webui_container_name()
+    try:
+        # --filter name=NAME matches if container name contains NAME (e.g. "open-webui" or "open-webui-open-webui-1")
+        proc = run(
+            ["docker", "ps", "--filter", f"name={name}", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return False
+        out = (proc.stdout or "").strip()
+        # One or more lines; accept if our name appears (exact or as part of compose-style name)
+        if not out:
+            return False
+        for line in out.splitlines():
+            line = line.strip()
+            if line == name or name in line or line.endswith(name):
+                return True
+        return False
+    except Exception:
+        return False
+
+
 def open_webui_status() -> Any:
-    """Return Open WebUI container status (reachable at OPEN_WEBUI_URL)."""
+    """Return Open WebUI status from Docker: running if container matching OPEN_WEBUI_CONTAINER_NAME is up."""
     url = _get_open_webui_url()
     status: dict[str, Any] = {"url": url, "running": False}
+    if _is_open_webui_container_running():
+        status["running"] = True
+        status["detected_by"] = "docker"
     try:
-        resp = requests.get(url, timeout=3)
+        resp = requests.get(url, timeout=2)
         status["http_status"] = resp.status_code
-        if resp.ok:
-            status["running"] = True
     except Exception as e:
-        status["error"] = str(e)
-        _WEBUI_LOG.debug("Open WebUI status check failed: %s", e)
+        status["http_error"] = str(e)
     return jsonify(status)
 
 
-@webui_bp.route("/open-webui/start", methods=["POST"])
 def open_webui_start() -> Any:
     """Try to start Open WebUI Docker container."""
     name = _get_open_webui_container_name()
@@ -1405,7 +1430,6 @@ def open_webui_start() -> Any:
     return jsonify({"ok": ok, "output": output, "container": name}), status
 
 
-@webui_bp.route("/open-webui/stop", methods=["POST"])
 def open_webui_stop() -> Any:
     """Try to stop Open WebUI Docker container."""
     name = _get_open_webui_container_name()

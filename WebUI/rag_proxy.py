@@ -23,7 +23,6 @@ from flask import send_from_directory
 
 from config import get_log_level, get_server_port
 from api.http.rag_routes import create_app
-from api.http.webui_routes import webui_bp
 
 logging.basicConfig(
     level=get_log_level(),
@@ -35,10 +34,8 @@ PROJECT_ROOT = os.path.dirname(BASE_DIR)
 # Frontend moved to modules/webui_frontend
 WEBUI_FRONTEND_DIR = os.path.join(PROJECT_ROOT, "modules", "webui_frontend")
 
+# create_app() registers webui_bp, so /api/webui/* (open-webui/status, start, stop, etc.) is available
 app = create_app(webui_dir=BASE_DIR)
-
-# Register WebUI blueprint
-app.register_blueprint(webui_bp)
 
 # Serve static files from webui_frontend
 # Check if React build exists, otherwise fall back to old HTML
