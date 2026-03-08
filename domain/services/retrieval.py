@@ -73,6 +73,26 @@ DOC_TYPE_WEIGHT: dict[str, int] = get_retrieval_dict(
     },
 )
 
+DOC_SCOPE_PREFERRED_FOR_QA: tuple[str, ...] = tuple(
+    get_retrieval_list(
+        "doc_scope_preferred_for_qa",
+        ["api_symbol", "guide", "tutorial"],
+    )
+)
+
+DOC_SCOPE_WEIGHT: dict[str, int] = get_retrieval_dict(
+    "doc_scope_weight",
+    {
+        "api_symbol": 2,
+        "guide": 1,
+        "tutorial": 1,
+        "discussion": 0,
+        "articles": 0,
+        "books": 0,
+        "forums": -1,
+    },
+)
+
 MULTI_CHUNK_KEYWORDS: tuple[str, ...] = tuple(
     get_retrieval_list(
         "multi_chunk_keywords",
@@ -274,22 +294,20 @@ def need_more_chunks(question: str) -> bool:
 
 def build_qdrant_filter(question: str) -> dict[str, Any] | None:
     """
-    Build Qdrant metadata filter for doc_type-preferred retrieval.
+    Build Qdrant metadata filter for doc_type- and doc_scope-preferred retrieval.
 
     Behavior:
     - For version questions, returns None (version-focused search is handled separately).
-    - Otherwise, returns a `{\"should\": [{\"key\": \"doc_type\", \"match\": {\"value\": dt}}, ...]}` filter
-      to prefer points with doc_type in DOC_TYPE_PREFERRED_FOR_QA.
+    - Otherwise, returns a \"should\" filter so points with doc_type in DOC_TYPE_PREFERRED_FOR_QA
+      or doc_scope in DOC_SCOPE_PREFERRED_FOR_QA are preferred.
     """
     if is_version_question(question):
         return None
-    if not DOC_TYPE_PREFERRED_FOR_QA:
-        return None
-
-    conditions = [
-        {"key": "doc_type", "match": {"value": dt}}
-        for dt in DOC_TYPE_PREFERRED_FOR_QA
-    ]
+    conditions: list[dict[str, Any]] = []
+    for dt in DOC_TYPE_PREFERRED_FOR_QA:
+        conditions.append({"key": "doc_type", "match": {"value": dt}})
+    for ds in DOC_SCOPE_PREFERRED_FOR_QA:
+        conditions.append({"key": "doc_scope", "match": {"value": ds}})
     if not conditions:
         return None
     return {"should": conditions}
@@ -307,10 +325,29 @@ def doc_type_priority(hit: dict[str, Any]) -> int:
     return int(DOC_TYPE_WEIGHT.get(doc_type, 0))
 
 
+def doc_scope_priority(hit: dict[str, Any]) -> int:
+    """
+    Compute priority score for a hit based on its doc_scope (source type).
+
+    Higher scores mean the source type is preferred for Q&A (api_symbol, guide,
+    tutorial) versus lower-value types like forums or unknown.
+    """
+    payload = hit.get("payload") or {}
+    doc_scope = (payload.get("doc_scope") or "").lower()
+    return int(DOC_SCOPE_WEIGHT.get(doc_scope, 0))
+
+
+def combined_doc_priority(hit: dict[str, Any]) -> int:
+    """Combined priority from doc_type and doc_scope for sorting retrieval results."""
+    return doc_type_priority(hit) + doc_scope_priority(hit)
+
+
 __all__ = [
     "RETRIEVAL_STOP_WORDS",
     "DOC_TYPE_PREFERRED_FOR_QA",
     "DOC_TYPE_WEIGHT",
+    "DOC_SCOPE_PREFERRED_FOR_QA",
+    "DOC_SCOPE_WEIGHT",
     "MULTI_CHUNK_KEYWORDS",
     "RERANK_MAX_CANDIDATES",
     "FINAL_CONTEXT_K",
@@ -326,5 +363,7 @@ __all__ = [
     "need_more_chunks",
     "build_qdrant_filter",
     "doc_type_priority",
+    "doc_scope_priority",
+    "combined_doc_priority",
 ]
 

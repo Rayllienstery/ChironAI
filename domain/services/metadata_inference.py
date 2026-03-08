@@ -45,6 +45,7 @@ def infer_metadata(
     - domain: framework_guide / api_ref / language_guide / app_store / tooling / ...
     - product: ios / ipados / macos / tvos / watchos / visionos / server / tooling / unknown
     - doc_type: documentation / howto / sample_code / policy / legal / marketing / help_center
+    - doc_scope: api_symbol / guide / tutorial / discussion (and future: articles, books, forums)
 
     Heuristics are intentionally conservative.
     """
@@ -53,6 +54,7 @@ def infer_metadata(
     domain = "documentation"
     product = "unknown"
     doc_type = "documentation"
+    doc_scope = ""
 
     lower_name = (filename or "").lower()
     lower_url = (url or "").lower()
@@ -333,16 +335,124 @@ def infer_metadata(
             if product == "unknown":
                 product = "ios"
 
+    # Infer doc_scope for retrieval (source type: api_symbol, guide, tutorial, discussion).
+    if not doc_scope:
+        if "/documentation/" in lower_url and section_path:
+            first = (section_path[0] or "").strip()
+            if first and ("(" in first or ")" in first or first in ("init", "deinit")):
+                doc_scope = "api_symbol"
+        if not doc_scope and any(k in lower_url for k in ("guide", "guides", "overview")):
+            doc_scope = "guide"
+        if not doc_scope and any(k in lower_url for k in ("tutorial", "tutorials", "getting-started", "getting_started")):
+            doc_scope = "tutorial"
+        if not doc_scope and any(k in lower_name for k in ("guide", "guides", "overview")):
+            doc_scope = doc_scope or "guide"
+        if not doc_scope and any(k in lower_name for k in ("tutorial", "tutorials", "getting-started")):
+            doc_scope = doc_scope or "tutorial"
+
     return {
         "language": language,
         "technology": technology,
         "domain": domain,
         "product": product,
         "doc_type": doc_type,
+        "doc_scope": doc_scope,
     }
+
+
+# Normalize Apple doc section headings to stable slugs for filtering (e.g. "Return Value" -> "return_value").
+_SECTION_NORMALIZE: dict[str, str] = {
+    "return value": "return_value",
+    "return values": "return_value",
+    "discussion": "discussion",
+    "parameters": "parameters",
+    "parameter": "parameters",
+    "overview": "overview",
+    "syntax": "syntax",
+    "example": "example",
+    "examples": "example",
+    "description": "description",
+    "declaration": "declaration",
+    "see also": "see_also",
+    "topics": "topics",
+}
+
+
+try:
+    from config import get_indexing_int  # type: ignore
+except ImportError:
+    get_indexing_int = lambda k, d: d  # noqa: E731
+
+# Optimal prefix length 40-80 chars to improve retrieval without noisy embedding.
+EMBED_PREFIX_MAX_CHARS: int = get_indexing_int("embed_prefix_max_chars", 80)
+
+
+def estimate_token_count(text: str) -> int:
+    """
+    Approximate token count for context assembly and chunk balancing.
+    Uses word count * 1.3 (typical for English); document as approximate.
+    """
+    if not text or not text.strip():
+        return 0
+    words = len((text or "").split())
+    return max(1, int(words * 1.3))
+
+
+def build_embed_prefix(page_meta: dict[str, str] | None, section_path: list[str]) -> str:
+    """
+    Build a short semantic prefix for embedding (40-80 chars) to improve retrieval.
+    Format: "Framework API / Function: symbol / Section: section". No long sentences.
+    Used only at embed time; payload stores original text.
+    """
+    if not page_meta:
+        page_meta = {}
+    parts: list[str] = []
+    framework = (page_meta.get("framework") or "").strip()
+    if framework:
+        # Short label only; avoid full framework description.
+        parts.append(f"{framework} API" if "API" not in framework else framework)
+    display = infer_chunk_display_meta(section_path)
+    symbol = display.get("symbol") or ""
+    section = display.get("section") or ""
+    if symbol:
+        parts.append(f"Function: {symbol}")
+    if section:
+        parts.append(f"Section: {section}")
+    prefix = " / ".join(parts)
+    max_chars = EMBED_PREFIX_MAX_CHARS
+    if len(prefix) > max_chars:
+        prefix = prefix[: max_chars - 3].rstrip()
+        # Cut at last space to avoid mid-word.
+        last_sp = prefix.rfind(" ")
+        if last_sp > max_chars // 2:
+            prefix = prefix[:last_sp]
+        prefix = prefix.rstrip(" /")
+    return (prefix + " ") if prefix else ""
+
+
+def infer_chunk_display_meta(section_path: list[str]) -> dict[str, str]:
+    """
+    Infer optional symbol and section for a chunk from its section_path.
+    Used for payload fields: symbol (e.g. "mapValues(_:)") and section (e.g. "parameters").
+    Returns dict with optional "symbol" and "section" keys (only set when applicable).
+    """
+    result: dict[str, str] = {}
+    if not section_path:
+        return result
+    first = (section_path[0] or "").strip()
+    if first and ("(" in first or ")" in first or first in ("init", "deinit")):
+        result["symbol"] = first
+    last = (section_path[-1] or "").strip() if section_path else ""
+    if last:
+        key = last.lower().strip()
+        result["section"] = _SECTION_NORMALIZE.get(key, key.replace(" ", "_"))
+    return result
 
 
 __all__ = [
     "extract_versions",
     "infer_metadata",
+    "infer_chunk_display_meta",
+    "build_embed_prefix",
+    "estimate_token_count",
 ]

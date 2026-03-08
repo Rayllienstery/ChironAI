@@ -455,6 +455,16 @@ export async function createCollection(config) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || 'Failed to create collection');
   }
+  const data = await response.json();
+  return { ...data, job_id: data.job_id, statusCode: response.status };
+}
+
+export async function getCreateCollectionStatus(jobId) {
+  const response = await fetch(`${API_BASE}/crawler/create-collection-status/${encodeURIComponent(jobId)}`);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to get job status');
+  }
   return response.json();
 }
 

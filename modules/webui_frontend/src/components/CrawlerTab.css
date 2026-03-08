@@ -342,6 +342,32 @@
   overflow-y: auto;
 }
 
+.create-collection-progress {
+  margin-bottom: var(--md-sys-spacing-lg);
+  padding: var(--md-sys-spacing-md);
+  background: var(--md-sys-color-surface-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.create-collection-progress .progress-text {
+  font: var(--md-sys-typescale-body-medium-font);
+  color: var(--md-sys-color-on-surface);
+  margin-bottom: var(--md-sys-spacing-xs);
+}
+
+.create-collection-progress .progress-bar-wrap {
+  height: 8px;
+  background: var(--md-sys-color-outline-variant);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.create-collection-progress .progress-bar-fill {
+  height: 100%;
+  background: var(--md-sys-color-primary);
+  transition: width 0.2s ease;
+}
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;

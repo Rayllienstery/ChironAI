@@ -2,6 +2,13 @@
 Ingest local Markdown files (e.g. from Apple-Developer-Documentation-Offline-Archive)
 into Qdrant using Ollama embedding model.
 
+This script uses LangChain RecursiveCharacterTextSplitter (chunk_size, chunk_overlap).
+It does NOT use the domain chunking (section_path, code/table boundaries, <!-- meta -->
+parsing). For Apple documentation, the recommended path is:
+- WebUI app: python app.py index (or "Index" from UI), or
+- WebUI API: "Create collection from sources" (RagTab),
+which use domain.services.chunking with section_path, meta parsing, and unified config.
+
 Embedding model and endpoint are shared with the main RAG pipeline:
 - Model name: taken from RAG_EMBED_MODEL (defaults to "mxbai-embed-large").
 - Embed URL: taken from OLLAMA_EMBED_URL (defaults to "http://localhost:11434/api/embed").

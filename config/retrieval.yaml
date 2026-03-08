@@ -48,6 +48,20 @@ retrieval:
     release_notes: -2
     news: -2
   
+  # Doc scope (source type) preferences for QA: api_symbol, guide, tutorial, etc.
+  doc_scope_preferred_for_qa:
+    - api_symbol
+    - guide
+    - tutorial
+  doc_scope_weight:
+    api_symbol: 2
+    guide: 1
+    tutorial: 1
+    discussion: 0
+    articles: 0
+    books: 0
+    forums: -1
+  
   # Keywords that suggest user needs more chunks
   multi_chunk_keywords:
     - compare

@@ -46,7 +46,8 @@
   cursor: pointer;
 }
 
-.setting-warning {
+.setting-warning,
+.setting-hint {
   margin: var(--md-sys-spacing-xs) 0 0 0;
   font-size: 0.875rem;
   color: var(--md-sys-color-on-surface-variant, #666);

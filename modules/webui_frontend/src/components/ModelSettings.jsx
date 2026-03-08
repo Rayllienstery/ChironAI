@@ -15,6 +15,7 @@ function ModelSettings({ sessionId }) {
     code_only: false,
     include_rag_metadata: true,
     rerank_for_rag: false,
+    rerank_model: '',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -189,6 +190,24 @@ function ModelSettings({ sessionId }) {
           </label>
           <p className="setting-warning">
             Improves answer quality but slows down requests; ideally use a dedicated rerank model.
+          </p>
+        </div>
+
+        <div className="form-group">
+          <label>Rerank Model</label>
+          <select
+            value={settings.rerank_model ?? ''}
+            onChange={(e) => handleChange('rerank_model', e.target.value)}
+          >
+            <option value="">Default (from config)</option>
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          <p className="setting-hint">
+            Model used for reranking retrieved chunks when &quot;Rerank for RAG&quot; is on. Same Ollama models as chat.
           </p>
         </div>
 

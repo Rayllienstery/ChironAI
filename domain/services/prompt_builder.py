@@ -103,6 +103,39 @@ def framework_filter(query: str, results: list[dict[str, Any]]) -> list[dict[str
     return filtered if filtered else list(results)
 
 
+def _truncate_at_boundary(text: str, max_chars: int) -> str:
+    """
+    Truncate text to at most max_chars at a sentence or line boundary.
+    Avoids cutting in the middle of a sentence or code line.
+    """
+    if len(text) <= max_chars:
+        return text
+    chunk = text[: max_chars + 1]
+    # If looks like code (fenced block or many lines without sentence endings), cut at last newline.
+    if "```" in chunk or chunk.count("\n") > chunk.count(". ") + chunk.count(".\n"):
+        last_nl = chunk.rfind("\n")
+        if last_nl > max_chars // 2:
+            return chunk[:last_nl + 1].rstrip()
+    # Prefer sentence boundary: . ! ? followed by space or newline
+    sentence_end = max(
+        chunk.rfind(". "),
+        chunk.rfind(".\n"),
+        chunk.rfind("! "),
+        chunk.rfind("!\n"),
+        chunk.rfind("? "),
+        chunk.rfind("?\n"),
+    )
+    if sentence_end > max_chars // 2:
+        return chunk[: sentence_end + 1].strip()
+    # Else cut at last newline or space
+    last_nl = chunk.rfind("\n")
+    last_sp = chunk.rfind(" ")
+    cut = max(last_nl, last_sp)
+    if cut > max_chars // 2:
+        return chunk[: cut + 1].rstrip()
+    return chunk[:max_chars].rstrip()
+
+
 def build_context_block(
     hits: list[dict[str, Any]],
     chunk_chars: int,
@@ -110,6 +143,7 @@ def build_context_block(
 ) -> tuple[str, list[dict[str, Any]], float]:
     """
     Build RAG context text and chunks_info from search hits.
+    Truncates each chunk at sentence (or line) boundaries to avoid cutting mid-sentence/code.
     Returns (context_text, chunks_info, max_score).
     """
     if not hits:
@@ -125,11 +159,10 @@ def build_context_block(
         txt = (payload.get("text") or "").strip()
         if not txt:
             continue
-        snippet = txt[:chunk_chars]
         remaining = total_chars - total
         if remaining <= 0:
             break
-        snippet = snippet[:remaining]
+        snippet = _truncate_at_boundary(txt, min(chunk_chars, remaining))
         if not snippet:
             continue
         parts.append(snippet)

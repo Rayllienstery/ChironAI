@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getCrawlerSources, getCrawlerSourcePages, getRagCollections, createCollection, crawlSource, getCrawlStatus, addCrawlerSource, getCrawlerSource, updateCrawlerSource } from '../services/api';
+import { getCrawlerSources, getCrawlerSourcePages, getRagCollections, createCollection, getCreateCollectionStatus, crawlSource, getCrawlStatus, addCrawlerSource, getCrawlerSource, updateCrawlerSource } from '../services/api';
 import './CrawlerTab.css';
 
 function CrawlerTab() {
@@ -20,6 +20,8 @@ function CrawlerTab() {
     top_k: 4,
   });
   const [creating, setCreating] = useState(false);
+  const [createJobId, setCreateJobId] = useState(null);
+  const [createProgress, setCreateProgress] = useState(null);
   const [crawlingSources, setCrawlingSources] = useState(new Set());
   const [showAddSourceModal, setShowAddSourceModal] = useState(false);
   const [addSourceForm, setAddSourceForm] = useState({
@@ -70,6 +72,43 @@ function CrawlerTab() {
     loadSources();
     loadCollections();
   }, []);
+
+  // Poll create-collection job progress
+  useEffect(() => {
+    if (!createJobId) return;
+    const interval = setInterval(async () => {
+      try {
+        const job = await getCreateCollectionStatus(createJobId);
+        setCreateProgress({
+          status: job.status,
+          processed_pages: job.processed_pages ?? 0,
+          total_pages: job.total_pages ?? 0,
+          indexed_pages: job.indexed_pages ?? 0,
+          total_chunks: job.total_chunks ?? 0,
+          skipped_pages: job.skipped_pages ?? 0,
+          error: job.error,
+          statistics: job.statistics,
+        });
+        if (job.status === 'success') {
+          setCreateJobId(null);
+          setCreating(false);
+          setShowCreateModal(false);
+          setCreateForm({ collection_name: '', source_ids: [], chunk_max_size: 1200, chunk_min_size: 300, confidence_threshold: 0.75, top_k: 4 });
+          await loadCollections();
+          alert(`Collection created successfully! Indexed ${job.indexed_pages ?? 0} pages, ${job.total_chunks ?? 0} chunks.`);
+        } else if (job.status === 'failed') {
+          setCreateJobId(null);
+          setCreating(false);
+          setError(job.error || 'Collection creation failed');
+        }
+      } catch (e) {
+        setCreateJobId(null);
+        setCreating(false);
+        setError(e.message);
+      }
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [createJobId]);
 
   // Poll crawl status for sources that are crawling
   useEffect(() => {
@@ -153,23 +192,21 @@ function CrawlerTab() {
 
     setCreating(true);
     setError(null);
+    setCreateProgress(null);
     try {
-      await createCollection(createForm);
-      setShowCreateModal(false);
-      setCreateForm({
-        collection_name: '',
-        source_ids: [],
-        chunk_max_size: 1200,
-        chunk_min_size: 300,
-        confidence_threshold: 0.75,
-        top_k: 4,
-      });
-      await loadCollections();
-      // Show success message
-      alert('Collection created successfully!');
+      const result = await createCollection(createForm);
+      if (result.job_id) {
+        setCreateJobId(result.job_id);
+        setCreateProgress({ status: 'running', processed_pages: 0, total_pages: 0, indexed_pages: 0, total_chunks: 0 });
+      } else {
+        setShowCreateModal(false);
+        setCreateForm({ collection_name: '', source_ids: [], chunk_max_size: 1200, chunk_min_size: 300, confidence_threshold: 0.75, top_k: 4 });
+        await loadCollections();
+        alert('Collection created successfully!');
+        setCreating(false);
+      }
     } catch (e) {
       setError(e.message);
-    } finally {
       setCreating(false);
     }
   };
@@ -476,6 +513,25 @@ function CrawlerTab() {
               </button>
             </div>
             <div className="modal-body">
+              {createProgress && (
+                <div className="create-collection-progress">
+                  <div className="progress-text">
+                    {createProgress.status === 'running'
+                      ? `Indexed ${createProgress.indexed_pages} / ${createProgress.total_pages || '…'} pages (${createProgress.total_chunks} chunks)`
+                      : createProgress.status === 'success'
+                        ? `Done: ${createProgress.indexed_pages} pages, ${createProgress.total_chunks} chunks`
+                        : null}
+                  </div>
+                  {createProgress.total_pages > 0 && createProgress.status === 'running' && (
+                    <div className="progress-bar-wrap">
+                      <div
+                        className="progress-bar-fill"
+                        style={{ width: `${Math.round((100 * createProgress.processed_pages) / createProgress.total_pages)}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="form-group">
                 <label>Collection Name *</label>
                 <input

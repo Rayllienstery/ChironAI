@@ -31,6 +31,7 @@ from domain.services.retrieval import (
     MULTI_CHUNK_TOP_K,
     RERANK_MAX_CANDIDATES,
     build_qdrant_filter,
+    combined_doc_priority,
     doc_type_priority,
     is_version_question,
     need_more_chunks,
@@ -99,7 +100,7 @@ def search_rag(
     timings["search_s"] += time.perf_counter() - t0
     final_k = MULTI_CHUNK_FINAL_K if need_more_chunks(question) else FINAL_CONTEXT_K
     if not is_version_question(question):
-        results.sort(key=doc_type_priority, reverse=True)
+        results.sort(key=combined_doc_priority, reverse=True)
         t0 = time.perf_counter()
         results = _apply_rerank(question, results, rerank_client, final_k)
         timings["rerank_s"] += time.perf_counter() - t0
@@ -152,7 +153,7 @@ def search_rag(
 
     if ios_set or swift_set:
         results.sort(key=_score, reverse=True)
-        results.sort(key=doc_type_priority, reverse=True)
+        results.sort(key=combined_doc_priority, reverse=True)
     t0 = time.perf_counter()
     results = _apply_rerank(question, results, rerank_client, final_k)
     timings["rerank_s"] += time.perf_counter() - t0

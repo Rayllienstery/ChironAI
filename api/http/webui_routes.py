@@ -16,7 +16,10 @@ from subprocess import run, Popen
 from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+import threading
+import uuid
 
 from flask import Blueprint, jsonify, request
 
@@ -29,6 +32,7 @@ _MODULES_RAG = os.path.join(_ROOT, "modules", "rag_service")
 if _MODULES_RAG not in sys.path:
     sys.path.insert(0, _MODULES_RAG)
 
+from application.container import default_rerank_client
 from application.rag.params import RAGDependencies, get_rag_answer_params
 from application.rag.use_cases import build_rag_context, prepare_ollama_messages
 
@@ -37,7 +41,7 @@ try:
 except ImportError:
     get_keyword_collections_repository = None  # type: ignore[assignment]
 
-from config import get_ollama_chat_model, get_qdrant_url, get_rag_float, get_rag_int, get_rag_prompt_name
+from config import get_ollama_chat_model, get_ollama_rerank_model, get_qdrant_url, get_rag_float, get_rag_int, get_rag_prompt_name
 from config.rag_prompts import (
     get_rag_system_prompt_swift_mode,
     list_rag_prompt_names,
@@ -98,7 +102,14 @@ from domain.services.chunking import (
     chunk_quality_ok,
     split_markdown_into_chunks,
 )
-from domain.services.metadata_inference import extract_versions, infer_metadata
+from domain.services.markdown_meta import parse_and_strip_meta_block
+from domain.services.metadata_inference import (
+    build_embed_prefix,
+    estimate_token_count,
+    extract_versions,
+    infer_chunk_display_meta,
+    infer_metadata,
+)
 
 # Import config for embeddings
 try:
@@ -682,17 +693,24 @@ def webui_chat() -> Any:
         rerank_client = deps.rerank_client
         chat_client = deps.chat_client
         
-        # Rerank on/off from model settings (default off)
+        # Rerank on/off and model from model settings (default off)
         use_rerank = False
+        rerank_model_override: str | None = None
         try:
             settings_repo = get_settings_repository()
             proxy_settings_json = settings_repo.get_app_setting("proxy_settings")
             if proxy_settings_json:
                 proxy_settings = json.loads(proxy_settings_json)
                 use_rerank = bool(proxy_settings.get("rerank_for_rag", False))
+                rm = (proxy_settings.get("rerank_model") or "").strip() or None
+                if rm:
+                    rerank_model_override = rm
         except Exception:
             pass
-        effective_rerank_client = rerank_client if use_rerank else None
+        if use_rerank:
+            effective_rerank_client = default_rerank_client(model=rerank_model_override)
+        else:
+            effective_rerank_client = None
         
         last_user = last_user_content(messages)
         context_length = len(last_user.split())
@@ -853,6 +871,7 @@ def get_model_settings() -> Any:
             "code_only": False,
             "include_rag_metadata": True,
             "rerank_for_rag": False,
+            "rerank_model": get_ollama_rerank_model(),
         }
         
         # Merge stored settings if available
@@ -1001,16 +1020,23 @@ def tester_chat() -> Any:
             rag_repo = deps.rag_repo
             embed_provider = deps.embed_provider
             rerank_client = deps.rerank_client
-            # Rerank on/off from model settings (default off)
+            # Rerank on/off and model from model settings (default off)
             use_rerank_tester = False
+            rerank_model_tester: str | None = None
             try:
                 proxy_settings_json = settings_repo.get_app_setting("proxy_settings")
                 if proxy_settings_json:
                     proxy_settings = json.loads(proxy_settings_json)
                     use_rerank_tester = bool(proxy_settings.get("rerank_for_rag", False))
+                    rm = (proxy_settings.get("rerank_model") or "").strip() or None
+                    if rm:
+                        rerank_model_tester = rm
             except Exception:
                 pass
-            effective_rerank_client = rerank_client if use_rerank_tester else None
+            if use_rerank_tester:
+                effective_rerank_client = default_rerank_client(model=rerank_model_tester)
+            else:
+                effective_rerank_client = None
             
             prefix, suffix = get_rag_system_prompt_swift_mode(prompt_name, swift_mode)
             
@@ -1775,7 +1801,11 @@ def _ensure_collection_with_name(qclient: QdrantClient, collection_name: str, di
         qclient.get_collection(collection_name)
         # Collection exists, ensure payload indexes
         try:
-            for field in ["language", "technology", "domain", "product", "doc_type"]:
+            index_fields = [
+                "language", "technology", "domain", "product", "doc_type", "doc_scope",
+                "symbol", "framework", "section",
+            ]
+            for field in index_fields:
                 try:
                     qclient.create_payload_index(
                         collection_name=collection_name,
@@ -1797,9 +1827,24 @@ def _ensure_collection_with_name(qclient: QdrantClient, collection_name: str, di
             vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
         )
         _WEBUI_LOG.info(f"Created Qdrant collection '{collection_name}' (dim={dim})")
+        # Ensure payload indexes on new collection
+        for field in ["language", "technology", "domain", "product", "doc_type", "doc_scope", "symbol", "framework", "section"]:
+            try:
+                qclient.create_payload_index(
+                    collection_name=collection_name,
+                    field_name=field,
+                    field_schema=PayloadSchemaType.KEYWORD,
+                )
+            except Exception:
+                pass
     except Exception as e:
         _WEBUI_LOG.error(f"Failed to create collection '{collection_name}': {e}")
         raise
+
+
+# In-memory job progress for create-collection (job_id -> { status, progress, ... })
+_collection_jobs: dict[str, dict[str, Any]] = {}
+_collection_jobs_lock = threading.Lock()
 
 
 def _create_collection_from_sources(
@@ -1807,10 +1852,12 @@ def _create_collection_from_sources(
     source_ids: list[str],
     chunk_max_size: int,
     chunk_min_size: int,
+    on_progress: Callable[[int, int, dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """
     Create a Qdrant collection by indexing pages from specified sources.
     Returns statistics about the indexing process.
+    If on_progress is set, called as on_progress(processed_count, total_pages, stats) after each page.
     """
     sources_dir = _get_crawler_sources_dir()
     qdrant_url = get_qdrant_url().rstrip("/")
@@ -1853,6 +1900,9 @@ def _create_collection_from_sources(
     if not candidates:
         return stats
     
+    processed = 0
+    total_pages = len(candidates)
+
     # Process each page
     for source_id, filename, entry, pages_dir, source_meta in candidates:
         page_path = os.path.join(pages_dir, filename)
@@ -1863,16 +1913,23 @@ def _create_collection_from_sources(
         except Exception as e:
             stats["skipped_pages"] += 1
             stats["errors"].append(f"Failed to read {source_id}/{filename}: {e}")
+            processed += 1
+            if on_progress:
+                on_progress(processed, total_pages, dict(stats))
             continue
-        
+
+        page_meta, md = parse_and_strip_meta_block(md)
         # Simple validation - skip if too short
         if len(md.strip()) < 400:
             stats["skipped_pages"] += 1
+            processed += 1
+            if on_progress:
+                on_progress(processed, total_pages, dict(stats))
             continue
-        
+
         # Clean markdown
         md = _strip_markdown_simple(md)
-        
+
         # Split into chunks
         try:
             chunks_with_paths = split_markdown_into_chunks(
@@ -1882,54 +1939,84 @@ def _create_collection_from_sources(
         except Exception as e:
             stats["skipped_pages"] += 1
             stats["errors"].append(f"Failed to chunk {source_id}/{filename}: {e}")
+            processed += 1
+            if on_progress:
+                on_progress(processed, total_pages, dict(stats))
             continue
-        
+
         if not chunks_with_paths:
             stats["skipped_pages"] += 1
+            processed += 1
+            if on_progress:
+                on_progress(processed, total_pages, dict(stats))
             continue
-        
+
         chunk_texts = [t for t, _ in chunks_with_paths]
-        
+        embed_texts = [
+            build_embed_prefix(page_meta, sp) + t
+            for t, sp in chunks_with_paths
+        ]
+
         # Get embeddings
         try:
-            embeddings = _get_embeddings_simple(chunk_texts)
+            embeddings = _get_embeddings_simple(embed_texts)
         except Exception as e:
             stats["skipped_pages"] += 1
             stats["errors"].append(f"Failed to get embeddings for {source_id}/{filename}: {e}")
+            processed += 1
+            if on_progress:
+                on_progress(processed, total_pages, dict(stats))
             continue
-        
+
         if not embeddings:
             stats["skipped_pages"] += 1
+            processed += 1
+            if on_progress:
+                on_progress(processed, total_pages, dict(stats))
             continue
-        
+
         dim = len(embeddings[0])
         if first_dim is None:
             first_dim = dim
             _ensure_collection_with_name(qclient, collection_name, first_dim)
-        
+
         if dim != first_dim:
             stats["skipped_pages"] += 1
             stats["errors"].append(f"Dimension mismatch for {source_id}/{filename}: {dim} != {first_dim}")
+            processed += 1
+            if on_progress:
+                on_progress(processed, total_pages, dict(stats))
             continue
         
         # Create points
+        url_for_meta = page_meta.get("url") or entry.get("url")
         for (chunk_text, section_path), vec in zip(chunks_with_paths, embeddings):
             section_path_str = ":".join(section_path) if section_path else ""
             chunk_hash = _sha256(f"{source_id}:{filename}:{section_path_str}:{chunk_text}")
             point_id = _point_id_from_hash(chunk_hash)
             
             ios_versions, swift_versions = extract_versions(chunk_text)
+            if page_meta.get("ios_versions"):
+                ios_versions = sorted(set(ios_versions + page_meta["ios_versions"]))
+            if page_meta.get("swift_versions"):
+                swift_versions = sorted(set(swift_versions + page_meta["swift_versions"]))
             meta_extra = infer_metadata(
                 source_id=source_id,
                 filename=filename,
-                url=entry.get("url"),
+                url=url_for_meta,
                 section_path=section_path,
                 text=chunk_text,
             )
-            
+            if page_meta.get("framework"):
+                meta_extra["technology"] = page_meta["framework"].lower()
+            if page_meta.get("doc_kind"):
+                meta_extra["doc_type"] = page_meta["doc_kind"]
+            if page_meta.get("doc_scope"):
+                meta_extra["doc_scope"] = page_meta["doc_scope"]
+            display_meta = infer_chunk_display_meta(section_path)
             payload = {
                 "source": source_id,
-                "url": entry.get("url", ""),
+                "url": url_for_meta or entry.get("url", ""),
                 "path": f"pages/{filename}",
                 "chunk_id": chunk_hash,
                 "text": chunk_text,
@@ -1939,7 +2026,14 @@ def _create_collection_from_sources(
                 "version": source_meta.get("last_crawled"),
                 **meta_extra,
             }
-            
+            if page_meta.get("framework"):
+                payload["framework"] = page_meta["framework"]
+            if display_meta.get("symbol"):
+                payload["symbol"] = display_meta["symbol"]
+            if display_meta.get("section"):
+                payload["section"] = display_meta["section"]
+            payload["token_count"] = estimate_token_count(chunk_text)
+
             upsert_batch.append(
                 PointStruct(
                     id=point_id,
@@ -1959,6 +2053,10 @@ def _create_collection_from_sources(
                 stats["errors"].append(f"Failed to upsert batch: {e}")
         
         stats["indexed_pages"] += 1
+
+        processed += 1
+        if on_progress:
+            on_progress(processed, total_pages, dict(stats))
     
     # Flush remaining batch
     if upsert_batch:
@@ -2387,9 +2485,72 @@ def update_crawler_source(source_id: str) -> Any:
         return jsonify({"error": str(e)}), 500
 
 
+def _run_create_collection_job(
+    job_id: str,
+    collection_name: str,
+    source_ids: list[str],
+    chunk_max_size: int,
+    chunk_min_size: int,
+) -> None:
+    """Background task: run indexing and update job progress."""
+    def on_progress(processed: int, total: int, st: dict[str, Any]) -> None:
+        with _collection_jobs_lock:
+            if job_id in _collection_jobs:
+                _collection_jobs[job_id]["processed_pages"] = processed
+                _collection_jobs[job_id]["total_pages"] = total
+                _collection_jobs[job_id]["indexed_pages"] = st.get("indexed_pages", 0)
+                _collection_jobs[job_id]["total_chunks"] = st.get("total_chunks", 0)
+                _collection_jobs[job_id]["skipped_pages"] = st.get("skipped_pages", 0)
+                _collection_jobs[job_id]["errors"] = list(st.get("errors", [])[-5:])
+
+    try:
+        stats = _create_collection_from_sources(
+            collection_name=collection_name,
+            source_ids=source_ids,
+            chunk_max_size=chunk_max_size,
+            chunk_min_size=chunk_min_size,
+            on_progress=on_progress,
+        )
+        with _collection_jobs_lock:
+            if job_id in _collection_jobs:
+                _collection_jobs[job_id]["status"] = "success"
+                _collection_jobs[job_id]["statistics"] = stats
+                _collection_jobs[job_id]["processed_pages"] = stats.get("total_pages", 0)
+                _collection_jobs[job_id]["indexed_pages"] = stats.get("indexed_pages", 0)
+                _collection_jobs[job_id]["total_chunks"] = stats.get("total_chunks", 0)
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.create_collection job", exc_info=True)
+        with _collection_jobs_lock:
+            if job_id in _collection_jobs:
+                _collection_jobs[job_id]["status"] = "failed"
+                _collection_jobs[job_id]["error"] = str(e)
+
+
+@webui_bp.route("/crawler/create-collection-status/<job_id>", methods=["GET"])
+def get_create_collection_status(job_id: str) -> Any:
+    """Return progress or result of a create-collection job."""
+    with _collection_jobs_lock:
+        job = _collection_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found", "job_id": job_id}), 404
+    return jsonify({
+        "job_id": job_id,
+        "status": job.get("status", "running"),
+        "collection_name": job.get("collection_name", ""),
+        "processed_pages": job.get("processed_pages", 0),
+        "total_pages": job.get("total_pages", 0),
+        "indexed_pages": job.get("indexed_pages", 0),
+        "total_chunks": job.get("total_chunks", 0),
+        "skipped_pages": job.get("skipped_pages", 0),
+        "errors": job.get("errors", []),
+        "statistics": job.get("statistics"),
+        "error": job.get("error"),
+    })
+
+
 @webui_bp.route("/crawler/create-collection", methods=["POST"])
 def create_collection() -> Any:
-    """Create a new Qdrant collection with specified configuration."""
+    """Start creating a Qdrant collection (async). Returns job_id; poll create-collection-status for progress."""
     try:
         body = request.get_json(force=True, silent=True) or {}
         collection_name = body.get("collection_name", "").strip()
@@ -2398,29 +2559,25 @@ def create_collection() -> Any:
         chunk_min_size = int(body.get("chunk_min_size", 300))
         confidence_threshold = float(body.get("confidence_threshold", 0.75))
         top_k = int(body.get("top_k", 4))
-        
+
         if not collection_name:
             return jsonify({"error": "collection_name is required"}), 400
-        
+
         if not source_ids:
             return jsonify({"error": "At least one source_id is required"}), 400
-        
-        # Validate collection name format (Qdrant allows alphanumeric, underscore, hyphen)
+
         import re
         if not re.match(r"^[a-zA-Z0-9_-]+$", collection_name):
             return jsonify({"error": "Collection name must contain only alphanumeric characters, underscores, and hyphens"}), 400
-        
-        # Check if collection already exists
+
         qdrant_url = get_qdrant_url().rstrip("/")
         qclient = QdrantClient(url=qdrant_url)
         try:
             qclient.get_collection(collection_name)
             return jsonify({"error": f"Collection '{collection_name}' already exists"}), 409
         except Exception:
-            # Collection doesn't exist, which is what we want
             pass
-        
-        # Validate that sources have pages
+
         sources_dir = _get_crawler_sources_dir()
         available_sources = []
         for source_id in source_ids:
@@ -2431,33 +2588,44 @@ def create_collection() -> Any:
                 return jsonify({
                     "error": f"Source '{source_id}' has no crawled pages. Please crawl the source first."
                 }), 400
-        
+
         if not available_sources:
             return jsonify({
                 "error": "None of the specified sources have crawled pages. Please crawl sources first."
             }), 400
-        
-        # Create collection
-        try:
-            stats = _create_collection_from_sources(
-                collection_name=collection_name,
-                source_ids=available_sources,
-                chunk_max_size=chunk_max_size,
-                chunk_min_size=chunk_min_size,
-            )
-            
-            return jsonify({
-                "status": "success",
+
+        job_id = str(uuid.uuid4())
+        total_pages = 0
+        for sid in available_sources:
+            meta = _load_source_meta(sid)
+            if meta and meta.get("pages"):
+                total_pages += len(meta.get("pages", {}))
+
+        with _collection_jobs_lock:
+            _collection_jobs[job_id] = {
+                "status": "running",
                 "collection_name": collection_name,
-                "statistics": stats,
-            })
-        except Exception as e:
-            _ERROR_LOG.error("webui_routes.create_collection indexing", exc_info=True)
-            return jsonify({
-                "error": f"Failed to create collection: {str(e)}",
-                "collection_name": collection_name,
-            }), 500
-        
+                "processed_pages": 0,
+                "total_pages": total_pages,
+                "indexed_pages": 0,
+                "total_chunks": 0,
+                "skipped_pages": 0,
+                "errors": [],
+            }
+
+        thread = threading.Thread(
+            target=_run_create_collection_job,
+            args=(job_id, collection_name, available_sources, chunk_max_size, chunk_min_size),
+            daemon=True,
+        )
+        thread.start()
+
+        return jsonify({
+            "job_id": job_id,
+            "status": "started",
+            "collection_name": collection_name,
+        }), 202
+
     except Exception as e:
         _ERROR_LOG.error("webui_routes.create_collection", exc_info=True)
         return jsonify({"error": str(e)}), 500
