@@ -177,9 +177,29 @@ RAG_REQUIRED_KEYWORDS: tuple[str, ...] = tuple(
     get_retrieval_list("rag_required_keywords", _DEFAULT_RAG_REQUIRED_KEYWORDS)
 )
 
+# RAG trigger (skip/run decision) delegated to rag_trigger module
+from domain.services.rag_trigger import should_skip_rag_search as _should_skip_rag_search
+
+
+def should_skip_rag_search(
+    question: str,
+    rag_required_keywords: list[str] | None = None,
+    trigger_threshold: int | None = None,
+) -> bool:
+    """Delegate to rag_trigger. True when RAG should be skipped (greeting or score < threshold)."""
+    return _should_skip_rag_search(
+        question,
+        rag_required_keywords=rag_required_keywords,
+        trigger_threshold=trigger_threshold,
+    )
+
 
 _IOS_VERSION_Q_RE = re.compile(r"\biOS\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
 _SWIFT_VERSION_Q_RE = re.compile(r"\bSwift\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
+
+# API symbols: PascalCase / CamelCase type names (UIViewController, ContentUnavailableView, NSViewRepresentable).
+# First segment may be all-caps (UI, NS); then at least one [A-Z][a-z0-9]+ segment.
+_API_SYMBOL_RE = re.compile(r"[A-Z][a-zA-Z0-9]*(?:[A-Z][a-z0-9]+)+")
 
 
 def parse_versions_from_question(question: str) -> tuple[list[str], list[str]]:
@@ -255,33 +275,20 @@ def query_for_retrieval(question: str) -> str:
             extra_parts.append("Swift version release number RELEASE")
         out = out + " " + " ".join(extra_parts)
 
+    # Query expansion for API symbols: push embedding toward API-doc region (symbol names match chunks).
+    symbols = list(dict.fromkeys(_API_SYMBOL_RE.findall(q_raw)))
+    if symbols:
+        expansion: list[str] = [out]
+        for sym in symbols:
+            expansion.append(sym)
+            expansion.append(f"Swift {sym}")
+            expansion.append(f"SwiftUI {sym}")
+            expansion.append(f"API {sym}")
+        out = " ".join(expansion)
+
     if len(out) > MAX_EMBED_TEXT_LENGTH:
         out = out[:MAX_EMBED_TEXT_LENGTH]
     return out
-
-
-def should_skip_rag_search(
-    question: str,
-    rag_required_keywords: list[str] | None = None,
-) -> bool:
-    """
-    True when RAG should be skipped: greeting (exact match) or no RAG-required
-    keyword in the query (not about project, Apple tech, or code analysis).
-    If rag_required_keywords is provided, use it (normalized to lower); else use RAG_REQUIRED_KEYWORDS.
-    """
-    q = (question or "").strip().lower()
-    if not q:
-        return False
-    if q in SKIP_RAG_GREETINGS:
-        return True
-    keywords = (
-        [k.lower() for k in (rag_required_keywords or []) if k]
-        if rag_required_keywords is not None
-        else RAG_REQUIRED_KEYWORDS
-    )
-    if not any(kw in q for kw in keywords):
-        return True
-    return False
 
 
 def need_more_chunks(question: str) -> bool:

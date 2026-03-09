@@ -25,6 +25,7 @@ from domain.services.rerank import (
     parse_rerank_order,
     reorder_hits_by_indices,
 )
+from domain.services.rag_trigger import compute_rag_trigger_score
 from domain.services.retrieval import (
     FINAL_CONTEXT_K,
     MULTI_CHUNK_FINAL_K,
@@ -169,17 +170,25 @@ def build_rag_context(
     context_total_chars: int,
     top_k: int | None = None,
     rag_required_keywords: list[str] | None = None,
+    trigger_threshold: int | None = None,
 ) -> tuple[RagContext, dict[str, float]]:
     """
     Build RAG context for a question: search_rag -> framework_filter -> build_context_block.
     Returns (RagContext (context_text, chunks_info, max_score), timings dict with embed_s, search_s, rerank_s, total_rag_s).
     If rag_required_keywords is provided, it is used to decide when to skip RAG (no keyword in query); else config default.
+    trigger_threshold overrides config when provided (e.g. from app settings).
     """
     empty_timings: dict[str, float] = {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0}
     if not question or not question.strip():
         return RagContext("", [], 0.0), empty_timings
-    if should_skip_rag_search(question, rag_required_keywords=rag_required_keywords):
-        _rag_log.debug("RAG skipped for query (greeting or no RAG-required keyword)")
+    score, signals, triggered = compute_rag_trigger_score(
+        question, rag_required_keywords=rag_required_keywords, trigger_threshold=trigger_threshold
+    )
+    _rag_log.debug("RAG trigger score=%s signals=%s triggered=%s", score, signals, triggered)
+    if should_skip_rag_search(
+        question, rag_required_keywords=rag_required_keywords, trigger_threshold=trigger_threshold
+    ):
+        _rag_log.debug("RAG skipped for query (greeting or score below threshold)")
         return RagContext("", [], 0.0), empty_timings
     try:
         results, timings = search_rag(question, rag_repo, embed_provider, rerank_client, top_k=top_k)
@@ -233,6 +242,7 @@ def answer_question(
     reasoning_level: str | None = None,
     rag_required_keywords: list[str] | None = None,
     rag_context: RagContext | None = None,
+    trigger_threshold: int | None = None,
 ) -> RagAnswerResponse:
     """
     Answer a question with RAG: build_rag_context (or use rag_context) -> build_system_content -> chat.
@@ -251,6 +261,7 @@ def answer_question(
             context_chunk_chars,
             context_total_chars,
             rag_required_keywords=rag_required_keywords,
+            trigger_threshold=trigger_threshold,
         )
     system_content = build_system_content(
         system_prefix,
@@ -293,6 +304,7 @@ def prepare_ollama_messages(
     reasoning_level: str | None = None,
     rag_required_keywords: list[str] | None = None,
     rag_context: RagContext | None = None,
+    trigger_threshold: int | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """
     Build RAG context (unless rag_context provided) and Ollama message list (for streaming or custom chat).
@@ -311,6 +323,7 @@ def prepare_ollama_messages(
             context_chunk_chars,
             context_total_chars,
             rag_required_keywords=rag_required_keywords,
+            trigger_threshold=trigger_threshold,
         )
     system_content = build_system_content(
         system_prefix,

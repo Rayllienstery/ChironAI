@@ -125,6 +125,58 @@ def cmd_test(_: argparse.Namespace) -> int:
     return _run(["-m", "pytest", "tests/"])
 
 
+def cmd_rag_tests_run(ns: argparse.Namespace) -> int:
+    """Run RAG tests from CLI (no Flask)."""
+    root = _root()
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    try:
+        from application.rag_tests.loader import get_rag_tests_root, load_all_tests
+        from application.rag_tests.runner import run_tests_sync
+    except ImportError as e:
+        print(f"RAG tests module not available: {e}", file=sys.stderr)
+        return 1
+    model = (getattr(ns, "model", None) or "").strip()
+    if not model:
+        print("--model is required", file=sys.stderr)
+        return 1
+    tests_root = get_rag_tests_root()
+    if not tests_root.is_dir():
+        print(f"rag_tests root not found: {tests_root}", file=sys.stderr)
+        return 1
+    tests = load_all_tests(tests_root)
+    test_ids = getattr(ns, "test_id", None) or []
+    if test_ids:
+        by_id = {t["id"]: t for t in tests}
+        tests = [by_id[tid] for tid in test_ids if tid in by_id]
+    else:
+        platform = (getattr(ns, "filter_platform", None) or "").strip()
+        framework = (getattr(ns, "filter_framework", None) or "").strip()
+        difficulty = (getattr(ns, "filter_difficulty", None) or "").strip()
+        if platform:
+            tests = [t for t in tests if (t.get("platform") or "") == platform]
+        if framework:
+            tests = [t for t in tests if (t.get("framework") or "") == framework]
+        if difficulty:
+            tests = [t for t in tests if (t.get("difficulty") or "") == difficulty]
+    if not tests:
+        print("No tests to run.", file=sys.stderr)
+        return 1
+
+    def on_progress(current: int, total: int, name: str) -> None:
+        print(f"  [{current}/{total}] {name}", file=sys.stderr)
+
+    results = run_tests_sync(tests, model, on_progress=on_progress)
+    passed = sum(1 for r in results if r.get("status") == "PASS")
+    failed = len(results) - passed
+    for r in results:
+        status = r.get("status", "?")
+        name = r.get("test_name") or r.get("test_id", "?")
+        print(f"  {status}: {name}")
+    print(f"\nPassed: {passed}, Failed: {failed}, Total: {len(results)}")
+    return 0 if failed == 0 else 1
+
+
 def cmd_test_single(ns: argparse.Namespace) -> int:
     script = os.path.join(_root(), "WebUI", "app_tester.py")
     if not os.path.isfile(script):
@@ -181,6 +233,16 @@ def main() -> None:
     p_ts = sub.add_parser("test-single", help="Fetch and convert one Apple doc page (app_tester)")
     p_ts.add_argument("url", nargs="?", default=None, help="Page URL (default: SwiftUI View)")
     p_ts.set_defaults(_run=cmd_test_single)
+
+    p_rag = sub.add_parser("rag-tests", help="RAG tests (run from CLI)")
+    p_rag_sub = p_rag.add_subparsers(dest="rag_command", metavar="SUBCOMMAND")
+    p_rag_run = p_rag_sub.add_parser("run", help="Run RAG tests (no WebUI)")
+    p_rag_run.add_argument("--model", required=True, help="Ollama model to use")
+    p_rag_run.add_argument("--filter-platform", dest="filter_platform", help="Filter tests by platform")
+    p_rag_run.add_argument("--filter-framework", dest="filter_framework", help="Filter tests by framework")
+    p_rag_run.add_argument("--filter-difficulty", dest="filter_difficulty", help="Filter tests by difficulty")
+    p_rag_run.add_argument("--test-id", dest="test_id", action="append", default=[], metavar="ID", help="Run specific test(s) by id (repeatable)")
+    p_rag_run.set_defaults(_run=cmd_rag_tests_run)
 
     args = parser.parse_args()
     if not args.command:

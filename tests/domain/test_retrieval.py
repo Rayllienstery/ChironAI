@@ -86,6 +86,24 @@ class TestQueryForRetrieval:
         q = query_for_retrieval("swiftui view")
         assert "SwiftUI" in q
 
+    def test_expands_query_when_api_symbol_present(self) -> None:
+        q = query_for_retrieval("What is ContentUnavailableView and when would you use it?")
+        assert "ContentUnavailableView" in q
+        assert "Swift ContentUnavailableView" in q
+        assert "SwiftUI ContentUnavailableView" in q
+        assert "API ContentUnavailableView" in q
+
+    def test_expands_query_for_multiple_symbols(self) -> None:
+        q = query_for_retrieval("Compare UIViewController and NSViewRepresentable")
+        assert "UIViewController" in q and "NSViewRepresentable" in q
+        assert "Swift UIViewController" in q and "Swift NSViewRepresentable" in q
+        assert "API UIViewController" in q and "API NSViewRepresentable" in q
+
+    def test_no_expansion_without_api_symbol(self) -> None:
+        q = query_for_retrieval("How does view work in SwiftUI?")
+        # No PascalCase type name; should not contain "API view" (lowercase "view" is not a symbol)
+        assert "API view" not in q or "View" in q
+
 
 class TestShouldSkipRagSearch:
     def test_returns_true_for_hi(self) -> None:

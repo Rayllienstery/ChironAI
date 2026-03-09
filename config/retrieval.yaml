@@ -116,6 +116,38 @@ retrieval:
     - good morning
     - good evening
   
+  # Greeting skip only when message is short (length <= this). "hello how does SwiftUI work" won't skip.
+  skip_rag_greeting_max_length: 30
+  
+  # RAG trigger: run RAG when score >= threshold. Score from keywords (+3), CamelCase (+2), code block (+4), etc.
+  rag_trigger_threshold: 2
+  rag_trigger_technical_phrases_strong:
+    - compile
+    - runtime
+    - API
+    - framework
+    - syntax
+    - deprecated
+    - migration
+    - error
+    - bug
+    - architecture
+    - документация
+    - реализовать
+    - ошибка
+    - баг
+    - архитектура
+  rag_trigger_technical_phrases_weak:
+    - how does
+    - best practice
+    - pattern
+    - algorithm
+    - refactor
+    - unit test
+    - dependency
+    - library
+    - integration test
+  
   # RAG required: run RAG only when query contains at least one of these substrings
   rag_required_keywords:
     - swift

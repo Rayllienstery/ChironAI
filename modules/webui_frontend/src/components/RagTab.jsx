@@ -7,6 +7,9 @@ import {
   getRagKeywordCollections,
   saveRagKeywordCollections,
   deleteRagKeywordCollection,
+  getRagTriggerSettings,
+  updateRagTriggerSettings,
+  checkRagTrigger,
 } from '../services/api';
 import './RagTab.css';
 
@@ -49,6 +52,12 @@ function RagTab() {
   const [addWordsInput, setAddWordsInput] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [savingKeywords, setSavingKeywords] = useState(false);
+  const [triggerSettings, setTriggerSettings] = useState(null);
+  const [triggerThresholdDraft, setTriggerThresholdDraft] = useState('');
+  const [triggerSaving, setTriggerSaving] = useState(false);
+  const [triggerTestMessage, setTriggerTestMessage] = useState('');
+  const [triggerTestResult, setTriggerTestResult] = useState(null);
+  const [triggerTestLoading, setTriggerTestLoading] = useState(false);
 
   const loadStatus = async () => {
     setLoading(true);
@@ -81,11 +90,22 @@ function RagTab() {
     }
   }, []);
 
+  const loadTriggerSettings = useCallback(async () => {
+    try {
+      const data = await getRagTriggerSettings();
+      setTriggerSettings(data);
+      setTriggerThresholdDraft(String(data.rag_trigger_threshold ?? 2));
+    } catch (e) {
+      setError(e.message);
+    }
+  }, []);
+
   useEffect(() => {
     loadStatus();
     loadCollections();
     loadKeywordCollections();
-  }, [loadKeywordCollections]);
+    loadTriggerSettings();
+  }, [loadKeywordCollections, loadTriggerSettings]);
 
   const handleStart = async () => {
     setBusy(true);
@@ -116,6 +136,35 @@ function RagTab() {
 
   const isRunning = status?.running;
   const overlappingWords = wordsInMultipleCollections(keywordCollections);
+
+  const handleSaveTriggerThreshold = async () => {
+    const val = parseInt(triggerThresholdDraft, 10);
+    if (Number.isNaN(val) || val < 0 || val > 20) return;
+    setTriggerSaving(true);
+    setError(null);
+    try {
+      await updateRagTriggerSettings({ rag_trigger_threshold: val });
+      setTriggerSettings((prev) => (prev ? { ...prev, rag_trigger_threshold: val } : { rag_trigger_threshold: val }));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setTriggerSaving(false);
+    }
+  };
+
+  const handleCheckTrigger = async () => {
+    setTriggerTestLoading(true);
+    setTriggerTestResult(null);
+    setError(null);
+    try {
+      const result = await checkRagTrigger(triggerTestMessage);
+      setTriggerTestResult(result);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setTriggerTestLoading(false);
+    }
+  };
 
   const handleOpenDashboard = () => {
     const url = status?.url || 'http://localhost:6333';
@@ -270,6 +319,7 @@ function RagTab() {
               loadStatus();
               loadCollections();
               loadKeywordCollections();
+              loadTriggerSettings();
             }}
             disabled={busy}
           >
@@ -337,6 +387,7 @@ function RagTab() {
         </div>
         <p className="rag-keywords-card-description">
           Matching is case-insensitive: the user query is compared in lower case.
+          RAG is also triggered by technical signals (e.g. CamelCase, code blocks, technical phrases) when the trigger score is high enough.
         </p>
         {overlappingWords.length > 0 && (
           <div className="rag-keywords-card-warning">
@@ -350,6 +401,98 @@ function RagTab() {
         >
           Manage keywords
         </button>
+      </div>
+
+      <div className="rag-trigger-card">
+        <h3 className="rag-trigger-card-title">RAG trigger threshold</h3>
+        <p className="rag-trigger-card-description">
+          RAG runs when the message score is at least this value. Score is the sum of signals below.
+        </p>
+        <div className="rag-trigger-threshold-row">
+          <label className="rag-trigger-label" htmlFor="rag-trigger-threshold">
+            Threshold
+          </label>
+          <input
+            id="rag-trigger-threshold"
+            type="number"
+            min={0}
+            max={20}
+            value={triggerThresholdDraft}
+            onChange={(e) => setTriggerThresholdDraft(e.target.value)}
+            className="rag-trigger-input"
+            aria-describedby="rag-trigger-threshold-desc"
+          />
+          <button
+            type="button"
+            className="rag-button primary"
+            onClick={handleSaveTriggerThreshold}
+            disabled={
+              triggerSaving ||
+              (() => {
+                const v = parseInt(triggerThresholdDraft, 10);
+                const valid = !Number.isNaN(v) && v >= 0 && v <= 20;
+                const unchanged = String(triggerSettings?.rag_trigger_threshold ?? '') === triggerThresholdDraft;
+                return !valid || unchanged;
+              })()
+            }
+          >
+            {triggerSaving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+        <p id="rag-trigger-threshold-desc" className="rag-trigger-hint">
+          Value 0–20. Saved in app settings (overrides config).
+        </p>
+        <div className="rag-trigger-table-wrap">
+          <table className="rag-trigger-table" aria-label="How trigger score is computed">
+            <thead>
+              <tr>
+                <th>Signal</th>
+                <th>Points</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(triggerSettings?.trigger_help_table || []).map((row, i) => (
+                <tr key={i}>
+                  <td>{row.signal}</td>
+                  <td>{row.points}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="rag-trigger-test">
+          <h4 className="rag-trigger-test-title">Test message</h4>
+          <p className="rag-trigger-test-desc">Enter a message to see whether it would trigger RAG.</p>
+          <textarea
+            className="rag-trigger-test-input"
+            value={triggerTestMessage}
+            onChange={(e) => setTriggerTestMessage(e.target.value)}
+            placeholder="e.g. How does SwiftUI work?"
+            rows={2}
+            aria-label="Message to test RAG trigger"
+          />
+          <button
+            type="button"
+            className="rag-button primary"
+            onClick={handleCheckTrigger}
+            disabled={triggerTestLoading}
+          >
+            {triggerTestLoading ? 'Checking…' : 'Check'}
+          </button>
+          {triggerTestResult != null && (
+            <div className="rag-trigger-test-result" role="status">
+              <p className="rag-trigger-test-summary">
+                <strong>RAG {triggerTestResult.triggered ? 'will run' : 'will not run'}</strong>
+                {' — '}
+                score <strong>{triggerTestResult.score}</strong>
+                {triggerTestResult.signals?.length > 0
+                  ? ` (${triggerTestResult.signals.join(', ')})`
+                  : ''}
+                , threshold {triggerTestResult.threshold}.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       {error && <div className="rag-error">Error: {error}</div>}

@@ -207,20 +207,26 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange }) {
           <h3>RAG Settings</h3>
           
           <div className="form-group">
-            <label>Default RAG Collection</label>
+            <label>RAG Collection</label>
             <select
-              value={settings.rag_collection || ''}
+              value={collections.length === 0 ? '' : (settings.rag_collection || (collections[0]?.name ?? ''))}
               onChange={(e) => handleChange('rag_collection', e.target.value)}
+              disabled={collections.length === 0}
             >
-              <option value="">Default Collection</option>
-              {collections.map((col) => (
-                <option key={col.name} value={col.name}>
-                  {col.name} ({col.points_count || 0} vectors)
-                </option>
-              ))}
+              {collections.length === 0 ? (
+                <option value="">— No collections —</option>
+              ) : (
+                collections.map((col) => (
+                  <option key={col.name} value={col.name}>
+                    {col.name} ({col.points_count || 0} vectors)
+                  </option>
+                ))
+              )}
             </select>
             <div className="form-hint">
-              Default Qdrant collection for RAG retrieval in main chat endpoint
+              {collections.length === 0
+                ? 'No Qdrant collections. Create one in Crawler / RAG then come back.'
+                : 'Qdrant collection for RAG retrieval in main chat. If empty, first collection is used.'}
             </div>
           </div>
         </div>

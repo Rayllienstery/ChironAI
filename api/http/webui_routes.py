@@ -21,7 +21,7 @@ from typing import Any, Callable
 import threading
 import uuid
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request
 
 # Ensure project root on path when running from api or WebUI.
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -41,7 +41,16 @@ try:
 except ImportError:
     get_keyword_collections_repository = None  # type: ignore[assignment]
 
-from config import get_ollama_chat_model, get_ollama_rerank_model, get_qdrant_url, get_rag_float, get_rag_int, get_rag_prompt_name
+from config import (
+    get_ollama_chat_model,
+    get_ollama_rerank_model,
+    get_qdrant_url,
+    get_rag_float,
+    get_rag_int,
+    get_rag_prompt_name,
+    get_retrieval_int,
+)
+from domain.services.rag_trigger import compute_rag_trigger_score
 from config.rag_prompts import (
     get_rag_system_prompt_swift_mode,
     list_rag_prompt_names,
@@ -70,9 +79,40 @@ def _get_rag_required_keywords_from_module() -> list[str] | None:
         return None
 
 
+def _get_effective_rag_trigger_threshold() -> int:
+    """Return RAG trigger threshold: app_settings override or config default."""
+    try:
+        settings_repo = get_settings_repository()
+        raw = settings_repo.get_app_setting("rag_trigger_threshold")
+        if raw is not None and str(raw).strip() != "":
+            return int(raw)
+    except Exception:
+        pass
+    return get_retrieval_int("rag_trigger_threshold", 2)
+
+
+# Static table for RAG trigger scoring (for UI)
+RAG_TRIGGER_HELP_ROWS = [
+    {"signal": "Keyword (from collections or config)", "points": "+3"},
+    {"signal": "CamelCase (e.g. SwiftUI, URLSession)", "points": "+2"},
+    {"signal": "Code block (```)", "points": "+4"},
+    {"signal": "Code keyword (func, class, struct, let, var…)", "points": "+4"},
+    {"signal": "API signature name(...)", "points": "+2"},
+    {"signal": "File extension (.swift, .py…)", "points": "+2"},
+    {"signal": "snake_case (e.g. load_data)", "points": "+1"},
+    {"signal": "Strong technical phrase (error, API, framework…)", "points": "+2"},
+    {"signal": "Weak technical phrase (how does, best practice…)", "points": "+1"},
+]
+
+
 from domain.entities.rag import RagQuestionRequest
 from domain.services.prompt_builder import determine_reasoning_level, last_user_content
-from infrastructure.database import get_session_manager, get_logs_repository, get_settings_repository
+from infrastructure.database import (
+    get_session_manager,
+    get_logs_repository,
+    get_settings_repository,
+    get_rag_test_runs_repository,
+)
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
 from api.http.webui_session import log_to_database
 from api.http.proxy_status import (
@@ -666,14 +706,19 @@ def webui_chat() -> Any:
             if stored_model:
                 requested_model = stored_model
         
-        # Get collection name from request or settings
-        collection_name = body.get("collection_name")
+        # Get collection name from request or settings; no config default — use first available or error
+        collection_name = (body.get("collection_name") or "").strip() or None
         if not collection_name:
             settings_repo = get_settings_repository()
-            collection_name = settings_repo.get_app_setting("rag_collection")
-            if collection_name == "":
-                collection_name = None
-        
+            collection_name = (settings_repo.get_app_setting("rag_collection") or "").strip() or None
+        if not collection_name:
+            names = _get_qdrant_collection_names()
+            if not names:
+                return jsonify({
+                    "error": "No Qdrant collections. Create one in Crawler / RAG then try again.",
+                }), 400
+            collection_name = names[0]
+
         # Get RAG dependencies - try to find WebUI directory
         webui_dir = None
         possible_webui = os.path.join(_ROOT, "WebUI")
@@ -725,6 +770,7 @@ def webui_chat() -> Any:
         
         # Build RAG context to get chunks_info
         rag_keywords = _get_rag_required_keywords_from_module()
+        trigger_threshold = _get_effective_rag_trigger_threshold()
         ctx, rag_timings = build_rag_context(
             last_user,
             rag_repo,
@@ -733,6 +779,7 @@ def webui_chat() -> Any:
             params.context_chunk_chars,
             params.context_total_chars,
             rag_required_keywords=rag_keywords,
+            trigger_threshold=trigger_threshold,
         )
         if rag_timings:
             set_latest_request_rag_steps(rag_timings)
@@ -760,11 +807,12 @@ def webui_chat() -> Any:
             reasoning_level=reasoning_level,
             rag_required_keywords=rag_keywords,
             rag_context=ctx,
+            trigger_threshold=trigger_threshold,
         )
         # Ensure use_model is not "rag-ollama" - use config model if needed
         if use_model == "rag-ollama":
             use_model = params.model_name
-        
+
         # Add code_only instruction if requested
         if code_only:
             user_msg = ollama_messages[-1] if ollama_messages else None
@@ -782,22 +830,37 @@ def webui_chat() -> Any:
         set_proxy_status(STATUS_RESPONSE)
         content = chat_client.chat(ollama_messages, use_model, stream=False, options=options if options else None)
         _pt = " ".join((m.get("content") or "") for m in ollama_messages if isinstance(m, dict))
-        set_latest_request_total_tokens(max(1, int(len(_pt) / 4)) + max(1, int(len(content or "") / 4)))
         latency_ms = int((time.time() - start_time) * 1000)
-        
+
+        def _approx_tokens(text: str) -> int:
+            if not text:
+                return 0
+            return max(1, int(len(text) / 4))
+
+        prompt_tokens = _approx_tokens(_pt)
+        completion_tokens = _approx_tokens(content or "")
+        total_tokens = prompt_tokens + completion_tokens
+        set_latest_request_total_tokens(total_tokens)
+
         # Build response
         response_data: dict[str, Any] = {
             "id": f"chatcmpl-webui-{int(time.time())}",
             "object": "chat.completion",
             "created": int(time.time()),
             "model": use_model,
+            "latency_ms": latency_ms,
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+            },
             "choices": [{
                 "index": 0,
                 "message": {"role": "assistant", "content": content or ""},
                 "finish_reason": "stop",
             }],
         }
-        
+
         # Add RAG metadata if requested
         if include_rag_metadata:
             system_preview = ollama_messages[0].get("content", "")[:500] if ollama_messages else ""
@@ -809,6 +872,7 @@ def webui_chat() -> Any:
                 "max_score": ctx.max_score,
                 "chunks_count": len(ctx.chunks_info),
                 "latency_ms": latency_ms,
+                "context_chars": sum(int(c.get("text_length") or 0) for c in (ctx.chunks_info or [])),
                 "system_prompt_preview": system_preview,
             }
         
@@ -993,18 +1057,23 @@ def tester_chat() -> Any:
             use_rag = use_rag if "use_rag" in body else tester_settings.get("use_rag", True)
             top_k = top_k if top_k is not None else tester_settings.get("top_k")
         
-        # Get collection name from request, tester settings, or global settings
-        collection_name = body.get("collection_name")
+        # Get collection name from request, tester settings, or global settings; no config default
+        collection_name = (body.get("collection_name") or "").strip() or None
         if not collection_name and tester_settings:
-            collection_name = tester_settings.get("rag_collection")
+            collection_name = (tester_settings.get("rag_collection") or "").strip() or None
         if not collection_name or collection_name == "":
-            collection_name = settings_repo.get_app_setting("rag_collection")
-            if collection_name == "":
-                collection_name = None
-        
+            collection_name = (settings_repo.get_app_setting("rag_collection") or "").strip() or None
+        if use_rag and not collection_name:
+            names = _get_qdrant_collection_names()
+            if not names:
+                return jsonify({
+                    "error": "No Qdrant collections. Create one in Crawler / RAG then try again.",
+                }), 400
+            collection_name = names[0]
+
         # Defaults from config
         prompt_name = prompt_name or get_rag_prompt_name()
-        
+
         params, deps = get_rag_answer_params(collection_name=collection_name)
         chat_client = deps.chat_client
         # Use selected model or fallback to config model
@@ -1048,6 +1117,7 @@ def tester_chat() -> Any:
             
             top_k_override = top_k if top_k is not None else None
             rag_keywords = _get_rag_required_keywords_from_module()
+            trigger_threshold = _get_effective_rag_trigger_threshold()
             ctx, rag_timings = build_rag_context(
                 last_user,
                 rag_repo,
@@ -1057,6 +1127,7 @@ def tester_chat() -> Any:
                 params.context_total_chars,
                 top_k=top_k_override,
                 rag_required_keywords=rag_keywords,
+                trigger_threshold=trigger_threshold,
             )
             if rag_timings:
                 set_latest_request_rag_steps(rag_timings)
@@ -1088,6 +1159,7 @@ def tester_chat() -> Any:
                 reasoning_level=reasoning_level,
                 rag_required_keywords=rag_keywords,
                 rag_context=ctx,
+                trigger_threshold=trigger_threshold,
             )
             # Ensure use_model is not "rag-ollama" - use config model if needed
             if use_model == "rag-ollama":
@@ -1286,6 +1358,65 @@ def delete_rag_keyword_collection(collection_id: str) -> Any:
         return jsonify({"error": str(e)}), 500
 
 
+@webui_bp.route("/rag-trigger-settings", methods=["GET"])
+def get_rag_trigger_settings() -> Any:
+    """Return RAG trigger threshold (effective from settings or config) and help table for scoring."""
+    try:
+        threshold = _get_effective_rag_trigger_threshold()
+        return jsonify({
+            "rag_trigger_threshold": threshold,
+            "trigger_help_table": RAG_TRIGGER_HELP_ROWS,
+        })
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_rag_trigger_settings", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/rag-trigger-settings", methods=["POST"])
+def update_rag_trigger_settings() -> Any:
+    """Update RAG trigger threshold (persisted to app_settings)."""
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        raw = body.get("rag_trigger_threshold")
+        if raw is None:
+            return jsonify({"error": "rag_trigger_threshold required"}), 400
+        val = int(raw)
+        if val < 0 or val > 20:
+            return jsonify({"error": "rag_trigger_threshold must be between 0 and 20"}), 400
+        settings_repo = get_settings_repository()
+        settings_repo.set_app_setting("rag_trigger_threshold", str(val))
+        return jsonify({"status": "ok", "rag_trigger_threshold": val})
+    except ValueError:
+        return jsonify({"error": "rag_trigger_threshold must be an integer"}), 400
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.update_rag_trigger_settings", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/rag-trigger-test", methods=["POST"])
+def rag_trigger_test() -> Any:
+    """Check if a message would trigger RAG: returns score, signals, and triggered (score >= threshold)."""
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        message = (body.get("message") or "").strip()
+        threshold = _get_effective_rag_trigger_threshold()
+        rag_keywords = _get_rag_required_keywords_from_module()
+        score, signals, triggered = compute_rag_trigger_score(
+            message,
+            rag_required_keywords=rag_keywords,
+            trigger_threshold=threshold,
+        )
+        return jsonify({
+            "score": score,
+            "signals": signals,
+            "triggered": triggered,
+            "threshold": threshold,
+        })
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.rag_trigger_test", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @webui_bp.route("/rag/status", methods=["GET"])
 def rag_status() -> Any:
     """Return Qdrant / RAG status (is running, version, collections count)."""
@@ -1375,6 +1506,25 @@ def dashboard_metrics() -> Any:
     payload["latest_request_total_tokens"] = get_latest_request_total_tokens()
     payload["latest_request_rag_steps"] = get_latest_request_rag_steps()
     return jsonify(payload)
+
+
+def _get_qdrant_collection_names() -> list[str]:
+    """Return list of Qdrant collection names (empty if Qdrant unreachable or no collections)."""
+    url = get_qdrant_url().rstrip("/")
+    try:
+        resp = requests.get(f"{url}/collections", timeout=5)
+        if not resp.ok:
+            return []
+        data = resp.json() or {}
+        raw = data.get("result", {}).get("collections", []) if isinstance(data, dict) else []
+        names: list[str] = []
+        for col in raw:
+            name = col.get("name") if isinstance(col, dict) else str(col)
+            if name:
+                names.append(name)
+        return names
+    except Exception:
+        return []
 
 
 @webui_bp.route("/rag/collections", methods=["GET"])
@@ -2629,6 +2779,588 @@ def create_collection() -> Any:
     except Exception as e:
         _ERROR_LOG.error("webui_routes.create_collection", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+
+# ----- RAG Tests (Markdown-defined tests, run against proxy, validate concepts + RAG) -----
+# In-memory job store for async run with progress and cancel
+_rag_test_jobs: dict[str, dict[str, Any]] = {}
+_rag_test_jobs_lock = threading.Lock()
+
+
+def _get_rag_tests_module():
+    try:
+        from application.rag_tests.loader import (
+            get_rag_tests_root,
+            list_test_filters,
+            load_all_tests,
+            load_test,
+        )
+        from application.rag_tests.validator import validate_result
+        return get_rag_tests_root, list_test_filters, load_all_tests, load_test, validate_result
+    except ImportError:
+        return None, None, None, None, None
+
+
+@webui_bp.route("/rag-tests", methods=["GET"])
+def rag_tests_list() -> Any:
+    """List all RAG tests, optionally filtered by platform, framework, difficulty."""
+    get_root, list_filters, load_all, load_one, _ = _get_rag_tests_module()
+    if load_all is None:
+        return jsonify({"error": "RAG tests module not available"}), 500
+    root = get_root()
+    tests = load_all(root)
+    platform = (request.args.get("platform") or "").strip()
+    framework = (request.args.get("framework") or "").strip()
+    difficulty = (request.args.get("difficulty") or "").strip()
+    if platform:
+        tests = [t for t in tests if (t.get("platform") or "") == platform]
+    if framework:
+        tests = [t for t in tests if (t.get("framework") or "") == framework]
+    if difficulty:
+        tests = [t for t in tests if (t.get("difficulty") or "") == difficulty]
+    filters = list_filters(tests) if list_filters else {"platform": [], "framework": [], "difficulty": []}
+    return jsonify({"tests": tests, "filters": filters})
+
+
+@webui_bp.route("/rag-tests/filters", methods=["GET"])
+def rag_tests_filters() -> Any:
+    """Return distinct platform, framework, difficulty for filter dropdowns."""
+    _, list_filters, load_all, _, _ = _get_rag_tests_module()
+    if load_all is None:
+        return jsonify({"error": "RAG tests module not available"}), 500
+    root = _get_rag_tests_module()[0]()
+    tests = load_all(root)
+    filters = list_filters(tests) if list_filters else {"platform": [], "framework": [], "difficulty": []}
+    return jsonify(filters)
+
+
+@webui_bp.route("/rag-tests/runs", methods=["GET"])
+def rag_tests_runs_list() -> Any:
+    """List past RAG test runs (history). Query: limit, offset, model, from_date, to_date, status."""
+    try:
+        repo = get_rag_test_runs_repository()
+        limit = min(int(request.args.get("limit", 50)), 100)
+        offset = max(0, int(request.args.get("offset", 0)))
+        model = (request.args.get("model") or "").strip() or None
+        from_date = (request.args.get("from_date") or "").strip() or None
+        to_date = (request.args.get("to_date") or "").strip() or None
+        status = (request.args.get("status") or "").strip() or None
+        runs = repo.get_runs(
+            limit=limit,
+            offset=offset,
+            model=model,
+            from_date=from_date,
+            to_date=to_date,
+            status=status,
+        )
+        return jsonify({"runs": runs})
+    except Exception as e:
+        _ERROR_LOG.exception("rag_tests_runs_list")
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/rag-tests/runs/summary", methods=["GET"])
+def rag_tests_runs_summary() -> Any:
+    """Aggregate metrics for runs. Query: limit (default 50), model, from_date, to_date."""
+    try:
+        repo = get_rag_test_runs_repository()
+        limit = min(int(request.args.get("limit", 50)), 200)
+        model = (request.args.get("model") or "").strip() or None
+        from_date = (request.args.get("from_date") or "").strip() or None
+        to_date = (request.args.get("to_date") or "").strip() or None
+        summary = repo.get_runs_summary(
+            limit=limit,
+            model=model,
+            from_date=from_date,
+            to_date=to_date,
+        )
+        return jsonify(summary)
+    except Exception as e:
+        _ERROR_LOG.exception("rag_tests_runs_summary")
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/rag-tests/runs/<run_id>", methods=["GET"])
+def rag_tests_run_detail(run_id: str) -> Any:
+    """Get a single past run with full results. Query param format=csv returns CSV attachment."""
+    export_format = (request.args.get("format") or "").strip().lower()
+    if export_format == "csv":
+        return _rag_tests_export_run(run_id, "csv")
+    try:
+        repo = get_rag_test_runs_repository()
+        run = repo.get_run(run_id)
+        if not run:
+            return jsonify({"error": "Run not found"}), 404
+        return jsonify(run)
+    except Exception as e:
+        _ERROR_LOG.exception("rag_tests_run_detail")
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/rag-tests/runs/<run_id>/export", methods=["GET"])
+def rag_tests_run_export(run_id: str) -> Any:
+    """Export run as JSON or CSV attachment. Query param format=csv|json (default json)."""
+    export_format = (request.args.get("format") or "json").strip().lower()
+    if export_format not in ("json", "csv"):
+        export_format = "json"
+    return _rag_tests_export_run(run_id, export_format)
+
+
+def _rag_tests_export_run(run_id: str, export_format: str) -> Any:
+    """Return run data as JSON or CSV with Content-Disposition."""
+    try:
+        repo = get_rag_test_runs_repository()
+        run = repo.get_run(run_id)
+        if not run:
+            return jsonify({"error": "Run not found"}), 404
+    except Exception as e:
+        _ERROR_LOG.exception("rag_tests_export_run")
+        return jsonify({"error": str(e)}), 500
+    created = run.get("created_at") or ""
+    safe_date = created.replace(":", "-").replace(" ", "_")[:19] if created else "run"
+    filename = f"rag-test-run-{run_id}-{safe_date}.{export_format}"
+    if export_format == "csv":
+        import csv
+        import io
+        rows = [["test_id", "test_name", "platform", "framework", "status", "response_time_ms", "rag_used", "confidence_label", "question", "error"]]
+        for r in (run.get("results") or []):
+            rows.append([
+                r.get("test_id") or "",
+                r.get("test_name") or "",
+                r.get("platform") or "",
+                r.get("framework") or "",
+                r.get("status") or "",
+                str(r.get("response_time_ms") or ""),
+                "yes" if r.get("rag_used") else "no",
+                r.get("confidence_label") or "",
+                (r.get("question") or "").replace("\r", " ").replace("\n", " "),
+                r.get("error") or "",
+            ])
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerows(rows)
+        body = buf.getvalue()
+        resp = Response(body, mimetype="text/csv")
+        resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return resp
+    # JSON
+    body = json.dumps(run, indent=2)
+    resp = Response(body, mimetype="application/json")
+    resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return resp
+
+
+def _rag_tests_find_by_id(get_root: Any, load_all: Any, test_id: str) -> dict[str, Any] | None:
+    """Return test dict with absolute_path if found, else None."""
+    if load_all is None:
+        return None
+    root = Path(get_root())
+    tests = load_all(root)
+    for t in tests:
+        if t.get("id") == test_id:
+            return t
+    return None
+
+
+def _rag_tests_build_md(
+    name: str,
+    question: str,
+    concepts: list[str],
+    platform: str,
+    framework: str,
+    difficulty: str,
+    concept_mode: str,
+    rag_strict: bool,
+    min_os: str,
+    notes: str,
+) -> str:
+    """Build .md file content for create/update."""
+    lines = [
+        f"# {name}",
+        "",
+        f"Platform: {platform}",
+        f"Framework: {framework}",
+        f"Difficulty: {difficulty}",
+        f"Concept Mode: {concept_mode}",
+    ]
+    if rag_strict:
+        lines.append("RAG Strict: true")
+    if min_os:
+        lines.append(f"MinOS: {min_os}")
+    lines.extend(["", "## Question", "", question, "", "## Expected Concepts", ""])
+    for c in concepts:
+        lines.append(f"- {c}")
+    lines.extend(["", "## RAG Requirement", "", "The answer must reference retrieved documentation or RAG context.", ""])
+    if notes:
+        lines.extend(["## Notes", "", notes])
+    return "\n".join(lines)
+
+
+@webui_bp.route("/rag-tests/<test_id>", methods=["GET"])
+def rag_tests_get_one(test_id: str) -> Any:
+    """Get a single RAG test by id (path-based id)."""
+    get_root, _, load_all, _, _ = _get_rag_tests_module()
+    if load_all is None:
+        return jsonify({"error": "RAG tests module not available"}), 500
+    root = get_root()
+    tests = load_all(root)
+    for t in tests:
+        if t.get("id") == test_id:
+            return jsonify(t)
+    return jsonify({"error": "Test not found"}), 404
+
+
+@webui_bp.route("/rag-tests/<test_id>", methods=["PUT"])
+def rag_tests_update(test_id: str) -> Any:
+    """Update an existing RAG test. Body same as create. Overwrites the .md file."""
+    get_root, _, load_all, _, _ = _get_rag_tests_module()
+    if load_all is None:
+        return jsonify({"error": "RAG tests module not available"}), 500
+    t = _rag_tests_find_by_id(get_root, load_all, test_id)
+    if not t:
+        return jsonify({"error": "Test not found"}), 404
+    body = request.get_json(force=True, silent=True) or {}
+    name = (body.get("name") or body.get("question") or "Untitled test")[:200].strip()
+    question = (body.get("question") or "").strip()
+    concepts = body.get("concepts") or body.get("expected_concepts") or []
+    if isinstance(concepts, str):
+        concepts = [c.strip() for c in concepts.split("\n") if c.strip()]
+    platform = (body.get("platform") or "iOS").strip()
+    framework = (body.get("framework") or "SwiftUI").strip()
+    difficulty = (body.get("difficulty") or "intermediate").strip()
+    concept_mode = (body.get("concept_mode") or "all").strip().lower()
+    if concept_mode not in ("any", "all"):
+        concept_mode = "all"
+    rag_strict = bool(body.get("rag_strict"))
+    min_os = (body.get("min_os") or "").strip()
+    notes = (body.get("notes") or "").strip()
+    if not question:
+        return jsonify({"error": "question is required"}), 400
+    path = Path(t["absolute_path"])
+    content = _rag_tests_build_md(
+        name, question, concepts, platform, framework, difficulty, concept_mode, rag_strict, min_os, notes
+    )
+    path.write_text(content, encoding="utf-8")
+    return jsonify({"id": test_id, "message": "Test updated"}), 200
+
+
+@webui_bp.route("/rag-tests/<test_id>", methods=["DELETE"])
+def rag_tests_delete(test_id: str) -> Any:
+    """Delete a RAG test by removing its .md file."""
+    get_root, _, load_all, _, _ = _get_rag_tests_module()
+    if load_all is None:
+        return jsonify({"error": "RAG tests module not available"}), 500
+    t = _rag_tests_find_by_id(get_root, load_all, test_id)
+    if not t:
+        return jsonify({"error": "Test not found"}), 404
+    path = Path(t["absolute_path"])
+    if path.exists():
+        path.unlink()
+    return "", 204
+
+
+def _rag_tests_run_worker(
+    job_id: str,
+    app_context: Any,
+    tests_to_run: list[dict[str, Any]],
+    model: str,
+    collection_name: str,
+    prompt_name: str | None = None,
+) -> None:
+    """Background worker: run tests one by one, update job progress, respect cancel."""
+    with app_context:
+        client = current_app.test_client()
+        get_root, _, _, _, validate_result = _get_rag_tests_module()
+        if validate_result is None:
+            with _rag_test_jobs_lock:
+                _rag_test_jobs[job_id]["status"] = "completed"
+                _rag_test_jobs[job_id]["error"] = "RAG tests module not available"
+            return
+        total = len(tests_to_run)
+        results: list[dict[str, Any]] = []
+        passed = 0
+        failed = 0
+        for i, test in enumerate(tests_to_run):
+            with _rag_test_jobs_lock:
+                if _rag_test_jobs.get(job_id, {}).get("cancel_requested"):
+                    _rag_test_jobs[job_id]["status"] = "cancelled"
+                    _rag_test_jobs[job_id]["progress"]["pending"] = total - i
+                    break
+                _rag_test_jobs[job_id]["progress"] = {
+                    "current_index": i + 1,
+                    "total": total,
+                    "current_test_name": test.get("name") or test.get("id") or "",
+                    "passed": passed,
+                    "failed": failed,
+                    "pending": total - i - 1,
+                }
+                _rag_test_jobs[job_id]["results"] = list(results)
+            question = test.get("question") or ""
+            start_time = time.time()
+            try:
+                chat_payload: dict[str, Any] = {
+                    "messages": [{"role": "user", "content": question}],
+                    "model": model,
+                    "include_rag_metadata": True,
+                    "collection_name": collection_name,
+                }
+                if prompt_name:
+                    chat_payload["prompt_name"] = prompt_name
+                resp = client.post("/api/webui/chat", json=chat_payload)
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                if resp.status_code != 200:
+                    data = resp.get_json(silent=True) or {}
+                    err = data.get("error", resp.get_data(as_text=True))
+                    result = {
+                        "test_id": test.get("id"),
+                        "test_name": test.get("name"),
+                        "platform": test.get("platform"),
+                        "framework": test.get("framework"),
+                        "model": model,
+                        "status": "FAIL",
+                        "response_time_ms": elapsed_ms,
+                        "latency_ms": elapsed_ms,
+                        "rag_used": False,
+                        "confidence_label": "0/0",
+                        "missing_concepts": test.get("expected_concepts") or [],
+                        "found_concepts": [],
+                        "full_response": None,
+                        "chunks_info": [],
+                        "retrieved_chunks": None,
+                        "question": question,
+                        "prompt_tokens": None,
+                        "completion_tokens": None,
+                        "total_tokens": None,
+                        "context_chars": None,
+                        "failure_reason": str(err),
+                        "error": str(err),
+                    }
+                    results.append(result)
+                    failed += 1
+                    continue
+                data = resp.get_json(silent=True) or {}
+                choices = data.get("choices") or []
+                content = (choices[0].get("message") or {}).get("content", "") if choices else ""
+                rag_metadata = data.get("rag_metadata") or {}
+                usage = data.get("usage") or {}
+                latency_ms = data.get("latency_ms") or rag_metadata.get("latency_ms") or elapsed_ms
+                validation = validate_result(test, content, rag_metadata)
+                result = {
+                    "test_id": test.get("id"),
+                    "test_name": test.get("name"),
+                    "platform": test.get("platform"),
+                    "framework": test.get("framework"),
+                    "model": model,
+                    "status": validation.get("status", "FAIL"),
+                    "response_time_ms": elapsed_ms,
+                    "latency_ms": latency_ms,
+                    "rag_used": validation.get("rag_used", False),
+                    "confidence_label": validation.get("confidence_label", ""),
+                    "missing_concepts": validation.get("missing_concepts") or [],
+                    "found_concepts": validation.get("found_concepts") or [],
+                    "full_response": content or None,
+                    "chunks_info": rag_metadata.get("chunks_info") or [],
+                    "retrieved_chunks": validation.get("retrieved_chunks"),
+                    "question": question,
+                    "prompt_tokens": usage.get("prompt_tokens"),
+                    "completion_tokens": usage.get("completion_tokens"),
+                    "total_tokens": usage.get("total_tokens"),
+                    "context_chars": rag_metadata.get("context_chars"),
+                }
+                if validation.get("failure_reason") is not None:
+                    result["failure_reason"] = validation["failure_reason"]
+                results.append(result)
+                if result.get("status") == "PASS":
+                    passed += 1
+                else:
+                    failed += 1
+            except Exception as e:
+                _ERROR_LOG.exception("rag_tests_run single test")
+                _elapsed = int((time.time() - start_time) * 1000)
+                results.append({
+                    "test_id": test.get("id"),
+                    "test_name": test.get("name"),
+                    "platform": test.get("platform"),
+                    "framework": test.get("framework"),
+                    "model": model,
+                    "status": "FAIL",
+                    "response_time_ms": _elapsed,
+                    "latency_ms": _elapsed,
+                    "rag_used": False,
+                    "confidence_label": "0/0",
+                    "missing_concepts": test.get("expected_concepts") or [],
+                    "found_concepts": [],
+                    "full_response": None,
+                    "chunks_info": [],
+                    "retrieved_chunks": None,
+                    "question": question,
+                    "prompt_tokens": None,
+                    "completion_tokens": None,
+                    "total_tokens": None,
+                    "context_chars": None,
+                    "failure_reason": str(e),
+                    "error": str(e),
+                })
+                failed += 1
+        with _rag_test_jobs_lock:
+            if job_id in _rag_test_jobs and _rag_test_jobs[job_id]["status"] == "running":
+                _rag_test_jobs[job_id]["status"] = "completed"
+            _rag_test_jobs[job_id]["progress"]["passed"] = passed
+            _rag_test_jobs[job_id]["progress"]["failed"] = failed
+            _rag_test_jobs[job_id]["progress"]["pending"] = max(0, total - len(results))
+            _rag_test_jobs[job_id]["results"] = results
+        try:
+            runs_repo = get_rag_test_runs_repository()
+            status = _rag_test_jobs.get(job_id, {}).get("status", "completed")
+            runs_repo.add_run(
+                run_id=job_id,
+                model=model,
+                status=status,
+                total=total,
+                passed=passed,
+                failed=failed,
+                results=results,
+            )
+        except Exception as e:
+            _ERROR_LOG.warning("Failed to persist RAG test run: %s", e)
+
+
+@webui_bp.route("/rag-tests/run", methods=["POST"])
+def rag_tests_run() -> Any:
+    """Start RAG test run in background. Returns 202 with job_id. Poll GET /rag-tests/run/status/<job_id> for progress."""
+    get_root, _, load_all, _, _ = _get_rag_tests_module()
+    if load_all is None:
+        return jsonify({"error": "RAG tests module not available"}), 500
+    body = request.get_json(force=True, silent=True) or {}
+    model = (body.get("model") or "").strip()
+    if not model:
+        return jsonify({"error": "model is required"}), 400
+    test_ids = body.get("test_ids")
+    filter_obj = body.get("filter") or {}
+    root = get_root()
+    all_tests = load_all(root)
+    if test_ids:
+        by_id = {t["id"]: t for t in all_tests}
+        tests_to_run = [by_id[tid] for tid in test_ids if tid in by_id]
+    elif filter_obj:
+        tests_to_run = all_tests
+        if filter_obj.get("platform"):
+            tests_to_run = [t for t in tests_to_run if (t.get("platform") or "") == filter_obj["platform"]]
+        if filter_obj.get("framework"):
+            tests_to_run = [t for t in tests_to_run if (t.get("framework") or "") == filter_obj["framework"]]
+        if filter_obj.get("difficulty"):
+            tests_to_run = [t for t in tests_to_run if (t.get("difficulty") or "") == filter_obj["difficulty"]]
+    else:
+        tests_to_run = all_tests
+    if not tests_to_run:
+        return jsonify({"results": [], "message": "No tests to run"})
+    collection_name = (body.get("collection_name") or "").strip()
+    if not collection_name:
+        names = _get_qdrant_collection_names()
+        if not names:
+            return jsonify({
+                "error": "No Qdrant collections. Create one in Crawler / RAG then come back.",
+            }), 400
+        collection_name = names[0]
+    prompt_name = (body.get("prompt_name") or "").strip() or None
+    job_id = str(uuid.uuid4())[:12]
+    with _rag_test_jobs_lock:
+        _rag_test_jobs[job_id] = {
+            "status": "running",
+            "cancel_requested": False,
+            "progress": {
+                "current_index": 0,
+                "total": len(tests_to_run),
+                "current_test_name": "",
+                "passed": 0,
+                "failed": 0,
+                "pending": len(tests_to_run),
+            },
+            "results": [],
+            "error": None,
+        }
+    thread = threading.Thread(
+        target=_rag_tests_run_worker,
+        args=(job_id, current_app.app_context(), tests_to_run, model, collection_name, prompt_name),
+        daemon=True,
+    )
+    thread.start()
+    return jsonify({"job_id": job_id, "collection_name": collection_name, "prompt_name": prompt_name}), 202
+
+
+@webui_bp.route("/rag-tests/run/status/<job_id>", methods=["GET"])
+def rag_tests_run_status(job_id: str) -> Any:
+    """Get run progress and results. status: running | completed | cancelled."""
+    with _rag_test_jobs_lock:
+        job = _rag_test_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify({
+        "job_id": job_id,
+        "status": job["status"],
+        "progress": job["progress"],
+        "results": job["results"],
+        "error": job.get("error"),
+    })
+
+
+@webui_bp.route("/rag-tests/run/cancel/<job_id>", methods=["POST"])
+def rag_tests_run_cancel(job_id: str) -> Any:
+    """Request cancel; runner will stop after current test."""
+    with _rag_test_jobs_lock:
+        job = _rag_test_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    if job["status"] != "running":
+        return jsonify({"message": "Job not running", "status": job["status"]})
+    with _rag_test_jobs_lock:
+        _rag_test_jobs[job_id]["cancel_requested"] = True
+    return jsonify({"message": "Cancel requested", "job_id": job_id})
+
+
+@webui_bp.route("/rag-tests", methods=["POST"])
+def rag_tests_create() -> Any:
+    """Create a new RAG test: body { name, question, concepts[], platform, framework, difficulty, concept_mode?, min_os?, notes? }. Writes .md file."""
+    get_root, _, load_all, _, _ = _get_rag_tests_module()
+    if get_root is None:
+        return jsonify({"error": "RAG tests module not available"}), 500
+    body = request.get_json(force=True, silent=True) or {}
+    name = (body.get("name") or body.get("question") or "Untitled test")[:200].strip()
+    question = (body.get("question") or "").strip()
+    concepts = body.get("concepts") or body.get("expected_concepts") or []
+    if isinstance(concepts, str):
+        concepts = [c.strip() for c in concepts.split("\n") if c.strip()]
+    platform = (body.get("platform") or "iOS").strip()
+    framework = (body.get("framework") or "SwiftUI").strip()
+    difficulty = (body.get("difficulty") or "intermediate").strip()
+    concept_mode = (body.get("concept_mode") or "all").strip().lower()
+    if concept_mode not in ("any", "all"):
+        concept_mode = "all"
+    rag_strict = bool(body.get("rag_strict"))
+    min_os = (body.get("min_os") or "").strip()
+    notes = (body.get("notes") or "").strip()
+    if not question:
+        return jsonify({"error": "question is required"}), 400
+    # Slug from name or first line of question
+    slug = re.sub(r"[^\w\s-]", "", name).strip()
+    slug = re.sub(r"[-\s]+", "_", slug).lower()[:80] or "test"
+    root = Path(get_root())
+    platform_dir = root / platform.lower().replace(" ", "_")
+    framework_dir = platform_dir / framework.lower().replace(" ", "_")
+    framework_dir.mkdir(parents=True, exist_ok=True)
+    path = framework_dir / f"{slug}.md"
+    if path.exists():
+        n = 1
+        while (framework_dir / f"{slug}_{n}.md").exists():
+            n += 1
+        path = framework_dir / f"{slug}_{n}.md"
+        slug = f"{slug}_{n}"
+    content = _rag_tests_build_md(
+        name, question, concepts, platform, framework, difficulty, concept_mode, rag_strict, min_os, notes
+    )
+    path.write_text(content, encoding="utf-8")
+    test_id = str(path.relative_to(root)).replace(".md", "").replace("/", "_").replace("\\", "_")
+    return jsonify({"id": test_id, "file_path": str(path.relative_to(root)), "message": "Test created"}), 201
 
 
 __all__ = ["webui_bp"]

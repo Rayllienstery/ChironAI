@@ -313,18 +313,24 @@ function ModelTester({ sessionId }) {
             <div className="form-group">
               <label>RAG Collection</label>
               <select
-                value={settings.rag_collection || ''}
+                value={collections.length === 0 ? '' : (settings.rag_collection || (collections[0]?.name ?? ''))}
                 onChange={(e) => handleSettingChange('rag_collection', e.target.value)}
+                disabled={collections.length === 0}
               >
-                <option value="">Default Collection</option>
-                {collections.map((col) => (
-                  <option key={col.name} value={col.name}>
-                    {col.name} ({col.points_count || 0} vectors)
-                  </option>
-                ))}
+                {collections.length === 0 ? (
+                  <option value="">— No collections —</option>
+                ) : (
+                  collections.map((col) => (
+                    <option key={col.name} value={col.name}>
+                      {col.name} ({col.points_count || 0} vectors)
+                    </option>
+                  ))
+                )}
               </select>
               <div className="form-hint">
-                Select Qdrant collection for RAG retrieval
+                {collections.length === 0
+                  ? 'No Qdrant collections. Create one in Crawler / RAG then come back.'
+                  : 'Select Qdrant collection for RAG retrieval'}
               </div>
             </div>
           )}

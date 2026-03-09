@@ -63,6 +63,27 @@ RAG_REQUIRED_KEYWORDS: tuple[str, ...] = tuple(
     get_retrieval_list("rag_required_keywords", _DEFAULT_RAG_REQUIRED)
 )
 
+# Use shared RAG trigger from project root when available (run with project root on PYTHONPATH)
+try:
+    from domain.services.rag_trigger import should_skip_rag_search as _should_skip_rag_search_shared
+
+    def should_skip_rag_search(question: str) -> bool:
+        """Delegate to shared rag_trigger (scoring heuristic)."""
+        return _should_skip_rag_search_shared(question, rag_required_keywords=None)
+except ImportError:
+    # Fallback when run without project root on path (e.g. standalone package)
+    def should_skip_rag_search(question: str) -> bool:
+        """True when RAG should be skipped: greeting or no RAG-required keyword."""
+        q = (question or "").strip().lower()
+        if not q:
+            return False
+        if q in SKIP_RAG_GREETINGS:
+            return True
+        if not any(kw in q for kw in RAG_REQUIRED_KEYWORDS):
+            return True
+        return False
+
+
 _IOS_VERSION_Q_RE = re.compile(r"\biOS\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
 _SWIFT_VERSION_Q_RE = re.compile(r"\bSwift\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
 
@@ -111,18 +132,6 @@ def query_for_retrieval(question: str) -> str:
     if len(out) > MAX_EMBED_TEXT_LENGTH:
         out = out[:MAX_EMBED_TEXT_LENGTH]
     return out
-
-
-def should_skip_rag_search(question: str) -> bool:
-    """True when RAG should be skipped: greeting or no RAG-required keyword."""
-    q = (question or "").strip().lower()
-    if not q:
-        return False
-    if q in SKIP_RAG_GREETINGS:
-        return True
-    if not any(kw in q for kw in RAG_REQUIRED_KEYWORDS):
-        return True
-    return False
 
 
 def need_more_chunks(question: str) -> bool:

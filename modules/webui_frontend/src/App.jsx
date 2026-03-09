@@ -25,6 +25,7 @@ import LogsTab from './components/LogsTab';
 import SettingsTab from './components/SettingsTab';
 import ModelTester from './components/ModelTester';
 import RagTab from './components/RagTab';
+import RagTestsTab from './components/RagTestsTab';
 import CrawlerTab from './components/CrawlerTab';
 import TemplateEditorTab from './components/TemplateEditorTab';
 import DebugLogPanel from './components/DebugLogPanel';
@@ -42,8 +43,12 @@ import {
   startOpenWebUi,
   stopOpenWebUi,
   stopServer,
+  runRagTests,
+  getRagTestRunStatus,
+  cancelRagTestRun,
 } from './services/api';
 import Sparkline from './components/Sparkline';
+import RagTestRunPanel from './components/RagTestRunPanel';
 import './styles/app.css';
 
 const METRICS_HISTORY_LEN = 30;
@@ -52,6 +57,11 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sessionId, setSessionId] = useState(null);
   const [debugLogOpen, setDebugLogOpen] = useState(false);
+  const [ragTestRunJobId, setRagTestRunJobId] = useState(null);
+  const [ragTestRunning, setRagTestRunning] = useState(false);
+  const [ragTestRunProgress, setRagTestRunProgress] = useState(null);
+  const [ragTestRunResults, setRagTestRunResults] = useState([]);
+  const [ragTestRunError, setRagTestRunError] = useState(null);
   const [themeMode, setThemeMode] = useState('system');
   const [lightAccent, setLightAccent] = useState('purple');
   const [darkAccent, setDarkAccent] = useState('cyan');
@@ -144,6 +154,69 @@ function App() {
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    if (!ragTestRunJobId || !ragTestRunning) return;
+    const poll = async () => {
+      try {
+        const data = await getRagTestRunStatus(ragTestRunJobId);
+        setRagTestRunProgress(data.progress || null);
+        if (data.results && data.results.length > 0) {
+          setRagTestRunResults(data.results);
+        }
+        if (data.status === 'completed' || data.status === 'cancelled') {
+          setRagTestRunResults(data.results || []);
+          setRagTestRunJobId(null);
+          setRagTestRunProgress(null);
+          setRagTestRunning(false);
+          if (data.error) setRagTestRunError(data.error);
+          return;
+        }
+      } catch (e) {
+        setRagTestRunError(e.message);
+        setRagTestRunJobId(null);
+        setRagTestRunProgress(null);
+        setRagTestRunning(false);
+        return;
+      }
+      t = setTimeout(poll, 500);
+    };
+    let t = setTimeout(poll, 300);
+    return () => clearTimeout(t);
+  }, [ragTestRunJobId, ragTestRunning]);
+
+  const handleRagTestRunStart = async (body) => {
+    setRagTestRunError(null);
+    setRagTestRunResults([]);
+    try {
+      const data = await runRagTests(body);
+      if (data.job_id) {
+        setRagTestRunJobId(data.job_id);
+        setRagTestRunning(true);
+        setRagTestRunProgress({
+          current_index: 0,
+          total: 0,
+          current_test_name: '',
+          passed: 0,
+          failed: 0,
+          pending: 0,
+        });
+        return;
+      }
+      setRagTestRunResults(data.results || []);
+    } catch (e) {
+      setRagTestRunError(e.message);
+    }
+  };
+
+  const handleRagTestRunCancel = async () => {
+    if (!ragTestRunJobId) return;
+    try {
+      await cancelRagTestRun(ragTestRunJobId);
+    } catch (e) {
+      setRagTestRunError(e.message);
+    }
+  };
+
   const loadThemeSettings = async () => {
     try {
       const settings = await getSettings();
@@ -189,6 +262,7 @@ function App() {
     { id: 'logs', label: 'Logs' },
     { id: 'model-tester', label: 'Model Tester' },
     { id: 'rag', label: 'RAG / Qdrant' },
+    { id: 'rag-tests', label: 'RAG Tests' },
     { id: 'crawler', label: 'Crawler / Indexer' },
     { id: 'template-editor', label: 'Template Editor' },
     { id: 'settings', label: 'Settings' },
@@ -211,6 +285,18 @@ function App() {
         return <ModelTester sessionId={sessionId} />;
       case 'rag':
         return <RagTab />;
+      case 'rag-tests':
+        return (
+          <RagTestsTab
+            runJobId={ragTestRunJobId}
+            running={ragTestRunning}
+            runProgress={ragTestRunProgress}
+            results={ragTestRunResults}
+            runError={ragTestRunError}
+            onStartRun={handleRagTestRunStart}
+            onCancelRun={handleRagTestRunCancel}
+          />
+        );
       case 'crawler':
         return <CrawlerTab />;
       case 'template-editor':
@@ -507,6 +593,16 @@ function App() {
           open={debugLogOpen} 
           onToggle={() => setDebugLogOpen(!debugLogOpen)}
           sessionId={sessionId}
+        />
+      )}
+
+      {sessionId && (ragTestRunning || ragTestRunJobId) && (
+        <RagTestRunPanel
+          running={ragTestRunning}
+          runProgress={ragTestRunProgress}
+          runError={ragTestRunError}
+          onCancel={handleRagTestRunCancel}
+          onGoToRagTests={() => setActiveTab('rag-tests')}
         />
       )}
     </div>

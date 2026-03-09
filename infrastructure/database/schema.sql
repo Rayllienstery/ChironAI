@@ -43,9 +43,23 @@ CREATE TABLE IF NOT EXISTS app_settings (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- RAG test runs history
+CREATE TABLE IF NOT EXISTS rag_test_runs (
+    id TEXT PRIMARY KEY,
+    model TEXT NOT NULL,
+    status TEXT NOT NULL,
+    total INTEGER NOT NULL DEFAULT 0,
+    passed INTEGER NOT NULL DEFAULT 0,
+    failed INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP,
+    results TEXT
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id);
 CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
 CREATE INDEX IF NOT EXISTS idx_tester_settings_session_id ON model_tester_settings(session_id);
+CREATE INDEX IF NOT EXISTS idx_rag_test_runs_created_at ON rag_test_runs(created_at);
 
