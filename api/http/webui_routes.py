@@ -3103,6 +3103,8 @@ def _rag_tests_run_worker(
                     "model": model,
                     "include_rag_metadata": True,
                     "collection_name": collection_name,
+                    # Force RAG for test runs to validate retrieval and strict overlap
+                    "force_rag": True,
                 }
                 if prompt_name:
                     chat_payload["prompt_name"] = prompt_name

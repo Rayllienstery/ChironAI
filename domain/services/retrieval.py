@@ -123,7 +123,8 @@ MULTI_CHUNK_KEYWORDS: tuple[str, ...] = tuple(
 
 RERANK_MAX_CANDIDATES: int = get_retrieval_int("rerank_max_candidates", 12)
 FINAL_CONTEXT_K: int = get_retrieval_int("final_context_k", 4)
-MULTI_CHUNK_TOP_K: int = get_retrieval_int("multi_chunk_top_k", 16)
+# Slightly higher default for multi-chunk retrieval to better support broad domains (SwiftUI, Swift Concurrency).
+MULTI_CHUNK_TOP_K: int = get_retrieval_int("multi_chunk_top_k", 24)
 MULTI_CHUNK_FINAL_K: int = get_retrieval_int("multi_chunk_final_k", 8)
 
 MAX_EMBED_TEXT_LENGTH: int = get_retrieval_int("max_embed_text_length", 400)

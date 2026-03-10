@@ -145,6 +145,7 @@ def create_app(
         requested_model = body.get("model") or RAG_MODEL_ID
         explicit_reasoning = body.get("reasoning_level") or body.get("reasoning")
         include_rag_metadata = body.get("include_rag_metadata", False)
+        force_rag = bool(body.get("force_rag"))
         if not messages:
             return jsonify({"error": "messages is required"}), 400
         set_proxy_status(STATUS_RAG_SEARCH)
@@ -188,6 +189,8 @@ def create_app(
                 context_chunk_chars,
                 context_total_chars,
                 rag_required_keywords=rag_keywords,
+                trigger_threshold=None,
+                force_rag=force_rag,
             )
             if rag_timings:
                 set_latest_request_rag_steps(rag_timings)
@@ -232,6 +235,8 @@ def create_app(
                 reasoning_level=reasoning_level,
                 rag_required_keywords=rag_keywords,
                 rag_context=rag_ctx_for_log,
+                trigger_threshold=None,
+                force_rag=force_rag,
             )
             # Ensure use_model is not "rag-ollama" - use config model if needed
             if use_model == "rag-ollama":

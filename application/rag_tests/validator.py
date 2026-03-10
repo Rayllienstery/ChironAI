@@ -118,10 +118,15 @@ def validate_result(
         if not concepts_ok:
             reasons.append("Missing concepts: " + ", ".join(missing))
         if not rag_ok:
-            if require_rag_overlap and chunks_count > 0 and chunks_info:
-                reasons.append("RAG chunks did not overlap response")
+            # Make RAG-related failures explicit instead of abstract "not triggered"
+            if chunks_count == 0:
+                reasons.append("RAG retrieval returned 0 chunks (no matching context found)")
+            elif require_rag_overlap and chunks_info:
+                # We required strict overlap, chunks exist, but overlap check failed
+                reasons.append("RAG retrieved chunks but response did not overlap them (RAG Strict failed)")
             else:
-                reasons.append("RAG not triggered")
+                # Fallback: RAG pipeline was skipped or produced no usable chunks
+                reasons.append("RAG was skipped by trigger/keywords or produced no usable chunks")
         if empty:
             reasons.append("Response empty")
         if not empty and not min_length_ok:

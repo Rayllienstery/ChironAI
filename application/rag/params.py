@@ -47,16 +47,24 @@ class RAGDependencies:
     chat_client: ChatLLMClient
 
 
-def get_rag_answer_params(webui_dir: str | None = None, collection_name: str | None = None) -> tuple[RAGAnswerParams, RAGDependencies]:
+def get_rag_answer_params(
+    webui_dir: str | None = None,
+    collection_name: str | None = None,
+    prompt_name: str | None = None,
+) -> tuple[RAGAnswerParams, RAGDependencies]:
     """
     Return (params, rag_repo, embed_provider, rerank_client, chat_client) for RAG.
 
     Single source for prompt, config limits, and wired services. Use this in
     rag_client and rag_routes so search, filtering, and chunk handling stay unified.
-    
-    collection_name: explicit Qdrant collection name to use for RAG retrieval.
+
+    Args:
+        webui_dir: Optional WebUI directory hint for wiring dependencies.
+        collection_name: Explicit Qdrant collection name to use for RAG retrieval.
+        prompt_name: Optional system prompt name override (stem of prompts/*.md).
+            When None, config default is used (same behavior as before).
     """
-    prefix, suffix = get_rag_system_prompt()
+    prefix, suffix = get_rag_system_prompt(prompt_name)
     context_chunk_chars = get_rag_int("context_chunk_chars", 1000)
     context_total_chars = get_rag_int("context_total_chars", 7000)
     confidence_threshold = get_rag_float("confidence_threshold", 0.75)

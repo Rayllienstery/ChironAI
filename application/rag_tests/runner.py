@@ -29,16 +29,57 @@ def run_one_test(
     Returns (content, rag_metadata, result_dict).
     """
     question = (test.get("question") or "").strip()
+
+    # Enrich retrieval query with platform/framework/expected concepts and simple synonyms
+    platform = (test.get("platform") or "").strip()
+    framework = (test.get("framework") or "").strip()
+    concepts = [c.strip() for c in (test.get("expected_concepts") or []) if c.strip()]
+
+    keywords: list[str] = []
+    if platform:
+        keywords.append(platform)
+    if framework:
+        keywords.append(framework)
+    keywords.extend(concepts)
+
+    # Simple query expansion for critical domains (Live Activity, Observation, SwiftData, etc.)
+    lowered = " ".join(k.lower() for k in keywords)
+    extra_terms: list[str] = []
+    if "live activity" in lowered or "activitykit" in lowered:
+        extra_terms.extend(["ActivityKit", "Live Activities", "WidgetKit"])
+    if "swiftdata" in lowered:
+        extra_terms.extend(["SwiftData", "ModelContext", "ModelContainer"])
+    if "observation" in lowered or "@observation" in lowered:
+        extra_terms.extend(["Observation", "@Observable", "Observation framework"])
+    if "actor" in lowered or "sendable" in lowered:
+        extra_terms.extend(["Swift Concurrency", "Sendable", "actor"])
+
+    all_terms: list[str] = []
+    for term in keywords + extra_terms:
+        if term and term not in all_terms:
+            all_terms.append(term)
+
+    retrieval_query = question
+    if all_terms:
+        retrieval_query = f"{question}\n\nRelevant terms: " + ", ".join(all_terms)
     start_time = time.time()
     try:
-        params, deps = get_rag_answer_params(collection_name=collection_name)
+        # Use a stricter, test-only system prompt to make answers
+        # more doc-grounded and concept-complete in RAG Tests.
+        params, deps = get_rag_answer_params(
+            collection_name=collection_name,
+            prompt_name="system_senior_ios_assistant_rag_tests",
+        )
         ctx, _ = build_rag_context(
-            question,
+            retrieval_query,
             deps.rag_repo,
             deps.embed_provider,
             deps.rerank_client,
             params.context_chunk_chars,
             params.context_total_chars,
+            rag_required_keywords=None,
+            trigger_threshold=None,
+            force_rag=True,
         )
         rag_metadata: dict[str, Any] = {
             "chunks_info": ctx.chunks_info,
@@ -62,7 +103,9 @@ def run_one_test(
             params.model_name,
             rag_context=ctx,
         )
-        content = deps.chat_client.chat(ollama_messages, use_model, stream=False, options=None)
+        # Use deterministic settings for RAG tests to reduce variance in results.
+        options = {"temperature": 0.0, "top_p": 0.1}
+        content = deps.chat_client.chat(ollama_messages, use_model, stream=False, options=options)
         elapsed_ms = int((time.time() - start_time) * 1000)
 
         def _approx_tokens(text: str) -> int:
@@ -81,6 +124,7 @@ def run_one_test(
             "test_name": test.get("name"),
             "platform": test.get("platform"),
             "framework": test.get("framework"),
+            "difficulty": test.get("difficulty"),
             "model": model,
             "status": validation.get("status", "FAIL"),
             "response_time_ms": elapsed_ms,

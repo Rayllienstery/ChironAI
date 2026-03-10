@@ -135,8 +135,10 @@ class RagTestRunsRepository:
         to_date: str | None = None,
     ) -> dict[str, Any]:
         """
-        Return aggregate metrics: total_runs, total_tests, total_passed, total_failed,
-        pass_rate_pct, and per_model list of { model, run_count, total_passed, total_failed, pass_rate_pct }.
+        Return aggregate metrics:
+        - total_runs, total_tests, total_passed, total_failed, pass_rate_pct
+        - per_model: list of { model, run_count, total_passed, total_failed, pass_rate_pct }
+        - domains: aggregate by logical domain (UIKit / SwiftUI / Swift) and difficulty.
         """
         conditions: list[str] = []
         params: list[Any] = []
@@ -191,6 +193,88 @@ class RagTestRunsRepository:
                 "pass_rate_pct": round((data["total_passed"] / t * 100), 1) if t else 0.0,
             })
         per_model.sort(key=lambda x: -x["run_count"])
+
+        # Domain-level aggregation requires inspecting stored per-test results JSON
+        domain_agg: dict[str, dict[str, Any]] = {}
+        # Helper to load results for a given run id
+        if rows:
+            run_ids = [r["id"] for r in rows]
+            placeholders = ",".join("?" for _ in run_ids)
+            cursor = conn.execute(
+                f"SELECT id, results FROM rag_test_runs WHERE id IN ({placeholders})",
+                run_ids,
+            )
+            result_rows = cursor.fetchall()
+            results_by_id = {rr["id"]: rr["results"] for rr in result_rows}
+
+            for r in rows:
+                raw_results = results_by_id.get(r["id"])
+                if not raw_results:
+                    continue
+                try:
+                    tests = json.loads(raw_results)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                for t in tests:
+                    framework = (t.get("framework") or "").strip()
+                    platform = (t.get("platform") or "").strip()
+                    difficulty = (t.get("difficulty") or "").strip() or "unknown"
+                    status = (t.get("status") or "").upper()
+                    if framework.lower() in ("swiftui", "uikit"):
+                        domain = framework
+                    else:
+                        # Everything else falls under generic Swift domain
+                        domain = "Swift"
+                    key = domain
+                    if key not in domain_agg:
+                        domain_agg[key] = {
+                            "domain": key,
+                            "total": 0,
+                            "passed": 0,
+                            "failed": 0,
+                            "by_difficulty": {},
+                        }
+                    d_entry = domain_agg[key]
+                    d_entry["total"] += 1
+                    if status == "PASS":
+                        d_entry["passed"] += 1
+                    else:
+                        d_entry["failed"] += 1
+                    by_diff = d_entry["by_difficulty"].setdefault(
+                        difficulty,
+                        {"difficulty": difficulty, "total": 0, "passed": 0, "failed": 0},
+                    )
+                    by_diff["total"] += 1
+                    if status == "PASS":
+                        by_diff["passed"] += 1
+                    else:
+                        by_diff["failed"] += 1
+
+        domains: list[dict[str, Any]] = []
+        for key, data in sorted(domain_agg.items(), key=lambda x: x[0]):
+            total_domain = data["total"]
+            pass_rate_domain = round((data["passed"] / total_domain * 100), 1) if total_domain else 0.0
+            by_diff_list: list[dict[str, Any]] = []
+            for _, diff_data in sorted(data["by_difficulty"].items(), key=lambda x: x[0]):
+                total_diff = diff_data["total"]
+                pass_rate_diff = round((diff_data["passed"] / total_diff * 100), 1) if total_diff else 0.0
+                diff_entry = {
+                    "difficulty": diff_data["difficulty"],
+                    "total": total_diff,
+                    "passed": diff_data["passed"],
+                    "failed": diff_data["failed"],
+                    "pass_rate_pct": pass_rate_diff,
+                }
+                by_diff_list.append(diff_entry)
+            domains.append({
+                "domain": data["domain"],
+                "total": total_domain,
+                "passed": data["passed"],
+                "failed": data["failed"],
+                "pass_rate_pct": pass_rate_domain,
+                "by_difficulty": by_diff_list,
+            })
+
         return {
             "total_runs": total_runs,
             "total_tests": total_tests,
@@ -198,6 +282,7 @@ class RagTestRunsRepository:
             "total_failed": total_failed,
             "pass_rate_pct": pass_rate_pct,
             "per_model": per_model,
+            "domains": domains,
         }
 
     def get_run(self, run_id: str) -> dict[str, Any] | None:

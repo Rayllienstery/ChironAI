@@ -171,6 +171,7 @@ def build_rag_context(
     top_k: int | None = None,
     rag_required_keywords: list[str] | None = None,
     trigger_threshold: int | None = None,
+    force_rag: bool = False,
 ) -> tuple[RagContext, dict[str, float]]:
     """
     Build RAG context for a question: search_rag -> framework_filter -> build_context_block.
@@ -184,8 +185,8 @@ def build_rag_context(
     score, signals, triggered = compute_rag_trigger_score(
         question, rag_required_keywords=rag_required_keywords, trigger_threshold=trigger_threshold
     )
-    _rag_log.debug("RAG trigger score=%s signals=%s triggered=%s", score, signals, triggered)
-    if should_skip_rag_search(
+    _rag_log.debug("RAG trigger score=%s signals=%s triggered=%s force_rag=%s", score, signals, triggered, force_rag)
+    if not force_rag and should_skip_rag_search(
         question, rag_required_keywords=rag_required_keywords, trigger_threshold=trigger_threshold
     ):
         _rag_log.debug("RAG skipped for query (greeting or score below threshold)")
@@ -243,6 +244,7 @@ def answer_question(
     rag_required_keywords: list[str] | None = None,
     rag_context: RagContext | None = None,
     trigger_threshold: int | None = None,
+    force_rag: bool = False,
 ) -> RagAnswerResponse:
     """
     Answer a question with RAG: build_rag_context (or use rag_context) -> build_system_content -> chat.
@@ -262,6 +264,7 @@ def answer_question(
             context_total_chars,
             rag_required_keywords=rag_required_keywords,
             trigger_threshold=trigger_threshold,
+            force_rag=force_rag,
         )
     system_content = build_system_content(
         system_prefix,
@@ -305,6 +308,7 @@ def prepare_ollama_messages(
     rag_required_keywords: list[str] | None = None,
     rag_context: RagContext | None = None,
     trigger_threshold: int | None = None,
+    force_rag: bool = False,
 ) -> tuple[list[dict[str, Any]], str]:
     """
     Build RAG context (unless rag_context provided) and Ollama message list (for streaming or custom chat).
@@ -324,6 +328,7 @@ def prepare_ollama_messages(
             context_total_chars,
             rag_required_keywords=rag_required_keywords,
             trigger_threshold=trigger_threshold,
+            force_rag=force_rag,
         )
     system_content = build_system_content(
         system_prefix,

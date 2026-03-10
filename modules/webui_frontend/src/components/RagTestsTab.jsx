@@ -70,6 +70,7 @@ function RagTestsTab({
   const [selectedRunId, setSelectedRunId] = useState(null);
   const [selectedRunDetail, setSelectedRunDetail] = useState(null);
   const [historySectionOpen, setHistorySectionOpen] = useState(false);
+  const [showFailDrilldown, setShowFailDrilldown] = useState(false);
   const [collections, setCollections] = useState([]);
   const [selectedCollection, setSelectedCollection] = useState('');
   const [prompts, setPrompts] = useState([]);
@@ -466,6 +467,15 @@ function RagTestsTab({
       }, {})
     : {};
   const isViewingPastRun = Boolean(selectedRunDetail);
+  const failResults = (displayResults || []).filter((r) => r.status === 'FAIL');
+
+  const [failFilters, setFailFilters] = useState({
+    domain: '',
+    difficulty: '',
+    ragUsed: '',
+    ragStrictOnly: false,
+  });
+
   const tableRows = isViewingPastRun
     ? displayResults
     : filteredTests;
@@ -678,6 +688,53 @@ function RagTestsTab({
                 {runSummary.per_model?.length > 0 && (
                   <p className="rag-tests-summary-line">
                     By model: {runSummary.per_model.map((m) => `${m.model} ${m.pass_rate_pct}%`).join(', ')}
+                  </p>
+                )}
+                {runSummary.domains?.length > 0 && (
+                  <div className="rag-tests-summary-domains">
+                    {runSummary.domains.map((d) => (
+                      <div key={d.domain} className="rag-tests-domain-card">
+                        <div className="rag-tests-domain-header">
+                          <span className="rag-tests-domain-name">{d.domain}</span>
+                          <span className="rag-tests-domain-pass-rate">{d.pass_rate_pct}% PASS</span>
+                        </div>
+                        <div className="rag-tests-domain-bar" aria-label={`Domain ${d.domain} pass/fail`}>
+                          <div
+                            className="rag-tests-domain-bar-pass"
+                            style={{ width: d.total ? `${(d.passed / d.total) * 100}%` : '0%' }}
+                          />
+                          <div
+                            className="rag-tests-domain-bar-fail"
+                            style={{ width: d.total ? `${(d.failed / d.total) * 100}%` : '0%' }}
+                          />
+                        </div>
+                        {d.by_difficulty?.length > 0 && (
+                          <div className="rag-tests-domain-difficulties">
+                            {d.by_difficulty.map((diff) => (
+                              <div key={diff.difficulty} className="rag-tests-domain-diff-row">
+                                <span className="rag-tests-domain-diff-label">{diff.difficulty}</span>
+                                <span className="rag-tests-domain-diff-value">
+                                  {diff.pass_rate_pct}% ({diff.passed}/{diff.total})
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {runHistory.length > 1 && (
+                  <p className="rag-tests-summary-line">
+                    Trend (last 3 runs):{' '}
+                    {runHistory
+                      .slice(0, 3)
+                      .map((r) => {
+                        const total = (r.total || 0);
+                        const passRate = total ? Math.round(((r.passed || 0) / total) * 100) : 0;
+                        return `${formatRunDate(r.created_at)}: ${passRate}%`;
+                      })
+                      .join(' → ')}
                   </p>
                 )}
               </div>
@@ -993,6 +1050,117 @@ function RagTestsTab({
           </tbody>
         </table>
       </div>
+
+      {failResults.length > 0 && (
+        <div className="rag-tests-fail-drilldown">
+          <button
+            type="button"
+            className="rag-tests-history-toggle"
+            onClick={() => setShowFailDrilldown((v) => !v)}
+            aria-expanded={showFailDrilldown}
+          >
+            {showFailDrilldown ? '▼' : '▶'} Fail drill-down ({failResults.length})
+          </button>
+          {showFailDrilldown && (
+            <div className="rag-tests-fail-panel">
+              <div className="rag-tests-fail-filters">
+                <label>
+                  Domain
+                  <select
+                    value={failFilters.domain}
+                    onChange={(e) => setFailFilters((f) => ({ ...f, domain: e.target.value }))}
+                    className="rag-tests-select"
+                    aria-label="Filter failed tests by domain"
+                  >
+                    <option value="">All</option>
+                    <option value="SwiftUI">SwiftUI</option>
+                    <option value="UIKit">UIKit</option>
+                    <option value="Swift">Swift</option>
+                  </select>
+                </label>
+                <label>
+                  Difficulty
+                  <select
+                    value={failFilters.difficulty}
+                    onChange={(e) => setFailFilters((f) => ({ ...f, difficulty: e.target.value }))}
+                    className="rag-tests-select"
+                    aria-label="Filter failed tests by difficulty"
+                  >
+                    <option value="">All</option>
+                    <option value="beginner">beginner</option>
+                    <option value="intermediate">intermediate</option>
+                    <option value="advanced">advanced</option>
+                  </select>
+                </label>
+                <label>
+                  RAG used
+                  <select
+                    value={failFilters.ragUsed}
+                    onChange={(e) => setFailFilters((f) => ({ ...f, ragUsed: e.target.value }))}
+                    className="rag-tests-select"
+                    aria-label="Filter failed tests by RAG usage"
+                  >
+                    <option value="">All</option>
+                    <option value="yes">Only rag_used = true</option>
+                    <option value="no">Only rag_used = false</option>
+                  </select>
+                </label>
+                <label className="rag-tests-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={failFilters.ragStrictOnly}
+                    onChange={(e) => setFailFilters((f) => ({ ...f, ragStrictOnly: e.target.checked }))}
+                  />
+                  Only RAG Strict tests
+                </label>
+              </div>
+              <table className="rag-tests-table rag-tests-fail-table" role="table">
+                <thead>
+                  <tr>
+                    <th>Test</th>
+                    <th>Platform</th>
+                    <th>Framework</th>
+                    <th>Difficulty</th>
+                    <th>RAG used</th>
+                    <th>Confidence</th>
+                    <th>Missing concepts</th>
+                    <th>Failure reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {failResults
+                    .filter((r) => {
+                      const framework = (r.framework || '').toLowerCase();
+                      const difficulty = (r.difficulty || '').toLowerCase();
+                      const ragUsed = !!r.rag_used;
+                      const ragStrict = !!r.rag_strict;
+                      if (failFilters.domain === 'SwiftUI' && framework !== 'swiftui') return false;
+                      if (failFilters.domain === 'UIKit' && framework !== 'uikit') return false;
+                      if (failFilters.domain === 'Swift' && framework && framework !== 'swift' && framework !== 'swiftui' && framework !== 'uikit') return false;
+                      if (failFilters.difficulty && difficulty !== failFilters.difficulty) return false;
+                      if (failFilters.ragUsed === 'yes' && !ragUsed) return false;
+                      if (failFilters.ragUsed === 'no' && ragUsed) return false;
+                      if (failFilters.ragStrictOnly && !ragStrict) return false;
+                      return true;
+                    })
+                    .map((r) => (
+                      <tr key={`${r.test_id}-${r.model}`}>
+                        <td>{r.test_name || r.test_id}</td>
+                        <td>{r.platform || '—'}</td>
+                        <td>{r.framework || '—'}</td>
+                        <td>{r.difficulty || '—'}</td>
+                        <td>{r.rag_used ? 'Yes' : 'No'}</td>
+                        <td>{r.confidence_label || '—'}</td>
+                        <td>{(r.missing_concepts || []).join(', ') || 'none'}</td>
+                        <td>{r.failure_reason || '—'}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {filteredTests.length === 0 && !error && !runError && (
         <p className="rag-tests-empty">No tests found. Create one or add .md files under rag_tests/.</p>
