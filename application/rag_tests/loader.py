@@ -144,7 +144,10 @@ def load_all_tests(root: Path | None = None) -> list[dict[str, Any]]:
 
     tests: list[dict[str, Any]] = []
     for path in root.rglob("*.md"):
+        # Skip hidden files and documentation-only files like README.md
         if path.name.startswith("."):
+            continue
+        if path.name.lower() == "readme.md":
             continue
         data = load_test(root, path)
         if data and data.get("question"):
