@@ -1,6 +1,40 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { getCrawlerSources, getCrawlerSourcePages, getRagCollections, createCollection, getCreateCollectionStatus, crawlSource, getCrawlStatus, addCrawlerSource, getCrawlerSource, updateCrawlerSource } from '../services/api';
+import {
+  getCrawlerSources,
+  getCrawlerSourcePages,
+  getRagCollections,
+  createCollection,
+  getCreateCollectionStatus,
+  crawlSource,
+  getCrawlStatus,
+  addCrawlerSource,
+  getCrawlerSource,
+  updateCrawlerSource,
+  getIndexerTesterSources,
+  getIndexerTesterFiles,
+  getIndexerTesterFileDetail,
+} from '../services/api';
 import './CrawlerTab.css';
+
+function computeIndexerDiff(sourceText, processedText) {
+  if (!sourceText && !processedText) return [];
+  const sourceLines = (sourceText || '').split('\n');
+  const processedLines = (processedText || '').split('\n');
+  const maxLen = sourceLines.length;
+
+  const lines = [];
+  for (let i = 0; i < maxLen; i += 1) {
+    const src = sourceLines[i] ?? '';
+    const dst = processedLines[i] ?? '';
+    const same = src === dst;
+    lines.push({
+      key: i,
+      type: same ? 'same' : 'removed',
+      text: same ? src : `- ${src}`,
+    });
+  }
+  return lines;
+}
 
 function CrawlerTab() {
   const [loading, setLoading] = useState(true);
@@ -50,6 +84,26 @@ function CrawlerTab() {
   const [crawlAllResults, setCrawlAllResults] = useState([]);
   const [selectedSourceIds, setSelectedSourceIds] = useState(new Set());
 
+  // Indexer Tester state
+  const [activeSection, setActiveSection] = useState('crawler');
+  const [testerSources, setTesterSources] = useState([]);
+  const [testerLoading, setTesterLoading] = useState(false);
+  const [testerError, setTesterError] = useState(null);
+  const [testerSelectedSourceId, setTesterSelectedSourceId] = useState('');
+  const [testerFiles, setTesterFiles] = useState([]);
+  const [testerFilesLoading, setTesterFilesLoading] = useState(false);
+  const [testerSortBy, setTesterSortBy] = useState('name');
+  const [testerSortOrder, setTesterSortOrder] = useState('asc');
+  const [testerSelectedFile, setTesterSelectedFile] = useState(null);
+  const [testerFileDetail, setTesterFileDetail] = useState(null);
+  const [testerDetailLoading, setTesterDetailLoading] = useState(false);
+  const [showIndexerDetailModal, setShowIndexerDetailModal] = useState(false);
+  const [indexerSectionOpen, setIndexerSectionOpen] = useState({
+    original: false,
+    diff: true,
+    processed: true,
+  });
+
   const loadSources = async () => {
     setLoading(true);
     setError(null);
@@ -88,6 +142,65 @@ function CrawlerTab() {
     loadSources();
     loadCollections();
   }, []);
+
+  const loadIndexerTesterSources = async () => {
+    setTesterLoading(true);
+    setTesterError(null);
+    try {
+      const data = await getIndexerTesterSources();
+      const list = data.sources || [];
+      setTesterSources(list);
+      setTesterSelectedSourceId((prev) => {
+        if (prev && list.some((s) => s.id === prev)) return prev;
+        return list.length > 0 ? list[0].id : '';
+      });
+    } catch (e) {
+      setTesterError(e.message);
+      setTesterSources([]);
+      setTesterSelectedSourceId('');
+    } finally {
+      setTesterLoading(false);
+    }
+  };
+
+  const loadIndexerTesterFiles = async (sourceId, opts = {}) => {
+    if (!sourceId) {
+      setTesterFiles([]);
+      return;
+    }
+    setTesterFilesLoading(true);
+    setTesterError(null);
+    try {
+      const data = await getIndexerTesterFiles(sourceId, {
+        sortBy: opts.sortBy || testerSortBy,
+        order: opts.order || testerSortOrder,
+      });
+      setTesterFiles(data.files || []);
+    } catch (e) {
+      setTesterError(e.message);
+      setTesterFiles([]);
+    } finally {
+      setTesterFilesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection !== 'indexer') return;
+    if (!testerSources.length) {
+      loadIndexerTesterSources();
+    }
+  }, [activeSection]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (activeSection !== 'indexer') return;
+    if (testerSelectedSourceId) {
+      loadIndexerTesterFiles(testerSelectedSourceId);
+    } else {
+      setTesterFiles([]);
+    }
+    setTesterSelectedFile(null);
+    setTesterFileDetail(null);
+  }, [activeSection, testerSelectedSourceId, testerSortBy, testerSortOrder]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll create-collection job progress
   useEffect(() => {
@@ -218,6 +331,48 @@ function CrawlerTab() {
     if (selectedSource) {
       handleSourceClick(selectedSource);
     }
+  };
+
+  const handleTesterSort = (field) => {
+    setTesterSortBy((prevField) => {
+      if (prevField === field) {
+        setTesterSortOrder((prevOrder) => (prevOrder === 'asc' ? 'desc' : 'asc'));
+        return prevField;
+      }
+      setTesterSortOrder('asc');
+      return field;
+    });
+  };
+
+  const handleTesterSelectFile = async (file) => {
+    if (!file) {
+      setTesterSelectedFile(null);
+      setTesterFileDetail(null);
+      setShowIndexerDetailModal(false);
+      return;
+    }
+    setTesterSelectedFile(file.filename);
+    setShowIndexerDetailModal(true);
+    setTesterDetailLoading(true);
+    setTesterError(null);
+    try {
+      const detail = await getIndexerTesterFileDetail(testerSelectedSourceId, file.filename);
+      setTesterFileDetail(detail);
+      setIndexerSectionOpen({ original: false, diff: true, processed: true });
+    } catch (e) {
+      setTesterError(e.message);
+      setTesterFileDetail(null);
+    } finally {
+      setTesterDetailLoading(false);
+    }
+  };
+
+  const handleCloseIndexerDetailModal = () => {
+    setShowIndexerDetailModal(false);
+  };
+
+  const toggleIndexerSection = (section) => {
+    setIndexerSectionOpen((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
   const formatDate = (dateStr) => {
@@ -439,6 +594,26 @@ function CrawlerTab() {
     <div className="crawler-tab">
       <div className="crawler-header">
         <h2>Crawler / Indexer</h2>
+        <div className="crawler-subtabs" role="tablist" aria-label="Crawler and indexer tools">
+          <button
+            type="button"
+            className={`crawler-subtab ${activeSection === 'crawler' ? 'crawler-subtab-active' : ''}`}
+            role="tab"
+            aria-selected={activeSection === 'crawler'}
+            onClick={() => setActiveSection('crawler')}
+          >
+            Crawler
+          </button>
+          <button
+            type="button"
+            className={`crawler-subtab ${activeSection === 'indexer' ? 'crawler-subtab-active' : ''}`}
+            role="tab"
+            aria-selected={activeSection === 'indexer'}
+            onClick={() => setActiveSection('indexer')}
+          >
+            Indexer Tester
+          </button>
+        </div>
         <div className="crawler-actions">
           <button
             type="button"
@@ -493,7 +668,7 @@ function CrawlerTab() {
         </div>
       </div>
 
-      {crawlingSources.size > 0 && (
+      {activeSection === 'crawler' && crawlingSources.size > 0 && (
         <div className="crawler-progress-panel crawler-progress-panel-fixed" role="status" aria-live="polite">
           <div className="crawler-progress-header">
             <span className="crawler-progress-spinner" aria-hidden="true" />
@@ -505,7 +680,7 @@ function CrawlerTab() {
         </div>
       )}
 
-      {createProgress && showCreateToast && (
+      {activeSection === 'crawler' && createProgress && showCreateToast && (
         <div
           className={`create-collection-toast create-collection-toast-${createProgress.status || 'unknown'}`}
           role="status"
@@ -563,7 +738,7 @@ function CrawlerTab() {
         </div>
       )}
 
-      {crawlAllResults.length > 0 && crawlingSources.size === 0 && (
+      {activeSection === 'crawler' && crawlAllResults.length > 0 && crawlingSources.size === 0 && (
         <div className="modal-overlay" onClick={() => setCrawlAllResults([])}>
           <div className="modal-content crawler-result-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
@@ -615,14 +790,16 @@ function CrawlerTab() {
         </div>
       )}
 
-      {error && <div className="crawler-error">Error: {error}</div>}
+      {activeSection === 'crawler' && error && <div className="crawler-error">Error: {error}</div>}
 
-      {loading ? (
-        <div className="loading">Loading sources...</div>
-      ) : !sources.length ? (
-        <div className="empty-state">No crawl sources found. Run crawler first.</div>
-      ) : (
-        <div className="crawler-sources">
+      {activeSection === 'crawler' && (
+        <>
+          {loading ? (
+            <div className="loading">Loading sources...</div>
+          ) : !sources.length ? (
+            <div className="empty-state">No crawl sources found. Run crawler first.</div>
+          ) : (
+            <div className="crawler-sources">
           <div className="sources-header">
             <h3>Crawl Sources</h3>
           </div>
@@ -773,6 +950,221 @@ function CrawlerTab() {
               ))}
             </tbody>
           </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {activeSection === 'indexer' && (
+        <div className="indexer-tester">
+          {testerError && <div className="crawler-error">Error: {testerError}</div>}
+          <div className="indexer-tester-layout">
+            <div className="indexer-tester-sources">
+              <h3>Indexer Tester</h3>
+              {testerLoading ? (
+                <div className="loading">Loading sources...</div>
+              ) : testerSources.length === 0 ? (
+                <div className="empty-state">No sources with markdown pages found.</div>
+              ) : (
+                <>
+                  <label className="indexer-select-label">
+                    Source:
+                    <select
+                      value={testerSelectedSourceId}
+                      onChange={(e) => setTesterSelectedSourceId(e.target.value)}
+                      aria-label="Select source for Indexer Tester"
+                    >
+                      {testerSources.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.id} ({s.page_count} pages)
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              )}
+            </div>
+            <div className="indexer-tester-files">
+              <h4>Markdown files</h4>
+              {testerFilesLoading ? (
+                <div className="loading">Loading files...</div>
+              ) : !testerFiles.length ? (
+                <div className="empty-state">No .md files found for this source.</div>
+              ) : (
+                <table
+                  className="indexer-files-table"
+                  role="table"
+                  aria-label="Indexer tester files"
+                >
+                  <thead>
+                    <tr>
+                      <th>
+                        <button
+                          type="button"
+                          className="indexer-sort-button"
+                          onClick={() => handleTesterSort('name')}
+                        >
+                          Filename
+                          {testerSortBy === 'name' && (
+                            <span className="indexer-sort-indicator">
+                              {testerSortOrder === 'asc' ? ' ▲' : ' ▼'}
+                            </span>
+                          )}
+                        </button>
+                      </th>
+                      <th className="indexer-size-column">
+                        <button
+                          type="button"
+                          className="indexer-sort-button"
+                          onClick={() => handleTesterSort('size')}
+                        >
+                          Size (KB)
+                          {testerSortBy === 'size' && (
+                            <span className="indexer-sort-indicator">
+                              {testerSortOrder === 'asc' ? ' ▲' : ' ▼'}
+                            </span>
+                          )}
+                        </button>
+                      </th>
+                      <th>Inspect</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {testerFiles.map((file) => (
+                      <tr key={file.filename}>
+                        <td>{file.filename}</td>
+                        <td className="indexer-size-column">
+                          {(file.size_bytes / 1024).toFixed(1)}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="crawler-button small"
+                            onClick={() => handleTesterSelectFile(file)}
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeSection === 'indexer' && showIndexerDetailModal && (
+        <div className="modal-overlay" onClick={handleCloseIndexerDetailModal}>
+          <div
+            className="modal-content indexer-detail-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h3>
+                {testerSelectedFile
+                  ? `${testerSelectedSourceId} / ${testerSelectedFile}`
+                  : 'Indexer Tester — Details'}
+              </h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={handleCloseIndexerDetailModal}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-body indexer-detail-modal-body">
+              {testerDetailLoading ? (
+                <div className="loading">Loading details…</div>
+              ) : testerFileDetail ? (
+                <div className="indexer-detail-panels">
+                  <div className="indexer-panel indexer-panel-collapsible">
+                    <button
+                      type="button"
+                      className="indexer-panel-header"
+                      onClick={() => toggleIndexerSection('original')}
+                      aria-expanded={indexerSectionOpen.original}
+                      aria-controls="indexer-section-original"
+                    >
+                      <span className="indexer-panel-chevron" aria-hidden>
+                        {indexerSectionOpen.original ? '▼' : '▶'}
+                      </span>
+                      <h5>Original markdown</h5>
+                    </button>
+                    {indexerSectionOpen.original && (
+                      <div id="indexer-section-original" className="indexer-panel-body">
+                        <pre className="indexer-code-block indexer-code-block-full">
+{testerFileDetail.source_md}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                  <div
+                    className="indexer-panel indexer-panel-collapsible"
+                    aria-label="Diff between original and processed markdown"
+                  >
+                    <button
+                      type="button"
+                      className="indexer-panel-header"
+                      onClick={() => toggleIndexerSection('diff')}
+                      aria-expanded={indexerSectionOpen.diff}
+                      aria-controls="indexer-section-diff"
+                    >
+                      <span className="indexer-panel-chevron" aria-hidden>
+                        {indexerSectionOpen.diff ? '▼' : '▶'}
+                      </span>
+                      <h5>Diff (removed lines highlighted)</h5>
+                    </button>
+                    {indexerSectionOpen.diff && (
+                      <div id="indexer-section-diff" className="indexer-panel-body">
+                        <div className="indexer-diff">
+                          {computeIndexerDiff(
+                            testerFileDetail.source_md,
+                            testerFileDetail.processed_md,
+                          ).map((line) => (
+                            <div
+                              key={line.key}
+                              className={`indexer-diff-line${
+                                line.type === 'removed' ? ' indexer-diff-line-removed' : ''
+                              }`}
+                            >
+                              {line.text || ' '}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="indexer-panel indexer-panel-collapsible">
+                    <button
+                      type="button"
+                      className="indexer-panel-header"
+                      onClick={() => toggleIndexerSection('processed')}
+                      aria-expanded={indexerSectionOpen.processed}
+                      aria-controls="indexer-section-processed"
+                    >
+                      <span className="indexer-panel-chevron" aria-hidden>
+                        {indexerSectionOpen.processed ? '▼' : '▶'}
+                      </span>
+                      <h5>Processed markdown</h5>
+                    </button>
+                    {indexerSectionOpen.processed && (
+                      <div id="indexer-section-processed" className="indexer-panel-body">
+                        <pre className="indexer-code-block indexer-code-block-full">
+{testerFileDetail.processed_md}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="empty-state">No file selected or failed to load.</div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

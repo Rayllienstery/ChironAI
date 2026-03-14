@@ -163,6 +163,7 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import subprocess
+import importlib.util
 
 # In-memory buffer for dev console (last 50 requests)
 _REQUEST_BUFFER: deque[dict[str, Any]] = deque(maxlen=50)
@@ -171,6 +172,31 @@ _WEBUI_LOG = logging.getLogger("webui")
 _ERROR_LOG = get_webui_error_logger()
 
 webui_bp = Blueprint("webui", __name__, url_prefix="/api/webui")
+
+
+_INDEXER_APP_MODULE = None
+
+
+def _get_indexer_app_module():
+    """
+    Lazy-load WebUI/app.py as a module so we can reuse its markdown index pipeline
+    (process_markdown_for_index) without duplicating logic.
+    """
+    global _INDEXER_APP_MODULE
+    if _INDEXER_APP_MODULE is not None:
+        return _INDEXER_APP_MODULE
+
+    app_path = _get_webui_app_path()
+    if not os.path.isfile(app_path):
+        raise RuntimeError("WebUI/app.py not found")
+
+    spec = importlib.util.spec_from_file_location("tmrag_webui_app_indexer", app_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Failed to load WebUI/app.py module spec")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)  # type: ignore[attr-defined]
+    _INDEXER_APP_MODULE = module
+    return module
 
 
 @webui_bp.route("/models", methods=["GET"])
@@ -2354,6 +2380,215 @@ def get_crawler_source_pages(source_id: str) -> Any:
         })
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_crawler_source_pages", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/crawler/indexer-tester/sources", methods=["GET"])
+def get_indexer_tester_sources() -> Any:
+    """
+    List all crawl sources that have a pages/ directory with markdown files for Indexer Tester.
+    """
+    try:
+        sources_dir = _get_crawler_sources_dir()
+        if not os.path.isdir(sources_dir):
+            return jsonify({"sources": []})
+
+        result: list[dict[str, Any]] = []
+        for item in os.listdir(sources_dir):
+            source_path = os.path.join(sources_dir, item)
+            if not os.path.isdir(source_path):
+                continue
+            pages_dir = os.path.join(source_path, "pages")
+            if not os.path.isdir(pages_dir):
+                continue
+            try:
+                files = [
+                    name
+                    for name in os.listdir(pages_dir)
+                    if os.path.isfile(os.path.join(pages_dir, name))
+                    and name.lower().endswith(".md")
+                ]
+            except Exception:
+                files = []
+            result.append(
+                {
+                    "id": item,
+                    "page_count": len(files),
+                }
+            )
+
+        result.sort(key=lambda x: x["id"])
+        return jsonify({"sources": result})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_indexer_tester_sources", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/crawler/indexer-tester/sources/<source_id>/files", methods=["GET"])
+def get_indexer_tester_files(source_id: str) -> Any:
+    """
+    List markdown files for a specific source, with optional sorting by name or size.
+    """
+    try:
+        sources_dir = _get_crawler_sources_dir()
+        pages_dir = os.path.join(sources_dir, source_id, "pages")
+        if not os.path.isdir(pages_dir):
+            return jsonify({"error": "Source pages directory not found"}), 404
+
+        sort_by = request.args.get("sort", "name")
+        order = request.args.get("order", "asc")
+        if sort_by not in ("name", "size"):
+            sort_by = "name"
+        if order not in ("asc", "desc"):
+            order = "asc"
+
+        files: list[dict[str, Any]] = []
+        for name in os.listdir(pages_dir):
+            if not name.lower().endswith(".md"):
+                continue
+            full_path = os.path.join(pages_dir, name)
+            if not os.path.isfile(full_path):
+                continue
+            try:
+                size_bytes = os.path.getsize(full_path)
+            except OSError:
+                size_bytes = 0
+            files.append(
+                {
+                    "filename": name,
+                    "size_bytes": size_bytes,
+                }
+            )
+
+        reverse = order == "desc"
+        if sort_by == "size":
+            files.sort(key=lambda x: x["size_bytes"], reverse=reverse)
+        else:
+            files.sort(key=lambda x: x["filename"].lower(), reverse=reverse)
+
+        return jsonify(
+            {
+                "source_id": source_id,
+                "files": files,
+                "total": len(files),
+            }
+        )
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_indexer_tester_files", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/crawler/indexer-tester/sources/<source_id>/files/<path:filename>", methods=["GET"])
+def get_indexer_tester_file_detail(source_id: str, filename: str) -> Any:
+    """
+    Return original and processed markdown for a specific page using WebUI/app.py pipeline.
+    """
+    try:
+        sources_dir = _get_crawler_sources_dir()
+        pages_dir = os.path.join(sources_dir, source_id, "pages")
+        if not os.path.isdir(pages_dir):
+            return jsonify({"error": "Source pages directory not found"}), 404
+
+        # Normalize and validate path to stay under pages_dir
+        requested_path = os.path.abspath(os.path.join(pages_dir, filename))
+        pages_dir_abs = os.path.abspath(pages_dir)
+        if not requested_path.startswith(pages_dir_abs + os.sep):
+            return jsonify({"error": "Invalid filename"}), 400
+        basename = os.path.basename(requested_path)
+        if not basename.lower().endswith(".md"):
+            return jsonify({"error": "Only .md files are supported"}), 400
+        if not os.path.isfile(requested_path):
+            return jsonify({"error": "File not found"}), 404
+
+        meta = _load_source_meta(source_id) or {}
+        page_entry = (meta.get("pages") or {}).get(basename, {})
+
+        # Use WebUI/app.py helper to process markdown exactly as index_markdown does.
+        app_module = _get_indexer_app_module()
+        process_fn = getattr(app_module, "process_markdown_for_index", None)
+        if process_fn is None:
+            return jsonify({"error": "process_markdown_for_index not available in WebUI/app.py"}), 500
+
+        processed = process_fn(source_id, basename)
+
+        return jsonify(
+            {
+                "source_id": source_id,
+                "filename": basename,
+                "page_meta": processed.get("page_meta") or page_entry or {},
+                "source_md": processed.get("source_md", ""),
+                "processed_md": processed.get("processed_md", ""),
+            }
+        )
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_indexer_tester_file_detail", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+INDEXER_EVALUATE_SYSTEM_PROMPT = """You are an expert on document processing for RAG. The user will provide ORIGINAL markdown and PROCESSED markdown (after cleanup for indexing). Your task is to evaluate the pipeline for this document only.
+
+Answer in two sections, each with short bullet points. Be concrete: cite exact headings, phrases, or block types (e.g. "the table under ## Frameworks", "the empty ```swift block after ## Example"). Do not give generic advice—only items that apply to this specific text.
+
+**1. What in the PROCESSED text can still be trimmed (noise / low value):**
+- List only concrete items: duplicates, redundant tables, empty or trivial code blocks, repeated notes. One line per item; add a short quote or location if helpful.
+
+**2. What was removed from the ORIGINAL that was useful and should be kept:**
+- List only content that was actually removed and is valuable for developers (steps, code patterns, migration tips, links). Refer to the kind of content (e.g. "steps for adding destination", "conditional compilation example") so the pipeline can be adjusted. Do not list things that are still present in PROCESSED.
+
+Keep the reply concise. Use the same language as the document (e.g. Russian if the doc is in Russian, English if in English). You may use markdown tables for the two sections if that makes the items clearer. Do not add a generic closing paragraph (e.g. "These sections provide…" or "Removing them would…"); end with the last concrete item."""
+
+MAX_EVALUATE_CHARS = 12_000
+
+
+@webui_bp.route("/crawler/indexer-tester/evaluate", methods=["POST"])
+@webui_bp.route("/crawler/indexer-tester/evaluate/", methods=["POST"])
+def indexer_tester_evaluate() -> Any:
+    """
+    Send original and processed markdown to the local LLM for pipeline evaluation.
+    No RAG; single turn. Returns { "reply": content } or { "error": "..." }.
+    """
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        source_md = body.get("source_md") or ""
+        processed_md = body.get("processed_md") or ""
+        model = (body.get("model") or "").strip() or None
+
+        if not source_md and not processed_md:
+            return jsonify({"error": "At least one of source_md or processed_md is required"}), 400
+
+        def truncate(text: str, max_len: int) -> str:
+            if len(text) <= max_len:
+                return text
+            return text[:max_len] + "\n[... truncated]"
+
+        source_md = truncate(source_md, MAX_EVALUATE_CHARS)
+        processed_md = truncate(processed_md, MAX_EVALUATE_CHARS)
+
+        user_content = "ORIGINAL markdown:\n\n" + source_md + "\n\nPROCESSED markdown:\n\n" + processed_md
+
+        webui_dir = None
+        possible_webui = os.path.join(_ROOT, "WebUI")
+        if os.path.isdir(possible_webui):
+            webui_dir = possible_webui
+        collection_name = None
+        names = _get_qdrant_collection_names()
+        if names:
+            collection_name = names[0]
+        params, deps = get_rag_answer_params(webui_dir=webui_dir, collection_name=collection_name)
+        chat_client = deps.chat_client
+        use_model = model if model and model != "rag-ollama" else params.model_name
+        if not use_model:
+            return jsonify({"error": "No chat model configured. Set OLLAMA_CHAT_MODEL or add a model in config."}), 400
+
+        ollama_messages = [
+            {"role": "system", "content": INDEXER_EVALUATE_SYSTEM_PROMPT},
+            {"role": "user", "content": user_content},
+        ]
+        options = {"temperature": 0.0}
+        content = chat_client.chat(ollama_messages, use_model, stream=False, options=options)
+        return jsonify({"reply": content or ""})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.indexer_tester_evaluate", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 

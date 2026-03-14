@@ -200,6 +200,43 @@ export async function updateRagTriggerSettings(settings) {
   return response.json();
 }
 
+export async function getIndexerTesterSources() {
+  const response = await fetch(`${API_BASE}/crawler/indexer-tester/sources`);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to get Indexer Tester sources');
+  }
+  return response.json();
+}
+
+export async function getIndexerTesterFiles(sourceId, options = {}) {
+  const params = new URLSearchParams();
+  if (options.sortBy) params.set('sort', options.sortBy);
+  if (options.order) params.set('order', options.order);
+  const query = params.toString();
+  const response = await fetch(
+    `${API_BASE}/crawler/indexer-tester/sources/${encodeURIComponent(sourceId)}/files${query ? `?${query}` : ''}`,
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to get Indexer Tester files');
+  }
+  return response.json();
+}
+
+export async function getIndexerTesterFileDetail(sourceId, filename) {
+  const response = await fetch(
+    `${API_BASE}/crawler/indexer-tester/sources/${encodeURIComponent(sourceId)}/files/${encodeURIComponent(
+      filename,
+    )}`,
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to get Indexer Tester file detail');
+  }
+  return response.json();
+}
+
 export async function checkRagTrigger(message) {
   const response = await fetch(`${API_BASE}/rag-trigger-test`, {
     method: 'POST',

@@ -1263,6 +1263,42 @@ def _strip_noise_sections(md: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
+def process_markdown_for_index(
+    source_id: str,
+    filename: str,
+    md: str | None = None,
+) -> dict[str, Any]:
+    """
+    Prepare markdown for indexing by applying the same cleaning pipeline as index_markdown.
+
+    Returns a dict:
+      - page_meta: dict extracted from the optional front‑matter/meta block
+      - source_md: original markdown contents as read from disk (or passed in)
+      - processed_md: markdown after meta strip + boilerplate/whitespace/noise filters
+
+    This helper is intentionally read‑only: it does not modify meta.json, dirty flags,
+    or any Qdrant state. It is used both by the real indexer and by WebUI indexer tools.
+    """
+    if md is None:
+        # Load markdown from disk when not provided (used by WebUI Indexer Tester).
+        _, pages_dir = _source_dirs(source_id)
+        page_path = os.path.join(pages_dir, filename)
+        with open(page_path, "r", encoding="utf-8") as f:
+            md = f.read()
+
+    original_md = md
+    page_meta, body = parse_and_strip_meta_block(md)
+    body = _strip_markdown_boilerplate(body)
+    body = _normalize_markdown_whitespace(body)
+    body = _strip_noise_sections(body)
+
+    return {
+        "page_meta": page_meta,
+        "source_md": original_md,
+        "processed_md": body,
+    }
+
+
 def _html_to_markdown_html2text(html: str) -> str:
     """
     HTML → markdown via html2text. Preserves code blocks (pre/code), lists, headings.
@@ -2220,10 +2256,9 @@ def index_markdown(
                     _save_meta(source_id, meta)
                 continue
 
-        page_meta, md = parse_and_strip_meta_block(md)
-        md = _strip_markdown_boilerplate(md)
-        md = _normalize_markdown_whitespace(md)
-        md = _strip_noise_sections(md)
+        processed = process_markdown_for_index(source_id, filename, md=md)
+        page_meta = processed["page_meta"]
+        md = processed["processed_md"]
         if len(md.strip()) < INDEX_MIN_CONTENT_LENGTH:
             log(f"[index] Skipping minimal content (body < {INDEX_MIN_CONTENT_LENGTH} chars): {source_id}/pages/{filename}")
             skipped_files.append(
@@ -2622,7 +2657,7 @@ def do_crawl(start_url):
         log(f"ERROR: Crawler exception: {e}")
     finally:
         stop_flag = True
-        log("🏁 Done.")
+        log("Done.")
 
 if __name__ == "__main__":
     import argparse
