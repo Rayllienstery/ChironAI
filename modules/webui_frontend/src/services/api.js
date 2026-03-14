@@ -237,6 +237,29 @@ export async function getIndexerTesterFileDetail(sourceId, filename) {
   return response.json();
 }
 
+export async function evaluateIndexerWithLlm(sourceMd, processedMd, model) {
+  const response = await fetch(`${API_BASE}/crawler/indexer-tester/evaluate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      source_md: sourceMd,
+      processed_md: processedMd,
+      model: model || undefined,
+    }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    let data = {};
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { error: text ? text.slice(0, 300) : response.statusText };
+    }
+    throw new Error(data.error || `LLM evaluation failed (${response.status})`);
+  }
+  return response.json();
+}
+
 export async function checkRagTrigger(message) {
   const response = await fetch(`${API_BASE}/rag-trigger-test`, {
     method: 'POST',

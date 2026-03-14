@@ -13,6 +13,8 @@ import {
   getIndexerTesterSources,
   getIndexerTesterFiles,
   getIndexerTesterFileDetail,
+  evaluateIndexerWithLlm,
+  getModels,
 } from '../services/api';
 import './CrawlerTab.css';
 
@@ -102,7 +104,13 @@ function CrawlerTab() {
     original: false,
     diff: true,
     processed: true,
+    llm: false,
   });
+  const [llmModels, setLlmModels] = useState([]);
+  const [llmSelectedModel, setLlmSelectedModel] = useState('');
+  const [llmEvaluateReply, setLlmEvaluateReply] = useState(null);
+  const [llmEvaluateError, setLlmEvaluateError] = useState(null);
+  const [llmEvaluateLoading, setLlmEvaluateLoading] = useState(false);
 
   const loadSources = async () => {
     setLoading(true);
@@ -358,7 +366,9 @@ function CrawlerTab() {
     try {
       const detail = await getIndexerTesterFileDetail(testerSelectedSourceId, file.filename);
       setTesterFileDetail(detail);
-      setIndexerSectionOpen({ original: false, diff: true, processed: true });
+      setIndexerSectionOpen({ original: false, diff: true, processed: true, llm: false });
+      setLlmEvaluateReply(null);
+      setLlmEvaluateError(null);
     } catch (e) {
       setTesterError(e.message);
       setTesterFileDetail(null);
@@ -373,6 +383,39 @@ function CrawlerTab() {
 
   const toggleIndexerSection = (section) => {
     setIndexerSectionOpen((prev) => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  useEffect(() => {
+    if (!indexerSectionOpen.llm || !showIndexerDetailModal || llmModels.length > 0) return;
+    getModels()
+      .then((list) => {
+        const models = list || [];
+        setLlmModels(models);
+        if (models.length > 0 && !llmSelectedModel) {
+          const preferred = models.find((m) => m.id === 'rag-ollama') || models[0];
+          setLlmSelectedModel(preferred.id || preferred.name || '');
+        }
+      })
+      .catch(() => setLlmModels([]));
+  }, [indexerSectionOpen.llm, showIndexerDetailModal]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAskLlm = async () => {
+    if (!testerFileDetail) return;
+    setLlmEvaluateLoading(true);
+    setLlmEvaluateError(null);
+    setLlmEvaluateReply(null);
+    try {
+      const data = await evaluateIndexerWithLlm(
+        testerFileDetail.source_md,
+        testerFileDetail.processed_md,
+        llmSelectedModel || undefined,
+      );
+      setLlmEvaluateReply(data.reply ?? '');
+    } catch (e) {
+      setLlmEvaluateError(e.message);
+    } finally {
+      setLlmEvaluateLoading(false);
+    }
   };
 
   const formatDate = (dateStr) => {
@@ -1156,6 +1199,59 @@ function CrawlerTab() {
                         <pre className="indexer-code-block indexer-code-block-full">
 {testerFileDetail.processed_md}
                         </pre>
+                      </div>
+                    )}
+                  </div>
+                  <div className="indexer-panel indexer-panel-collapsible">
+                    <button
+                      type="button"
+                      className="indexer-panel-header"
+                      onClick={() => toggleIndexerSection('llm')}
+                      aria-expanded={indexerSectionOpen.llm}
+                      aria-controls="indexer-section-llm"
+                    >
+                      <span className="indexer-panel-chevron" aria-hidden>
+                        {indexerSectionOpen.llm ? '▼' : '▶'}
+                      </span>
+                      <h5>Evaluate with LLM</h5>
+                    </button>
+                    {indexerSectionOpen.llm && (
+                      <div id="indexer-section-llm" className="indexer-panel-body">
+                        {llmModels.length > 0 && (
+                          <label className="indexer-select-label">
+                            Model:
+                            <select
+                              value={llmSelectedModel}
+                              onChange={(e) => setLlmSelectedModel(e.target.value)}
+                              aria-label="Model for evaluation"
+                              disabled={llmEvaluateLoading}
+                            >
+                              {llmModels.map((m) => (
+                                <option key={m.id || m.name} value={m.id || m.name}>
+                                  {m.name || m.id || m.model || '—'}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                        <button
+                          type="button"
+                          className="crawler-button primary"
+                          onClick={handleAskLlm}
+                          disabled={llmEvaluateLoading || !testerFileDetail?.source_md}
+                        >
+                          {llmEvaluateLoading ? 'Evaluating…' : 'Ask LLM'}
+                        </button>
+                        {llmEvaluateError && (
+                          <div className="crawler-error">{llmEvaluateError}</div>
+                        )}
+                        {llmEvaluateReply != null && llmEvaluateReply !== '' && (
+                          <div className="indexer-llm-reply" role="region" aria-label="LLM evaluation reply">
+                            <pre className="indexer-code-block indexer-llm-reply-text">
+{llmEvaluateReply}
+                            </pre>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
