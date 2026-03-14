@@ -81,7 +81,9 @@ def validate_result(
     if concept_mode not in ("any", "all"):
         concept_mode = "all"
     require_rag = test.get("rag_requirement", True)
-    require_rag_overlap = test.get("rag_strict", False)
+    # RAG Strict (overlap ответа с chunk'ами) отключаем глобально:
+    # нам важно, чтобы RAG использовал контекст, но не требуем буквального цитирования.
+    require_rag_overlap = False
 
     # Concept validation
     concepts_passed, hits, total, missing = validate_concepts(

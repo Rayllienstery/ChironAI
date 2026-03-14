@@ -6,7 +6,7 @@
 
 ---
 
-## Общая оценка: ⚠️ 4/10
+## Общая оценка:  4/10
 
 Код демонстрирует понимание архитектурных паттернов, но содержит **критические ошибки** в реализации, особенно в части использования Observable и реактивности.
 
@@ -14,7 +14,7 @@
 
 ## Детальный анализ
 
-### ✅ Что сделано хорошо:
+###  Что сделано хорошо:
 
 1. **Структура Clean Architecture**
    - Правильное разделение на слои: Entity → Repository → UseCase → ViewModel → View
@@ -35,16 +35,16 @@
 
 ---
 
-### ❌ Критические проблемы:
+###  Критические проблемы:
 
 #### 1. **НЕПРАВИЛЬНОЕ ИСПОЛЬЗОВАНИЕ @Observable** (Критично)
 
 **Проблема:**
 ```swift
 final class CounterViewModel: ObservableObject {
-    @Observable var count: Int = 0  // ❌ НЕПРАВИЛЬНО!
+    @Observable var count: Int = 0  //  НЕПРАВИЛЬНО!
     // ...
-    viewModel.$count  // ❌ Это не будет работать!
+    viewModel.$count  //  Это не будет работать!
 ```
 
 **Объяснение:**
@@ -57,7 +57,7 @@ final class CounterViewModel: ObservableObject {
 **Правильное решение:**
 ```swift
 final class CounterViewModel: ObservableObject {
-    @Published var count: Int = 0  // ✅ Использовать @Published для Combine
+    @Published var count: Int = 0  //  Использовать @Published для Combine
     // ...
 }
 ```
@@ -68,7 +68,7 @@ final class CounterViewModel: ObservableObject {
 ```swift
 func increment() {
     interactor.increment()
-    // ❌ Прямой доступ к repository через кастинг
+    //  Прямой доступ к repository через кастинг
     if let repo = interactor as? CounterInteractor {
         self.count = repo.repository.state.count
     }
@@ -114,7 +114,7 @@ enum CounterFactory {
 
 ---
 
-### ⚠️ Средние проблемы:
+###  Средние проблемы:
 
 #### 5. **Entity как mutable struct**
 
@@ -326,11 +326,11 @@ final class CounterViewController: UIViewController {
 
 | Требование | Статус | Комментарий |
 |------------|--------|-------------|
-| Clean Architecture | ⚠️ Частично | Структура правильная, но есть нарушения инкапсуляции |
-| MVVM | ⚠️ Частично | ViewModel есть, но неправильно связан с Repository |
-| Fabric | ❌ Нет | Фабрика не реализована |
-| Observable | ❌ Неправильно | Использован неправильный макрос, код не работает |
-| UIKit | ✅ Да | ViewController реализован корректно |
+| Clean Architecture |  Частично | Структура правильная, но есть нарушения инкапсуляции |
+| MVVM |  Частично | ViewModel есть, но неправильно связан с Repository |
+| Fabric |  Нет | Фабрика не реализована |
+| Observable |  Неправильно | Использован неправильный макрос, код не работает |
+| UIKit |  Да | ViewController реализован корректно |
 
 ---
 

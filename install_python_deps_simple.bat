@@ -19,7 +19,7 @@ python -m pip install --only-binary=lxml lxml
 
 if %errorlevel% neq 0 (
     echo.
-    echo Warning: lxml installation failed. This may affect crawl4ai functionality.
+    echo Warning: lxml installation failed. This may affect other functionality.
     echo WebUI should still work without it.
     echo.
 )
@@ -27,7 +27,7 @@ if %errorlevel% neq 0 (
 REM Install other dependencies
 echo.
 echo Installing other dependencies...
-python -m pip install crawl4ai html2text playwright
+python -m pip install html2text playwright
 
 if %errorlevel% neq 0 (
     echo.

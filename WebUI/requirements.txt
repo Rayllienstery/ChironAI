@@ -6,12 +6,8 @@ langchain-text-splitters
 lxml>=6.0.0; platform_system != "Windows"
 lxml>=6.0.0; platform_system == "Windows" and python_version >= "3.11"
 
-# Crawler: default (Crawl4AI) or optional Playwright for doc sites with code blocks
-crawl4ai
-
-# Optional: better code-block preservation in HTML→markdown (recommended for Apple docs)
-html2text
-
-# Optional: use crawler="playwright" + doc_only in SOURCES for developer.apple.com
-# pip install playwright && playwright install chromium
+# Crawler: Playwright
 playwright
+
+# Better code-block preservation in HTML→markdown (recommended for Apple docs)
+html2text

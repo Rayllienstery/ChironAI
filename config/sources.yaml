@@ -45,3 +45,150 @@ sources:
   - https://developer.apple.com/documentation/webkitjs
   - https://developer.apple.com/documentation/backgroundtasks
   - https://developer.apple.com/documentation/network
+- id: swift_book
+  url: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/
+  max_depth: 3
+  crawler: playwright
+  doc_only: false
+  path_prefixes:
+  - /swift-book/documentation/
+  seed_urls:
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/thebasics
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/basicoperators
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/stringsandcharacters
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/collectiontypes
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/controlflow
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/functions
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/closures
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/enumerations
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/structuresandclasses
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/properties
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/methods
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/subscripts
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/inheritance
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/initialization
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/deinitialization
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/optionalchaining
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/errorhandling
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/macros
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/typecasting
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/nestedtypes
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/extensions
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/protocols
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/generics
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/opaquetypes
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/automaticreferencecounting
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/memorysafety
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/accesscontrol
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/advancedoperators
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/lexicalstructure
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/types
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/expressions
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/statements
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/declarations
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/attributes
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/patterns
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/genericparametersandarguments
+  - https://docs.swift.org/swift-book/documentation/the-swift-programming-language/summaryofthegrammar
+- id: wwdc_sessions_2019_plus
+  url: https://developer.apple.com/videos/all-videos
+  max_depth: 1
+  crawler: wwdc_transcripts
+  doc_only: false
+  seed_urls: []
+  extra:
+    type: wwdc_transcripts
+    # Index of WWDC 2014–2024 transcripts; we filter by min_year.
+    tsv_url: https://gist.githubusercontent.com/elkraneo/6015e04c81dd227dd9974a2ec9d89cff/raw/WWDC-Transcripts-2014-2024-ENG.tsv
+    min_year: 2019
+
+- id: hws_swift
+  url: https://www.hackingwithswift.com
+  max_depth: 2
+  crawler: playwright
+  doc_only: false
+  # Focus on Swift Knowledge Base, SwiftUI by Example, and Hacking with iOS content.
+  path_prefixes:
+  - /example-code
+  - /quick-start/swiftui
+  - /read
+  excluded_path_substrings:
+  - /store
+  - /careers
+  - /subscribe
+  - /newsletter
+  - /login
+  - /signup
+  seed_urls:
+  - https://www.hackingwithswift.com/example-code
+  - https://www.hackingwithswift.com/quick-start/swiftui
+  - https://www.hackingwithswift.com/read
+  extra:
+    type: community_swift_docs
+    site: hackingwithswift
+    strip_toc: true
+    strip_store_cta: true
+
+- id: objc_io_issues
+  url: https://www.objc.io
+  max_depth: 2
+  crawler: playwright
+  doc_only: false
+  path_prefixes:
+  - /issues
+  excluded_path_substrings:
+  - /books
+  - /shop
+  - /subscribe
+  - /newsletter
+  - /login
+  seed_urls:
+  - https://www.objc.io/issues/
+  extra:
+    type: community_swift_docs
+    site: objc_io
+    strip_toc: false
+    strip_store_cta: true
+
+- id: swiftbysundell_articles
+  url: https://www.swiftbysundell.com
+  max_depth: 2
+  crawler: playwright
+  doc_only: false
+  path_prefixes:
+  - /articles
+  excluded_path_substrings:
+  - /podcast
+  - /news
+  - /newsletter
+  - /sponsor
+  - /login
+  seed_urls:
+  - https://www.swiftbysundell.com/articles/
+  extra:
+    type: community_swift_docs
+    site: swiftbysundell
+    strip_toc: false
+    strip_store_cta: true
+
+- id: pointfree_collections
+  url: https://www.pointfree.co
+  max_depth: 2
+  crawler: playwright
+  doc_only: false
+  path_prefixes:
+  - /collections
+  excluded_path_substrings:
+  - /gifts
+  - /pricing
+  - /sign-up
+  - /login
+  - /become-a-member
+  seed_urls:
+  - https://www.pointfree.co/collections
+  extra:
+    type: community_swift_docs
+    site: pointfree
+    strip_toc: true
+    strip_store_cta: true

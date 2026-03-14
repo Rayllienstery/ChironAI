@@ -84,17 +84,17 @@ print(f"With code blocks: {stats['with_code_blocks']} ({stats['with_code_blocks'
 print(f"With headings: {stats['with_headings']} ({stats['with_headings']/stats['total']*100:.1f}%)")
 print(f"Empty files: {stats['empty']}")
 
-print(f"\n⚠️  Very short files (< 200 chars): {len(stats['very_short'])}")
+print(f"\n  Very short files (< 200 chars): {len(stats['very_short'])}")
 for fname in stats['very_short'][:10]:
     print(f"   - {fname}")
 
-print(f"\n⚠️  Files with code outside blocks: {len(stats['code_outside_blocks'])}")
+print(f"\n  Files with code outside blocks: {len(stats['code_outside_blocks'])}")
 for fname, examples in stats['code_outside_blocks'][:10]:
     print(f"   - {fname}")
     for line_num, snippet in examples:
         print(f"     Line {line_num}: {snippet}")
 
-print(f"\n⚠️  Files with minimal content after meta: {len(stats['no_content_after_meta'])}")
+print(f"\n  Files with minimal content after meta: {len(stats['no_content_after_meta'])}")
 for fname in stats['no_content_after_meta'][:10]:
     print(f"   - {fname}")
 

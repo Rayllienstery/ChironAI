@@ -154,7 +154,7 @@ function LogsTab({ sessionId }) {
   const getLevelIcon = (level) => {
     const lvl = (level || '').toUpperCase();
     if (lvl === 'ERROR') return '⛔';
-    if (lvl === 'WARNING') return '⚠️';
+    if (lvl === 'WARNING') return '';
     return 'ℹ️';
   };
 

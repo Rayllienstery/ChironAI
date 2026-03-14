@@ -97,6 +97,11 @@ def infer_metadata(
             product = "tooling"
         else:
             technology = "foundation"
+    elif source_id == "swift_book":
+        language = "swift"
+        technology = "swift"
+        domain = "language_guide"
+        doc_scope = "guide"
     elif source_id == "swift_docs":
         language = "swift"
         domain = "language_guide"
@@ -157,7 +162,7 @@ def infer_metadata(
         elif source_id == "storekit_docs":
             technology = "storekit"
             domain = "app_store"
-    elif source_id == "wwdc_sessions_2024":
+    elif source_id.startswith("wwdc_sessions_"):
         language = "swift"
         technology = "wwdc_sessions"
         domain = "framework_guide"
@@ -175,9 +180,10 @@ def infer_metadata(
         "kodeco_ios",
         "objc_io_issues",
         "nshipster_articles",
+        "pointfree_collections",
     }:
         language = "swift"
-        domain = "framework_guide"
+        domain = "community_guide"
         doc_type = "howto"
     elif source_id in {"firebase_ios", "stripe_ios"}:
         language = "swift"

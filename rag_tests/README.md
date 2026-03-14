@@ -49,6 +49,24 @@ Optional notes (e.g. what this test verifies).
 | **MinOS** | Optional minimum OS (e.g. iOS 18). |
 | **Notes** | Optional free text. |
 
+### Expected Concepts – atomic rules
+
+- Each bullet under `## Expected Concepts` must represent **one conceptual unit**:
+  - Allowed: single terms or tight phrases, for example `retain cycle`, `actor isolation`, `weak reference`.
+  - Not allowed: combined lists like `weak / unowned`, `weak and unowned`, `weak, unowned`.
+- The validator treats each concept as a **literal substring** (case-insensitive) that must appear in the model answer.
+- Examples:
+  - ✅ Good:
+    - `ARC`
+    - `retain cycle`
+    - `weak reference`
+    - `unowned reference`
+  - ❌ Bad (will be split or behave unpredictably):
+    - `weak / unowned`
+    - `weak and unowned`
+    - `weak, unowned`
+    - `weak and unowned references`
+
 ## Folder structure
 
 Tests are organized under `rag_tests/` by platform and framework, for example:

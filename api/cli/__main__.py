@@ -177,6 +177,30 @@ def cmd_rag_tests_run(ns: argparse.Namespace) -> int:
     return 0 if failed == 0 else 1
 
 
+def cmd_rag_tests_lint(_: argparse.Namespace) -> int:
+    """Lint RAG tests for multi-concept Expected Concepts."""
+    root = _root()
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    try:
+        from application.rag_tests.loader import get_rag_tests_root, load_all_tests
+        from application.rag_tests.lint import lint_expected_concepts, format_issues_text
+    except ImportError as e:
+        print(f"RAG tests module not available: {e}", file=sys.stderr)
+        return 1
+
+    tests_root = get_rag_tests_root()
+    if not tests_root.is_dir():
+        print(f"rag_tests root not found: {tests_root}", file=sys.stderr)
+        return 1
+
+    tests = load_all_tests(tests_root)
+    issues = lint_expected_concepts(tests)
+    print(format_issues_text(issues))
+    # Non-zero exit if any issues found so that CI can fail on bad tests.
+    return 0 if not issues else 1
+
+
 def cmd_test_single(ns: argparse.Namespace) -> int:
     script = os.path.join(_root(), "WebUI", "app_tester.py")
     if not os.path.isfile(script):
@@ -243,6 +267,8 @@ def main() -> None:
     p_rag_run.add_argument("--filter-difficulty", dest="filter_difficulty", help="Filter tests by difficulty")
     p_rag_run.add_argument("--test-id", dest="test_id", action="append", default=[], metavar="ID", help="Run specific test(s) by id (repeatable)")
     p_rag_run.set_defaults(_run=cmd_rag_tests_run)
+    p_rag_lint = p_rag_sub.add_parser("lint", help="Lint RAG tests (Expected Concepts hygiene)")
+    p_rag_lint.set_defaults(_run=cmd_rag_tests_lint)
 
     args = parser.parse_args()
     if not args.command:

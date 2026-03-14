@@ -69,9 +69,9 @@ Run from project root with `PYTHONPATH=.` so `config` and modules resolve. Legac
 
 ## MVP
 
-- [x] **Rename project** — переименовать проект в соответствии с финальным названием. ✅ Переименовано в **TMRagFetcher**.
-- [x] **Git** — настроить Git-репозиторий, .gitignore, структуру коммитов. ✅ Локальный Git-репозиторий инициализирован, базовый `.gitignore` добавлен.
-- [x] **Configs to the separated file** — вынести все конфигурации (URL Ollama/Qdrant, модели, лимиты RAG, пороги) в отдельный конфиг-файл (YAML/JSON или env). ✅ Реализовано через `config/*.yaml` и модуль `config/__init__.py`.
+- [x] **Rename project** — переименовать проект в соответствии с финальным названием.  Переименовано в **TMRagFetcher**.
+- [x] **Git** — настроить Git-репозиторий, .gitignore, структуру коммитов.  Локальный Git-репозиторий инициализирован, базовый `.gitignore` добавлен.
+- [x] **Configs to the separated file** — вынести все конфигурации (URL Ollama/Qdrant, модели, лимиты RAG, пороги) в отдельный конфиг-файл (YAML/JSON или env).  Реализовано через `config/*.yaml` и модуль `config/__init__.py`.
 - [x] **One CLI** — единый CLI для всех операций: `python tmrag.py` или `python -m api.cli` (start, crawl, index, rebuild, update, ingest, proxy, test, test-single).
 - [ ] **User friendly log** — улучшить логирование: структурированные логи, user-friendly формат, фильтрация по уровню.
 - [x] **Modular architecture** — Layered Architecture реализована: `api/`, `application/`, `domain/`, `infrastructure/`, `config/`, `utils/`, `tests/`. Запуск тестов: `pip install -r requirements-dev.txt` затем `pytest tests/` из корня проекта. Отчёт по покрытию: `pytest tests/ --cov=domain --cov=application --cov-report=term-missing`. Новая модель/источник подключаются через порты в `domain/ports/` и реализации в `infrastructure/` (см. `docs/ARCHITECTURE.md`).

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { getCrawlerSources, getCrawlerSourcePages, getRagCollections, createCollection, getCreateCollectionStatus, crawlSource, getCrawlStatus, addCrawlerSource, getCrawlerSource, updateCrawlerSource } from '../services/api';
 import './CrawlerTab.css';
 
@@ -22,6 +22,9 @@ function CrawlerTab() {
   const [creating, setCreating] = useState(false);
   const [createJobId, setCreateJobId] = useState(null);
   const [createProgress, setCreateProgress] = useState(null);
+  const [showCreateToast, setShowCreateToast] = useState(false);
+  const [createCollectionName, setCreateCollectionName] = useState('');
+  const createToastTimeoutRef = useRef(null);
   const [crawlingSources, setCrawlingSources] = useState(new Set());
   const [showAddSourceModal, setShowAddSourceModal] = useState(false);
   const [addSourceForm, setAddSourceForm] = useState({
@@ -44,13 +47,26 @@ function CrawlerTab() {
     seed_urls: [],
   });
   const [updatingSource, setUpdatingSource] = useState(false);
+  const [crawlAllResults, setCrawlAllResults] = useState([]);
+  const [selectedSourceIds, setSelectedSourceIds] = useState(new Set());
 
   const loadSources = async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await getCrawlerSources();
-      setSources(data.sources || []);
+      const loaded = data.sources || [];
+      setSources(loaded);
+      // Keep selection only for sources that still exist
+      setSelectedSourceIds((prev) => {
+        if (!prev || prev.size === 0) return prev;
+        const ids = new Set(loaded.map((s) => s.id));
+        const next = new Set();
+        prev.forEach((id) => {
+          if (ids.has(id)) next.add(id);
+        });
+        return next;
+      });
     } catch (e) {
       setError(e.message);
     } finally {
@@ -94,6 +110,7 @@ function CrawlerTab() {
           setCreating(false);
           setShowCreateModal(false);
           setCreateForm({ collection_name: '', source_ids: [], chunk_max_size: 1200, chunk_min_size: 300, confidence_threshold: 0.75, top_k: 4 });
+          setShowCreateToast(true);
           await loadCollections();
           alert(`Collection created successfully! Indexed ${job.indexed_pages ?? 0} pages, ${job.total_chunks ?? 0} chunks.`);
         } else if (job.status === 'failed') {
@@ -110,24 +127,57 @@ function CrawlerTab() {
     return () => clearInterval(interval);
   }, [createJobId]);
 
+  // Auto-hide create-collection toast after completion or failure
+  useEffect(() => {
+    if (!showCreateToast || !createProgress) {
+      return undefined;
+    }
+
+    const status = createProgress.status;
+    if (status !== 'success' && status !== 'failed') {
+      return undefined;
+    }
+
+    const timeoutMs = status === 'success' ? 4000 : 7000;
+
+    if (createToastTimeoutRef.current) {
+      clearTimeout(createToastTimeoutRef.current);
+    }
+
+    createToastTimeoutRef.current = setTimeout(() => {
+      setShowCreateToast(false);
+      setCreateProgress(null);
+      createToastTimeoutRef.current = null;
+    }, timeoutMs);
+
+    return () => {
+      if (createToastTimeoutRef.current) {
+        clearTimeout(createToastTimeoutRef.current);
+        createToastTimeoutRef.current = null;
+      }
+    };
+  }, [createProgress, showCreateToast]);
+
   // Poll crawl status for sources that are crawling
   useEffect(() => {
     if (crawlingSources.size === 0) return;
-    
+
     const interval = setInterval(async () => {
       const statusChecks = Array.from(crawlingSources).map(async (sourceId) => {
         try {
           const status = await getCrawlStatus(sourceId);
           if (status.status === 'finished' || status.status === 'not_running') {
+            const returnCode = status.return_code;
+            const success = status.status === 'finished' ? (returnCode === 0) : true;
+            const errorDetail = (status.stderr && status.stderr.trim()) || null;
+            setCrawlAllResults(prev => [...prev, { sourceId, success, returnCode: returnCode ?? undefined, error: errorDetail }]);
             setCrawlingSources(prev => {
               const next = new Set(prev);
               next.delete(sourceId);
               return next;
             });
-            // Reload sources to get updated data
             loadSources();
             if (selectedSource === sourceId) {
-              // Reload pages for selected source
               try {
                 const data = await getCrawlerSourcePages(sourceId);
                 setSourcePages(data.pages || []);
@@ -141,8 +191,8 @@ function CrawlerTab() {
         }
       });
       await Promise.all(statusChecks);
-    }, 2000); // Check every 2 seconds
-    
+    }, 2000);
+
     return () => clearInterval(interval);
   }, [crawlingSources, selectedSource]);
 
@@ -194,6 +244,9 @@ function CrawlerTab() {
     setError(null);
     setCreateProgress(null);
     try {
+      const trimmedName = createForm.collection_name.trim();
+      setCreateCollectionName(trimmedName);
+      setShowCreateToast(true);
       const result = await createCollection(createForm);
       if (result.job_id) {
         setCreateJobId(result.job_id);
@@ -204,11 +257,42 @@ function CrawlerTab() {
         await loadCollections();
         alert('Collection created successfully!');
         setCreating(false);
+        setShowCreateToast(false);
+        setCreateProgress(null);
       }
     } catch (e) {
       setError(e.message);
       setCreating(false);
+      setShowCreateToast(false);
     }
+  };
+
+  const handleCloseCreateToast = () => {
+    setShowCreateToast(false);
+    setCreateProgress(null);
+  };
+
+  const toggleSourceSelected = (sourceId) => {
+    setSelectedSourceIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sourceId)) {
+        next.delete(sourceId);
+      } else {
+        next.add(sourceId);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    setSelectedSourceIds((prev) => {
+      if (!sources.length) return new Set();
+      const allSelected = sources.every((s) => prev.has(s.id));
+      if (allSelected) {
+        return new Set();
+      }
+      return new Set(sources.map((s) => s.id));
+    });
   };
 
   const toggleSourceInForm = (sourceId) => {
@@ -221,23 +305,51 @@ function CrawlerTab() {
   };
 
   const handleCrawlSource = async (sourceId) => {
-    if (crawlingSources.has(sourceId)) {
-      return; // Already crawling
-    }
-    
+    if (crawlingSources.has(sourceId)) return;
+    setCrawlAllResults([]);
     setCrawlingSources(prev => new Set(prev).add(sourceId));
     setError(null);
     try {
       await crawlSource(sourceId);
-      // Status polling will handle updates
     } catch (e) {
       setError(e.message);
+      setCrawlAllResults(prev => [...prev, { sourceId, success: false, returnCode: undefined, error: e.message }]);
       setCrawlingSources(prev => {
         const next = new Set(prev);
         next.delete(sourceId);
         return next;
       });
     }
+  };
+
+  const handleCrawlAll = async () => {
+    if (sources.length === 0 || crawlingSources.size > 0) return;
+    setCrawlAllResults([]);
+    setError(null);
+    const ids = sources.map(s => s.id);
+    setCrawlingSources(prev => new Set([...prev, ...ids]));
+    for (const sourceId of ids) {
+      try {
+        await crawlSource(sourceId);
+      } catch (e) {
+        setError(e.message);
+        setCrawlAllResults(prev => [...prev, { sourceId, success: false, returnCode: undefined, error: e.message }]);
+        setCrawlingSources(prev => {
+          const next = new Set(prev);
+          next.delete(sourceId);
+          return next;
+        });
+      }
+    }
+  };
+
+  const handleCrawlSelected = () => {
+    if (busy || crawlingSources.size > 0 || selectedSourceIds.size === 0) return;
+    const ids = sources.filter((s) => selectedSourceIds.has(s.id)).map((s) => s.id);
+    if (!ids.length) return;
+    ids.forEach((id) => {
+      handleCrawlSource(id);
+    });
   };
 
   const handleAddSource = async () => {
@@ -331,6 +443,33 @@ function CrawlerTab() {
           <button
             type="button"
             className="crawler-button primary"
+            onClick={() => handleCrawlSource(selectedSource)}
+            disabled={busy || !selectedSource || crawlingSources.has(selectedSource)}
+            title={!selectedSource ? 'Select a source to crawl' : ''}
+          >
+            Crawl
+          </button>
+          <button
+            type="button"
+            className="crawler-button primary"
+            onClick={handleCrawlAll}
+            disabled={busy || sources.length === 0 || crawlingSources.size > 0}
+            title="Crawl all configured sources"
+          >
+            Crawl ALL
+          </button>
+          <button
+            type="button"
+            className="crawler-button primary"
+            onClick={handleCrawlSelected}
+            disabled={busy || selectedSourceIds.size === 0 || crawlingSources.size > 0}
+            title="Crawl selected sources"
+          >
+            Crawl selected
+          </button>
+          <button
+            type="button"
+            className="crawler-button primary"
             onClick={() => setShowAddSourceModal(true)}
           >
             Add Source
@@ -354,6 +493,128 @@ function CrawlerTab() {
         </div>
       </div>
 
+      {crawlingSources.size > 0 && (
+        <div className="crawler-progress-panel crawler-progress-panel-fixed" role="status" aria-live="polite">
+          <div className="crawler-progress-header">
+            <span className="crawler-progress-spinner" aria-hidden="true" />
+            <span className="crawler-progress-title">Crawling…</span>
+            <span className="crawler-progress-sources">
+              {Array.from(crawlingSources).join(', ')}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {createProgress && showCreateToast && (
+        <div
+          className={`create-collection-toast create-collection-toast-${createProgress.status || 'unknown'}`}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="create-collection-toast-header">
+            <div className="create-collection-toast-title">
+              {createProgress.status === 'success'
+                ? 'Collection created'
+                : createProgress.status === 'failed'
+                  ? 'Collection failed'
+                  : 'Creating collection…'}
+            </div>
+            <button
+              type="button"
+              className="create-collection-toast-close"
+              onClick={handleCloseCreateToast}
+              aria-label="Dismiss collection progress"
+            >
+              ×
+            </button>
+          </div>
+          <div className="create-collection-toast-body">
+            <div className="create-collection-toast-name">
+              {createCollectionName || createForm.collection_name || 'Collection'}
+            </div>
+            {createProgress.status === 'running' && (
+              <div className="create-collection-toast-running">
+                <span className="create-collection-toast-spinner" aria-hidden="true" />
+                <span className="create-collection-toast-text">
+                  Indexed {createProgress.indexed_pages} / {createProgress.total_pages || '…'} pages ({createProgress.total_chunks} chunks)
+                </span>
+              </div>
+            )}
+            {(createProgress.status === 'success' || createProgress.status === 'failed') && (
+              <div className="create-collection-toast-text">
+                {createProgress.status === 'success'
+                  ? `Indexed ${createProgress.indexed_pages ?? 0} pages, ${createProgress.total_chunks ?? 0} chunks.`
+                  : (createProgress.error && String(createProgress.error).slice(0, 240)) || 'Collection creation failed.'}
+              </div>
+            )}
+            {createProgress.total_pages > 0 && createProgress.status === 'running' && (
+              <div className="create-collection-toast-progress-bar-wrap">
+                <div
+                  className="create-collection-toast-progress-bar-fill"
+                  style={{
+                    width: `${Math.round(
+                      (100 * createProgress.processed_pages) / (createProgress.total_pages || 1),
+                    )}%`,
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {crawlAllResults.length > 0 && crawlingSources.size === 0 && (
+        <div className="modal-overlay" onClick={() => setCrawlAllResults([])}>
+          <div className="modal-content crawler-result-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>
+                {crawlAllResults.length === 1 ? 'Crawl finished' : 'Crawl ALL finished'}
+              </h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setCrawlAllResults([])}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-body">
+              {crawlAllResults.length === 1 ? (
+                (() => {
+                  const r = crawlAllResults[0];
+                  return (
+                    <p>
+                      <strong>{r.sourceId}</strong>: {r.success
+                        ? 'Completed successfully.'
+                        : r.error || `Failed (return code ${r.returnCode ?? '—'}).`}
+                    </p>
+                  );
+                })()
+              ) : (
+                <>
+                  <p className="crawler-result-summary">
+                    Succeeded: {crawlAllResults.filter(r => r.success).length}, Failed: {crawlAllResults.filter(r => !r.success).length}
+                  </p>
+                  <ul className="crawler-result-list">
+                    {crawlAllResults.map((r, i) => (
+                      <li key={i}>
+                        <strong>{r.sourceId}</strong>: {r.success ? 'OK' : (r.error || `code ${r.returnCode ?? '—'}`)}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="crawler-button primary" onClick={() => setCrawlAllResults([])}>
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {error && <div className="crawler-error">Error: {error}</div>}
 
       {loading ? (
@@ -368,6 +629,14 @@ function CrawlerTab() {
           <table className="sources-table">
             <thead>
               <tr>
+                <th className="select-cell">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all sources"
+                    checked={sources.length > 0 && sources.every((s) => selectedSourceIds.has(s.id))}
+                    onChange={handleToggleSelectAll}
+                  />
+                </th>
                 <th>Source ID</th>
                 <th>URL</th>
                 <th>Last Crawled</th>
@@ -381,6 +650,14 @@ function CrawlerTab() {
               {sources.map((source) => (
                 <React.Fragment key={source.id}>
                   <tr>
+                    <td className="select-cell">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select source ${source.id}`}
+                        checked={selectedSourceIds.has(source.id)}
+                        onChange={() => toggleSourceSelected(source.id)}
+                      />
+                    </td>
                     <td>{source.id}</td>
                     <td className="url-cell">{source.url || '—'}</td>
                     <td>{formatDate(source.last_crawled)}</td>
@@ -675,7 +952,6 @@ function CrawlerTab() {
                     onChange={(e) => setAddSourceForm(prev => ({ ...prev, crawler: e.target.value }))}
                   >
                     <option value="playwright">Playwright</option>
-                    <option value="crawl4ai">Crawl4AI</option>
                   </select>
                 </div>
               </div>
@@ -810,7 +1086,6 @@ function CrawlerTab() {
                     onChange={(e) => setEditSourceForm(prev => ({ ...prev, crawler: e.target.value }))}
                   >
                     <option value="playwright">Playwright</option>
-                    <option value="crawl4ai">Crawl4AI</option>
                   </select>
                 </div>
               </div>

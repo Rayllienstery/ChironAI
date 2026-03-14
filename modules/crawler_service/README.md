@@ -6,7 +6,7 @@ Crawls web/docs sources and sends raw or structured content to md_ingestion_serv
 
 ## Initialization
 
-- **Dependencies**: `pip install -r requirements.txt`. Playwright/Crawl4AI when fully implemented.
+- **Dependencies**: `pip install -r requirements.txt`. Playwright when fully implemented.
 - **Environment**: `MD_INGESTION_SERVICE_URL` (default `http://localhost:5002`) for pushing results.
 - **Run CLI**: From project root: `PYTHONPATH=. python -m crawler_service.api.cli crawl --source-id <id> [--url URL] [--collection NAME]`. (Crawler implementation is stub; migrate from WebUI/app.py to complete.)
 

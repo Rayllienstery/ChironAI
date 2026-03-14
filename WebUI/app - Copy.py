@@ -61,7 +61,7 @@ def get_embeddings(texts, model_name="nomic-embed-text"):
             all_embeddings.extend(embeddings)
         return all_embeddings
     except Exception as e:
-        log(f"❌ Embedding error: {e}")
+        log(f" Embedding error: {e}")
         return []
 
 async def run_async_crawl(start_url):
@@ -106,7 +106,7 @@ def do_crawl(start_url):
     try:
         results = asyncio.run(run_async_crawl(start_url))
         total = len(results)
-        log(f"✅ [1/4] Crawl finished. {total} pages found.")
+        log(f" [1/4] Crawl finished. {total} pages found.")
 
         qclient = QdrantClient(url="http://localhost:6333")
         coll = collection_name_from_url(start_url)
@@ -115,13 +115,13 @@ def do_crawl(start_url):
                 f.write(coll)
         except Exception:
             pass
-        log(f"📦 Collection: {coll}")
+        log(f" Collection: {coll}")
         created = False
 
         for i, result in enumerate(results):
             idx = i + 1
             if not result.success:
-                log(f"⚠️ [{idx}/{total}] Failed: {result.url}")
+                log(f" [{idx}/{total}] Failed: {result.url}")
                 continue
 
             url = result.url
@@ -140,22 +140,22 @@ def do_crawl(start_url):
             texts = [doc.page_content for doc in docs]
 
             if not texts:
-                log(f"⚠️ [{idx}/{total}] No chunks generated")
+                log(f" [{idx}/{total}] No chunks generated")
                 continue
 
-            log(f"✂️ [{idx}/{total}] [3/4] Chunks: {len(texts)}")
+            log(f" [{idx}/{total}] [3/4] Chunks: {len(texts)}")
             embeddings = get_embeddings(texts)
             if not embeddings:
-                log(f"❌ [{idx}/{total}] No embeddings, skipping")
+                log(f" [{idx}/{total}] No embeddings, skipping")
                 continue
 
             if not created:
                 dim = len(embeddings[0])
                 try:
                     qclient.recreate_collection(coll, vectors_config=VectorParams(size=dim, distance=Distance.COSINE))
-                    log(f"📦 Created Qdrant collection '{coll}' (dim={dim})")
+                    log(f" Created Qdrant collection '{coll}' (dim={dim})")
                 except Exception as e:
-                    log(f"❗ Qdrant creation error: {e}")
+                    log(f" Qdrant creation error: {e}")
                 created = True
 
             points = [PointStruct(id=id_counter + j, vector=vec, payload={"url": url, "text": texts[j]}) for j, vec in enumerate(embeddings)]
@@ -163,15 +163,15 @@ def do_crawl(start_url):
 
             try:
                 qclient.upsert(collection_name=coll, points=points)
-                log(f"📥 [{idx}/{total}] [4/4] Indexed {len(points)} vectors")
+                log(f" [{idx}/{total}] [4/4] Indexed {len(points)} vectors")
             except Exception as e:
-                log(f"❗ Qdrant insert error: {e}")
+                log(f" Qdrant insert error: {e}")
 
     except Exception as e:
-        log(f"🔥 Crawler exception: {e}")
+        log(f"Crawler exception: {e}")
     finally:
         stop_flag = True
-        log("🏁 Done.")
+        log("Done.")
 
 @app.route("/", methods=["GET"])
 def index():
@@ -197,7 +197,7 @@ def crawl_route():
     url = request.form.get("url")
     url = normalize_url(url)
     if not url:
-        return "❌ No URL"
+        return " No URL"
     log_queue = []
     stop_flag = False
     id_counter = 1

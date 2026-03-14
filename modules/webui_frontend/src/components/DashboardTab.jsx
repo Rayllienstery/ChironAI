@@ -12,7 +12,7 @@ function DashboardTab() {
       <div className="dashboard-content">
         <section className="dashboard-section notice-section">
           <div className="notice-content">
-            <h3>⚠️ Experimental Project</h3>
+            <h3> Experimental Project</h3>
             <p>
               <strong>TMRagFetcher is a deeply experimental project</strong> provided as-is. 
               It is specifically designed for developing applications within the Apple ecosystem (iOS, macOS, Swift, SwiftUI, UIKit, Observation, etc.) 

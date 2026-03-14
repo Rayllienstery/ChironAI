@@ -32,7 +32,7 @@ core/                — (Target) config, shared, contracts
 - **api/**: Flask app (`create_app` in `api/http/rag_routes.py`), CLI wrappers (`api/cli/crawl_cli.py`). No direct infrastructure imports; uses application use cases.
 - **application/**: RAG use cases (`build_rag_context`, `answer_question`, `search_rag`), crawl use cases (stubs), `application/container.py` for wiring default implementations.
 - **domain/**: Entities (`RagChunk`, `RagContext`, `CrawlSource`, etc.), services (retrieval, rerank, chunking, metadata_inference, prompt_builder), ports (RagRepository, EmbeddingProvider, ChatLLMClient, CrawlRunner, MarkdownStore, RerankClient), errors (RetrievalError, EmbeddingError, etc.).
-- **infrastructure/**: Ollama (embed, chat, rerank), Qdrant (RagRepository), FS (MarkdownStore), crawl (Playwright/Crawl4AI stubs), logging (WebUI error logger).
+- **infrastructure/**: Ollama (embed, chat, rerank), Qdrant (RagRepository), FS (MarkdownStore), crawl (Playwright), logging (WebUI error logger).
 
 ## Running tests
 

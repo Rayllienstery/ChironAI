@@ -2,7 +2,7 @@
 Crawl runner port.
 
 Abstract interface for running a crawler on a source.
-Implementations (Playwright, crawl4ai) live in infrastructure.
+Playwright implementation lives in infrastructure.
 """
 
 from __future__ import annotations

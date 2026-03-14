@@ -1,10 +1,9 @@
 """
 Web crawling infrastructure.
 
-Provides concrete CrawlRunner implementations based on Playwright and
-crawl4ai. Full crawl logic may remain in WebUI/app.py until migrated.
+Provides Playwright-based CrawlRunner; full crawl logic remains in WebUI/app.py until migrated.
 """
 
-from infrastructure.crawl.crawl_runner import Crawl4AICrawler, PlaywrightCrawler
+from infrastructure.crawl.crawl_runner import PlaywrightCrawler
 
-__all__ = ["Crawl4AICrawler", "PlaywrightCrawler"]
+__all__ = ["PlaywrightCrawler"]

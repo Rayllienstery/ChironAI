@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Callable
 import requests
 from urllib.parse import urlparse
+import csv
 
 try:
     from lxml import html as lxml_html
@@ -37,11 +38,6 @@ try:
 except ImportError:
     async_playwright = None
     _HAS_PLAYWRIGHT = False
-
-from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
-from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
-from crawl4ai.deep_crawling.filters import FilterChain, URLPatternFilter
-from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
 
 from apple_docs_fetcher import fetch_apple_doc_raw
 from apple_docs_extract import build_apple_doc_page, render_apple_doc_to_markdown
@@ -143,7 +139,7 @@ def _load_sources_from_yaml() -> list[dict]:
         return sources if sources else _get_default_sources()
     except Exception as e:
         # Use print since log() may not be defined during module import
-        print(f"⚠️ Failed to load sources from YAML: {e}, using default", file=sys.stderr)
+        print(f"WARNING: Failed to load sources from YAML: {e}, using default", file=sys.stderr)
         return _get_default_sources()
 
 
@@ -183,29 +179,15 @@ def _save_sources_to_yaml(sources: list[dict]) -> bool:
         return True
     except Exception as e:
         # Use print since this may be called before log() is available
-        print(f"❌ Failed to save sources to YAML: {e}", file=sys.stderr)
+        print(f"ERROR: Failed to save sources to YAML: {e}", file=sys.stderr)
         return False
 
 
 # Load sources on module import
 SOURCES = _load_sources_from_yaml()
 
-# # Single-URL SOURCES for pipeline parity test (app.py vs app_tester.py)
-# SOURCES = [
-#     {
-#         "id": "apple_documentation",
-#         "url": "https://developer.apple.com/documentation",
-#         "max_depth": 1,
-#         "crawler": "playwright",
-#         "doc_only": True,
-#         "seed_urls": [
-#             "https://developer.apple.com/documentation/swiftui/view",
-#         ],
-#     },
-# ]
-
-# Ограничение по корневым префиксам фреймворков: краулим только то, что реально нужно под задачи разработки.
-FRAMEWORK_ROOT_PREFIXES = [
+# Default path allowlist/excludelist (used when crawler.yaml is missing or for per-source fallback).
+_DEFAULT_FRAMEWORK_ROOT_PREFIXES = [
     "/documentation/swift",
     "/documentation/swift/concurrency",
     "/documentation/swiftui",
@@ -237,7 +219,6 @@ FRAMEWORK_ROOT_PREFIXES = [
     "/documentation/xcselect",
     "/documentation/watchconnectivity",
     "/documentation/xpc",
-    # Условно полезные, но оставляем как корни
     "/documentation/videotoolbox",
     "/documentation/virtualization",
     "/documentation/wifiaware",
@@ -248,14 +229,37 @@ FRAMEWORK_ROOT_PREFIXES = [
     "/documentation/backgroundtasks",
     "/documentation/network",
 ]
-
-# Пути, которые считаем низкоценными для RAG и исключаем на этапе краулинга.
-EXCLUDED_PATH_SUBSTRINGS = [
+_DEFAULT_EXCLUDED_PATH_SUBSTRINGS = [
     "/release-notes",
     "/wwdc",
     "/topics/",
     "/collections/",
 ]
+
+
+def _load_crawler_config() -> tuple[list[str], list[str]]:
+    """Load framework_root_prefixes and excluded_path_substrings from config/crawler.yaml. Fallback to defaults."""
+    try:
+        from pathlib import Path
+        import yaml
+        project_root = Path(BASE_DIR).parent
+        config_path = project_root / "config" / "crawler.yaml"
+        if not config_path.is_file():
+            return _DEFAULT_FRAMEWORK_ROOT_PREFIXES, _DEFAULT_EXCLUDED_PATH_SUBSTRINGS
+        with config_path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        crawler = data.get("crawler") or {}
+        prefixes = crawler.get("framework_root_prefixes")
+        excluded = crawler.get("excluded_path_substrings")
+        return (
+            list(prefixes) if isinstance(prefixes, list) else _DEFAULT_FRAMEWORK_ROOT_PREFIXES,
+            list(excluded) if isinstance(excluded, list) else _DEFAULT_EXCLUDED_PATH_SUBSTRINGS,
+        )
+    except Exception:
+        return _DEFAULT_FRAMEWORK_ROOT_PREFIXES, _DEFAULT_EXCLUDED_PATH_SUBSTRINGS
+
+
+FRAMEWORK_ROOT_PREFIXES, EXCLUDED_PATH_SUBSTRINGS = _load_crawler_config()
 
 # Crawl speed and rate-limit: parallel fetches, single goto per URL, retry on 429.
 CRAWL_CONCURRENCY = 6
@@ -320,6 +324,57 @@ INDEX_EXCLUDE_FILENAME_SUBSTRINGS = [
     "wwdc2024",
     "wwdc2025",
 ]
+
+# Swift Book (docs.swift.org) filtering: allowlist/denylist of chapter slugs.
+SWIFT_BOOK_ALLOWED_SLUGS: set[str] = {
+    "thebasics",
+    "basicoperators",
+    "stringsandcharacters",
+    "collectiontypes",
+    "controlflow",
+    "functions",
+    "closures",
+    "enumerations",
+    "structuresandclasses",
+    "properties",
+    "methods",
+    "subscripts",
+    "inheritance",
+    "initialization",
+    "deinitialization",
+    "optionalchaining",
+    "errorhandling",
+    "concurrency",
+    "macros",
+    "typecasting",
+    "nestedtypes",
+    "extensions",
+    "protocols",
+    "generics",
+    "opaquetypes",
+    "automaticreferencecounting",
+    "memorysafety",
+    "accesscontrol",
+    "advancedoperators",
+    "lexicalstructure",
+    "types",
+    "expressions",
+    "statements",
+    "declarations",
+    "attributes",
+    "patterns",
+    "genericparametersandarguments",
+    "summaryofthegrammar",
+}
+
+SWIFT_BOOK_EXCLUDED_SLUGS: set[str] = {
+    "aboutswift",
+    "compatibility",
+    "guidedtour",
+    "aboutthelanguagereference",
+    "revisionhistory",
+    # Оглавление книги оставляем как допустимый slug.
+}
 
 # Если в начале markdown (первые N символов) есть одна из этих подстрок — страницу не индексируем (промо/шоукейс).
 # Skip indexing files with almost no engineering content (e.g. stub API refs, hub pages).
@@ -440,7 +495,7 @@ def get_embeddings(texts, model_name: str = EMBED_MODEL_NAME):
                 if attempt < EMBED_RETRY_ATTEMPTS - 1:
                     sleep_sec = EMBED_RETRY_SLEEP[attempt]
                     log(
-                        f"⚠️ Embedding attempt {attempt + 1} failed for batch(size={len(batch)}): {e}; "
+                        f"WARNING: Embedding attempt {attempt + 1} failed for batch(size={len(batch)}): {e}; "
                         f"retry in {sleep_sec}s"
                     )
                     time.sleep(sleep_sec)
@@ -453,7 +508,7 @@ def get_embeddings(texts, model_name: str = EMBED_MODEL_NAME):
             if short != text:
                 try:
                     log(
-                        f"⚠️ Embedding failed for full text (len={len(text)}); "
+                        f"WARNING: Embedding failed for full text (len={len(text)}); "
                         f"trying truncated version (len={len(short)})"
                     )
                     return _call_embed([short])
@@ -483,7 +538,7 @@ def get_embeddings(texts, model_name: str = EMBED_MODEL_NAME):
             all_embeddings.extend(emb)
         except Exception as e:
             log(
-                f"❌ Embedding error for batch {batch_idx}/{total_batches} "
+                f"ERROR: Embedding error for batch {batch_idx}/{total_batches} "
                 f"(size={len(batch)}): {e}"
             )
             return []
@@ -538,7 +593,7 @@ def _load_meta(source_id: str, source_url: str) -> dict:
             data.setdefault("pages", {})
             return data
         except Exception as e:
-            log(f"⚠️ Failed to read meta.json for {source_id}: {e}")
+            log(f"WARNING: Failed to read meta.json for {source_id}: {e}")
     return {
         "source_id": source_id,
         "source_url": source_url,
@@ -557,7 +612,7 @@ def _save_meta(source_id: str, meta: dict) -> None:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        log(f"❗ Failed to write meta.json for {source_id}: {e}")
+        log(f" Failed to write meta.json for {source_id}: {e}")
 
 
 def _slugify(text: str) -> str:
@@ -585,6 +640,269 @@ def _page_filename_for_url(url: str) -> str:
         base = "page"
     h = _sha256(url)[:8]
     return f"{base}-{h}.md"
+
+
+def _parse_wwdc_event_year(event: str) -> int | None:
+    """
+    Parse WWDC event label like 'WWDC24' or 'WWDC2024' into a four-digit year.
+    Returns None when parsing fails.
+    """
+    if not event:
+        return None
+    event = event.strip().upper()
+    if not event.startswith("WWDC"):
+        return None
+    suffix = event[4:]
+    if not suffix.isdigit():
+        return None
+    if len(suffix) == 2:
+        year = 2000 + int(suffix)
+    else:
+        year = int(suffix)
+    return year
+
+
+def _extract_wwdc_session_id_from_url(url: str) -> tuple[int | None, str | None]:
+    """
+    Extract (year, session_id) from Apple transcript URL when possible.
+    Examples of expected patterns:
+      .../wwdc2024/wwdc2024-10136-transcript-eng.json
+    """
+    try:
+        parsed = urlparse(url)
+        path = parsed.path or ""
+    except Exception:
+        return None, None
+    m = re.search(r"wwdc(\d{4})-(\d+)-transcript", path)
+    if not m:
+        return None, None
+    year = int(m.group(1))
+    session_id = m.group(2)
+    return year, session_id
+
+
+def _flatten_wwdc_transcript_json(data) -> list[dict[str, str | None]]:
+    """
+    Conservatively flatten WWDC transcript JSON into an ordered list of segments.
+    Each segment is a dict with optional 'speaker' and 'text' keys.
+
+    The JSON schema for WWDC transcripts is not formally documented here, so this
+    helper favours robustness over strict structure: it walks lists/dicts in
+    document order and captures any nodes that look like speech segments.
+    """
+    segments: list[dict[str, str | None]] = []
+
+    def visit(node):
+        # Newer WWDC JSON format: transcript is a list of [timecode, text] pairs.
+        if isinstance(node, list):
+            # Handle flat [time, text] entries directly.
+            if (
+                len(node) >= 2
+                and isinstance(node[0], (int, float))
+                and isinstance(node[1], str)
+            ):
+                cleaned = " ".join(node[1].split())
+                if cleaned:
+                    segments.append({"speaker": None, "text": cleaned})
+                return
+            # Otherwise, recurse into list items.
+            for item in node:
+                visit(item)
+            return
+
+        if isinstance(node, dict):
+            text = None
+            speaker = None
+            # Common field names we might care about
+            for key, value in node.items():
+                kl = str(key).lower()
+                if isinstance(value, str):
+                    if kl in ("text", "body", "caption", "utterance"):
+                        # Prefer the first text-like field we see
+                        if text is None:
+                            text = value
+                    elif kl in ("speaker", "name", "presenter"):
+                        speaker = value
+            if text:
+                cleaned = " ".join(text.split())
+                if cleaned:
+                    segments.append({"speaker": speaker, "text": cleaned})
+            # Recurse into children to keep document order
+            for v in node.values():
+                visit(v)
+
+    visit(data)
+    # Simple de-duplication of consecutive duplicate text segments
+    deduped: list[dict[str, str | None]] = []
+    last_text: str | None = None
+    for seg in segments:
+        text = seg.get("text") or ""
+        if not text or text == last_text:
+            continue
+        last_text = text
+        deduped.append(seg)
+    return deduped
+
+
+def _wwdc_segments_to_markdown(
+    *,
+    url: str,
+    event: str,
+    year: int | None,
+    session_id: str | None,
+    title: str,
+    segments: list[dict[str, str | None]],
+) -> str:
+    """
+    Render WWDC transcript segments to RAG-optimized markdown.
+    - Meta block at the top with event/year/session_id.
+    - H1 title.
+    - Speaker-labelled paragraphs where possible.
+
+    Applies WWDC-specific "fluff" filtering to aggressively drop
+    non-technical one-liners (thanks, promos, cross-promo, music notes)
+    before building paragraphs.
+    """
+    lines: list[str] = []
+
+    # Purely polite / marketing / reaction sentences that carry no technical value.
+    _FLUFF_SENTENCES: set[str] = {
+        # Thanks / goodbyes
+        "thanks for joining me",
+        "thank you for joining me",
+        "thank you for watching",
+        "thanks for watching",
+        "thank you for watching and goodbye",
+        "thank you, and see you around",
+        "thank you and see you around",
+        "see you around",
+        "see you next time",
+        "thank you",
+        # Short reactions
+        "that's so cool",
+        "ooh, shiny",
+        "yeah. it was a big day",
+        "it was a big day",
+        # Promo taglines
+        "seventeen big and little things from apple wwdc23",
+        "get all the updates on apple.com",
+    }
+
+    # Sentence-level prefixes that usually indicate pure promo / cross‑promo
+    # or non-technical guidance (case-insensitive, applied after strip).
+    _FLUFF_PREFIXES: tuple[str, ...] = (
+        "for more information",
+        "for more details",
+        "to learn more",
+        "to learn how",
+        "to learn more about",
+        "check out ",
+        "be sure to watch",
+        "get all the updates on",
+        "our entire team is incredibly thrilled",
+        "we hope that",
+        "we hope you'll",
+        "i hope they will",
+    )
+
+    _sentence_split_re = re.compile(r"(?<=[.!?])\s+")
+
+    def _strip_wwdc_fluff_from_text(text: str) -> str:
+        """
+        Remove WWDC-specific fluff sentences from a segment text while
+        preserving technical content (APIs, frameworks, patterns).
+        """
+        if not text:
+            return ""
+        parts = _sentence_split_re.split(text)
+        kept: list[str] = []
+        for raw in parts:
+            s = " ".join(raw.strip().split())
+            if not s:
+                continue
+            norm = s.lower()
+            norm_stripped = norm.rstrip(".!?:\"'“”")
+            # Exact-match fluff sentences.
+            if norm_stripped in _FLUFF_SENTENCES:
+                continue
+            # Cross‑promo / marketing boilerplate by prefix.
+            if any(norm_stripped.startswith(p) for p in _FLUFF_PREFIXES):
+                continue
+            # Purely musical / soundtrack annotations.
+            if "♪" in s:
+                continue
+            kept.append(s)
+        return " ".join(kept)
+
+    lines.append("<!--")
+    lines.append("meta:")
+    lines.append(f"  url: {url}")
+    lines.append(f"  event: {event}")
+    if year is not None:
+        lines.append(f"  year: {year}")
+    if session_id is not None:
+        lines.append(f"  session_id: {session_id}")
+    lines.append("  doc_kind: wwdc_session")
+    lines.append("-->")
+    lines.append("")
+
+    lines.append(f"# {title}")
+    lines.append("")
+
+    if year is not None or session_id is not None:
+        meta_parts: list[str] = []
+        if year is not None:
+            meta_parts.append(str(year))
+        meta_parts.append(event)
+        if session_id is not None:
+            meta_parts.append(f"Session {session_id}")
+        lines.append(" · ".join(meta_parts))
+        lines.append("")
+
+    current_speaker: str | None = None
+    current_text_parts: list[str] = []
+
+    def flush_paragraph():
+        nonlocal current_speaker, current_text_parts
+        if not current_text_parts:
+            return
+        para = " ".join(" ".join(current_text_parts).split())
+        if not para:
+            current_text_parts = []
+            return
+        if current_speaker:
+            lines.append(f"**{current_speaker}:** {para}")
+        else:
+            lines.append(para)
+        lines.append("")
+        current_text_parts = []
+
+    for seg in segments:
+        text = (seg.get("text") or "").strip()
+        if not text:
+            continue
+        # Aggressively strip WWDC-specific promo / thanks / music fluff
+        # at sentence level while keeping technical sentences.
+        text = _strip_wwdc_fluff_from_text(text)
+        if not text:
+            continue
+        speaker = seg.get("speaker")
+        # Tiny filler tokens are noise for RAG; skip them.
+        if len(text) <= 3 and text.lower() in {"um", "uh", "so"}:
+            continue
+        if speaker != current_speaker and current_text_parts:
+            flush_paragraph()
+        current_speaker = speaker
+        current_text_parts.append(text)
+
+    flush_paragraph()
+
+    md = "\n".join(lines)
+    md = re.sub(r"\n{3,}", "\n\n", md).strip() + "\n"
+    # Reuse existing markdown normalizers so WWDC pages behave like other docs.
+    md = _strip_markdown_boilerplate(md)
+    md = _normalize_markdown_whitespace(md)
+    return md
 
 
 def _html_to_markdown_regex(html: str) -> str:
@@ -759,6 +1077,15 @@ MARKDOWN_BOILERPLATE_LINES = [
     "На русском",
     "Table of Contents",
     "Contents",
+    # WWDC / video chrome
+    "Download video",
+    "Download Video",
+    "Download",
+    "Share",
+    "Add to favorites",
+    "Add to Favorites",
+    "Favorite",
+    "Up Next",
 ]
 
 
@@ -779,6 +1106,73 @@ def _strip_markdown_boilerplate(md: str) -> str:
         if stripped.startswith("[") and "view in russian" in stripped.lower():
             continue
         out.append(ln)
+    text = "\n".join(out)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    return text
+
+
+def _strip_community_markdown(md: str, site: str | None = None) -> str:
+    """
+    Extra markdown cleanup for community Swift resources (Hacking with Swift, objc.io,
+    Swift by Sundell, Point-Free):
+    - Drop obvious marketing / store / subscribe CTAs.
+    - Trim huge TOC-like blocks (long runs of headings/bullets without code).
+    """
+    if not md:
+        return ""
+
+    cta_substrings = [
+        "subscribe",
+        "buy our book",
+        "buy our books",
+        "browse swift courses",
+        "lifetime update policy",
+        "refund policy",
+        "view plans and pricing",
+        "sponsor the site",
+        "get started with our free plan",
+        "swift knowledge base",
+        "swiftui by example",
+        "swift career accelerator",
+        "become a member",
+        "sign up for free",
+    ]
+
+    lines = md.split("\n")
+    out: list[str] = []
+    i = 0
+    n = len(lines)
+
+    while i < n:
+        ln = lines[i]
+        stripped = ln.strip()
+        lower = stripped.lower()
+
+        # Drop marketing / store / subscribe CTAs.
+        if any(sub in lower for sub in cta_substrings):
+            i += 1
+            continue
+
+        # TOC-like block: long run of headings/bullets without code.
+        if stripped and (stripped.startswith("#") or stripped.startswith("-") or stripped.startswith("*")) and "```" not in stripped:
+            j = i
+            count = 0
+            while j < n:
+                sj = lines[j].strip()
+                if not sj or "```" in sj:
+                    break
+                if not (sj.startswith("#") or sj.startswith("-") or sj.startswith("*")):
+                    break
+                count += 1
+                j += 1
+            # If this is a very long pure-heading/bullet block, treat as TOC and drop.
+            if count >= 15:
+                i = j
+                continue
+
+        out.append(ln)
+        i += 1
+
     text = "\n".join(out)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
     return text
@@ -908,8 +1302,154 @@ def html_to_markdown(html: str, prefer_code_preservation: bool = True) -> str:
     return _normalize_markdown_whitespace(_strip_markdown_boilerplate(raw))
 
 
+def _crawl_wwdc_transcripts_source(source: dict, dry_run: bool = False) -> None:
+    """
+    Crawl WWDC transcript index (TSV + JSON) and write markdown pages under rag_sources.
+
+    Expected source.extra fields:
+      - type: wwdc_transcripts
+      - tsv_url: URL to WWDC-Transcripts-2014-2024-ENG.tsv
+      - min_year: minimum event year (e.g. 2019) to include
+    """
+    source_id = source["id"]
+    extra = source.get("extra") or {}
+    tsv_url = extra.get(
+        "tsv_url",
+        "https://gist.githubusercontent.com/elkraneo/6015e04c81dd227dd9974a2ec9d89cff/raw/WWDC-Transcripts-2014-2024-ENG.tsv",
+    )
+    min_year = int(extra.get("min_year", 2019))
+
+    log(
+        f"[source={source_id}] Fetching WWDC transcript index from TSV: {tsv_url} "
+        + (f"(min_year={min_year})" if min_year else "")
+        + (" [dry-run]" if dry_run else "")
+    )
+
+    try:
+        resp = requests.get(tsv_url, timeout=60)
+        resp.raise_for_status()
+        tsv_text = resp.text
+    except Exception as e:
+        log(f"ERROR: [source={source_id}] Failed to download TSV index: {e}")
+        return
+
+    # Prepare storage
+    start_url = source.get("url", tsv_url)
+    meta = _load_meta(source_id, start_url)
+    pages_meta: dict = meta.get("pages", {})
+    _, pages_dir = _source_dirs(source_id)
+    if not dry_run:
+        _ensure_dir(pages_dir)
+
+    # Parse TSV rows
+    reader = csv.DictReader(tsv_text.splitlines(), delimiter="\t")
+    rows: list[dict[str, str]] = []
+    for row in reader:
+        event = (row.get("Event") or "").strip()
+        link = (row.get("Link") or "").strip()
+        title = (row.get("Transcript Name") or "").strip()
+        if not event or not link or not title:
+            continue
+        year = _parse_wwdc_event_year(event)
+        if year is None or (min_year and year < min_year):
+            continue
+        rows.append(
+            {
+                "event": event,
+                "year": str(year),
+                "link": link,
+                "title": title,
+            }
+        )
+
+    if not rows:
+        log(f"[source={source_id}] No WWDC rows matched filter (min_year={min_year}); nothing to do.")
+        return
+
+    log(f"[source={source_id}] {len(rows)} WWDC transcript(s) to process from TSV.")
+
+    changed_count = 0
+
+    for idx, row in enumerate(rows, start=1):
+        event = row["event"]
+        year = int(row["year"])
+        transcript_url = row["link"]
+        title = row["title"] or f"{event} session"
+
+        log(f"[source={source_id}] [{idx}/{len(rows)}] Fetching transcript JSON: {transcript_url}")
+
+        try:
+            resp = requests.get(transcript_url, timeout=60)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            log(f"ERROR: [source={source_id}] Failed to fetch/parse JSON for {transcript_url}: {e}")
+            continue
+
+        segments = _flatten_wwdc_transcript_json(data)
+        if not segments:
+            log(f"[source={source_id}] Skipping empty transcript for {transcript_url}")
+            continue
+
+        session_year_from_url, session_id = _extract_wwdc_session_id_from_url(transcript_url)
+        # Prefer year derived from event label; URL-based year is only a fallback
+        effective_year = year or session_year_from_url
+
+        md = _wwdc_segments_to_markdown(
+            url=transcript_url,
+            event=event,
+            year=effective_year,
+            session_id=session_id,
+            title=title,
+            segments=segments,
+        )
+
+        page_filename = _page_filename_for_url(transcript_url)
+        page_path = os.path.join(pages_dir, page_filename)
+        new_hash = _sha256(md)
+
+        entry = pages_meta.get(page_filename, {})
+        old_hash = entry.get("hash")
+
+        if old_hash == new_hash:
+            log(f"[source={source_id}] Unchanged WWDC transcript: {page_filename}")
+            continue
+
+        changed_count += 1
+        if dry_run:
+            log(f"[source={source_id}] Would update WWDC transcript: {page_filename} [dry-run]")
+            continue
+
+        try:
+            with open(page_path, "w", encoding="utf-8") as f:
+                f.write(md)
+        except Exception as e:
+            log(f"ERROR: [source={source_id}] Failed to write markdown for WWDC transcript {transcript_url}: {e}")
+            continue
+
+        pages_meta[page_filename] = {
+            "url": transcript_url,
+            "hash": new_hash,
+            "last_updated": _now_iso(),
+            "dirty": True,
+        }
+
+        log(f"[source={source_id}] Updated WWDC transcript markdown: {page_filename}")
+
+    if not dry_run:
+        meta["pages"] = pages_meta
+        meta["last_crawled"] = _now_iso()
+        _save_meta(source_id, meta)
+
+    log(
+        f"[source={source_id}] WWDC transcript crawl complete. "
+        f"Changed pages: {changed_count}"
+        + (" [dry-run]" if dry_run else "")
+    )
+
+
 class _CrawlResult:
-    """Minimal result object compatible with Crawl4AI-style results (url, success, html)."""
+    """Minimal result object (url, success, html)."""
 
     __slots__ = ("url", "success", "html")
 
@@ -928,8 +1468,10 @@ def _crawl_url_allowed(
     prefix_p: str,
     doc_only: bool,
     visited: set[str],
+    allowed_path_prefixes: list[str] | None = None,
+    excluded_path_substrings: list[str] | None = None,
 ) -> bool:
-    """Return True if (url, depth) should be crawled."""
+    """Return True if (url, depth) should be crawled. When provided, use per-source lists; else globals."""
     if url in visited or depth > max_depth:
         return False
     parsed = urlparse(url)
@@ -940,11 +1482,18 @@ def _crawl_url_allowed(
         return False
     if doc_only and "/documentation" not in (parsed.path or ""):
         return False
-    if any(sub in path_p.lower() for sub in EXCLUDED_PATH_SUBSTRINGS):
+    excluded = excluded_path_substrings if excluded_path_substrings is not None else EXCLUDED_PATH_SUBSTRINGS
+    if any(sub in path_p.lower() for sub in excluded):
         return False
-    if not any(path_p == root or path_p.startswith(root + "/") for root in FRAMEWORK_ROOT_PREFIXES):
-        return False
-    return True
+    roots = allowed_path_prefixes if allowed_path_prefixes is not None else FRAMEWORK_ROOT_PREFIXES
+    # Normalize roots so that both '/foo/bar' and '/foo/bar/' work the same way.
+    for root in roots:
+        r = (root or "").rstrip("/")
+        if not r:
+            continue
+        if path_p == r or path_p.startswith(r + "/"):
+            return True
+    return False
 
 
 async def _fetch_one_url(
@@ -984,7 +1533,7 @@ async def _fetch_one_url(
                         )
                     await page.close()
                     page = None
-                    log(f"  ⚠️ 429 for {url}, retry in {wait_sec}s (attempt {attempt + 1}/{CRAWL_MAX_RETRIES_429})")
+                    log(f"  WARNING: 429 for {url}, retry in {wait_sec}s (attempt {attempt + 1}/{CRAWL_MAX_RETRIES_429})")
                     await asyncio.sleep(wait_sec)
                     continue
                 break
@@ -1064,14 +1613,17 @@ async def run_async_crawl_playwright(
     doc_only: bool,
     extra_seed_urls: list[str] | None = None,
     on_page_processed: Callable[[_CrawlResult], None] | None = None,
+    allowed_path_prefixes: list[str] | None = None,
+    excluded_path_substrings: list[str] | None = None,
 ) -> list:
     """
     BFS crawl using Playwright. Single goto per URL (domcontentloaded only, no networkidle).
     Parallel fetches with CRAWL_CONCURRENCY. Retry on 429 with backoff and Retry-After.
+    When provided, allowed_path_prefixes and excluded_path_substrings override globals for this run.
     Returns list of _CrawlResult(url, success, html).
     """
     if not _HAS_PLAYWRIGHT:
-        log("⚠️ Playwright not installed; run: pip install playwright && playwright install chromium")
+        log("WARNING: Playwright not installed; run: pip install playwright && playwright install chromium")
         return []
     start_parsed = urlparse(start_url)
     base_url = f"{start_parsed.scheme or 'https'}://{start_parsed.netloc}"
@@ -1084,6 +1636,8 @@ async def run_async_crawl_playwright(
             queue.append((u, 0))
     prefix_p = allowed_prefix.rstrip("/")
     semaphore = asyncio.Semaphore(CRAWL_CONCURRENCY)
+    excluded = excluded_path_substrings if excluded_path_substrings is not None else EXCLUDED_PATH_SUBSTRINGS
+    roots = allowed_path_prefixes if allowed_path_prefixes is not None else FRAMEWORK_ROOT_PREFIXES
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -1093,7 +1647,9 @@ async def run_async_crawl_playwright(
                 while len(batch) < CRAWL_CONCURRENCY and queue:
                     url, depth = queue.pop(0)
                     if not _crawl_url_allowed(
-                        url, depth, max_depth, start_parsed, base_url, prefix_p, doc_only, visited
+                        url, depth, max_depth, start_parsed, base_url, prefix_p, doc_only, visited,
+                        allowed_path_prefixes=allowed_path_prefixes,
+                        excluded_path_substrings=excluded_path_substrings,
                     ):
                         continue
                     visited.add(url)
@@ -1135,12 +1691,9 @@ async def run_async_crawl_playwright(
                                 continue
                             if doc_only and "/documentation" not in (next_parsed.path or ""):
                                 continue
-                            if any(sub in next_path.lower() for sub in EXCLUDED_PATH_SUBSTRINGS):
+                            if any(sub in next_path.lower() for sub in excluded):
                                 continue
-                            if not any(
-                                next_path == root or next_path.startswith(root + "/")
-                                for root in FRAMEWORK_ROOT_PREFIXES
-                            ):
+                            if not any(next_path == root or next_path.startswith(root + "/") for root in roots):
                                 continue
                             if next_url not in visited:
                                 queue.append((next_url, depth + 1))
@@ -1148,25 +1701,6 @@ async def run_async_crawl_playwright(
                             pass
         finally:
             await browser.close()
-    return results
-
-
-async def run_async_crawl(start_url, max_depth: int = 3):
-    # Only follow http/https links (skip ms-appinstaller:, mailto:, etc.)
-    url_filter = URLPatternFilter(patterns=["http*"])
-    strategy = BFSDeepCrawlStrategy(
-        max_depth=max_depth,
-        include_external=False,
-        filter_chain=FilterChain([url_filter]),
-    )
-    config = CrawlerRunConfig(
-        deep_crawl_strategy=strategy,
-        scraping_strategy=LXMLWebScrapingStrategy(),
-        verbose=False
-    )
-    log(f"🔍 [1/4] Start deep crawl: {start_url}")
-    async with AsyncWebCrawler() as crawler:
-        results = await crawler.arun(start_url, config=config)
     return results
 
 
@@ -1203,7 +1737,7 @@ def _ensure_qdrant_collection(qclient: QdrantClient, dim: int) -> None:
         return
     except ResponseHandlingException as e:
         # Connection-level problem (e.g. Qdrant not running / port closed)
-        log("❌ Unable to connect to Qdrant at http://localhost:6333.")
+        log("ERROR: Unable to connect to Qdrant at http://localhost:6333.")
         log("   Make sure Qdrant is running (for example: `docker run -p 6333:6333 qdrant/qdrant`).")
         log("   You can also use `python app.py index --dry-run` to test indexing without Qdrant.")
         log(f"   Underlying error: {e}")
@@ -1218,17 +1752,17 @@ def _ensure_qdrant_collection(qclient: QdrantClient, dim: int) -> None:
             RAG_COLLECTION_NAME,
             vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
         )
-        log(f"📦 Ensured Qdrant collection '{RAG_COLLECTION_NAME}' (dim={dim})")
+        log(f"Ensured Qdrant collection '{RAG_COLLECTION_NAME}' (dim={dim})")
         _write_collection_file(RAG_COLLECTION_NAME)
         _ensure_payload_indexes(qclient)
     except ResponseHandlingException as e:
-        log("❌ Unable to create Qdrant collection because Qdrant is not reachable at http://localhost:6333.")
+        log("ERROR: Unable to create Qdrant collection because Qdrant is not reachable at http://localhost:6333.")
         log("   Start Qdrant first (for example: `docker run -p 6333:6333 qdrant/qdrant`),")
         log("   or re-run this command with `--dry-run` to skip writing to Qdrant.")
         log(f"   Underlying error: {e}")
         raise SystemExit(1)
     except Exception as e:
-        log(f"❗ Failed to create Qdrant collection '{RAG_COLLECTION_NAME}': {e}")
+        log(f" Failed to create Qdrant collection '{RAG_COLLECTION_NAME}': {e}")
         raise
 
 
@@ -1286,11 +1820,26 @@ def _ensure_payload_indexes(qclient: QdrantClient) -> None:
 def crawl_source(source: dict, dry_run: bool = False) -> None:
     """
     Crawl a configured source:
-    - Fetch HTML with crawl4ai
+    - Fetch HTML with Playwright
     - Normalize to markdown
     - Update meta.json with content hashes and dirty flags (unless dry_run)
     """
     source_id = source["id"]
+
+    # WWDC transcripts sources are handled via a dedicated JSON/TSV pipeline,
+    # not the generic Playwright crawler.
+    extra = source.get("extra") or {}
+    if extra.get("type") == "wwdc_transcripts":
+        _crawl_wwdc_transcripts_source(source, dry_run=dry_run)
+        return
+
+    if source.get("crawler") != "playwright":
+        log("[source={}] Only Playwright crawler is supported; skipping.".format(source_id))
+        return
+    if not _HAS_PLAYWRIGHT:
+        log("[source={}] Playwright is required. Run: pip install playwright html2text && playwright install chromium".format(source_id))
+        return
+
     start_url = source["url"]
     max_depth = int(source.get("max_depth", 3))
     start_parsed = urlparse(start_url)
@@ -1305,13 +1854,12 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
         allowed_prefix = "/"
 
     doc_only = source.get("doc_only", "/documentation/" in (start_parsed.path or ""))
-    use_playwright = source.get("crawler") == "playwright" and _HAS_PLAYWRIGHT
-    if source.get("crawler") == "playwright" and not _HAS_PLAYWRIGHT:
-        log("⚠️ [source={}] Playwright not installed; falling back to Crawl4AI. For code-rich docs run: pip install playwright html2text && playwright install chromium".format(source_id))
+    # Per-source URL allowlist; when not set, use globals from crawler config.
+    effective_path_prefixes = source.get("path_prefixes") or FRAMEWORK_ROOT_PREFIXES
+    effective_excluded = source.get("excluded_path_substrings") or EXCLUDED_PATH_SUBSTRINGS
 
     log(
-        f"🔍 [source={source_id}] Start deep crawl: {start_url} (max_depth={max_depth})"
-        + (" [Playwright]" if use_playwright else " [Crawl4AI]")
+        f"[source={source_id}] Start deep crawl: {start_url} (max_depth={max_depth}) [Playwright]"
         + (" [doc_only]" if doc_only else "")
         + (" [dry-run]" if dry_run else "")
     )
@@ -1349,18 +1897,37 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
             if not is_callback:
                 url_status[url] = "non_doc"
             return False
-        # Только /documentation/ если doc_only
+        # Только /documentation/ если doc_only (для swift_book doc_only = False)
         if doc_only and "/documentation" not in (parsed.path or ""):
             if not is_callback:
                 url_status[url] = "non_doc"
             return False
         # Исключаем низкоценные разделы (release-notes, WWDC, topics, collections)
-        if any(sub in path.lower() for sub in EXCLUDED_PATH_SUBSTRINGS):
+        if any(sub in path.lower() for sub in effective_excluded):
             if not is_callback:
                 url_status[url] = "non_doc"
             return False
+        # Swift Book: фильтрация глав по slug
+        if source_id == "swift_book":
+            slug = path.split("/")[-1] if path else ""
+            if slug in SWIFT_BOOK_EXCLUDED_SLUGS:
+                if not is_callback:
+                    url_status[url] = "non_doc"
+                return False
+            if SWIFT_BOOK_ALLOWED_SLUGS and slug not in SWIFT_BOOK_ALLOWED_SLUGS and slug != "the-swift-programming-language":
+                if not is_callback:
+                    url_status[url] = "non_doc"
+                return False
         # Ограничиваемся только нужными корневыми префиксами фреймворков
-        if not any(path == root or path.startswith(root + "/") for root in FRAMEWORK_ROOT_PREFIXES):
+        allowed = False
+        for root in effective_path_prefixes:
+            r = (root or "").rstrip("/")
+            if not r:
+                continue
+            if path == r or path.startswith(r + "/"):
+                allowed = True
+                break
+        if not allowed:
             if not is_callback:
                 url_status[url] = "non_doc"
             return False
@@ -1376,17 +1943,21 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
             return False
         
         # Convert to markdown — same pipeline as app_tester: Apple only, no fallback
-        if use_playwright and doc_only and "developer.apple.com/documentation" in url:
+        if _HAS_PLAYWRIGHT and doc_only and "developer.apple.com/documentation" in url:
             try:
                 raw = _fetch_apple_doc_raw_safe(url)
                 page = build_apple_doc_page(raw)
                 md = render_apple_doc_to_markdown(page)
             except Exception as e:
                 if not is_callback:
-                    log(f"⚠️ [source={source_id}] Apple pipeline failed for {url}: {e}; skipping (no fallback)")
+                    log(f"WARNING: [source={source_id}] Apple pipeline failed for {url}: {e}; skipping (no fallback)")
                 return False
         else:
             md = html_to_markdown(html)
+            # Extra cleanup for community Swift resources (Hacking with Swift, objc.io, etc.).
+            if extra.get("type") == "community_swift_docs":
+                site = (extra.get("site") or "").strip().lower()
+                md = _strip_community_markdown(md, site)
         
         # Validation: detect if markdown is wrapped in a single code block (bad conversion)
         md_stripped = md.strip() if md else ""
@@ -1396,7 +1967,7 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
             if fence_count == 2:
                 # This is a broken conversion - entire page wrapped in code block
                 if not is_callback:
-                    log(f"⚠️ [source={source_id}] Markdown wrapped in single code block for {url}; this indicates fallback conversion issue")
+                    log(f"WARNING: [source={source_id}] Markdown wrapped in single code block for {url}; this indicates fallback conversion issue")
                 # Mark as problematic - will be excluded from indexing if needed
         
         if not md:
@@ -1414,7 +1985,7 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
         if old_hash == new_hash:
             if not is_callback:
                 if not IS_CLI:
-                    log(f"✅ [source={source_id}] Unchanged: {url}")
+                    log(f"[source={source_id}] Unchanged: {url}")
                 url_status[url] = "unchanged"
             return True
         
@@ -1422,7 +1993,7 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
         if dry_run:
             if not is_callback:
                 if not IS_CLI:
-                    log(f"📝 [source={source_id}] Would update: {page_filename} [dry-run]")
+                    log(f"[source={source_id}] Would update: {page_filename} [dry-run]")
                 url_status[url] = "would_update"
             return True
         
@@ -1432,7 +2003,7 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
                 f.write(md)
         except Exception as e:
             if not is_callback:
-                log(f"❗ [source={source_id}] Failed to write markdown for {url}: {e}")
+                log(f"ERROR: [source={source_id}] Failed to write markdown for {url}: {e}")
             return False
         
         pages_meta[page_filename] = {
@@ -1444,7 +2015,7 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
         
         if not is_callback:
             if not IS_CLI:
-                log(f"📝 [source={source_id}] Updated markdown: {page_filename}")
+                log(f"[source={source_id}] Updated markdown: {page_filename}")
             url_status[url] = "updated"
         else:
             # Periodic meta.json save during crawl (every 10 pages)
@@ -1463,18 +2034,17 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
             process_single_page(result, is_callback=True)
     
     try:
-        if use_playwright:
-            results = asyncio.run(
-                run_async_crawl_playwright(
-                    start_url, max_depth, allowed_prefix, doc_only,
-                    extra_seed_urls=seed_urls,
-                    on_page_processed=on_page_callback if not dry_run else None,
-                )
+        results = asyncio.run(
+            run_async_crawl_playwright(
+                start_url, max_depth, allowed_prefix, doc_only,
+                extra_seed_urls=seed_urls,
+                on_page_processed=on_page_callback if not dry_run else None,
+                allowed_path_prefixes=effective_path_prefixes,
+                excluded_path_substrings=effective_excluded,
             )
-        else:
-            results = asyncio.run(run_async_crawl(start_url, max_depth=max_depth))
+        )
     except Exception as e:
-        log(f"🔥 Crawler exception for source '{source_id}': {e}")
+        log(f"ERROR: Crawler exception for source '{source_id}': {e}")
         return
 
     total = len(results)
@@ -1507,7 +2077,7 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
         _save_meta(source_id, meta)
 
     log(
-        f"🏁 [source={source_id}] Crawl finished. {total} pages, "
+        f"[source={source_id}] Crawl finished. {total} pages, "
         f"{changed_count} updated/would-update markdown files."
     )
 
@@ -1544,7 +2114,7 @@ def index_markdown(
 
     sources = [s for s in SOURCES if source_filter is None or s["id"] in source_filter]
     if not sources:
-        log("ℹ️ [index] No sources to index (empty filter?).")
+        log("[index] No sources to index (empty filter?).")
         return
 
     # Собираем всех кандидатов (source_id, filename, entry, meta, pages_dir)
@@ -1578,10 +2148,10 @@ def index_markdown(
             candidates.append((source_id, filename, entry, meta, pages_dir))
 
     if excluded_by_filter:
-        log(f"ℹ️ [index] Excluded {excluded_by_filter} page(s) by INDEX_EXCLUDE_FILENAME_SUBSTRINGS.")
+        log(f"[index] Excluded {excluded_by_filter} page(s) by INDEX_EXCLUDE_FILENAME_SUBSTRINGS.")
 
     if not candidates:
-        log("ℹ️ [index] No pages to index.")
+        log("[index] No pages to index.")
         return
 
     # Deduplication by content hash: same page from multiple runs → index once (prefer apple_documentation)
@@ -1599,7 +2169,7 @@ def index_markdown(
             skipped_duplicates.append((dup[0], dup[1], dup[3]))
 
     if skipped_duplicates:
-        log(f"ℹ️ [index] Skipping {len(skipped_duplicates)} duplicate page(s) (same content in another source).")
+        log(f"[index] Skipping {len(skipped_duplicates)} duplicate page(s) (same content in another source).")
         for sid, fname, m in skipped_duplicates:
             if IS_CLI:
                 log(f"  skip duplicate: {sid}/pages/{fname}")
@@ -1609,7 +2179,7 @@ def index_markdown(
 
     total_pages = len(deduplicated)
     log(
-        f"📚 [index] {total_pages} page(s) to index (after dedup)"
+        f"[index] {total_pages} page(s) to index (after dedup)"
         + (" [dry-run]" if dry_run else "")
     )
 
@@ -1620,7 +2190,7 @@ def index_markdown(
             with open(page_path, "r", encoding="utf-8") as f:
                 md = f.read()
         except Exception as e:
-            log(f"❗ [index] Failed to read {page_path}: {e}")
+            log(f" [index] Failed to read {page_path}: {e}")
             skipped_files.append(
                 {
                     "source": source_id,
@@ -1636,7 +2206,7 @@ def index_markdown(
         if md_stripped.startswith("```") and md_stripped.endswith("```"):
             fence_count = md_stripped.count("```")
             if fence_count == 2:
-                log(f"ℹ️ [index] Skipping file wrapped in single code block (broken conversion): {source_id}/pages/{filename}")
+                log(f"[index] Skipping file wrapped in single code block (broken conversion): {source_id}/pages/{filename}")
                 skipped_files.append(
                     {
                         "source": source_id,
@@ -1655,7 +2225,7 @@ def index_markdown(
         md = _normalize_markdown_whitespace(md)
         md = _strip_noise_sections(md)
         if len(md.strip()) < INDEX_MIN_CONTENT_LENGTH:
-            log(f"ℹ️ [index] Skipping minimal content (body < {INDEX_MIN_CONTENT_LENGTH} chars): {source_id}/pages/{filename}")
+            log(f"[index] Skipping minimal content (body < {INDEX_MIN_CONTENT_LENGTH} chars): {source_id}/pages/{filename}")
             skipped_files.append(
                 {
                     "source": source_id,
@@ -1670,7 +2240,7 @@ def index_markdown(
             continue
         head = md[:INDEX_EXCLUDE_CONTENT_HEAD_CHARS]
         if any(sub in head for sub in INDEX_EXCLUDE_CONTENT_SUBSTRINGS):
-            log(f"ℹ️ [index] Skipping promo content (DEVELOPER STORIES): {source_id}/pages/{filename}")
+            log(f"[index] Skipping promo content (DEVELOPER STORIES): {source_id}/pages/{filename}")
             if not dry_run and filename in meta.get("pages", {}):
                 meta["pages"][filename]["dirty"] = False
                 _save_meta(source_id, meta)
@@ -1681,7 +2251,7 @@ def index_markdown(
         )
         chunks_with_paths = [(t, p) for t, p in chunks_with_paths if chunk_quality_ok(t)]
         if not chunks_with_paths:
-            log(f"⚠️ [index] No chunks produced for {filename}")
+            log(f"WARNING: [index] No chunks produced for {filename}")
             skipped_files.append(
                 {
                     "source": source_id,
@@ -1698,7 +2268,7 @@ def index_markdown(
         ]
         embeddings = get_embeddings(embed_texts)
         if not embeddings:
-            log(f"❌ [index] No embeddings for {filename}, skipping")
+            log(f"ERROR: [index] No embeddings for {filename}, skipping")
             skipped_files.append(
                 {
                     "source": source_id,
@@ -1716,7 +2286,7 @@ def index_markdown(
 
         if dim != first_dim:
             log(
-                f"❗ [index] Dimension mismatch for {filename}: "
+                f" [index] Dimension mismatch for {filename}: "
                 f"got {dim}, expected {first_dim}. Skipping this file."
             )
             log(
@@ -1820,13 +2390,13 @@ def index_markdown(
         if dry_run:
             if num_upserts or num_deletes:
                 log(
-                    f"📥 [index] [dry-run] Source '{source_id}' file '{filename}': "
+                    f"[index] [dry-run] Source '{source_id}' file '{filename}': "
                     f"would upsert {num_upserts} vector(s), delete {num_deletes} old vector(s)"
                 )
                 any_indexed = True
             else:
                 log(
-                    f"📥 [index] [dry-run] Source '{source_id}' file '{filename}': "
+                    f"[index] [dry-run] Source '{source_id}' file '{filename}': "
                     f"no changes at chunk level"
                 )
             continue
@@ -1855,19 +2425,19 @@ def index_markdown(
                 any_indexed = True
                 ts = datetime.now().strftime("%H:%M:%S")
                 log(
-                    f"📥 [{ts}] [index] Source '{source_id}' file '{filename}': "
+                    f"[{ts}] [index] Source '{source_id}' file '{filename}': "
                     f"upserted {num_upserts} vector(s), deleted {num_deletes} old vector(s)"
                 )
             else:
                 ts = datetime.now().strftime("%H:%M:%S")
                 log(
-                    f"📥 [{ts}] [index] Source '{source_id}' file '{filename}': "
+                    f"[{ts}] [index] Source '{source_id}' file '{filename}': "
                     f"no changes at chunk level"
                 )
 
         except Exception as e:
             log(
-                f"❗ [index] Qdrant upsert/delete error for source '{source_id}', "
+                f" [index] Qdrant upsert/delete error for source '{source_id}', "
                 f"file '{filename}': {e}"
             )
             skipped_files.append(
@@ -1885,20 +2455,20 @@ def index_markdown(
 
     if any_indexed and not dry_run:
         _write_collection_file(RAG_COLLECTION_NAME)
-        log("✅ [index] Indexing completed.")
+        log("[index] Indexing completed.")
     elif any_indexed and dry_run:
-        log("✅ [index] Dry-run completed (no writes).")
+        log("[index] Dry-run completed (no writes).")
     else:
-        log("ℹ️ [index] Nothing was indexed.")
+        log("[index] Nothing was indexed.")
 
     # В конце — компактный массив скипнутых файлов (для отладки качества индекса).
     if skipped_files:
         try:
-            log("ℹ️ [index] Skipped files (JSON array):")
+            log("[index] Skipped files (JSON array):")
             log(json.dumps(skipped_files, ensure_ascii=False, indent=2))
         except Exception:
             log(
-                f"ℹ️ [index] Skipped {len(skipped_files)} file(s); "
+                f"[index] Skipped {len(skipped_files)} file(s); "
                 "see previous log messages for detailed reasons."
             )
 
@@ -1906,15 +2476,15 @@ def index_markdown(
 def rebuild_qdrant(dry_run: bool = False) -> None:
     """Drop the dev_docs collection and re-index all markdown pages from scratch."""
     if dry_run:
-        log(f"🧨 [rebuild] [dry-run] Would drop collection '{RAG_COLLECTION_NAME}' and re-index all")
+        log(f"[rebuild] [dry-run] Would drop collection '{RAG_COLLECTION_NAME}' and re-index all")
         index_markdown(incremental=False, dry_run=True, force_reindex_chunks=True)
         return
     qclient = QdrantClient(url="http://localhost:6333")
-    log(f"🧨 [rebuild] Dropping collection '{RAG_COLLECTION_NAME}'")
+    log(f"[rebuild] Dropping collection '{RAG_COLLECTION_NAME}'")
     try:
         qclient.delete_collection(RAG_COLLECTION_NAME)
     except Exception as e:
-        log(f"⚠️ [rebuild] Failed to delete collection (may not exist): {e}")
+        log(f"[rebuild] Failed to delete collection (may not exist): {e}")
 
     index_markdown(incremental=False, force_reindex_chunks=True)
 
@@ -1926,12 +2496,12 @@ def run_crawl_all_sources(
     """Crawl configured sources and update local markdown store."""
     sources = [s for s in SOURCES if source_filter is None or s["id"] in source_filter]
     if not sources:
-        log("ℹ️ No sources to crawl (empty filter?).")
+        log("No sources to crawl (empty filter?).")
         return
-    log("🚀 Starting crawl for " + (f"sources {[s['id'] for s in sources]}" if source_filter else "all configured sources") + (" [dry-run]" if dry_run else ""))
+    log("Starting crawl for " + (f"sources {[s['id'] for s in sources]}" if source_filter else "all configured sources") + (" [dry-run]" if dry_run else ""))
     for source in sources:
         crawl_source(source, dry_run=dry_run)
-    log("🏁 All sources crawled.")
+    log("All sources crawled.")
 
 
 def run_index_all_sources(
@@ -1942,7 +2512,7 @@ def run_index_all_sources(
 ) -> None:
     """Index markdown from sources into Qdrant."""
     log(
-        f"🚀 Starting index (incremental={incremental})"
+        f"Starting index (incremental={incremental})"
         + (f" sources={source_filter}" if source_filter else " all sources")
         + (f" reindex_source={reindex_source}" if reindex_source else "")
         + (" [dry-run]" if dry_run else "")
@@ -1953,14 +2523,14 @@ def run_index_all_sources(
         reindex_source_id=reindex_source,
         dry_run=dry_run,
     )
-    log("🏁 Index step finished.")
+    log("Index step finished.")
 
 
 def run_rebuild_all(dry_run: bool = False) -> None:
     """Rebuild Qdrant collection from local markdown store."""
-    log("🚀 Starting full rebuild of Qdrant from markdown store" + (" [dry-run]" if dry_run else ""))
+    log("Starting full rebuild of Qdrant from markdown store" + (" [dry-run]" if dry_run else ""))
     rebuild_qdrant(dry_run=dry_run)
-    log("🏁 Rebuild finished.")
+    log("Rebuild finished.")
 
 
 def do_crawl(start_url):
@@ -1971,20 +2541,38 @@ def do_crawl(start_url):
         #   python app.py crawl   -> update rag_sources markdown store
         #   python app.py index   -> index dirty pages into Qdrant
         #   python app.py rebuild -> drop + full re-index
-        results = asyncio.run(run_async_crawl(start_url))
+        if not _HAS_PLAYWRIGHT:
+            log("Playwright is required. Run: pip install playwright && playwright install chromium")
+            return
+        start_parsed = urlparse(start_url)
+        start_path = (start_parsed.path or "").strip("/")
+        start_segments = [s for s in start_path.split("/") if s]
+        allowed_prefix = "/" + "/".join(start_segments[:2]) + "/" if start_segments else "/"
+        results = asyncio.run(
+            run_async_crawl_playwright(
+                start_url,
+                max_depth=3,
+                allowed_prefix=allowed_prefix,
+                doc_only=False,
+                extra_seed_urls=[],
+                on_page_processed=None,
+                allowed_path_prefixes=None,
+                excluded_path_substrings=None,
+            )
+        )
         total = len(results)
-        log(f"✅ [1/4] Crawl finished. {total} pages found.")
+        log(f"[1/4] Crawl finished. {total} pages found.")
 
         qclient = QdrantClient(url="http://localhost:6333")
         coll = collection_name_from_url(start_url)
         _write_collection_file(coll)
-        log(f"📦 Collection: {coll}")
+        log(f"Collection: {coll}")
         created = False
 
         for i, result in enumerate(results):
             idx = i + 1
             if not result.success:
-                log(f"⚠️ [{idx}/{total}] Failed: {result.url}")
+                log(f"[{idx}/{total}] Failed: {result.url}")
                 continue
 
             url = result.url
@@ -1992,7 +2580,7 @@ def do_crawl(start_url):
 
             html = getattr(result, "cleaned_html", None) or getattr(result, "html", "") or ""
             if not html:
-                log(f"⛔ [{idx}/{total}] Empty content")
+                log(f"[{idx}/{total}] Empty content")
                 continue
 
             splitter = HTMLSemanticPreservingSplitter(
@@ -2003,22 +2591,22 @@ def do_crawl(start_url):
             texts = [doc.page_content for doc in docs]
 
             if not texts:
-                log(f"⚠️ [{idx}/{total}] No chunks generated")
+                log(f"[{idx}/{total}] No chunks generated")
                 continue
 
-            log(f"✂️ [{idx}/{total}] [3/4] Chunks: {len(texts)}")
+            log(f"[{idx}/{total}] [3/4] Chunks: {len(texts)}")
             embeddings = get_embeddings(texts)
             if not embeddings:
-                log(f"❌ [{idx}/{total}] No embeddings, skipping")
+                log(f"[{idx}/{total}] No embeddings, skipping")
                 continue
 
             if not created:
                 dim = len(embeddings[0])
                 try:
                     qclient.recreate_collection(coll, vectors_config=VectorParams(size=dim, distance=Distance.COSINE))
-                    log(f"📦 Created Qdrant collection '{coll}' (dim={dim})")
+                    log(f"Created Qdrant collection '{coll}' (dim={dim})")
                 except Exception as e:
-                    log(f"❗ Qdrant creation error: {e}")
+                    log(f" Qdrant creation error: {e}")
                 created = True
 
             points = [PointStruct(id=id_counter + j, vector=vec, payload={"url": url, "text": texts[j]}) for j, vec in enumerate(embeddings)]
@@ -2026,12 +2614,12 @@ def do_crawl(start_url):
 
             try:
                 qclient.upsert(collection_name=coll, points=points)
-                log(f"📥 [{idx}/{total}] [4/4] Indexed {len(points)} vectors")
+                log(f"[{idx}/{total}] [4/4] Indexed {len(points)} vectors")
             except Exception as e:
-                log(f"❗ Qdrant insert error: {e}")
+                log(f" Qdrant insert error: {e}")
 
     except Exception as e:
-        log(f"🔥 Crawler exception: {e}")
+        log(f"ERROR: Crawler exception: {e}")
     finally:
         stop_flag = True
         log("🏁 Done.")
@@ -2060,7 +2648,13 @@ if __name__ == "__main__":
         action="append",
         dest="sources",
         metavar="SOURCE_ID",
-        help="Limit to source id (e.g. apple_documentation). Can be repeated.",
+        help="Limit to source id (e.g. apple_documentation). Can be repeated. Omit to crawl all.",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        dest="crawl_all",
+        help="Crawl all configured sources (same as omitting --source).",
     )
     parser.add_argument(
         "--dry-run",
@@ -2087,7 +2681,10 @@ if __name__ == "__main__":
     # CLI режим: включаем прогресс-бары и отключаем накопление SSE-лога
     IS_CLI = True
 
-    source_list = args.sources if args.sources else None
+    if args.command == "crawl" or args.command == "update":
+        source_list = None if getattr(args, "crawl_all", False) else (args.sources if args.sources else None)
+    else:
+        source_list = args.sources if args.sources else None
     if args.command == "crawl":
         run_crawl_all_sources(source_filter=source_list, dry_run=args.dry_run)
     elif args.command == "index":

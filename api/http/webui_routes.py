@@ -2226,14 +2226,14 @@ def get_crawler_sources() -> Any:
         config_sources = _load_sources_config()
         config_sources_dict = {s.get("id"): s for s in config_sources}
         
-        source_ids = _discover_sources()
+        discovered_ids = set(_discover_sources())
         sources = []
-        
-        for source_id in source_ids:
+
+        for source_id in sorted(discovered_ids):
             meta = _load_source_meta(source_id)
             if not meta:
                 continue
-            
+
             stats = _get_source_stats(meta)
             source_data = {
                 "id": source_id,
@@ -2244,7 +2244,7 @@ def get_crawler_sources() -> Any:
                 "dirty_pages": stats["dirty_pages"],
                 "has_meta": True,
             }
-            
+
             # Get config from sources.yaml if available, otherwise from meta
             config_source = config_sources_dict.get(source_id)
             if config_source:
@@ -2263,9 +2263,32 @@ def get_crawler_sources() -> Any:
                     source_data["doc_only"] = meta["doc_only"]
                 if "seed_urls" in meta:
                     source_data["seed_urls"] = meta["seed_urls"]
-            
+
             sources.append(source_data)
-        
+
+        # Include sources from config that are not yet discovered (no rag_sources/<id>/meta.json)
+        for config_source in config_sources:
+            cid = config_source.get("id")
+            if not cid or cid in discovered_ids:
+                continue
+            source_data = {
+                "id": cid,
+                "url": config_source.get("url", ""),
+                "last_crawled": None,
+                "total_pages": 0,
+                "indexed_pages": 0,
+                "dirty_pages": 0,
+                "has_meta": False,
+                "max_depth": config_source.get("max_depth", 2),
+                "crawler": config_source.get("crawler", "playwright"),
+                "doc_only": config_source.get("doc_only", True),
+                "seed_urls": config_source.get("seed_urls", []),
+            }
+            sources.append(source_data)
+
+        # Keep stable order: discovered first (sorted), then config-only (by id)
+        sources.sort(key=lambda s: (s["id"],))
+
         return jsonify({"sources": sources})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_crawler_sources", exc_info=True)
@@ -2442,13 +2465,26 @@ def get_crawl_status(source_id: str) -> Any:
                 "source_id": source_id,
             })
         else:
-            # Process finished, clean up
+            # Process finished: capture stderr for failed runs, then clean up
+            stderr_preview = None
+            try:
+                if proc.stderr:
+                    err = proc.stderr.read()
+                    if err:
+                        stderr_preview = err.decode("utf-8", errors="replace").strip()
+                        if len(stderr_preview) > 2000:
+                            stderr_preview = "... " + stderr_preview[-2000:]
+            except Exception:
+                pass
             del _crawling_processes[source_id]
-            return jsonify({
+            out = {
                 "status": "finished",
                 "source_id": source_id,
                 "return_code": return_code,
-            })
+            }
+            if stderr_preview:
+                out["stderr"] = stderr_preview
+            return jsonify(out)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_crawl_status", exc_info=True)
         return jsonify({"error": str(e)}), 500
@@ -2962,6 +2998,67 @@ def _rag_tests_find_by_id(get_root: Any, load_all: Any, test_id: str) -> dict[st
     return None
 
 
+def _normalize_concepts(raw_concepts: list[str]) -> list[str]:
+    """
+    Normalize Expected Concepts coming from the WebUI/CLI.
+
+    Rules:
+    - One atomic concept per entry (no combined lists like `weak / unowned`).
+    - Trim whitespace and drop empty entries.
+    - Split on common separators (`/`, `,`, `;`, ` and `) when they clearly
+      represent multiple concepts, for example:
+        - \"weak / unowned\" -> [\"weak\", \"unowned\"]
+        - \"weak and unowned\" -> [\"weak\", \"unowned\"]
+    - If the string still looks ambiguous after splitting (mixture of
+      separators, very long phrase), keep it as-is so the author can fix it.
+    """
+    normalized: list[str] = []
+    for item in raw_concepts:
+        text = (item or "").strip()
+        if not text:
+            continue
+
+        lowered = text.lower()
+        # Fast path: no obvious separators, treat as a single concept.
+        if all(sep not in lowered for sep in ("/", ",", ";", " and ")):
+            normalized.append(text)
+            continue
+
+        # Handle the most common simple patterns safely.
+        # Priority: explicit " and " between two short tokens, or slash/comma-separated tokens.
+        candidates: list[str] = []
+
+        def _split_and_extend(separator: str) -> None:
+            parts = [p.strip() for p in text.split(separator) if p.strip()]
+            if len(parts) >= 2:
+                candidates.extend(parts)
+
+        # Try word-level conjunction first.
+        if " and " in lowered:
+            _split_and_extend(" and ")
+        # Then symbol-based separators.
+        if "/" in text:
+            _split_and_extend("/")
+        if "," in text:
+            _split_and_extend(",")
+        if ";" in text:
+            _split_and_extend(";")
+
+        # Heuristic: if we obtained at least two reasonably short pieces and
+        # the combined length is similar to the original, treat them as
+        # separate atomic concepts. Otherwise, keep the original string so
+        # that the test author can adjust it explicitly.
+        if len(candidates) >= 2 and all(len(c) <= 40 for c in candidates):
+            for c in candidates:
+                if c and c not in normalized:
+                    normalized.append(c)
+            continue
+
+        normalized.append(text)
+
+    return normalized
+
+
 def _rag_tests_build_md(
     name: str,
     question: str,
@@ -3025,6 +3122,7 @@ def rag_tests_update(test_id: str) -> Any:
     concepts = body.get("concepts") or body.get("expected_concepts") or []
     if isinstance(concepts, str):
         concepts = [c.strip() for c in concepts.split("\n") if c.strip()]
+    concepts = _normalize_concepts(list(concepts))
     platform = (body.get("platform") or "iOS").strip()
     framework = (body.get("framework") or "SwiftUI").strip()
     difficulty = (body.get("difficulty") or "intermediate").strip()
@@ -3332,6 +3430,7 @@ def rag_tests_create() -> Any:
     concepts = body.get("concepts") or body.get("expected_concepts") or []
     if isinstance(concepts, str):
         concepts = [c.strip() for c in concepts.split("\n") if c.strip()]
+    concepts = _normalize_concepts(list(concepts))
     platform = (body.get("platform") or "iOS").strip()
     framework = (body.get("framework") or "SwiftUI").strip()
     difficulty = (body.get("difficulty") or "intermediate").strip()

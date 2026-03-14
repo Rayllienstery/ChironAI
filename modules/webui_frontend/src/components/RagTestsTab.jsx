@@ -46,6 +46,7 @@ function RagTestsTab({
     notes: '',
   });
   const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [createConceptsWarning, setCreateConceptsWarning] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [editTestId, setEditTestId] = useState(null);
   const [editForm, setEditForm] = useState({
@@ -61,6 +62,7 @@ function RagTestsTab({
     notes: '',
   });
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editConceptsWarning, setEditConceptsWarning] = useState('');
   const [runHistory, setRunHistory] = useState([]);
   const [runHistoryLoading, setRunHistoryLoading] = useState(false);
   const [runHistoryLoadingMore, setRunHistoryLoadingMore] = useState(false);
@@ -347,8 +349,33 @@ function RagTestsTab({
     }
   };
 
+  const validateConceptLines = (text) => {
+    const lines = (text || '')
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const problematic = lines.filter((line) => {
+      const lowered = line.toLowerCase();
+      return (
+        lowered.includes('/') ||
+        lowered.includes(',') ||
+        lowered.includes(';') ||
+        lowered.includes(' and ')
+      );
+    });
+    if (problematic.length === 0) {
+      return '';
+    }
+    if (problematic.length === 1) {
+      return `Entry "${problematic[0]}" looks like multiple concepts; use one concept per line (for example: "weak" and "unowned" on separate lines).`;
+    }
+    return 'Some Expected Concepts entries look like multiple concepts; please use one concept per line.';
+  };
+
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
+    const warning = validateConceptLines(createForm.concepts);
+    setCreateConceptsWarning(warning);
     const concepts = createForm.concepts
       .split('\n')
       .map((s) => s.trim())
@@ -414,6 +441,8 @@ function RagTestsTab({
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
+    const warning = validateConceptLines(editForm.concepts);
+    setEditConceptsWarning(warning);
     const concepts = editForm.concepts
       .split('\n')
       .map((s) => s.trim())
@@ -1202,6 +1231,11 @@ function RagTestsTab({
                   className="rag-tests-input"
                 />
               </label>
+              {createConceptsWarning && (
+                <p className="rag-tests-hint">
+                  {createConceptsWarning}
+                </p>
+              )}
               <div className="rag-tests-form-row">
                 <label>
                   Platform
@@ -1326,6 +1360,11 @@ function RagTestsTab({
                   className="rag-tests-input"
                 />
               </label>
+              {editConceptsWarning && (
+                <p className="rag-tests-hint">
+                  {editConceptsWarning}
+                </p>
+              )}
               <div className="rag-tests-form-row">
                 <label>
                   Platform
