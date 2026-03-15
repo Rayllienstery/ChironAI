@@ -22,7 +22,7 @@ class HttpRagClient:
         return r.json()
 
     def chat_completions(self, body: dict[str, Any]) -> dict[str, Any]:
-        r = requests.post(f"{self._base}/v1/chat/completions", json=body, timeout=300)
+        r = requests.post(f"{self._base}/v1/chat/completions", json=body, timeout=600)
         r.raise_for_status()
         return r.json()
 

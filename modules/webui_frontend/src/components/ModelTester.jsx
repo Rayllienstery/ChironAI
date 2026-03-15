@@ -7,6 +7,8 @@ function ModelTester({ sessionId }) {
   const [models, setModels] = useState([]);
   const [prompts, setPrompts] = useState([]);
   const [collections, setCollections] = useState([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const hasSanitizedRef = useRef(false);
   const [settings, setSettings] = useState({
     model: '',
     prompt_name: '',
@@ -38,6 +40,7 @@ function ModelTester({ sessionId }) {
   }, [sessionId]);
 
   const loadData = async () => {
+    setDataLoaded(false);
     try {
       const [modelsData, promptsData, collectionsData] = await Promise.all([
         getModels(),
@@ -52,12 +55,14 @@ function ModelTester({ sessionId }) {
       setCollections(collectionsData?.collections || []);
     } catch (error) {
       console.error('Failed to load data:', error);
+    } finally {
+      setDataLoaded(true);
     }
   };
 
   const loadTesterSettings = async () => {
     if (!sessionId) return;
-    
+    hasSanitizedRef.current = false;
     setSettingsLoading(true);
     try {
       const data = await getTesterSettings(sessionId);
@@ -70,6 +75,24 @@ function ModelTester({ sessionId }) {
       setSettingsLoading(false);
     }
   };
+
+  // Reset saved model/collection to default if not present in current ollama/collections lists
+  useEffect(() => {
+    if (settingsLoading || !dataLoaded || hasSanitizedRef.current) return;
+    const modelIds = (models || []).map((m) => m.id || m.name);
+    const collectionNames = (collections || []).map((c) => c.name);
+    hasSanitizedRef.current = true;
+    setSettings((prev) => {
+      let next = { ...prev };
+      if (prev.model && (modelIds.length === 0 || !modelIds.includes(prev.model))) {
+        next.model = '';
+      }
+      if (prev.rag_collection && (collectionNames.length === 0 || !collectionNames.includes(prev.rag_collection))) {
+        next.rag_collection = (collections && collections[0]) ? collections[0].name : '';
+      }
+      return next;
+    });
+  }, [settingsLoading, dataLoaded, models, collections]);
 
   const handleSettingChange = (field, value) => {
     setSettings(prev => ({ ...prev, [field]: value }));

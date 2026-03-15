@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import uuid
 
 from flask import Flask, Response, jsonify, request
@@ -28,32 +29,55 @@ _MODULES_EXT_RAG = os.path.join(_ROOT, "modules", "external_docs_rag")
 if _MODULES_EXT_RAG not in sys.path:
     sys.path.insert(0, _MODULES_EXT_RAG)
 
+from application.rag.collection_freshness import check_collection_freshness
 from application.rag.params import RAGDependencies, get_rag_answer_params
 from application.rag.use_cases import build_rag_context, prepare_ollama_messages
 from domain.entities.rag import RagQuestionRequest
+from infrastructure.database import get_settings_repository
 
 try:
     from external_docs_rag.application.use_cases import (
         build_merged_rag_context,
+        ingest_github_repo_markdown,
         resolve_rag_sources_for_request,
     )
-    from external_docs_rag.config_loader import load_rag_sources_config, load_external_sources
-    from external_docs_rag.infrastructure import HttpFetchClient, QdrantRagSearchAdapter
+    from external_docs_rag.config_loader import (
+        load_external_sources,
+        load_github_repos,
+        load_rag_sources_config,
+    )
+    from external_docs_rag.infrastructure import (
+        HttpFetchClient,
+        QdrantChunkSink,
+        QdrantRagSearchAdapter,
+    )
+    from external_docs_rag.infrastructure.github_discovery import get_latest_release_tag
     _EXTERNAL_DOCS_RAG_AVAILABLE = True
 except ImportError:
     build_merged_rag_context = None  # type: ignore[assignment]
     resolve_rag_sources_for_request = None  # type: ignore[assignment]
     load_rag_sources_config = None  # type: ignore[assignment]
     load_external_sources = None  # type: ignore[assignment]
+    load_github_repos = None  # type: ignore[assignment]
+    ingest_github_repo_markdown = None  # type: ignore[assignment]
     HttpFetchClient = None  # type: ignore[assignment]
+    QdrantChunkSink = None  # type: ignore[assignment]
     QdrantRagSearchAdapter = None  # type: ignore[assignment]
+    get_latest_release_tag = None  # type: ignore[assignment]
     _EXTERNAL_DOCS_RAG_AVAILABLE = False
 
 try:
-    from config import get_proxy_rerank_enabled, get_qdrant_url
+    from config import (
+        get_default_rag_top_k,
+        get_framework_collection_ttl_days,
+        get_proxy_rerank_enabled,
+        get_qdrant_url,
+    )
 except ImportError:
     get_proxy_rerank_enabled = lambda: False  # type: ignore[assignment]
     get_qdrant_url = lambda: "http://localhost:6333"  # type: ignore[assignment]
+    get_framework_collection_ttl_days = lambda: 90  # type: ignore[assignment]
+    get_default_rag_top_k = lambda: 4  # type: ignore[assignment]
 try:
     from rag_service.infrastructure.keyword_collections_sqlite import get_keyword_collections_repository
 except ImportError:
@@ -181,6 +205,57 @@ def create_app(
         # If model is "rag-ollama", use config model instead (rag-ollama is just a proxy identifier)
         actual_model = ollama_model if requested_model == "rag-ollama" or requested_model == RAG_MODEL_ID else requested_model
 
+        # Optional project_context: frameworks list -> fresh collection names for RAG filter, and needs_refresh for background index
+        project_context = body.get("project_context")
+        project_fresh_collection_names: set[str] | None = None
+        needs_refresh: list[tuple[str, str]] = []  # (framework_id_lower, collection_name); also filled from resolved sources below
+        if isinstance(project_context, dict) and _EXTERNAL_DOCS_RAG_AVAILABLE and load_rag_sources_config:
+            frameworks = project_context.get("frameworks") or []
+            if frameworks:
+                rag_sources_config = load_rag_sources_config()
+                # Map framework name (e.g. "Alamofire") -> collection_name from config
+                name_to_collection: dict[str, str] = {}
+                for cfg in rag_sources_config:
+                    for kw in (cfg.trigger_keywords or []):
+                        name_to_collection[(kw or "").strip().lower()] = cfg.collection_name
+                    if (cfg.external_source_id or "").strip():
+                        name_to_collection[(cfg.external_source_id or "").strip().lower()] = cfg.collection_name
+                ttl_days = get_framework_collection_ttl_days()
+                settings_repo = None
+                try:
+                    settings_repo = get_settings_repository()
+                    ttl_raw = settings_repo.get_app_setting("framework_collection_ttl_days")
+                    if ttl_raw is not None and str(ttl_raw).strip() != "":
+                        try:
+                            ttl_days = int(ttl_raw)
+                        except (TypeError, ValueError):
+                            pass
+                except Exception:
+                    pass
+                fresh_collections: list[str] = []
+                needs_refresh.clear()
+                for fw in frameworks:
+                    if not isinstance(fw, dict):
+                        continue
+                    name = (fw.get("name") or "").strip()
+                    if not name:
+                        continue
+                    coll = name_to_collection.get(name.lower())
+                    if not coll:
+                        continue
+                    meta = None
+                    if settings_repo:
+                        try:
+                            meta = settings_repo.get_collection_meta(coll)
+                        except Exception:
+                            pass
+                    if check_collection_freshness(meta, ttl_days) == "fresh":
+                        if coll not in fresh_collections:
+                            fresh_collections.append(coll)
+                    else:
+                        needs_refresh.append((name.lower(), coll))
+                project_fresh_collection_names = set(fresh_collections) if fresh_collections else None
+
         # Optional: use request-scoped collection and deps when client sends collection_name
         request_collection = (body.get("collection_name") or "").strip() or None
         if request_collection:
@@ -216,6 +291,77 @@ def create_app(
                 # (GitHub fetch for any framework name in the question) plus configured on-demand and RAG.
                 if len(resolved) >= 1:
                     use_merged = True
+                    # Trigger full crawl for resolved sources that are missing or stale when repo is on GitHub
+                    try:
+                        _settings_repo = get_settings_repository()
+                        _ttl_days = get_framework_collection_ttl_days()
+                        _ttl_raw = _settings_repo.get_app_setting("framework_collection_ttl_days")
+                        if _ttl_raw is not None and str(_ttl_raw).strip() != "":
+                            try:
+                                _ttl_days = int(_ttl_raw)
+                            except (TypeError, ValueError):
+                                pass
+                    except Exception:
+                        _settings_repo = None
+                        _ttl_days = 90
+                    resolved_needs_refresh: list[tuple[str, str]] = []
+                    if _settings_repo:
+                        for cfg in resolved:
+                            meta = None
+                            try:
+                                meta = _settings_repo.get_collection_meta(cfg.collection_name)
+                            except Exception:
+                                pass
+                            if check_collection_freshness(meta, _ttl_days) != "fresh":
+                                fid = (cfg.external_source_id or cfg.collection_name or "").strip().lower() or cfg.collection_name.lower()
+                                resolved_needs_refresh.append((fid, cfg.collection_name))
+                    work_list = list(needs_refresh)
+                    for (fid, coll) in resolved_needs_refresh:
+                        if coll not in [c for _, c in work_list]:
+                            work_list.append((fid, coll))
+                    if work_list and load_github_repos and ingest_github_repo_markdown and HttpFetchClient and QdrantChunkSink and get_latest_release_tag:
+                        coll_to_framework_id = {}
+                        for cfg in rag_sources_config:
+                            fid = (cfg.external_source_id or cfg.collection_name or "").strip().lower()
+                            if fid:
+                                coll_to_framework_id[cfg.collection_name] = fid
+                        github_repos_list = load_github_repos()
+                        by_framework_id = {(e.get("framework_id") or "").lower(): e for e in github_repos_list if e.get("framework_id")}
+
+                        def _run_refresh(work: list) -> None:
+                            try:
+                                qdrant_url = get_qdrant_url()
+                                fetch_client = HttpFetchClient()
+                                chunk_sink = QdrantChunkSink(base_url=qdrant_url)
+                                repo = get_settings_repository()
+                                def on_indexed(cname: str, fid: str, ver: str | None, last_at: str) -> None:
+                                    repo.set_collection_meta(cname, fid, ver or "", last_at)
+                                for _name, coll in work:
+                                    fid = coll_to_framework_id.get(coll) or coll.lower()
+                                    entry = by_framework_id.get(fid)
+                                    if not entry:
+                                        continue
+                                    owner = entry.get("owner", "")
+                                    repo_name = entry.get("repo", "")
+                                    ref = entry.get("ref") or "main"
+                                    if ref in ("latest", ""):
+                                        tag = get_latest_release_tag(f"{owner}/{repo_name}")
+                                        if tag:
+                                            ref = tag
+                                        else:
+                                            ref = "main"
+                                    ingest_github_repo_markdown(
+                                        owner, repo_name, ref, coll, fid,
+                                        fetch_client, chunk_sink, embed_provider,
+                                        max_depth=3,
+                                        on_indexed=on_indexed,
+                                    )
+                                    break
+                            except Exception as e:
+                                _RAG_LOG.warning("Background framework refresh failed: %s", e)
+
+                        threading.Thread(target=_run_refresh, args=(work_list,), daemon=True).start()
+
                     try:
                         qdrant_url = get_qdrant_url()
                     except Exception:
@@ -232,6 +378,7 @@ def create_app(
                         context_total_chars,
                         fetch_client=fetch_client,
                         external_sources=external_sources_list,
+                        fresh_collection_names=project_fresh_collection_names,
                     )
                     from domain.entities.rag import RagContext
                     rag_ctx_for_log = RagContext(

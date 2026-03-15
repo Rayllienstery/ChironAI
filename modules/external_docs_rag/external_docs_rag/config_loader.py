@@ -1,11 +1,12 @@
 """
-Load external_sources and rag_sources from YAML config.
+Load external_sources, rag_sources, and github_repos from YAML config.
 """
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 from external_docs_rag.domain.entities import ExternalSource, RagSourceConfig
 
@@ -69,4 +70,31 @@ def load_rag_sources_config(config_path: str | None = None) -> list[RagSourceCon
     return out
 
 
-__all__ = ["load_external_sources", "load_rag_sources_config"]
+def load_github_repos(config_path: str | None = None) -> list[dict[str, Any]]:
+    """
+    Load github_repos list from YAML for full-repo .md indexing (depth 3).
+    Each entry: owner, repo, ref (optional, default main), collection_name, framework_id.
+    """
+    if not _HAS_YAML:
+        return []
+    path = config_path or os.path.join(_module_dir(), "..", "config", "sources.yaml")
+    path = os.path.normpath(path)
+    if not os.path.isfile(path):
+        return []
+    with open(path, encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    raw = data.get("github_repos") or []
+    out: list[dict[str, Any]] = []
+    for r in raw:
+        if isinstance(r, dict) and r.get("owner") and r.get("repo") and r.get("collection_name") and r.get("framework_id"):
+            out.append({
+                "owner": str(r["owner"]),
+                "repo": str(r["repo"]),
+                "ref": str(r.get("ref") or "main"),
+                "collection_name": str(r["collection_name"]),
+                "framework_id": str(r["framework_id"]),
+            })
+    return out
+
+
+__all__ = ["load_external_sources", "load_github_repos", "load_rag_sources_config"]

@@ -6,7 +6,8 @@ Fetch → parse → chunk → embed → upsert; multi-collection RAG with merged
 
 from __future__ import annotations
 
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Callable
 from urllib.parse import urljoin
 
 from external_docs_rag.domain.entities import (
@@ -26,6 +27,7 @@ from external_docs_rag.domain.services.framework_candidates import (
     extract_framework_version_pairs,
 )
 from external_docs_rag.infrastructure.content_parser import parse_document_to_markdown
+from external_docs_rag.infrastructure.github_tree import list_markdown_raw_urls
 from external_docs_rag.infrastructure.github_discovery import (
     discover_and_fetch_readme,
     get_latest_release_tag,
@@ -193,6 +195,139 @@ def ingest_source_to_collection(
     )
 
 
+def ingest_url_list_to_collection(
+    urls: list[str],
+    collection_name: str,
+    framework_id: str,
+    version: str | None,
+    fetch_client: FetchClient,
+    chunk_sink: ChunkSink,
+    embed_provider: EmbeddingPort,
+    on_indexed: Callable[[str, str, str | None, str], None] | None = None,
+) -> IngestResult:
+    """
+    Fetch each URL, parse to markdown, chunk, embed, and write to the given collection.
+    After successful write, calls on_indexed(collection_name, framework_id, version, last_refreshed_at)
+    so the caller can update the collection registry (e.g. set_collection_meta).
+    """
+    errors: list[str] = []
+    documents_fetched = 0
+    all_chunks: list[dict[str, Any]] = []
+    for url in urls:
+        doc = fetch_client.fetch(url)
+        if doc is None:
+            errors.append(f"fetch failed: {url}")
+            continue
+        md = parse_document_to_markdown(doc)
+        if not md or len(md.strip()) < 50:
+            continue
+        documents_fetched += 1
+        # Derive path from URL (last path segment)
+        path = (url.rstrip("/").split("/")[-1]) if url else ""
+        raw_chunks = split_markdown_into_chunks(md)
+        for chunk_text, section_path in raw_chunks:
+            if not chunk_quality_ok(chunk_text):
+                continue
+            all_chunks.append({
+                "text": chunk_text,
+                "source_id": framework_id,
+                "path": path,
+                "url": url,
+                "section_path": section_path,
+            })
+    if not all_chunks:
+        return IngestResult(
+            source_id=framework_id,
+            collection_name=collection_name,
+            documents_fetched=documents_fetched,
+            chunks_indexed=0,
+            errors=errors,
+        )
+    texts = [c["text"] for c in all_chunks]
+    try:
+        vectors = embed_provider.embed_batch(texts)
+    except Exception as e:
+        errors.append(f"embed_batch: {e}")
+        return IngestResult(
+            source_id=framework_id,
+            collection_name=collection_name,
+            documents_fetched=documents_fetched,
+            chunks_indexed=0,
+            errors=errors,
+        )
+    if len(vectors) != len(all_chunks):
+        errors.append(f"embed count {len(vectors)} != chunks {len(all_chunks)}")
+        return IngestResult(
+            source_id=framework_id,
+            collection_name=collection_name,
+            documents_fetched=documents_fetched,
+            chunks_indexed=0,
+            errors=errors,
+        )
+    vector_size = len(vectors[0])
+    try:
+        written = chunk_sink.write_chunks(collection_name, all_chunks, vectors, vector_size)
+    except Exception as e:
+        errors.append(f"write_chunks: {e}")
+        return IngestResult(
+            source_id=framework_id,
+            collection_name=collection_name,
+            documents_fetched=documents_fetched,
+            chunks_indexed=0,
+            errors=errors,
+        )
+    if on_indexed and written > 0:
+        try:
+            last_refreshed_at = datetime.now(timezone.utc).isoformat()
+            on_indexed(collection_name, framework_id, version, last_refreshed_at)
+        except Exception:
+            pass
+    return IngestResult(
+        source_id=framework_id,
+        collection_name=collection_name,
+        documents_fetched=documents_fetched,
+        chunks_indexed=written,
+        errors=errors,
+    )
+
+
+def ingest_github_repo_markdown(
+    owner: str,
+    repo: str,
+    ref: str,
+    collection_name: str,
+    framework_id: str,
+    fetch_client: FetchClient,
+    chunk_sink: ChunkSink,
+    embed_provider: EmbeddingPort,
+    max_depth: int = 3,
+    on_indexed: Callable[[str, str, str | None, str], None] | None = None,
+) -> IngestResult:
+    """
+    List .md files in the repo at ref (path depth <= max_depth), fetch, chunk, embed, write to collection.
+    Calls on_indexed(collection_name, framework_id, version, last_refreshed_at) after success.
+    """
+    urls = list_markdown_raw_urls(owner, repo, ref, max_depth=max_depth)
+    if not urls:
+        return IngestResult(
+            source_id=framework_id,
+            collection_name=collection_name,
+            documents_fetched=0,
+            chunks_indexed=0,
+            errors=["No .md files found or GitHub API failed"],
+        )
+    return ingest_url_list_to_collection(
+        urls=urls,
+        collection_name=collection_name,
+        framework_id=framework_id,
+        version=ref,
+        fetch_client=fetch_client,
+        chunk_sink=chunk_sink,
+        embed_provider=embed_provider,
+        on_indexed=on_indexed,
+    )
+
+
 def resolve_rag_sources_for_request(
     question: str,
     messages: list[dict[str, Any]],
@@ -245,11 +380,14 @@ def build_merged_rag_context(
     context_total_chars: int,
     fetch_client: FetchClient | None = None,
     external_sources: list[ExternalSource] | None = None,
+    fresh_collection_names: set[str] | None = None,
 ) -> tuple[RagContext, dict[str, float]]:
     """
     Build RAG context: for sources with on_demand_fetch, fetch from web and parse;
     for any other framework name in the question, discover via GitHub and fetch README;
     for the rest, search RAG. Merge into one context block.
+    When fresh_collection_names is set, only search RAG for collections in that set
+    (so stale/missing frameworks still get on-demand fetch but no vector search).
     """
     import time
     timings: dict[str, float] = {"embed_s": 0.0, "search_s": 0.0, "fetch_s": 0.0, "discovery_s": 0.0, "total_rag_s": 0.0}
@@ -366,6 +504,8 @@ def build_merged_rag_context(
 
     # RAG search for sources that are not on-demand (or when on-demand returned nothing)
     rag_sources_to_search = [c for c in rag_sources if not (c.on_demand_fetch and c.external_source_id and external_by_id.get(c.external_source_id))]
+    if fresh_collection_names is not None:
+        rag_sources_to_search = [c for c in rag_sources_to_search if c.collection_name in fresh_collection_names]
     all_hits: list[tuple[str, dict]] = []
     if rag_sources_to_search:
         t0 = time.perf_counter()
@@ -420,6 +560,8 @@ def build_merged_rag_context(
 __all__ = [
     "build_merged_rag_context",
     "fetch_on_demand_context",
+    "ingest_github_repo_markdown",
     "ingest_source_to_collection",
+    "ingest_url_list_to_collection",
     "resolve_rag_sources_for_request",
 ]

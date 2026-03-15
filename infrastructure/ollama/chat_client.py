@@ -53,7 +53,7 @@ class OllamaChatClient:
                 self._url,
                 json=payload,
                 stream=stream,
-                timeout=300,
+                timeout=600,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -99,7 +99,7 @@ class OllamaChatClient:
                 self._url,
                 json=payload,
                 stream=True,
-                timeout=300,
+                timeout=600,
             )
             resp.raise_for_status()
         except requests.exceptions.HTTPError as e:

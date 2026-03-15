@@ -41,7 +41,7 @@ class OllamaChatClient:
         opts = {**(self._default_options or {}), **(options or {})}
         payload = {"model": use_model, "messages": messages, "stream": stream, "options": opts}
         try:
-            resp = requests.post(self._url, json=payload, stream=stream, timeout=300)
+            resp = requests.post(self._url, json=payload, stream=stream, timeout=600)
             resp.raise_for_status()
             data = resp.json()
             if stream:
@@ -62,7 +62,7 @@ class OllamaChatClient:
         opts = {**(self._default_options or {}), **(options or {})}
         payload = {"model": use_model, "messages": messages, "stream": True, "options": opts}
         try:
-            resp = requests.post(self._url, json=payload, stream=True, timeout=300)
+            resp = requests.post(self._url, json=payload, stream=True, timeout=600)
             resp.raise_for_status()
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Ollama chat API error: {e}") from e

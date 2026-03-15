@@ -223,6 +223,22 @@ def get_qdrant_collection_name() -> str:
     )
 
 
+def get_framework_collection_ttl_days() -> int:
+    """Default TTL in days for framework collections; after this they are considered stale. Overridable via app_settings key framework_collection_ttl_days."""
+    try:
+        return int(os.getenv("FRAMEWORK_COLLECTION_TTL_DAYS", RAG_CONFIG.get("framework_collection_ttl_days", 90)))
+    except (TypeError, ValueError):
+        return 90
+
+
+def get_default_rag_top_k() -> int:
+    """Default top_k for RAG when not overridden per collection. Overridable via app_settings key default_rag_top_k."""
+    try:
+        return int(os.getenv("DEFAULT_RAG_TOP_K", RAG_CONFIG.get("default_rag_top_k", 4)))
+    except (TypeError, ValueError):
+        return 4
+
+
 def get_server_host() -> str:
     """Return server bind host, allowing env override."""
     return os.getenv("SERVER_HOST", SERVER_CONFIG.get("host", "0.0.0.0"))

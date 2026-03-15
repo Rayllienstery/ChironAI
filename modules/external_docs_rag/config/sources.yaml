@@ -6,8 +6,15 @@
 #   on_demand_fetch: when true, docs are fetched from the web when a trigger keyword
 #     appears and used immediately; no need to pre-run ingest.
 #   external_source_id: links to external_sources id for on-demand fetch.
-# To support a new framework: add an external_sources entry and a rag_sources entry
-# with trigger_keywords (e.g. "TCA", "Alamofire") and on_demand_fetch: true.
+# github_repos: optional list for full-repo .md indexing (depth 3). Used when project_context
+#   or refresh triggers indexing: owner, repo, ref (optional), collection_name, framework_id.
+
+# github_repos:
+#   - owner: Alamofire
+#     repo: Alamofire
+#     ref: master
+#     collection_name: lib_alamofire
+#     framework_id: alamofire
 
 external_sources:
   - id: tm_architecture

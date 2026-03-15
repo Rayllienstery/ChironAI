@@ -56,13 +56,21 @@ class SettingsRepository:
             if row.get("rag_config"):
                 try:
                     settings["rag_config"] = json.loads(row["rag_config"])
+                    settings["rag_collection"] = (settings["rag_config"] or {}).get("rag_collection", "")
                 except json.JSONDecodeError:
                     settings["rag_config"] = {}
-            
+                    settings["rag_collection"] = ""
+            else:
+                settings["rag_collection"] = ""
+
             return settings
 
     def save_tester_settings(self, session_id: str, settings: dict[str, Any]) -> int:
         """Save Model Tester settings for a session."""
+        rag_config = dict(settings.get("rag_config") or {})
+        rag_config["rag_collection"] = settings.get("rag_collection", "")
+        rag_config_json = json.dumps(rag_config)
+
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 """
@@ -80,7 +88,7 @@ class SettingsRepository:
                     settings.get("reasoning_level"),
                     1 if settings.get("use_rag", True) else 0,
                     settings.get("top_k"),
-                    json.dumps(settings.get("rag_config", {})) if settings.get("rag_config") else None,
+                    rag_config_json,
                 ),
             )
             conn.commit()
@@ -108,6 +116,81 @@ class SettingsRepository:
                     conn.commit()
                 except sqlite3.OperationalError:
                     pass  # Column might already exist
+
+            # Ensure rag_collection_meta table exists
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS rag_collection_meta (
+                    collection_name TEXT PRIMARY KEY,
+                    framework_id TEXT NOT NULL,
+                    version TEXT,
+                    last_refreshed_at TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_rag_collection_meta_framework_id ON rag_collection_meta(framework_id)"
+            )
+            conn.commit()
+
+    def get_collection_meta(
+        self, collection_name: str
+    ) -> Optional[dict[str, Any]]:
+        """Get RAG collection metadata (framework_id, version, last_refreshed_at)."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT collection_name, framework_id, version, last_refreshed_at FROM rag_collection_meta WHERE collection_name = ?",
+                (collection_name,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "collection_name": row["collection_name"],
+                "framework_id": row["framework_id"],
+                "version": row["version"],
+                "last_refreshed_at": row["last_refreshed_at"],
+            }
+
+    def set_collection_meta(
+        self,
+        collection_name: str,
+        framework_id: str,
+        version: Optional[str],
+        last_refreshed_at: str,
+    ) -> None:
+        """Set or update RAG collection metadata (after indexing/refresh)."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO rag_collection_meta (collection_name, framework_id, version, last_refreshed_at, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(collection_name) DO UPDATE SET
+                    framework_id = excluded.framework_id,
+                    version = excluded.version,
+                    last_refreshed_at = excluded.last_refreshed_at,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (collection_name, framework_id, version or "", last_refreshed_at),
+            )
+            conn.commit()
+
+    def list_collections_by_framework(self) -> list[dict[str, Any]]:
+        """List all collection meta entries (for UI and freshness checks)."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT collection_name, framework_id, version, last_refreshed_at FROM rag_collection_meta ORDER BY collection_name"
+            )
+            return [
+                {
+                    "collection_name": row["collection_name"],
+                    "framework_id": row["framework_id"],
+                    "version": row["version"],
+                    "last_refreshed_at": row["last_refreshed_at"],
+                }
+                for row in cursor.fetchall()
+            ]
 
     def get_app_setting(self, key: str) -> Optional[str]:
         """Get an app setting value."""

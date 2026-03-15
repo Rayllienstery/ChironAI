@@ -41,6 +41,7 @@ if _MODULES_EXT_RAG not in sys.path:
     sys.path.insert(0, _MODULES_EXT_RAG)
 
 from application.container import default_rerank_client
+from application.rag.collection_freshness import check_collection_freshness
 from application.rag.params import RAGDependencies, get_rag_answer_params
 from application.rag.use_cases import build_rag_context, prepare_ollama_messages
 
@@ -52,21 +53,37 @@ except ImportError:
 try:
     from external_docs_rag.application.use_cases import (
         build_merged_rag_context,
+        ingest_github_repo_markdown,
         resolve_rag_sources_for_request,
     )
-    from external_docs_rag.config_loader import load_rag_sources_config, load_external_sources
-    from external_docs_rag.infrastructure import HttpFetchClient, QdrantRagSearchAdapter
+    from external_docs_rag.config_loader import (
+        load_external_sources,
+        load_github_repos,
+        load_rag_sources_config,
+    )
+    from external_docs_rag.infrastructure import (
+        HttpFetchClient,
+        QdrantChunkSink,
+        QdrantRagSearchAdapter,
+    )
+    from external_docs_rag.infrastructure.github_discovery import get_latest_release_tag
     _EXTERNAL_DOCS_RAG_AVAILABLE = True
 except ImportError:
     build_merged_rag_context = None  # type: ignore[assignment]
     resolve_rag_sources_for_request = None  # type: ignore[assignment]
+    ingest_github_repo_markdown = None  # type: ignore[assignment]
     load_rag_sources_config = None  # type: ignore[assignment]
     load_external_sources = None  # type: ignore[assignment]
+    load_github_repos = None  # type: ignore[assignment]
     HttpFetchClient = None  # type: ignore[assignment]
+    QdrantChunkSink = None  # type: ignore[assignment]
     QdrantRagSearchAdapter = None  # type: ignore[assignment]
+    get_latest_release_tag = None  # type: ignore[assignment]
     _EXTERNAL_DOCS_RAG_AVAILABLE = False
 
 from config import (
+    get_default_rag_top_k,
+    get_framework_collection_ttl_days,
     get_ollama_chat_model,
     get_ollama_rerank_model,
     get_qdrant_url,
@@ -1191,6 +1208,60 @@ def tester_chat() -> Any:
             rag_keywords = _get_rag_required_keywords_from_module()
             trigger_threshold = _get_effective_rag_trigger_threshold()
 
+            # Same as proxy: project_context -> fresh collection names and optional background refresh
+            project_context = body.get("project_context") or (tester_settings.get("project_context") if tester_settings else None)
+            project_fresh_collection_names: set[str] | None = None
+            needs_refresh: list[tuple[str, str]] = []  # (framework_id_lower, collection_name); also filled from resolved below
+            if (
+                fetch_web_knowledge
+                and isinstance(project_context, dict)
+                and _EXTERNAL_DOCS_RAG_AVAILABLE
+                and load_rag_sources_config
+            ):
+                frameworks = project_context.get("frameworks") or []
+                if frameworks:
+                    rag_sources_config = load_rag_sources_config()
+                    name_to_collection: dict[str, str] = {}
+                    for cfg in rag_sources_config:
+                        for kw in (cfg.trigger_keywords or []):
+                            name_to_collection[(kw or "").strip().lower()] = cfg.collection_name
+                        if (cfg.external_source_id or "").strip():
+                            name_to_collection[(cfg.external_source_id or "").strip().lower()] = cfg.collection_name
+                    ttl_days = get_framework_collection_ttl_days()
+                    ttl_repo = get_settings_repository()
+                    try:
+                        ttl_raw = ttl_repo.get_app_setting("framework_collection_ttl_days")
+                        if ttl_raw is not None and str(ttl_raw).strip() != "":
+                            try:
+                                ttl_days = int(ttl_raw)
+                            except (TypeError, ValueError):
+                                pass
+                    except Exception:
+                        pass
+                    fresh_collections: list[str] = []
+                    needs_refresh.clear()
+                    for fw in frameworks:
+                        if not isinstance(fw, dict):
+                            continue
+                        name = (fw.get("name") or "").strip()
+                        if not name:
+                            continue
+                        coll = name_to_collection.get(name.lower())
+                        if not coll:
+                            continue
+                        meta = None
+                        try:
+                            meta = ttl_repo.get_collection_meta(coll)
+                        except Exception:
+                            pass
+                        if check_collection_freshness(meta, ttl_days) == "fresh":
+                            if coll not in fresh_collections:
+                                fresh_collections.append(coll)
+                        else:
+                            needs_refresh.append((name.lower(), coll))
+                    project_fresh_collection_names = set(fresh_collections) if fresh_collections else None
+
+            # Same as proxy: body_rag_sources, resolve, build_merged_rag_context with fresh_collection_names
             use_merged = False
             if (
                 fetch_web_knowledge
@@ -1199,20 +1270,94 @@ def tester_chat() -> Any:
                 and resolve_rag_sources_for_request
                 and build_merged_rag_context
                 and QdrantRagSearchAdapter is not None
-                and HttpFetchClient is not None
-                and load_external_sources
             ):
                 rag_sources_config = load_rag_sources_config()
-                external_sources_list = load_external_sources()
-                resolved = resolve_rag_sources_for_request(last_user, messages, None, rag_sources_config)
+                body_rag_sources = body.get("rag_sources") or (tester_settings.get("rag_sources") if tester_settings else None)
+                if isinstance(body_rag_sources, list):
+                    body_rag_sources = [str(x) for x in body_rag_sources]
+                else:
+                    body_rag_sources = None
+                resolved = resolve_rag_sources_for_request(last_user, messages, body_rag_sources, rag_sources_config)
                 if len(resolved) >= 1:
                     use_merged = True
+                    # Trigger full crawl for resolved sources that are missing or stale when repo is on GitHub (same as proxy)
+                    try:
+                        _settings_repo = get_settings_repository()
+                        _ttl_days = get_framework_collection_ttl_days()
+                        _ttl_raw = _settings_repo.get_app_setting("framework_collection_ttl_days")
+                        if _ttl_raw is not None and str(_ttl_raw).strip() != "":
+                            try:
+                                _ttl_days = int(_ttl_raw)
+                            except (TypeError, ValueError):
+                                pass
+                    except Exception:
+                        _settings_repo = None
+                        _ttl_days = 90
+                    resolved_needs_refresh: list[tuple[str, str]] = []
+                    if _settings_repo:
+                        for cfg in resolved:
+                            meta = None
+                            try:
+                                meta = _settings_repo.get_collection_meta(cfg.collection_name)
+                            except Exception:
+                                pass
+                            if check_collection_freshness(meta, _ttl_days) != "fresh":
+                                fid = (cfg.external_source_id or cfg.collection_name or "").strip().lower() or cfg.collection_name.lower()
+                                resolved_needs_refresh.append((fid, cfg.collection_name))
+                    work_list = list(needs_refresh)
+                    for (fid, coll) in resolved_needs_refresh:
+                        if coll not in [c for _, c in work_list]:
+                            work_list.append((fid, coll))
+                    if work_list and load_github_repos and ingest_github_repo_markdown and HttpFetchClient and QdrantChunkSink and get_latest_release_tag:
+                        coll_to_framework_id = {}
+                        for cfg in rag_sources_config:
+                            fid = (cfg.external_source_id or cfg.collection_name or "").strip().lower()
+                            if fid:
+                                coll_to_framework_id[cfg.collection_name] = fid
+                        github_repos_list = load_github_repos()
+                        by_framework_id = {(e.get("framework_id") or "").lower(): e for e in github_repos_list if e.get("framework_id")}
+
+                        def _run_refresh(work: list) -> None:
+                            try:
+                                qdrant_url = get_qdrant_url()
+                                fetch_client = HttpFetchClient()
+                                chunk_sink = QdrantChunkSink(base_url=qdrant_url)
+                                repo = get_settings_repository()
+                                def on_indexed(cname: str, fid: str, ver: str | None, last_at: str) -> None:
+                                    repo.set_collection_meta(cname, fid, ver or "", last_at)
+                                for _name, coll in work:
+                                    fid = coll_to_framework_id.get(coll) or coll.lower()
+                                    entry = by_framework_id.get(fid)
+                                    if not entry:
+                                        continue
+                                    owner = entry.get("owner", "")
+                                    repo_name = entry.get("repo", "")
+                                    ref = entry.get("ref") or "main"
+                                    if ref in ("latest", ""):
+                                        tag = get_latest_release_tag(f"{owner}/{repo_name}")
+                                        if tag:
+                                            ref = tag
+                                        else:
+                                            ref = "main"
+                                    ingest_github_repo_markdown(
+                                        owner, repo_name, ref, coll, fid,
+                                        fetch_client, chunk_sink, embed_provider,
+                                        max_depth=3,
+                                        on_indexed=on_indexed,
+                                    )
+                                    break
+                            except Exception as e:
+                                _WEBUI_LOG.warning("Background framework refresh failed: %s", e)
+
+                        threading.Thread(target=_run_refresh, args=(work_list,), daemon=True).start()
+
                     try:
                         qdrant_url = get_qdrant_url()
                     except Exception:
                         qdrant_url = "http://localhost:6333"
                     rag_search_adapter = QdrantRagSearchAdapter(base_url=qdrant_url)
-                    fetch_client = HttpFetchClient()
+                    fetch_client = HttpFetchClient() if HttpFetchClient is not None else None
+                    external_sources_list = load_external_sources() if load_external_sources else []
                     merged_ctx, merged_timings = build_merged_rag_context(
                         last_user,
                         resolved,
@@ -1222,6 +1367,7 @@ def tester_chat() -> Any:
                         params.context_total_chars,
                         fetch_client=fetch_client,
                         external_sources=external_sources_list,
+                        fresh_collection_names=project_fresh_collection_names,
                     )
                     if merged_timings:
                         set_latest_request_rag_steps(merged_timings)
@@ -1710,25 +1856,80 @@ def rag_collections() -> Any:
                                 "distance": str(getattr(vectors_info, "distance", "")).split(".")[-1] if hasattr(vectors_info, "distance") else None,
                             }
 
-                detailed.append(
-                    {
-                        "name": name,
-                        "points_count": points_count,
-                        "shards_count": shards_count,
-                        "replication_factor": replication_factor,
-                        "on_disk": on_disk,
-                        "segments_count": segments_count,
-                        "vectors_config": vectors_config,
-                    }
-                )
+                item = {
+                    "name": name,
+                    "points_count": points_count,
+                    "shards_count": shards_count,
+                    "replication_factor": replication_factor,
+                    "on_disk": on_disk,
+                    "segments_count": segments_count,
+                    "vectors_config": vectors_config,
+                }
+                # Registry meta for TTL display
+                try:
+                    settings_repo = get_settings_repository()
+                    meta = settings_repo.get_collection_meta(name)
+                    if meta:
+                        item["last_refreshed_at"] = meta.get("last_refreshed_at")
+                        item["framework_id"] = meta.get("framework_id")
+                        item["version"] = meta.get("version")
+                except Exception:
+                    pass
+                detailed.append(item)
             except Exception as e:
                 _WEBUI_LOG.warning("Failed to get collection %s via QdrantClient: %s", name, e)
                 detailed.append({"name": name})
 
-        return jsonify({"collections": detailed})
+        # TTL and default top_k (app_settings override config)
+        ttl_days = get_framework_collection_ttl_days()
+        default_top_k = get_default_rag_top_k()
+        try:
+            settings_repo = get_settings_repository()
+            ttl_raw = settings_repo.get_app_setting("framework_collection_ttl_days")
+            if ttl_raw is not None and str(ttl_raw).strip() != "":
+                try:
+                    ttl_days = int(ttl_raw)
+                except (TypeError, ValueError):
+                    pass
+            top_k_raw = settings_repo.get_app_setting("default_rag_top_k")
+            if top_k_raw is not None and str(top_k_raw).strip() != "":
+                try:
+                    default_top_k = int(top_k_raw)
+                except (TypeError, ValueError):
+                    pass
+        except Exception:
+            pass
+
+        return jsonify({
+            "collections": detailed,
+            "ttl_days": ttl_days,
+            "default_rag_top_k": default_top_k,
+        })
     except Exception as e:
         _WEBUI_LOG.error("Failed to get Qdrant collections: %s", e, exc_info=True)
         return jsonify({"collections": [], "error": str(e)}), 500
+
+
+@webui_bp.route("/rag/collection-settings", methods=["POST"])
+def save_rag_collection_settings() -> Any:
+    """Save RAG collection settings: framework_collection_ttl_days, default_rag_top_k (stored in app_settings)."""
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        settings_repo = get_settings_repository()
+        if "ttl_days" in body:
+            try:
+                settings_repo.set_app_setting("framework_collection_ttl_days", str(int(body["ttl_days"])))
+            except (TypeError, ValueError):
+                pass
+        if "default_rag_top_k" in body:
+            try:
+                settings_repo.set_app_setting("default_rag_top_k", str(int(body.get("default_rag_top_k", 4))))
+            except (TypeError, ValueError):
+                pass
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        _WEBUI_LOG.error("save_rag_collection_settings: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 
 def _run_docker_command(args: list[str]) -> tuple[bool, str]:

@@ -56,6 +56,17 @@ CREATE TABLE IF NOT EXISTS rag_test_runs (
     results TEXT
 );
 
+-- RAG collection metadata (framework_id, version, last_refreshed for TTL)
+CREATE TABLE IF NOT EXISTS rag_collection_meta (
+    collection_name TEXT PRIMARY KEY,
+    framework_id TEXT NOT NULL,
+    version TEXT,
+    last_refreshed_at TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_rag_collection_meta_framework_id ON rag_collection_meta(framework_id);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id);
 CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
