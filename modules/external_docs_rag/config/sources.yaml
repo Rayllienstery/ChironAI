@@ -1,0 +1,71 @@
+# External docs and multi-collection RAG config
+#
+# external_sources: list of sources to fetch and ingest (base_url + paths).
+#   Add any framework/repo: id, base_url (GitHub raw or other), paths (e.g. README.md).
+# rag_sources: list of RAG collections with top_k and trigger keywords.
+#   on_demand_fetch: when true, docs are fetched from the web when a trigger keyword
+#     appears and used immediately; no need to pre-run ingest.
+#   external_source_id: links to external_sources id for on-demand fetch.
+# To support a new framework: add an external_sources entry and a rag_sources entry
+# with trigger_keywords (e.g. "TCA", "Alamofire") and on_demand_fetch: true.
+
+external_sources:
+  - id: tm_architecture
+    base_url: https://raw.githubusercontent.com/Rayllienstery/TMArchitecture/main
+    paths:
+      - README.md
+      - ARCHITECTURE.md
+      - UNIT_TESTING.md
+      - PROJECT_CHECKLIST.md
+    collection_name: tm_architecture
+    top_k: 2
+
+  - id: tca
+    base_url: https://raw.githubusercontent.com/pointfreeco/swift-composable-architecture/main
+    paths:
+      - README.md
+      - Documentation/README.md
+    collection_name: tca
+    top_k: 2
+
+  - id: alamofire
+    base_url: https://raw.githubusercontent.com/Alamofire/Alamofire/master
+    paths:
+      - README.md
+      - Documentation/Usage.md
+    collection_name: alamofire
+    top_k: 2
+
+rag_sources:
+  - collection_name: tm_architecture
+    top_k: 2
+    trigger_keywords:
+      - TMArchitecture
+      - tm_architecture
+    label: Architecture
+    on_demand_fetch: true
+    external_source_id: tm_architecture
+
+  - collection_name: tca
+    top_k: 2
+    trigger_keywords:
+      - TCA
+      - The Composable Architecture
+      - Composable Architecture
+    label: TCA
+    on_demand_fetch: true
+    external_source_id: tca
+
+  - collection_name: alamofire
+    top_k: 2
+    trigger_keywords:
+      - Alamofire
+      - alamofire
+    label: Alamofire
+    on_demand_fetch: true
+    external_source_id: alamofire
+
+  - collection_name: webcrawl
+    top_k: 6
+    trigger_keywords: []
+    label: Main docs

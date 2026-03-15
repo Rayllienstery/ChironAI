@@ -17,6 +17,7 @@ function ModelTester({ sessionId }) {
     use_rag: true,
     top_k: 4,
     rag_collection: '',
+    fetch_web_knowledge: false,
   });
   const [query, setQuery] = useState('');
   const [response, setResponse] = useState('');
@@ -108,6 +109,7 @@ function ModelTester({ sessionId }) {
         use_rag: settings.use_rag,
         top_k: settings.use_rag ? settings.top_k : undefined,
         collection_name: settings.use_rag && settings.rag_collection ? settings.rag_collection : undefined,
+        fetch_web_knowledge: settings.use_rag && settings.fetch_web_knowledge,
       });
       
       if (result.choices && result.choices[0]) {
@@ -308,6 +310,22 @@ function ModelTester({ sessionId }) {
               Use RAG
             </label>
           </div>
+
+          {settings.use_rag && (
+            <div className="form-group checkbox-group">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={settings.fetch_web_knowledge}
+                  onChange={(e) => handleSettingChange('fetch_web_knowledge', e.target.checked)}
+                />
+                Fetch Web knowledge
+              </label>
+              <div className="form-hint">
+                Fetch framework docs from the web (e.g. Alamofire, TCA) and merge with RAG context
+              </div>
+            </div>
+          )}
 
           {settings.use_rag && (
             <div className="form-group">

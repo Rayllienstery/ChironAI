@@ -23,15 +23,37 @@ if _ROOT not in sys.path:
 _MODULES_RAG = os.path.join(_ROOT, "modules", "rag_service")
 if _MODULES_RAG not in sys.path:
     sys.path.insert(0, _MODULES_RAG)
+# External docs RAG module (multi-collection, trigger keywords).
+_MODULES_EXT_RAG = os.path.join(_ROOT, "modules", "external_docs_rag")
+if _MODULES_EXT_RAG not in sys.path:
+    sys.path.insert(0, _MODULES_EXT_RAG)
 
 from application.rag.params import RAGDependencies, get_rag_answer_params
 from application.rag.use_cases import build_rag_context, prepare_ollama_messages
 from domain.entities.rag import RagQuestionRequest
 
 try:
-    from config import get_proxy_rerank_enabled
+    from external_docs_rag.application.use_cases import (
+        build_merged_rag_context,
+        resolve_rag_sources_for_request,
+    )
+    from external_docs_rag.config_loader import load_rag_sources_config, load_external_sources
+    from external_docs_rag.infrastructure import HttpFetchClient, QdrantRagSearchAdapter
+    _EXTERNAL_DOCS_RAG_AVAILABLE = True
+except ImportError:
+    build_merged_rag_context = None  # type: ignore[assignment]
+    resolve_rag_sources_for_request = None  # type: ignore[assignment]
+    load_rag_sources_config = None  # type: ignore[assignment]
+    load_external_sources = None  # type: ignore[assignment]
+    HttpFetchClient = None  # type: ignore[assignment]
+    QdrantRagSearchAdapter = None  # type: ignore[assignment]
+    _EXTERNAL_DOCS_RAG_AVAILABLE = False
+
+try:
+    from config import get_proxy_rerank_enabled, get_qdrant_url
 except ImportError:
     get_proxy_rerank_enabled = lambda: False  # type: ignore[assignment]
+    get_qdrant_url = lambda: "http://localhost:6333"  # type: ignore[assignment]
 try:
     from rag_service.infrastructure.keyword_collections_sqlite import get_keyword_collections_repository
 except ImportError:
@@ -177,36 +199,79 @@ def create_app(
         effective_rerank_client = rerank_client if get_proxy_rerank_enabled() else None
         rag_keywords = _get_rag_required_keywords_from_module()
 
-        # Build RAG context for logging (always, not just for metadata)
+        # Build RAG context: multi-collection (external_docs_rag) when triggered, else single collection
         rag_ctx_for_log = None
         rag_timings: dict[str, float] = {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0}
         try:
-            rag_ctx_for_log, rag_timings = build_rag_context(
-                last_user,
-                rag_repo,
-                embed_provider,
-                effective_rerank_client,
-                context_chunk_chars,
-                context_total_chars,
-                rag_required_keywords=rag_keywords,
-                trigger_threshold=None,
-                force_rag=force_rag,
-            )
+            use_merged = False
+            if _EXTERNAL_DOCS_RAG_AVAILABLE and load_rag_sources_config and resolve_rag_sources_for_request and build_merged_rag_context and QdrantRagSearchAdapter is not None:
+                rag_sources_config = load_rag_sources_config()
+                body_rag_sources = body.get("rag_sources")
+                if isinstance(body_rag_sources, list):
+                    body_rag_sources = [str(x) for x in body_rag_sources]
+                else:
+                    body_rag_sources = None
+                resolved = resolve_rag_sources_for_request(last_user, messages, body_rag_sources, rag_sources_config)
+                # Use merged path whenever we have any resolved source: enables generic discovery
+                # (GitHub fetch for any framework name in the question) plus configured on-demand and RAG.
+                if len(resolved) >= 1:
+                    use_merged = True
+                    try:
+                        qdrant_url = get_qdrant_url()
+                    except Exception:
+                        qdrant_url = "http://localhost:6333"
+                    rag_search_adapter = QdrantRagSearchAdapter(base_url=qdrant_url)
+                    fetch_client = HttpFetchClient() if HttpFetchClient is not None else None
+                    external_sources_list = load_external_sources() if load_external_sources else []
+                    merged_ctx, merged_timings = build_merged_rag_context(
+                        last_user,
+                        resolved,
+                        rag_search_adapter,
+                        embed_provider,
+                        context_chunk_chars,
+                        context_total_chars,
+                        fetch_client=fetch_client,
+                        external_sources=external_sources_list,
+                    )
+                    from domain.entities.rag import RagContext
+                    rag_ctx_for_log = RagContext(
+                        context_text=merged_ctx.context_text,
+                        chunks_info=merged_ctx.chunks_info,
+                        max_score=merged_ctx.max_score,
+                    )
+                    rag_timings = merged_timings
+            if not use_merged or rag_ctx_for_log is None:
+                rag_ctx_for_log, rag_timings = build_rag_context(
+                    last_user,
+                    rag_repo,
+                    embed_provider,
+                    effective_rerank_client,
+                    context_chunk_chars,
+                    context_total_chars,
+                    rag_required_keywords=rag_keywords,
+                    trigger_threshold=None,
+                    force_rag=force_rag,
+                )
             if rag_timings:
                 set_latest_request_rag_steps(rag_timings)
                 _RAG_LOG.info(
-                    "RAG steps embed_s=%.2f search_s=%.2f rerank_s=%.2f total_rag_s=%.2f",
+                    "RAG steps embed_s=%.2f search_s=%.2f rerank_s=%.2f fetch_s=%.2f discovery_s=%.2f total_rag_s=%.2f",
                     rag_timings.get("embed_s", 0),
                     rag_timings.get("search_s", 0),
                     rag_timings.get("rerank_s", 0),
+                    rag_timings.get("fetch_s", 0),
+                    rag_timings.get("discovery_s", 0),
                     rag_timings.get("total_rag_s", 0),
                 )
-            rag_context_data = {
-                "chunks_count": len(rag_ctx_for_log.chunks_info),
-                "max_score": rag_ctx_for_log.max_score,
-                "context_length": len(rag_ctx_for_log.context_text),
-                "chunks_info": rag_ctx_for_log.chunks_info[:5] if rag_ctx_for_log.chunks_info else [],  # First 5 chunks for preview
-            }
+            if rag_ctx_for_log:
+                rag_context_data = {
+                    "chunks_count": len(rag_ctx_for_log.chunks_info),
+                    "max_score": rag_ctx_for_log.max_score,
+                    "context_length": len(rag_ctx_for_log.context_text),
+                    "chunks_info": rag_ctx_for_log.chunks_info[:5] if rag_ctx_for_log.chunks_info else [],
+                }
+            else:
+                rag_context_data = None
         except Exception as e:
             _RAG_LOG.warning(f"Failed to build RAG context for logging: {e}")
             rag_context_data = None
@@ -398,6 +463,49 @@ def create_app(
     )
 
     app.register_blueprint(webui_bp)
+
+    @app.route("/v1/external-docs/ingest", methods=["POST"])
+    def external_docs_ingest() -> tuple[Response, int]:
+        """Trigger ingest of an external source (e.g. tm_architecture) into its collection."""
+        if not _EXTERNAL_DOCS_RAG_AVAILABLE:
+            return jsonify({"error": "external_docs_rag module not available"}), 503
+        try:
+            body = request.get_json(force=True, silent=True) or {}
+        except Exception:
+            return jsonify({"error": "Invalid JSON"}), 400
+        source_id = (body.get("source_id") or "").strip()
+        if not source_id:
+            return jsonify({"error": "source_id is required"}), 400
+        try:
+            from external_docs_rag.config_loader import load_external_sources
+            from external_docs_rag.application.use_cases import ingest_source_to_collection
+            from external_docs_rag.infrastructure import HttpFetchClient, QdrantChunkSink
+            from external_docs_rag.infrastructure.ollama_embed_adapter import OllamaEmbedAdapter
+            import os
+            sources = load_external_sources()
+            source = next((s for s in sources if s.id == source_id), None)
+            if not source:
+                return jsonify({"error": f"Source '{source_id}' not found"}), 404
+            try:
+                qdrant_url = get_qdrant_url()
+            except Exception:
+                qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6333")
+            result = ingest_source_to_collection(
+                source,
+                HttpFetchClient(),
+                QdrantChunkSink(base_url=qdrant_url),
+                OllamaEmbedAdapter(),
+            )
+            return jsonify({
+                "source_id": result.source_id,
+                "collection_name": result.collection_name,
+                "documents_fetched": result.documents_fetched,
+                "chunks_indexed": result.chunks_indexed,
+                "errors": result.errors,
+            }), 200
+        except Exception as e:
+            _RAG_LOG.exception("external-docs ingest failed: %s", e)
+            return jsonify({"error": str(e)}), 500
 
     return app
 

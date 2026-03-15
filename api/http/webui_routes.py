@@ -35,6 +35,10 @@ if _ROOT not in sys.path:
 _MODULES_RAG = os.path.join(_ROOT, "modules", "rag_service")
 if _MODULES_RAG not in sys.path:
     sys.path.insert(0, _MODULES_RAG)
+# External docs RAG (on-demand fetch, GitHub discovery).
+_MODULES_EXT_RAG = os.path.join(_ROOT, "modules", "external_docs_rag")
+if _MODULES_EXT_RAG not in sys.path:
+    sys.path.insert(0, _MODULES_EXT_RAG)
 
 from application.container import default_rerank_client
 from application.rag.params import RAGDependencies, get_rag_answer_params
@@ -44,6 +48,23 @@ try:
     from rag_service.infrastructure.keyword_collections_sqlite import get_keyword_collections_repository
 except ImportError:
     get_keyword_collections_repository = None  # type: ignore[assignment]
+
+try:
+    from external_docs_rag.application.use_cases import (
+        build_merged_rag_context,
+        resolve_rag_sources_for_request,
+    )
+    from external_docs_rag.config_loader import load_rag_sources_config, load_external_sources
+    from external_docs_rag.infrastructure import HttpFetchClient, QdrantRagSearchAdapter
+    _EXTERNAL_DOCS_RAG_AVAILABLE = True
+except ImportError:
+    build_merged_rag_context = None  # type: ignore[assignment]
+    resolve_rag_sources_for_request = None  # type: ignore[assignment]
+    load_rag_sources_config = None  # type: ignore[assignment]
+    load_external_sources = None  # type: ignore[assignment]
+    HttpFetchClient = None  # type: ignore[assignment]
+    QdrantRagSearchAdapter = None  # type: ignore[assignment]
+    _EXTERNAL_DOCS_RAG_AVAILABLE = False
 
 from config import (
     get_ollama_chat_model,
@@ -1078,6 +1099,7 @@ def tester_chat() -> Any:
         session_id = body.get("session_id")
         messages = body.get("messages") or []
         use_rag = body.get("use_rag", True)
+        fetch_web_knowledge = body.get("fetch_web_knowledge", False)
         model = body.get("model")
         prompt_name = body.get("prompt_name")
         swift_mode = body.get("swift_mode", "default")
@@ -1104,6 +1126,8 @@ def tester_chat() -> Any:
             reasoning_level = reasoning_level or tester_settings.get("reasoning_level")
             use_rag = use_rag if "use_rag" in body else tester_settings.get("use_rag", True)
             top_k = top_k if top_k is not None else tester_settings.get("top_k")
+            if "fetch_web_knowledge" not in body:
+                fetch_web_knowledge = tester_settings.get("fetch_web_knowledge", False)
         
         # Get collection name from request, tester settings, or global settings; no config default
         collection_name = (body.get("collection_name") or "").strip() or None
@@ -1166,22 +1190,68 @@ def tester_chat() -> Any:
             top_k_override = top_k if top_k is not None else None
             rag_keywords = _get_rag_required_keywords_from_module()
             trigger_threshold = _get_effective_rag_trigger_threshold()
-            ctx, rag_timings = build_rag_context(
-                last_user,
-                rag_repo,
-                embed_provider,
-                effective_rerank_client,
-                params.context_chunk_chars,
-                params.context_total_chars,
-                top_k=top_k_override,
-                rag_required_keywords=rag_keywords,
-                trigger_threshold=trigger_threshold,
-            )
-            if rag_timings:
-                set_latest_request_rag_steps(rag_timings)
-            rag_chunks_info = ctx.chunks_info or None
-            if rag_chunks_info:
-                context_chars = sum(int(c.get("text_length") or 0) for c in rag_chunks_info)
+
+            use_merged = False
+            if (
+                fetch_web_knowledge
+                and _EXTERNAL_DOCS_RAG_AVAILABLE
+                and load_rag_sources_config
+                and resolve_rag_sources_for_request
+                and build_merged_rag_context
+                and QdrantRagSearchAdapter is not None
+                and HttpFetchClient is not None
+                and load_external_sources
+            ):
+                rag_sources_config = load_rag_sources_config()
+                external_sources_list = load_external_sources()
+                resolved = resolve_rag_sources_for_request(last_user, messages, None, rag_sources_config)
+                if len(resolved) >= 1:
+                    use_merged = True
+                    try:
+                        qdrant_url = get_qdrant_url()
+                    except Exception:
+                        qdrant_url = "http://localhost:6333"
+                    rag_search_adapter = QdrantRagSearchAdapter(base_url=qdrant_url)
+                    fetch_client = HttpFetchClient()
+                    merged_ctx, merged_timings = build_merged_rag_context(
+                        last_user,
+                        resolved,
+                        rag_search_adapter,
+                        embed_provider,
+                        params.context_chunk_chars,
+                        params.context_total_chars,
+                        fetch_client=fetch_client,
+                        external_sources=external_sources_list,
+                    )
+                    if merged_timings:
+                        set_latest_request_rag_steps(merged_timings)
+                    from domain.entities.rag import RagContext as AppRagContext
+                    ctx = AppRagContext(
+                        context_text=merged_ctx.context_text,
+                        chunks_info=merged_ctx.chunks_info or [],
+                        max_score=merged_ctx.max_score,
+                    )
+                    rag_chunks_info = ctx.chunks_info or None
+                    context_chars = len(ctx.context_text) if ctx.context_text else None
+            if not use_merged:
+                ctx, rag_timings = build_rag_context(
+                    last_user,
+                    rag_repo,
+                    embed_provider,
+                    effective_rerank_client,
+                    params.context_chunk_chars,
+                    params.context_total_chars,
+                    top_k=top_k_override,
+                    rag_required_keywords=rag_keywords,
+                    trigger_threshold=trigger_threshold,
+                )
+                if rag_timings:
+                    set_latest_request_rag_steps(rag_timings)
+                rag_chunks_info = ctx.chunks_info or None
+                if rag_chunks_info:
+                    context_chars = sum(int(c.get("text_length") or 0) for c in rag_chunks_info)
+                else:
+                    context_chars = None
             
             # Use the actual Ollama model name here; "rag-ollama" is the logical
             # OpenAI-compatible model id, not an Ollama model. Passing it here
