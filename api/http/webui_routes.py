@@ -7,11 +7,15 @@ Provides enhanced chat endpoint with RAG metadata and in-memory request buffer f
 
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 import os
+import random
 import sys
+import threading
 import time
+import uuid
 from subprocess import run, Popen
 from collections import deque
 from datetime import datetime
@@ -157,6 +161,24 @@ try:
 except ImportError:
     get_ollama_embed_url = lambda: "http://localhost:11434/api/embed"  # type: ignore
     get_indexing_int = lambda k, d: d  # type: ignore
+
+# MD indexer pipeline (config-driven markdown cleanup for RAG)
+try:
+    from modules.md_indexer import (
+        delete_pipeline as md_indexer_delete_pipeline,
+        get_active_pipeline_name,
+        list_pipeline_names,
+        load_pipeline,
+        run_pipeline,
+        save_pipeline,
+    )
+except ImportError:
+    md_indexer_delete_pipeline = None  # type: ignore[assignment]
+    get_active_pipeline_name = None  # type: ignore[assignment]
+    list_pipeline_names = None  # type: ignore[assignment]
+    load_pipeline = None  # type: ignore[assignment]
+    run_pipeline = None  # type: ignore[assignment]
+    save_pipeline = None  # type: ignore[assignment]
 
 import hashlib
 import re
@@ -2503,21 +2525,21 @@ def get_indexer_tester_file_detail(source_id: str, filename: str) -> Any:
         meta = _load_source_meta(source_id) or {}
         page_entry = (meta.get("pages") or {}).get(basename, {})
 
-        # Use WebUI/app.py helper to process markdown exactly as index_markdown does.
-        app_module = _get_indexer_app_module()
-        process_fn = getattr(app_module, "process_markdown_for_index", None)
-        if process_fn is None:
-            return jsonify({"error": "process_markdown_for_index not available in WebUI/app.py"}), 500
+        with open(requested_path, "r", encoding="utf-8") as f:
+            source_md = f.read()
 
-        processed = process_fn(source_id, basename)
+        pipeline_name = get_active_pipeline_name() if get_active_pipeline_name else "default"
+        if run_pipeline is None:
+            return jsonify({"error": "md_indexer module not available"}), 500
+        page_meta, processed_md = run_pipeline(pipeline_name, source_md)
 
         return jsonify(
             {
                 "source_id": source_id,
                 "filename": basename,
-                "page_meta": processed.get("page_meta") or page_entry or {},
-                "source_md": processed.get("source_md", ""),
-                "processed_md": processed.get("processed_md", ""),
+                "page_meta": page_meta or page_entry or {},
+                "source_md": source_md,
+                "processed_md": processed_md,
             }
         )
     except Exception as e:
@@ -2525,19 +2547,306 @@ def get_indexer_tester_file_detail(source_id: str, filename: str) -> Any:
         return jsonify({"error": str(e)}), 500
 
 
-INDEXER_EVALUATE_SYSTEM_PROMPT = """You are an expert on document processing for RAG. The user will provide ORIGINAL markdown and PROCESSED markdown (after cleanup for indexing). Your task is to evaluate the pipeline for this document only.
+INDEXER_EVALUATE_SYSTEM_PROMPT_MAIN = """You are an expert on document processing for RAG. The user will provide PARSED METADATA (when available), then ORIGINAL markdown, PROCESSED markdown (after cleanup), and REMOVED CONTENT (the exact text that was deleted). Use REMOVED CONTENT to know precisely what was removed—do not guess from comparing ORIGINAL and PROCESSED.
 
-Answer in two sections, each with short bullet points. Be concrete: cite exact headings, phrases, or block types (e.g. "the table under ## Frameworks", "the empty ```swift block after ## Example"). Do not give generic advice—only items that apply to this specific text.
+**Value rules (follow strictly):**
+- **Keep:** code examples, API signatures, configuration steps, migration notes, platform availability.
+- **Trim:** UI navigation text, empty headings, repeated descriptions, boilerplate sentences.
+- **Token efficiency:** Prefer keeping code examples and removing explanatory prose when both express the same concept. For developer RAG this works best.
+- If PROCESSED already contains a code example that demonstrates a concept, recommend removing explanatory paragraphs that only repeat what the code shows (common in Apple docs).
+- **Meta block:** Meta information is already preserved in metadata (see PARSED METADATA). The pipeline parses the meta comment into metadata and removes the comment from the text. Do not recommend restoring the meta comment block in the text. Do not suggest rules that target the comment syntax (e.g. delete_lines_exact with "<!--" or "-->"); that would break normal markdown.
+- **Code + explanation:** Keep at least one explanatory sentence for each code example. Do not recommend deleting all explanation and leaving only code; short explanations improve semantic retrieval.
+- **Inheritance / relationship sections:** Keep inheritance sections only if they contain concrete type names. Remove empty relationship sections (e.g. "Inherits From" with no content or only placeholder).
+- **Pipeline suggestions:** Do not suggest steps that contradict your analysis. Prefer structural rules (headings, UI text, boilerplate, section names). Avoid rules that target generic syntax tokens (e.g. "<!--", "-->", "```"); prefer rules tied to documentation structure. Avoid content-specific rules tied to a single document; such rules would break other documents.
 
-**1. What in the PROCESSED text can still be trimmed (noise / low value):**
-- List only concrete items: duplicates, redundant tables, empty or trivial code blocks, repeated notes. One line per item; add a short quote or location if helpful.
+**Language:** Use the same language as the document. Do not translate quoted text.
 
-**2. What was removed from the ORIGINAL that was useful and should be kept:**
-- List only content that was actually removed and is valuable for developers (steps, code patterns, migration tips, links). Refer to the kind of content (e.g. "steps for adding destination", "conditional compilation example") so the pipeline can be adjusted. Do not list things that are still present in PROCESSED.
+Answer in two sections with short bullet points. Be concrete: cite exact headings, phrases, or locations.
 
-Keep the reply concise. Use the same language as the document (e.g. Russian if the doc is in Russian, English if in English). You may use markdown tables for the two sections if that makes the items clearer. Do not add a generic closing paragraph (e.g. "These sections provide…" or "Removing them would…"); end with the last concrete item."""
+**1. What in the PROCESSED text can still be trimmed:**
+- Apply the Trim rules above. List only concrete items: UI nav text, empty headings, repeated descriptions, boilerplate, or prose that duplicates code already in PROCESSED. One line per item; add a short quote or location if helpful.
 
-MAX_EVALUATE_CHARS = 12_000
+**2. What in REMOVED CONTENT was useful and should be kept:**
+- Look only at the REMOVED CONTENT block. List items that match the Keep rules (code, API signatures, config steps, migration notes, availability) and should be preserved by adjusting the pipeline. Do not list things that are still present in PROCESSED. Be specific so the pipeline can be adjusted."""
+
+INDEXER_EVALUATE_PIPELINE_STEPS_REF = """
+**Available pipeline step types** (you can suggest adding these to reduce noise or preserve useful content):
+
+- **strip_meta_block**: Remove leading <!-- meta ... --> HTML comment; parse meta (url, framework, etc.). No params.
+- **delete_lines_exact**: Remove lines that exactly match one of the given strings (e.g. "View in English", "Table of Contents"). Params: `lines` (list of strings), optional `case_sensitive` (bool).
+- **delete_lines_containing**: Remove lines that contain any of the given substrings (e.g. for "[View in English](url)" use substrings ["view in english"]). Params: `substrings` (list of strings), optional `case_sensitive` (bool).
+- **delete_lines_regex**: Remove each line that matches the regex. Params: `pattern` (string).
+- **delete_range_regex**: Remove a range from first match of start_regex to first match of end_regex (or end of doc). Params: `start_regex`, optional `end_regex`.
+- **delete_regex_match**: Remove all non-overlapping matches of one regex (can be multiline). Params: `pattern` (string).
+- **strip_sections_by_heading**: Remove whole sections whose heading equals or starts with one of the list (e.g. "conforming types", "inherited by"). Params: `headings` (list of strings, lower case).
+- **normalize_whitespace**: Trim trailing space per line, collapse multiple spaces. No params.
+- **replace_regex**: Replace each match of pattern with replacement. Params: `pattern`, `replacement`.
+"""
+
+INDEXER_EVALUATE_SYSTEM_PROMPT_SUGGEST = """
+**3. Suggested pipeline steps to add (required):**
+Always include section 3. Add a section "**3. Suggested pipeline steps to add:**". Based on sections 1 and 2, suggest one or more concrete pipeline steps that would improve this document's processing. For each suggestion give: step type (from the list above), and if the step has parameters, suggest concrete values (e.g. for delete_lines_exact suggest exact `lines: ["Advertisement", "Sign up"]`; for strip_sections_by_heading suggest `headings: ["see also"]`). If no steps would clearly help, write "None." Do not suggest steps that contradict your analysis. Do not suggest delete_lines_exact or delete_lines_containing with generic syntax like "<!--", "-->", or "```"—that would break markdown. Prefer structural rules (headings, UI text, boilerplate); avoid content-specific rules tied to a single document. Do not add a generic closing paragraph; end with the last suggested step or "None."
+"""
+
+
+def _get_indexer_evaluate_system_prompt() -> str:
+    return (
+        INDEXER_EVALUATE_SYSTEM_PROMPT_MAIN
+        + INDEXER_EVALUATE_PIPELINE_STEPS_REF
+        + INDEXER_EVALUATE_SYSTEM_PROMPT_SUGGEST
+    )
+
+
+# Sized for ~32k context: system + ORIGINAL + PROCESSED + REMOVED + response
+MAX_EVALUATE_CHARS = 40_000   # PROCESSED: ~10k tokens
+ORIGINAL_MAX_CHARS = 40_000   # ORIGINAL: ~10k tokens
+REMOVED_MAX_CHARS = 24_000    # REMOVED: ~6k tokens (~26k total for content, ~6k for system + reply)
+BATCH_EVAL_MIN_SIZE_BYTES = 1100  # 1.1 KB
+BATCH_EVAL_MIN_CHARS_AFTER_CLEANUP = 200  # after pipeline cleanup
+
+_batch_eval_jobs: dict[str, dict[str, Any]] = {}
+_batch_eval_lock = threading.Lock()
+
+
+def _compute_removed_content(original: str, processed: str, max_chars: int = 6_000) -> str:
+    """Compute explicit diff: lines that were in original but removed (not in processed)."""
+    if not original.strip():
+        return "(empty original)"
+    orig_lines = original.splitlines()
+    proc_lines = processed.splitlines()
+    matcher = difflib.SequenceMatcher(None, orig_lines, proc_lines)
+    removed_lines = []
+    for tag, i1, i2, _j1, _j2 in matcher.get_opcodes():
+        if tag in ("delete", "replace"):
+            removed_lines.extend(orig_lines[i1:i2])
+    if not removed_lines:
+        return "(nothing removed)"
+    text = "\n".join(removed_lines)
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n[... truncated]"
+    return text
+
+
+def _truncate_evaluate(text: str, max_len: int) -> str:
+    if len(text) <= max_len:
+        return text
+    return text[:max_len] + "\n[... truncated]"
+
+
+PARSED_METADATA_KEY_ORDER = ("url", "framework", "availability", "doc_kind", "doc_scope", "doc_type")
+
+
+def _format_parsed_metadata(parsed_metadata: dict[str, Any]) -> str:
+    """Format parsed metadata (e.g. from strip_meta_block) for the evaluation prompt. Key order: url, framework, availability, doc_kind, then rest."""
+    if not parsed_metadata:
+        return "(none)"
+    lines = []
+    seen = set()
+    for k in PARSED_METADATA_KEY_ORDER:
+        if k not in parsed_metadata:
+            continue
+        v = parsed_metadata[k]
+        if v is None or v == "":
+            continue
+        if isinstance(v, (list, dict)):
+            v = str(v)
+        lines.append(f"{k}: {v}")
+        seen.add(k)
+    for k, v in sorted(parsed_metadata.items()):
+        if k in seen:
+            continue
+        if v is None or v == "":
+            continue
+        if isinstance(v, (list, dict)):
+            v = str(v)
+        lines.append(f"{k}: {v}")
+    return "\n".join(lines) if lines else "(none)"
+
+
+def _run_one_indexer_evaluate(
+    source_md: str,
+    processed_md: str,
+    model: str | None,
+    chat_client: Any,
+    params: Any,
+    parsed_metadata: dict[str, Any] | None = None,
+    original_max_chars: int | None = None,
+    processed_max_chars: int | None = None,
+    removed_max_chars: int | None = None,
+) -> str:
+    """Run a single LLM evaluation; returns reply text. Uses same prompts as indexer_tester_evaluate."""
+    orig_max = original_max_chars if original_max_chars is not None else ORIGINAL_MAX_CHARS
+    proc_max = processed_max_chars if processed_max_chars is not None else MAX_EVALUATE_CHARS
+    rem_max = removed_max_chars if removed_max_chars is not None else REMOVED_MAX_CHARS
+    source_md = _truncate_evaluate(source_md, orig_max)
+    processed_md = _truncate_evaluate(processed_md, proc_max)
+    removed_content = _compute_removed_content(
+        source_md, processed_md, max_chars=rem_max
+    )
+    # Put PARSED METADATA first so the model sees that meta is already preserved before reading documents
+    if parsed_metadata is not None:
+        user_content = (
+            "### PARSED METADATA\n\n"
+            + _format_parsed_metadata(parsed_metadata)
+            + "\n\n### ORIGINAL\n\n"
+            + source_md
+            + "\n\n### PROCESSED\n\n"
+            + processed_md
+            + "\n\n### REMOVED CONTENT\n\n"
+            + removed_content
+        )
+    else:
+        user_content = (
+            "### ORIGINAL\n\n"
+            + source_md
+            + "\n\n### PROCESSED\n\n"
+            + processed_md
+            + "\n\n### REMOVED CONTENT\n\n"
+            + removed_content
+        )
+    use_model = model if model and model != "rag-ollama" else params.model_name
+    if not use_model:
+        raise ValueError("No chat model configured")
+    system_prompt = _get_indexer_evaluate_system_prompt()
+    ollama_messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_content},
+    ]
+    options = {"temperature": 0.0}
+    return chat_client.chat(ollama_messages, use_model, stream=False, options=options) or ""
+
+
+def _batch_eval_worker(job_id: str, source_id: str, model: str | None, count: int) -> None:
+    sources_dir = _get_crawler_sources_dir()
+    pages_dir = os.path.join(sources_dir, source_id, "pages")
+    with _batch_eval_lock:
+        job = _batch_eval_jobs.get(job_id)
+        if not job or job["status"] != "running":
+            return
+    if not os.path.isdir(pages_dir):
+        with _batch_eval_lock:
+            if job_id in _batch_eval_jobs:
+                _batch_eval_jobs[job_id]["status"] = "error"
+                _batch_eval_jobs[job_id]["error"] = "Source pages directory not found"
+        return
+    files: list[dict[str, Any]] = []
+    for name in os.listdir(pages_dir):
+        if not name.lower().endswith(".md"):
+            continue
+        full_path = os.path.join(pages_dir, name)
+        if not os.path.isfile(full_path):
+            continue
+        try:
+            size_bytes = os.path.getsize(full_path)
+        except OSError:
+            size_bytes = 0
+        if size_bytes < BATCH_EVAL_MIN_SIZE_BYTES:
+            continue
+        files.append({"filename": name, "size_bytes": size_bytes})
+    # Keep only files that after pipeline cleanup have more than 200 characters
+    if run_pipeline:
+        pipeline_name = get_active_pipeline_name() if get_active_pipeline_name else "default"
+        filtered: list[dict[str, Any]] = []
+        for entry in files:
+            full_path = os.path.join(pages_dir, entry["filename"])
+            try:
+                with open(full_path, "r", encoding="utf-8") as f:
+                    source_md = f.read()
+            except Exception:
+                continue
+            try:
+                _pm, processed_md = run_pipeline(pipeline_name, source_md)
+            except Exception:
+                continue
+            if len((processed_md or "").strip()) > BATCH_EVAL_MIN_CHARS_AFTER_CLEANUP:
+                filtered.append(entry)
+        files = filtered
+    random.shuffle(files)
+    files = files[:count]
+    total = len(files)
+    with _batch_eval_lock:
+        if job_id not in _batch_eval_jobs:
+            return
+        _batch_eval_jobs[job_id]["total"] = total
+        _batch_eval_jobs[job_id]["results"] = []
+
+    webui_dir = os.path.join(_ROOT, "WebUI") if os.path.isdir(os.path.join(_ROOT, "WebUI")) else None
+    collection_name = (_get_qdrant_collection_names() or [None])[0]
+    try:
+        params, deps = get_rag_answer_params(webui_dir=webui_dir, collection_name=collection_name)
+    except Exception as e:
+        with _batch_eval_lock:
+            if job_id in _batch_eval_jobs:
+                _batch_eval_jobs[job_id]["status"] = "error"
+                _batch_eval_jobs[job_id]["error"] = str(e)
+        return
+    chat_client = deps.chat_client
+    use_model = model if model and model != "rag-ollama" else (params.model_name if params else None)
+    if not use_model:
+        with _batch_eval_lock:
+            if job_id in _batch_eval_jobs:
+                _batch_eval_jobs[job_id]["status"] = "error"
+                _batch_eval_jobs[job_id]["error"] = "No chat model configured"
+        return
+
+    with _batch_eval_lock:
+        job = _batch_eval_jobs.get(job_id)
+    eval_orig_max = job.get("original_max_chars") if job else None
+    eval_proc_max = job.get("processed_max_chars") if job else None
+    eval_rem_max = job.get("removed_max_chars") if job else None
+
+    for i, entry in enumerate(files):
+        with _batch_eval_lock:
+            if job_id not in _batch_eval_jobs or _batch_eval_jobs[job_id]["status"] != "running":
+                return
+            _batch_eval_jobs[job_id]["current_file"] = entry["filename"]
+        filename = entry["filename"]
+        requested_path = os.path.abspath(os.path.join(pages_dir, filename))
+        pages_dir_abs = os.path.abspath(pages_dir)
+        if not requested_path.startswith(pages_dir_abs + os.sep):
+            reply = "(invalid path)"
+        else:
+            try:
+                with open(requested_path, "r", encoding="utf-8") as f:
+                    source_md = f.read()
+            except Exception as e:
+                reply = f"(read error: {e})"
+            else:
+                pipeline_name = get_active_pipeline_name() if get_active_pipeline_name else "default"
+                if run_pipeline:
+                    try:
+                        _pm, processed_md = run_pipeline(pipeline_name, source_md)
+                    except Exception as e:
+                        reply = f"(pipeline error: {e})"
+                    else:
+                        try:
+                            reply = _run_one_indexer_evaluate(
+                                source_md,
+                                processed_md,
+                                model,
+                                chat_client,
+                                params,
+                                parsed_metadata=_pm,
+                                original_max_chars=eval_orig_max,
+                                processed_max_chars=eval_proc_max,
+                                removed_max_chars=eval_rem_max,
+                            )
+                            if not (reply or "").strip():
+                                reply = "(empty response from model)"
+                        except Exception as e:
+                            reply = f"(LLM error: {e})"
+                else:
+                    reply = "(pipeline not available)"
+        with _batch_eval_lock:
+            if job_id not in _batch_eval_jobs:
+                return
+            _batch_eval_jobs[job_id]["done"] = i + 1
+            _batch_eval_jobs[job_id]["results"].append({"filename": filename, "reply": reply})
+
+    with _batch_eval_lock:
+        if job_id in _batch_eval_jobs:
+            _batch_eval_jobs[job_id]["status"] = "done"
+            _batch_eval_jobs[job_id]["current_file"] = None
 
 
 @webui_bp.route("/crawler/indexer-tester/evaluate", methods=["POST"])
@@ -2552,19 +2861,22 @@ def indexer_tester_evaluate() -> Any:
         source_md = body.get("source_md") or ""
         processed_md = body.get("processed_md") or ""
         model = (body.get("model") or "").strip() or None
+        page_meta = body.get("page_meta") if isinstance(body.get("page_meta"), dict) else None
+        try:
+            orig_max = int(body.get("original_max_chars")) if body.get("original_max_chars") is not None else None
+            proc_max = int(body.get("processed_max_chars")) if body.get("processed_max_chars") is not None else None
+            rem_max = int(body.get("removed_max_chars")) if body.get("removed_max_chars") is not None else None
+            if orig_max is not None and (orig_max < 1000 or orig_max > 500_000):
+                orig_max = None
+            if proc_max is not None and (proc_max < 1000 or proc_max > 500_000):
+                proc_max = None
+            if rem_max is not None and (rem_max < 1000 or rem_max > 500_000):
+                rem_max = None
+        except (TypeError, ValueError):
+            orig_max = proc_max = rem_max = None
 
         if not source_md and not processed_md:
             return jsonify({"error": "At least one of source_md or processed_md is required"}), 400
-
-        def truncate(text: str, max_len: int) -> str:
-            if len(text) <= max_len:
-                return text
-            return text[:max_len] + "\n[... truncated]"
-
-        source_md = truncate(source_md, MAX_EVALUATE_CHARS)
-        processed_md = truncate(processed_md, MAX_EVALUATE_CHARS)
-
-        user_content = "ORIGINAL markdown:\n\n" + source_md + "\n\nPROCESSED markdown:\n\n" + processed_md
 
         webui_dir = None
         possible_webui = os.path.join(_ROOT, "WebUI")
@@ -2576,19 +2888,267 @@ def indexer_tester_evaluate() -> Any:
             collection_name = names[0]
         params, deps = get_rag_answer_params(webui_dir=webui_dir, collection_name=collection_name)
         chat_client = deps.chat_client
-        use_model = model if model and model != "rag-ollama" else params.model_name
-        if not use_model:
-            return jsonify({"error": "No chat model configured. Set OLLAMA_CHAT_MODEL or add a model in config."}), 400
+        content = _run_one_indexer_evaluate(
+            source_md,
+            processed_md,
+            model,
+            chat_client,
+            params,
+            parsed_metadata=page_meta,
+            original_max_chars=orig_max,
+            processed_max_chars=proc_max,
+            removed_max_chars=rem_max,
+        )
+        return jsonify({"reply": content or ""})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.indexer_tester_evaluate", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
+
+@webui_bp.route("/crawler/indexer-tester/evaluate-batch", methods=["POST"])
+def start_indexer_tester_evaluate_batch() -> Any:
+    """Start a batch LLM evaluation job. Body: { source_id, model?, count }. Returns job_id."""
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        source_id = (body.get("source_id") or "").strip()
+        count = body.get("count")
+        model = (body.get("model") or "").strip() or None
+        if not source_id:
+            return jsonify({"error": "source_id is required"}), 400
+        try:
+            count = int(count) if count is not None else 0
+        except (TypeError, ValueError):
+            count = 0
+        if count < 1 or count > 500:
+            return jsonify({"error": "count must be between 1 and 500"}), 400
+
+        def _parse_limit(val: Any, default: int, min_val: int = 1000, max_val: int = 500_000) -> int:
+            if val is None:
+                return default
+            try:
+                n = int(val)
+                return max(min_val, min(max_val, n))
+            except (TypeError, ValueError):
+                return default
+
+        original_max = _parse_limit(body.get("original_max_chars"), ORIGINAL_MAX_CHARS)
+        processed_max = _parse_limit(body.get("processed_max_chars"), MAX_EVALUATE_CHARS)
+        removed_max = _parse_limit(body.get("removed_max_chars"), REMOVED_MAX_CHARS)
+
+        job_id = str(uuid.uuid4())
+        with _batch_eval_lock:
+            _batch_eval_jobs[job_id] = {
+                "status": "running",
+                "total": 0,
+                "done": 0,
+                "current_file": None,
+                "results": [],
+                "error": None,
+                "source_id": source_id,
+                "original_max_chars": original_max,
+                "processed_max_chars": processed_max,
+                "removed_max_chars": removed_max,
+            }
+        thread = threading.Thread(
+            target=_batch_eval_worker,
+            args=(job_id, source_id, model, count),
+            daemon=True,
+        )
+        thread.start()
+        return jsonify({"job_id": job_id})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.start_indexer_tester_evaluate_batch", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/crawler/indexer-tester/evaluate-batch/status/<job_id>", methods=["GET"])
+def get_indexer_tester_evaluate_batch_status(job_id: str) -> Any:
+    """Return batch job state: status, total, done, current_file, results, error."""
+    with _batch_eval_lock:
+        job = _batch_eval_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify({
+        "job_id": job_id,
+        "status": job["status"],
+        "total": job["total"],
+        "done": job["done"],
+        "current_file": job.get("current_file"),
+        "results": job.get("results") or [],
+        "error": job.get("error"),
+        "source_id": job.get("source_id"),
+    })
+
+
+BATCH_PATTERNS_SYSTEM_PROMPT = """You are an expert on document processing for RAG. The user will provide a set of per-document evaluation replies from a batch run. Your task is to find **common patterns** across many documents and suggest **pipeline steps** that would improve processing for multiple documents at once.
+
+Rules:
+- Prefer structural rules (headings, UI text, boilerplate) that apply across docs.
+- Avoid content-specific rules tied to a single document (e.g. a phrase that appears in one file only).
+- Suggest concrete pipeline step types and parameters (e.g. strip_sections_by_heading with headings: ["see also", "relationships"]).
+- If you see the same recommendation in many replies (e.g. "empty ## Relationships section" in 40 docs), that is a strong candidate for one pipeline step.
+- Output: a short "Pattern" summary and "Suggested pipeline steps" with concrete steps. Be concise."""
+
+
+@webui_bp.route("/crawler/indexer-tester/evaluate-batch/detect-patterns", methods=["POST"])
+def detect_batch_eval_patterns() -> Any:
+    """
+    Analyze batch evaluation results and return cross-document patterns and suggested pipeline steps.
+    Body: { results: [{ filename, reply }, ...], model?: string }.
+    Returns { patterns: "..." } or { error: "..." }.
+    """
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        results = body.get("results") or []
+        model = (body.get("model") or "").strip() or None
+        if not results or not isinstance(results, list):
+            return jsonify({"error": "results array is required"}), 400
+
+        # Build content: one block per doc (filename + first N chars of reply) to stay within context
+        max_reply_chars = 600
+        max_docs = 80
+        parts = []
+        for i, item in enumerate(results[:max_docs]):
+            if not isinstance(item, dict):
+                continue
+            fn = item.get("filename") or f"doc_{i}"
+            reply = (item.get("reply") or "").strip()
+            if len(reply) > max_reply_chars:
+                reply = reply[:max_reply_chars] + "\n[...]"
+            parts.append(f"--- {fn} ---\n{reply}")
+        if not parts:
+            return jsonify({"error": "No valid results to analyze"}), 400
+        user_content = (
+            "Below are per-document evaluation replies from a batch of "
+            + str(len(results))
+            + " files. Identify common patterns and suggest pipeline steps that would help many documents.\n\n"
+            + "\n\n".join(parts)
+        )
+
+        webui_dir = os.path.join(_ROOT, "WebUI") if os.path.isdir(os.path.join(_ROOT, "WebUI")) else None
+        collection_name = (_get_qdrant_collection_names() or [None])[0]
+        params, deps = get_rag_answer_params(webui_dir=webui_dir, collection_name=collection_name)
+        chat_client = deps.chat_client
+        use_model = model or (params.model_name if params else None)
+        if not use_model:
+            return jsonify({"error": "No chat model configured"}), 400
+
+        system_prompt = BATCH_PATTERNS_SYSTEM_PROMPT
         ollama_messages = [
-            {"role": "system", "content": INDEXER_EVALUATE_SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ]
         options = {"temperature": 0.0}
-        content = chat_client.chat(ollama_messages, use_model, stream=False, options=options)
-        return jsonify({"reply": content or ""})
+        patterns = chat_client.chat(ollama_messages, use_model, stream=False, options=options) or ""
+        return jsonify({"patterns": (patterns or "").strip()})
     except Exception as e:
-        _ERROR_LOG.error("webui_routes.indexer_tester_evaluate", exc_info=True)
+        _ERROR_LOG.error("webui_routes.detect_batch_eval_patterns", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+# ---- MD Pipelines (config-driven markdown cleanup) ----
+
+@webui_bp.route("/crawler/md-pipelines", methods=["GET"])
+def get_md_pipelines_list() -> Any:
+    """List available pipeline names (config/md_pipelines/*.json)."""
+    if list_pipeline_names is None:
+        return jsonify({"error": "md_indexer module not available"}), 500
+    try:
+        names = list_pipeline_names()
+        return jsonify({"pipelines": names})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_md_pipelines_list", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/crawler/md-pipelines/<name>", methods=["GET"])
+def get_md_pipeline(name: str) -> Any:
+    """Get pipeline JSON by name."""
+    if load_pipeline is None:
+        return jsonify({"error": "md_indexer module not available"}), 500
+    try:
+        pipeline = load_pipeline(name)
+        if pipeline is None:
+            return jsonify({"error": f"Pipeline '{name}' not found"}), 404
+        return jsonify(pipeline.to_dict())
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_md_pipeline", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/crawler/md-pipelines/<name>", methods=["PUT", "POST"])
+def save_md_pipeline(name: str) -> Any:
+    """Save pipeline JSON by name. Body: { "name": "...", "steps": [...] }."""
+    if save_pipeline is None:
+        return jsonify({"error": "md_indexer module not available"}), 500
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        if "steps" not in body:
+            return jsonify({"error": "Missing 'steps' in body"}), 400
+        from modules.md_indexer.domain.schema import Pipeline
+        pipeline = Pipeline.from_dict(body)
+        save_pipeline(name, pipeline)
+        return jsonify({"ok": True, "name": name})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.save_md_pipeline", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/crawler/md-pipelines/<name>", methods=["DELETE"])
+def delete_md_pipeline(name: str) -> Any:
+    """Delete pipeline by name."""
+    if md_indexer_delete_pipeline is None:
+        return jsonify({"error": "md_indexer module not available"}), 500
+    try:
+        if md_indexer_delete_pipeline(name):
+            return jsonify({"ok": True, "name": name})
+        return jsonify({"error": f"Pipeline '{name}' not found"}), 404
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.delete_md_pipeline", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/crawler/md-pipelines/preview", methods=["POST"])
+def preview_md_pipeline() -> Any:
+    """Run a pipeline on a source file and return source_md + processed_md."""
+    if run_pipeline is None:
+        return jsonify({"error": "md_indexer module not available"}), 500
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        pipeline_name = body.get("pipeline_name") or body.get("pipeline")
+        source_id = body.get("source_id")
+        filename = body.get("filename")
+        if not source_id or not filename:
+            return jsonify({"error": "Missing source_id or filename"}), 400
+        sources_dir = _get_crawler_sources_dir()
+        pages_dir = os.path.join(sources_dir, source_id, "pages")
+        if not os.path.isdir(pages_dir):
+            return jsonify({"error": "Source pages directory not found"}), 404
+        requested_path = os.path.abspath(os.path.join(pages_dir, filename))
+        pages_dir_abs = os.path.abspath(pages_dir)
+        if not requested_path.startswith(pages_dir_abs + os.sep):
+            return jsonify({"error": "Invalid filename"}), 400
+        basename = os.path.basename(requested_path)
+        if not basename.lower().endswith(".md"):
+            return jsonify({"error": "Only .md files are supported"}), 400
+        if not os.path.isfile(requested_path):
+            return jsonify({"error": "File not found"}), 404
+        with open(requested_path, "r", encoding="utf-8") as f:
+            source_md = f.read()
+        if pipeline_name is None and get_active_pipeline_name is not None:
+            pipeline_name = get_active_pipeline_name()
+        page_meta, processed_md = run_pipeline(pipeline_name, source_md)
+        return jsonify({
+            "source_id": source_id,
+            "filename": basename,
+            "page_meta": page_meta,
+            "source_md": source_md,
+            "processed_md": processed_md,
+        })
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.preview_md_pipeline", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 

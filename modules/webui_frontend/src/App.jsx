@@ -23,10 +23,10 @@ class TabErrorBoundary extends Component {
 import DashboardTab from './components/DashboardTab';
 import LogsTab from './components/LogsTab';
 import SettingsTab from './components/SettingsTab';
-import ModelTester from './components/ModelTester';
+import LlmProxyTab from './components/LlmProxyTab';
 import RagTab from './components/RagTab';
-import RagTestsTab from './components/RagTestsTab';
 import CrawlerTab from './components/CrawlerTab';
+import TestingTab from './components/TestingTab';
 import TemplateEditorTab from './components/TemplateEditorTab';
 import DebugLogPanel from './components/DebugLogPanel';
 import {
@@ -55,6 +55,7 @@ const METRICS_HISTORY_LEN = 30;
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [testingSubTab, setTestingSubTab] = useState('model-tester');
   const [sessionId, setSessionId] = useState(null);
   const [debugLogOpen, setDebugLogOpen] = useState(false);
   const [ragTestRunJobId, setRagTestRunJobId] = useState(null);
@@ -259,11 +260,11 @@ function App() {
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard' },
+    { id: 'llm-proxy', label: 'LLM Proxy' },
     { id: 'logs', label: 'Logs' },
-    { id: 'model-tester', label: 'Model Tester' },
     { id: 'rag', label: 'RAG / Qdrant' },
-    { id: 'rag-tests', label: 'RAG Tests' },
     { id: 'crawler', label: 'Crawler / Indexer' },
+    { id: 'testing', label: 'Testing' },
     { id: 'template-editor', label: 'Template Editor' },
     { id: 'settings', label: 'Settings' },
   ];
@@ -274,20 +275,12 @@ function App() {
         return <DashboardTab />;
       case 'logs':
         return <LogsTab sessionId={sessionId} />;
-      case 'settings':
-        return <SettingsTab 
-          themeMode={themeMode}
-          lightAccent={lightAccent}
-          darkAccent={darkAccent}
-          onThemeChange={handleThemeChange}
-        />;
-      case 'model-tester':
-        return <ModelTester sessionId={sessionId} />;
-      case 'rag':
-        return <RagTab />;
-      case 'rag-tests':
+      case 'testing':
         return (
-          <RagTestsTab
+          <TestingTab
+            sessionId={sessionId}
+            activeSubTab={testingSubTab}
+            onSubTabChange={setTestingSubTab}
             runJobId={ragTestRunJobId}
             running={ragTestRunning}
             runProgress={ragTestRunProgress}
@@ -297,10 +290,23 @@ function App() {
             onCancelRun={handleRagTestRunCancel}
           />
         );
+      case 'rag':
+        return <RagTab />;
       case 'crawler':
         return <CrawlerTab />;
+      case 'llm-proxy':
+        return <LlmProxyTab />;
       case 'template-editor':
         return <TemplateEditorTab />;
+      case 'settings':
+        return (
+          <SettingsTab
+            themeMode={themeMode}
+            lightAccent={lightAccent}
+            darkAccent={darkAccent}
+            onThemeChange={handleThemeChange}
+          />
+        );
       default:
         return null;
     }
@@ -602,7 +608,10 @@ function App() {
           runProgress={ragTestRunProgress}
           runError={ragTestRunError}
           onCancel={handleRagTestRunCancel}
-          onGoToRagTests={() => setActiveTab('rag-tests')}
+          onGoToRagTests={() => {
+            setActiveTab('testing');
+            setTestingSubTab('rag-tests');
+          }}
         />
       )}
     </div>

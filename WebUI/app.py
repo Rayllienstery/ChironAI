@@ -77,6 +77,12 @@ from domain.services.chunking import (
     split_markdown_into_chunks,
 )
 from domain.services.markdown_meta import parse_and_strip_meta_block
+
+try:
+    from modules.md_indexer import get_active_pipeline_name, run_pipeline as run_md_indexer_pipeline
+except ImportError:
+    get_active_pipeline_name = None
+    run_md_indexer_pipeline = None
 from domain.services.metadata_inference import (
     build_embed_prefix,
     estimate_token_count,
@@ -899,9 +905,8 @@ def _wwdc_segments_to_markdown(
 
     md = "\n".join(lines)
     md = re.sub(r"\n{3,}", "\n\n", md).strip() + "\n"
-    # Reuse existing markdown normalizers so WWDC pages behave like other docs.
-    md = _strip_markdown_boilerplate(md)
-    md = _normalize_markdown_whitespace(md)
+    if run_md_indexer_pipeline is not None and get_active_pipeline_name is not None:
+        _, md = run_md_indexer_pipeline(get_active_pipeline_name(), md)
     return md
 
 
@@ -1069,198 +1074,15 @@ def _html_to_markdown_dom(html: str) -> str:
     return text
 
 
-# Строки, которые выкидываем из markdown перед индексацией (UI-болванка, не контент).
-MARKDOWN_BOILERPLATE_LINES = [
-    "View in English",
-    "View in Russian",
-    "В English",
-    "На русском",
-    "Table of Contents",
-    "Contents",
-    # WWDC / video chrome
-    "Download video",
-    "Download Video",
-    "Download",
-    "Share",
-    "Add to favorites",
-    "Add to Favorites",
-    "Favorite",
-    "Up Next",
-]
-
-
-def _strip_markdown_boilerplate(md: str) -> str:
-    """Удаляет строки, которые совпадают с известной UI-болванкой (View in English и т.п.)."""
-    if not md:
-        return ""
-    boilerplate_lower = {s.strip().lower() for s in MARKDOWN_BOILERPLATE_LINES}
-    lines = md.split("\n")
-    out = []
-    for ln in lines:
-        stripped = ln.strip()
-        if stripped.lower() in boilerplate_lower:
-            continue
-        # Строка-ссылка вида [View in English](url)
-        if stripped.startswith("[") and "view in english" in stripped.lower():
-            continue
-        if stripped.startswith("[") and "view in russian" in stripped.lower():
-            continue
-        out.append(ln)
-    text = "\n".join(out)
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    return text
-
-
-def _strip_community_markdown(md: str, site: str | None = None) -> str:
+def _apply_markdown_cleanup_pipeline(md: str) -> tuple[dict[str, Any], str]:
     """
-    Extra markdown cleanup for community Swift resources (Hacking with Swift, objc.io,
-    Swift by Sundell, Point-Free):
-    - Drop obvious marketing / store / subscribe CTAs.
-    - Trim huge TOC-like blocks (long runs of headings/bullets without code).
+    Apply config-driven MD cleanup pipeline (md_indexer). Returns (page_meta, processed_body).
+    Fallback to parse_and_strip_meta_block only if md_indexer is not available.
     """
-    if not md:
-        return ""
-
-    cta_substrings = [
-        "subscribe",
-        "buy our book",
-        "buy our books",
-        "browse swift courses",
-        "lifetime update policy",
-        "refund policy",
-        "view plans and pricing",
-        "sponsor the site",
-        "get started with our free plan",
-        "swift knowledge base",
-        "swiftui by example",
-        "swift career accelerator",
-        "become a member",
-        "sign up for free",
-    ]
-
-    lines = md.split("\n")
-    out: list[str] = []
-    i = 0
-    n = len(lines)
-
-    while i < n:
-        ln = lines[i]
-        stripped = ln.strip()
-        lower = stripped.lower()
-
-        # Drop marketing / store / subscribe CTAs.
-        if any(sub in lower for sub in cta_substrings):
-            i += 1
-            continue
-
-        # TOC-like block: long run of headings/bullets without code.
-        if stripped and (stripped.startswith("#") or stripped.startswith("-") or stripped.startswith("*")) and "```" not in stripped:
-            j = i
-            count = 0
-            while j < n:
-                sj = lines[j].strip()
-                if not sj or "```" in sj:
-                    break
-                if not (sj.startswith("#") or sj.startswith("-") or sj.startswith("*")):
-                    break
-                count += 1
-                j += 1
-            # If this is a very long pure-heading/bullet block, treat as TOC and drop.
-            if count >= 15:
-                i = j
-                continue
-
-        out.append(ln)
-        i += 1
-
-    text = "\n".join(out)
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    return text
-
-
-def _normalize_markdown_whitespace(md: str) -> str:
-    """
-    Safe whitespace normalization for markdown:
-    - Strip trailing whitespace from each line.
-    - Strip leading/trailing blank lines.
-    - Collapse 2+ spaces to 1 in non-code lines (not inside fenced ``` blocks, not indented with 4+ spaces).
-    Does not strip leading spaces from lines (would break indented code blocks).
-    """
-    if not md:
-        return ""
-    lines = md.split("\n")
-    lines = [ln.rstrip() for ln in lines]
-    while lines and not lines[0].strip():
-        lines.pop(0)
-    while lines and not lines[-1].strip():
-        lines.pop()
-    in_fenced = False
-    result = []
-    for ln in lines:
-        if ln.strip().startswith("```"):
-            in_fenced = not in_fenced
-            result.append(ln)
-            continue
-        if in_fenced:
-            result.append(ln)
-            continue
-        # Indented code (4+ spaces at start): leave as-is
-        if len(ln) - len(ln.lstrip()) >= 4 and ln.strip():
-            result.append(ln)
-            continue
-        # Normal line: collapse 2+ spaces to 1
-        result.append(re.sub(r" {2,}", " ", ln))
-    return "\n".join(result)
-
-
-# Default section headings to strip; overridden by config index noise_section_headings.
-_DEFAULT_NOISE_SECTIONS = [
-    "conforming types",
-    "inherited by",
-    "inherits from",
-    "relationships",
-]
-
-
-def _get_noise_sections() -> frozenset[str]:
-    """Noise section headings from config (normalized lower); fallback to default list."""
-    try:
-        from config import get_indexing_list  # type: ignore
-        raw = get_indexing_list("noise_section_headings", _DEFAULT_NOISE_SECTIONS)
-        return frozenset((s.strip().lower() for s in raw if s and isinstance(s, str)))
-    except Exception:
-        return frozenset(_DEFAULT_NOISE_SECTIONS)
-
-
-def _strip_noise_sections(md: str) -> str:
-    """
-    Remove noise sections from markdown at index time.
-    These autogenerated blocks (Conforming Types, Inherited By, Inherits From, Relationships)
-    add embedding noise and dominate tokens without adding engineering value for RAG.
-    Match is by normalized heading: equals or starts-with (handles "Conforming Types (Condition)", trailing spaces).
-    """
-    if not md:
-        return ""
-    lines = md.split("\n")
-    out: list[str] = []
-    skip = False
-    noise = _get_noise_sections()
-    for ln in lines:
-        stripped = ln.strip()
-        if stripped.startswith("#"):
-            heading = re.sub(r"^#+\s*", "", stripped).strip().lower()
-            if any(
-                heading == n or heading.startswith(n + " ") or heading.startswith(n + "(")
-                for n in noise
-            ):
-                skip = True
-                continue
-            skip = False
-        if skip:
-            continue
-        out.append(ln)
-    text = "\n".join(out)
-    return re.sub(r"\n{3,}", "\n\n", text).strip()
+    if run_md_indexer_pipeline is not None and get_active_pipeline_name is not None:
+        return run_md_indexer_pipeline(get_active_pipeline_name(), md)
+    page_meta, body = parse_and_strip_meta_block(md)
+    return (page_meta, body)
 
 
 def process_markdown_for_index(
@@ -1287,15 +1109,12 @@ def process_markdown_for_index(
             md = f.read()
 
     original_md = md
-    page_meta, body = parse_and_strip_meta_block(md)
-    body = _strip_markdown_boilerplate(body)
-    body = _normalize_markdown_whitespace(body)
-    body = _strip_noise_sections(body)
+    page_meta, processed_md = _apply_markdown_cleanup_pipeline(md)
 
     return {
         "page_meta": page_meta,
         "source_md": original_md,
-        "processed_md": body,
+        "processed_md": processed_md,
     }
 
 
@@ -1316,7 +1135,10 @@ def _html_to_markdown_html2text(html: str) -> str:
         raw = h.handle(html)
     except Exception:
         return ""
-    return _normalize_markdown_whitespace(_strip_markdown_boilerplate(raw))
+    if run_md_indexer_pipeline is not None and get_active_pipeline_name is not None:
+        _, body = run_md_indexer_pipeline(get_active_pipeline_name(), raw)
+        return body
+    return re.sub(r"\n{3,}", "\n\n", raw.strip())
 
 
 def html_to_markdown(html: str, prefer_code_preservation: bool = True) -> str:
@@ -1333,9 +1155,12 @@ def html_to_markdown(html: str, prefer_code_preservation: bool = True) -> str:
             return md
     if _HAS_LXML:
         raw = _html_to_markdown_dom(html)
-        return _normalize_markdown_whitespace(_strip_markdown_boilerplate(raw))
-    raw = _html_to_markdown_regex(html)
-    return _normalize_markdown_whitespace(_strip_markdown_boilerplate(raw))
+    else:
+        raw = _html_to_markdown_regex(html)
+    if run_md_indexer_pipeline is not None and get_active_pipeline_name is not None:
+        _, body = run_md_indexer_pipeline(get_active_pipeline_name(), raw)
+        return body
+    return re.sub(r"\n{3,}", "\n\n", raw.strip())
 
 
 def _crawl_wwdc_transcripts_source(source: dict, dry_run: bool = False) -> None:
@@ -1990,11 +1815,10 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
                 return False
         else:
             md = html_to_markdown(html)
-            # Extra cleanup for community Swift resources (Hacking with Swift, objc.io, etc.).
-            if extra.get("type") == "community_swift_docs":
-                site = (extra.get("site") or "").strip().lower()
-                md = _strip_community_markdown(md, site)
-        
+
+        # Unified cleanup pipeline for all sources (same as for Apple docs / index).
+        _, md = _apply_markdown_cleanup_pipeline(md)
+
         # Validation: detect if markdown is wrapped in a single code block (bad conversion)
         md_stripped = md.strip() if md else ""
         if md_stripped and md_stripped.startswith("```") and md_stripped.endswith("```"):

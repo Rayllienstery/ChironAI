@@ -237,15 +237,24 @@ export async function getIndexerTesterFileDetail(sourceId, filename) {
   return response.json();
 }
 
-export async function evaluateIndexerWithLlm(sourceMd, processedMd, model) {
+export async function evaluateIndexerWithLlm(sourceMd, processedMd, model, pageMeta = null, limits = null) {
+  const body = {
+    source_md: sourceMd,
+    processed_md: processedMd,
+    model: model || undefined,
+  };
+  if (pageMeta != null && typeof pageMeta === 'object') {
+    body.page_meta = pageMeta;
+  }
+  if (limits != null && typeof limits === 'object') {
+    if (typeof limits.original_max_chars === 'number') body.original_max_chars = limits.original_max_chars;
+    if (typeof limits.processed_max_chars === 'number') body.processed_max_chars = limits.processed_max_chars;
+    if (typeof limits.removed_max_chars === 'number') body.removed_max_chars = limits.removed_max_chars;
+  }
   const response = await fetch(`${API_BASE}/crawler/indexer-tester/evaluate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      source_md: sourceMd,
-      processed_md: processedMd,
-      model: model || undefined,
-    }),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
     const text = await response.text();
@@ -255,7 +264,131 @@ export async function evaluateIndexerWithLlm(sourceMd, processedMd, model) {
     } catch {
       data = { error: text ? text.slice(0, 300) : response.statusText };
     }
-    throw new Error(data.error || `LLM evaluation failed (${response.status})`);
+    throw new Error(data.error || 'Evaluate failed');
+  }
+  return response.json();
+}
+
+export async function startIndexerTesterEvaluateBatch({
+  sourceId,
+  model,
+  count,
+  original_max_chars,
+  processed_max_chars,
+  removed_max_chars,
+}) {
+  const body = {
+    source_id: sourceId,
+    model: model || undefined,
+    count: Number(count) || 0,
+  };
+  if (typeof original_max_chars === 'number') body.original_max_chars = original_max_chars;
+  if (typeof processed_max_chars === 'number') body.processed_max_chars = processed_max_chars;
+  if (typeof removed_max_chars === 'number') body.removed_max_chars = removed_max_chars;
+  const response = await fetch(`${API_BASE}/crawler/indexer-tester/evaluate-batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to start batch evaluation');
+  }
+  return response.json();
+}
+
+export async function getIndexerTesterEvaluateBatchStatus(jobId) {
+  const response = await fetch(
+    `${API_BASE}/crawler/indexer-tester/evaluate-batch/status/${encodeURIComponent(jobId)}`,
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to get batch status');
+  }
+  return response.json();
+}
+
+export async function detectBatchEvalPatterns(results, model) {
+  const response = await fetch(
+    `${API_BASE}/crawler/indexer-tester/evaluate-batch/detect-patterns`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        results: results || [],
+        model: model || undefined,
+      }),
+    },
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to detect patterns');
+  }
+  return response.json();
+}
+
+// MD Pipelines (config-driven markdown cleanup for RAG)
+export async function getMdPipelines() {
+  const response = await fetch(`${API_BASE}/crawler/md-pipelines`);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to list MD pipelines');
+  }
+  return response.json();
+}
+
+export async function getMdPipeline(name) {
+  const response = await fetch(
+    `${API_BASE}/crawler/md-pipelines/${encodeURIComponent(name)}`,
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to get pipeline ${name}`);
+  }
+  return response.json();
+}
+
+export async function saveMdPipeline(name, pipeline) {
+  const response = await fetch(
+    `${API_BASE}/crawler/md-pipelines/${encodeURIComponent(name)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pipeline),
+    },
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to save pipeline');
+  }
+  return response.json();
+}
+
+export async function deleteMdPipeline(name) {
+  const response = await fetch(
+    `${API_BASE}/crawler/md-pipelines/${encodeURIComponent(name)}`,
+    { method: 'DELETE' },
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to delete pipeline');
+  }
+  return response.json();
+}
+
+export async function previewMdPipeline(pipelineName, sourceId, filename) {
+  const response = await fetch(`${API_BASE}/crawler/md-pipelines/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      pipeline_name: pipelineName || undefined,
+      source_id: sourceId,
+      filename,
+    }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to preview pipeline');
   }
   return response.json();
 }

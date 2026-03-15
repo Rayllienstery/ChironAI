@@ -110,21 +110,11 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange }) {
     return <div className="loading">Loading settings...</div>;
   }
 
-  const getAccentColor = (id) => {
-    const color = ACCENT_COLORS.find(c => c.id === id);
-    return color || ACCENT_COLORS[0];
-  };
-
   return (
     <div className="settings-tab">
       <h2>Settings</h2>
-      
-      <div className="settings-form">
-        <div className="settings-section">
-          <h3>Model Settings</h3>
-          <ModelSettings />
-        </div>
 
+      <div className="settings-form">
         <div className="settings-section">
           <h3>Theme</h3>
           

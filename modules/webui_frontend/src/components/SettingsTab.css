@@ -4,6 +4,50 @@
   color: var(--md-sys-color-on-surface);
 }
 
+.settings-tab-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-md);
+  margin-bottom: var(--md-sys-spacing-lg);
+}
+
+.settings-tab-header h2 {
+  margin: 0;
+  font: var(--md-sys-typescale-headline-small-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.settings-subtabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-subtab {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface);
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.settings-subtab:hover {
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.settings-subtab-active {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border-color: var(--md-sys-color-primary);
+}
+
+.settings-tab-content {
+  margin-top: var(--md-sys-spacing-md);
+}
 
 .settings-form {
   display: flex;
@@ -126,6 +170,24 @@
   background: var(--color-preview);
   border-width: 3px;
   transform: scale(1.15);
+}
+
+.settings-intro {
+  margin-top: 0;
+  margin-bottom: var(--md-sys-spacing-md);
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.settings-instructions {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small-font);
+}
+
+.settings-instructions li + li {
+  margin-top: 4px;
 }
 
 
