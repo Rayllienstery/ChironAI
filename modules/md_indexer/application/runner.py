@@ -134,6 +134,8 @@ def _run_pipeline(pipeline: Pipeline, md: str) -> tuple[dict[str, Any], str]:
             body = step_impl.step_strip_sections_by_heading(body, params)
         elif stype == "normalize_whitespace":
             body = step_impl.step_normalize_whitespace(body, params)
+        elif stype == "wrap_indented_code":
+            body = step_impl.step_wrap_indented_code(body, params)
         elif stype == "replace_regex":
             body = step_impl.step_replace_regex(body, params)
     return (meta, body)

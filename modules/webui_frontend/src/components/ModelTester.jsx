@@ -171,8 +171,31 @@ function ModelTester({ sessionId }) {
       const result = await testerPromptPreview({
         prompt_name: settings.prompt_name || undefined,
         swift_mode: settings.swift_mode,
+        user_message: query || '',
+        use_rag: settings.use_rag,
       });
-      setPromptPreview(result.system_prompt || '');
+      let formattedPreview = '';
+      if (result.system_message_full || result.preview_messages) {
+        const systemText = result.system_message_full || result.system_prompt || '';
+        const userMsg =
+          (Array.isArray(result.preview_messages)
+            ? result.preview_messages.find((m) => m.role === 'user')?.content
+            : null) || (query || '<<your next chat message will be inserted here>>');
+        formattedPreview = [
+          'SYSTEM MESSAGE (sent as role=system):',
+          '',
+          systemText,
+          '',
+          '---',
+          '',
+          'USER MESSAGE (sent as role=user after the system message):',
+          '',
+          userMsg,
+        ].join('\n');
+      } else {
+        formattedPreview = result.system_prompt || '';
+      }
+      setPromptPreview(formattedPreview);
     } catch (error) {
       setPromptPreview(`Error: ${error.message}`);
     } finally {

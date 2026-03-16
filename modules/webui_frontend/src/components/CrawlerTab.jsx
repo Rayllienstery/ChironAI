@@ -70,6 +70,12 @@ const MD_STEP_TYPES_META = [
     example: 'Input: "  Title  \\n\\n  line   with   spaces  \\n" → "Title\\n\\nline with spaces".',
   },
   {
+    type: 'wrap_indented_code',
+    title: 'Wrap indented code blocks',
+    description: 'Finds non-fenced 4-space-indented code blocks outside ``` and wraps them into fenced code blocks (optionally with a language, e.g. ```swift).',
+    example: 'Swift docs snippet with indented code (4 spaces at start of each line) becomes a fenced ```swift block.',
+  },
+  {
     type: 'replace_regex',
     title: 'Replace regex',
     description: 'Replaces every match of the regex with the given string (e.g. to clean up stray characters or tags).',
@@ -147,6 +153,7 @@ function CrawlerTab() {
   const [pipelinePreviewFilename, setPipelinePreviewFilename] = useState('');
   const [pipelinePreviewSourcesLoading, setPipelinePreviewSourcesLoading] = useState(false);
   const [pipelinePreviewFilesLoading, setPipelinePreviewFilesLoading] = useState(false);
+  const [expandedMdSteps, setExpandedMdSteps] = useState(new Set());
 
   const loadSources = async () => {
     setLoading(true);
@@ -434,6 +441,8 @@ function CrawlerTab() {
         return { start_regex: '', end_regex: '' };
       case 'strip_sections_by_heading':
         return { headings: [] };
+      case 'wrap_indented_code':
+        return { language: 'swift', min_block_lines: 2 };
       case 'replace_regex':
         return { pattern: '', replacement: '' };
       default:
@@ -446,6 +455,18 @@ function CrawlerTab() {
     const step = { id, type, params: getDefaultParamsForStepType(type) };
     setPipelineData((prev) => ({ ...prev, steps: [...prev.steps, step] }));
     setShowAddStepMenu(false);
+  };
+
+  const toggleMdStepExpanded = (key) => {
+    setExpandedMdSteps((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
   };
 
   const handleChangeMdStepType = (index, newType) => {
@@ -1282,9 +1303,24 @@ function CrawlerTab() {
           ) : (
             <>
               <div className="md-pipeline-steps" role="list" aria-label="Pipeline steps">
-                {(pipelineData.steps || []).map((step, index) => (
-                  <div key={step.id || index} className="md-pipeline-step-card" role="listitem">
+                {(pipelineData.steps || []).map((step, index) => {
+                  const stepKey = step.id || `idx-${index}`;
+                  const isExpanded = expandedMdSteps.has(stepKey);
+                  return (
+                  <div
+                    key={stepKey}
+                    className={`md-pipeline-step-card${isExpanded ? '' : ' md-pipeline-step-card-collapsed'}`}
+                    role="listitem"
+                  >
                     <div className="md-pipeline-step-header">
+                      <button
+                        type="button"
+                        className="md-pipeline-step-toggle"
+                        onClick={() => toggleMdStepExpanded(stepKey)}
+                        aria-label={isExpanded ? 'Collapse step' : 'Expand step'}
+                      >
+                        {isExpanded ? '▾' : '▸'}
+                      </button>
                       <label className="md-pipeline-step-type-label">
                         <span className="md-pipeline-step-type-caption">Step type:</span>
                         <select
@@ -1329,6 +1365,7 @@ function CrawlerTab() {
                         </button>
                       </div>
                     </div>
+                    {isExpanded && (
                     <div className="md-pipeline-step-params">
                       {step.type === 'delete_lines_exact' && (
                         <div className="md-pipeline-param-list">
@@ -1503,6 +1540,43 @@ function CrawlerTab() {
                           </label>
                         </>
                       )}
+                      {step.type === 'wrap_indented_code' && (
+                        <>
+                          <label>
+                            Language (optional):
+                            <input
+                              type="text"
+                              value={step.params?.language || ''}
+                              onChange={(e) =>
+                                handleUpdateMdStep(index, {
+                                  params: { ...step.params, language: e.target.value },
+                                })
+                              }
+                              className="md-pipeline-param-input"
+                              placeholder="e.g. swift"
+                            />
+                          </label>
+                          <label>
+                            Min block lines:
+                            <input
+                              type="number"
+                              min="1"
+                              value={step.params?.min_block_lines ?? 2}
+                              onChange={(e) =>
+                                handleUpdateMdStep(index, {
+                                  params: {
+                                    ...step.params,
+                                    min_block_lines: Number.isNaN(parseInt(e.target.value, 10))
+                                      ? 1
+                                      : parseInt(e.target.value, 10),
+                                  },
+                                })
+                              }
+                              className="md-pipeline-param-input"
+                            />
+                          </label>
+                        </>
+                      )}
                       {(step.type === 'strip_meta_block' || step.type === 'normalize_whitespace') && (() => {
                         const meta = MD_STEP_TYPES_META.find((m) => m.type === step.type);
                         if (!meta) return <span className="md-pipeline-step-no-params">No parameters</span>;
@@ -1516,8 +1590,9 @@ function CrawlerTab() {
                         );
                       })()}
                     </div>
+                    )}
                   </div>
-                ))}
+                );})}
               </div>
               <div className="md-pipeline-add">
                 <button

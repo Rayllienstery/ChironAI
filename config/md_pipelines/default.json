@@ -43,6 +43,14 @@
       "params": {}
     },
     {
+      "id": "wrap-swift-indented-code",
+      "type": "wrap_indented_code",
+      "params": {
+        "language": "swift",
+        "min_block_lines": 2
+      }
+    },
+    {
       "id": "strip-noise-sections",
       "type": "strip_sections_by_heading",
       "params": {

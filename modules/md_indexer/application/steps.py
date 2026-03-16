@@ -189,6 +189,57 @@ def step_normalize_whitespace(md: str, params: dict[str, Any]) -> str:
     return "\n".join(result)
 
 
+def step_wrap_indented_code(md: str, params: dict[str, Any]) -> str:
+    """Wrap non-fenced 4-space-indented blocks in fenced code blocks."""
+    if not md:
+        return ""
+    language = params.get("language") or ""
+    try:
+        min_block_lines = int(params.get("min_block_lines") or 1)
+    except (TypeError, ValueError):
+        min_block_lines = 1
+    lines = md.split("\n")
+    result: list[str] = []
+    in_fenced = False
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        stripped = line.lstrip()
+        if stripped.startswith("```"):
+            in_fenced = not in_fenced
+            result.append(line)
+            i += 1
+            continue
+        if in_fenced:
+            result.append(line)
+            i += 1
+            continue
+        indent = len(line) - len(stripped)
+        if indent >= 4 and stripped:
+            block_lines: list[str] = []
+            while i < n:
+                cur = lines[i]
+                cur_stripped = cur.lstrip()
+                cur_indent = len(cur) - len(cur_stripped)
+                if cur_indent >= 4 and cur_stripped:
+                    block_lines.append(cur)
+                    i += 1
+                else:
+                    break
+            if len(block_lines) >= min_block_lines:
+                fence_open = "```" + language if language else "```"
+                result.append(fence_open)
+                result.extend(block_lines)
+                result.append("```")
+            else:
+                result.extend(block_lines)
+        else:
+            result.append(line)
+            i += 1
+    return "\n".join(result)
+
+
 def step_replace_regex(md: str, params: dict[str, Any]) -> str:
     """Replace each match of pattern with replacement string."""
     if not md:

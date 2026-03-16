@@ -9,12 +9,23 @@
 # github_repos: optional list for full-repo .md indexing (depth 3). Used when project_context
 #   or refresh triggers indexing: owner, repo, ref (optional), collection_name, framework_id.
 
-# github_repos:
-#   - owner: Alamofire
-#     repo: Alamofire
-#     ref: master
-#     collection_name: lib_alamofire
-#     framework_id: alamofire
+# Full-repo .md indexing (depth 3). When a framework is missing/stale, background job runs this.
+github_repos:
+  - owner: Alamofire
+    repo: Alamofire
+    ref: latest
+    collection_name: alamofire
+    framework_id: alamofire
+  - owner: pointfreeco
+    repo: swift-composable-architecture
+    ref: main
+    collection_name: tca
+    framework_id: tca
+  - owner: Rayllienstery
+    repo: TMArchitecture
+    ref: main
+    collection_name: tm_architecture
+    framework_id: tm_architecture
 
 external_sources:
   - id: tm_architecture

@@ -148,7 +148,11 @@ RAG_TRIGGER_HELP_ROWS = [
 
 
 from domain.entities.rag import RagQuestionRequest
-from domain.services.prompt_builder import determine_reasoning_level, last_user_content
+from domain.services.prompt_builder import (
+    determine_reasoning_level,
+    last_user_content,
+    build_system_content,
+)
 from infrastructure.database import (
     get_session_manager,
     get_logs_repository,
@@ -1272,7 +1276,8 @@ def tester_chat() -> Any:
                 and QdrantRagSearchAdapter is not None
             ):
                 rag_sources_config = load_rag_sources_config()
-                body_rag_sources = body.get("rag_sources") or (tester_settings.get("rag_sources") if tester_settings else None)
+                # When Fetch Web knowledge is on, resolve by triggers so frameworks (e.g. Alamofire) from the question are included; do not restrict to selected collection only
+                body_rag_sources = None if fetch_web_knowledge else (body.get("rag_sources") or (tester_settings.get("rag_sources") if tester_settings else None))
                 if isinstance(body_rag_sources, list):
                     body_rag_sources = [str(x) for x in body_rag_sources]
                 else:
@@ -1505,17 +1510,70 @@ def tester_chat() -> Any:
 
 @webui_bp.route("/tester/prompt-preview", methods=["POST"])
 def tester_prompt_preview() -> Any:
-    """Return the system prompt that will be used for Model Tester."""
+    """Return a preview of the full prompt that will be sent from Model Tester.
+
+    Includes:
+    - The raw system template prefix (as before, for backward compatibility)
+    - The fully composed system message (prefix + context placeholder + suffix)
+    - A preview of the chat messages list with the user message in its final position
+    """
     try:
         body = request.get_json(force=True, silent=True) or {}
         prompt_name = body.get("prompt_name") or get_rag_prompt_name()
         swift_mode = body.get("swift_mode", "default")
-        prefix, _ = get_rag_system_prompt_swift_mode(prompt_name, swift_mode)
-        return jsonify({
-            "prompt_name": prompt_name,
-            "swift_mode": swift_mode,
-            "system_prompt": prefix or "",
-        })
+        user_message = body.get("user_message") or ""
+        use_rag = bool(body.get("use_rag", True))
+
+        # Base system template for the selected prompt + Swift mode
+        prefix, suffix = get_rag_system_prompt_swift_mode(prompt_name, swift_mode)
+
+        # Build a representative system message using the same logic as runtime chat,
+        # but with a lightweight placeholder instead of real RAG context.
+        try:
+            confidence_threshold = get_rag_float("confidence_threshold", 0.75)
+        except Exception:
+            confidence_threshold = 0.75
+        try:
+            model_name = get_ollama_chat_model()
+        except Exception:
+            model_name = "rag-ollama"
+
+        if use_rag:
+            context_block = (
+                "<<RAG CONTEXT (retrieved documentation snippets) WILL BE INSERTED HERE>>"
+            )
+        else:
+            context_block = "<<RAG IS DISABLED — no context snippets will be added>>"
+
+        system_full = build_system_content(
+            prefix or "",
+            suffix or "",
+            context_block,
+            confidence_threshold,
+            confidence_threshold,
+            None,
+            model_name or "",
+        )
+
+        preview_messages = [
+            {"role": "system", "content": system_full},
+            {
+                "role": "user",
+                "content": user_message or "<<your next chat message will be inserted here>>",
+            },
+        ]
+
+        return jsonify(
+            {
+                "prompt_name": prompt_name,
+                "swift_mode": swift_mode,
+                # Kept for backward compatibility with older frontends
+                "system_prompt": prefix or "",
+                # New fields for full prompt visualization
+                "system_message_full": system_full,
+                "preview_messages": preview_messages,
+            }
+        )
     except Exception as e:
         _ERROR_LOG.error("webui_routes.tester_prompt_preview", exc_info=True)
         return jsonify({"error": str(e)}), 500

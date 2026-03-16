@@ -18,6 +18,7 @@ STEP_TYPES = (
     "delete_regex_match",
     "strip_sections_by_heading",
     "normalize_whitespace",
+    "wrap_indented_code",
     "replace_regex",
 )
 

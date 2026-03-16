@@ -15,17 +15,38 @@ function computeIndexerDiff(sourceText, processedText) {
   if (!sourceText && !processedText) return [];
   const sourceLines = (sourceText || '').split('\n');
   const processedLines = (processedText || '').split('\n');
-  const maxLen = sourceLines.length;
+  const maxLen = Math.max(sourceLines.length, processedLines.length);
   const lines = [];
   for (let i = 0; i < maxLen; i += 1) {
     const src = sourceLines[i] ?? '';
     const dst = processedLines[i] ?? '';
-    const same = src === dst;
-    lines.push({
-      key: i,
-      type: same ? 'same' : 'removed',
-      text: same ? src : `- ${src}`,
-    });
+    const dstIsFence = dst.trim().startsWith('```');
+    if (src === dst) {
+      lines.push({
+        key: i,
+        type: 'same',
+        text: src,
+      });
+    } else if (dst && dstIsFence && src !== dst) {
+      lines.push({
+        key: i,
+        type: 'fence_added',
+        text: `+ ${dst}`,
+      });
+    } else if (src) {
+      lines.push({
+        key: i,
+        type: 'removed',
+        text: `- ${src}`,
+      });
+    } else if (dst) {
+      // Generic added line (non-fence) — keep but mark as same to avoid noise.
+      lines.push({
+        key: i,
+        type: 'same',
+        text: dst,
+      });
+    }
   }
   return lines;
 }
@@ -483,7 +504,16 @@ function IndexerTester() {
                       <div id="indexer-section-diff" className="indexer-panel-body">
                         <div className="indexer-diff">
                           {computeIndexerDiff(testerFileDetail.source_md, testerFileDetail.processed_md).map((line) => (
-                            <div key={line.key} className={`indexer-diff-line${line.type === 'removed' ? ' indexer-diff-line-removed' : ''}`}>
+                            <div
+                              key={line.key}
+                              className={`indexer-diff-line${
+                                line.type === 'removed'
+                                  ? ' indexer-diff-line-removed'
+                                  : line.type === 'fence_added'
+                                  ? ' indexer-diff-line-fence'
+                                  : ''
+                              }`}
+                            >
                               {line.text || ' '}
                             </div>
                           ))}

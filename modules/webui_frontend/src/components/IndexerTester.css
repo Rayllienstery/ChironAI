@@ -279,6 +279,12 @@
   color: var(--md-sys-color-on-error-container);
 }
 
+.indexer-diff-line-fence {
+  background-color: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  font-weight: 600;
+}
+
 .indexer-llm-reply {
   margin-top: var(--md-sys-spacing-sm);
 }
