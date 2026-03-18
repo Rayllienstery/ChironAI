@@ -146,8 +146,8 @@ def build_system_content(
             ).format(confidence_threshold)
     else:
         doc_block = (
-            "В базе нет релевантных фрагментов по этому запросу. "
-            "Отвечай как обычный эксперт по Swift из своих знаний, дай законченный ответ.\n"
+            "The local documentation base did not return any relevant fragments for this query. "
+            "Answer as an experienced Swift expert from your own knowledge and provide a complete answer.\n"
         ) + suffix
     reasoning_instruction = ""
     if reasoning_level and model_name and any(kw in model_name.lower() for kw in REASONING_LEVEL_MODELS):

@@ -17,9 +17,9 @@ from domain.entities.rag import RagQuestionRequest
 
 
 def main() -> None:
-    question = input("🧠 Вопрос: ").strip()
+    question = input("🧠 Question: ").strip()
     if not question:
-        print("Вопрос не задан.")
+        print("No question provided.")
         return
     webui_dir = os.path.dirname(os.path.abspath(__file__))
     params, deps = get_rag_answer_params(webui_dir=webui_dir)
@@ -38,7 +38,7 @@ def main() -> None:
         params.model_name,
         reasoning_level=None,
     )
-    print("\n🤖 Ответ модели:")
+    print("\n🤖 Model response:")
     print(response.content)
 
 

@@ -134,7 +134,7 @@ def _parse_table_to_markdown(table_el) -> str:
         return ""
 
 
-# Blacklist patterns: any text matching these substrings is UI/навигационный мусор
+# Blacklist patterns: any text matching these substrings is UI/navigation noise
 # and should be filtered out before adding to RAG.
 BLACKLIST_PATTERNS = [
     "On This Page",
@@ -1627,17 +1627,17 @@ def _paragraph_looks_like_code(text: str) -> bool:
 
 def _is_noise(text: str) -> bool:
     """
-    Heuristic filter for UI/навигационный мусор, который не несёт пользы для RAG.
+    Heuristic filter for UI/navigation noise that is not useful for RAG.
     
     Any text matching BLACKLIST_PATTERNS is considered noise and filtered out.
     """
     if not text:
         return True
-    # Сжать последовательности пробелов и переносов для нормализации.
+    # Compress whitespace/newline sequences to normalize.
     t = " ".join(text.split())
     if len(t) <= 2:
         return True
-    # Проверка на blacklist: любое совпадение → FAIL.
+    # Blacklist check: any match => FAIL.
     return any(pattern in t for pattern in BLACKLIST_PATTERNS)
 
 
@@ -1692,13 +1692,13 @@ def build_apple_doc_page(raw: AppleDocRaw) -> AppleDocPage:
         )
 
     # Identify blocks in logical reading order.
-    # Ключевые моменты:
-    # - используем <pre> как блочные примеры кода;
-    # - <code>, вложенный в <pre>, не идёт отдельным блоком;
-    # - отдельный <code> (не в <pre>) трактуем как inline (часть параграфа) и
-    #   не добавляем как отдельный блок;
-    # - элементы внутри <li>/<ul>/<ol> не обрабатываем отдельно (избегаем дублирования);
-    # - таблицы обрабатываем отдельно, чтобы не дублировать их содержимое.
+    # Key points:
+    # - use <pre> for block code examples;
+    # - <code> inside <pre> is not handled as a separate block;
+    # - standalone <code> (not in <pre>) is treated as inline (part of a paragraph) and
+    #   is not added as a separate block;
+    # - elements inside <li>/<ul>/<ol> are not processed separately (avoids duplication);
+    # - tables are handled separately to avoid duplicating their contents.
     blocks = root.xpath(
         "//*[self::h1 or self::h2 or self::h3 "
         "or (self::p and not(ancestor::li) and not(ancestor::ul) and not(ancestor::ol) and not(ancestor::table)) "
@@ -1731,14 +1731,14 @@ def build_apple_doc_page(raw: AppleDocRaw) -> AppleDocPage:
 
     def ensure_section(level: int, heading_text: Optional[str]) -> AppleDocSection:
         """
-        Создать или вернуть текущую секцию.
+        Create or return the current section.
 
-        - Если есть новый заголовок (heading_text not None), всегда создаём новую секцию
-          с данным уровнем.
-        - Если heading_text отсутствует, но секция уже есть — переиспользуем её и
-          сохраняем текущий уровень.
-        - Если heading_text отсутствует и секции ещё нет — создаём "безымянную"
-          секцию с указанным уровнем.
+        - If there is a new heading (heading_text not None), always create a new section
+          with the given level.
+        - If heading_text is missing but the section already exists, reuse it and
+          keep the current level.
+        - If heading_text is missing and the section does not exist yet, create an
+          "unnamed" section with the specified level.
         """
         nonlocal current_section
 
@@ -1783,8 +1783,8 @@ def build_apple_doc_page(raw: AppleDocRaw) -> AppleDocPage:
             level = int(tag[1])
             heading_text = _extract_text(el)
             if level == 1:
-                # h1 используем только как источник title, но не создаём отдельную секцию:
-                # заголовок страницы будет один (H1) в markdown.
+                # Use h1 only as the title source, but do not create a separate section:
+                # the page title will be a single (H1) in markdown.
                 if heading_text and not title:
                     title = heading_text
                 continue
@@ -1829,8 +1829,8 @@ def build_apple_doc_page(raw: AppleDocRaw) -> AppleDocPage:
             continue
 
         if tag == "code":
-            # Inline code (не в <pre>): уже входит в текст параграфа через text_content,
-            # отдельным блоком не добавляем.
+            # Inline code (not in <pre>): already included in the paragraph text via text_content,
+            # we do not add it as a separate block.
             continue
 
         if tag == "pre":
@@ -2129,7 +2129,7 @@ def render_apple_doc_to_markdown(page: AppleDocPage) -> str:
     strategy_tables: list[str] = []
 
     for section_index, section in enumerate(page.sections):
-        # Skip empty sections (no blocks) — они создают плохие chunks для RAG.
+        # Skip empty sections (no blocks) — they create bad chunks for RAG.
         # Exception: H2 sections that are parents of H3 subsections should render
         # even if empty, as they provide important structural hierarchy.
         is_parent_h2 = (
@@ -2191,7 +2191,7 @@ def render_apple_doc_to_markdown(page: AppleDocPage) -> str:
                     block_text = block.text
                 
                 if in_list:
-                    # Закрываем список перед новым параграфом.
+                    # Close the list before the next paragraph.
                     lines.append("")
                     in_list = False
                 if is_callout:
@@ -2210,7 +2210,7 @@ def render_apple_doc_to_markdown(page: AppleDocPage) -> str:
                 lines.append("")
             elif block.kind == "list_item":
                 # Lists inside callouts: keep them as regular bullets (without `>`)
-                # so that markdown parsеры/чанкеры не теряют структуру списка.
+                # so that markdown parsers/chunkers do not lose list structure.
                 if is_callout:
                     lines.append(f"- {block.text}")
                 else:
@@ -2253,7 +2253,7 @@ def render_apple_doc_to_markdown(page: AppleDocPage) -> str:
                     continue
 
                 if in_list:
-                    # Закрываем список перед кодом.
+                    # Close the list before code.
                     lines.append("")
                     in_list = False
                 lang = block.language or ""
@@ -2263,7 +2263,7 @@ def render_apple_doc_to_markdown(page: AppleDocPage) -> str:
                 lines.append("```")
                 lines.append("")
 
-        # После секции тоже закрываем список, если он был.
+        # Also close the list after the section, if it existed.
         if in_list:
             lines.append("")
             in_list = False

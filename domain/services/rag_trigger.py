@@ -21,7 +21,7 @@ except ImportError:
 
 # --- Config -----------------------------------------------------------------
 
-_DEFAULT_GREETINGS = ["hi", "hello", "hey", "привет", "здравствуй", "good morning", "good evening"]
+_DEFAULT_GREETINGS = ["hi", "hello", "hey", "good morning", "good evening"]
 SKIP_RAG_GREETINGS: tuple[str, ...] = tuple(
     get_retrieval_list("skip_rag_greetings", _DEFAULT_GREETINGS)
 )
@@ -30,7 +30,7 @@ RAG_TRIGGER_THRESHOLD: int = get_retrieval_int("rag_trigger_threshold", 2)
 
 _DEFAULT_STRONG: list[str] = [
     "compile", "runtime", "API", "framework", "syntax", "deprecated", "migration",
-    "error", "bug", "architecture", "документация", "реализовать", "ошибка", "баг", "архитектура",
+    "error", "bug", "architecture",
 ]
 _DEFAULT_WEAK: list[str] = [
     "how does", "best practice", "pattern", "algorithm", "refactor", "unit test",

@@ -352,9 +352,9 @@ function App() {
     }
     try {
       await stopServer();
-      // Дадим серверу время корректно завершиться
+      // Give the server time to shut down properly.
       setTimeout(() => {
-        // Попробуем закрыть вкладку (сработает, если окно было открыто скриптом)
+        // Try to close the tab (works if the window was opened by script).
         window.close();
       }, 300);
     } catch (e) {

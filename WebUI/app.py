@@ -276,10 +276,10 @@ CRAWL_MAX_RETRIES_429 = 3
 CRAWL_BACKOFF_BASE_SEC = 2  # exponential backoff: 2^attempt seconds, capped
 CRAWL_BACKOFF_MAX_SEC = 60
 
-# Файлы/страницы с этими подстроками в имени не индексируются (шумные справочники, промо/шоукейс).
-# Имя файла = slug из URL (например system-fonts-5ee35c84.md). Добавляй сюда подстроки, которые отсекают низкоценные страницы.
+# Files/pages with these substrings in the filename are not indexed (noisy reference pages, promo/showcase).
+# Filename = slug from URL (e.g. system-fonts-5ee35c84.md). Add substrings that filter out low-value pages.
 INDEX_EXCLUDE_FILENAME_SUBSTRINGS = [
-    # Справочные дампы (гигантские списки, таблицы)
+    # Reference dumps (huge lists, tables)
     "system-fonts",
     "sf-symbols",
     "symbols-",
@@ -288,18 +288,18 @@ INDEX_EXCLUDE_FILENAME_SUBSTRINGS = [
     "key-codes",
     "keycodes",
     "glyph-",
-    # Промо / шоукейс / featured (игры, App of the Day — не техдока)
-    "adventure",         # hello-kitty-island-adventure и подобные промо игр
+    # Promo / showcase / featured (games, App of the Day — not technical docs)
+    "adventure",         # hello-kitty-island-adventure and similar promo games
     "spotlight",        # Apple Spotlight stories
     "featured",         # featured apps/games
     "app-of-the-day",
-    # Новости / анонсы / маркетинг для девелоперов (не техдока)
+    # News / announcements / marketing for developers (not technical docs)
     "news-",            # developer.apple.com/news/...
     "newsroom",         # developer.apple.com/newsroom/...
-    "apple-news",       # страницы про Apple News / News Partner Program
-    # Навигационные страницы-оглавления (порталы ресурсов, без собственной техдоки)
+    "apple-news",       # pages about Apple News / News Partner Program
+    # Navigation table-of-contents pages (resource portals without their own technical docs)
     "resources-",       # developer.apple.com/.../resources
-    # Глобальный маркетинг / карты / дев-центры / инвесторские страницы (не dev‑дока)
+    # Global marketing / maps / developer centers / investor pages (not developer documentation)
     "index-bbd8a4aa",
     "index-e86693b7",
     "index-92997f4f",
@@ -316,14 +316,14 @@ INDEX_EXCLUDE_FILENAME_SUBSTRINGS = [
     "index-76b9f20c",
     "index-82c29db0",
     "index-87db839d",
-    # Магазин / TV & Home / логин / активности (вне dev‑доки)
+    # Store / TV & Home / login / activity (outside developer docs)
     "bag-75cad20f",
     "tv-home-4b7b3889",
     "login-eb7de4d3",
     "accelerator-e234e5a9",
-    # Пресс‑релиз про родительский контроль — policy/маркетинг, не API‑дока
+    # Press release about parental controls — policy/marketing, not API docs
     "apple-expands-tools-to-help-parents-protect-kids-and-teens-online",
-    # WWDC highlights/overview hubs (каталоги ссылок, не техдока)
+    # WWDC highlights/overview hubs (link directories, not technical docs)
     "wwdc2021",
     "wwdc2022",
     "wwdc2023",
@@ -379,14 +379,14 @@ SWIFT_BOOK_EXCLUDED_SLUGS: set[str] = {
     "guidedtour",
     "aboutthelanguagereference",
     "revisionhistory",
-    # Оглавление книги оставляем как допустимый slug.
+    # Book table-of-contents is allowed as a valid slug.
 }
 
-# Если в начале markdown (первые N символов) есть одна из этих подстрок — страницу не индексируем (промо/шоукейс).
+# If the beginning of the markdown (first N characters) contains one of these substrings — do not index the page (promo/showcase).
 # Skip indexing files with almost no engineering content (e.g. stub API refs, hub pages).
 INDEX_MIN_CONTENT_LENGTH = 400  # chars of body content (after meta/strip) below this → skip
 
-INDEX_EXCLUDE_CONTENT_HEAD_CHARS = 2000  # сколько символов с начала файла проверять
+INDEX_EXCLUDE_CONTENT_HEAD_CHARS = 2000  # number of characters from the beginning of the file to check
 INDEX_EXCLUDE_CONTENT_SUBSTRINGS = [
     "DEVELOPER STORIES",
     "APP OF THE DAY",
@@ -397,7 +397,7 @@ INDEX_EXCLUDE_CONTENT_SUBSTRINGS = [
 def log(message: str) -> None:
     """Append message to in-memory log queue and print to stdout."""
     print(message)
-    # В CLI-режиме SSE-лог не используется, можно не раздувать очередь
+    # In CLI mode SSE logging is not used, so we don't need to grow the queue.
     if not IS_CLI:
         log_queue.append(message)
 
@@ -427,37 +427,37 @@ def event_stream():
         else:
             time.sleep(0.5)
 
-EMBED_BATCH_SIZE = 6  # embeddinggemma тяжёлый; меньший батч — быстрее ответ, меньше таймаутов
-EMBED_REQUEST_TIMEOUT = 300  # секунд на один запрос к /api/embed (embeddinggemma может долго думать)
+EMBED_BATCH_SIZE = 6  # embeddinggemma is heavy; smaller batches are faster and reduce timeouts
+EMBED_REQUEST_TIMEOUT = 300  # seconds per request to /api/embed (embeddinggemma may take a while)
 
-# Имя embed‑модели в Ollama. Должно совпадать с rag_client.EMBED_MODEL_NAME.
-# По умолчанию используем bge-m3; можно переопределить через переменную окружения
-# RAG_EMBED_MODEL (но провайдером остаётся Ollama).
+# Ollama embedding model name. Must match rag_client.EMBED_MODEL_NAME.
+# By default we use bge-m3; you can override via RAG_EMBED_MODEL env var
+# (provider remains Ollama).
 EMBED_MODEL_NAME = os.getenv("RAG_EMBED_MODEL", "mxbai-embed-large")
 
-# Базовый endpoint Ollama для эмбеддингов. Если нужно использовать другой Ollama-хост/порт,
-# меняем только эту переменную (или OLLAMA_EMBED_URL в rag_client.py).
+# Base Ollama endpoint for embeddings. If you need a different Ollama host/port,
+# change only this variable (or OLLAMA_EMBED_URL in rag_client.py).
 OLLAMA_EMBED_URL = os.getenv("OLLAMA_EMBED_URL", "http://localhost:11434/api/embed")
 
 
 EMBED_RETRY_ATTEMPTS = 2
-# более щадящий backoff, чтобы дать Ollama «отдышаться»
+# A gentler backoff to give Ollama time to "catch its breath".
 EMBED_RETRY_SLEEP = (1, 3)  # seconds between attempts
-EMBED_TRUNCATE_CHARS = 4096  # максимум символов на один текст при деградации
+EMBED_TRUNCATE_CHARS = 4096  # max characters per text during degradation
 
 
 def get_embeddings(texts, model_name: str = EMBED_MODEL_NAME):
     """
     Embed a list of texts via Ollama.
 
-    Единственная точка, которую нужно менять при смене embed‑модели:
-    - EMBED_MODEL_NAME / OLLAMA_EMBED_URL (или RAG_EMBED_MODEL / OLLAMA_EMBED_URL в окружении);
-    - при необходимости — формат разбора ответа.
+    The only place you need to change when switching the embed model:
+    - EMBED_MODEL_NAME / OLLAMA_EMBED_URL (or RAG_EMBED_MODEL / OLLAMA_EMBED_URL in the environment);
+    - optionally: how you parse the response format.
 
-    Ожидаемый формат ответа Ollama /api/embed:
+    Expected response format from Ollama /api/embed:
     {
       "embeddings": [
-        [float, float, ...],  # один вектор на каждый входной текст
+        [float, float, ...],  # one vector per input text
         ...
       ]
     }
@@ -467,8 +467,8 @@ def get_embeddings(texts, model_name: str = EMBED_MODEL_NAME):
 
     def _call_embed(batch: list[str]) -> list[list[float]]:
         """
-        Низкоуровневый вызов /api/embed для конкретного батча.
-        Предполагает, что размер batch разумный (без рекурсивного деления).
+        Low-level call to /api/embed for a specific batch.
+        Assumes the batch size is reasonable (no recursive splitting).
         """
         response = requests.post(
             OLLAMA_EMBED_URL,
@@ -488,9 +488,8 @@ def get_embeddings(texts, model_name: str = EMBED_MODEL_NAME):
 
     def _embed_with_backoff(batch: list[str]) -> list[list[float]]:
         """
-        Попытка заэмбеддить batch с ретраями. Если весь batch стабильно падает,
-        пробуем рекурсивно разбить его на части; при размере 1 деградируем
-        до укороченного текста.
+        Attempt to embed the batch with retries. If the entire batch fails consistently,
+        we recursively split it; if the size reaches 1, we degrade to a shortened text.
         """
         last_error: Exception | None = None
         for attempt in range(EMBED_RETRY_ATTEMPTS):
@@ -506,9 +505,9 @@ def get_embeddings(texts, model_name: str = EMBED_MODEL_NAME):
                     )
                     time.sleep(sleep_sec)
 
-        # Если все попытки для всего батча не удались — пробуем смягчить нагрузку.
+        # If all attempts for the full batch fail, we reduce the load.
         if len(batch) <= 1:
-            # Один проблемный текст: попробуем укоротить его.
+            # A single problematic text: try a truncated version.
             text = batch[0]
             short = text[:EMBED_TRUNCATE_CHARS]
             if short != text:
@@ -526,7 +525,7 @@ def get_embeddings(texts, model_name: str = EMBED_MODEL_NAME):
                 f"Embedding failed for single text (len={len(text)}): {last_error}"
             ) from last_error
 
-        # Делим batch пополам и пробуем эмбеддить части отдельно.
+        # Split the batch in half and embed each part separately.
         mid = len(batch) // 2
         left = _embed_with_backoff(batch[:mid])
         right = _embed_with_backoff(batch[mid:])
@@ -984,7 +983,7 @@ def _html_to_markdown_dom(html: str) -> str:
     for b in blocks:
         parent = b.getparent()
         is_top = True
-        # если среди предков есть другой «контентный» блок, не считаем этот элемент верхнеуровневым
+        # If among ancestors there is another "content" block, do not treat this element as top-level.
         while parent is not None:
             tag = (parent.tag or "").lower()
             if tag in ancestor_block_tags:
@@ -1758,17 +1757,17 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
             if not is_callback:
                 url_status[url] = "non_doc"
             return False
-        # Только /documentation/ если doc_only (для swift_book doc_only = False)
+        # Only /documentation/ when doc_only (for swift_book doc_only = False)
         if doc_only and "/documentation" not in (parsed.path or ""):
             if not is_callback:
                 url_status[url] = "non_doc"
             return False
-        # Исключаем низкоценные разделы (release-notes, WWDC, topics, collections)
+        # Exclude low-value sections (release-notes, WWDC, topics, collections)
         if any(sub in path.lower() for sub in effective_excluded):
             if not is_callback:
                 url_status[url] = "non_doc"
             return False
-        # Swift Book: фильтрация глав по slug
+        # Swift Book: filter chapters by slug
         if source_id == "swift_book":
             slug = path.split("/")[-1] if path else ""
             if slug in SWIFT_BOOK_EXCLUDED_SLUGS:
@@ -1779,7 +1778,7 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
                 if not is_callback:
                     url_status[url] = "non_doc"
                 return False
-        # Ограничиваемся только нужными корневыми префиксами фреймворков
+        # Limit to allowed framework root prefixes
         allowed = False
         for root in effective_path_prefixes:
             r = (root or "").rstrip("/")
@@ -1941,7 +1940,7 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
         f"{changed_count} updated/would-update markdown files."
     )
 
-    # В CLI-режиме выводим компактную сводку статусов по URL.
+    # In CLI mode, print a compact status summary by URL.
     if IS_CLI and ordered_urls:
         print(f"\n[source={source_id}] URL statuses:")
         for u in ordered_urls:
@@ -1966,10 +1965,10 @@ def index_markdown(
     qclient = QdrantClient(url="http://localhost:6333") if not dry_run else None
     any_indexed = False
     first_dim: int | None = None
-    # Сводка по всем "скипнутым" файлам за один проход индексации.
-    # Каждый элемент: {"source": ..., "filename": ..., "reason": "...", "details": "..."}.
+    # Summary of all skipped files in one indexing pass.
+    # Each element: {"source": ..., "filename": ..., "reason": "...", "details": "..."}.
     skipped_files: list[dict[str, str]] = []
-    # Общий батч для upsert в Qdrant (батчим чанки разных файлов).
+    # Shared batch for upserts into Qdrant (batching chunks from different files).
     upsert_batch: list[PointStruct] = []
 
     sources = [s for s in SOURCES if source_filter is None or s["id"] in source_filter]
@@ -1977,7 +1976,7 @@ def index_markdown(
         log("[index] No sources to index (empty filter?).")
         return
 
-    # Собираем всех кандидатов (source_id, filename, entry, meta, pages_dir)
+    # Collect all candidates (source_id, filename, entry, meta, pages_dir)
     candidates: list[tuple[str, str, dict, dict, str]] = []
     excluded_by_filter = 0
     for source in sources:
@@ -2165,8 +2164,8 @@ def index_markdown(
         # --- Chunk-level diff: upsert only new/changed chunks, delete gone ones. ---
         old_chunk_hashes: list[str] = entry.get("chunk_hashes") or []
         if force_reindex_chunks:
-            # При полном rebuild коллекция в Qdrant пустая, поэтому игнорируем
-            # кеш chunk_hashes из meta.json и переиндексируем все чанки.
+            # On a full rebuild the Qdrant collection is empty, so we ignore
+            # the cached chunk_hashes from meta.json and re-index all chunks.
             old_chunk_hashes = []
         old_hash_set = set(old_chunk_hashes)
         new_chunk_hashes: list[str] = []
@@ -2177,17 +2176,17 @@ def index_markdown(
         ):
             section_path_str = ":".join(section_path) if section_path else ""
             # Stable, content-based chunk id:
-            # - source_id / filename / section_path_str фиксируют "место" в доке
-            # - полный chunk_text фиксирует содержимое чанка
-            # При вставке/удалении абзацев вокруг, но без изменения самого текста
-            # чанка, его hash (и, следовательно, point id) останется прежним.
+            # - source_id / filename / section_path_str identify the location in the docs
+            # - full chunk_text fixes the content of the chunk
+            # When inserting/removing surrounding paragraphs without changing the chunk text,
+            # its hash (and therefore its point id) will remain the same.
             chunk_hash = _sha256(
                 f"{source_id}:{filename}:{section_path_str}:{chunk_text}"
             )
             new_chunk_hashes.append(chunk_hash)
 
             if chunk_hash in old_hash_set:
-                # Чанк уже есть в индексе и контент не изменился — повторно не upsert'им.
+                # The chunk already exists in the index and the content did not change — don't upsert again.
                 continue
 
             point_id = _point_id_from_hash(chunk_hash)
@@ -2238,7 +2237,7 @@ def index_markdown(
                 )
             )
 
-        # Чанки, которые были раньше, но исчезли из новой версии страницы.
+        # Chunks that existed before but no longer appear in the updated page version.
         new_hash_set = set(new_chunk_hashes)
         hashes_to_delete = old_hash_set - new_hash_set
         ids_to_delete = [_point_id_from_hash(h) for h in hashes_to_delete] if hashes_to_delete else []
@@ -2260,7 +2259,7 @@ def index_markdown(
                 )
             continue
 
-        # Реальный режим: сначала удаляем "лишние" чанки, затем upsert'им новые/изменённые.
+        # Real mode: first delete the "extra" chunks, then upsert the new/changed ones.
         try:
             if ids_to_delete and qclient is not None:
                 qclient.delete(
@@ -2274,7 +2273,7 @@ def index_markdown(
                 if len(upsert_batch) >= BATCH_UPSERT_SIZE:
                     _flush_upsert_batch(qclient, upsert_batch)
 
-            # Обновляем метаданные страницы: новые chunk_hashes и сбрасываем dirty.
+            # Update page metadata: new chunk_hashes and clear dirty.
             if filename in meta.get("pages", {}):
                 meta["pages"][filename]["dirty"] = False
                 meta["pages"][filename]["chunk_hashes"] = new_chunk_hashes
@@ -2308,7 +2307,7 @@ def index_markdown(
                 }
             )
 
-    # Финальный сброс батча upsert'ов (если что‑то осталось).
+    # Final flush of the upsert batch (if anything is left).
     if upsert_batch and not dry_run:
         _flush_upsert_batch(qclient, upsert_batch)
 
@@ -2320,7 +2319,7 @@ def index_markdown(
     else:
         log("[index] Nothing was indexed.")
 
-    # В конце — компактный массив скипнутых файлов (для отладки качества индекса).
+    # At the end — a compact array of skipped files (for index quality debugging).
     if skipped_files:
         try:
             log("[index] Skipped files (JSON array):")
@@ -2537,7 +2536,7 @@ if __name__ == "__main__":
         app.run(host="0.0.0.0", port=port)
         sys.exit(0)
 
-    # CLI режим: включаем прогресс-бары и отключаем накопление SSE-лога
+    # CLI mode: enable progress bars and disable SSE log accumulation
     IS_CLI = True
 
     if args.command == "crawl" or args.command == "update":
@@ -2556,7 +2555,7 @@ if __name__ == "__main__":
     elif args.command == "rebuild":
         run_rebuild_all(dry_run=args.dry_run)
     elif args.command == "update":
-        # Полный цикл: crawl (инкрементальный по контенту) → index (инкрементальный по dirty-страницам)
+        # Full cycle: crawl (incremental by content) → index (incremental by dirty pages)
         run_crawl_all_sources(source_filter=source_list, dry_run=args.dry_run)
         run_index_all_sources(
             incremental=True,

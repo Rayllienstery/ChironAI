@@ -907,7 +907,7 @@ def webui_chat() -> Any:
         if code_only:
             user_msg = ollama_messages[-1] if ollama_messages else None
             if user_msg and user_msg.get("role") == "user":
-                user_msg["content"] = "Только код, без пояснений. " + (user_msg.get("content") or "")
+                user_msg["content"] = "Only code, no explanations. " + (user_msg.get("content") or "")
         
         # Prepare Ollama options
         options: dict[str, Any] = {}

@@ -64,7 +64,7 @@ class TestComputeRagTriggerScore:
         # MyNameIsJohn - M + y, then N + ame, I + s, J + ohn. So first segment could be [A-Z][a-z]+ = "My",
         # then [A-Z][a-z0-9]+ = "N" + "ame" = "Name"? No, [A-Z][a-z0-9]+ is one cap followed by alnum. So "Name",
         # "Is", "John". So we get My+Name+Is+John - 4 segments. So it does match our regex.
-        # The plan said "не давать балл" for MyNameIsJohn - so the idea was to avoid false positives.
+        # The plan said "do not give points" for MyNameIsJohn - so the idea was to avoid false positives.
         # The regex (?:[A-Z]{2,}|[A-Z][a-z]+)(?:[A-Z][a-z0-9]+)+ with 2+ segments matches SwiftUI (Swift+UI),
         # URLSession (URL+Session), but also MyNameIsJohn. So either we accept that or we add a minimum
         # segment count (e.g. 2) and exclude mixed case like "MyName" (lowercase after first cap). For now

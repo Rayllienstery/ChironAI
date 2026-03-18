@@ -20,7 +20,6 @@ except ImportError:
 _DEFAULT_STOP_WORDS: list[str] = [
     "please", "can you", "could you", "would you", "tell me", "explain",
     "show me", "give me", "how to", "how do", "what is", "what are",
-    "что такое", "как", "объясни", "покажи", "дай", "расскажи",
 ]
 RETRIEVAL_STOP_WORDS: tuple[str, ...] = tuple(
     get_retrieval_list("retrieval_stop_words", _DEFAULT_STOP_WORDS)
@@ -42,7 +41,7 @@ MULTI_CHUNK_KEYWORDS: tuple[str, ...] = tuple(
     get_retrieval_list(
         "multi_chunk_keywords",
         [
-            "compare", "comparison", "сравни", "разница", "difference",
+            "compare", "comparison", "difference",
             "explain fully", "lifecycle", "all ways", "list all", "step by step", "overview of",
         ],
     )
@@ -53,11 +52,11 @@ MULTI_CHUNK_TOP_K: int = get_retrieval_int("multi_chunk_top_k", 16)
 MULTI_CHUNK_FINAL_K: int = get_retrieval_int("multi_chunk_final_k", 8)
 MAX_EMBED_TEXT_LENGTH: int = get_retrieval_int("max_embed_text_length", 400)
 SKIP_RAG_GREETINGS: tuple[str, ...] = tuple(
-    get_retrieval_list("skip_rag_greetings", ["hi", "hello", "hey", "привет", "здравствуй"])
+    get_retrieval_list("skip_rag_greetings", ["hi", "hello", "hey"])
 )
 _DEFAULT_RAG_REQUIRED: list[str] = [
     "swift", "swiftui", "uikit", "ios", "macos", "xcode", "combine", "observation",
-    "code", "analyze", "explain this code", "код", "наш проект",
+    "code", "analyze", "explain this code",
 ]
 RAG_REQUIRED_KEYWORDS: tuple[str, ...] = tuple(
     get_retrieval_list("rag_required_keywords", _DEFAULT_RAG_REQUIRED)
@@ -98,7 +97,7 @@ def parse_versions_from_question(question: str) -> tuple[list[str], list[str]]:
 def is_version_question(question: str) -> bool:
     """True if question is about Swift/iOS version or latest release."""
     q = (question or "").lower()
-    has_kw = "версия" in q or "version" in q or "последняя" in q or "latest" in q
+    has_kw = "version" in q or "latest" in q
     ios_q, swift_q = parse_versions_from_question(question)
     return has_kw or bool(ios_q) or bool(swift_q)
 
@@ -120,7 +119,7 @@ def query_for_retrieval(question: str) -> str:
     elif "swiftui" in q and "uikit" not in q:
         out = out + " SwiftUI View"
     ios_q, swift_q = parse_versions_from_question(question)
-    if ios_q or swift_q or "версия" in q_raw.lower() or "version" in q_raw.lower():
+    if ios_q or swift_q or "version" in q_raw.lower() or "latest" in q_raw.lower():
         extra = []
         for v in swift_q:
             extra.append(f"Swift {v} version RELEASE")

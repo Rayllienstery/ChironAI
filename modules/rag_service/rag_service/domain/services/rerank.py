@@ -26,17 +26,17 @@ def build_rerank_prompt(
     """Build prompt string for rerank LLM. candidate_texts: list of (1-based_index, text)."""
     lines = [f"{idx}: {shorten_for_rerank(txt, max_snippet_len)}" for idx, txt in candidate_texts]
     numbered = "\n\n".join(lines)
-    return f"""У тебя есть вопрос и несколько фрагментов документации.
-Твоя задача — отсортировать фрагменты по релевантности к вопросу.
+    return f"""You have a question and several documentation excerpts.
+Your task is to sort the excerpts by relevance to the question.
 
-Вопрос:
+Question:
 {question}
 
-Фрагменты (каждый с номером):
+Excerpts (each with a number):
 {numbered}
 
-Ответь ТОЛЬКО одним JSON-массивом номеров фрагментов в порядке убывания релевантности.
-Примеры: [2, 1, 3] или [1, 2]. Не добавляй текста до или после JSON."""
+Reply ONLY with a single JSON array of excerpt numbers in descending order of relevance.
+Examples: [2, 1, 3] or [1, 2]. Do not add any text before or after the JSON."""
 
 
 def parse_rerank_order(raw_response: str) -> list[int] | None:

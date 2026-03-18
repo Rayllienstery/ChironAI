@@ -75,18 +75,15 @@ VERSION_RE = re.compile(
     r"(?:^|\s)(?:v)?(\d+\.\d+(?:\.\d+)?)(?:\s|$|[,\)\.])",
     re.IGNORECASE,
 )
-# "версии 5.8", "version 5.8", "версия 5.11.1"
+# "version 5.8", "release 5.11.1"
 VERSION_AFTER_WORD_RE = re.compile(
-    r"(?:версии?|version|release)\s*[:\s]*(\d+\.\d+(?:\.\d+)?)",
+    r"(?:version|release)\s*[:\s]*(\d+\.\d+(?:\.\d+)?)",
     re.IGNORECASE,
 )
 
 LATEST_KEYWORDS = (
     "latest",
     "last version",
-    "последняя версия",
-    "последнюю версию",
-    "последней версии",
 )
 
 
@@ -161,7 +158,7 @@ def _parse_version_string(raw: Optional[str]) -> tuple[Optional[int], Optional[i
 def extract_framework_version_pairs(question: str) -> list[tuple[str, Optional[str]]]:
     """
     Extract (framework_name, version) from the question.
-    Version can be explicit (e.g. "Alamofire 5.8", "версии 5.11.1") or None if not mentioned.
+    Version can be explicit (e.g. "Alamofire 5.8") or None if not mentioned.
     Returns list of (name, version_str or None) for each candidate framework found.
     """
     if not question or not question.strip():
@@ -171,7 +168,7 @@ def extract_framework_version_pairs(question: str) -> list[tuple[str, Optional[s
     if not candidates:
         return []
 
-    # Global version mention (e.g. "последняя версия ... 5.11.1" or "version 5.8")
+    # Global version mention (e.g. "latest version ... 5.11.1" or "version 5.8")
     global_version: Optional[str] = None
     for m in VERSION_AFTER_WORD_RE.finditer(text):
         global_version = m.group(1)

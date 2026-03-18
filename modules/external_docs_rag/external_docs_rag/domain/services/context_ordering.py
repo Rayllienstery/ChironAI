@@ -7,7 +7,7 @@ from __future__ import annotations
 
 
 def wants_version_or_requirements(question: str | None) -> bool:
-    """True if the question asks for version or requirements (any language)."""
+    """True if the question asks for version or requirements."""
     if not question or not (question or "").strip():
         return False
     q = (question or "").lower().strip()
@@ -15,9 +15,7 @@ def wants_version_or_requirements(question: str | None) -> bool:
         "version" in q
         or "requirements" in q
         or "requirement" in q
-        or "последняя версия" in q
-        or "требования" in q
-        or "версия" in q
+        or "latest" in q
     )
 
 

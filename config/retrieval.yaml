@@ -66,24 +66,15 @@ retrieval:
   multi_chunk_keywords:
     - compare
     - comparison
-    - сравни
-    - сравнение
     - difference
-    - разница
     - explain fully
     - fully explain
-    - подробно объясни
     - lifecycle
-    - жизненный цикл
     - all ways
     - all options
-    - все способы
     - list all
-    - перечисли все
     - step by step
-    - пошагово
     - overview of
-    - обзор
   
   # Stop words for query preprocessing
   retrieval_stop_words:
@@ -99,20 +90,12 @@ retrieval:
     - how do
     - what is
     - what are
-    - что такое
-    - как
-    - объясни
-    - покажи
-    - дай
-    - расскажи
   
   # Exact-match greetings: skip RAG when normalized query equals one of these
   skip_rag_greetings:
     - hi
     - hello
     - hey
-    - привет
-    - здравствуй
     - good morning
     - good evening
   
@@ -132,11 +115,6 @@ retrieval:
     - error
     - bug
     - architecture
-    - документация
-    - реализовать
-    - ошибка
-    - баг
-    - архитектура
   rag_trigger_technical_phrases_weak:
     - how does
     - best practice
@@ -169,16 +147,10 @@ retrieval:
     - codebase
     - repository
     - our code
-    - наш проект
-    - репозиторий
     - analyze
     - review this code
     - explain this code
-    - разбери
-    - проанализируй
     - code snippet
-    - этот код
-    - код
     - observation
     - observable
     - observation tracking

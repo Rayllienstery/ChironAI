@@ -176,10 +176,10 @@ def do_crawl(start_url):
 @app.route("/", methods=["GET"])
 def index():
     return '''
-    <h1>RAG Краулер</h1>
+    <h1>RAG Crawler</h1>
     <form action="/crawl" method="post">
         URL: <input name="url" size="60">
-        <button type="submit">Начать</button>
+        <button type="submit">Start</button>
     </form>
     '''
 
@@ -203,7 +203,7 @@ def crawl_route():
     id_counter = 1
     threading.Thread(target=do_crawl, args=(url,), daemon=True).start()
     return '''
-    <h2>Лог</h2>
+    <h2>Log</h2>
     <div id="log" style="white-space: pre-line; border: 1px solid gray; padding: 10px; height: 400px; overflow: auto;"></div>
     <script>
     var source = new EventSource("/stream");

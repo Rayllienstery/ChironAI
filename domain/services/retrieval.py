@@ -41,12 +41,6 @@ _DEFAULT_STOP_WORDS: list[str] = [
     "how do",
     "what is",
     "what are",
-    "что такое",
-    "как",
-    "объясни",
-    "покажи",
-    "дай",
-    "расскажи",
 ]
 
 RETRIEVAL_STOP_WORDS: tuple[str, ...] = tuple(
@@ -99,24 +93,15 @@ MULTI_CHUNK_KEYWORDS: tuple[str, ...] = tuple(
         [
             "compare",
             "comparison",
-            "сравни",
-            "сравнение",
             "difference",
-            "разница",
             "explain fully",
             "fully explain",
-            "подробно объясни",
             "lifecycle",
-            "жизненный цикл",
             "all ways",
             "all options",
-            "все способы",
             "list all",
-            "перечисли все",
             "step by step",
-            "пошагово",
             "overview of",
-            "обзор",
         ],
     )
 )
@@ -133,8 +118,6 @@ _DEFAULT_SKIP_GREETINGS: list[str] = [
     "hi",
     "hello",
     "hey",
-    "привет",
-    "здравствуй",
 ]
 SKIP_RAG_GREETINGS: tuple[str, ...] = tuple(
     get_retrieval_list("skip_rag_greetings", _DEFAULT_SKIP_GREETINGS)
@@ -160,16 +143,10 @@ _DEFAULT_RAG_REQUIRED_KEYWORDS: list[str] = [
     "codebase",
     "repository",
     "our code",
-    "наш проект",
-    "репозиторий",
     "analyze",
     "review this code",
     "explain this code",
-    "разбери",
-    "проанализируй",
     "code snippet",
-    "этот код",
-    "код",
     "observation",
     "observable",
     "observation tracking",
@@ -221,11 +198,11 @@ def is_version_question(question: str) -> bool:
 
     Heuristics:
     - Contains explicit version markers (\"iOS 18\", \"Swift 6.0\" etc.).
-    - Or contains words like \"version\", \"версия\", \"latest\", \"последняя\".
+    - Or contains words like \"version\", \"latest\".
     """
     q = (question or "").lower()
     has_keywords = (
-        "версия" in q or "version" in q or "последняя" in q or "latest" in q
+        "version" in q or "latest" in q
     )
     ios_q, swift_q = parse_versions_from_question(question)
     return has_keywords or bool(ios_q) or bool(swift_q)
@@ -266,7 +243,7 @@ def query_for_retrieval(question: str) -> str:
 
     # For version questions, bias retrieval toward version/release chunks.
     ios_q, swift_q = parse_versions_from_question(question)
-    if ios_q or swift_q or "версия" in q_raw.lower() or "version" in q_raw.lower() or "последняя" in q_raw.lower():
+    if ios_q or swift_q or "version" in q_raw.lower() or "latest" in q_raw.lower():
         extra_parts: list[str] = []
         for v in swift_q:
             extra_parts.append(f"Swift {v} version RELEASE")

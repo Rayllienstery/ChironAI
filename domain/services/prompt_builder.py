@@ -207,9 +207,11 @@ def build_system_content(
             ).format(confidence_threshold)
     else:
         doc_block = (
-            "В базе нет релевантных фрагментов по этому запросу. "
-            "Это НЕ значит, что таких версий, API или фич не существует — только то, что локальная Apple-дока не вернула совпадений. "
-            "Отвечай как обычный эксперт по Swift из своих знаний, дай законченный, структурированный ответ и явно заверши мысль.\n"
+            "The local documentation base did not return any relevant fragments for this query. "
+            "This does NOT mean that the requested versions, APIs, or features do not exist—only that "
+            "the local Apple docs did not yield matches. "
+            "Answer as an experienced Swift expert from your own knowledge: provide a complete, structured answer "
+            "and clearly conclude.\n"
         ) + suffix
     reasoning_instruction = ""
     if reasoning_level and model_name:
