@@ -2,7 +2,7 @@
 
 ## Overview
 
-TMRagFetcher uses YAML-based configuration files organized by domain. All configs support environment variable overrides for local experimentation without modifying files.
+ChironAI uses YAML-based configuration files organized by domain. All configs support environment variable overrides for local experimentation without modifying files.
 
 ## Structure
 

@@ -1,4 +1,4 @@
-# TMRagFetcher: Qdrant + optional modular services.
+# ChironAI: Qdrant + optional modular services.
 # Start infra: docker-compose up -d
 # Config: config/server.yaml (qdrant.url = http://localhost:6333)
 #

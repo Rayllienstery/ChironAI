@@ -2,7 +2,7 @@
 
 ## Purpose
 
-React/Vite SPA for the TMRagFetcher Web UI. Communicates **only via HTTP** with the webui_backend; no direct calls to RAG, ingestion, or crawler services.
+React/Vite SPA for the ChironAI Web UI. Communicates **only via HTTP** with the webui_backend; no direct calls to RAG, ingestion, or crawler services.
 
 ## Initialization
 

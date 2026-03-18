@@ -1,5 +1,5 @@
 """
-Configuration loader for TMRagFetcher.
+Configuration loader for ChironAI.
 
 Reads YAML config files from the local `config/` directory and exposes
 typed dictionaries with sensible defaults. Environment variables can

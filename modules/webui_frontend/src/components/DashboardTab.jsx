@@ -5,7 +5,7 @@ function DashboardTab() {
   return (
     <div className="dashboard-tab">
       <div className="dashboard-header">
-        <h2>Welcome to TMRagFetcher</h2>
+        <h2>Welcome to ChironAI</h2>
         <p className="dashboard-subtitle">Local, model-agnostic RAG layer for developers</p>
       </div>
 
@@ -14,7 +14,7 @@ function DashboardTab() {
           <div className="notice-content">
             <h3> Experimental Project</h3>
             <p>
-              <strong>TMRagFetcher is a deeply experimental project</strong> provided as-is. 
+              <strong>ChironAI is a deeply experimental project</strong> provided as-is. 
               It is specifically designed for developing applications within the Apple ecosystem (iOS, macOS, Swift, SwiftUI, UIKit, Observation, etc.) 
               and addresses the specific challenges of Apple platform development.
             </p>
@@ -27,9 +27,9 @@ function DashboardTab() {
         </section>
 
         <section className="dashboard-section">
-          <h3>What is TMRagFetcher?</h3>
+              <h3>What is ChironAI?</h3>
           <p>
-            TMRagFetcher is a local, model-agnostic RAG (Retrieval-Augmented Generation) layer designed for developers.
+            ChironAI is a local, model-agnostic RAG (Retrieval-Augmented Generation) layer designed for developers.
             It works with any reasonable LLM (local or cloud, 7B–70B) and provides accurate, up-to-date knowledge
             through a modular fetcher/crawler and RAG system.
           </p>

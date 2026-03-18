@@ -2,9 +2,9 @@
 
 ## Purpose
 
-[Open WebUI](https://github.com/open-webui/open-webui) is a self-hosted chat UI that can connect to Ollama (and other backends). This module documents how it fits into the TMRagFetcher setup and how to control it from the main WebUI.
+[Open WebUI](https://github.com/open-webui/open-webui) is a self-hosted chat UI that can connect to Ollama (and other backends). This module documents how it fits into the ChironAI setup and how to control it from the main WebUI.
 
-Open WebUI runs as a **separate Docker container**. The TMRagFetcher WebUI header shows its status (Running/Stopped) and provides buttons to open the Open WebUI page, start, and stop the container.
+Open WebUI runs as a **separate Docker container**. The ChironAI WebUI header shows its status (Running/Stopped) and provides buttons to open the Open WebUI page, start, and stop the container.
 
 ## Container
 
@@ -26,7 +26,7 @@ For CPU-only:
 docker run -d -p 3000:8080 --name open-webui open-webui/open-webui
 ```
 
-### Environment variables (TMRagFetcher WebUI backend)
+### Environment variables (ChironAI WebUI backend)
 
 When the main WebUI checks or controls Open WebUI, it uses:
 
@@ -37,7 +37,7 @@ When the main WebUI checks or controls Open WebUI, it uses:
 
 Set these if your container has another name or is exposed on a different host/port.
 
-## Integration with TMRagFetcher WebUI
+## Integration with ChironAI WebUI
 
 - In the **header** of the main WebUI (next to Ollama and RAG / Qdrant), an **Open WebUI** status pill shows:
   - **Running** / **Stopped**

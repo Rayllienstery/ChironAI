@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Interactive TMRagFetcher shell: show help, then accept commands (e.g. start, crawl).
+Interactive ChironAI shell: show help, then accept commands (e.g. start, crawl).
 Window stays open — you type a command and it runs tmrag.py.
 
 Run as script: python tmrag_help.py
@@ -44,7 +44,7 @@ def _run_tmrag(args: list[str]) -> int:
 
 def main() -> None:
     root = _project_root()
-    print("TMRagFetcher — interactive shell (project root:", root, ")", flush=True)
+    print("ChironAI — interactive shell (project root:", root, ")", flush=True)
     _run_tmrag(["--help"])
     print()
     while True:

@@ -1,7 +1,7 @@
 ## Ollama model configuration
 ##
 ## This file centralizes all Ollama endpoints and model identifiers used by
-## TMRagFetcher. The Python config loader allows overriding most of these
+## ChironAI. The Python config loader allows overriding most of these
 ## values via environment variables for local experimentation.
 ##
 ## Keys:

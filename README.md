@@ -1,8 +1,8 @@
-# TMRagFetcher
+# ChironAI
 
 ## Mission
 
-TMRagFetcher — это локальный, модель‑агностичный RAG‑слой для разработчиков, который:
+ChironAI — это локальный, модель‑агностичный RAG‑слой для разработчиков, который:
 
 - Работает поверх **любой разумной LLM** (локальной или облачной, 7B–70B, в будущем — на RTX 4090).
 - Сам обеспечивает **актуальные и точные знания** через модульный фетчер/краулер и RAG:
@@ -69,7 +69,7 @@ Run from project root with `PYTHONPATH=.` so `config` and modules resolve. Legac
 
 ## MVP
 
-- [x] **Rename project** — переименовать проект в соответствии с финальным названием.  Переименовано в **TMRagFetcher**.
+- [x] **Rename project** — переименовать проект в соответствии с финальным названием.  Переименовано в **ChironAI**.
 - [x] **Git** — настроить Git-репозиторий, .gitignore, структуру коммитов.  Локальный Git-репозиторий инициализирован, базовый `.gitignore` добавлен.
 - [x] **Configs to the separated file** — вынести все конфигурации (URL Ollama/Qdrant, модели, лимиты RAG, пороги) в отдельный конфиг-файл (YAML/JSON или env).  Реализовано через `config/*.yaml` и модуль `config/__init__.py`.
 - [x] **One CLI** — единый CLI для всех операций: `python tmrag.py` или `python -m api.cli` (start, crawl, index, rebuild, update, ingest, proxy, test, test-single).

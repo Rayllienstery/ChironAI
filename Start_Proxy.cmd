@@ -1,5 +1,5 @@
 @echo off
-REM TMRagFetcher: start Docker (if needed), Qdrant, then RAG proxy.
+REM ChironAI: start Docker (if needed), Qdrant, then RAG proxy.
 REM Place in project root. Double-click or run from cmd.
 
 REM If launched by double-click, restart in a persistent window
@@ -21,7 +21,7 @@ if not exist "%~dp0tmrag.py" (
 )
 
 echo ========================================
-echo TMRagFetcher - Starting RAG Proxy
+echo ChironAI - Starting RAG Proxy
 echo ========================================
 echo.
 

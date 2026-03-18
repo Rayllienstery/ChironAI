@@ -1,5 +1,5 @@
 """
-Domain entities for TMRagFetcher.
+Domain entities for ChironAI.
 
 Entities represent core business concepts such as RAG chunks, queries,
 retrieval results, crawl sources, indexed pages, and embedding requests.

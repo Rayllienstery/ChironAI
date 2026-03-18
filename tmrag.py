@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TMRagFetcher CLI entry point.
+ChironAI CLI entry point.
 
 Usage:
   python tmrag.py start

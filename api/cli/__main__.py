@@ -1,5 +1,5 @@
 """
-Unified CLI for TMRagFetcher (tmrag).
+Unified CLI for ChironAI (tmrag).
 
 Usage from project root:
   python -m api.cli start              # start WebUI (Flask)
@@ -215,7 +215,7 @@ def cmd_test_single(ns: argparse.Namespace) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="tmrag",
-        description="TMRagFetcher CLI: WebUI, crawl, index, ingest, proxy, tests.",
+        description="ChironAI CLI: WebUI, crawl, index, ingest, proxy, tests.",
     )
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
 
