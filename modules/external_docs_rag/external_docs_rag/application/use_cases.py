@@ -15,6 +15,7 @@ from external_docs_rag.domain.entities import (
     IngestResult,
     RagContext,
     RagSourceConfig,
+    VersionConstraint,
 )
 from external_docs_rag.domain.ports import ChunkSink, EmbeddingPort, FetchClient, RagSearchPort
 from external_docs_rag.domain.services.chunking import chunk_quality_ok, split_markdown_into_chunks
@@ -23,8 +24,10 @@ from external_docs_rag.domain.services.context_ordering import (
     wants_version_or_requirements,
 )
 from external_docs_rag.domain.services.framework_candidates import (
+    ParsedFrameworkQuery,
     extract_candidate_framework_names,
     extract_framework_version_pairs,
+    parse_framework_version_constraints,
 )
 from external_docs_rag.infrastructure.content_parser import parse_document_to_markdown
 from external_docs_rag.infrastructure.github_tree import list_markdown_raw_urls
@@ -34,6 +37,7 @@ from external_docs_rag.infrastructure.github_discovery import (
     parse_raw_github_full_name,
     replace_ref_in_raw_github_url,
 )
+from infrastructure.qdrant.collection_manager import CollectionManager
 
 
 def fetch_on_demand_context(
@@ -401,7 +405,8 @@ def build_merged_rag_context(
     max_score = 0.0
     already_covered: set[str] = set()
 
-    # Resolve version per source: from question (e.g. "Alamofire 5.8") or latest from GitHub API
+    # Resolve framework version constraints for version-aware external docs RAG
+    parsed_frameworks: list[ParsedFrameworkQuery] = parse_framework_version_constraints(question)
     version_pairs = extract_framework_version_pairs(question)
     ref_by_source_id: dict[str, str] = {}
     for name, version in version_pairs:
@@ -422,6 +427,7 @@ def build_merged_rag_context(
     if fetch_client and external_sources:
         t0 = time.perf_counter()
         on_demand_chars = context_total_chars // 2
+        collection_manager = CollectionManager()
         for cfg in rag_sources:
             if not cfg.on_demand_fetch or not cfg.external_source_id:
                 continue

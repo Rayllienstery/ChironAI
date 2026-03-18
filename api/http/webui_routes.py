@@ -1715,6 +1715,50 @@ def update_rag_trigger_settings() -> Any:
         return jsonify({"error": str(e)}), 500
 
 
+@webui_bp.route("/rag-framework-settings", methods=["GET"])
+def get_rag_framework_settings() -> Any:
+    """
+    Return framework docs RAG settings such as latest TTL days.
+    """
+    try:
+        settings_repo = get_settings_repository()
+        raw_ttl = settings_repo.get_app_setting("framework_latest_ttl_days")
+        ttl_days = int(raw_ttl) if raw_ttl is not None else 90
+        if ttl_days <= 0:
+            ttl_days = 90
+        return jsonify(
+            {
+                "framework_latest_ttl_days": ttl_days,
+            }
+        )
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_rag_framework_settings", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/rag-framework-settings", methods=["POST"])
+def update_rag_framework_settings() -> Any:
+    """
+    Update framework docs RAG settings (e.g. latest TTL days).
+    """
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        raw_ttl = body.get("framework_latest_ttl_days")
+        if raw_ttl is None:
+            return jsonify({"error": "framework_latest_ttl_days required"}), 400
+        ttl_days = int(raw_ttl)
+        if ttl_days <= 0 or ttl_days > 3650:
+            return jsonify({"error": "framework_latest_ttl_days must be between 1 and 3650"}), 400
+        settings_repo = get_settings_repository()
+        settings_repo.set_app_setting("framework_latest_ttl_days", str(ttl_days))
+        return jsonify({"status": "ok", "framework_latest_ttl_days": ttl_days})
+    except ValueError:
+        return jsonify({"error": "framework_latest_ttl_days must be an integer"}), 400
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.update_rag_framework_settings", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @webui_bp.route("/rag-trigger-test", methods=["POST"])
 def rag_trigger_test() -> Any:
     """Check if a message would trigger RAG: returns score, signals, and triggered (score >= threshold)."""

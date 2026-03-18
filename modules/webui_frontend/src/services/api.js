@@ -187,6 +187,27 @@ export async function getRagTriggerSettings() {
   return response.json();
 }
 
+export async function getRagFrameworkSettings() {
+  const response = await fetch(`${API_BASE}/rag-framework-settings`);
+  if (!response.ok) {
+    throw new Error('Failed to get RAG framework settings');
+  }
+  return response.json();
+}
+
+export async function updateRagFrameworkSettings(settings) {
+  const response = await fetch(`${API_BASE}/rag-framework-settings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to update RAG framework settings');
+  }
+  return response.json();
+}
+
 export async function updateRagTriggerSettings(settings) {
   const response = await fetch(`${API_BASE}/rag-trigger-settings`, {
     method: 'POST',

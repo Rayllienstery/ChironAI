@@ -10,6 +10,8 @@ import {
   getRagTriggerSettings,
   updateRagTriggerSettings,
   checkRagTrigger,
+  getRagFrameworkSettings,
+  updateRagFrameworkSettings,
 } from '../services/api';
 import './RagTab.css';
 
@@ -58,6 +60,9 @@ function RagTab() {
   const [triggerTestMessage, setTriggerTestMessage] = useState('');
   const [triggerTestResult, setTriggerTestResult] = useState(null);
   const [triggerTestLoading, setTriggerTestLoading] = useState(false);
+  const [frameworkSettings, setFrameworkSettings] = useState(null);
+  const [frameworkTtlDraft, setFrameworkTtlDraft] = useState('');
+  const [frameworkSettingsSaving, setFrameworkSettingsSaving] = useState(false);
 
   const loadStatus = async () => {
     setLoading(true);
@@ -100,12 +105,23 @@ function RagTab() {
     }
   }, []);
 
+  const loadFrameworkSettings = useCallback(async () => {
+    try {
+      const data = await getRagFrameworkSettings();
+      setFrameworkSettings(data);
+      setFrameworkTtlDraft(String(data.framework_latest_ttl_days ?? 90));
+    } catch (e) {
+      setError(e.message);
+    }
+  }, []);
+
   useEffect(() => {
     loadStatus();
     loadCollections();
     loadKeywordCollections();
     loadTriggerSettings();
-  }, [loadKeywordCollections, loadTriggerSettings]);
+    loadFrameworkSettings();
+  }, [loadKeywordCollections, loadTriggerSettings, loadFrameworkSettings]);
 
   const handleStart = async () => {
     setBusy(true);
@@ -163,6 +179,23 @@ function RagTab() {
       setError(e.message);
     } finally {
       setTriggerTestLoading(false);
+    }
+  };
+
+  const handleSaveFrameworkSettings = async () => {
+    const val = parseInt(frameworkTtlDraft, 10);
+    if (Number.isNaN(val) || val < 1 || val > 3650) return;
+    setFrameworkSettingsSaving(true);
+    setError(null);
+    try {
+      await updateRagFrameworkSettings({ framework_latest_ttl_days: val });
+      setFrameworkSettings((prev) =>
+        prev ? { ...prev, framework_latest_ttl_days: val } : { framework_latest_ttl_days: val },
+      );
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setFrameworkSettingsSaving(false);
     }
   };
 
@@ -320,6 +353,7 @@ function RagTab() {
               loadCollections();
               loadKeywordCollections();
               loadTriggerSettings();
+              loadFrameworkSettings();
             }}
             disabled={busy}
           >
@@ -495,6 +529,50 @@ function RagTab() {
         </div>
       </div>
 
+      <div className="rag-trigger-card">
+        <h3 className="rag-trigger-card-title">Framework docs versioning</h3>
+        <p className="rag-trigger-card-description">
+          Configure how long the latest framework documentation collections (e.g. Alamofire_x.m.n_latest) stay fresh
+          before being re-fetched and re-indexed.
+        </p>
+        <div className="rag-trigger-threshold-row">
+          <label className="rag-trigger-label" htmlFor="framework-latest-ttl-days">
+            Latest TTL (days)
+          </label>
+          <input
+            id="framework-latest-ttl-days"
+            type="number"
+            min={1}
+            max={3650}
+            value={frameworkTtlDraft}
+            onChange={(e) => setFrameworkTtlDraft(e.target.value)}
+            className="rag-trigger-input"
+            aria-describedby="framework-latest-ttl-days-desc"
+          />
+          <button
+            type="button"
+            className="rag-button primary"
+            onClick={handleSaveFrameworkSettings}
+            disabled={
+              frameworkSettingsSaving ||
+              (() => {
+                const v = parseInt(frameworkTtlDraft, 10);
+                const valid = !Number.isNaN(v) && v >= 1 && v <= 3650;
+                const unchanged =
+                  String(frameworkSettings?.framework_latest_ttl_days ?? '') === frameworkTtlDraft;
+                return !valid || unchanged;
+              })()
+            }
+          >
+            {frameworkSettingsSaving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+        <p id="framework-latest-ttl-days-desc" className="rag-trigger-hint">
+          Value 1–3650 days. Controls when Alamofire_x.m.n_latest and similar collections will be refreshed from
+          GitHub (default 90 days).
+        </p>
+      </div>
+
       {error && <div className="rag-error">Error: {error}</div>}
 
       <div className="rag-collections">
@@ -506,42 +584,76 @@ function RagTab() {
         ) : !collections.length ? (
           <div className="empty-state">No collections found or Qdrant is not reachable.</div>
         ) : (
-          <table className="collections-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Vectors</th>
-                <th>Segments</th>
-                <th>Shards</th>
-                <th>Replication</th>
-                <th>Vectors Config</th>
-                <th>On Disk</th>
-              </tr>
-            </thead>
-            <tbody>
-              {collections.map((col) => (
-                <tr key={col.name}>
-                  <td>{col.name}</td>
-                  <td>{col.points_count ?? '—'}</td>
-                  <td>{col.segments_count ?? '—'}</td>
-                  <td>{col.shards_count ?? '—'}</td>
-                  <td>{col.replication_factor ?? '—'}</td>
-                  <td>
-                    {col.vectors_config ? (
-                      <div className="vectors-config">
-                        <span className="vector-badge">{col.vectors_config.name || 'Default'}</span>
-                        <span className="vector-badge">{col.vectors_config.size}</span>
-                        <span className="vector-badge">{col.vectors_config.distance || '—'}</span>
-                      </div>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td>{col.on_disk ? 'Yes' : 'No'}</td>
+          <>
+            <table className="collections-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Vectors</th>
+                  <th>Segments</th>
+                  <th>Shards</th>
+                  <th>Replication</th>
+                  <th>Vectors Config</th>
+                  <th>On Disk</th>
+                  <th>Framework</th>
+                  <th>Version</th>
+                  <th>Last refreshed</th>
+                  <th>Type</th>
+                  <th>Age vs TTL</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {collections.map((col) => {
+                  const isFramework = Boolean(col.framework_id);
+                  const isLatest = isFramework && typeof col.name === 'string' && col.name.endsWith('_latest');
+                  const ttlDays = frameworkSettings?.framework_latest_ttl_days ?? 90;
+                  let ageLabel = '—';
+                  if (col.last_refreshed_at && ttlDays && ttlDays > 0) {
+                    const refreshed = new Date(col.last_refreshed_at);
+                    if (!Number.isNaN(refreshed.getTime())) {
+                      const now = new Date();
+                      const diffMs = now - refreshed;
+                      const ageDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                      ageLabel = `${ageDays}d / ${ttlDays}d${ageDays > ttlDays ? ' (stale)' : ''}`;
+                    }
+                  }
+                  return (
+                    <tr key={col.name}>
+                      <td>{col.name}</td>
+                      <td>{col.points_count ?? '—'}</td>
+                      <td>{col.segments_count ?? '—'}</td>
+                      <td>{col.shards_count ?? '—'}</td>
+                      <td>{col.replication_factor ?? '—'}</td>
+                      <td>
+                        {col.vectors_config ? (
+                          <div className="vectors-config">
+                            <span className="vector-badge">{col.vectors_config.name || 'Default'}</span>
+                            <span className="vector-badge">{col.vectors_config.size}</span>
+                            <span className="vector-badge">{col.vectors_config.distance || '—'}</span>
+                          </div>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td>{col.on_disk ? 'Yes' : 'No'}</td>
+                      <td>{col.framework_id || '—'}</td>
+                      <td>{col.version || '—'}</td>
+                      <td>{col.last_refreshed_at || '—'}</td>
+                      <td>{isFramework ? (isLatest ? 'Latest' : 'Archive') : '—'}</td>
+                      <td>{isFramework ? ageLabel : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <p className="rag-trigger-hint" style={{ marginTop: '8px' }}>
+              Collections with a framework id come from external framework docs. Rows marked as
+              {' '}
+              <strong>Latest</strong>
+              {' '}
+              (e.g. Alamofire_x.m.n_latest) are refreshed automatically when their age exceeds the configured TTL.
+            </p>
+          </>
         )}
       </div>
 

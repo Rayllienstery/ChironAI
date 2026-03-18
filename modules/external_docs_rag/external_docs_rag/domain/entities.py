@@ -5,7 +5,7 @@ Domain entities for external docs fetch, ingest, and multi-collection RAG.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 
 @dataclass
@@ -62,10 +62,48 @@ class RagContext:
     max_score: float = 0.0
 
 
+@dataclass(frozen=True)
+class VersionConstraint:
+    """
+    Normalized semantic version constraint for a framework.
+
+    Examples:
+    - "5"      -> major=5, minor=None, patch=None, is_latest_requested=False
+    - "5.8"    -> major=5, minor=8, patch=None, is_latest_requested=False
+    - "5.8.1"  -> major=5, minor=8, patch=1, is_latest_requested=False
+    - latest / no explicit version -> is_latest_requested=True
+    """
+
+    framework: str
+    major: Optional[int] = None
+    minor: Optional[int] = None
+    patch: Optional[int] = None
+    is_latest_requested: bool = False
+
+
+@dataclass(frozen=True)
+class ResolvedVersion:
+    """
+    Concrete resolved version for a framework, backed by a Git tag/release.
+
+    This is the result of applying a VersionConstraint to the available
+    GitHub releases/tags.
+    """
+
+    framework: str
+    major: int
+    minor: int
+    patch: int
+    tag: str
+    repo_url: str
+
+
 __all__ = [
     "ExternalSource",
     "FetchedDocument",
     "IngestResult",
     "RagContext",
     "RagSourceConfig",
+    "VersionConstraint",
+    "ResolvedVersion",
 ]
