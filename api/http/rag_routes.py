@@ -12,6 +12,7 @@ import logging
 import os
 import sys
 import threading
+from datetime import datetime, timezone
 import uuid
 
 from flask import Flask, Response, jsonify, request
@@ -107,6 +108,7 @@ from api.http.proxy_status import (
     STATUS_PREPARING_RESPONSE,
     STATUS_RESPONSE,
 )
+from api.http.proxy_trace import set_current_trace
 import time
 
 RAG_MODEL_ID = "rag-ollama"
@@ -179,6 +181,18 @@ def create_app(
         latency_ms = 0
         prompt_tokens_approx = 0
         completion_tokens_approx = 0
+        trace_id = f"trace-{uuid.uuid4().hex[:12]}"
+        trace = {
+            "trace_id": trace_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "request": {},
+            "internet": {},
+            "rag": {},
+            "ollama": {},
+            "response": {},
+            "steps": [],
+        }
+        set_current_trace(trace)
         
         try:
             body = request.get_json(force=True, silent=True) or {}
@@ -204,6 +218,16 @@ def create_app(
         
         # If model is "rag-ollama", use config model instead (rag-ollama is just a proxy identifier)
         actual_model = ollama_model if requested_model == "rag-ollama" or requested_model == RAG_MODEL_ID else requested_model
+
+        trace["request"] = {
+            "requested_model": requested_model,
+            "actual_model": actual_model,
+            "stream": bool(stream),
+            "include_rag_metadata": bool(include_rag_metadata),
+            "force_rag": bool(force_rag),
+            "reasoning_level": explicit_reasoning or reasoning_level,
+            "user_query_preview": (user_query or "")[:500],
+        }
 
         # Optional project_context: frameworks list -> fresh collection names for RAG filter, and needs_refresh for background index
         project_context = body.get("project_context")
@@ -277,6 +301,8 @@ def create_app(
         # Build RAG context: multi-collection (external_docs_rag) when triggered, else single collection
         rag_ctx_for_log = None
         rag_timings: dict[str, float] = {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0}
+        background_refresh_started = False
+        trace["internet"] = {"background_refresh_started": False}
         try:
             use_merged = False
             if _EXTERNAL_DOCS_RAG_AVAILABLE and load_rag_sources_config and resolve_rag_sources_for_request and build_merged_rag_context and QdrantRagSearchAdapter is not None:
@@ -360,6 +386,8 @@ def create_app(
                             except Exception as e:
                                 _RAG_LOG.warning("Background framework refresh failed: %s", e)
 
+                        background_refresh_started = True
+                        trace["internet"]["background_refresh_started"] = True
                         threading.Thread(target=_run_refresh, args=(work_list,), daemon=True).start()
 
                     try:
@@ -419,6 +447,59 @@ def create_app(
                 }
             else:
                 rag_context_data = None
+            
+            # Enrich trace for the UI
+            trace["rag"]["timings"] = dict(rag_timings or {})
+            trace["internet"].update(
+                {
+                    "fetch_s": float((rag_timings or {}).get("fetch_s", 0.0) or 0.0),
+                    "discovery_s": float((rag_timings or {}).get("discovery_s", 0.0) or 0.0),
+                }
+            )
+            trace["internet"]["used"] = bool(
+                (rag_timings or {}).get("fetch_s")
+                or (rag_timings or {}).get("discovery_s")
+                or background_refresh_started
+            )
+            if rag_ctx_for_log:
+                trace["rag"]["context"] = {
+                    "context_chars_used": len(rag_ctx_for_log.context_text or ""),
+                    "context_budget_chars": int(context_total_chars or 0),
+                    "context_text_preview": (rag_ctx_for_log.context_text or "")[:2000],
+                    "chunks": rag_ctx_for_log.chunks_info[:20] if rag_ctx_for_log.chunks_info else [],
+                }
+                trace["rag"]["tokens_estimates"] = {
+                    "embed_tokens_in": rag_timings.get("embed_tokens_in"),
+                    "rerank_prompt_tokens_in": rag_timings.get("rerank_prompt_tokens_in"),
+                    "fetch_tokens_in": rag_timings.get("fetch_tokens_in"),
+                    "discovery_tokens_in": rag_timings.get("discovery_tokens_in"),
+                }
+            else:
+                trace["rag"]["context"] = None
+
+            # RAG sub-steps (timeline for the UI)
+            _rt = rag_timings or {}
+            _steps: list[dict[str, object]] = []
+
+            def _add_step(name: str, dur_s: float, tokens_in_est: object | None = None) -> None:
+                if dur_s and dur_s > 0:
+                    _steps.append(
+                        {
+                            "name": name,
+                            "duration_ms": int(dur_s * 1000),
+                            "tokens_in_est": tokens_in_est,
+                            "tokens_out_est": 0,
+                        }
+                    )
+
+            _add_step("embed", float(_rt.get("embed_s", 0.0) or 0.0), _rt.get("embed_tokens_in"))
+            _add_step("search", float(_rt.get("search_s", 0.0) or 0.0), None)
+            _add_step("rerank", float(_rt.get("rerank_s", 0.0) or 0.0), _rt.get("rerank_prompt_tokens_in"))
+            _add_step("fetch", float(_rt.get("fetch_s", 0.0) or 0.0), _rt.get("fetch_tokens_in"))
+            _add_step("discovery", float(_rt.get("discovery_s", 0.0) or 0.0), _rt.get("discovery_tokens_in"))
+            _add_step("total_rag", float(_rt.get("total_rag_s", 0.0) or 0.0), None)
+            trace["steps"] = _steps
+            set_current_trace(trace)
         except Exception as e:
             _RAG_LOG.warning(f"Failed to build RAG context for logging: {e}")
             rag_context_data = None
@@ -453,6 +534,26 @@ def create_app(
             # Ensure use_model is not "rag-ollama" - use config model if needed
             if use_model == "rag-ollama":
                 use_model = ollama_model
+
+            # Store what we send to Ollama (preview + sizes only)
+            _msg_preview_limit = 300
+            _ollama_messages_preview: list[dict[str, object]] = []
+            for m in ollama_messages:
+                if not isinstance(m, dict):
+                    continue
+                role = m.get("role") or ""
+                content_str = m.get("content") or ""
+                content_len = len(content_str)
+                _ollama_messages_preview.append(
+                    {
+                        "role": str(role),
+                        "content_length_chars": int(content_len),
+                        "content_preview": content_str[:_msg_preview_limit]
+                        + ("..." if content_len > _msg_preview_limit else ""),
+                    }
+                )
+            trace["ollama"]["model"] = use_model
+            trace["ollama"]["messages"] = _ollama_messages_preview
         except Exception as e:
             log_webui_error("rag_routes.chat_completions", e, {"stage": "prepare_rag"})
             _log_rag_error("prepare_rag", e)
@@ -492,6 +593,28 @@ def create_app(
                     completion_tokens_approx = _approx_tokens(full_response)
                     total_tokens_approx = prompt_tokens_approx + completion_tokens_approx
                     total_tokens_holder[0] = total_tokens_approx
+
+                    # Finalize trace for the UI and history
+                    trace["ollama"]["tokens_estimates"] = {
+                        "prompt_tokens_estimated": prompt_tokens_approx,
+                        "completion_tokens_estimated": completion_tokens_approx,
+                        "total_tokens_estimated": total_tokens_approx,
+                    }
+                    trace["response"] = {
+                        "content_preview": full_response[:log_preview]
+                        + ("..." if len(full_response) > log_preview else ""),
+                        "content_length_chars": len(full_response),
+                        "latency_ms": stream_latency_ms,
+                    }
+                    trace["steps"].append(
+                        {
+                            "name": "ollama_chat",
+                            "duration_ms": int(stream_latency_ms),
+                            "tokens_in_est": prompt_tokens_approx,
+                            "tokens_out_est": completion_tokens_approx,
+                        }
+                    )
+                    set_current_trace(trace)
                     
                     try:
                         session_manager = get_session_manager()
@@ -500,6 +623,7 @@ def create_app(
                         log_metadata = {
                             "user_query": user_query[:500],
                             "response_preview": full_response[:500],
+                            "trace_id": trace_id,
                             "model": use_model,
                             "latency_ms": stream_latency_ms,
                             "prompt_tokens": prompt_tokens_approx,
@@ -507,6 +631,7 @@ def create_app(
                             "total_tokens": total_tokens_approx,
                             "rag_context": rag_context_data,
                             "rag_steps": rag_timings,
+                            "trace": trace,
                             "stream": True,
                         }
                         logs_repo.add_log(
@@ -550,8 +675,11 @@ def create_app(
         finally:
             set_proxy_status(STATUS_IDLE)
             set_latest_request_seconds(time.time() - start_time)
+        latency_ms = int((time.time() - start_time) * 1000)
         _prompt_text = " ".join((m.get("content") or "") for m in ollama_messages if isinstance(m, dict))
-        _total_tokens_approx = max(1, int(len(_prompt_text) / 4)) + max(1, int(len(content or "") / 4))
+        prompt_tokens_approx = max(1, int(len(_prompt_text) / 4))
+        completion_tokens_approx = max(1, int(len(content or "") / 4))
+        _total_tokens_approx = prompt_tokens_approx + completion_tokens_approx
         set_latest_request_total_tokens(_total_tokens_approx)
         content_len = len(content or "")
         content_preview = (content or "")[:log_preview]
@@ -563,6 +691,25 @@ def create_app(
             content_len,
             content_preview,
         )
+        trace["ollama"]["tokens_estimates"] = {
+            "prompt_tokens_estimated": prompt_tokens_approx,
+            "completion_tokens_estimated": completion_tokens_approx,
+            "total_tokens_estimated": _total_tokens_approx,
+        }
+        trace["response"] = {
+            "content_preview": content_preview,
+            "content_length_chars": content_len,
+            "latency_ms": latency_ms,
+        }
+        trace["steps"].append(
+            {
+                "name": "ollama_chat",
+                "duration_ms": int(latency_ms),
+                "tokens_in_est": prompt_tokens_approx,
+                "tokens_out_est": completion_tokens_approx,
+            }
+        )
+        set_current_trace(trace)
         choice = {
             "index": 0,
             "message": {"role": "assistant", "content": content},
@@ -583,6 +730,35 @@ def create_app(
                 "max_score": rag_ctx.max_score,
                 "chunks_count": len(rag_ctx.chunks_info),
             }
+
+        # Persist trace for non-stream requests
+        try:
+            session_manager = get_session_manager()
+            session = session_manager.get_or_create_session("proxy")
+            logs_repo = get_logs_repository()
+            log_metadata = {
+                "user_query": user_query[:500],
+                "response_preview": content_preview[:500],
+                "trace_id": trace_id,
+                "model": use_model,
+                "latency_ms": latency_ms,
+                "prompt_tokens": prompt_tokens_approx,
+                "completion_tokens": completion_tokens_approx,
+                "total_tokens": _total_tokens_approx,
+                "rag_context": rag_context_data,
+                "rag_steps": rag_timings,
+                "trace": trace,
+                "stream": False,
+            }
+            logs_repo.add_log(
+                session_id="proxy",
+                level="INFO",
+                message=f"Proxy request: {user_query[:100]}...",
+                source="proxy",
+                metadata=log_metadata,
+            )
+        except Exception as e:
+            _RAG_LOG.warning(f"Failed to log proxy non-stream request to database: {e}")
         
         return jsonify(response_data)
 

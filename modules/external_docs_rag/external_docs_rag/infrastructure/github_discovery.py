@@ -159,11 +159,18 @@ def discover_and_fetch_readme(
             continue
         parts.append(take)
         total += len(take) + 2
+        take_len = len(take)
+        take_preview_limit = 100
+        take_preview = take[:take_preview_limit] + (
+            "..." if take_len > take_preview_limit else ""
+        )
         chunks_info.append({
             "source": name,
             "url": raw_url,
             "path": "README.md",
             "label": name,
+            "text_length": take_len,
+            "text_preview": take_preview,
         })
     context_text = "\n\n".join(parts)
     return (context_text, chunks_info) if context_text else None

@@ -175,6 +175,7 @@ from api.http.proxy_status import (
     STATUS_PREPARING_RESPONSE,
     STATUS_RESPONSE,
 )
+from api.http.proxy_trace import get_current_trace, get_current_trace_updated_at
 
 import requests
 from qdrant_client import QdrantClient
@@ -718,6 +719,24 @@ def get_proxy_logs() -> Any:
         return jsonify({"logs": logs})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_proxy_logs", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/proxy-trace/current", methods=["GET"])
+def get_proxy_trace_current() -> Any:
+    """Return the latest live trace from in-memory store."""
+    try:
+        trace = get_current_trace()
+        updated_at = get_current_trace_updated_at()
+        return jsonify(
+            {
+                "trace": trace,
+                "status": get_proxy_status_label(),
+                "updated_at": updated_at,
+            }
+        )
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_proxy_trace_current", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 

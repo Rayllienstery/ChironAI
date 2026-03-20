@@ -141,6 +141,16 @@ export async function getProxyLogs(options = {}) {
   return response.json();
 }
 
+export async function getProxyTraceCurrent() {
+  const response = await fetch(`${API_BASE}/proxy-trace/current`, {
+    method: 'GET',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to get proxy trace');
+  }
+  return response.json();
+}
+
 export async function getSettings() {
   const response = await fetch(`${API_BASE}/settings`);
   if (!response.ok) {

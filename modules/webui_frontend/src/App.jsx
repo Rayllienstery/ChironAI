@@ -29,6 +29,7 @@ import CrawlerTab from './components/CrawlerTab';
 import TestingTab from './components/TestingTab';
 import TemplateEditorTab from './components/TemplateEditorTab';
 import DebugLogPanel from './components/DebugLogPanel';
+import ProxyTraceTab from './components/ProxyTraceTab';
 import {
   getSession,
   getSettings,
@@ -261,6 +262,7 @@ function App() {
   const tabs = [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'llm-proxy', label: 'LLM Proxy' },
+    { id: 'proxy-trace', label: 'Proxy Trace' },
     { id: 'logs', label: 'Logs' },
     { id: 'rag', label: 'RAG / Qdrant' },
     { id: 'crawler', label: 'Crawler / Indexer' },
@@ -273,6 +275,8 @@ function App() {
     switch (activeTab) {
       case 'dashboard':
         return <DashboardTab />;
+      case 'proxy-trace':
+        return <ProxyTraceTab />;
       case 'logs':
         return <LogsTab sessionId={sessionId} />;
       case 'testing':

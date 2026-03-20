@@ -23,7 +23,7 @@ except ImportError:
 CHUNK_MAX_SIZE: int = get_indexing_int("chunk_max_size", 1200)
 CHUNK_MIN_SIZE: int = get_indexing_int("chunk_min_size", 300)
 CHUNK_OVERLAP: int = get_indexing_int("chunk_overlap", 0)
-MIN_CHUNK_WORDS: int = get_indexing_int("min_chunk_words", 25)
+MIN_CHUNK_WORDS: int = get_indexing_int("min_chunk_words", 5)
 MIN_CHUNK_ALPHA_RATIO: float = get_indexing_float("min_chunk_alpha_ratio", 0.2)
 
 

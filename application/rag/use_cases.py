@@ -55,6 +55,7 @@ def _apply_rerank(
     hits: list[dict[str, Any]],
     rerank_client: RerankClient | None,
     final_k: int,
+    timings: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     """Apply LLM rerank and cut to final_k. Uses domain rerank logic + rerank_client."""
     if not hits:
@@ -65,6 +66,10 @@ def _apply_rerank(
         for idx, h in enumerate(candidates, start=1)
     ]
     prompt_text = build_rerank_prompt(question, candidate_texts)
+    if timings is not None:
+        timings["rerank_prompt_tokens_in"] = timings.get("rerank_prompt_tokens_in", 0.0) + (
+            0 if not prompt_text else max(1, int(len(prompt_text) / 4))
+        )
     raw = rerank_client.rerank(question, prompt_text) if rerank_client else None
     order = parse_rerank_order(raw) if raw else None
     if order is not None:
@@ -85,13 +90,21 @@ def search_rag(
     Run RAG retrieval for a question: query_for_retrieval -> embed -> search -> rerank.
     Returns (list of hits with id, score, payload, rerank_score, timings dict with embed_s, search_s, rerank_s).
     """
-    timings: dict[str, float] = {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0}
+    timings: dict[str, float] = {
+        "embed_s": 0.0,
+        "search_s": 0.0,
+        "rerank_s": 0.0,
+        # Token estimates for UI trace; true tokenization isn't available here.
+        "embed_tokens_in": 0.0,
+        "rerank_prompt_tokens_in": 0.0,
+    }
     if top_k is None:
         top_k = MULTI_CHUNK_TOP_K if need_more_chunks(question) else get_retrieval_int("top_k", DEFAULT_TOP_K)
     search_query = query_for_retrieval(question)
     t0 = time.perf_counter()
     vec = embed_provider.embed(search_query)
     timings["embed_s"] += time.perf_counter() - t0
+    timings["embed_tokens_in"] += 0 if not search_query else max(1, int(len(search_query) / 4))
     filter_dict = build_qdrant_filter(question)
     k = max(top_k, RERANK_MAX_CANDIDATES) if not is_version_question(question) else top_k
     t0 = time.perf_counter()
@@ -103,7 +116,7 @@ def search_rag(
     if not is_version_question(question):
         results.sort(key=combined_doc_priority, reverse=True)
         t0 = time.perf_counter()
-        results = _apply_rerank(question, results, rerank_client, final_k)
+        results = _apply_rerank(question, results, rerank_client, final_k, timings=timings)
         timings["rerank_s"] += time.perf_counter() - t0
         return results, timings
     ios_q, swift_q = parse_versions_from_question(question)
@@ -113,6 +126,7 @@ def search_rag(
         t0 = time.perf_counter()
         vec_v = embed_provider.embed(qv)
         timings["embed_s"] += time.perf_counter() - t0
+        timings["embed_tokens_in"] += 0 if not qv else max(1, int(len(qv) / 4))
         t0 = time.perf_counter()
         extra_results.extend(rag_repo.search(vec_v, top_k=6))
         timings["search_s"] += time.perf_counter() - t0
@@ -121,6 +135,7 @@ def search_rag(
         t0 = time.perf_counter()
         vec_v = embed_provider.embed(qv)
         timings["embed_s"] += time.perf_counter() - t0
+        timings["embed_tokens_in"] += 0 if not qv else max(1, int(len(qv) / 4))
         t0 = time.perf_counter()
         extra_results.extend(rag_repo.search(vec_v, top_k=6))
         timings["search_s"] += time.perf_counter() - t0
@@ -128,6 +143,7 @@ def search_rag(
         t0 = time.perf_counter()
         vec_version = embed_provider.embed("Swift version release number RELEASE")
         timings["embed_s"] += time.perf_counter() - t0
+        timings["embed_tokens_in"] += max(1, int(len("Swift version release number RELEASE") / 4))
         t0 = time.perf_counter()
         extra_results.extend(rag_repo.search(vec_version, top_k=8))
         timings["search_s"] += time.perf_counter() - t0
@@ -156,7 +172,7 @@ def search_rag(
         results.sort(key=_score, reverse=True)
         results.sort(key=combined_doc_priority, reverse=True)
     t0 = time.perf_counter()
-    results = _apply_rerank(question, results, rerank_client, final_k)
+    results = _apply_rerank(question, results, rerank_client, final_k, timings=timings)
     timings["rerank_s"] += time.perf_counter() - t0
     return results, timings
 

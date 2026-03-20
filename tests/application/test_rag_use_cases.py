@@ -49,7 +49,13 @@ def test_build_rag_context_returns_rag_context() -> None:
         2000,
     )
     assert isinstance(ctx, RagContext)
-    assert "embed_s" in timings and "search_s" in timings and "rerank_s" in timings
+    assert (
+        "embed_s" in timings
+        and "search_s" in timings
+        and "rerank_s" in timings
+        and "embed_tokens_in" in timings
+        and "rerank_prompt_tokens_in" in timings
+    )
     assert "chunk" in ctx.context_text.lower()
     assert ctx.max_score >= 0.8
 
@@ -126,4 +132,10 @@ def test_search_rag_returns_list() -> None:
     results, timings = search_rag("SwiftUI View", MockRagRepo(), MockEmbed(), MockRerank())
     assert isinstance(results, list)
     assert len(results) >= 1
-    assert "embed_s" in timings and "search_s" in timings and "rerank_s" in timings
+    assert (
+        "embed_s" in timings
+        and "search_s" in timings
+        and "rerank_s" in timings
+        and "embed_tokens_in" in timings
+        and "rerank_prompt_tokens_in" in timings
+    )

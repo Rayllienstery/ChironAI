@@ -50,7 +50,7 @@ indexing:
   chunk_max_size: 1200
   chunk_min_size: 300
   chunk_overlap: 150
-  min_chunk_words: 25
+  min_chunk_words: 5
   min_chunk_alpha_ratio: 0.2
   
   # MD indexer: config-driven markdown cleanup pipeline (config/md_pipelines/*.json)

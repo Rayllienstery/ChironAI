@@ -37,7 +37,6 @@ from external_docs_rag.infrastructure.github_discovery import (
     parse_raw_github_full_name,
     replace_ref_in_raw_github_url,
 )
-from infrastructure.qdrant.collection_manager import CollectionManager
 
 
 def fetch_on_demand_context(
@@ -93,11 +92,18 @@ def fetch_on_demand_context(
                 continue
             parts.append(take)
             total += len(take) + 2
+            take_len = len(take)
+            take_preview_limit = 100
+            take_preview = take[:take_preview_limit] + (
+                "..." if take_len > take_preview_limit else ""
+            )
             chunks_info.append({
                 "source": source.id,
                 "url": url,
                 "path": rel_path,
                 "label": source.collection_name,
+                "text_length": take_len,
+                "text_preview": take_preview,
             })
     context_text = "\n\n".join(parts)
     return context_text, chunks_info
@@ -394,7 +400,18 @@ def build_merged_rag_context(
     (so stale/missing frameworks still get on-demand fetch but no vector search).
     """
     import time
-    timings: dict[str, float] = {"embed_s": 0.0, "search_s": 0.0, "fetch_s": 0.0, "discovery_s": 0.0, "total_rag_s": 0.0}
+    timings: dict[str, float] = {
+        "embed_s": 0.0,
+        "search_s": 0.0,
+        "fetch_s": 0.0,
+        "discovery_s": 0.0,
+        "total_rag_s": 0.0,
+        # Token estimates for UI trace (approximate, len/4 heuristic).
+        "embed_tokens_in": 0.0,
+        "rerank_prompt_tokens_in": 0.0,
+        "fetch_tokens_in": 0.0,
+        "discovery_tokens_in": 0.0,
+    }
     if not question or not question.strip():
         return RagContext("", [], 0.0), timings
     rag_sources = rag_sources or []
@@ -427,7 +444,6 @@ def build_merged_rag_context(
     if fetch_client and external_sources:
         t0 = time.perf_counter()
         on_demand_chars = context_total_chars // 2
-        collection_manager = CollectionManager()
         for cfg in rag_sources:
             if not cfg.on_demand_fetch or not cfg.external_source_id:
                 continue
@@ -456,6 +472,7 @@ def build_merged_rag_context(
                     total_used += len(cfg.label) + 30
                 parts.append(ctx_text)
                 total_used += len(ctx_text) + 2
+                timings["fetch_tokens_in"] += 0 if not ctx_text else max(1, int(len(ctx_text) / 4))
                 for kw in cfg.trigger_keywords:
                     already_covered.add(kw.lower())
                 already_covered.add(cfg.external_source_id.lower())
@@ -466,6 +483,8 @@ def build_merged_rag_context(
                         "url": info.get("url", "N/A"),
                         "source": info.get("source", "N/A"),
                         "label": cfg.label or cfg.collection_name,
+                            "text_length": info.get("text_length"),
+                            "text_preview": info.get("text_preview"),
                     })
         timings["fetch_s"] = time.perf_counter() - t0
 
@@ -495,6 +514,7 @@ def build_merged_rag_context(
             total_used += len(name) + 30
             parts.append(ctx_text)
             total_used += len(ctx_text) + 2
+            timings["discovery_tokens_in"] += 0 if not ctx_text else max(1, int(len(ctx_text) / 4))
             already_covered.add(name.lower())
             for info in infos:
                 chunks_info.append({
@@ -503,6 +523,8 @@ def build_merged_rag_context(
                     "url": info.get("url", "N/A"),
                     "source": info.get("source", "N/A"),
                     "label": info.get("label", name),
+                    "text_length": info.get("text_length"),
+                    "text_preview": info.get("text_preview"),
                 })
             if total_used >= context_total_chars:
                 break
@@ -520,6 +542,7 @@ def build_merged_rag_context(
         except Exception:
             vec = []
         timings["embed_s"] = time.perf_counter() - t0
+        timings["embed_tokens_in"] += 0 if not question else max(1, int(len(question) / 4))
         if vec:
             t0 = time.perf_counter()
             for cfg in rag_sources_to_search:
@@ -557,6 +580,8 @@ def build_merged_rag_context(
                     "url": payload.get("url") or "N/A",
                     "source": payload.get("source") or "N/A",
                     "label": label,
+                    "text_length": len(snippet),
+                    "text_preview": snippet[:100] + ("..." if len(snippet) > 100 else ""),
                 })
     timings["total_rag_s"] = timings["embed_s"] + timings["search_s"] + timings["fetch_s"] + timings["discovery_s"]
     context_text = "\n\n".join(parts)

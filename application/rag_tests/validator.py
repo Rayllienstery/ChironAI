@@ -81,9 +81,7 @@ def validate_result(
     if concept_mode not in ("any", "all"):
         concept_mode = "all"
     require_rag = test.get("rag_requirement", True)
-    # RAG Strict (overlap ответа с chunk'ами) отключаем глобально:
-    # нам важно, чтобы RAG использовал контекст, но не требуем буквального цитирования.
-    require_rag_overlap = False
+    require_rag_overlap = bool(test.get("rag_strict", False))
 
     # Concept validation
     concepts_passed, hits, total, missing = validate_concepts(
@@ -122,10 +120,9 @@ def validate_result(
         if not rag_ok:
             # Make RAG-related failures explicit instead of abstract "not triggered"
             if chunks_count == 0:
-                reasons.append("RAG retrieval returned 0 chunks (no matching context found)")
+                reasons.append("RAG not triggered (no matching context found)")
             elif require_rag_overlap and chunks_info:
-                # We required strict overlap, chunks exist, but overlap check failed
-                reasons.append("RAG retrieved chunks but response did not overlap them (RAG Strict failed)")
+                reasons.append("RAG chunks did not overlap response")
             else:
                 # Fallback: RAG pipeline was skipped or produced no usable chunks
                 reasons.append("RAG was skipped by trigger/keywords or produced no usable chunks")
