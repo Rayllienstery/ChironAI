@@ -569,3 +569,92 @@ def test_apply_edit_endpoint_replaces_text_range() -> None:
     finally:
         if test_file.exists():
             test_file.unlink()
+
+
+def test_chat_completions_builds_save_file_paths_when_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+    from types import SimpleNamespace
+
+    import api.http.rag_routes as rag_routes
+
+    class FakeChatClient:
+        def chat(self, _messages, _model, stream=False, options=None):
+            return json.dumps(
+                {
+                    "path": "build_and_run.bat",
+                    "new_text": "@echo off\ncall build_app.bat",
+                    "mode": "create",
+                }
+            )
+
+        def stream_chat(self, _messages, _model):
+            yield ""
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fake-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=FakeChatClient(),
+    )
+
+    # Keep RAG context and Ollama messages minimal; tool args are built from tool JSON only.
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda *args, **kwargs: ([{"role": "user", "content": "x"}], "fake-model"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "rag-ollama",
+            "messages": [{"role": "user", "content": "Create build_and_run.bat"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "save_file",
+                        "parameters": {
+                            "type": "object",
+                            "required": ["paths", "mode"],
+                            "properties": {
+                                "paths": {"type": "array"},
+                                "mode": {"type": "string"},
+                            },
+                        },
+                    },
+                }
+            ],
+            "tool_choice": "auto",
+        },
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    tool_call = data["choices"][0]["message"]["tool_calls"][0]
+    args = json.loads(tool_call["function"]["arguments"])
+    assert tool_call["function"]["name"] == "save_file"
+    assert args["mode"] == "create"
+    assert isinstance(args["paths"], list)
+    assert args["paths"][0]["path"] == "build_and_run.bat"
+    assert "@echo off" in args["paths"][0]["content"]

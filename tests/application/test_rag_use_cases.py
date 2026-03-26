@@ -179,3 +179,44 @@ def test_prepare_ollama_messages_keeps_tool_cycle_context() -> None:
     assert "[tool_call:apply_file_edit]" in joined
     assert "[tool_result:apply_file_edit]" in joined
     assert model == "rag-ollama"
+
+
+def test_prepare_ollama_messages_infers_tool_result_name_from_tool_call_id() -> None:
+    req = RagQuestionRequest(
+        messages=[
+            {"role": "user", "content": "Please edit file"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "apply_file_edit", "arguments": '{"file_path":"a.py"}'},
+                    }
+                ],
+            },
+            # ZED/OpenAI-compatible tool-results may omit `name` and provide only `tool_call_id`.
+            {"role": "tool", "tool_call_id": "call_1", "content": '{"ok":true}'},
+        ],
+        model="rag-ollama",
+        stream=False,
+        reasoning_level=None,
+    )
+    msgs, model = prepare_ollama_messages(
+        req,
+        MockRagRepo(),
+        MockEmbed(),
+        None,
+        "prefix",
+        "suffix",
+        500,
+        2000,
+        0.0,
+        "model-x",
+        rag_context=RagContext("", [], 0.0),
+    )
+    joined = "\n".join(m.get("content", "") for m in msgs if isinstance(m, dict))
+    assert "[tool_call:apply_file_edit]" in joined
+    assert "[tool_result:apply_file_edit]" in joined
+    assert model == "rag-ollama"

@@ -240,6 +240,12 @@ def _select_edit_tool_name(tools: list[object]) -> str | None:
         low = n.lower()
         if "edit" in low or "patch" in low or "replace" in low:
             return n
+    # Tool `save_file` is a valid file operation even though it doesn't contain
+    # substrings like `edit`/`patch`/`replace`.
+    for n in names:
+        low = n.lower()
+        if low == "save_file" or "save_file" in low:
+            return n
     return None
 
 
@@ -269,6 +275,13 @@ def _build_tool_arguments(
         desc = f"Apply requested edit via {selected_tool_name}"
     display_description = desc[:180]
 
+    payload_mode = edit_payload.get("mode")
+    mode_value = (
+        payload_mode.strip()
+        if isinstance(payload_mode, str) and payload_mode.strip()
+        else "edit"
+    )
+
     canonical_values: dict[str, object] = {
         "file_path": file_path,
         "path": file_path,
@@ -286,7 +299,7 @@ def _build_tool_arguments(
         "start_col": range_obj.get("start_col"),
         "end_col": range_obj.get("end_col"),
         "display_description": display_description,
-        "mode": "edit",
+        "mode": mode_value,
         "operation": "edit",
         "variant": "edit",
     }
@@ -310,10 +323,47 @@ def _build_tool_arguments(
     if not keys_to_emit:
         keys_to_emit = {"file_path", "range", "new_text"}
 
+    # Special handling for save-file batch payload (`paths`).
+    # Some clients require tool input like:
+    #   paths=[{"path": "...", "content": "..."}]
+    # rather than a single `path`.
+    if "paths" in keys_to_emit:
+        payload_paths = edit_payload.get("paths")
+        if isinstance(payload_paths, list):
+            normalized_paths: list[dict[str, object]] = []
+            for p in payload_paths:
+                if isinstance(p, dict):
+                    p_path_raw = p.get("path") or p.get("file_path") or ""
+                    p_content_raw = (
+                        p.get("content")
+                        or p.get("new_text")
+                        or p.get("text")
+                        or new_text
+                    )
+                    p_path = _normalize_tool_path(str(p_path_raw)) if p_path_raw else ""
+                    p_content = str(p_content_raw) if p_content_raw is not None else ""
+                    normalized_paths.append({"path": p_path, "content": p_content})
+                elif isinstance(p, str):
+                    normalized_paths.append(
+                        {"path": _normalize_tool_path(p) if p else "", "content": new_text}
+                    )
+            canonical_values["paths"] = normalized_paths
+        elif file_path:
+            canonical_values["paths"] = [{"path": file_path, "content": new_text}]
+
     args: dict[str, object] = {}
     for key in keys_to_emit:
         if key in canonical_values and canonical_values[key] not in (None, ""):
             args[key] = canonical_values[key]
+        elif key in edit_payload:
+            # Passthrough: preserve client/model-provided fields that aren't derived
+            # by canonical_values (helps with schema variations).
+            val = edit_payload.get(key)
+            if val not in (None, ""):
+                if key in ("path", "file_path", "target_file") and not isinstance(val, str):
+                    args[key] = str(val)
+                else:
+                    args[key] = val
 
     # Guarantee required fields are present, with conservative defaults.
     for key in required:
@@ -321,10 +371,12 @@ def _build_tool_arguments(
             continue
         if key in canonical_values:
             args[key] = canonical_values[key]
+        elif key in edit_payload and edit_payload.get(key) not in (None, ""):
+            args[key] = edit_payload.get(key)  # type: ignore[assignment]
         elif key == "display_description":
             args[key] = display_description
         else:
-            args[key] = ""
+            args[key] = [] if key == "paths" else ""
 
     return args
 

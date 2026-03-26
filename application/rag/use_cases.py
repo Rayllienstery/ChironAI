@@ -357,6 +357,26 @@ def prepare_ollama_messages(
         model_name,
     )
     ollama_messages = [{"role": "system", "content": system_content}]
+    # ZED/OpenAI tool-result messages may omit `name` and provide `tool_call_id` instead.
+    # Build a lookup from tool_call_id -> tool function name so we can label tool results
+    # consistently in our plain-text Ollama prompt.
+    tool_call_id_to_name: dict[str, str] = {}
+    for m in request.messages:
+        if not isinstance(m, dict):
+            continue
+        if m.get("role") != "assistant":
+            continue
+        tool_calls = m.get("tool_calls")
+        if not isinstance(tool_calls, list):
+            continue
+        for c in tool_calls:
+            if not isinstance(c, dict):
+                continue
+            call_id = c.get("id")
+            fn = c.get("function")
+            name = fn.get("name") if isinstance(fn, dict) else None
+            if isinstance(call_id, str) and call_id and isinstance(name, str) and name:
+                tool_call_id_to_name[call_id] = name
     for m in request.messages:
         role = m.get("role")
         content = m.get("content")
@@ -383,7 +403,14 @@ def prepare_ollama_messages(
             ollama_messages.append({"role": role, "content": text})
             continue
         if role == "tool":
-            name = m.get("name") or "tool"
+            # Prefer explicit `name`, otherwise infer from `tool_call_id`.
+            name = m.get("name")
+            if not isinstance(name, str) or not name:
+                tool_call_id = m.get("tool_call_id") or m.get("tool_callid")
+                if isinstance(tool_call_id, str) and tool_call_id:
+                    name = tool_call_id_to_name.get(tool_call_id)
+            if not isinstance(name, str) or not name:
+                name = "tool"
             text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
             ollama_messages.append({"role": "user", "content": f"[tool_result:{name}] {text}"})
     model = request.model or model_name
