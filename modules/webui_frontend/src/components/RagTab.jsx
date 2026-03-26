@@ -12,6 +12,9 @@ import {
   checkRagTrigger,
   getRagFrameworkSettings,
   updateRagFrameworkSettings,
+  getModels,
+  getRagModelSettings,
+  updateRagModelSettings,
 } from '../services/api';
 import './RagTab.css';
 
@@ -39,7 +42,7 @@ function capitalize(word) {
   return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }
 
-function RagTab() {
+function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [collections, setCollections] = useState([]);
@@ -63,6 +66,56 @@ function RagTab() {
   const [frameworkSettings, setFrameworkSettings] = useState(null);
   const [frameworkTtlDraft, setFrameworkTtlDraft] = useState('');
   const [frameworkSettingsSaving, setFrameworkSettingsSaving] = useState(false);
+
+  const [models, setModels] = useState([]);
+  const [ragModelSettings, setRagModelSettings] = useState({
+    rag_embed_model: '',
+    rerank_for_rag: false,
+    rerank_model: '',
+  });
+  const [ragModelDefaults, setRagModelDefaults] = useState({
+    rag_embed_model: 'bge-large',
+    rerank_model: 'bbjson/bge-reranker-base',
+  });
+  const [ragModelSaving, setRagModelSaving] = useState(false);
+  const [ragModelSaveNotice, setRagModelSaveNotice] = useState(null);
+
+  useEffect(() => {
+    if (!scrollToModelsSection) return undefined;
+    const id = window.setTimeout(() => {
+      const el = document.getElementById('rag-qdrant-models-section');
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      onModelsSectionScrolled?.();
+    }, 50);
+    return () => window.clearTimeout(id);
+  }, [scrollToModelsSection, onModelsSectionScrolled]);
+
+  const loadModels = useCallback(async () => {
+    try {
+      // getModels() returns the models array directly (not { models: [...] })
+      const list = await getModels();
+      setModels(Array.isArray(list) ? list : []);
+    } catch (e) {
+      setError(e.message);
+    }
+  }, []);
+
+  const loadRagModelSettings = useCallback(async () => {
+    try {
+      const data = await getRagModelSettings();
+      setRagModelDefaults({
+        rag_embed_model: (data?.defaults?.rag_embed_model || 'bge-large').trim() || 'bge-large',
+        rerank_model: (data?.defaults?.rerank_model || 'bbjson/bge-reranker-base').trim() || 'bbjson/bge-reranker-base',
+      });
+      setRagModelSettings({
+        rag_embed_model: data?.rag_embed_model || '',
+        rerank_for_rag: Boolean(data?.rerank_for_rag),
+        rerank_model: data?.rerank_model || '',
+      });
+    } catch (e) {
+      setError(e.message);
+    }
+  }, []);
 
   const loadStatus = async () => {
     setLoading(true);
@@ -121,7 +174,9 @@ function RagTab() {
     loadKeywordCollections();
     loadTriggerSettings();
     loadFrameworkSettings();
-  }, [loadKeywordCollections, loadTriggerSettings, loadFrameworkSettings]);
+    loadModels();
+    loadRagModelSettings();
+  }, [loadKeywordCollections, loadTriggerSettings, loadFrameworkSettings, loadModels, loadRagModelSettings]);
 
   const handleStart = async () => {
     setBusy(true);
@@ -196,6 +251,27 @@ function RagTab() {
       setError(e.message);
     } finally {
       setFrameworkSettingsSaving(false);
+    }
+  };
+
+  const handleSaveRagModelSettings = async () => {
+    setRagModelSaving(true);
+    setRagModelSaveNotice(null);
+    setError(null);
+    try {
+      await updateRagModelSettings({
+        rag_embed_model: ragModelSettings.rag_embed_model || '',
+        rerank_for_rag: Boolean(ragModelSettings.rerank_for_rag),
+        rerank_model: ragModelSettings.rerank_model || '',
+      });
+      await loadRagModelSettings();
+      setRagModelSaveNotice({ type: 'success', text: 'Models saved. Values below match the server.' });
+      window.setTimeout(() => setRagModelSaveNotice(null), 6000);
+    } catch (e) {
+      setRagModelSaveNotice({ type: 'error', text: e.message || 'Save failed' });
+      setError(e.message);
+    } finally {
+      setRagModelSaving(false);
     }
   };
 
@@ -571,6 +647,114 @@ function RagTab() {
           Value 1–3650 days. Controls when Alamofire_x.m.n_latest and similar collections will be refreshed from
           GitHub (default 90 days).
         </p>
+      </div>
+
+      <div
+        id="rag-qdrant-models-section"
+        className="rag-trigger-card"
+        aria-label="RAG embedding and rerank model settings"
+      >
+        <h3 className="rag-trigger-card-title">Models for RAG / Qdrant</h3>
+        <p className="rag-trigger-card-description">
+          Embedding model affects how chunks are encoded into Qdrant. Rerank affects how retrieved chunks are ordered
+          before they go into the final prompt.
+        </p>
+
+        <div className="rag-trigger-test" style={{ borderTop: 'none', paddingTop: 0 }}>
+          <h4 className="rag-trigger-test-title" style={{ marginBottom: 8 }}>Embedding model (index + query)</h4>
+          <div className="rag-trigger-threshold-row">
+            <label className="rag-trigger-label" htmlFor="rag-embed-model">Model</label>
+            <select
+              id="rag-embed-model"
+              className="rag-trigger-input"
+              value={ragModelSettings.rag_embed_model}
+              onChange={(e) => setRagModelSettings((prev) => ({ ...prev, rag_embed_model: e.target.value }))}
+              disabled={!models.length}
+            >
+              <option value="">
+                Server default ({ragModelDefaults.rag_embed_model})
+              </option>
+              {ragModelSettings.rag_embed_model &&
+                !models.some((m) => m.id === ragModelSettings.rag_embed_model) && (
+                  <option value={ragModelSettings.rag_embed_model}>
+                    {ragModelSettings.rag_embed_model} (saved — not in current Ollama list)
+                  </option>
+                )}
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+          <p className="rag-trigger-hint" style={{ marginTop: 0 }}>
+            Empty selection uses the server default above (from env <code>RAG_EMBED_MODEL</code> or built-in fallback).
+            If you change the embedding model, you typically need to re-create Qdrant collections (vector dimension may
+            differ).
+          </p>
+
+          <div style={{ height: 12 }} />
+
+          <h4 className="rag-trigger-test-title" style={{ marginBottom: 8 }}>Rerank for RAG</h4>
+          <div className="rag-trigger-threshold-row">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={ragModelSettings.rerank_for_rag}
+                onChange={(e) => setRagModelSettings((prev) => ({ ...prev, rerank_for_rag: e.target.checked }))}
+              />
+              Enabled
+            </label>
+          </div>
+
+          <div className="rag-trigger-threshold-row">
+            <label className="rag-trigger-label" htmlFor="rag-rerank-model">Rerank model</label>
+            <select
+              id="rag-rerank-model"
+              className="rag-trigger-input"
+              value={ragModelSettings.rerank_model}
+              onChange={(e) => setRagModelSettings((prev) => ({ ...prev, rerank_model: e.target.value }))}
+              disabled={!models.length}
+            >
+              <option value="">
+                Server default ({ragModelDefaults.rerank_model}) — used when rerank is enabled and no model is chosen
+              </option>
+              {ragModelSettings.rerank_model &&
+                !models.some((m) => m.id === ragModelSettings.rerank_model) && (
+                  <option value={ragModelSettings.rerank_model}>
+                    {ragModelSettings.rerank_model} (saved — not in current Ollama list)
+                  </option>
+                )}
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <p className="rag-trigger-hint" style={{ marginTop: 0 }}>
+            You can pick a rerank model even when Enabled is off; it is used only after you turn rerank on. Enabled
+            rerank improves quality but slows down requests — prefer a dedicated (smaller) rerank model.
+          </p>
+
+          <div style={{ marginTop: 12 }}>
+            <button
+              type="button"
+              className="rag-button primary"
+              onClick={handleSaveRagModelSettings}
+              disabled={ragModelSaving || busy}
+            >
+              {ragModelSaving ? 'Saving…' : 'Save Models'}
+            </button>
+            {ragModelSaveNotice?.type === 'success' && (
+              <p className="rag-model-save-notice rag-model-save-notice--success" role="status">
+                {ragModelSaveNotice.text}
+              </p>
+            )}
+            {ragModelSaveNotice?.type === 'error' && (
+              <p className="rag-model-save-notice rag-model-save-notice--error" role="alert">
+                {ragModelSaveNotice.text}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
 
       {error && <div className="rag-error">Error: {error}</div>}

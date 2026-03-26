@@ -1,3 +1,6 @@
+# Legacy convenience list. Primary dependency declarations live in the repository root
+# pyproject.toml (`pip install -e .` from project root). Use that for a consistent venv.
+
 # RAG pipeline + crawl
 flask
 requests

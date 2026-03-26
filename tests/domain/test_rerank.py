@@ -9,9 +9,11 @@ import pytest
 from domain.services.rerank import (
     apply_rerank_scores_and_cut,
     build_rerank_prompt,
+    extract_candidates_from_rerank_prompt,
     parse_rerank_order,
     reorder_hits_by_indices,
     shorten_for_rerank,
+    native_rerank_response_to_order,
 )
 
 
@@ -55,6 +57,43 @@ class TestParseRerankOrder:
 
     def test_returns_none_for_non_list(self) -> None:
         assert parse_rerank_order('{"a": 1}') is None
+
+
+class TestExtractCandidatesFromRerankPrompt:
+    def test_extracts_numbered_snippets(self) -> None:
+        prompt = build_rerank_prompt("Q?", [(1, "text1"), (2, "text2")])
+        out = extract_candidates_from_rerank_prompt(prompt)
+        assert out == [(1, "text1"), (2, "text2")]
+
+    def test_empty_prompt_returns_empty_list(self) -> None:
+        assert extract_candidates_from_rerank_prompt("") == []
+
+
+class TestNativeRerankResponseToOrder:
+    def test_orders_documents_by_results_sequence(self) -> None:
+        raw = {
+            "results": [
+                {"document": "IDX2: text2", "relevance_score": 0.9},
+                {"document": "IDX1: text1", "relevance_score": 0.8},
+            ]
+        }
+        out = native_rerank_response_to_order(raw)
+        assert out == [2, 1]
+
+    def test_deduplicates_indices(self) -> None:
+        raw = {
+            "results": [
+                {"document": "IDX1: text1", "relevance_score": 0.9},
+                {"document": "IDX1: text1", "relevance_score": 0.8},
+                {"document": "IDX2: text2", "relevance_score": 0.7},
+            ]
+        }
+        out = native_rerank_response_to_order(raw)
+        assert out == [1, 2]
+
+    def test_returns_none_on_invalid_shape(self) -> None:
+        assert native_rerank_response_to_order({}) is None
+        assert native_rerank_response_to_order({"results": "not-a-list"}) is None
 
 
 class TestReorderHitsByIndices:

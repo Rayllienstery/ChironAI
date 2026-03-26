@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import pytest
 
-from application.rag.use_cases import build_rag_context, search_rag
-from domain.entities.rag import RagContext
+from application.rag.use_cases import build_rag_context, prepare_ollama_messages, search_rag
+from domain.entities.rag import RagContext, RagQuestionRequest
 
 
 class MockRagRepo:
@@ -139,3 +139,43 @@ def test_search_rag_returns_list() -> None:
         and "embed_tokens_in" in timings
         and "rerank_prompt_tokens_in" in timings
     )
+
+
+def test_prepare_ollama_messages_keeps_tool_cycle_context() -> None:
+    req = RagQuestionRequest(
+        messages=[
+            {"role": "user", "content": "Please edit file"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "apply_file_edit", "arguments": '{"file_path":"a.py"}'},
+                    }
+                ],
+            },
+            {"role": "tool", "name": "apply_file_edit", "content": '{"ok":true}'},
+        ],
+        model="rag-ollama",
+        stream=False,
+        reasoning_level=None,
+    )
+    msgs, model = prepare_ollama_messages(
+        req,
+        MockRagRepo(),
+        MockEmbed(),
+        None,
+        "prefix",
+        "suffix",
+        500,
+        2000,
+        0.0,
+        "model-x",
+        rag_context=RagContext("", [], 0.0),
+    )
+    joined = "\n".join(m.get("content", "") for m in msgs if isinstance(m, dict))
+    assert "[tool_call:apply_file_edit]" in joined
+    assert "[tool_result:apply_file_edit]" in joined
+    assert model == "rag-ollama"

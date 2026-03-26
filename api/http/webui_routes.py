@@ -40,7 +40,7 @@ _MODULES_EXT_RAG = os.path.join(_ROOT, "modules", "external_docs_rag")
 if _MODULES_EXT_RAG not in sys.path:
     sys.path.insert(0, _MODULES_EXT_RAG)
 
-from application.container import default_rerank_client
+from application.container import default_embed_provider, default_rerank_client
 from application.rag.collection_freshness import check_collection_freshness
 from application.rag.params import RAGDependencies, get_rag_answer_params
 from application.rag.use_cases import build_rag_context, prepare_ollama_messages
@@ -178,6 +178,13 @@ from api.http.proxy_status import (
 from api.http.proxy_trace import get_current_trace, get_current_trace_updated_at
 
 import requests
+
+from infrastructure.ollama.cli_runner import (
+    OllamaInteractorCliError,
+    invoke_embed,
+    invoke_ping,
+    invoke_tags,
+)
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import VectorParams, Distance, PointStruct, PointIdsList, PayloadSchemaType
 from qdrant_client.http.exceptions import ResponseHandlingException
@@ -239,6 +246,38 @@ _ERROR_LOG = get_webui_error_logger()
 webui_bp = Blueprint("webui", __name__, url_prefix="/api/webui")
 
 
+def _ensure_servicestarter_on_path() -> None:
+    """Best-effort: add CoreModules/ServiceStarter to sys.path for source checkout runs."""
+    candidate = os.path.join(_ROOT, "CoreModules", "ServiceStarter")
+    if os.path.isdir(candidate) and candidate not in sys.path:
+        sys.path.insert(0, candidate)
+
+
+def _webui_service_starter():
+    """ServiceStarter (CoreModules/ServiceStarter); install via pip -e CoreModules/ServiceStarter."""
+    try:
+        from servicestarter.engine import ServiceStarter
+    except ModuleNotFoundError:
+        _ensure_servicestarter_on_path()
+        from servicestarter.engine import ServiceStarter
+
+    return ServiceStarter()
+
+
+def _get_ollama_url() -> str:
+    """Ollama HTTP base URL for WebUI: ServiceStarter env defaults if package available."""
+    try:
+        try:
+            from servicestarter.config import ServiceStarterConfig
+        except ModuleNotFoundError:
+            _ensure_servicestarter_on_path()
+            from servicestarter.config import ServiceStarterConfig
+
+        return ServiceStarterConfig.from_env().ollama_base_url.rstrip("/")
+    except Exception:
+        return (os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
+
+
 _INDEXER_APP_MODULE = None
 
 
@@ -269,26 +308,22 @@ def get_models() -> Any:
     """Return list of available models from Ollama."""
     try:
         ollama_url = _get_ollama_url()
-        tags_url = f"{ollama_url}/api/tags"
-        
         models_list = []
         
-        # Try to get models from Ollama
+        # Try to get models from Ollama (via OllamaInteractor CLI)
         try:
-            resp = requests.get(tags_url, timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                ollama_models = data.get("models", [])
-                for model in ollama_models:
-                    model_name = model.get("name", "")
-                    if model_name:
-                        models_list.append({
-                            "id": model_name,
-                            "name": model_name,
-                            "description": f"Ollama model: {model_name}",
-                            "size": model.get("size", 0),
-                            "modified_at": model.get("modified_at", ""),
-                        })
+            data = invoke_tags(base_url=ollama_url.rstrip("/"), timeout=5.0)
+            ollama_models = data.get("models", [])
+            for model in ollama_models:
+                model_name = model.get("name", "")
+                if model_name:
+                    models_list.append({
+                        "id": model_name,
+                        "name": model_name,
+                        "description": f"Ollama model: {model_name}",
+                        "size": model.get("size", 0),
+                        "modified_at": model.get("modified_at", ""),
+                    })
         except Exception as e:
             _WEBUI_LOG.warning(f"Failed to fetch Ollama models: {e}")
             # Fallback to config model if Ollama is not available
@@ -846,6 +881,17 @@ def webui_chat() -> Any:
         embed_provider = deps.embed_provider
         rerank_client = deps.rerank_client
         chat_client = deps.chat_client
+
+        # Override embedding model per WebUI app_settings (rag_embed_model).
+        # This is important because get_rag_answer_params() wires embed_provider at startup via env only.
+        try:
+            settings_repo = get_settings_repository()
+            selected_embed_model = (settings_repo.get_app_setting("rag_embed_model") or "").strip()
+        except Exception:
+            selected_embed_model = ""
+        if not selected_embed_model:
+            selected_embed_model = os.getenv("RAG_EMBED_MODEL", "bge-large")
+        embed_provider = default_embed_provider(model=selected_embed_model)
         
         # Rerank on/off and model from model settings (default off)
         use_rerank = False
@@ -1043,6 +1089,8 @@ def get_model_settings() -> Any:
             "reasoning_level": "",
             "code_only": False,
             "include_rag_metadata": True,
+            "fetch_web_knowledge": False,
+            "rag_collection": (settings_repo.get_app_setting("rag_collection") or "").strip(),
             "rerank_for_rag": False,
             "rerank_model": get_ollama_rerank_model(),
         }
@@ -1069,6 +1117,8 @@ def update_model_settings() -> Any:
         settings_repo = get_settings_repository()
         if body.get("model") is not None:
             settings_repo.set_app_setting("proxy_model", str(body["model"]))
+        if body.get("rag_collection") is not None:
+            settings_repo.set_app_setting("rag_collection", str(body.get("rag_collection") or "").strip())
         settings_repo.set_app_setting("proxy_settings", json.dumps(body))
         return jsonify({"status": "ok", "settings": body})
     except Exception as e:
@@ -1201,6 +1251,13 @@ def tester_chat() -> Any:
             rag_repo = deps.rag_repo
             embed_provider = deps.embed_provider
             rerank_client = deps.rerank_client
+
+            # Override embedding model per WebUI app_settings (rag_embed_model).
+            selected_embed_model = (settings_repo.get_app_setting("rag_embed_model") or "").strip()
+            if not selected_embed_model:
+                selected_embed_model = os.getenv("RAG_EMBED_MODEL", "bge-large")
+            embed_provider = default_embed_provider(model=selected_embed_model)
+
             # Rerank on/off and model from model settings (default off)
             use_rerank_tester = False
             rerank_model_tester: str | None = None
@@ -1778,6 +1835,100 @@ def update_rag_framework_settings() -> Any:
         return jsonify({"error": str(e)}), 500
 
 
+@webui_bp.route("/rag-model-settings", methods=["GET"])
+def get_rag_model_settings() -> Any:
+    """Return embedding + rerank model settings for RAG/Qdrant UI."""
+    try:
+        settings_repo = get_settings_repository()
+
+        default_embed_model = os.getenv("RAG_EMBED_MODEL", "bge-large")
+        default_rerank_model = os.getenv("OLLAMA_RERANK_MODEL", "bbjson/bge-reranker-base")
+
+        raw_embed_model = settings_repo.get_app_setting("rag_embed_model")
+        rag_embed_model = (raw_embed_model or "").strip()
+
+        proxy_settings_json = settings_repo.get_app_setting("proxy_settings")
+        proxy_settings: dict[str, Any] = {}
+        if proxy_settings_json:
+            try:
+                proxy_settings = json.loads(proxy_settings_json) or {}
+            except json.JSONDecodeError:
+                proxy_settings = {}
+
+        rerank_for_rag = bool(proxy_settings.get("rerank_for_rag", False))
+        raw_rerank_model = (proxy_settings.get("rerank_model") or "").strip()
+        # For UI convenience, if rerank is enabled but model missing, show default.
+        rerank_model = raw_rerank_model if raw_rerank_model else (default_rerank_model if rerank_for_rag else "")
+
+        return jsonify(
+            {
+                "rag_embed_model": rag_embed_model,
+                "rerank_for_rag": rerank_for_rag,
+                "rerank_model": rerank_model,
+                "defaults": {
+                    "rag_embed_model": default_embed_model,
+                    "rerank_model": default_rerank_model,
+                },
+            }
+        )
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_rag_model_settings", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/rag-model-settings", methods=["POST"])
+def update_rag_model_settings() -> Any:
+    """Persist embedding + rerank model settings for RAG/Qdrant UI."""
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        settings_repo = get_settings_repository()
+
+        default_rerank_model = os.getenv("OLLAMA_RERANK_MODEL", "bbjson/bge-reranker-base")
+
+        rag_embed_model = str(body.get("rag_embed_model") or "").strip()
+        settings_repo.set_app_setting("rag_embed_model", rag_embed_model)
+
+        rerank_for_rag = bool(body.get("rerank_for_rag", False))
+        rerank_model = str(body.get("rerank_model") or "").strip()
+
+        proxy_settings_json = settings_repo.get_app_setting("proxy_settings")
+        proxy_settings: dict[str, Any] = {}
+        if proxy_settings_json:
+            try:
+                proxy_settings = json.loads(proxy_settings_json) or {}
+            except json.JSONDecodeError:
+                proxy_settings = {}
+
+        proxy_settings["rerank_for_rag"] = rerank_for_rag
+
+        # When enabled, default to a known-good reranker if user chose "Default".
+        if rerank_for_rag:
+            proxy_settings["rerank_model"] = rerank_model or default_rerank_model
+        else:
+            # Keep existing rerank_model if present; it's irrelevant when rerank_for_rag is false.
+            if rerank_model:
+                proxy_settings["rerank_model"] = rerank_model
+
+        settings_repo.set_app_setting("proxy_settings", json.dumps(proxy_settings))
+
+        default_embed_model = os.getenv("RAG_EMBED_MODEL", "bge-large")
+        return jsonify(
+            {
+                "status": "ok",
+                "rag_embed_model": rag_embed_model,
+                "rerank_for_rag": rerank_for_rag,
+                "rerank_model": proxy_settings.get("rerank_model") or "",
+                "defaults": {
+                    "rag_embed_model": default_embed_model,
+                    "rerank_model": default_rerank_model,
+                },
+            }
+        )
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.update_rag_model_settings", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @webui_bp.route("/rag-trigger-test", methods=["POST"])
 def rag_trigger_test() -> Any:
     """Check if a message would trigger RAG: returns score, signals, and triggered (score >= threshold)."""
@@ -1881,8 +2032,8 @@ def dashboard_metrics() -> Any:
         payload["rag"] = {"running": False, "collections_count": 0}
     url_o = _get_ollama_url().rstrip("/")
     try:
-        r = requests.get(f"{url_o}/api/tags", timeout=3)
-        payload["ollama"] = {"running": r.ok}
+        ping_o = invoke_ping(base_url=url_o, timeout=3.0)
+        payload["ollama"] = {"running": bool(ping_o.get("ok"))}
     except Exception:
         payload["ollama"] = {"running": False}
     payload["gpu"] = _get_gpu_metrics()
@@ -2053,189 +2204,152 @@ def save_rag_collection_settings() -> Any:
         return jsonify({"error": str(e)}), 500
 
 
-def _run_docker_command(args: list[str]) -> tuple[bool, str]:
-    """Helper to run docker commands (best-effort, may fail safely)."""
-    try:
-        proc = run(
-            ["docker", *args],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        ok = proc.returncode == 0
-        output = proc.stdout.strip() or proc.stderr.strip()
-        return ok, output
-    except Exception as e:
-        return False, str(e)
-
-
-def _get_qdrant_container_name() -> str:
-    return os.getenv("QDRANT_CONTAINER_NAME", "qdrant")
-
-
 @webui_bp.route("/rag/start", methods=["POST"])
 def rag_start() -> Any:
-    """Try to start Qdrant Docker container."""
-    name = _get_qdrant_container_name()
-    ok, output = _run_docker_command(["start", name])
-    status = 200 if ok else 500
-    return jsonify({"ok": ok, "output": output, "container": name}), status
+    """Try to start Qdrant Docker container (ServiceStarter: ensures Docker + pull/run/start)."""
+    try:
+        ss = _webui_service_starter()
+        ok, output = ss.start_qdrant()
+        name = ss.cfg.qdrant_container_name
+        status = 200 if ok else 500
+        return jsonify({"ok": ok, "output": output, "container": name}), status
+    except Exception as e:
+        _WEBUI_LOG.error("rag_start: %s", e, exc_info=True)
+        return jsonify({"ok": False, "output": str(e), "container": os.getenv("QDRANT_CONTAINER_NAME", "qdrant")}), 500
 
 
 @webui_bp.route("/rag/stop", methods=["POST"])
 def rag_stop() -> Any:
     """Try to stop Qdrant Docker container."""
-    name = _get_qdrant_container_name()
-    ok, output = _run_docker_command(["stop", name])
-    status = 200 if ok else 500
-    return jsonify({"ok": ok, "output": output, "container": name}), status
-
-
-def _get_open_webui_container_name() -> str:
-    return os.getenv("OPEN_WEBUI_CONTAINER_NAME", "open-webui")
-
-
-def _get_open_webui_url() -> str:
-    return os.getenv("OPEN_WEBUI_URL", "http://localhost:3000").rstrip("/")
-
-
-def _is_open_webui_container_running() -> bool:
-    """Return True if a Docker container whose name matches OPEN_WEBUI_CONTAINER_NAME is running (docker ps)."""
-    name = _get_open_webui_container_name()
     try:
-        # --filter name=NAME matches if container name contains NAME (e.g. "open-webui" or "open-webui-open-webui-1")
-        proc = run(
-            ["docker", "ps", "--filter", f"name={name}", "--format", "{{.Names}}"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-        if proc.returncode != 0:
-            return False
-        out = (proc.stdout or "").strip()
-        # One or more lines; accept if our name appears (exact or as part of compose-style name)
-        if not out:
-            return False
-        for line in out.splitlines():
-            line = line.strip()
-            if line == name or name in line or line.endswith(name):
-                return True
-        return False
-    except Exception:
-        return False
+        ss = _webui_service_starter()
+        name = ss.cfg.qdrant_container_name
+        ok, output = ss.stop_qdrant()
+        status = 200 if ok else 500
+        return jsonify({"ok": ok, "output": output, "container": name}), status
+    except Exception as e:
+        _WEBUI_LOG.error("rag_stop: %s", e, exc_info=True)
+        return jsonify({"ok": False, "output": str(e), "container": os.getenv("QDRANT_CONTAINER_NAME", "qdrant")}), 500
 
 
 def open_webui_status() -> Any:
     """Return Open WebUI status from Docker: running if container matching OPEN_WEBUI_CONTAINER_NAME is up."""
-    url = _get_open_webui_url()
-    status: dict[str, Any] = {"url": url, "running": False}
-    if _is_open_webui_container_running():
-        status["running"] = True
-        status["detected_by"] = "docker"
     try:
-        resp = requests.get(url, timeout=2)
-        status["http_status"] = resp.status_code
+        ss = _webui_service_starter()
+        st = ss.status()["open_webui"]
+        url = st["url"]
+        status: dict[str, Any] = {"url": url, "running": bool(st.get("running"))}
+        if st.get("running"):
+            status["detected_by"] = "docker"
+        if st.get("http_status") is not None:
+            status["http_status"] = st["http_status"]
+        if st.get("http_error"):
+            status["http_error"] = st["http_error"]
+        try:
+            resp = requests.get(url, timeout=2)
+            status["http_status"] = resp.status_code
+        except Exception as e:
+            status["http_error"] = str(e)
+        return jsonify(status)
     except Exception as e:
-        status["http_error"] = str(e)
-    return jsonify(status)
+        _WEBUI_LOG.warning("open_webui_status: %s", e)
+        u = os.getenv("OPEN_WEBUI_URL", "http://localhost:3000").rstrip("/")
+        return jsonify({"url": u, "running": False, "error": str(e)})
 
 
 def open_webui_start() -> Any:
     """Try to start Open WebUI Docker container."""
-    name = _get_open_webui_container_name()
-    ok, output = _run_docker_command(["start", name])
-    status = 200 if ok else 500
-    return jsonify({"ok": ok, "output": output, "container": name}), status
+    try:
+        ss = _webui_service_starter()
+        name = ss.cfg.open_webui_container_name
+        ok, output = ss.start_open_webui()
+        status = 200 if ok else 500
+        return jsonify({"ok": ok, "output": output, "container": name}), status
+    except Exception as e:
+        _WEBUI_LOG.error("open_webui_start: %s", e, exc_info=True)
+        return jsonify(
+            {"ok": False, "output": str(e), "container": os.getenv("OPEN_WEBUI_CONTAINER_NAME", "open-webui")}
+        ), 500
 
 
 def open_webui_stop() -> Any:
     """Try to stop Open WebUI Docker container."""
-    name = _get_open_webui_container_name()
-    ok, output = _run_docker_command(["stop", name])
-    status = 200 if ok else 500
-    return jsonify({"ok": ok, "output": output, "container": name}), status
-
-
-def _get_ollama_url() -> str:
-    return os.getenv("OLLAMA_URL", "http://localhost:11434")
+    try:
+        ss = _webui_service_starter()
+        name = ss.cfg.open_webui_container_name
+        ok, output = ss.stop_open_webui()
+        status = 200 if ok else 500
+        return jsonify({"ok": ok, "output": output, "container": name}), status
+    except Exception as e:
+        _WEBUI_LOG.error("open_webui_stop: %s", e, exc_info=True)
+        return jsonify(
+            {"ok": False, "output": str(e), "container": os.getenv("OPEN_WEBUI_CONTAINER_NAME", "open-webui")}
+        ), 500
 
 
 @webui_bp.route("/ollama/status", methods=["GET"])
 def ollama_status() -> Any:
-    """Check if Ollama server is reachable on port 11434 (or OLLAMA_URL)."""
-    url = _get_ollama_url().rstrip("/")
-    status: dict[str, Any] = {"url": url, "running": False}
+    """Check if Ollama server is reachable (ServiceStarter / OLLAMA_BASE_URL default port 11343)."""
     try:
-        resp = requests.get(f"{url}/api/tags", timeout=3)
-        status["http_status"] = resp.status_code
-        if resp.ok:
-            status["running"] = True
+        ss = _webui_service_starter()
+        o = ss.status()["ollama"]
+        url = o["url"]
+        status: dict[str, Any] = {"url": url, "running": bool(o.get("running"))}
+        if o.get("http_status") is not None:
+            status["http_status"] = int(o["http_status"] or 0)
+        if o.get("error"):
+            status["error"] = o["error"]
+        return jsonify(status)
     except Exception as e:
-        status["error"] = str(e)
-        _WEBUI_LOG.warning(f"Failed to get Ollama status: {e}")
-    return jsonify(status)
-
-
-def _start_ollama_process() -> tuple[bool, str]:
-    """Best-effort start of ollama serve as background process."""
-    try:
-        # Cross-platform detached process
-        kwargs: dict[str, Any] = {"stdout": None, "stderr": None}
-        if os.name == "nt":
-            # Windows: DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-            kwargs["creationflags"] = 0x00000008 | 0x00000200
-        else:
-            kwargs["start_new_session"] = True
-        Popen(["ollama", "serve"], **kwargs)
-        return True, "ollama serve started"
-    except Exception as e:
-        return False, str(e)
-
-
-def _stop_ollama_process() -> tuple[bool, str]:
-    """
-    Best-effort stop of Ollama server.
-
-    On Windows uses taskkill; on POSIX uses pkill. If commands are not available,
-    this will fail gracefully.
-    """
-    try:
-        if os.name == "nt":
-            proc = run(
-                ["taskkill", "/IM", "ollama.exe", "/F"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        else:
-            proc = run(
-                ["pkill", "-f", "ollama"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        ok = proc.returncode == 0
-        output = proc.stdout.strip() or proc.stderr.strip()
-        return ok, output or "ok" if ok else "failed"
-    except Exception as e:
-        return False, str(e)
+        # Fallback: direct ping via OllamaInteractor so UI still works if ServiceStarter is unavailable.
+        url = _get_ollama_url().rstrip("/")
+        status: dict[str, Any] = {"url": url, "running": False, "error": str(e)}
+        try:
+            ping_o = invoke_ping(base_url=url, timeout=3.0)
+            status["http_status"] = int(ping_o.get("status_code") or 0)
+            if ping_o.get("ok"):
+                status["running"] = True
+                status.pop("error", None)
+        except Exception:
+            pass
+        _WEBUI_LOG.warning("Failed to get Ollama status via ServiceStarter: %s", e)
+        return jsonify(status)
 
 
 @webui_bp.route("/ollama/start", methods=["POST"])
 def ollama_start() -> Any:
-    """Try to start Ollama server (ollama serve)."""
-    ok, output = _start_ollama_process()
-    status = 200 if ok else 500
-    return jsonify({"ok": ok, "output": output}), status
+    """Try to start Ollama server (best-effort install on Windows, then ollama serve)."""
+    try:
+        ss = _webui_service_starter()
+        ok_i, out_i = ss.ensure_ollama_installed()
+        if not ok_i:
+            return jsonify({"ok": False, "output": out_i}), 500
+        ok, output = ss.start_ollama()
+        status = 200 if ok else 500
+        return jsonify({"ok": ok, "output": output}), status
+    except Exception as e:
+        # If ServiceStarter import/setup failed but Ollama is already alive, report success.
+        try:
+            ping_o = invoke_ping(base_url=_get_ollama_url().rstrip("/"), timeout=3.0)
+            if ping_o.get("ok"):
+                return jsonify({"ok": True, "output": "Ollama already running"}), 200
+        except Exception:
+            pass
+        _WEBUI_LOG.error("ollama_start: %s", e, exc_info=True)
+        return jsonify({"ok": False, "output": str(e)}), 500
 
 
 @webui_bp.route("/ollama/stop", methods=["POST"])
 def ollama_stop() -> Any:
     """Try to stop Ollama server process."""
-    ok, output = _stop_ollama_process()
-    status = 200 if ok else 500
-    return jsonify({"ok": ok, "output": output}), status
+    try:
+        ss = _webui_service_starter()
+        ok, output = ss.stop_ollama()
+        status = 200 if ok else 500
+        return jsonify({"ok": ok, "output": output}), status
+    except Exception as e:
+        _WEBUI_LOG.error("ollama_stop: %s", e, exc_info=True)
+        return jsonify({"ok": False, "output": str(e)}), 500
 
 
 def _shutdown_server() -> None:
@@ -2357,16 +2471,28 @@ def _get_embeddings_simple(texts: list[str]) -> list[list[float]]:
         return []
     
     embed_url = get_ollama_embed_url()
-    embed_model = os.getenv("RAG_EMBED_MODEL", "mxbai-embed-large")
+    try:
+        settings_repo = get_settings_repository()
+        raw = settings_repo.get_app_setting("rag_embed_model")
+        rag_embed_model = (raw or "").strip()
+    except Exception:
+        rag_embed_model = ""
+
+    # Fallback order:
+    # 1) app_settings.rag_embed_model (set from WebUI)
+    # 2) env RAG_EMBED_MODEL
+    # 3) hard default
+    embed_model = rag_embed_model or os.getenv("RAG_EMBED_MODEL", "bge-large")
     
     try:
-        response = requests.post(
-            embed_url,
-            json={"model": embed_model, "input": texts},
-            timeout=300,
+        data = invoke_embed(
+            {
+                "url": embed_url,
+                "json": {"model": embed_model, "input": texts},
+                "timeout": 300,
+            },
+            default_timeout=300,
         )
-        response.raise_for_status()
-        data = response.json()
         embeddings = data.get("embeddings", [])
         if len(embeddings) != len(texts):
             raise ValueError(f"Expected {len(texts)} embeddings, got {len(embeddings)}")

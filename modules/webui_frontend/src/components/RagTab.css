@@ -462,21 +462,50 @@
   align-items: center;
   gap: var(--md-sys-spacing-sm);
   margin-bottom: 4px;
+  width: 100%;
+  max-width: 100%;
 }
 
 .rag-trigger-label {
+  flex-shrink: 0;
   font: var(--md-sys-typescale-label-medium-font);
   color: var(--md-sys-color-on-surface);
 }
 
 .rag-trigger-input {
-  width: 64px;
   padding: 6px 10px;
   border-radius: var(--md-sys-shape-corner-small);
   border: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface-variant);
   color: var(--md-sys-color-on-surface);
   font: var(--md-sys-typescale-body-medium-font);
+}
+
+/* Narrow numeric fields (threshold, TTL); full width for model <select> */
+.rag-trigger-input[type='number'] {
+  width: 64px;
+  flex: 0 0 auto;
+}
+
+.rag-trigger-threshold-row select.rag-trigger-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  max-width: 100%;
+  min-height: 36px;
+}
+
+.rag-model-save-notice {
+  margin: var(--md-sys-spacing-sm) 0 0 0;
+  font: var(--md-sys-typescale-body-small-font);
+}
+
+.rag-model-save-notice--success {
+  color: var(--md-sys-color-primary);
+}
+
+.rag-model-save-notice--error {
+  color: var(--md-sys-color-error, #f2b8b5);
 }
 
 .rag-trigger-hint {

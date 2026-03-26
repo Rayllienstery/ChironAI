@@ -10,13 +10,14 @@ export async function getSession() {
   return response.json();
 }
 
+/** @returns {Promise<Array<{ id: string, name: string }>>} models array (not wrapped in { models }) */
 export async function getModels() {
   const response = await fetch(`${API_BASE}/models`);
   if (!response.ok) {
     throw new Error('Failed to get models');
   }
   const data = await response.json();
-  return data.models;
+  return data.models ?? [];
 }
 
 export async function getPrompts() {
@@ -227,6 +228,31 @@ export async function updateRagTriggerSettings(settings) {
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || 'Failed to update RAG trigger settings');
+  }
+  return response.json();
+}
+
+export async function getRagModelSettings() {
+  const response = await fetch(`${API_BASE}/rag-model-settings`, {
+    method: 'GET',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to get RAG model settings');
+  }
+  return response.json();
+}
+
+export async function updateRagModelSettings(settings) {
+  const response = await fetch(`${API_BASE}/rag-model-settings`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(settings),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to update RAG model settings');
   }
   return response.json();
 }

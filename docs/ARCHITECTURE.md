@@ -43,6 +43,8 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
+Configuration lives in **`pyproject.toml`** (`[tool.pytest.ini_options]`), including `pythonpath` entries for `modules/rag_service`, `modules/md_ingestion_service`, and `modules/crawler_service`.
+
 Coverage report for domain and application:
 
 ```bash
@@ -50,6 +52,16 @@ pytest tests/ --cov=domain --cov=application --cov-report=term-missing
 ```
 
 Domain and application tests use mocks; API tests use Flask test client with wired use cases.
+
+## Python packaging (monorepo)
+
+The repository root is an installable project **`chironai`** ([`pyproject.toml`](../pyproject.toml)):
+
+- **Editable install**: `pip install -e ".[dev]"` installs top-level packages (`application`, `api`, `config`, `core`, `domain`, `infrastructure`, `utils`) and console scripts `tmrag` / `chironai`.
+- **`modules/*`**: treated as separate subtrees (many already ship their own README / layout). They are on `sys.path` for tests via pytest `pythonpath`, not necessarily part of the `chironai` distribution—add them to setuptools `packages.find` only if you want a single wheel to include everything.
+- **`CoreModules/OllamaInteractor`**: separate distribution `ollama-interactor`; the app invokes it via subprocess (see `infrastructure/ollama/cli_runner.py`).
+- **`CoreModules/ServiceStarter`**: separate distribution `service-starter`; Docker Desktop + Ollama install (Windows), Qdrant/Open WebUI containers, and status (`pip install -e CoreModules/ServiceStarter`). WebUI delegates start/stop to it (see `api/http/webui_routes.py`).
+- **Import boundaries**: [import-linter](https://github.com/seddonym/import-linter) contract `domain_is_inner_layer` forbids `domain` → `application` | `api` | `infrastructure`. Run `lint-imports` after `pip install -r requirements-dev.txt`.
 
 ## Adding a new source or model
 

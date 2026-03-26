@@ -2,7 +2,7 @@ import React from 'react';
 import ModelSettings from './ModelSettings';
 import './SettingsTab.css';
 
-function LlmProxyTab() {
+function LlmProxyTab({ onOpenRagModels }) {
   return (
     <div className="settings-tab">
       <h2>LLM Proxy</h2>
@@ -37,7 +37,7 @@ function LlmProxyTab() {
 
         <div className="settings-section">
           <h3>Model Settings</h3>
-          <ModelSettings />
+          <ModelSettings onOpenRagModels={onOpenRagModels} />
         </div>
       </div>
     </div>

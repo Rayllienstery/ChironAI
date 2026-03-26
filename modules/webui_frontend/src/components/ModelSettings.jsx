@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { getModels, getPrompts, getModelSettings, updateModelSettings } from '../services/api';
+import { getModels, getPrompts, getModelSettings, updateModelSettings, getRagCollections } from '../services/api';
 import './ModelSettings.css';
 
-function ModelSettings({ sessionId }) {
+function ModelSettings({ sessionId, onOpenRagModels }) {
   const [models, setModels] = useState([]);
   const [prompts, setPrompts] = useState([]);
+  const [collections, setCollections] = useState([]);
   const [settings, setSettings] = useState({
     model: '',
     prompt_name: '',
@@ -14,6 +15,8 @@ function ModelSettings({ sessionId }) {
     reasoning_level: '',
     code_only: false,
     include_rag_metadata: true,
+    fetch_web_knowledge: false,
+    rag_collection: '',
     rerank_for_rag: false,
     rerank_model: '',
   });
@@ -26,10 +29,11 @@ function ModelSettings({ sessionId }) {
 
   const loadData = async () => {
     try {
-      const [modelsData, promptsData, settingsData] = await Promise.all([
+      const [modelsData, promptsData, settingsData, collectionsData] = await Promise.all([
         getModels(),
         getPrompts(),
         getModelSettings(),
+        getRagCollections().catch(() => ({ collections: [] })),
       ]);
       
       setModels(modelsData);
@@ -38,6 +42,7 @@ function ModelSettings({ sessionId }) {
         (p) => p.name && p.name.toLowerCase() !== 'readme'
       );
       setPrompts(promptList);
+      setCollections(collectionsData?.collections || []);
       
       if (settingsData) {
         setSettings(prev => ({ ...prev, ...settingsData }));
@@ -183,6 +188,45 @@ function ModelSettings({ sessionId }) {
           <label>
             <input
               type="checkbox"
+              checked={settings.fetch_web_knowledge}
+              onChange={(e) => handleChange('fetch_web_knowledge', e.target.checked)}
+            />
+            Fetch Web knowledge
+          </label>
+          <p className="setting-hint">
+            Fetch framework docs from the web (e.g. Alamofire, TCA) and merge with RAG context.
+          </p>
+        </div>
+
+        <div className="form-group">
+          <label>RAG Collection</label>
+          <select
+            value={settings.rag_collection || ''}
+            onChange={(e) => handleChange('rag_collection', e.target.value)}
+            disabled={collections.length === 0}
+          >
+            {collections.length === 0 ? (
+              <option value="">- No collections -</option>
+            ) : (
+              <>
+                <option value="">Default (server fallback)</option>
+                {collections.map((col) => (
+                  <option key={col.name} value={col.name}>
+                    {col.name} ({col.points_count || 0} vectors)
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
+          <p className="setting-hint">
+            Default Qdrant collection for LLM Proxy RAG requests.
+          </p>
+        </div>
+
+        <div className="form-group checkbox-group">
+          <label>
+            <input
+              type="checkbox"
               checked={settings.rerank_for_rag}
               onChange={(e) => handleChange('rerank_for_rag', e.target.checked)}
             />
@@ -195,20 +239,38 @@ function ModelSettings({ sessionId }) {
 
         <div className="form-group">
           <label>Rerank Model</label>
-          <select
-            value={settings.rerank_model ?? ''}
-            onChange={(e) => handleChange('rerank_model', e.target.value)}
-          >
-            <option value="">Default (from config)</option>
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-          <p className="setting-hint">
-            Model used for reranking retrieved chunks when &quot;Rerank for RAG&quot; is on. Same Ollama models as chat.
-          </p>
+          {typeof onOpenRagModels === 'function' ? (
+            <>
+              <button
+                type="button"
+                className="navigate-rag-models-button"
+                onClick={onOpenRagModels}
+              >
+                Open RAG / Qdrant — Models for RAG / Qdrant
+              </button>
+              <p className="setting-hint">
+                Embedding and rerank models are configured on the <strong>RAG / Qdrant</strong> tab under
+                &quot;Models for RAG / Qdrant&quot;.
+              </p>
+            </>
+          ) : (
+            <>
+              <select
+                value={settings.rerank_model ?? ''}
+                onChange={(e) => handleChange('rerank_model', e.target.value)}
+              >
+                <option value="">Default (from config)</option>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+              <p className="setting-hint">
+                Model used for reranking retrieved chunks when &quot;Rerank for RAG&quot; is on. Same Ollama models as chat.
+              </p>
+            </>
+          )}
         </div>
 
         <button

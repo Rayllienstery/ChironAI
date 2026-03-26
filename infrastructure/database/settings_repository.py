@@ -229,12 +229,26 @@ class SettingsRepository:
 _settings_repository: Optional[SettingsRepository] = None
 
 
+def _resolve_default_db_path() -> str:
+    """
+    Resolve a stable default path for WEBUI DB independent of process CWD.
+    Priority:
+    1) WEBUI_DB_PATH env var (as-is)
+    2) <project_root>/logs/webui.db (absolute)
+    """
+    env_path = os.getenv("WEBUI_DB_PATH")
+    if env_path:
+        return env_path
+    project_root = Path(__file__).resolve().parents[2]
+    return str(project_root / "logs" / "webui.db")
+
+
 def get_settings_repository(db_path: Optional[str] = None) -> SettingsRepository:
     """Get or create global SettingsRepository instance."""
     global _settings_repository
     if _settings_repository is None:
         if db_path is None:
-            db_path = os.getenv("WEBUI_DB_PATH", "logs/webui.db")
+            db_path = _resolve_default_db_path()
         _settings_repository = SettingsRepository(db_path)
     return _settings_repository
 

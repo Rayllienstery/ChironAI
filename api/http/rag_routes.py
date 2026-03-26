@@ -10,9 +10,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 import threading
 from datetime import datetime, timezone
+from pathlib import Path
 import uuid
 
 from flask import Flask, Response, jsonify, request
@@ -113,11 +115,242 @@ import time
 
 RAG_MODEL_ID = "rag-ollama"
 _RAG_LOG = logging.getLogger("trag.rag")
+_APPLY_EDIT_TOOL_NAME = "apply_file_edit"
 
 
 def _log_rag_error(stage: str, error: Exception) -> None:
     """One-line console log: RAG stage=... | ErrorType: message."""
     _RAG_LOG.error("RAG stage=%s | %s: %s", stage, type(error).__name__, error)
+
+
+def _workspace_root() -> Path:
+    return Path(_ROOT).resolve()
+
+
+def _resolve_workspace_path(file_path: str) -> Path:
+    if not file_path or not str(file_path).strip():
+        raise ValueError("file_path is required")
+    root = _workspace_root()
+    candidate = Path(file_path)
+    if candidate.is_absolute():
+        resolved = candidate.resolve()
+    else:
+        resolved = (root / candidate).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("file_path points outside workspace") from exc
+    return resolved
+
+
+def _replace_text_range(original: str, range_data: dict[str, object], new_text: str) -> str:
+    lines = original.splitlines(keepends=True)
+    start_line = int(range_data.get("start_line") or 0)
+    end_line = int(range_data.get("end_line") or 0)
+    start_col = int(range_data.get("start_col") or 1)
+    end_col = int(range_data.get("end_col") or 1)
+    if start_line < 1 or end_line < 1 or start_line > end_line:
+        raise ValueError("Invalid range: line indices")
+    if start_line > len(lines) or end_line > len(lines):
+        raise ValueError("Range out of bounds")
+    start_line_text = lines[start_line - 1]
+    end_line_text = lines[end_line - 1]
+    if start_col < 1 or start_col > (len(start_line_text) + 1):
+        raise ValueError("Invalid range: start_col")
+    if end_col < 1 or end_col > (len(end_line_text) + 1):
+        raise ValueError("Invalid range: end_col")
+    if start_line == end_line and end_col < start_col:
+        raise ValueError("Invalid range: end_col before start_col")
+
+    prefix = "".join(lines[: start_line - 1]) + start_line_text[: start_col - 1]
+    suffix = end_line_text[end_col - 1 :] + "".join(lines[end_line:])
+    return f"{prefix}{new_text}{suffix}"
+
+
+def _extract_edit_from_response(content: str) -> dict[str, object] | None:
+    text = (content or "").strip()
+    if not text:
+        return None
+    # Accept plain JSON or fenced JSON block.
+    m = re.search(r"```json\s*(\{[\s\S]*?\})\s*```", text, flags=re.IGNORECASE)
+    payload = m.group(1) if m else text
+    try:
+        obj = json.loads(payload)
+    except Exception:
+        return None
+    if not isinstance(obj, dict):
+        return None
+    file_path = obj.get("file_path") or obj.get("path")
+    if not file_path:
+        return None
+    if not (obj.get("new_text") or obj.get("patch") or obj.get("replacement") or obj.get("content")):
+        return None
+    if "file_path" not in obj:
+        obj["file_path"] = file_path
+    if "new_text" not in obj:
+        obj["new_text"] = obj.get("replacement") or obj.get("content") or ""
+    return obj
+
+
+def _normalize_tool_path(file_path: str) -> str:
+    raw = (file_path or "").strip()
+    if not raw:
+        return ""
+    normalized = raw.replace("\\", "/")
+    if normalized.startswith("file:///"):
+        normalized = normalized[8:]
+    root = _workspace_root()
+    try:
+        candidate = Path(normalized)
+        if candidate.is_absolute():
+            resolved = candidate.resolve()
+            try:
+                rel = resolved.relative_to(root)
+                return rel.as_posix()
+            except ValueError:
+                return normalized
+    except Exception:
+        return normalized
+    return normalized.lstrip("./")
+
+
+def _extract_tool_name(tool_obj: object) -> str | None:
+    if not isinstance(tool_obj, dict):
+        return None
+    fn = tool_obj.get("function")
+    if not isinstance(fn, dict):
+        return None
+    name = fn.get("name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return None
+
+
+def _select_edit_tool_name(tools: list[object]) -> str | None:
+    names = [n for n in (_extract_tool_name(t) for t in tools) if n]
+    if not names:
+        return None
+    if _APPLY_EDIT_TOOL_NAME in names:
+        return _APPLY_EDIT_TOOL_NAME
+    for n in names:
+        low = n.lower()
+        if "file" in low and ("edit" in low or "patch" in low or "replace" in low or "range" in low):
+            return n
+    for n in names:
+        low = n.lower()
+        if "edit" in low or "patch" in low or "replace" in low:
+            return n
+    return None
+
+
+def _get_tool_by_name(tools: list[object], name: str | None) -> dict[str, object] | None:
+    if not name:
+        return None
+    for t in tools:
+        if not isinstance(t, dict):
+            continue
+        if _extract_tool_name(t) == name:
+            return t
+    return None
+
+
+def _build_tool_arguments(
+    *,
+    selected_tool_name: str,
+    selected_tool: dict[str, object] | None,
+    edit_payload: dict[str, object],
+    user_query: str,
+) -> dict[str, object]:
+    file_path = _normalize_tool_path(str(edit_payload.get("file_path") or ""))
+    range_obj = edit_payload.get("range") if isinstance(edit_payload.get("range"), dict) else {}
+    new_text = str(edit_payload.get("new_text") or "")
+    desc = (user_query or "").strip().replace("\n", " ")
+    if not desc:
+        desc = f"Apply requested edit via {selected_tool_name}"
+    display_description = desc[:180]
+
+    canonical_values: dict[str, object] = {
+        "file_path": file_path,
+        "path": file_path,
+        "target_file": file_path,
+        "new_text": new_text,
+        "replacement": new_text,
+        "text": new_text,
+        "content": new_text,
+        "new_content": new_text,
+        "range": range_obj,
+        "line_range": range_obj,
+        "location": range_obj,
+        "start_line": range_obj.get("start_line"),
+        "end_line": range_obj.get("end_line"),
+        "start_col": range_obj.get("start_col"),
+        "end_col": range_obj.get("end_col"),
+        "display_description": display_description,
+        "mode": "edit",
+        "operation": "edit",
+        "variant": "edit",
+    }
+
+    # If tool schema provides required keys, ensure they are present to avoid Zed-side rejection.
+    properties: dict[str, object] = {}
+    required: list[str] = []
+    try:
+        fn = selected_tool.get("function") if isinstance(selected_tool, dict) else None
+        params = fn.get("parameters") if isinstance(fn, dict) else None
+        if isinstance(params, dict) and isinstance(params.get("properties"), dict):
+            properties = params.get("properties")  # type: ignore[assignment]
+        if isinstance(params, dict) and isinstance(params.get("required"), list):
+            required = [str(x) for x in params.get("required") if isinstance(x, str)]
+    except Exception:
+        required = []
+
+    # Strict native mode: only schema keys (+ required keys) are emitted.
+    keys_to_emit: set[str] = set(required)
+    keys_to_emit.update(str(k) for k in properties.keys())
+    if not keys_to_emit:
+        keys_to_emit = {"file_path", "range", "new_text"}
+
+    args: dict[str, object] = {}
+    for key in keys_to_emit:
+        if key in canonical_values and canonical_values[key] not in (None, ""):
+            args[key] = canonical_values[key]
+
+    # Guarantee required fields are present, with conservative defaults.
+    for key in required:
+        if key in args and args.get(key) not in (None, ""):
+            continue
+        if key in canonical_values:
+            args[key] = canonical_values[key]
+        elif key == "display_description":
+            args[key] = display_description
+        else:
+            args[key] = ""
+
+    return args
+
+
+def _build_tool_json_instruction(
+    selected_tool_name: str | None,
+    selected_tool: dict[str, object] | None,
+) -> str:
+    if not selected_tool_name or not isinstance(selected_tool, dict):
+        return ""
+    fn = selected_tool.get("function") if isinstance(selected_tool.get("function"), dict) else {}
+    params = fn.get("parameters") if isinstance(fn, dict) else {}
+    required = params.get("required") if isinstance(params, dict) and isinstance(params.get("required"), list) else []
+    properties = params.get("properties") if isinstance(params, dict) and isinstance(params.get("properties"), dict) else {}
+    prop_names = [str(k) for k in properties.keys()]
+    req_names = [str(x) for x in required if isinstance(x, str)]
+    fields = req_names if req_names else prop_names
+    if not fields:
+        fields = ["path", "range", "new_text"]
+    return (
+        "Tool-call mode is enabled. "
+        f"Return ONLY a single valid JSON object for tool `{selected_tool_name}` with fields from tool schema: {fields}. "
+        "Do not return markdown, code fences, comments, or explanations. "
+        "Use workspace-relative path in `path`/`file_path` when applicable. "
+        "If any field is unknown, use an empty string."
+    )
 
 
 def create_app(
@@ -203,28 +436,72 @@ def create_app(
         messages = body.get("messages") or []
         stream = body.get("stream", False)
         requested_model = body.get("model") or RAG_MODEL_ID
+        tools = body.get("tools") if isinstance(body.get("tools"), list) else []
+        tool_choice = body.get("tool_choice")
+        selected_edit_tool_name = _select_edit_tool_name(tools)
+        selected_edit_tool = _get_tool_by_name(tools, selected_edit_tool_name) if selected_edit_tool_name else None
         explicit_reasoning = body.get("reasoning_level") or body.get("reasoning")
         include_rag_metadata = body.get("include_rag_metadata", False)
         force_rag = bool(body.get("force_rag"))
+        has_tool_result = any(isinstance(m, dict) and m.get("role") == "tool" for m in messages)
+        fetch_web_knowledge_raw = body.get("fetch_web_knowledge")
+        if fetch_web_knowledge_raw is None:
+            fetch_web_knowledge = False
+            try:
+                settings_repo = get_settings_repository()
+                proxy_settings_json = settings_repo.get_app_setting("proxy_settings")
+                if proxy_settings_json:
+                    proxy_settings = json.loads(proxy_settings_json)
+                    fetch_web_knowledge = bool(proxy_settings.get("fetch_web_knowledge", False))
+            except Exception:
+                fetch_web_knowledge = False
+        else:
+            fetch_web_knowledge = bool(fetch_web_knowledge_raw)
         if not messages:
             return jsonify({"error": "messages is required"}), 400
         set_proxy_status(STATUS_RAG_SEARCH)
         last_user = last_user_content(messages)
         user_query = last_user  # Store for logging
         context_length = len(last_user.split())
+        effective_prefix = prefix
+        effective_suffix = suffix
+        effective_context_chunk_chars = context_chunk_chars
+        effective_context_total_chars = context_total_chars
+        effective_confidence_threshold = confidence_threshold
+        effective_rag_repo = rag_repo
+        effective_embed_provider = embed_provider
+        effective_base_rerank_client = rerank_client
+        effective_ollama_model = ollama_model
         reasoning_level = determine_reasoning_level(
-            last_user, context_length, ollama_model, explicit_reasoning
+            last_user, context_length, effective_ollama_model, explicit_reasoning
         )
         
         # If model is "rag-ollama", use config model instead (rag-ollama is just a proxy identifier)
-        actual_model = ollama_model if requested_model == "rag-ollama" or requested_model == RAG_MODEL_ID else requested_model
+        actual_model = (
+            effective_ollama_model
+            if requested_model == "rag-ollama" or requested_model == RAG_MODEL_ID
+            else requested_model
+        )
 
         trace["request"] = {
             "requested_model": requested_model,
             "actual_model": actual_model,
             "stream": bool(stream),
             "include_rag_metadata": bool(include_rag_metadata),
+            "tools_count": len(tools),
+            "tools_names_preview": [n for n in (_extract_tool_name(t) for t in tools) if n][:20],
+            "selected_edit_tool_name": selected_edit_tool_name,
+            "selected_edit_tool_required": (
+                (
+                    ((selected_edit_tool or {}).get("function") or {}).get("parameters") or {}
+                ).get("required")
+                if isinstance(selected_edit_tool, dict)
+                else None
+            ),
+            "tool_choice": tool_choice if isinstance(tool_choice, (str, dict)) else None,
+            "has_tool_result": bool(has_tool_result),
             "force_rag": bool(force_rag),
+            "fetch_web_knowledge": bool(fetch_web_knowledge),
             "reasoning_level": explicit_reasoning or reasoning_level,
             "user_query_preview": (user_query or "")[:500],
         }
@@ -233,7 +510,12 @@ def create_app(
         project_context = body.get("project_context")
         project_fresh_collection_names: set[str] | None = None
         needs_refresh: list[tuple[str, str]] = []  # (framework_id_lower, collection_name); also filled from resolved sources below
-        if isinstance(project_context, dict) and _EXTERNAL_DOCS_RAG_AVAILABLE and load_rag_sources_config:
+        if (
+            fetch_web_knowledge
+            and isinstance(project_context, dict)
+            and _EXTERNAL_DOCS_RAG_AVAILABLE
+            and load_rag_sources_config
+        ):
             frameworks = project_context.get("frameworks") or []
             if frameworks:
                 rag_sources_config = load_rag_sources_config()
@@ -280,22 +562,54 @@ def create_app(
                         needs_refresh.append((name.lower(), coll))
                 project_fresh_collection_names = set(fresh_collections) if fresh_collections else None
 
-        # Optional: use request-scoped collection and deps when client sends collection_name
+        # Resolve collection in priority order:
+        # 1) request body collection_name
+        # 2) app_settings.rag_collection
+        # 3) proxy_settings.rag_collection (backward-compatible / single blob settings)
+        # 4) default wiring (collection file/config) when none are set
         request_collection = (body.get("collection_name") or "").strip() or None
+        collection_source = "request"
+        if not request_collection:
+            try:
+                settings_repo = get_settings_repository()
+                request_collection = (settings_repo.get_app_setting("rag_collection") or "").strip() or None
+                collection_source = "app_settings.rag_collection"
+                if not request_collection:
+                    proxy_settings_json = settings_repo.get_app_setting("proxy_settings")
+                    if proxy_settings_json:
+                        proxy_settings = json.loads(proxy_settings_json)
+                        request_collection = (proxy_settings.get("rag_collection") or "").strip() or None
+                        if request_collection:
+                            collection_source = "proxy_settings.rag_collection"
+            except Exception:
+                request_collection = None
+                collection_source = "default"
         if request_collection:
             req_params, req_deps = get_rag_answer_params(webui_dir=webui_dir, collection_name=request_collection)
-            prefix = system_prefix if system_prefix is not None else req_params.system_prefix
-            suffix = system_suffix if system_suffix is not None else req_params.system_suffix
-            context_chunk_chars = req_params.context_chunk_chars
-            context_total_chars = req_params.context_total_chars
-            confidence_threshold = req_params.confidence_threshold
-            ollama_model = req_params.model_name
-            rag_repo = req_deps.rag_repo
-            embed_provider = req_deps.embed_provider
-            rerank_client = req_deps.rerank_client
+            effective_prefix = system_prefix if system_prefix is not None else req_params.system_prefix
+            effective_suffix = system_suffix if system_suffix is not None else req_params.system_suffix
+            effective_context_chunk_chars = req_params.context_chunk_chars
+            effective_context_total_chars = req_params.context_total_chars
+            effective_confidence_threshold = req_params.confidence_threshold
+            effective_ollama_model = req_params.model_name
+            effective_rag_repo = req_deps.rag_repo
+            effective_embed_provider = req_deps.embed_provider
+            effective_base_rerank_client = req_deps.rerank_client
+            actual_model = (
+                effective_ollama_model
+                if requested_model == "rag-ollama" or requested_model == RAG_MODEL_ID
+                else requested_model
+            )
+            trace["request"]["actual_model"] = actual_model
+            trace["request"]["collection_name"] = request_collection
+            trace["request"]["collection_source"] = collection_source
+        else:
+            trace["request"]["collection_source"] = "default"
 
         # Proxy: do not read settings from DB; rerank is configurable via proxy_rerank_enabled.
-        effective_rerank_client = rerank_client if get_proxy_rerank_enabled() else None
+        effective_rerank_client = (
+            effective_base_rerank_client if get_proxy_rerank_enabled() else None
+        )
         rag_keywords = _get_rag_required_keywords_from_module()
 
         # Build RAG context: multi-collection (external_docs_rag) when triggered, else single collection
@@ -305,7 +619,15 @@ def create_app(
         trace["internet"] = {"background_refresh_started": False}
         try:
             use_merged = False
-            if _EXTERNAL_DOCS_RAG_AVAILABLE and load_rag_sources_config and resolve_rag_sources_for_request and build_merged_rag_context and QdrantRagSearchAdapter is not None:
+            if (
+                fetch_web_knowledge
+                and not request_collection
+                and _EXTERNAL_DOCS_RAG_AVAILABLE
+                and load_rag_sources_config
+                and resolve_rag_sources_for_request
+                and build_merged_rag_context
+                and QdrantRagSearchAdapter is not None
+            ):
                 rag_sources_config = load_rag_sources_config()
                 body_rag_sources = body.get("rag_sources")
                 if isinstance(body_rag_sources, list):
@@ -378,7 +700,7 @@ def create_app(
                                             ref = "main"
                                     ingest_github_repo_markdown(
                                         owner, repo_name, ref, coll, fid,
-                                        fetch_client, chunk_sink, embed_provider,
+                                        fetch_client, chunk_sink, effective_embed_provider,
                                         max_depth=3,
                                         on_indexed=on_indexed,
                                     )
@@ -401,9 +723,9 @@ def create_app(
                         last_user,
                         resolved,
                         rag_search_adapter,
-                        embed_provider,
-                        context_chunk_chars,
-                        context_total_chars,
+                        effective_embed_provider,
+                        effective_context_chunk_chars,
+                        effective_context_total_chars,
                         fetch_client=fetch_client,
                         external_sources=external_sources_list,
                         fresh_collection_names=project_fresh_collection_names,
@@ -418,11 +740,11 @@ def create_app(
             if not use_merged or rag_ctx_for_log is None:
                 rag_ctx_for_log, rag_timings = build_rag_context(
                     last_user,
-                    rag_repo,
-                    embed_provider,
+                    effective_rag_repo,
+                    effective_embed_provider,
                     effective_rerank_client,
-                    context_chunk_chars,
-                    context_total_chars,
+                    effective_context_chunk_chars,
+                    effective_context_total_chars,
                     rag_required_keywords=rag_keywords,
                     trigger_threshold=None,
                     force_rag=force_rag,
@@ -464,7 +786,7 @@ def create_app(
             if rag_ctx_for_log:
                 trace["rag"]["context"] = {
                     "context_chars_used": len(rag_ctx_for_log.context_text or ""),
-                    "context_budget_chars": int(context_total_chars or 0),
+                    "context_budget_chars": int(effective_context_total_chars or 0),
                     "context_text_preview": (rag_ctx_for_log.context_text or "")[:2000],
                     "chunks": rag_ctx_for_log.chunks_info[:20] if rag_ctx_for_log.chunks_info else [],
                 }
@@ -516,15 +838,15 @@ def create_app(
             )
             ollama_messages, use_model = prepare_ollama_messages(
                 req,
-                rag_repo,
-                embed_provider,
+                effective_rag_repo,
+                effective_embed_provider,
                 effective_rerank_client,
-                prefix,
-                suffix,
-                context_chunk_chars,
-                context_total_chars,
-                confidence_threshold,
-                ollama_model,
+                effective_prefix,
+                effective_suffix,
+                effective_context_chunk_chars,
+                effective_context_total_chars,
+                effective_confidence_threshold,
+                effective_ollama_model,
                 reasoning_level=reasoning_level,
                 rag_required_keywords=rag_keywords,
                 rag_context=rag_ctx_for_log,
@@ -533,7 +855,7 @@ def create_app(
             )
             # Ensure use_model is not "rag-ollama" - use config model if needed
             if use_model == "rag-ollama":
-                use_model = ollama_model
+                use_model = effective_ollama_model
 
             # Store what we send to Ollama (preview + sizes only)
             _msg_preview_limit = 300
@@ -558,6 +880,105 @@ def create_app(
             log_webui_error("rag_routes.chat_completions", e, {"stage": "prepare_rag"})
             _log_rag_error("prepare_rag", e)
             return jsonify({"error": str(e)}), 500
+
+        if tools and tool_choice != "none" and not has_tool_result:
+            tool_json_instruction = _build_tool_json_instruction(selected_edit_tool_name, selected_edit_tool)
+            if tool_json_instruction:
+                ollama_messages.append({"role": "system", "content": tool_json_instruction})
+
+        stream_tool_mode = bool(stream and tools and tool_choice != "none" and not has_tool_result)
+        if stream_tool_mode:
+            set_proxy_status(STATUS_RESPONSE)
+            stream_start_time = time.time()
+            stream_tool_error: str | None = None
+            try:
+                streamed_content = chat_client.chat(ollama_messages, use_model, stream=False, options=None)
+            except Exception as e:
+                # Retry once with compact context; large prompts can trigger Ollama 500 on some models.
+                compact_messages: list[dict[str, object]] = []
+                if ollama_messages:
+                    first_system = next((m for m in ollama_messages if isinstance(m, dict) and m.get("role") == "system"), None)
+                    last_user_msg = next((m for m in reversed(ollama_messages) if isinstance(m, dict) and m.get("role") == "user"), None)
+                    if isinstance(first_system, dict):
+                        compact_messages.append(first_system)
+                    if isinstance(last_user_msg, dict):
+                        compact_messages.append(last_user_msg)
+                try:
+                    streamed_content = chat_client.chat(compact_messages or ollama_messages, use_model, stream=False, options=None)
+                except Exception as e2:
+                    log_webui_error("rag_routes.chat_completions", e2, {"stage": "chat_stream_tool_mode"})
+                    _log_rag_error("chat_stream_tool_mode", e2)
+                    stream_tool_error = str(e2)
+                    streamed_content = ""
+            finally:
+                set_proxy_status(STATUS_IDLE)
+                set_latest_request_seconds(time.time() - start_time)
+
+            if stream_tool_error:
+                # Do not fail the whole request: fallback to plain streaming branch below.
+                trace["response"]["tool_mode_error"] = stream_tool_error[:500]
+                set_current_trace(trace)
+            edit_payload = _extract_edit_from_response(streamed_content or "")
+
+            if (not stream_tool_error) and edit_payload and selected_edit_tool_name and selected_edit_tool:
+                tool_args = _build_tool_arguments(
+                    selected_tool_name=selected_edit_tool_name,
+                    selected_tool=selected_edit_tool,
+                    edit_payload=edit_payload,
+                    user_query=user_query,
+                )
+                tool_call = {
+                    "id": f"call_{uuid.uuid4().hex[:24]}",
+                    "type": "function",
+                    "function": {
+                        "name": selected_edit_tool_name,
+                        "arguments": json.dumps(tool_args, ensure_ascii=False),
+                    },
+                }
+                trace["response"] = {
+                    "content_preview": "",
+                    "content_length_chars": 0,
+                    "latency_ms": int((time.time() - stream_start_time) * 1000),
+                    "tool_calls_count": 1,
+                    "tool_calls": [tool_call],
+                }
+                set_current_trace(trace)
+
+                def generate_sse_tool_call():
+                    oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'tool_calls': [{'index': 0, 'id': tool_call['id'], 'type': 'function', 'function': {'name': selected_edit_tool_name, 'arguments': tool_call['function']['arguments']}}]}, 'finish_reason': None}]})}\n\n"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls'}]})}\n\n"
+                    yield "data: [DONE]\n\n"
+
+                return Response(
+                    generate_sse_tool_call(),
+                    mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                )
+            if (not stream_tool_error) and (streamed_content or "").strip():
+                # If tool JSON was not produced, do not drop content: return plain assistant text via SSE.
+                trace["response"] = {
+                    "content_preview": (streamed_content or "")[:log_preview],
+                    "content_length_chars": len(streamed_content or ""),
+                    "latency_ms": int((time.time() - stream_start_time) * 1000),
+                    "tool_calls_count": 0,
+                }
+                set_current_trace(trace)
+
+                def generate_sse_plain_text():
+                    oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'content': streamed_content}, 'finish_reason': None}]})}\n\n"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+                    yield "data: [DONE]\n\n"
+
+                return Response(
+                    generate_sse_plain_text(),
+                    mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                )
+
         if stream:
             set_proxy_status(STATUS_RESPONSE)
             def generate_sse():
@@ -710,10 +1131,39 @@ def create_app(
             }
         )
         set_current_trace(trace)
+        tool_calls: list[dict[str, object]] = []
+        if (not stream) and tools and tool_choice != "none" and not has_tool_result:
+            edit_payload = _extract_edit_from_response(content or "")
+            if edit_payload and selected_edit_tool_name and selected_edit_tool:
+                tool_args = _build_tool_arguments(
+                    selected_tool_name=selected_edit_tool_name,
+                    selected_tool=selected_edit_tool,
+                    edit_payload=edit_payload,
+                    user_query=user_query,
+                )
+                tool_calls = [
+                    {
+                        "id": f"call_{uuid.uuid4().hex[:24]}",
+                        "type": "function",
+                        "function": {
+                            "name": selected_edit_tool_name,
+                            "arguments": json.dumps(tool_args, ensure_ascii=False),
+                        },
+                    }
+                ]
+
+        trace["response"]["tool_calls_count"] = len(tool_calls)
+        if tool_calls:
+            trace["response"]["tool_calls"] = tool_calls
+            set_current_trace(trace)
         choice = {
             "index": 0,
-            "message": {"role": "assistant", "content": content},
-            "finish_reason": "stop",
+            "message": {
+                "role": "assistant",
+                "content": None if tool_calls else content,
+                **({"tool_calls": tool_calls} if tool_calls else {}),
+            },
+            "finish_reason": "tool_calls" if tool_calls else "stop",
         }
         response_data = {
             "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
@@ -786,6 +1236,89 @@ def create_app(
     )
 
     app.register_blueprint(webui_bp)
+
+    @app.route("/v1/files/apply-edit", methods=["POST"])
+    def apply_file_edit() -> Response | tuple[Response, int]:
+        """
+        Apply direct file edit inside workspace by explicit line/column range.
+        Expected body: { file_path, range:{start_line,start_col,end_line,end_col}, new_text, dry_run? }.
+        """
+        try:
+            body = request.get_json(force=True, silent=True) or {}
+        except Exception:
+            return jsonify({"ok": False, "error": "Invalid JSON"}), 400
+
+        try:
+            file_path_raw = str(body.get("file_path") or "").strip()
+            range_data = body.get("range") or {}
+            new_text = body.get("new_text")
+            patch_text = body.get("patch")
+            dry_run = bool(body.get("dry_run", False))
+            if patch_text:
+                return jsonify({"ok": False, "error": "patch apply is not supported yet"}), 400
+            if not isinstance(range_data, dict):
+                return jsonify({"ok": False, "error": "range must be an object"}), 400
+            if not isinstance(new_text, str):
+                return jsonify({"ok": False, "error": "new_text is required"}), 400
+
+            resolved = _resolve_workspace_path(file_path_raw)
+            if not resolved.exists():
+                return jsonify({"ok": False, "error": "file does not exist"}), 404
+            original = resolved.read_text(encoding="utf-8")
+
+            # If end_col is huge (inferred unknown), clamp to line length + 1.
+            if "end_col" in range_data:
+                lines = original.splitlines(keepends=True)
+                end_line = int(range_data.get("end_line") or 0)
+                if 1 <= end_line <= len(lines):
+                    end_col = int(range_data.get("end_col") or 1)
+                    if end_col > len(lines[end_line - 1]) + 1:
+                        range_data = dict(range_data)
+                        range_data["end_col"] = len(lines[end_line - 1]) + 1
+
+            updated = _replace_text_range(original, range_data, new_text)
+            if not dry_run:
+                resolved.write_text(updated, encoding="utf-8")
+            try:
+                get_logs_repository().add_log(
+                    session_id="proxy",
+                    level="INFO",
+                    message=f"Apply edit: {resolved}",
+                    source="proxy.apply_edit",
+                    metadata={
+                        "file_path": str(resolved),
+                        "dry_run": dry_run,
+                        "range": range_data,
+                        "new_text_len": len(new_text),
+                    },
+                )
+            except Exception:
+                pass
+
+            return jsonify(
+                {
+                    "ok": True,
+                    "applied": not dry_run,
+                    "dry_run": dry_run,
+                    "file_path": str(resolved),
+                    "preview": updated[:2000],
+                }
+            )
+        except ValueError as exc:
+            try:
+                get_logs_repository().add_log(
+                    session_id="proxy",
+                    level="ERROR",
+                    message=f"Apply edit failed: {exc}",
+                    source="proxy.apply_edit",
+                    metadata={"error": str(exc)},
+                )
+            except Exception:
+                pass
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except Exception as exc:
+            _RAG_LOG.exception("apply-file-edit failed")
+            return jsonify({"ok": False, "error": str(exc)}), 500
 
     @app.route("/v1/external-docs/ingest", methods=["POST"])
     def external_docs_ingest() -> tuple[Response, int]:

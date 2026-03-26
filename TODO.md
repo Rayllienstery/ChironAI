@@ -1,6 +1,16 @@
-# ChironAI — TODO (v0.3+)
+# ChironAI
 
-Текущая версия: **0.2**. Ниже — задачи для радикального повышения качества: RAG, промпт, доступ в интернет, тесты, наблюдаемость, документация.
+## Быстрые заметки (из Notes)
+
+- [ ] Auto start docker
+- [ ] Esp 32 integration
+- [ ] Fetch-update+build-run script
+- [ ] Move scripts to the core folder
+- [ ] Live session fix ui
+- [ ] Unificate right bottom menu
+- [ ] Tests summarized
+- [ ] iPhone notifications
+- [ ] Web framework search - work the same as crawl...
 
 ---
 

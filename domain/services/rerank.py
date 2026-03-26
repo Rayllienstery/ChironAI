@@ -13,6 +13,7 @@ No HTTP or infrastructure here; callers use this to prepare input and process ou
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 
@@ -58,6 +59,71 @@ Allowed examples:
 [1, 2]
 If some numbers are not present, simply omit them.
 Do not add any text before or after the JSON."""
+
+
+def extract_candidates_from_rerank_prompt(prompt_text: str) -> list[tuple[int, str]]:
+    """
+    Extract (1-based_index, snippet_text) from the build_rerank_prompt output.
+
+    This is used to adapt Ollama native /api/rerank which expects separate
+    documents rather than a single JSON-ordered prompt.
+    """
+    text = (prompt_text or "").strip()
+    if not text:
+        return []
+
+    marker = "Excerpts (each with a number):"
+    if marker in text:
+        text = text.split(marker, 1)[1]
+
+    # build_rerank_prompt ends with "Reply ONLY with a single JSON array ..."
+    if "Reply ONLY" in text:
+        text = text.split("Reply ONLY", 1)[0]
+
+    segments = [s.strip() for s in text.split("\n\n") if s.strip()]
+    out: list[tuple[int, str]] = []
+    for seg in segments:
+        m = re.match(r"^\s*(\d+)\s*:\s*(.*)\s*$", seg, flags=re.DOTALL)
+        if not m:
+            continue
+        idx = int(m.group(1))
+        snippet = (m.group(2) or "").strip()
+        if idx > 0 and snippet:
+            out.append((idx, snippet))
+    return out
+
+
+def native_rerank_response_to_order(raw_response: dict[str, Any]) -> list[int] | None:
+    """
+    Convert Ollama native /api/rerank response to a ranked order list.
+
+    Expected response shape:
+    {
+      "results": [{"document": "IDX1: ...", "relevance_score": ...}, ...]
+    }
+    """
+    if not raw_response:
+        return None
+    results = raw_response.get("results") or []
+    if not isinstance(results, list):
+        return None
+
+    order: list[int] = []
+    seen: set[int] = set()
+    idx_re = re.compile(r"^\s*IDX(\d+)\s*:", flags=re.IGNORECASE)
+    for r in results:
+        if not isinstance(r, dict):
+            continue
+        doc = r.get("document") or ""
+        m = idx_re.match(str(doc))
+        if not m:
+            continue
+        idx = int(m.group(1))
+        if idx not in seen:
+            order.append(idx)
+            seen.add(idx)
+
+    return order or None
 
 
 def parse_rerank_order(raw_response: str) -> list[int] | None:
@@ -128,6 +194,8 @@ def apply_rerank_scores_and_cut(
 __all__ = [
     "shorten_for_rerank",
     "build_rerank_prompt",
+    "extract_candidates_from_rerank_prompt",
+    "native_rerank_response_to_order",
     "parse_rerank_order",
     "reorder_hits_by_indices",
     "apply_rerank_scores_and_cut",

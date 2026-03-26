@@ -1,0 +1,101 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chironai"
+version = "0.1.0"
+description = "RAG assistant (Ollama + Qdrant) with WebUI and crawl/index pipelines"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "ChironAI contributors" }]
+keywords = ["rag", "ollama", "qdrant", "flask"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  "flask",
+  "requests",
+  "qdrant-client",
+  "langchain-text-splitters",
+  "html2text",
+  "playwright",
+  "lxml>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0.0",
+  "pytest-cov>=4.0.0",
+  "import-linter>=2.0",
+  "ruff>=0.8.0",
+]
+
+[project.scripts]
+chironai = "api.cli.__main__:main"
+tmrag = "api.cli.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com"
+
+# --- Editable install: core Python packages at repository root (not WebUI/scripts, not modules/* subprojects)
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+  "application*",
+  "api*",
+  "config*",
+  "core*",
+  "domain*",
+  "infrastructure*",
+  "utils*",
+]
+exclude = ["tests*", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [
+  ".",
+  "modules/rag_service",
+  "modules/md_ingestion_service",
+  "modules/crawler_service",
+  "CoreModules/ServiceStarter",
+]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+src = ["application", "api", "config", "core", "domain", "infrastructure", "utils", "tests"]
+exclude = [
+  ".venv",
+  "venv",
+  "modules/webui_frontend",
+  "modules/open_webui",
+]
+
+# Default: syntax / runtime parse errors only. Run `ruff check --extend-select F` for pyflakes when refactoring.
+[tool.ruff.lint]
+select = ["E9"]
+ignore = []
+
+# Domain layer must not depend on outer layers (application / api / infrastructure).
+[tool.importlinter]
+root_package = "domain"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "domain_is_inner_layer"
+type = "forbidden"
+source_modules = ["domain"]
+forbidden_modules = ["application", "api", "infrastructure"]

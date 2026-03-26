@@ -34,7 +34,11 @@ import sys
 from pathlib import Path
 from typing import List
 
-import requests
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_embed
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import VectorParams, Distance, PointStruct
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -72,13 +76,17 @@ def get_embeddings(texts: List[str]) -> List[List[float]]:
     result: List[List[float]] = []
     for i in range(0, len(texts), EMBED_BATCH_SIZE):
         batch = texts[i : i + EMBED_BATCH_SIZE]
-        resp = requests.post(
-            OLLAMA_EMBED_URL,
-            json={"model": EMBED_MODEL_NAME, "input": batch},
-            timeout=120,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        try:
+            data = invoke_embed(
+                {
+                    "url": OLLAMA_EMBED_URL,
+                    "json": {"model": EMBED_MODEL_NAME, "input": batch},
+                    "timeout": 120,
+                },
+                default_timeout=120,
+            )
+        except OllamaInteractorCliError as e:
+            raise RuntimeError(str(e)) from e
         vectors = data.get("embeddings", [])
         if len(vectors) != len(batch):
             raise RuntimeError(
@@ -137,13 +145,18 @@ def main() -> None:
 
     print(f"Using Ollama embedding model: {EMBED_MODEL_NAME}")
     # Resolve embedding dimension via one short request.
-    dim_resp = requests.post(
-        OLLAMA_EMBED_URL,
-        json={"model": EMBED_MODEL_NAME, "input": "."},
-        timeout=60,
-    )
-    dim_resp.raise_for_status()
-    dim = len(dim_resp.json()["embeddings"][0])
+    try:
+        dim_data = invoke_embed(
+            {
+                "url": OLLAMA_EMBED_URL,
+                "json": {"model": EMBED_MODEL_NAME, "input": "."},
+                "timeout": 60,
+            },
+            default_timeout=60,
+        )
+    except OllamaInteractorCliError as e:
+        raise RuntimeError(str(e)) from e
+    dim = len(dim_data["embeddings"][0])
     print(f"Embedding dimension: {dim}")
 
     qclient = QdrantClient(url=QDRANT_URL)

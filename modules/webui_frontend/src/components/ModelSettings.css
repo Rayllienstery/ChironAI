@@ -20,13 +20,25 @@
 }
 
 .form-group select,
-.form-group input[type="range"] {
+.form-group input[type="range"],
+.form-group .navigate-rag-models-button {
   padding: var(--md-sys-spacing-sm);
   border: 1px solid var(--md-sys-color-outline);
   border-radius: var(--md-sys-shape-corner-small);
   background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface);
   font: var(--md-sys-typescale-body-medium-font);
+}
+
+.form-group .navigate-rag-models-button {
+  width: 100%;
+  cursor: pointer;
+  text-align: center;
+  color: var(--md-sys-color-primary);
+}
+
+.form-group .navigate-rag-models-button:hover {
+  background: var(--md-sys-color-surface-container-high, rgba(128, 128, 128, 0.12));
 }
 
 .form-group input[type="range"] {

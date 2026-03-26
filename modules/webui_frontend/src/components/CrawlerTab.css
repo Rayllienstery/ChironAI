@@ -824,7 +824,7 @@
 
 .md-pipeline-step-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
@@ -875,6 +875,7 @@
 .md-pipeline-step-actions {
   display: flex;
   gap: 4px;
+  margin-left: auto;
 }
 
 .md-pipeline-step-params {

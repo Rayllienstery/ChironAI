@@ -12,3 +12,5 @@ Business-domain projects (services and applications) live here. Each subdirector
 | [open_webui](open_webui/README.md) | Open WebUI Docker container; status/start/stop in WebUI header |
 
 Communication between modules is via **interfaces** defined in `core/contracts/`. No cross-import of concrete implementations.
+
+The repository root [`pyproject.toml`](../pyproject.toml) installs the **core** Python packages (`domain`, `application`, `api`, …) as the `chironai` distribution; `modules/*` often stay on `PYTHONPATH` via pytest or manual `sys.path` until each gets its own `pyproject.toml` for a full split.

@@ -18,8 +18,13 @@ Usage:
 import os
 import re
 import sys
-import requests
 from pathlib import Path
+
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_embed
 
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import VectorParams, Distance, PointStruct
@@ -57,13 +62,17 @@ def get_embeddings(texts: list[str], model_name: str = EMBED_MODEL_NAME) -> list
     out: list = []
     for i in range(0, len(texts), EMBED_BATCH_SIZE):
         batch = texts[i : i + EMBED_BATCH_SIZE]
-        r = requests.post(
-            OLLAMA_EMBED_URL,
-            json={"model": model_name, "input": batch},
-            timeout=120,
-        )
-        r.raise_for_status()
-        data = r.json()
+        try:
+            data = invoke_embed(
+                {
+                    "url": OLLAMA_EMBED_URL,
+                    "json": {"model": model_name, "input": batch},
+                    "timeout": 120,
+                },
+                default_timeout=120,
+            )
+        except OllamaInteractorCliError as e:
+            raise RuntimeError(str(e)) from e
         vectors = data.get("embeddings", [])
         if len(vectors) != len(batch):
             raise RuntimeError(

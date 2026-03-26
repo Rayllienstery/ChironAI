@@ -1,12 +1,10 @@
 """
 Ollama embedding client implementing EmbeddingProvider.
 
-Maps HTTP/requests errors to domain.errors.EmbeddingError.
+Calls Ollama via ollama_interactor CLI (subprocess); maps errors to domain.errors.EmbeddingError.
 """
 
 from __future__ import annotations
-
-import requests
 
 from domain.errors import EmbeddingError
 
@@ -18,9 +16,11 @@ except ImportError:
 
 from domain.services.retrieval import MAX_EMBED_TEXT_LENGTH
 
+from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_embed
+
 
 class OllamaEmbeddingProvider:
-    """Embedding provider using Ollama /api/embed."""
+    """Embedding provider using Ollama /api/embed via CLI."""
 
     def __init__(
         self,
@@ -34,14 +34,13 @@ class OllamaEmbeddingProvider:
         """Embed a single text. Raises EmbeddingError on failure."""
         if len(text) > MAX_EMBED_TEXT_LENGTH:
             text = text[:MAX_EMBED_TEXT_LENGTH]
+        stdin_obj: dict = {
+            "url": self._url,
+            "json": {"model": self._model, "input": text},
+            "timeout": 60,
+        }
         try:
-            resp = requests.post(
-                self._url,
-                json={"model": self._model, "input": text},
-                timeout=60,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+            data = invoke_embed(stdin_obj, default_timeout=60)
             embeddings = data.get("embeddings")
             if not embeddings:
                 raise EmbeddingError(f"No 'embeddings' key in Ollama response: {data}")
@@ -49,7 +48,7 @@ class OllamaEmbeddingProvider:
                 first = embeddings[0]
                 return first if isinstance(first, list) else list(first)
             raise EmbeddingError(f"Unexpected embeddings format: {embeddings}")
-        except requests.exceptions.RequestException as e:
+        except OllamaInteractorCliError as e:
             raise EmbeddingError(
                 f"Ollama embed API error (model={self._model}, url={self._url}): {e}"
             ) from e
@@ -64,14 +63,13 @@ class OllamaEmbeddingProvider:
             t[:MAX_EMBED_TEXT_LENGTH] if len(t) > MAX_EMBED_TEXT_LENGTH else t
             for t in texts
         ]
+        stdin_obj: dict = {
+            "url": self._url,
+            "json": {"model": self._model, "input": truncated},
+            "timeout": 120,
+        }
         try:
-            resp = requests.post(
-                self._url,
-                json={"model": self._model, "input": truncated},
-                timeout=120,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+            data = invoke_embed(stdin_obj, default_timeout=120)
             embeddings = data.get("embeddings")
             if embeddings is None:
                 raise EmbeddingError("No 'embeddings' key in Ollama response")
@@ -80,7 +78,7 @@ class OllamaEmbeddingProvider:
                     f"Ollama returned {len(embeddings)} embeddings for {len(truncated)} inputs"
                 )
             return [e if isinstance(e, list) else list(e) for e in embeddings]
-        except requests.exceptions.RequestException as e:
+        except OllamaInteractorCliError as e:
             raise EmbeddingError(
                 f"Ollama embed batch API error (model={self._model}): {e}"
             ) from e

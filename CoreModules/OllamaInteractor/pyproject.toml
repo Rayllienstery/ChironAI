@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ollama-interactor"
+version = "0.1.0"
+description = "CLI boundary for Ollama HTTP API (subprocess-friendly JSON I/O)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["requests>=2.28"]
+
+[project.scripts]
+ollama-interactor = "ollama_interactor.cli:main"
+
+[tool.setuptools]
+packages = ["ollama_interactor"]

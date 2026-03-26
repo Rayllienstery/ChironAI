@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from typing import Callable
 import requests
 from urllib.parse import urlparse
+
+from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_embed
 import csv
 
 try:
@@ -470,13 +472,17 @@ def get_embeddings(texts, model_name: str = EMBED_MODEL_NAME):
         Low-level call to /api/embed for a specific batch.
         Assumes the batch size is reasonable (no recursive splitting).
         """
-        response = requests.post(
-            OLLAMA_EMBED_URL,
-            json={"model": model_name, "input": batch},
-            timeout=EMBED_REQUEST_TIMEOUT,
-        )
-        response.raise_for_status()
-        data = response.json()
+        try:
+            data = invoke_embed(
+                {
+                    "url": OLLAMA_EMBED_URL,
+                    "json": {"model": model_name, "input": batch},
+                    "timeout": EMBED_REQUEST_TIMEOUT,
+                },
+                default_timeout=float(EMBED_REQUEST_TIMEOUT),
+            )
+        except OllamaInteractorCliError as e:
+            raise RuntimeError(str(e)) from e
         embeddings = data.get("embeddings")
         if embeddings is None:
             raise ValueError("No 'embeddings' key in Ollama response")

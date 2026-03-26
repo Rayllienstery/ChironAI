@@ -1,3 +1,11 @@
-# Development and testing (install with: pip install -r requirements-dev.txt)
-pytest>=7.0.0
-pytest-cov>=4.0.0
+# Development: editable installs (PEP 621 / pyproject.toml is the source of truth for versions).
+#   pip install -r requirements-dev.txt
+#
+# Installs:
+#   - chironai (root packages: application, api, domain, infrastructure, …) + runtime deps
+#   - optional [dev]: pytest, pytest-cov, import-linter, ruff
+#   - ollama-interactor (Ollama HTTP CLI boundary)
+
+-e .[dev]
+-e CoreModules/OllamaInteractor
+-e CoreModules/ServiceStarter

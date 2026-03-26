@@ -7,6 +7,7 @@ and injected ports (RagRepository, EmbeddingProvider, RerankClient, ChatLLMClien
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from typing import Any
@@ -367,7 +368,24 @@ def prepare_ollama_messages(
                 text = " ".join(p.get("text", "") for p in content if p.get("type") == "text")
             else:
                 text = content or ""
+            # Preserve assistant tool-call turn in text form for models without native tool role.
+            if role == "assistant" and not text and isinstance(m.get("tool_calls"), list):
+                tc = m.get("tool_calls") or []
+                parts: list[str] = []
+                for c in tc:
+                    if not isinstance(c, dict):
+                        continue
+                    fn = (c.get("function") or {}) if isinstance(c.get("function"), dict) else {}
+                    name = fn.get("name") or "tool"
+                    args = fn.get("arguments") or ""
+                    parts.append(f"[tool_call:{name}] {args}")
+                text = "\n".join(parts)
             ollama_messages.append({"role": role, "content": text})
+            continue
+        if role == "tool":
+            name = m.get("name") or "tool"
+            text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
+            ollama_messages.append({"role": "user", "content": f"[tool_result:{name}] {text}"})
     model = request.model or model_name
     return ollama_messages, model
 

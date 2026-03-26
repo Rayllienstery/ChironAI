@@ -1,15 +1,13 @@
 """
 Ollama chat client implementing ChatLLMClient.
 
-Maps HTTP/requests errors to domain errors.
+Calls Ollama via ollama_interactor CLI (subprocess).
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 from typing import Any
-
-import requests
 
 try:
     from config import get_ollama_chat_model, get_ollama_chat_url, get_ollama_chat_options
@@ -18,9 +16,29 @@ except ImportError:
     get_ollama_chat_model = lambda: "danielsheep/gpt-oss-20b-unsloth:UD-Q6_K_XL"  # type: ignore
     get_ollama_chat_options = lambda: {"num_predict": 3072, "temperature": 0.0, "top_p": 0.1}  # type: ignore
 
+from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_chat, iter_chat_stream
+
+
+def _chat_runtime_error(use_model: str, url: str, exc: OllamaInteractorCliError) -> RuntimeError:
+    msg = str(exc)
+    if "405" in msg or (exc.stderr and "405" in exc.stderr):
+        return RuntimeError(
+            f"Ollama endpoint method not allowed (405): {url}. "
+            f"This usually means the endpoint doesn't support POST method or the URL is incorrect. "
+            f"Model: {use_model}. "
+            f"Try checking Ollama API documentation or verify the endpoint URL."
+        )
+    if "404" in msg or (exc.stderr and "404" in exc.stderr):
+        return RuntimeError(
+            f"Ollama endpoint not found (404): {url}. "
+            f"Please check if Ollama is running and the URL is correct. "
+            f"Model: {use_model}"
+        )
+    return RuntimeError(f"Ollama chat API error (model={use_model}, url={url}): {exc}")
+
 
 class OllamaChatClient:
-    """Chat LLM client using Ollama /api/chat."""
+    """Chat LLM client using Ollama /api/chat via CLI."""
 
     def __init__(
         self,
@@ -42,42 +60,22 @@ class OllamaChatClient:
         """Send messages and return the assistant reply. Non-stream only for string return."""
         use_model = model or self._model
         opts = {**(self._default_options or {}), **(options or {})}
-        payload = {
+        payload: dict[str, Any] = {
             "model": use_model,
             "messages": messages,
             "stream": stream,
             "options": opts,
         }
+        if stream:
+            return ""
+        stdin_obj: dict[str, Any] = {"url": self._url, "json": payload, "timeout": 600}
         try:
-            resp = requests.post(
-                self._url,
-                json=payload,
-                stream=stream,
-                timeout=600,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            if stream:
-                # Caller may consume stream; we don't return full string for stream.
-                return ""
+            data = invoke_chat(stdin_obj, default_timeout=600)
             msg = data.get("message") or {}
             content = msg.get("content") if isinstance(msg, dict) else None
             return (content or "").strip()
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 405:
-                raise RuntimeError(
-                    f"Ollama endpoint method not allowed (405): {self._url}. "
-                    f"This usually means the endpoint doesn't support POST method or the URL is incorrect. "
-                    f"Model: {use_model}. "
-                    f"Try checking Ollama API documentation or verify the endpoint URL."
-                ) from e
-            raise RuntimeError(
-                f"Ollama chat API error (model={use_model}, url={self._url}, status={e.response.status_code}): {e}"
-            ) from e
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(
-                f"Ollama chat API error (model={use_model}, url={self._url}): {e}"
-            ) from e
+        except OllamaInteractorCliError as e:
+            raise _chat_runtime_error(use_model, self._url, e) from e
 
     def stream_chat(
         self,
@@ -85,56 +83,20 @@ class OllamaChatClient:
         model: str,
         options: dict[str, Any] | None = None,
     ) -> Iterator[str]:
-        """Stream chat: yield content chunks from Ollama NDJSON stream."""
+        """Stream chat: yield content chunks from Ollama NDJSON stream via CLI."""
         use_model = model or self._model
         opts = {**(self._default_options or {}), **(options or {})}
-        payload = {
+        payload: dict[str, Any] = {
             "model": use_model,
             "messages": messages,
             "stream": True,
             "options": opts,
         }
+        stdin_obj: dict[str, Any] = {"url": self._url, "json": payload, "timeout": 600}
         try:
-            resp = requests.post(
-                self._url,
-                json=payload,
-                stream=True,
-                timeout=600,
-            )
-            resp.raise_for_status()
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 404:
-                raise RuntimeError(
-                    f"Ollama endpoint not found (404): {self._url}. "
-                    f"Please check if Ollama is running and the URL is correct. "
-                    f"Model: {use_model}"
-                ) from e
-            elif e.response.status_code == 405:
-                raise RuntimeError(
-                    f"Ollama endpoint method not allowed (405): {self._url}. "
-                    f"This usually means the endpoint doesn't support POST method or the URL is incorrect. "
-                    f"Model: {use_model}. "
-                    f"Try checking Ollama API documentation or verify the endpoint URL."
-                ) from e
-            raise RuntimeError(
-                f"Ollama chat API error (model={use_model}, url={self._url}, status={e.response.status_code}): {e}"
-            ) from e
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(
-                f"Ollama chat API error (model={use_model}, url={self._url}): {e}"
-            ) from e
-        for line in resp.iter_lines(decode_unicode=True):
-            if not line:
-                continue
-            try:
-                import json as _json
-                obj = _json.loads(line)
-            except Exception:
-                continue
-            msg = obj.get("message") or {}
-            content = msg.get("content", "")
-            if content:
-                yield content
+            yield from iter_chat_stream(stdin_obj, default_timeout=600)
+        except OllamaInteractorCliError as e:
+            raise _chat_runtime_error(use_model, self._url, e) from e
 
 
 __all__ = ["OllamaChatClient"]
