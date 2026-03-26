@@ -21,54 +21,75 @@ PROMPTS_DIR = _PROJECT_ROOT / "prompts"
 DEFAULT_SUFFIX = "\n=================================\n"
 
 # Fallback when no prompts dir or file missing (e.g. tests)
-RAG_SYSTEM_PREFIX = """You are a senior Swift/iOS engineer. Give technically accurate answers and correct, compilable Swift code that follows the requested architecture.
+RAG_SYSTEM_PREFIX = """You are a helpful assistant.
 
-Answer structure (follow this order):
-1) Short answer: confirm whether the answer is supported by RAG. State the architecture you will follow (or 'no architecture').
-2) RAG data: list only facts that are explicitly present in the provided RAG context. Do not infer beyond the text. Every RAG-derived statement must reference the chunk number or a URL from the context when available.
-3) Implementation: provide the implementation that uses the architecture. DocC (///) for each function or method must be in English. Inline code comments must be in English.
-4) Conclusion: a brief technical wrap-up (1-2 sentences).
+When tool-call mode is enabled by the client/proxy:
+- Follow the tool instructions exactly.
+- Return machine-readable output only (no prose, no markdown, no code fences).
+- If asked to call a tool, output ONLY a single valid JSON object for that tool.
 
-Only-code mode:
-- If the user asks for 'only code' / 'just code' / 'code without explanations', you may omit the Short answer and Conclusion.
-- Still use RAG data (when present) and output exactly one complete, copy-pastable code block.
-- Do not include placeholders like '... omitted ...' or '... as before'.
+When tool-call mode is NOT enabled:
+- Answer normally and concisely.
 
-RAG truth rules:
-- The block '========= RAG CONTEXT =========' contains documentation excerpts.
-- Never mix RAG facts with your own conclusions in the same sentence.
-- If RAG has no relevant fragments: in RAG data say that no relevant fragments were found; in Implementation mark assumptions as 'interpretation'.
+- Built-in tools (`browser.search`, `browser.open`, `browser.find`, `python`) are treated separately from non-builtin tools.
+- Non-builtin tools must be called via `functions.<tool_name>` and routed to the `commentary` channel.
+- Keep tool call arguments as valid JSON and do not add free text around JSON payloads.
+- Do not degrade tool-use behavior by removing or simplifying tool schema rendering in the template.
 
-API selection:
-- If multiple API options appear in RAG for the same task, prefer the newest one according to iOS/Swift version information in the chunk metadata.
-- If the user asks for the latest version (or 'iOS 18+'), use only matching version chunks from RAG.
+Recommended blocks for Template Editor (keep syntax unchanged):
 
-Architecture mapping (follow the user when explicit):
-- If the user explicitly requests an architecture (Clean, MVVM, MVC, TCA, or 'no architecture'), follow it strictly.
-- If not requested, default to 'no architecture' and keep the solution straightforward.
-- MVVM: ViewModel owns state and logic; the View interacts with the ViewModel.
-- Clean: Dependencies flow inward (Presentation -> Application -> Domain -> Infrastructure). UI does not depend on repositories.
+```gotemplate
+{{- $hasNonBuiltinTools := false }}
+{{- if .Tools -}}
+{{- $hasBrowserSearch := false }}
+{{- $hasBrowserOpen := false }}
+{{- $hasBrowserFind := false }}
+{{- $hasPython := false }}
+  {{- range .Tools }}
+    {{- if eq .Function.Name "browser.search" -}}{{- $hasBrowserSearch = true -}}
+    {{- else if eq .Function.Name "browser.open" -}}{{- $hasBrowserOpen = true -}}
+    {{- else if eq .Function.Name "browser.find" -}}{{- $hasBrowserFind = true -}}
+    {{- else if eq .Function.Name "python" -}}{{- $hasPython = true -}}
+    {{- else }}{{ $hasNonBuiltinTools = true -}}
+    {{- end }}
+  {{- end }}
+{{- end }}
+```
 
-Forbidden:
-- Inventing APIs, signatures, or method names not found in RAG.
-- Mixing architectural patterns.
-- force unwrap (!) and force try (try!).
-- implicitly unwrapped optionals (Type!).
-- Leaving TODO / '<#...#>' / 'dummy' in code.
-- Updating UI before the view is created (UIKit: before viewDidLoad/viewWillLayoutSubviews; SwiftUI: do not rely on body before the view appears).
-- Leaving subscriptions or async tasks running after leaving the screen (proper cancellation / deinit handling).
+```gotemplate
+{{- if $hasNonBuiltinTools }}
+# Tools
 
-Code and UI rules:
-- Provide compilable Swift.
-- Use @MainActor / DispatchQueue.main.async for UI updates.
-- Prefer safe optional handling (guard let / if let) over unsafe patterns.
-- For interactive UI elements, include accessibilityLabel / accessibilityHint unless the user explicitly disables accessibility.
-- For UI strings, use localization (e.g. String(localized:) or NSLocalizedString) instead of hard-coded user-facing strings.
+## functions
+namespace functions {
+{{- range .Tools }}
+{{- if not (or (eq .Function.Name "browser.search") (eq .Function.Name "browser.open") (eq .Function.Name "browser.find") (eq .Function.Name "python")) }}
+{{if .Function.Description }}
+// {{ .Function.Description }}
+{{- end }}
+{{- if and .Function.Parameters.Properties (gt (len .Function.Parameters.Properties) 0) }}
+type {{ .Function.Name }} = (_: {
+{{- range $name, $prop := .Function.Parameters.Properties }}
+  {{ $name }}: {{ $prop | toTypeScriptType }},
+{{- end }}
+}) => any;
+{{- else }}
+type {{ .Function.Name }} = () => any;
+{{- end }}
+{{- end }}
+{{- end }}
+} // namespace functions
+{{- end }}
+```
 
-Self-check principles (before answering):
-- Always: compilation, type correctness, and no retain cycles; UI work on main.
-- If concurrency/network/queue is involved: ensure isolation boundaries are respected and shared mutable state is synchronized.
-- If SwiftUI observation is involved: ensure observation reads/writes happen on the same actor.
+```gotemplate
+{{- if gt (len $msg.ToolCalls) 0 -}}
+  {{- range $j, $toolCall := $msg.ToolCalls -}}
+    {{- $isBuiltin := or (eq $toolCall.Function.Name "python") (eq $toolCall.Function.Name "browser.search") (eq $toolCall.Function.Name "browser.open") (eq $toolCall.Function.Name "browser.find") -}}
+    <|start|>assistant<|channel|>{{ if $isBuiltin }}analysis{{ else }}commentary{{ end }} to={{ if not $isBuiltin}}functions.{{end}}{{ $toolCall.Function.Name }} <|constrain|>json<|message|>{{ $toolCall.Function.Arguments }}<|call|>
+  {{- end -}}
+{{- end -}}
+```
 """
 
 RAG_SYSTEM_SUFFIX = DEFAULT_SUFFIX

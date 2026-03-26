@@ -171,25 +171,207 @@ def _extract_edit_from_response(content: str) -> dict[str, object] | None:
     text = (content or "").strip()
     if not text:
         return None
-    # Accept plain JSON or fenced JSON block.
+
+    def _first_balanced_json_object(s: str) -> str | None:
+        start = s.find("{")
+        if start < 0:
+            return None
+        depth = 0
+        in_str = False
+        escaped = False
+        for i in range(start, len(s)):
+            ch = s[i]
+            if in_str:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == "\"":
+                    in_str = False
+                continue
+            if ch == "\"":
+                in_str = True
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return s[start : i + 1]
+        return None
+
     m = re.search(r"```json\s*(\{[\s\S]*?\})\s*```", text, flags=re.IGNORECASE)
-    payload = m.group(1) if m else text
+    payload = m.group(1) if m else None
+    if payload is None:
+        payload = _first_balanced_json_object(text)
+
+    if payload is None:
+        return None
     try:
         obj = json.loads(payload)
     except Exception:
         return None
     if not isinstance(obj, dict):
         return None
+    # Batch-style payloads
+    paths = obj.get("paths")
+    if isinstance(paths, list) and paths:
+        first = paths[0]
+        if isinstance(first, dict):
+            obj = {
+                "path": first.get("path") or first.get("file_path"),
+                "content": first.get("content") or "",
+                "mode": obj.get("mode") or "create",
+                "display_description": obj.get("display_description") or "",
+            }
     file_path = obj.get("file_path") or obj.get("path")
     if not file_path:
         return None
-    if not (obj.get("new_text") or obj.get("patch") or obj.get("replacement") or obj.get("content")):
+    has_text = bool(
+        obj.get("new_text") or obj.get("patch") or obj.get("replacement") or obj.get("content")
+    )
+    mode_raw = str(obj.get("mode") or obj.get("operation") or obj.get("variant") or "").strip().lower()
+    create_like = mode_raw in {"create", "overwrite", "w", "fw", "write"}
+    if not has_text and not create_like:
         return None
     if "file_path" not in obj:
         obj["file_path"] = file_path
     if "new_text" not in obj:
         obj["new_text"] = obj.get("replacement") or obj.get("content") or ""
     return obj
+
+
+def _extract_line_span_from_user_text(user_text: str) -> tuple[int, int] | None:
+    m = re.search(r"\(\s*(\d+)\s*:\s*(\d+)\s*\)", user_text or "")
+    if not m:
+        return None
+    a, b = int(m.group(1)), int(m.group(2))
+    if a < 1 or b < 1 or a > b:
+        return None
+    return (a, b)
+
+
+def _workspace_selection_snippet(user_query: str, max_chars: int = 12000) -> str:
+    """Load current file lines for (start:end) in user_query to ground the model."""
+    span = _extract_line_span_from_user_text(user_query or "")
+    if not span:
+        return ""
+    raw_path = _extract_file_path_from_user_text(user_query or "")
+    if not raw_path:
+        return ""
+    rel = _normalize_tool_path(raw_path)
+    if rel:
+        rel = _resolve_workspace_relative_path_hint(rel)
+    if not rel:
+        return ""
+    root = _workspace_root()
+    fp = root / rel
+    try:
+        if not fp.is_file():
+            return ""
+        text = fp.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    lines = text.splitlines()
+    a, b = span
+    if a < 1 or b < 1 or a > b or a > len(lines):
+        return ""
+    b_eff = min(b, len(lines))
+    chunk = "\n".join(lines[a - 1 : b_eff])
+    if len(chunk) > max_chars:
+        chunk = chunk[:max_chars] + "\n... [truncated]"
+    return (
+        f"\n\n[proxy:current_file_excerpt] `{rel}` lines {a}-{b_eff} (1-based, from disk):\n```\n{chunk}\n```\n"
+        "Apply the user instruction to THIS excerpt; your tool JSON must include the full new source for the "
+        "edited region (non-empty `content` / `new_text` / `replacement`).\n"
+    )
+
+
+def _strict_retry_user_content(user_query: str, selected_tool_name: str | None) -> str:
+    base = (user_query or "").strip()
+    if not base:
+        return base
+    span = _extract_line_span_from_user_text(base)
+    extra_parts: list[str] = [
+        "\n\n[proxy:strict_tool_json] Return a single JSON object only. No markdown or commentary."
+    ]
+    if span:
+        a, b = span
+        if selected_tool_name and "replace" in selected_tool_name.lower() and "range" in selected_tool_name.lower():
+            extra_parts.append(
+                f"The user selection is lines {a}-{b} (1-based inclusive). "
+                "Include workspace-relative `path` and non-empty `replacement`: the FULL multi-line text "
+                "that replaces exactly that line range (e.g. the full `const tabs = [...]` block). "
+                "Never omit `replacement`."
+            )
+        else:
+            extra_parts.append(
+                f"The user selection is lines {a}-{b} (1-based inclusive). "
+                "Include non-empty `new_text` or `content` with the actual updated code for that region; "
+                "never emit only metadata fields. `mode` must be edit, create, or overwrite (never empty)."
+            )
+    else:
+        extra_parts.append(
+            "Include non-empty `new_text`, `content`, or `replacement` (whichever the tool schema requires) "
+            "with the actual code changes."
+        )
+    return base + "".join(extra_parts) + _workspace_selection_snippet(base)
+
+
+def _extract_file_path_from_user_text(user_text: str) -> str | None:
+    if not user_text:
+        return None
+    # Prefer file:// absolute path from Zed links.
+    m = re.search(r"file:///?([A-Za-z]:/[^\s)#]+)", user_text)
+    if m:
+        return m.group(1)
+    # Also accept file:///C:/... patterns.
+    m2 = re.search(r"file:///?(C:/[^\s)#]+)", user_text)
+    if m2:
+        return m2.group(1)
+    # Capture @label like [@App.jsx (283:293)] or [@App.jsx](file:///...).
+    m3 = re.search(r"\[@([^\]\r\n]+?)\s*\(\d+\s*:\s*\d+\)\]", user_text)
+    if m3:
+        return m3.group(1).strip()
+    m3b = re.search(r"\[@([^\]\r\n]+?)\]\(", user_text)
+    if m3b:
+        return m3b.group(1).strip()
+    # Plain Windows path in text.
+    m4 = re.search(r"([A-Za-z]:/[^\s)#]+)", user_text)
+    if m4:
+        return m4.group(1).strip()
+    # Plain filename token (e.g. "App.jsx") as last resort.
+    m5 = re.search(r"\b([A-Za-z0-9_.-]+\.(?:jsx|tsx|js|ts|py|md|txt|json|yaml|yml))\b", user_text)
+    if m5:
+        return m5.group(1).strip()
+    return None
+
+
+def _resolve_workspace_relative_path_hint(path_hint: str) -> str:
+    hint = (path_hint or "").strip().replace("\\", "/").lstrip("./")
+    if not hint:
+        return ""
+    root = _workspace_root()
+    try:
+        # Already a valid relative path?
+        if "/" in hint and (root / hint).exists():
+            return hint
+        # Basename case (e.g. App.jsx)
+        candidates = [
+            hint,
+            f"modules/webui_frontend/src/{hint}",
+            f"src/{hint}",
+            f"WebUI/{hint}",
+        ]
+        for rel in candidates:
+            try:
+                if rel and (root / rel).exists():
+                    return rel.replace("\\", "/").lstrip("./")
+            except Exception:
+                continue
+    except Exception:
+        return hint
+    return hint
 
 
 def _normalize_tool_path(file_path: str) -> str:
@@ -214,6 +396,14 @@ def _normalize_tool_path(file_path: str) -> str:
     return normalized.lstrip("./")
 
 
+def _is_create_intent(user_query: str) -> bool:
+    q = (user_query or "").lower()
+    if not q:
+        return False
+    markers = ["create file", "generate file", "new file", "создай файл", "сгенерируй файл", "создать файл"]
+    return any(m in q for m in markers)
+
+
 def _extract_tool_name(tool_obj: object) -> str | None:
     if not isinstance(tool_obj, dict):
         return None
@@ -226,10 +416,16 @@ def _extract_tool_name(tool_obj: object) -> str | None:
     return None
 
 
-def _select_edit_tool_name(tools: list[object]) -> str | None:
+def _select_edit_tool_name(tools: list[object], user_query: str = "") -> str | None:
     names = [n for n in (_extract_tool_name(t) for t in tools) if n]
     if not names:
         return None
+    q = user_query or ""
+    if q and _extract_line_span_from_user_text(q) is not None:
+        for n in names:
+            low = n.lower()
+            if "replace" in low and "range" in low:
+                return n
     if _APPLY_EDIT_TOOL_NAME in names:
         return _APPLY_EDIT_TOOL_NAME
     for n in names:
@@ -260,6 +456,30 @@ def _get_tool_by_name(tools: list[object], name: str | None) -> dict[str, object
     return None
 
 
+def _default_tool_keys(selected_tool_name: str) -> set[str]:
+    n = (selected_tool_name or "").lower()
+    if n == "save_file":
+        return {"path", "content", "mode", "display_description"}
+    if "replace" in n and "range" in n:
+        return {"path", "replacement"}
+    if "edit" in n and "file" in n:
+        return {"path", "mode", "display_description", "content"}
+    return {"file_path", "range", "new_text"}
+
+
+def _coerce_zed_tool_mode(raw: object) -> str:
+    s = str(raw).strip().lower() if raw is not None else ""
+    if s in {"edit", "create", "overwrite"}:
+        return s
+    if s in {"w", "write"}:
+        return "create"
+    if s in {"fw"}:
+        return "overwrite"
+    if s in {"patch", "replace"}:
+        return "edit"
+    return "edit"
+
+
 def _build_tool_arguments(
     *,
     selected_tool_name: str,
@@ -267,7 +487,23 @@ def _build_tool_arguments(
     edit_payload: dict[str, object],
     user_query: str,
 ) -> dict[str, object]:
-    file_path = _normalize_tool_path(str(edit_payload.get("file_path") or ""))
+    user_path = _extract_file_path_from_user_text(user_query or "")
+    payload_raw_path = str(edit_payload.get("file_path") or edit_payload.get("path") or "")
+    normalized_payload_path = _normalize_tool_path(payload_raw_path) if payload_raw_path else ""
+    file_path = normalized_payload_path
+    if user_path and file_path:
+        try:
+            root = _workspace_root()
+            if not (root / file_path).exists():
+                normalized_user_path = _normalize_tool_path(user_path)
+                if normalized_user_path and (root / normalized_user_path).exists():
+                    file_path = normalized_user_path
+        except Exception:
+            pass
+    if user_path and not file_path:
+        file_path = _normalize_tool_path(user_path)
+    if file_path and "/" not in file_path:
+        file_path = _resolve_workspace_relative_path_hint(file_path)
     range_obj = edit_payload.get("range") if isinstance(edit_payload.get("range"), dict) else {}
     new_text = str(edit_payload.get("new_text") or "")
     desc = (user_query or "").strip().replace("\n", " ")
@@ -275,11 +511,15 @@ def _build_tool_arguments(
         desc = f"Apply requested edit via {selected_tool_name}"
     display_description = desc[:180]
 
-    payload_mode = edit_payload.get("mode")
+    raw_mode = (
+        edit_payload.get("mode")
+        or edit_payload.get("operation")
+        or edit_payload.get("variant")
+    )
     mode_value = (
-        payload_mode.strip()
-        if isinstance(payload_mode, str) and payload_mode.strip()
-        else "edit"
+        _coerce_zed_tool_mode(raw_mode)
+        if raw_mode not in (None, "")
+        else ("create" if _is_create_intent(user_query) else "edit")
     )
 
     canonical_values: dict[str, object] = {
@@ -300,8 +540,8 @@ def _build_tool_arguments(
         "end_col": range_obj.get("end_col"),
         "display_description": display_description,
         "mode": mode_value,
-        "operation": "edit",
-        "variant": "edit",
+        "operation": mode_value,
+        "variant": mode_value,
     }
 
     # If tool schema provides required keys, ensure they are present to avoid Zed-side rejection.
@@ -321,7 +561,7 @@ def _build_tool_arguments(
     keys_to_emit: set[str] = set(required)
     keys_to_emit.update(str(k) for k in properties.keys())
     if not keys_to_emit:
-        keys_to_emit = {"file_path", "range", "new_text"}
+        keys_to_emit = set(_default_tool_keys(selected_tool_name))
 
     # Special handling for save-file batch payload (`paths`).
     # Some clients require tool input like:
@@ -378,6 +618,16 @@ def _build_tool_arguments(
         else:
             args[key] = [] if key == "paths" else ""
 
+    # Zed rejects empty string for enum `mode` (edit/create/overwrite).
+    for k in ("mode", "operation", "variant"):
+        if k not in args:
+            continue
+        v = args.get(k)
+        if v is None or (isinstance(v, str) and not v.strip()):
+            args[k] = "edit"
+        else:
+            args[k] = _coerce_zed_tool_mode(v)
+
     return args
 
 
@@ -385,23 +635,48 @@ def _build_tool_json_instruction(
     selected_tool_name: str | None,
     selected_tool: dict[str, object] | None,
 ) -> str:
-    if not selected_tool_name or not isinstance(selected_tool, dict):
+    if not selected_tool_name:
         return ""
-    fn = selected_tool.get("function") if isinstance(selected_tool.get("function"), dict) else {}
+    fn: dict[str, object] = {}
+    if isinstance(selected_tool, dict):
+        maybe_fn = selected_tool.get("function")
+        if isinstance(maybe_fn, dict):
+            fn = maybe_fn  # type: ignore[assignment]
     params = fn.get("parameters") if isinstance(fn, dict) else {}
-    required = params.get("required") if isinstance(params, dict) and isinstance(params.get("required"), list) else []
-    properties = params.get("properties") if isinstance(params, dict) and isinstance(params.get("properties"), dict) else {}
+    required = (
+        params.get("required")
+        if isinstance(params, dict) and isinstance(params.get("required"), list)
+        else []
+    )
+    properties = (
+        params.get("properties")
+        if isinstance(params, dict) and isinstance(params.get("properties"), dict)
+        else {}
+    )
     prop_names = [str(k) for k in properties.keys()]
     req_names = [str(x) for x in required if isinstance(x, str)]
     fields = req_names if req_names else prop_names
     if not fields:
-        fields = ["path", "range", "new_text"]
+        fields = sorted(_default_tool_keys(selected_tool_name))
+    n = (selected_tool_name or "").lower()
+    tail = ""
+    if "replace" in n and "range" in n:
+        tail = (
+            " Required: non-empty `replacement` with the full multi-line text that replaces the user’s selected "
+            "line range (not a description)."
+        )
+    elif "edit" in n and "file" in n:
+        tail = (
+            " Required for `edit` mode: non-empty `content` or `new_text` with the actual source code to apply "
+            "(not just path/description/mode)."
+        )
     return (
         "Tool-call mode is enabled. "
         f"Return ONLY a single valid JSON object for tool `{selected_tool_name}` with fields from tool schema: {fields}. "
         "Do not return markdown, code fences, comments, or explanations. "
         "Use workspace-relative path in `path`/`file_path` when applicable. "
-        "If any field is unknown, use an empty string."
+        "If the schema includes `mode`, it must be exactly one of: edit, create, overwrite (never empty)."
+        f"{tail}"
     )
 
 
@@ -490,12 +765,41 @@ def create_app(
         requested_model = body.get("model") or RAG_MODEL_ID
         tools = body.get("tools") if isinstance(body.get("tools"), list) else []
         tool_choice = body.get("tool_choice")
-        selected_edit_tool_name = _select_edit_tool_name(tools)
-        selected_edit_tool = _get_tool_by_name(tools, selected_edit_tool_name) if selected_edit_tool_name else None
+        tool_choice_effective = tool_choice if tool_choice not in (None, "") else "auto"
         explicit_reasoning = body.get("reasoning_level") or body.get("reasoning")
         include_rag_metadata = body.get("include_rag_metadata", False)
         force_rag = bool(body.get("force_rag"))
         has_tool_result = any(isinstance(m, dict) and m.get("role") == "tool" for m in messages)
+        last_tool_content = ""
+        for m in reversed(messages):
+            if isinstance(m, dict) and m.get("role") == "tool":
+                last_tool_content = str(
+                    m.get("content")
+                    or m.get("output")
+                    or m.get("result")
+                    or m.get("text")
+                    or ""
+                )
+                break
+        _ltl = last_tool_content.lower()
+        tool_result_indicates_failure = any(
+            x in _ltl
+            for x in (
+                "no edits were made",
+                "no edits",
+                "failed to receive tool input",
+                "path not found",
+                "can't edit file",
+                "cannot edit file",
+                "can't create file",
+                "cannot create file",
+                "parent directory doesn't exist",
+                "parent directory does not exist",
+                "file not found",
+                "unknown variant",
+                "error",
+            )
+        )
         fetch_web_knowledge_raw = body.get("fetch_web_knowledge")
         if fetch_web_knowledge_raw is None:
             fetch_web_knowledge = False
@@ -514,6 +818,8 @@ def create_app(
         set_proxy_status(STATUS_RAG_SEARCH)
         last_user = last_user_content(messages)
         user_query = last_user  # Store for logging
+        selected_edit_tool_name = _select_edit_tool_name(tools, user_query)
+        selected_edit_tool = _get_tool_by_name(tools, selected_edit_tool_name) if selected_edit_tool_name else None
         context_length = len(last_user.split())
         effective_prefix = prefix
         effective_suffix = suffix
@@ -551,12 +857,77 @@ def create_app(
                 else None
             ),
             "tool_choice": tool_choice if isinstance(tool_choice, (str, dict)) else None,
+            "tool_choice_effective": tool_choice_effective
+            if isinstance(tool_choice_effective, (str, dict))
+            else str(tool_choice_effective),
             "has_tool_result": bool(has_tool_result),
+            "tool_result_indicates_failure": bool(tool_result_indicates_failure),
+            "tool_result_last_content_preview": (last_tool_content[:240] if last_tool_content else ""),
             "force_rag": bool(force_rag),
             "fetch_web_knowledge": bool(fetch_web_knowledge),
             "reasoning_level": explicit_reasoning or reasoning_level,
             "user_query_preview": (user_query or "")[:500],
         }
+
+        # Native fallback when client didn't send tools:
+        # If Zed/other client omitted `tools` but referenced a specific file in the user text,
+        # return an OpenAI tool_call to `edit_file` so the client can execute it locally.
+        if not tools and not has_tool_result and tool_choice_effective != "none":
+            user_text = user_query or last_user or ""
+            extracted = _extract_file_path_from_user_text(user_text)
+            normalized_path = _normalize_tool_path(extracted) if extracted else ""
+            if normalized_path:
+                normalized_path = _resolve_workspace_relative_path_hint(normalized_path)
+            if normalized_path:
+                mode_value = "create" if _is_create_intent(user_text) else "edit"
+                tool_call = {
+                    "id": f"call_{uuid.uuid4().hex[:24]}",
+                    "type": "function",
+                    "function": {
+                        "name": "edit_file",
+                        "arguments": json.dumps(
+                            {
+                                "path": normalized_path,
+                                "mode": mode_value,
+                                "display_description": (user_text or "").strip()[:180] or "Edit file",
+                            },
+                            ensure_ascii=False,
+                        ),
+                    },
+                }
+                response_data = {
+                    "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
+                    "object": "chat.completion",
+                    "created": 0,
+                    "model": actual_model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": None, "tool_calls": [tool_call]},
+                            "finish_reason": "tool_calls",
+                        }
+                    ],
+                }
+                trace["response"] = {
+                    "content_preview": "",
+                    "content_length_chars": 0,
+                    "tool_calls_count": 1,
+                    "tool_calls": [tool_call],
+                }
+                set_current_trace(trace)
+                if stream:
+                    def generate_sse_tool_call():
+                        oid = response_data["id"]
+                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': actual_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': actual_model, 'choices': [{'index': 0, 'delta': {'tool_calls': [{'index': 0, 'id': tool_call['id'], 'type': 'function', 'function': {'name': 'edit_file', 'arguments': tool_call['function']['arguments']}}]}, 'finish_reason': None}]})}\n\n"
+                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': actual_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls'}]})}\n\n"
+                        yield "data: [DONE]\n\n"
+                    return Response(
+                        generate_sse_tool_call(),
+                        mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                    )
+                return jsonify(response_data)
 
         # Optional project_context: frameworks list -> fresh collection names for RAG filter, and needs_refresh for background index
         project_context = body.get("project_context")
@@ -933,12 +1304,15 @@ def create_app(
             _log_rag_error("prepare_rag", e)
             return jsonify({"error": str(e)}), 500
 
-        if tools and tool_choice != "none" and not has_tool_result:
+        if tools and tool_choice_effective != "none":
             tool_json_instruction = _build_tool_json_instruction(selected_edit_tool_name, selected_edit_tool)
             if tool_json_instruction:
                 ollama_messages.append({"role": "system", "content": tool_json_instruction})
+            excerpt_sys = _workspace_selection_snippet(user_query or last_user or "").strip()
+            if excerpt_sys:
+                ollama_messages.append({"role": "system", "content": excerpt_sys})
 
-        stream_tool_mode = bool(stream and tools and tool_choice != "none" and not has_tool_result)
+        stream_tool_mode = bool(stream and tools and tool_choice_effective != "none")
         if stream_tool_mode:
             set_proxy_status(STATUS_RESPONSE)
             stream_start_time = time.time()
@@ -971,8 +1345,61 @@ def create_app(
                 trace["response"]["tool_mode_error"] = stream_tool_error[:500]
                 set_current_trace(trace)
             edit_payload = _extract_edit_from_response(streamed_content or "")
+            tool_plain_fallback = (streamed_content or "").strip()
 
-            if (not stream_tool_error) and edit_payload and selected_edit_tool_name and selected_edit_tool:
+            if (not stream_tool_error) and not edit_payload and selected_edit_tool_name:
+                tool_json_instruction = _build_tool_json_instruction(
+                    selected_edit_tool_name, selected_edit_tool
+                )
+                strict_messages: list[dict[str, object]] = []
+                if tool_json_instruction:
+                    strict_messages.append({"role": "system", "content": tool_json_instruction})
+                strict_messages.append(
+                    {
+                        "role": "user",
+                        "content": _strict_retry_user_content(
+                            user_query or last_user or "", selected_edit_tool_name
+                        ),
+                    }
+                )
+                try:
+                    retried_content = chat_client.chat(strict_messages, use_model, stream=False, options=None)
+                    tool_plain_fallback = (retried_content or "").strip() or tool_plain_fallback
+                    edit_payload = _extract_edit_from_response(retried_content or "")
+                except Exception as e2:
+                    log_webui_error("rag_routes.chat_completions", e2, {"stage": "stream_tool_mode_strict_retry"})
+                    _log_rag_error("stream_tool_mode_strict_retry", e2)
+                    edit_payload = None
+
+            if (not stream_tool_error) and not edit_payload and selected_edit_tool_name:
+                tool_json_instruction2 = _build_tool_json_instruction(
+                    selected_edit_tool_name, selected_edit_tool
+                )
+                strict_messages2: list[dict[str, object]] = []
+                if tool_json_instruction2:
+                    strict_messages2.append({"role": "system", "content": tool_json_instruction2})
+                strict_messages2.append(
+                    {
+                        "role": "user",
+                        "content": _strict_retry_user_content(
+                            user_query or last_user or "", selected_edit_tool_name
+                        )
+                        + " Your previous JSON was invalid or omitted required code fields (empty replacement/new_text/content). Output ONE JSON object that includes the actual code.",
+                    }
+                )
+                try:
+                    retried2 = chat_client.chat(strict_messages2, use_model, stream=False, options=None)
+                    tool_plain_fallback = (retried2 or "").strip() or tool_plain_fallback
+                    edit_payload = _extract_edit_from_response(retried2 or "")
+                except Exception as e_strict2:
+                    log_webui_error(
+                        "rag_routes.chat_completions",
+                        e_strict2,
+                        {"stage": "stream_tool_mode_strict_retry_2"},
+                    )
+                    _log_rag_error("stream_tool_mode_strict_retry_2", e_strict2)
+
+            if (not stream_tool_error) and edit_payload and selected_edit_tool_name:
                 tool_args = _build_tool_arguments(
                     selected_tool_name=selected_edit_tool_name,
                     selected_tool=selected_edit_tool,
@@ -1008,11 +1435,11 @@ def create_app(
                     mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
                 )
-            if (not stream_tool_error) and (streamed_content or "").strip():
+            if (not stream_tool_error) and tool_plain_fallback:
                 # If tool JSON was not produced, do not drop content: return plain assistant text via SSE.
                 trace["response"] = {
-                    "content_preview": (streamed_content or "")[:log_preview],
-                    "content_length_chars": len(streamed_content or ""),
+                    "content_preview": tool_plain_fallback[:log_preview],
+                    "content_length_chars": len(tool_plain_fallback),
                     "latency_ms": int((time.time() - stream_start_time) * 1000),
                     "tool_calls_count": 0,
                 }
@@ -1021,7 +1448,7 @@ def create_app(
                 def generate_sse_plain_text():
                     oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
                     yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
-                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'content': streamed_content}, 'finish_reason': None}]})}\n\n"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'content': tool_plain_fallback}, 'finish_reason': None}]})}\n\n"
                     yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
                     yield "data: [DONE]\n\n"
 
@@ -1184,9 +1611,9 @@ def create_app(
         )
         set_current_trace(trace)
         tool_calls: list[dict[str, object]] = []
-        if (not stream) and tools and tool_choice != "none" and not has_tool_result:
+        if (not stream) and tools and tool_choice_effective != "none":
             edit_payload = _extract_edit_from_response(content or "")
-            if edit_payload and selected_edit_tool_name and selected_edit_tool:
+            if edit_payload and selected_edit_tool_name:
                 tool_args = _build_tool_arguments(
                     selected_tool_name=selected_edit_tool_name,
                     selected_tool=selected_edit_tool,
@@ -1203,6 +1630,85 @@ def create_app(
                         },
                     }
                 ]
+            if not tool_calls and selected_edit_tool_name:
+                tool_json_instruction = _build_tool_json_instruction(
+                    selected_edit_tool_name, selected_edit_tool
+                )
+                strict_messages_ns: list[dict[str, object]] = []
+                if tool_json_instruction:
+                    strict_messages_ns.append({"role": "system", "content": tool_json_instruction})
+                strict_messages_ns.append(
+                    {
+                        "role": "user",
+                        "content": _strict_retry_user_content(
+                            user_query or last_user or "", selected_edit_tool_name
+                        ),
+                    }
+                )
+                retried_payload: dict[str, object] | None = None
+                try:
+                    retried_content = chat_client.chat(strict_messages_ns, use_model, stream=False, options=None)
+                    retried_payload = _extract_edit_from_response(retried_content or "")
+                    if retried_payload:
+                        tool_args = _build_tool_arguments(
+                            selected_tool_name=selected_edit_tool_name,
+                            selected_tool=selected_edit_tool,
+                            edit_payload=retried_payload,
+                            user_query=user_query,
+                        )
+                        tool_calls = [
+                            {
+                                "id": f"call_{uuid.uuid4().hex[:24]}",
+                                "type": "function",
+                                "function": {
+                                    "name": selected_edit_tool_name,
+                                    "arguments": json.dumps(tool_args, ensure_ascii=False),
+                                },
+                            }
+                        ]
+                except Exception as e3:
+                    log_webui_error("rag_routes.chat_completions", e3, {"stage": "non_stream_tool_mode_strict_retry"})
+                    _log_rag_error("non_stream_tool_mode_strict_retry", e3)
+                if not tool_calls and selected_edit_tool_name:
+                    strict_messages_ns2: list[dict[str, object]] = []
+                    if tool_json_instruction:
+                        strict_messages_ns2.append({"role": "system", "content": tool_json_instruction})
+                    strict_messages_ns2.append(
+                        {
+                            "role": "user",
+                            "content": _strict_retry_user_content(
+                                user_query or last_user or "", selected_edit_tool_name
+                            )
+                            + " Your previous JSON was invalid or omitted required code fields (empty replacement/new_text/content). Output ONE JSON object that includes the actual code.",
+                        }
+                    )
+                    try:
+                        retried2 = chat_client.chat(strict_messages_ns2, use_model, stream=False, options=None)
+                        retried_payload2 = _extract_edit_from_response(retried2 or "")
+                        if retried_payload2:
+                            tool_args = _build_tool_arguments(
+                                selected_tool_name=selected_edit_tool_name,
+                                selected_tool=selected_edit_tool,
+                                edit_payload=retried_payload2,
+                                user_query=user_query,
+                            )
+                            tool_calls = [
+                                {
+                                    "id": f"call_{uuid.uuid4().hex[:24]}",
+                                    "type": "function",
+                                    "function": {
+                                        "name": selected_edit_tool_name,
+                                        "arguments": json.dumps(tool_args, ensure_ascii=False),
+                                    },
+                                }
+                            ]
+                    except Exception as e4:
+                        log_webui_error(
+                            "rag_routes.chat_completions",
+                            e4,
+                            {"stage": "non_stream_tool_mode_strict_retry_2"},
+                        )
+                        _log_rag_error("non_stream_tool_mode_strict_retry_2", e4)
 
         trace["response"]["tool_calls_count"] = len(tool_calls)
         if tool_calls:
