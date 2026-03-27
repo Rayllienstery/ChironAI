@@ -16,6 +16,10 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 import uuid
+import hashlib
+import base64
+import shlex
+from urllib.parse import unquote
 
 from flask import Flask, Response, jsonify, request
 
@@ -35,7 +39,7 @@ if _MODULES_EXT_RAG not in sys.path:
 from application.rag.collection_freshness import check_collection_freshness
 from application.rag.params import RAGDependencies, get_rag_answer_params
 from application.rag.use_cases import build_rag_context, prepare_ollama_messages
-from domain.entities.rag import RagQuestionRequest
+from domain.entities.rag import RagContext, RagQuestionRequest
 from infrastructure.database import get_settings_repository
 
 try:
@@ -230,9 +234,9 @@ def _extract_edit_from_response(content: str) -> dict[str, object] | None:
     has_text = bool(
         obj.get("new_text") or obj.get("patch") or obj.get("replacement") or obj.get("content")
     )
-    mode_raw = str(obj.get("mode") or obj.get("operation") or obj.get("variant") or "").strip().lower()
-    create_like = mode_raw in {"create", "overwrite", "w", "fw", "write"}
-    if not has_text and not create_like:
+    # Require actual code/text for any file edit payload. Even for create/overwrite,
+    # an empty body typically means "no-op" in IDE clients.
+    if not has_text:
         return None
     if "file_path" not in obj:
         obj["file_path"] = file_path
@@ -249,6 +253,36 @@ def _extract_line_span_from_user_text(user_text: str) -> tuple[int, int] | None:
     if a < 1 or b < 1 or a > b:
         return None
     return (a, b)
+
+
+def _strip_context_sections(text: str) -> str:
+    """Remove client-injected context blocks so we can dedup and retry reliably."""
+    s = (text or "")
+    if not s:
+        return ""
+    # Common Zed/Cursor style: "<context> ... </context>" or "<context>\n...".
+    s = re.sub(r"<context>[\s\S]*$", "", s, flags=re.IGNORECASE).strip()
+    # Remove generic attachment boilerplate that can vary run-to-run.
+    s = re.sub(
+        r"The following items were attached by the user[\s\S]*$",
+        "",
+        s,
+        flags=re.IGNORECASE,
+    ).strip()
+    # Collapse whitespace for stable comparisons.
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _normalized_user_signature(text: str) -> str:
+    """Stable signature for deduping repeated user requests."""
+    base = _strip_context_sections(text)
+    if not base:
+        return ""
+    # Remove volatile line-span anchors like #L1:12 while keeping the path.
+    base = re.sub(r"#L\\d+(?::\\d+)?", "", base, flags=re.IGNORECASE)
+    base = re.sub(r"\\s+", " ", base).strip()
+    return base.lower()
 
 
 def _workspace_selection_snippet(user_query: str, max_chars: int = 12000) -> str:
@@ -287,6 +321,62 @@ def _workspace_selection_snippet(user_query: str, max_chars: int = 12000) -> str
     )
 
 
+def _client_selection_snippet(user_query: str, max_chars: int = 12000) -> str:
+    """
+    Extract a selection excerpt embedded by the client (e.g. Zed <selections> blocks).
+    This is used when the file is outside the workspace so we can't read from disk.
+    """
+    text = user_query or ""
+    span = _extract_line_span_from_user_text(text)
+    if not span:
+        return ""
+    raw_path = _extract_file_path_from_user_text(text or "")
+    if not raw_path:
+        return ""
+    # Heuristic: capture the first fenced block after "<selections>".
+    m = re.search(r"<selections>[\\s\\S]*?```(?:\\w+)?\\s*([\\s\\S]*?)```", text, flags=re.IGNORECASE)
+    if not m:
+        return ""
+    chunk = (m.group(1) or "").strip()
+    if not chunk:
+        return ""
+    if len(chunk) > max_chars:
+        chunk = chunk[:max_chars] + "\n... [truncated]"
+    a, b = span
+    rel = _normalize_tool_path(raw_path) or raw_path
+    return (
+        f"\n\n[proxy:client_selection_excerpt] `{rel}` lines {a}-{b} (1-based, provided by client):\n```\n{chunk}\n```\n"
+        "Apply the user instruction to THIS excerpt; your tool JSON must include the full new source for the "
+        "edited region (non-empty `content` / `new_text` / `replacement`).\n"
+    )
+
+
+def _client_files_snippet(user_query: str, max_chars: int = 12000) -> str:
+    """
+    Extract a full-file excerpt embedded by the client (e.g. Zed <files> blocks).
+    Useful when the file is outside the workspace or has been clobbered by a bad tool call.
+    """
+    text = user_query or ""
+    raw_path = _extract_file_path_from_user_text(text or "")
+    if not raw_path:
+        return ""
+    # Capture the first fenced block inside <files>.
+    m = re.search(r"<files>[\\s\\S]*?```(?:\\w+)?[^\\n]*\\n([\\s\\S]*?)```", text, flags=re.IGNORECASE)
+    if not m:
+        return ""
+    chunk = (m.group(1) or "").strip()
+    if not chunk:
+        return ""
+    if len(chunk) > max_chars:
+        chunk = chunk[:max_chars] + "\n... [truncated]"
+    rel = _normalize_tool_path(raw_path) or raw_path
+    return (
+        f"\n\n[proxy:client_file_excerpt] `{rel}` (provided by client):\n```\n{chunk}\n```\n"
+        "Apply the user instruction to THIS file content; your tool JSON must include the full updated source "
+        "(non-empty `content` / `new_text` / `replacement`).\n"
+    )
+
+
 def _strict_retry_user_content(user_query: str, selected_tool_name: str | None) -> str:
     base = (user_query or "").strip()
     if not base:
@@ -315,20 +405,22 @@ def _strict_retry_user_content(user_query: str, selected_tool_name: str | None) 
             "Include non-empty `new_text`, `content`, or `replacement` (whichever the tool schema requires) "
             "with the actual code changes."
         )
-    return base + "".join(extra_parts) + _workspace_selection_snippet(base)
+    excerpt = _workspace_selection_snippet(base)
+    if not excerpt:
+        excerpt = _client_selection_snippet(base) or _client_files_snippet(base)
+    return base + "".join(extra_parts) + excerpt
 
 
 def _extract_file_path_from_user_text(user_text: str) -> str | None:
     if not user_text:
         return None
-    # Prefer file:// absolute path from Zed links.
-    m = re.search(r"file:///?([A-Za-z]:/[^\s)#]+)", user_text)
-    if m:
-        return m.group(1)
-    # Also accept file:///C:/... patterns.
-    m2 = re.search(r"file:///?(C:/[^\s)#]+)", user_text)
-    if m2:
-        return m2.group(1)
+    # Prefer full file:// URIs from IDE links (works for macOS/Linux/Windows).
+    m_uri3 = re.search(r"(file:///[^\s)#]+)", user_text)
+    if m_uri3:
+        return (m_uri3.group(1) or "").split("#", 1)[0]
+    m_uri2 = re.search(r"(file://[^\s)#]+)", user_text)
+    if m_uri2:
+        return (m_uri2.group(1) or "").split("#", 1)[0]
     # Capture @label like [@App.jsx (283:293)] or [@App.jsx](file:///...).
     m3 = re.search(r"\[@([^\]\r\n]+?)\s*\(\d+\s*:\s*\d+\)\]", user_text)
     if m3:
@@ -396,6 +488,28 @@ def _normalize_tool_path(file_path: str) -> str:
     return normalized.lstrip("./")
 
 
+def _tool_path_from_uri_or_path(raw_path: str) -> str:
+    """
+    Convert file:// URIs into IDE tool-friendly local paths.
+    - file:///C:/x -> C:/x
+    - file:///Users/x -> /Users/x
+    Non-URI inputs are returned as-is (trimmed).
+    """
+    s = (raw_path or "").strip()
+    if not s:
+        return ""
+    if not s.startswith("file://"):
+        return s
+    path_part = unquote(s[7:])
+    # Windows URI form: /C:/...
+    if re.match(r"^/[A-Za-z]:/", path_part):
+        return path_part[1:]
+    # POSIX URI form: /Users/...
+    if path_part.startswith("/"):
+        return path_part
+    return path_part
+
+
 def _is_create_intent(user_query: str) -> bool:
     q = (user_query or "").lower()
     if not q:
@@ -421,13 +535,35 @@ def _select_edit_tool_name(tools: list[object], user_query: str = "") -> str | N
     if not names:
         return None
     q = user_query or ""
-    if q and _extract_line_span_from_user_text(q) is not None:
+    span = _extract_line_span_from_user_text(q) if q else None
+    if q and span is not None:
         for n in names:
             low = n.lower()
             if "replace" in low and "range" in low:
                 return n
+    # Prefer a write-capable apply/edit tool when available.
     if _APPLY_EDIT_TOOL_NAME in names:
-        return _APPLY_EDIT_TOOL_NAME
+        t = _get_tool_by_name(tools, _APPLY_EDIT_TOOL_NAME)
+        if _tool_schema_accepts_content(t):
+            return _APPLY_EDIT_TOOL_NAME
+    # Prefer write-capable edit_file
+    for n in names:
+        if n.lower() == "edit_file":
+            t = _get_tool_by_name(tools, n)
+            if _tool_schema_accepts_content(t):
+                return n
+    # Prefer save_file only when it can carry content (avoid paths-only variants).
+    for n in names:
+        if n.lower() == "save_file":
+            t = _get_tool_by_name(tools, n)
+            if _tool_schema_accepts_content(t):
+                return n
+    # Fall back to replace/range tools (even if not first in list).
+    for n in names:
+        low = n.lower()
+        if "replace" in low and "range" in low:
+            return n
+    # Final fallbacks: any edit-like tool name; schema may be incomplete but client might accept extra args.
     for n in names:
         low = n.lower()
         if "file" in low and ("edit" in low or "patch" in low or "replace" in low or "range" in low):
@@ -436,13 +572,93 @@ def _select_edit_tool_name(tools: list[object], user_query: str = "") -> str | N
         low = n.lower()
         if "edit" in low or "patch" in low or "replace" in low:
             return n
-    # Tool `save_file` is a valid file operation even though it doesn't contain
-    # substrings like `edit`/`patch`/`replace`.
-    for n in names:
-        low = n.lower()
-        if low == "save_file" or "save_file" in low:
-            return n
     return None
+
+
+def _tool_schema_accepts_content(tool: dict[str, object] | None) -> bool:
+    """
+    Return True when tool schema can carry new file text.
+
+    Supported patterns:
+    - top-level string fields: content/new_text/replacement/text/new_content/patch
+    - batch write: paths is array of objects with {path, content}-like fields
+
+    Not supported:
+    - paths as array of strings only (no place to carry text)
+    """
+    if not isinstance(tool, dict):
+        return False
+    fn = tool.get("function")
+    if not isinstance(fn, dict):
+        return False
+    tool_name = fn.get("name") if isinstance(fn.get("name"), str) else ""
+    params = fn.get("parameters")
+    if not isinstance(params, dict):
+        return False
+    props = params.get("properties")
+    if not isinstance(props, dict):
+        props = {}
+    required = params.get("required")
+    req = required if isinstance(required, list) else []
+    req_set = {str(x) for x in req if isinstance(x, str)}
+
+    # Some IDEs (including Zed in certain configurations) provide very loose schemas like:
+    #   parameters: { "type": "object" }
+    # but still accept `content`/`new_text` at runtime. Treat these as write-capable based on name.
+    if not props and not req_set:
+        if _is_edit_like_tool_name(tool_name) and "terminal" not in (tool_name or "").lower():
+            return True
+
+    text_keys = ("content", "new_text", "replacement", "text", "new_content", "patch")
+    if any(k in props or k in req_set for k in text_keys):
+        return True
+
+    paths_def = props.get("paths")
+    if not isinstance(paths_def, dict):
+        # Zed frequently provides partial schemas (e.g. edit_file without content field),
+        # while still accepting content/new_text at runtime. For edit-like tools, prefer
+        # attempting a tool call over hard-failing here.
+        if _is_edit_like_tool_name(tool_name) and "terminal" not in (tool_name or "").lower():
+            return True
+        return False
+    items = paths_def.get("items")
+    # If schema doesn't specify item type, assume object items (common in loose schemas).
+    if items is None:
+        return True
+    # If items are strings, we can only pass paths, not content.
+    if isinstance(items, dict) and (items.get("type") == "string" or items.get("type") == "String"):
+        return False
+    # items object with content field
+    if isinstance(items, dict):
+        item_props = items.get("properties")
+        if isinstance(item_props, dict):
+            if any(k in item_props for k in ("content", "new_text", "text", "replacement", "new_content", "patch")):
+                return True
+        item_req = items.get("required")
+        if isinstance(item_req, list):
+            if any(str(x) in ("content", "new_text", "text", "replacement", "new_content", "patch") for x in item_req):
+                return True
+    return False
+
+
+def _tool_result_looks_like_unintended_deletion(tool_text: str) -> bool:
+    """
+    Heuristic: detect tool results that appear to delete content without adding replacements.
+    This commonly happens when a client tool was invoked with empty edit body.
+    """
+    t = (tool_text or "").strip()
+    if not t:
+        return False
+    low = t.lower()
+    if "```diff" not in low:
+        return False
+    # If a diff hunk indicates the new file has 0 lines where it previously had >0, treat as failure.
+    if re.search(r"@@\\s+-\\d+,\\d+\\s+\\+\\d+,0\\s+@@", t):
+        return True
+    # If there are removed lines but no added lines in the diff body.
+    if re.search(r"^-[^\\n]", t, flags=re.MULTILINE) and not re.search(r"^\\+[^\\n]", t, flags=re.MULTILINE):
+        return True
+    return False
 
 
 def _get_tool_by_name(tools: list[object], name: str | None) -> dict[str, object] | None:
@@ -454,6 +670,82 @@ def _get_tool_by_name(tools: list[object], name: str | None) -> dict[str, object
         if _extract_tool_name(t) == name:
             return t
     return None
+
+
+def _select_terminal_tool_name(tools: list[object]) -> str | None:
+    names = [n for n in (_extract_tool_name(t) for t in tools) if n]
+    if not names:
+        return None
+    for n in names:
+        if n.lower() == "terminal":
+            return n
+    for n in names:
+        if "terminal" in n.lower():
+            return n
+    return None
+
+
+def _terminal_write_file_command(abs_path: str, content: str) -> str:
+    """
+    Return a shell-agnostic command to write UTF-8 content to abs_path.
+
+    Zed's `terminal` tool may run in bash (WSL) or PowerShell; generating a pure
+    PowerShell script causes syntax errors in bash. Using Python keeps the
+    command portable across shells.
+    """
+    b64 = base64.b64encode((content or "").encode("utf-8")).decode("ascii")
+    # Important: keep python snippet free of single quotes to avoid bash quote-breaking.
+    # Also avoid backslash-unicode escapes by using a JSON-escaped string literal.
+    # Use forward slashes to avoid layers that "eat" backslashes (JSON -> shell -> python),
+    # and to avoid Python's \U unicode-escape pitfalls on Windows-style paths.
+    path_for_py = (abs_path or "").replace("\\", "/")
+    path_lit = json.dumps(path_for_py)
+    b64_lit = json.dumps(b64)
+    # Use write_bytes to avoid newline normalization differences across shells.
+    py = (
+        "import base64, pathlib;"
+        f"p=pathlib.Path({path_lit});"
+        f"b={b64_lit};"
+        "p.write_bytes(base64.b64decode(b))"
+    )
+    return f"python -c {shlex.quote(py)}"
+
+
+def _build_terminal_tool_arguments(
+    tools: list[object],
+    terminal_tool_name: str,
+    *,
+    abs_path: str,
+    content: str,
+) -> dict[str, object]:
+    t = _get_tool_by_name(tools, terminal_tool_name)
+    fn = t.get("function") if isinstance(t, dict) else None
+    params = fn.get("parameters") if isinstance(fn, dict) else None
+    props = params.get("properties") if isinstance(params, dict) else None
+    required = params.get("required") if isinstance(params, dict) else None
+    prop_keys = set(str(k) for k in props.keys()) if isinstance(props, dict) else set()
+    req_keys = set(str(x) for x in required if isinstance(x, str)) if isinstance(required, list) else set()
+    keys = req_keys or prop_keys or {"command"}
+    cmd = _terminal_write_file_command(abs_path, content)
+    args: dict[str, object] = {}
+    # Common field names across clients.
+    if "command" in keys:
+        args["command"] = cmd
+    elif "cmd" in keys:
+        args["cmd"] = cmd
+    elif "script" in keys:
+        args["script"] = cmd
+    else:
+        # Best effort.
+        args["command"] = cmd
+    # Zed terminal tool commonly requires `cd`.
+    if "cd" in keys:
+        args["cd"] = str(Path(abs_path).parent)
+    if "cwd" in keys:
+        args["cwd"] = str(Path(abs_path).parent)
+    if "working_directory" in keys:
+        args["working_directory"] = str(Path(abs_path).parent)
+    return args
 
 
 def _default_tool_keys(selected_tool_name: str) -> set[str]:
@@ -480,6 +772,117 @@ def _coerce_zed_tool_mode(raw: object) -> str:
     return "edit"
 
 
+# Models sometimes emit junk placeholder lines inside replacements; strip before Zed applies the edit.
+_EDIT_JUNK_LINE_RES: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^\s*//\s*removed\s*$", re.I),
+    re.compile(r"^\s*//\s*delete[ds]?\s*$", re.I),
+    re.compile(r"^\s*//\s*placeholder\s*$", re.I),
+    re.compile(r"^\s*#\s*removed\s*$", re.I),
+    re.compile(r"^\s*//\s*\.\.\.\s*$"),
+)
+
+
+# Cache recent successful edits to suppress repeated client retries (e.g. Zed agent loops).
+# Keyed by (user_signature, normalized_path). TTL is short to avoid masking real new intents.
+_RECENT_SUCCESS_TTL_S = 45
+_recent_success: dict[tuple[str, str], float] = {}
+_RECENT_NOOP_TTL_S = 120
+_recent_noop: dict[tuple[str, str], tuple[int, float]] = {}
+
+
+def _now_s() -> float:
+    return time.time()
+
+
+def _prune_recent_success(now_s: float) -> None:
+    if not _recent_success:
+        return
+    cutoff = now_s - _RECENT_SUCCESS_TTL_S
+    stale = [k for k, ts in _recent_success.items() if ts < cutoff]
+    for k in stale:
+        _recent_success.pop(k, None)
+
+
+def _prune_recent_noop(now_s: float) -> None:
+    if not _recent_noop:
+        return
+    cutoff = now_s - _RECENT_NOOP_TTL_S
+    stale = [k for k, (_, ts) in _recent_noop.items() if ts < cutoff]
+    for k in stale:
+        _recent_noop.pop(k, None)
+
+
+def _compact_display_description(user_query: str, limit: int = 180) -> str:
+    """
+    Build a concise description for tool cards by stripping context/attachment blocks.
+    """
+    s = _strip_context_sections(user_query or "")
+    if not s:
+        return ""
+    # Remove markdown file-link wrappers while preserving intent text.
+    s = re.sub(r"\[@([^\]]+)\]\([^)]+\)", r"@\1", s)
+    # Remove inline line anchors like (1:3) to keep description short.
+    s = re.sub(r"\(\s*\d+\s*:\s*\d+\s*\)", "", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s[:limit]
+
+
+def _normalized_path_for_cache(user_query: str) -> str:
+    p = _extract_file_path_from_user_text(user_query or "") or ""
+    p = _normalize_tool_path(p) if p else ""
+    return p.lower()
+
+
+def _strip_placeholder_edit_lines(text: str) -> str:
+    if not text:
+        return text
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+    for line in lines:
+        if any(r.match(line) for r in _EDIT_JUNK_LINE_RES):
+            continue
+        out.append(line)
+    return "".join(out)
+
+
+def _is_edit_like_tool_name(name: str) -> bool:
+    n = (name or "").lower()
+    return any(x in n for x in ("edit", "replace", "write", "patch", "apply", "save"))
+
+
+def _tool_args_have_substantive_body(tool_name: str, args: dict[str, object]) -> bool:
+    """Edit-like tools must carry non-empty replacement/content; avoid empty Zed preview cards."""
+    if not _is_edit_like_tool_name(tool_name):
+        return True
+    body_keys = ("replacement", "new_text", "content", "text", "new_content")
+    present = [k for k in body_keys if k in args]
+    # Some tools (notably `save_file`) carry content inside `paths`.
+    paths = args.get("paths")
+    if isinstance(paths, list):
+        for item in paths:
+            if isinstance(item, dict):
+                c = item.get("content")
+                if isinstance(c, str) and c.strip():
+                    return True
+    # If the tool arguments contain no editable body fields at all (and no paths content), treat as non-substantive.
+    # Some clients accept extra keys even if schema omits them; we inject `content`/`new_text`
+    # when we have real edits. If they're still missing, it's a no-op.
+    if not present:
+        return False
+    for k in present:
+        v = args.get(k)
+        if isinstance(v, str) and v.strip():
+            return True
+    return False
+
+
+_POST_TOOL_SUCCESS_SYSTEM = (
+    "The latest message is a tool result and it did not report a failure. "
+    "Reply with a short plain-text confirmation only. Do not output JSON, do not call file-edit tools again, "
+    "and do not propose another patch for the same change unless the user asked for more."
+)
+
+
 def _build_tool_arguments(
     *,
     selected_tool_name: str,
@@ -491,6 +894,13 @@ def _build_tool_arguments(
     payload_raw_path = str(edit_payload.get("file_path") or edit_payload.get("path") or "")
     normalized_payload_path = _normalize_tool_path(payload_raw_path) if payload_raw_path else ""
     file_path = normalized_payload_path
+    # IDE-independent mode: if the user provided a file URI or absolute path, preserve it verbatim
+    # so the client IDE applies the edit on its own machine.
+    if isinstance(user_path, str) and user_path:
+        up = user_path.strip()
+        if up.startswith("file://") or re.match(r"^[A-Za-z]:/", up) or up.startswith("/"):
+            file_path = _tool_path_from_uri_or_path(up)
+            normalized_payload_path = file_path
     if user_path and file_path:
         try:
             root = _workspace_root()
@@ -501,12 +911,62 @@ def _build_tool_arguments(
         except Exception:
             pass
     if user_path and not file_path:
-        file_path = _normalize_tool_path(user_path)
+        up2 = user_path.strip()
+        if up2.startswith("file://") or re.match(r"^[A-Za-z]:/", up2) or up2.startswith("/"):
+            file_path = _tool_path_from_uri_or_path(up2)
+        else:
+            file_path = _normalize_tool_path(user_path)
+    # If the model returned a relative hint (e.g. Desktop/test.swift) but the user provided
+    # an absolute file:///C:/... path, prefer the user's absolute path (even if outside workspace).
+    if (
+        user_path
+        and file_path
+        and not file_path.startswith("file://")
+        and not re.match(r"^[A-Za-z]:/", file_path)
+        and not file_path.startswith("/")
+    ):
+        normalized_user_path = _normalize_tool_path(user_path)
+        if re.match(r"^[A-Za-z]:/", normalized_user_path) or normalized_user_path.startswith("/"):
+            file_path = normalized_user_path
     if file_path and "/" not in file_path:
         file_path = _resolve_workspace_relative_path_hint(file_path)
+    # Final guard: keep client-machine path semantics, but convert file:// URI to tool-local path.
+    if isinstance(user_path, str) and user_path.strip().startswith("file://"):
+        file_path = _tool_path_from_uri_or_path(user_path.strip())
     range_obj = edit_payload.get("range") if isinstance(edit_payload.get("range"), dict) else {}
+    # If model omitted range but user explicitly selected lines, prefer range edit over full overwrite.
+    if not range_obj:
+        span = _extract_line_span_from_user_text(user_query or "")
+        if span:
+            a, b = span
+            range_obj = {
+                "start_line": int(a),
+                "start_col": 1,
+                "end_line": int(b),
+                "end_col": 1,
+            }
+    # If no explicit selection range, but client attached full file content (<files> block),
+    # derive a safe full-file range to avoid destructive overwrite behavior.
+    has_client_file_excerpt = False
+    if not range_obj:
+        m_files = re.search(
+            r"<files>[\s\S]*?```(?:\w+)?[^\n]*\n([\s\S]*?)```",
+            user_query or "",
+            flags=re.IGNORECASE,
+        )
+        if m_files:
+            excerpt = (m_files.group(1) or "").rstrip("\n")
+            line_count = len(excerpt.splitlines()) if excerpt else 0
+            if line_count > 0:
+                has_client_file_excerpt = True
+                range_obj = {
+                    "start_line": 1,
+                    "start_col": 1,
+                    "end_line": int(line_count),
+                    "end_col": 1,
+                }
     new_text = str(edit_payload.get("new_text") or "")
-    desc = (user_query or "").strip().replace("\n", " ")
+    desc = _compact_display_description(user_query or "")
     if not desc:
         desc = f"Apply requested edit via {selected_tool_name}"
     display_description = desc[:180]
@@ -521,6 +981,27 @@ def _build_tool_arguments(
         if raw_mode not in (None, "")
         else ("create" if _is_create_intent(user_query) else "edit")
     )
+    has_range = bool(range_obj)
+    tool_name_l = (selected_tool_name or "").lower()
+    # Zed may treat `edit_file` without `range` as a no-op unless we switch to full-file modes.
+    # When model asks for `mode=edit` but provides no `range`, prefer `overwrite` (existing file)
+    # or `create` (missing file) to ensure Swift/Desktop files get written.
+    if mode_value == "edit" and not has_range and (
+        "edit_file" in tool_name_l or "apply_file_edit" in tool_name_l
+    ):
+        # If we derived a safe range from client file excerpt, keep mode=edit.
+        if has_client_file_excerpt:
+            mode_value = "edit"
+        else:
+            try:
+                fp_for_exists = file_path
+                if isinstance(fp_for_exists, str) and fp_for_exists.startswith("file:///"):
+                    fp_for_exists = fp_for_exists[8:]
+                p = Path(fp_for_exists)
+                exists = p.exists() if p.is_absolute() else (_workspace_root() / fp_for_exists).exists()
+            except Exception:
+                exists = False
+            mode_value = "overwrite" if exists else "create"
 
     canonical_values: dict[str, object] = {
         "file_path": file_path,
@@ -568,28 +1049,56 @@ def _build_tool_arguments(
     #   paths=[{"path": "...", "content": "..."}]
     # rather than a single `path`.
     if "paths" in keys_to_emit:
+        paths_items_type = ""
+        try:
+            pdef = properties.get("paths") if isinstance(properties, dict) else None
+            if isinstance(pdef, dict):
+                items = pdef.get("items")
+                if isinstance(items, dict):
+                    t = items.get("type")
+                    if isinstance(t, str):
+                        paths_items_type = t.strip().lower()
+        except Exception:
+            paths_items_type = ""
         payload_paths = edit_payload.get("paths")
         if isinstance(payload_paths, list):
-            normalized_paths: list[dict[str, object]] = []
-            for p in payload_paths:
-                if isinstance(p, dict):
-                    p_path_raw = p.get("path") or p.get("file_path") or ""
-                    p_content_raw = (
-                        p.get("content")
-                        or p.get("new_text")
-                        or p.get("text")
-                        or new_text
-                    )
-                    p_path = _normalize_tool_path(str(p_path_raw)) if p_path_raw else ""
-                    p_content = str(p_content_raw) if p_content_raw is not None else ""
-                    normalized_paths.append({"path": p_path, "content": p_content})
-                elif isinstance(p, str):
-                    normalized_paths.append(
-                        {"path": _normalize_tool_path(p) if p else "", "content": new_text}
-                    )
-            canonical_values["paths"] = normalized_paths
+            if paths_items_type == "string":
+                normalized_path_strings: list[str] = []
+                for p in payload_paths:
+                    if isinstance(p, dict):
+                        p_path_raw = p.get("path") or p.get("file_path") or ""
+                        p_path = _normalize_tool_path(str(p_path_raw)) if p_path_raw else ""
+                        if p_path:
+                            normalized_path_strings.append(p_path)
+                    elif isinstance(p, str):
+                        p_path = _normalize_tool_path(p) if p else ""
+                        if p_path:
+                            normalized_path_strings.append(p_path)
+                canonical_values["paths"] = normalized_path_strings
+            else:
+                normalized_paths: list[dict[str, object]] = []
+                for p in payload_paths:
+                    if isinstance(p, dict):
+                        p_path_raw = p.get("path") or p.get("file_path") or ""
+                        p_content_raw = (
+                            p.get("content")
+                            or p.get("new_text")
+                            or p.get("text")
+                            or new_text
+                        )
+                        p_path = _normalize_tool_path(str(p_path_raw)) if p_path_raw else ""
+                        p_content = str(p_content_raw) if p_content_raw is not None else ""
+                        normalized_paths.append({"path": p_path, "content": p_content})
+                    elif isinstance(p, str):
+                        normalized_paths.append(
+                            {"path": _normalize_tool_path(p) if p else "", "content": new_text}
+                        )
+                canonical_values["paths"] = normalized_paths
         elif file_path:
-            canonical_values["paths"] = [{"path": file_path, "content": new_text}]
+            if paths_items_type == "string":
+                canonical_values["paths"] = [file_path]
+            else:
+                canonical_values["paths"] = [{"path": file_path, "content": new_text}]
 
     args: dict[str, object] = {}
     for key in keys_to_emit:
@@ -627,6 +1136,69 @@ def _build_tool_arguments(
             args[k] = "edit"
         else:
             args[k] = _coerce_zed_tool_mode(v)
+
+    for _k in ("replacement", "new_text", "content", "text", "new_content"):
+        if _k in args and isinstance(args[_k], str):
+            args[_k] = _strip_placeholder_edit_lines(args[_k])
+
+    # If schema-key filtering dropped body fields, but model produced valid edit text,
+    # inject a best-effort text field so IDE tools can still apply the edit.
+    if _is_edit_like_tool_name(selected_tool_name) and not _tool_args_have_substantive_body(
+        selected_tool_name, args
+    ):
+        fallback_text = str(
+            edit_payload.get("new_text")
+            or edit_payload.get("content")
+            or edit_payload.get("replacement")
+            or ""
+        )
+        if fallback_text.strip():
+            n = (selected_tool_name or "").lower()
+            if "replace" in n and "range" in n:
+                args["replacement"] = fallback_text
+            elif "new_text" in keys_to_emit:
+                args["new_text"] = fallback_text
+            elif "content" in keys_to_emit:
+                args["content"] = fallback_text
+            else:
+                # Loose schemas often still accept `content`.
+                args["content"] = fallback_text
+
+    # Compatibility: some clients omit `range` from schema but still require it for mode=edit.
+    # If we have a known range (from model or user selection), always include it for edit_file-like tools.
+    if _is_edit_like_tool_name(selected_tool_name):
+        n = (selected_tool_name or "").lower()
+        if ("edit_file" in n or "apply_file_edit" in n) and isinstance(range_obj, dict) and range_obj:
+            if not isinstance(args.get("range"), dict) or not args.get("range"):
+                args["range"] = range_obj
+            if "start_line" in range_obj and args.get("start_line") in (None, "", 0):
+                args["start_line"] = range_obj.get("start_line")
+            if "end_line" in range_obj and args.get("end_line") in (None, "", 0):
+                args["end_line"] = range_obj.get("end_line")
+            if "start_col" in range_obj and args.get("start_col") in (None, "", 0):
+                args["start_col"] = range_obj.get("start_col")
+            if "end_col" in range_obj and args.get("end_col") in (None, "", 0):
+                args["end_col"] = range_obj.get("end_col")
+
+    # Compatibility: many edit_file implementations accept either `content` or `new_text`.
+    # Send both when we have text to avoid client-side empty-overwrite behavior.
+    if _is_edit_like_tool_name(selected_tool_name):
+        n = (selected_tool_name or "").lower()
+        if "edit_file" in n or "apply_file_edit" in n:
+            t = ""
+            if isinstance(args.get("content"), str) and args.get("content", "").strip():
+                t = str(args.get("content"))
+            elif isinstance(args.get("new_text"), str) and args.get("new_text", "").strip():
+                t = str(args.get("new_text"))
+            elif isinstance(args.get("replacement"), str) and args.get("replacement", "").strip():
+                t = str(args.get("replacement"))
+            if t:
+                if not isinstance(args.get("content"), str) or not str(args.get("content") or "").strip():
+                    args["content"] = t
+                if not isinstance(args.get("new_text"), str) or not str(args.get("new_text") or "").strip():
+                    args["new_text"] = t
+                if not isinstance(args.get("replacement"), str) or not str(args.get("replacement") or "").strip():
+                    args["replacement"] = t
 
     return args
 
@@ -675,7 +1247,8 @@ def _build_tool_json_instruction(
         f"Return ONLY a single valid JSON object for tool `{selected_tool_name}` with fields from tool schema: {fields}. "
         "Do not return markdown, code fences, comments, or explanations. "
         "Use workspace-relative path in `path`/`file_path` when applicable. "
-        "If the schema includes `mode`, it must be exactly one of: edit, create, overwrite (never empty)."
+        "If the schema includes `mode`, it must be exactly one of: edit, create, overwrite (never empty). "
+        "Do not emit placeholder lines such as `// removed` or `// ...` in `content`/`replacement`; output only real source lines."
         f"{tail}"
     )
 
@@ -766,6 +1339,7 @@ def create_app(
         tools = body.get("tools") if isinstance(body.get("tools"), list) else []
         tool_choice = body.get("tool_choice")
         tool_choice_effective = tool_choice if tool_choice not in (None, "") else "auto"
+        tool_choice_overridden_for_edit_intent = False
         explicit_reasoning = body.get("reasoning_level") or body.get("reasoning")
         include_rag_metadata = body.get("include_rag_metadata", False)
         force_rag = bool(body.get("force_rag"))
@@ -797,9 +1371,86 @@ def create_app(
                 "parent directory does not exist",
                 "file not found",
                 "unknown variant",
-                "error",
             )
         )
+        if not tool_result_indicates_failure and _tool_result_looks_like_unintended_deletion(last_tool_content):
+            tool_result_indicates_failure = True
+        _last_msg = messages[-1] if messages else None
+        _last_role = _last_msg.get("role") if isinstance(_last_msg, dict) else None
+        _last_tool_idx = -1
+        _last_user_idx = -1
+        _prev_user_idx = -1
+        for i in range(len(messages) - 1, -1, -1):
+            mi = messages[i]
+            if not isinstance(mi, dict):
+                continue
+            r = mi.get("role")
+            if _last_tool_idx < 0 and r == "tool":
+                _last_tool_idx = i
+            if r == "user":
+                if _last_user_idx < 0:
+                    _last_user_idx = i
+                elif _prev_user_idx < 0:
+                    _prev_user_idx = i
+            if _last_tool_idx >= 0 and _last_user_idx >= 0:
+                break
+        # Only treat it as a "post tool success" turn when the latest message is a tool result
+        # and there is NO newer user message after that tool result.
+        post_tool_success_turn = bool(
+            _last_role == "tool"
+            and has_tool_result
+            and not tool_result_indicates_failure
+            and (_last_user_idx < 0 or _last_user_idx < _last_tool_idx)
+        )
+        # Some clients re-send the same user instruction after a successful tool result.
+        # If we already saw a successful tool result after the previous occurrence of the same user text,
+        # suppress re-entering tool mode to avoid infinite "no-op" tool recursion.
+        duplicate_user_after_success = False
+        try:
+            if _last_user_idx >= 0 and _prev_user_idx >= 0:
+                last_user_text = last_user_content([messages[_last_user_idx]])  # type: ignore[arg-type]
+                prev_user_text = last_user_content([messages[_prev_user_idx]])  # type: ignore[arg-type]
+                last_sig = _normalized_user_signature(last_user_text)
+                prev_sig = _normalized_user_signature(prev_user_text)
+                if last_sig and prev_sig and last_sig == prev_sig:
+                    # Look for any tool result between prev_user and last_user.
+                    for j in range(_prev_user_idx + 1, _last_user_idx):
+                        mj = messages[j]
+                        if isinstance(mj, dict) and mj.get("role") == "tool":
+                            c = str(mj.get("content") or mj.get("output") or mj.get("result") or "")
+                            if c and ("clean" in c.lower() or "ok" in c.lower() or "success" in c.lower()):
+                                duplicate_user_after_success = True
+                                break
+        except Exception:
+            duplicate_user_after_success = False
+
+        # Update recent-success cache when we see a successful tool result.
+        try:
+            if has_tool_result and not tool_result_indicates_failure and last_tool_content:
+                # Attribute success to the user message that PRECEDES the last tool result,
+                # not necessarily the last user message in the entire list (clients may append a new user turn).
+                tool_idx = _last_tool_idx if _last_tool_idx >= 0 else -1
+                user_for_tool = ""
+                if tool_idx > 0:
+                    for j in range(tool_idx - 1, -1, -1):
+                        mj = messages[j]
+                        if isinstance(mj, dict) and mj.get("role") == "user":
+                            c = mj.get("content")
+                            if isinstance(c, str):
+                                user_for_tool = c
+                            elif isinstance(c, list):
+                                user_for_tool = " ".join(
+                                    p.get("text", "") for p in c if isinstance(p, dict) and p.get("type") == "text"
+                                )
+                            break
+                sig = _normalized_user_signature(user_for_tool)
+                p = _normalized_path_for_cache(user_for_tool)
+                if sig and p and any(x in _ltl for x in ("clean", "ok", "success", "completed")):
+                    now_s = _now_s()
+                    _prune_recent_success(now_s)
+                    _recent_success[(sig, p)] = now_s
+        except Exception:
+            pass
         fetch_web_knowledge_raw = body.get("fetch_web_knowledge")
         if fetch_web_knowledge_raw is None:
             fetch_web_knowledge = False
@@ -818,8 +1469,70 @@ def create_app(
         set_proxy_status(STATUS_RAG_SEARCH)
         last_user = last_user_content(messages)
         user_query = last_user  # Store for logging
+        # Track repeated "No edits were made." failures for the same request signature/path.
+        noop_retry_blocked = False
+        try:
+            now_s = _now_s()
+            _prune_recent_noop(now_s)
+            if "no edits were made" in _ltl:
+                sig = _normalized_user_signature(user_query or "")
+                p = _normalized_path_for_cache(user_query or "")
+                if sig and p:
+                    key = (sig, p)
+                    prev_count, _prev_ts = _recent_noop.get(key, (0, 0.0))
+                    new_count = prev_count + 1
+                    _recent_noop[key] = (new_count, now_s)
+                    # Allow one retry with improved payload, then stop recursion.
+                    if new_count >= 2:
+                        noop_retry_blocked = True
+            elif has_tool_result and not tool_result_indicates_failure:
+                # Successful tool result clears recent noop counter for this signature/path.
+                sig = _normalized_user_signature(user_query or "")
+                p = _normalized_path_for_cache(user_query or "")
+                if sig and p:
+                    _recent_noop.pop((sig, p), None)
+        except Exception:
+            noop_retry_blocked = False
         selected_edit_tool_name = _select_edit_tool_name(tools, user_query)
         selected_edit_tool = _get_tool_by_name(tools, selected_edit_tool_name) if selected_edit_tool_name else None
+        # Cross-request recursion guard: if the same user intent+path was just successfully applied,
+        # suppress tool mode to avoid repeated empty/no-op tool calls from client retries.
+        try:
+            now_s = _now_s()
+            _prune_recent_success(now_s)
+            sig = _normalized_user_signature(user_query or "")
+            p = _normalized_path_for_cache(user_query or "")
+            if sig and p and (sig, p) in _recent_success:
+                if now_s - _recent_success[(sig, p)] < _RECENT_SUCCESS_TTL_S:
+                    post_tool_success_turn = True
+        except Exception:
+            pass
+        # Safety: never use a non-write-capable file tool for overwrite/create. If the selected tool
+        # can't carry content, we will later fall back to terminal-based write.
+        selected_tool_write_capable = _tool_schema_accepts_content(selected_edit_tool)
+        # If the client omitted `tools` entirely but referenced a file, assume an IDE-side `edit_file`
+        # tool exists (Zed supports it) and allow emitting tool_calls anyway.
+        if (not tools) and (tool_choice_effective != "none"):
+            user_text = user_query or last_user or ""
+            if _extract_file_path_from_user_text(user_text):
+                selected_edit_tool_name = "edit_file"
+                selected_edit_tool = None
+                selected_tool_write_capable = True
+        if duplicate_user_after_success:
+            # Treat as already completed; respond text-only and do not emit tool_calls.
+            post_tool_success_turn = True
+        if tools and tool_choice_effective == "none" and selected_edit_tool_name:
+            path_hint = (_extract_file_path_from_user_text(user_query or "") or "").lower()
+            q_low = (user_query or "").lower()
+            swift_intent = (
+                path_hint.endswith(".swift")
+                or "uiviewcontroller" in q_low
+                or "swiftui" in q_low
+                or "import uikit" in q_low
+            )
+            if swift_intent:
+                tool_choice_effective = "auto"
+                tool_choice_overridden_for_edit_intent = True
         context_length = len(last_user.split())
         effective_prefix = prefix
         effective_suffix = suffix
@@ -860,42 +1573,51 @@ def create_app(
             "tool_choice_effective": tool_choice_effective
             if isinstance(tool_choice_effective, (str, dict))
             else str(tool_choice_effective),
+            "tool_choice_overridden_for_edit_intent": bool(
+                tool_choice_overridden_for_edit_intent
+            ),
             "has_tool_result": bool(has_tool_result),
             "tool_result_indicates_failure": bool(tool_result_indicates_failure),
+            "post_tool_success_turn": bool(post_tool_success_turn),
             "tool_result_last_content_preview": (last_tool_content[:240] if last_tool_content else ""),
+            "duplicate_user_after_success": bool(duplicate_user_after_success),
+            "recent_success_cache_hit": bool(
+                _normalized_user_signature(user_query or "")
+                and _normalized_path_for_cache(user_query or "")
+                and (_normalized_user_signature(user_query or ""), _normalized_path_for_cache(user_query or ""))
+                in _recent_success
+            ),
             "force_rag": bool(force_rag),
             "fetch_web_knowledge": bool(fetch_web_knowledge),
             "reasoning_level": explicit_reasoning or reasoning_level,
             "user_query_preview": (user_query or "")[:500],
         }
 
-        # Native fallback when client didn't send tools:
-        # If Zed/other client omitted `tools` but referenced a specific file in the user text,
-        # return an OpenAI tool_call to `edit_file` so the client can execute it locally.
-        if not tools and not has_tool_result and tool_choice_effective != "none":
-            user_text = user_query or last_user or ""
-            extracted = _extract_file_path_from_user_text(user_text)
-            normalized_path = _normalize_tool_path(extracted) if extracted else ""
-            if normalized_path:
-                normalized_path = _resolve_workspace_relative_path_hint(normalized_path)
-            if normalized_path:
-                mode_value = "create" if _is_create_intent(user_text) else "edit"
-                tool_call = {
-                    "id": f"call_{uuid.uuid4().hex[:24]}",
-                    "type": "function",
-                    "function": {
-                        "name": "edit_file",
-                        "arguments": json.dumps(
-                            {
-                                "path": normalized_path,
-                                "mode": mode_value,
-                                "display_description": (user_text or "").strip()[:180] or "Edit file",
-                            },
-                            ensure_ascii=False,
-                        ),
-                    },
-                }
-                response_data = {
+        if noop_retry_blocked:
+            msg = (
+                "Edit tool reported 'No edits were made' repeatedly for the same selection. "
+                "Please expand the selected range or provide full file context (<files>) and retry once."
+            )
+            trace["response"] = {
+                "content_preview": msg[:log_preview],
+                "content_length_chars": len(msg),
+                "tool_calls_count": 0,
+            }
+            set_current_trace(trace)
+            if stream:
+                def generate_sse_noop_block():
+                    oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': actual_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': actual_model, 'choices': [{'index': 0, 'delta': {'content': msg}, 'finish_reason': None}]})}\n\n"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': actual_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+                    yield "data: [DONE]\n\n"
+                return Response(
+                    generate_sse_noop_block(),
+                    mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                )
+            return jsonify(
+                {
                     "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
                     "object": "chat.completion",
                     "created": 0,
@@ -903,31 +1625,15 @@ def create_app(
                     "choices": [
                         {
                             "index": 0,
-                            "message": {"role": "assistant", "content": None, "tool_calls": [tool_call]},
-                            "finish_reason": "tool_calls",
+                            "message": {"role": "assistant", "content": msg},
+                            "finish_reason": "stop",
                         }
                     ],
                 }
-                trace["response"] = {
-                    "content_preview": "",
-                    "content_length_chars": 0,
-                    "tool_calls_count": 1,
-                    "tool_calls": [tool_call],
-                }
-                set_current_trace(trace)
-                if stream:
-                    def generate_sse_tool_call():
-                        oid = response_data["id"]
-                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': actual_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
-                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': actual_model, 'choices': [{'index': 0, 'delta': {'tool_calls': [{'index': 0, 'id': tool_call['id'], 'type': 'function', 'function': {'name': 'edit_file', 'arguments': tool_call['function']['arguments']}}]}, 'finish_reason': None}]})}\n\n"
-                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': actual_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls'}]})}\n\n"
-                        yield "data: [DONE]\n\n"
-                    return Response(
-                        generate_sse_tool_call(),
-                        mimetype="text/event-stream",
-                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-                    )
-                return jsonify(response_data)
+            )
+
+        # IDE-independent mode: do not fail fast solely on schema checks.
+        # Some clients expose incomplete tool schemas but still accept write payloads at runtime.
 
         # Optional project_context: frameworks list -> fresh collection names for RAG filter, and needs_refresh for background index
         project_context = body.get("project_context")
@@ -1035,143 +1741,169 @@ def create_app(
         )
         rag_keywords = _get_rag_required_keywords_from_module()
 
+        # Skip embed/search/rerank when the client is doing a local selection-based edit (typical Zed flow).
+        # Model Tester feels faster largely because use_rag=false avoids this entire retrieval stack.
+        explicit_skip_rag = bool(body.get("skip_rag"))
+        local_tool_edit_fast_path = (
+            bool(tools)
+            and bool(selected_edit_tool_name)
+            and tool_choice_effective != "none"
+            and not force_rag
+            and not fetch_web_knowledge
+            and not request_collection
+            and (
+                post_tool_success_turn
+                or (
+                    bool(_extract_file_path_from_user_text(last_user or ""))
+                    and _extract_line_span_from_user_text(last_user or "") is not None
+                )
+            )
+        )
+        skip_rag_retrieval = explicit_skip_rag or local_tool_edit_fast_path
+        trace["request"]["skip_rag_retrieval"] = bool(skip_rag_retrieval)
+
         # Build RAG context: multi-collection (external_docs_rag) when triggered, else single collection
         rag_ctx_for_log = None
         rag_timings: dict[str, float] = {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0}
         background_refresh_started = False
         trace["internet"] = {"background_refresh_started": False}
         try:
-            use_merged = False
-            if (
-                fetch_web_knowledge
-                and not request_collection
-                and _EXTERNAL_DOCS_RAG_AVAILABLE
-                and load_rag_sources_config
-                and resolve_rag_sources_for_request
-                and build_merged_rag_context
-                and QdrantRagSearchAdapter is not None
-            ):
-                rag_sources_config = load_rag_sources_config()
-                body_rag_sources = body.get("rag_sources")
-                if isinstance(body_rag_sources, list):
-                    body_rag_sources = [str(x) for x in body_rag_sources]
-                else:
-                    body_rag_sources = None
-                resolved = resolve_rag_sources_for_request(last_user, messages, body_rag_sources, rag_sources_config)
-                # Use merged path whenever we have any resolved source: enables generic discovery
-                # (GitHub fetch for any framework name in the question) plus configured on-demand and RAG.
-                if len(resolved) >= 1:
-                    use_merged = True
-                    # Trigger full crawl for resolved sources that are missing or stale when repo is on GitHub
-                    try:
-                        _settings_repo = get_settings_repository()
-                        _ttl_days = get_framework_collection_ttl_days()
-                        _ttl_raw = _settings_repo.get_app_setting("framework_collection_ttl_days")
-                        if _ttl_raw is not None and str(_ttl_raw).strip() != "":
-                            try:
-                                _ttl_days = int(_ttl_raw)
-                            except (TypeError, ValueError):
-                                pass
-                    except Exception:
-                        _settings_repo = None
-                        _ttl_days = 90
-                    resolved_needs_refresh: list[tuple[str, str]] = []
-                    if _settings_repo:
-                        for cfg in resolved:
-                            meta = None
-                            try:
-                                meta = _settings_repo.get_collection_meta(cfg.collection_name)
-                            except Exception:
-                                pass
-                            if check_collection_freshness(meta, _ttl_days) != "fresh":
-                                fid = (cfg.external_source_id or cfg.collection_name or "").strip().lower() or cfg.collection_name.lower()
-                                resolved_needs_refresh.append((fid, cfg.collection_name))
-                    work_list = list(needs_refresh)
-                    for (fid, coll) in resolved_needs_refresh:
-                        if coll not in [c for _, c in work_list]:
-                            work_list.append((fid, coll))
-                    if work_list and load_github_repos and ingest_github_repo_markdown and HttpFetchClient and QdrantChunkSink and get_latest_release_tag:
-                        coll_to_framework_id = {}
-                        for cfg in rag_sources_config:
-                            fid = (cfg.external_source_id or cfg.collection_name or "").strip().lower()
-                            if fid:
-                                coll_to_framework_id[cfg.collection_name] = fid
-                        github_repos_list = load_github_repos()
-                        by_framework_id = {(e.get("framework_id") or "").lower(): e for e in github_repos_list if e.get("framework_id")}
+            if skip_rag_retrieval:
+                rag_ctx_for_log = RagContext(context_text="", chunks_info=[], max_score=0.0)
+                trace["rag"]["retrieval_skipped"] = True
+            else:
+                trace["rag"]["retrieval_skipped"] = False
+            if not skip_rag_retrieval:
+                use_merged = False
+                if (
+                    fetch_web_knowledge
+                    and not request_collection
+                    and _EXTERNAL_DOCS_RAG_AVAILABLE
+                    and load_rag_sources_config
+                    and resolve_rag_sources_for_request
+                    and build_merged_rag_context
+                    and QdrantRagSearchAdapter is not None
+                ):
+                    rag_sources_config = load_rag_sources_config()
+                    body_rag_sources = body.get("rag_sources")
+                    if isinstance(body_rag_sources, list):
+                        body_rag_sources = [str(x) for x in body_rag_sources]
+                    else:
+                        body_rag_sources = None
+                    resolved = resolve_rag_sources_for_request(last_user, messages, body_rag_sources, rag_sources_config)
+                    # Use merged path whenever we have any resolved source: enables generic discovery
+                    # (GitHub fetch for any framework name in the question) plus configured on-demand and RAG.
+                    if len(resolved) >= 1:
+                        use_merged = True
+                        # Trigger full crawl for resolved sources that are missing or stale when repo is on GitHub
+                        try:
+                            _settings_repo = get_settings_repository()
+                            _ttl_days = get_framework_collection_ttl_days()
+                            _ttl_raw = _settings_repo.get_app_setting("framework_collection_ttl_days")
+                            if _ttl_raw is not None and str(_ttl_raw).strip() != "":
+                                try:
+                                    _ttl_days = int(_ttl_raw)
+                                except (TypeError, ValueError):
+                                    pass
+                        except Exception:
+                            _settings_repo = None
+                            _ttl_days = 90
+                        resolved_needs_refresh: list[tuple[str, str]] = []
+                        if _settings_repo:
+                            for cfg in resolved:
+                                meta = None
+                                try:
+                                    meta = _settings_repo.get_collection_meta(cfg.collection_name)
+                                except Exception:
+                                    pass
+                                if check_collection_freshness(meta, _ttl_days) != "fresh":
+                                    fid = (cfg.external_source_id or cfg.collection_name or "").strip().lower() or cfg.collection_name.lower()
+                                    resolved_needs_refresh.append((fid, cfg.collection_name))
+                        work_list = list(needs_refresh)
+                        for (fid, coll) in resolved_needs_refresh:
+                            if coll not in [c for _, c in work_list]:
+                                work_list.append((fid, coll))
+                        if work_list and load_github_repos and ingest_github_repo_markdown and HttpFetchClient and QdrantChunkSink and get_latest_release_tag:
+                            coll_to_framework_id = {}
+                            for cfg in rag_sources_config:
+                                fid = (cfg.external_source_id or cfg.collection_name or "").strip().lower()
+                                if fid:
+                                    coll_to_framework_id[cfg.collection_name] = fid
+                            github_repos_list = load_github_repos()
+                            by_framework_id = {(e.get("framework_id") or "").lower(): e for e in github_repos_list if e.get("framework_id")}
 
-                        def _run_refresh(work: list) -> None:
-                            try:
-                                qdrant_url = get_qdrant_url()
-                                fetch_client = HttpFetchClient()
-                                chunk_sink = QdrantChunkSink(base_url=qdrant_url)
-                                repo = get_settings_repository()
-                                def on_indexed(cname: str, fid: str, ver: str | None, last_at: str) -> None:
-                                    repo.set_collection_meta(cname, fid, ver or "", last_at)
-                                for _name, coll in work:
-                                    fid = coll_to_framework_id.get(coll) or coll.lower()
-                                    entry = by_framework_id.get(fid)
-                                    if not entry:
-                                        continue
-                                    owner = entry.get("owner", "")
-                                    repo_name = entry.get("repo", "")
-                                    ref = entry.get("ref") or "main"
-                                    if ref in ("latest", ""):
-                                        tag = get_latest_release_tag(f"{owner}/{repo_name}")
-                                        if tag:
-                                            ref = tag
-                                        else:
-                                            ref = "main"
-                                    ingest_github_repo_markdown(
-                                        owner, repo_name, ref, coll, fid,
-                                        fetch_client, chunk_sink, effective_embed_provider,
-                                        max_depth=3,
-                                        on_indexed=on_indexed,
-                                    )
-                                    break
-                            except Exception as e:
-                                _RAG_LOG.warning("Background framework refresh failed: %s", e)
+                            def _run_refresh(work: list) -> None:
+                                try:
+                                    qdrant_url = get_qdrant_url()
+                                    fetch_client = HttpFetchClient()
+                                    chunk_sink = QdrantChunkSink(base_url=qdrant_url)
+                                    repo = get_settings_repository()
+                                    def on_indexed(cname: str, fid: str, ver: str | None, last_at: str) -> None:
+                                        repo.set_collection_meta(cname, fid, ver or "", last_at)
+                                    for _name, coll in work:
+                                        fid = coll_to_framework_id.get(coll) or coll.lower()
+                                        entry = by_framework_id.get(fid)
+                                        if not entry:
+                                            continue
+                                        owner = entry.get("owner", "")
+                                        repo_name = entry.get("repo", "")
+                                        ref = entry.get("ref") or "main"
+                                        if ref in ("latest", ""):
+                                            tag = get_latest_release_tag(f"{owner}/{repo_name}")
+                                            if tag:
+                                                ref = tag
+                                            else:
+                                                ref = "main"
+                                        ingest_github_repo_markdown(
+                                            owner, repo_name, ref, coll, fid,
+                                            fetch_client, chunk_sink, effective_embed_provider,
+                                            max_depth=3,
+                                            on_indexed=on_indexed,
+                                        )
+                                        break
+                                except Exception as e:
+                                    _RAG_LOG.warning("Background framework refresh failed: %s", e)
 
-                        background_refresh_started = True
-                        trace["internet"]["background_refresh_started"] = True
-                        threading.Thread(target=_run_refresh, args=(work_list,), daemon=True).start()
+                            background_refresh_started = True
+                            trace["internet"]["background_refresh_started"] = True
+                            threading.Thread(target=_run_refresh, args=(work_list,), daemon=True).start()
 
-                    try:
-                        qdrant_url = get_qdrant_url()
-                    except Exception:
-                        qdrant_url = "http://localhost:6333"
-                    rag_search_adapter = QdrantRagSearchAdapter(base_url=qdrant_url)
-                    fetch_client = HttpFetchClient() if HttpFetchClient is not None else None
-                    external_sources_list = load_external_sources() if load_external_sources else []
-                    merged_ctx, merged_timings = build_merged_rag_context(
+                        try:
+                            qdrant_url = get_qdrant_url()
+                        except Exception:
+                            qdrant_url = "http://localhost:6333"
+                        rag_search_adapter = QdrantRagSearchAdapter(base_url=qdrant_url)
+                        fetch_client = HttpFetchClient() if HttpFetchClient is not None else None
+                        external_sources_list = load_external_sources() if load_external_sources else []
+                        merged_ctx, merged_timings = build_merged_rag_context(
+                            last_user,
+                            resolved,
+                            rag_search_adapter,
+                            effective_embed_provider,
+                            effective_context_chunk_chars,
+                            effective_context_total_chars,
+                            fetch_client=fetch_client,
+                            external_sources=external_sources_list,
+                            fresh_collection_names=project_fresh_collection_names,
+                        )
+                        rag_ctx_for_log = RagContext(
+                            context_text=merged_ctx.context_text,
+                            chunks_info=merged_ctx.chunks_info,
+                            max_score=merged_ctx.max_score,
+                        )
+                        rag_timings = merged_timings
+                if not use_merged or rag_ctx_for_log is None:
+                    rag_ctx_for_log, rag_timings = build_rag_context(
                         last_user,
-                        resolved,
-                        rag_search_adapter,
+                        effective_rag_repo,
                         effective_embed_provider,
+                        effective_rerank_client,
                         effective_context_chunk_chars,
                         effective_context_total_chars,
-                        fetch_client=fetch_client,
-                        external_sources=external_sources_list,
-                        fresh_collection_names=project_fresh_collection_names,
+                        rag_required_keywords=rag_keywords,
+                        trigger_threshold=None,
+                        force_rag=force_rag,
                     )
-                    from domain.entities.rag import RagContext
-                    rag_ctx_for_log = RagContext(
-                        context_text=merged_ctx.context_text,
-                        chunks_info=merged_ctx.chunks_info,
-                        max_score=merged_ctx.max_score,
-                    )
-                    rag_timings = merged_timings
-            if not use_merged or rag_ctx_for_log is None:
-                rag_ctx_for_log, rag_timings = build_rag_context(
-                    last_user,
-                    effective_rag_repo,
-                    effective_embed_provider,
-                    effective_rerank_client,
-                    effective_context_chunk_chars,
-                    effective_context_total_chars,
-                    rag_required_keywords=rag_keywords,
-                    trigger_threshold=None,
-                    force_rag=force_rag,
-                )
             if rag_timings:
                 set_latest_request_rag_steps(rag_timings)
                 _RAG_LOG.info(
@@ -1305,14 +2037,26 @@ def create_app(
             return jsonify({"error": str(e)}), 500
 
         if tools and tool_choice_effective != "none":
-            tool_json_instruction = _build_tool_json_instruction(selected_edit_tool_name, selected_edit_tool)
-            if tool_json_instruction:
-                ollama_messages.append({"role": "system", "content": tool_json_instruction})
-            excerpt_sys = _workspace_selection_snippet(user_query or last_user or "").strip()
-            if excerpt_sys:
-                ollama_messages.append({"role": "system", "content": excerpt_sys})
+            if post_tool_success_turn:
+                ollama_messages.append({"role": "system", "content": _POST_TOOL_SUCCESS_SYSTEM})
+            else:
+                tool_json_instruction = _build_tool_json_instruction(
+                    selected_edit_tool_name, selected_edit_tool
+                )
+                if tool_json_instruction:
+                    ollama_messages.append({"role": "system", "content": tool_json_instruction})
+                excerpt_sys = _workspace_selection_snippet(user_query or last_user or "").strip()
+                if not excerpt_sys:
+                    excerpt_sys = (
+                        _client_selection_snippet(user_query or last_user or "").strip()
+                        or _client_files_snippet(user_query or last_user or "").strip()
+                    )
+                if excerpt_sys:
+                    ollama_messages.append({"role": "system", "content": excerpt_sys})
 
-        stream_tool_mode = bool(stream and tools and tool_choice_effective != "none")
+        stream_tool_mode = bool(
+            stream and tools and tool_choice_effective != "none" and not post_tool_success_turn
+        )
         if stream_tool_mode:
             set_proxy_status(STATUS_RESPONSE)
             stream_start_time = time.time()
@@ -1406,35 +2150,79 @@ def create_app(
                     edit_payload=edit_payload,
                     user_query=user_query,
                 )
-                tool_call = {
-                    "id": f"call_{uuid.uuid4().hex[:24]}",
-                    "type": "function",
-                    "function": {
-                        "name": selected_edit_tool_name,
-                        "arguments": json.dumps(tool_args, ensure_ascii=False),
-                    },
-                }
-                trace["response"] = {
-                    "content_preview": "",
-                    "content_length_chars": 0,
-                    "latency_ms": int((time.time() - stream_start_time) * 1000),
-                    "tool_calls_count": 1,
-                    "tool_calls": [tool_call],
-                }
-                set_current_trace(trace)
+                if not selected_tool_write_capable:
+                    # Client tool exists but cannot carry edit text; don't attempt server-side terminal writes.
+                    tool_plain_fallback = (
+                        f"Cannot apply edit: client tool `{selected_edit_tool_name}` schema does not accept file content. "
+                        "Enable a write-capable file edit tool in the IDE (e.g., edit_file/save_file/replace_in_file_range with content/new_text/replacement)."
+                    )
+                    edit_payload = None
+                elif not _tool_args_have_substantive_body(selected_edit_tool_name, tool_args):
+                    # Model produced an edit payload without actual content.
+                    tool_plain_fallback = (
+                        "Cannot apply edit: model did not provide a non-empty edit body (content/new_text/replacement). "
+                        "Please retry."
+                    )
+                    edit_payload = None
+                else:
+                    tool_call = {
+                        "id": f"call_{uuid.uuid4().hex[:24]}",
+                        "type": "function",
+                        "function": {
+                            "name": selected_edit_tool_name,
+                            "arguments": json.dumps(tool_args, ensure_ascii=False),
+                        },
+                    }
+                    trace["response"] = {
+                        "content_preview": "",
+                        "content_length_chars": 0,
+                        "latency_ms": int((time.time() - stream_start_time) * 1000),
+                        "tool_calls_count": 1,
+                        "tool_calls": [tool_call],
+                    }
+                    set_current_trace(trace)
 
-                def generate_sse_tool_call():
-                    oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
-                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
-                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'tool_calls': [{'index': 0, 'id': tool_call['id'], 'type': 'function', 'function': {'name': selected_edit_tool_name, 'arguments': tool_call['function']['arguments']}}]}, 'finish_reason': None}]})}\n\n"
-                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls'}]})}\n\n"
-                    yield "data: [DONE]\n\n"
+                    def generate_sse_tool_call():
+                        oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'tool_calls': [{'index': 0, 'id': tool_call['id'], 'type': 'function', 'function': {'name': selected_edit_tool_name, 'arguments': tool_call['function']['arguments']}}]}, 'finish_reason': None}]})}\n\n"
+                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls'}]})}\n\n"
+                        yield "data: [DONE]\n\n"
 
-                return Response(
-                    generate_sse_tool_call(),
-                    mimetype="text/event-stream",
-                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-                )
+                    return Response(
+                        generate_sse_tool_call(),
+                        mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                    )
+            if (not stream_tool_error) and (not edit_payload) and (not tool_plain_fallback):
+                # Some Ollama models occasionally return an empty string. Do not stream "nothing":
+                # return a short plain-text message so the client can surface an error instead
+                # of waiting on an invisible response.
+                try:
+                    minimal_messages: list[dict[str, object]] = []
+                    # Ultra-minimal retry: strip volatile context/attachments.
+                    minimal_user = _strip_context_sections(user_query or last_user or "")
+                    tool_json_instruction_m = _build_tool_json_instruction(
+                        selected_edit_tool_name, selected_edit_tool
+                    )
+                    if tool_json_instruction_m:
+                        minimal_messages.append({"role": "system", "content": tool_json_instruction_m})
+                    minimal_messages.append(
+                        {
+                            "role": "user",
+                            "content": (minimal_user or (user_query or last_user or "")).strip()
+                            + "\n\nReturn ONE JSON tool object if tools are enabled; otherwise 1-2 sentences.",
+                        }
+                    )
+                    tool_plain_fallback = (
+                        (chat_client.chat(minimal_messages, use_model, stream=False, options=None) or "").strip()
+                    )
+                except Exception:
+                    tool_plain_fallback = ""
+                if not tool_plain_fallback:
+                    tool_plain_fallback = (
+                        "Model returned an empty response; no tool call was emitted. Please retry."
+                    )
             if (not stream_tool_error) and tool_plain_fallback:
                 # If tool JSON was not produced, do not drop content: return plain assistant text via SSE.
                 trace["response"] = {
@@ -1465,12 +2253,14 @@ def create_app(
                 preview = ""
                 stream_start_time = time.time()
                 full_response = ""
+                emitted_any = False
                 total_tokens_holder = [0]
                 try:
                     for content in chat_client.stream_chat(ollama_messages, use_model):
                         if content:
                             full_response += content
                             preview += content[: max(0, log_preview - len(preview))]
+                            emitted_any = True
                             chunk = {
                                 "id": oid,
                                 "object": "chat.completion.chunk",
@@ -1480,6 +2270,20 @@ def create_app(
                                 ],
                             }
                             yield f"data: {json.dumps(chunk)}\n\n"
+                    if not emitted_any:
+                        full_response = (
+                            "Model returned an empty response; no tool call was emitted. Please retry."
+                        )
+                        preview = full_response[:log_preview]
+                        chunk = {
+                            "id": oid,
+                            "object": "chat.completion.chunk",
+                            "model": use_model,
+                            "choices": [
+                                {"index": 0, "delta": {"content": full_response}, "finish_reason": None},
+                            ],
+                        }
+                        yield f"data: {json.dumps(chunk)}\n\n"
                     
                     # Log streaming request
                     stream_latency_ms = int((time.time() - stream_start_time) * 1000)
@@ -1611,7 +2415,7 @@ def create_app(
         )
         set_current_trace(trace)
         tool_calls: list[dict[str, object]] = []
-        if (not stream) and tools and tool_choice_effective != "none":
+        if (not stream) and tools and tool_choice_effective != "none" and not post_tool_success_turn:
             edit_payload = _extract_edit_from_response(content or "")
             if edit_payload and selected_edit_tool_name:
                 tool_args = _build_tool_arguments(
@@ -1620,16 +2424,22 @@ def create_app(
                     edit_payload=edit_payload,
                     user_query=user_query,
                 )
-                tool_calls = [
-                    {
-                        "id": f"call_{uuid.uuid4().hex[:24]}",
-                        "type": "function",
-                        "function": {
-                            "name": selected_edit_tool_name,
-                            "arguments": json.dumps(tool_args, ensure_ascii=False),
-                        },
-                    }
-                ]
+                if selected_tool_write_capable and _tool_args_have_substantive_body(selected_edit_tool_name, tool_args):
+                    tool_calls = [
+                        {
+                            "id": f"call_{uuid.uuid4().hex[:24]}",
+                            "type": "function",
+                            "function": {
+                                "name": selected_edit_tool_name,
+                                "arguments": json.dumps(tool_args, ensure_ascii=False),
+                            },
+                        }
+                    ]
+                elif not selected_tool_write_capable:
+                    content = (
+                        f"Cannot apply edit: client tool `{selected_edit_tool_name}` schema does not accept file content. "
+                        "Enable a write-capable file edit tool in the IDE (e.g., edit_file/save_file/replace_in_file_range with content/new_text/replacement)."
+                    )
             if not tool_calls and selected_edit_tool_name:
                 tool_json_instruction = _build_tool_json_instruction(
                     selected_edit_tool_name, selected_edit_tool
@@ -1656,16 +2466,17 @@ def create_app(
                             edit_payload=retried_payload,
                             user_query=user_query,
                         )
-                        tool_calls = [
-                            {
-                                "id": f"call_{uuid.uuid4().hex[:24]}",
-                                "type": "function",
-                                "function": {
-                                    "name": selected_edit_tool_name,
-                                    "arguments": json.dumps(tool_args, ensure_ascii=False),
-                                },
-                            }
-                        ]
+                        if selected_tool_write_capable and _tool_args_have_substantive_body(selected_edit_tool_name, tool_args):
+                            tool_calls = [
+                                {
+                                    "id": f"call_{uuid.uuid4().hex[:24]}",
+                                    "type": "function",
+                                    "function": {
+                                        "name": selected_edit_tool_name,
+                                        "arguments": json.dumps(tool_args, ensure_ascii=False),
+                                    },
+                                }
+                            ]
                 except Exception as e3:
                     log_webui_error("rag_routes.chat_completions", e3, {"stage": "non_stream_tool_mode_strict_retry"})
                     _log_rag_error("non_stream_tool_mode_strict_retry", e3)
@@ -1692,16 +2503,17 @@ def create_app(
                                 edit_payload=retried_payload2,
                                 user_query=user_query,
                             )
-                            tool_calls = [
-                                {
-                                    "id": f"call_{uuid.uuid4().hex[:24]}",
-                                    "type": "function",
-                                    "function": {
-                                        "name": selected_edit_tool_name,
-                                        "arguments": json.dumps(tool_args, ensure_ascii=False),
-                                    },
-                                }
-                            ]
+                            if selected_tool_write_capable and _tool_args_have_substantive_body(selected_edit_tool_name, tool_args):
+                                tool_calls = [
+                                    {
+                                        "id": f"call_{uuid.uuid4().hex[:24]}",
+                                        "type": "function",
+                                        "function": {
+                                            "name": selected_edit_tool_name,
+                                            "arguments": json.dumps(tool_args, ensure_ascii=False),
+                                        },
+                                    }
+                                ]
                     except Exception as e4:
                         log_webui_error(
                             "rag_routes.chat_completions",

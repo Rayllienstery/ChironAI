@@ -12,6 +12,9 @@
 - [ ] iPhone notifications
 - [ ] Web framework search - work the same as crawl...
 
+## Bugs
+ - [ ] Proxy If RAG is not started the response is empty
+
 ---
 
 ## MVP (Priority 10/10)

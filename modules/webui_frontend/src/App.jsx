@@ -281,13 +281,13 @@ function App() {
   };
 
   const tabs = [
+    { id: "testing", label: "Testing" },
     { id: "dashboard", label: "Dashboard" },
     { id: "proxy-trace", label: "Proxy Trace" },
     { id: "logs", label: "Logs" },
     { id: "rag", label: "RAG / Qdrant" },
     { id: "crawler", label: "Crawler / Indexer" },
     { id: "template-editor", label: "Template Editor" },
-    { id: "testing", label: "Testing" },
     { id: "settings", label: "Settings" },
     { id: "llm-proxy", label: "LLM Proxy" },
   ];
