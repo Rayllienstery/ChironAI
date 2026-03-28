@@ -1,7 +1,6 @@
 """
-Crawler and indexing application use cases.
+Crawler application use cases.
 
-Coordinates crawling, markdown normalization, indexing into Qdrant,
-and collection rebuild flows using domain services and infrastructure ports.
+Coordinates crawling and markdown normalization; vector indexing uses WebUI API
+or dedicated ingest scripts.
 """
-

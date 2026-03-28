@@ -34,6 +34,7 @@ from domain.services.retrieval import (
     MULTI_CHUNK_TOP_K,
     RERANK_MAX_CANDIDATES,
     build_qdrant_filter,
+    merge_qdrant_filters,
     combined_doc_priority,
     doc_type_priority,
     expand_query_variants,
@@ -137,10 +138,14 @@ def search_rag(
     embed_provider: EmbeddingProvider,
     rerank_client: RerankClient | None,
     top_k: int | None = None,
+    extra_filter: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, float]]:
     """
     Run RAG retrieval for a question: query_for_retrieval -> embed -> search -> rerank.
     Returns (list of hits with id, score, payload, rerank_score, timings dict with embed_s, search_s, rerank_s).
+
+    ``extra_filter`` is merged with ``build_qdrant_filter(question)`` via ``merge_qdrant_filters``
+    (e.g. ``extra_filter_section_path_joined_equals`` for section-scoped search).
     """
     timings: dict[str, float] = {
         "embed_s": 0.0,
@@ -154,7 +159,7 @@ def search_rag(
     if top_k is None:
         top_k = MULTI_CHUNK_TOP_K if need_more_chunks(question) else get_retrieval_int("top_k", DEFAULT_TOP_K)
     hybrid_on = is_hybrid_sparse_enabled() and rag_repo.supports_hybrid()
-    filter_dict = build_qdrant_filter(question)
+    filter_dict = merge_qdrant_filters(build_qdrant_filter(question), extra_filter)
     k = max(top_k, RERANK_MAX_CANDIDATES) if not is_version_question(question) else top_k
     final_k = MULTI_CHUNK_FINAL_K if need_more_chunks(question) else FINAL_CONTEXT_K
 
@@ -277,12 +282,14 @@ def build_rag_context(
     rag_required_keywords: list[str] | None = None,
     trigger_threshold: int | None = None,
     force_rag: bool = False,
+    extra_filter: dict[str, Any] | None = None,
 ) -> tuple[RagContext, dict[str, float]]:
     """
     Build RAG context for a question: search_rag -> framework_filter -> build_context_block.
     Returns (RagContext (context_text, chunks_info, max_score), timings dict with embed_s, search_s, rerank_s, total_rag_s).
     If rag_required_keywords is provided, it is used to decide when to skip RAG (no keyword in query); else config default.
     trigger_threshold overrides config when provided (e.g. from app settings).
+    ``extra_filter`` is passed to ``search_rag`` (merged with doc_type/doc_scope preference filter).
     """
     empty_timings: dict[str, float] = {
         "embed_s": 0.0,
@@ -303,7 +310,14 @@ def build_rag_context(
         _rag_log.debug("RAG skipped for query (greeting or score below threshold)")
         return RagContext("", [], 0.0), empty_timings
     try:
-        results, timings = search_rag(question, rag_repo, embed_provider, rerank_client, top_k=top_k)
+        results, timings = search_rag(
+            question,
+            rag_repo,
+            embed_provider,
+            rerank_client,
+            top_k=top_k,
+            extra_filter=extra_filter,
+        )
         timings["total_rag_s"] = (
             timings["embed_s"]
             + timings["search_s"]
@@ -361,6 +375,7 @@ def answer_question(
     rag_context: RagContext | None = None,
     trigger_threshold: int | None = None,
     force_rag: bool = False,
+    extra_filter: dict[str, Any] | None = None,
 ) -> RagAnswerResponse:
     """
     Answer a question with RAG: build_rag_context (or use rag_context) -> build_system_content -> chat.
@@ -381,6 +396,7 @@ def answer_question(
             rag_required_keywords=rag_required_keywords,
             trigger_threshold=trigger_threshold,
             force_rag=force_rag,
+            extra_filter=extra_filter,
         )
     system_content = build_system_content(
         system_prefix,
@@ -425,6 +441,7 @@ def prepare_ollama_messages(
     rag_context: RagContext | None = None,
     trigger_threshold: int | None = None,
     force_rag: bool = False,
+    extra_filter: dict[str, Any] | None = None,
     *,
     native_tools: bool = False,
 ) -> tuple[list[dict[str, Any]], str]:
@@ -448,6 +465,7 @@ def prepare_ollama_messages(
             rag_required_keywords=rag_required_keywords,
             trigger_threshold=trigger_threshold,
             force_rag=force_rag,
+            extra_filter=extra_filter,
         )
     system_content = build_system_content(
         system_prefix,

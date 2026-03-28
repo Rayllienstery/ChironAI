@@ -8,7 +8,9 @@ import pytest
 
 from domain.services.retrieval import (
     build_qdrant_filter,
+    extra_filter_section_path_joined_equals,
     is_version_question,
+    merge_qdrant_filters,
     need_more_chunks,
     parse_versions_from_question,
     query_for_retrieval,
@@ -157,3 +159,32 @@ class TestBuildQdrantFilter:
     def test_returns_filter_dict_for_question(self) -> None:
         f = build_qdrant_filter("What is Observable?")
         assert f is None or (isinstance(f, dict) and "should" in f)
+
+
+class TestMergeQdrantFilters:
+    def test_none_none(self) -> None:
+        assert merge_qdrant_filters(None, None) is None
+
+    def test_base_only(self) -> None:
+        base = {"should": [{"key": "doc_type", "match": {"value": "article"}}]}
+        assert merge_qdrant_filters(base, None) == base
+
+    def test_extra_only(self) -> None:
+        extra = {"must": [{"key": "section_path_joined", "match": {"value": "A:B"}}]}
+        assert merge_qdrant_filters(None, extra) == extra
+
+    def test_both_wraps_must(self) -> None:
+        base = {"should": [{"key": "doc_type", "match": {"value": "article"}}]}
+        extra = {"must": [{"key": "section_path_joined", "match": {"value": "H1:H2"}}]}
+        m = merge_qdrant_filters(base, extra)
+        assert m == {"must": [base, extra]}
+
+
+class TestExtraFilterSectionPathJoinedEquals:
+    def test_empty_returns_none(self) -> None:
+        assert extra_filter_section_path_joined_equals("") is None
+        assert extra_filter_section_path_joined_equals("   ") is None
+
+    def test_non_empty(self) -> None:
+        f = extra_filter_section_path_joined_equals("Intro:API")
+        assert f == {"must": [{"key": "section_path_joined", "match": {"value": "Intro:API"}}]}

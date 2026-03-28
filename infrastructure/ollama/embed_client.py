@@ -9,10 +9,11 @@ from __future__ import annotations
 from domain.errors import EmbeddingError
 
 try:
-    from config import get_ollama_embed_model, get_ollama_embed_url
+    from config import get_ollama_embed_model, get_ollama_embed_timeout_seconds, get_ollama_embed_url
 except ImportError:
     get_ollama_embed_url = lambda: "http://localhost:11434/api/embed"  # type: ignore
     get_ollama_embed_model = lambda: "mxbai-embed-large"  # type: ignore
+    get_ollama_embed_timeout_seconds = lambda: 180.0  # type: ignore
 
 from domain.services.retrieval import MAX_EMBED_TEXT_LENGTH
 
@@ -26,21 +27,26 @@ class OllamaEmbeddingProvider:
         self,
         base_url: str | None = None,
         model: str | None = None,
+        embed_timeout_seconds: float | None = None,
     ) -> None:
         self._url = base_url or get_ollama_embed_url()
         self._model = model or get_ollama_embed_model()
+        self._embed_timeout = float(
+            embed_timeout_seconds if embed_timeout_seconds is not None else get_ollama_embed_timeout_seconds()
+        )
 
     def embed(self, text: str) -> list[float]:
         """Embed a single text. Raises EmbeddingError on failure."""
         if len(text) > MAX_EMBED_TEXT_LENGTH:
             text = text[:MAX_EMBED_TEXT_LENGTH]
+        t = max(10.0, self._embed_timeout)
         stdin_obj: dict = {
             "url": self._url,
             "json": {"model": self._model, "input": text},
-            "timeout": 60,
+            "timeout": t,
         }
         try:
-            data = invoke_embed(stdin_obj, default_timeout=60)
+            data = invoke_embed(stdin_obj, default_timeout=t)
             embeddings = data.get("embeddings")
             if not embeddings:
                 raise EmbeddingError(f"No 'embeddings' key in Ollama response: {data}")
@@ -63,13 +69,14 @@ class OllamaEmbeddingProvider:
             t[:MAX_EMBED_TEXT_LENGTH] if len(t) > MAX_EMBED_TEXT_LENGTH else t
             for t in texts
         ]
+        batch_t = max(120.0, self._embed_timeout * 2.0)
         stdin_obj: dict = {
             "url": self._url,
             "json": {"model": self._model, "input": truncated},
-            "timeout": 120,
+            "timeout": batch_t,
         }
         try:
-            data = invoke_embed(stdin_obj, default_timeout=120)
+            data = invoke_embed(stdin_obj, default_timeout=batch_t)
             embeddings = data.get("embeddings")
             if embeddings is None:
                 raise EmbeddingError("No 'embeddings' key in Ollama response")

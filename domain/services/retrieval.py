@@ -299,6 +299,40 @@ def build_qdrant_filter(question: str) -> dict[str, Any] | None:
     return {"should": conditions}
 
 
+def merge_qdrant_filters(
+    base: dict[str, Any] | None,
+    extra: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """
+    AND-combine Qdrant filter dicts for retrieval.
+
+    ``base`` is typically ``build_qdrant_filter(question)`` (a ``should`` clause on
+    doc_type / doc_scope). ``extra`` is caller-supplied (e.g. section_path constraint).
+    When both are set, both sub-filters must match (nested under ``must``).
+
+    Build ``extra`` using Qdrant's filter schema, or use
+    ``extra_filter_section_path_joined_equals`` when payloads include
+    ``section_path_joined`` (WebUI markdown ingest and web UI collection indexing).
+    """
+    if not base:
+        return extra
+    if not extra:
+        return base
+    return {"must": [base, extra]}
+
+
+def extra_filter_section_path_joined_equals(joined: str) -> dict[str, Any] | None:
+    """
+    Build an ``extra`` filter: payload field ``section_path_joined`` must exactly equal ``joined``.
+    Format must match the indexer (colon-separated headings, e.g. ``"Concurrency:Actors"``).
+    Returns None if ``joined`` is empty (no constraint).
+    """
+    j = (joined or "").strip()
+    if not j:
+        return None
+    return {"must": [{"key": "section_path_joined", "match": {"value": j}}]}
+
+
 def doc_type_priority(hit: dict[str, Any]) -> int:
     """
     Compute priority score for a hit based on its doc_type.
@@ -402,6 +436,8 @@ __all__ = [
     "query_for_retrieval",
     "need_more_chunks",
     "build_qdrant_filter",
+    "merge_qdrant_filters",
+    "extra_filter_section_path_joined_equals",
     "doc_type_priority",
     "doc_scope_priority",
     "combined_doc_priority",

@@ -246,7 +246,6 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import subprocess
-import importlib.util
 
 # In-memory buffer for dev console (last 50 requests)
 _REQUEST_BUFFER: deque[dict[str, Any]] = deque(maxlen=50)
@@ -283,31 +282,6 @@ def _get_ollama_url() -> str:
         return get_ollama_base_url().rstrip("/")
     except Exception:
         return (os.getenv("OLLAMA_BASE_URL") or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
-
-
-_INDEXER_APP_MODULE = None
-
-
-def _get_indexer_app_module():
-    """
-    Lazy-load WebUI/app.py as a module so we can reuse its markdown index pipeline
-    (process_markdown_for_index) without duplicating logic.
-    """
-    global _INDEXER_APP_MODULE
-    if _INDEXER_APP_MODULE is not None:
-        return _INDEXER_APP_MODULE
-
-    app_path = _get_webui_app_path()
-    if not os.path.isfile(app_path):
-        raise RuntimeError("WebUI/app.py not found")
-
-    spec = importlib.util.spec_from_file_location("tmrag_webui_app_indexer", app_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load WebUI/app.py module spec")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)  # type: ignore[attr-defined]
-    _INDEXER_APP_MODULE = module
-    return module
 
 
 @webui_bp.route("/models", methods=["GET"])
@@ -2484,14 +2458,12 @@ def _get_source_stats(meta: dict) -> dict[str, Any]:
     """Calculate statistics from meta.json."""
     pages = meta.get("pages", {})
     total_pages = len(pages)
-    dirty_pages = sum(1 for p in pages.values() if p.get("dirty", False))
     indexed_pages = sum(
         1 for p in pages.values() 
         if p.get("chunk_hashes") and len(p.get("chunk_hashes", [])) > 0
     )
     return {
         "total_pages": total_pages,
-        "dirty_pages": dirty_pages,
         "indexed_pages": indexed_pages,
         "last_crawled": meta.get("last_crawled"),
     }
@@ -2523,24 +2495,36 @@ def _point_id_from_hash(h: str) -> int:
     return int(h, 16)
 
 
-def _get_embeddings_simple(texts: list[str]) -> list[list[float]]:
-    """Simple embedding function using Ollama."""
+def _get_embeddings_simple(
+    texts: list[str],
+    *,
+    embed_model_override: str | None = None,
+) -> list[list[float]]:
+    """Simple embedding function using Ollama.
+
+    When ``embed_model_override`` is non-empty, it is used for this call only
+    (e.g. create-collection job). Otherwise: app_settings, then env, then default.
+    """
     if not texts:
         return []
-    
-    embed_url = get_ollama_embed_url()
-    try:
-        settings_repo = get_settings_repository()
-        raw = settings_repo.get_app_setting("rag_embed_model")
-        rag_embed_model = (raw or "").strip()
-    except Exception:
-        rag_embed_model = ""
 
-    # Fallback order:
-    # 1) app_settings.rag_embed_model (set from WebUI)
-    # 2) env RAG_EMBED_MODEL
-    # 3) hard default
-    embed_model = rag_embed_model or os.getenv("RAG_EMBED_MODEL", "bge-large")
+    embed_url = get_ollama_embed_url()
+    override = (embed_model_override or "").strip()
+    if override:
+        embed_model = override
+    else:
+        try:
+            settings_repo = get_settings_repository()
+            raw = settings_repo.get_app_setting("rag_embed_model")
+            rag_embed_model = (raw or "").strip()
+        except Exception:
+            rag_embed_model = ""
+
+        # Fallback order:
+        # 1) app_settings.rag_embed_model (set from WebUI)
+        # 2) env RAG_EMBED_MODEL
+        # 3) hard default
+        embed_model = rag_embed_model or os.getenv("RAG_EMBED_MODEL", "bge-large")
     
     try:
         data = invoke_embed(
@@ -2656,12 +2640,46 @@ _collection_jobs: dict[str, dict[str, Any]] = {}
 _collection_jobs_lock = threading.Lock()
 
 
+def _snapshot_indexing_stats(st: dict[str, Any]) -> dict[str, Any]:
+    """Shallow copy for progress callbacks (skip_reasons copied so callers see fresh counts)."""
+    snap = dict(st)
+    snap["skip_reasons"] = dict(st.get("skip_reasons") or {})
+    snap["errors"] = list(st.get("errors") or [])
+    return snap
+
+
+def _record_page_skip(st: dict[str, Any], reason: str, error_msg: str | None = None) -> None:
+    st["skipped_pages"] += 1
+    sr = st.setdefault(
+        "skip_reasons",
+        {
+            "read_error": 0,
+            "too_short": 0,
+            "chunk_failed": 0,
+            "no_valid_chunks": 0,
+            "embed_failed": 0,
+            "dim_mismatch": 0,
+            "other": 0,
+        },
+    )
+    if reason in sr:
+        sr[reason] += 1
+    else:
+        sr["other"] = sr.get("other", 0) + 1
+    st["last_skip_reason"] = reason
+    if error_msg:
+        errs = st.setdefault("errors", [])
+        errs.append(error_msg)
+
+
 def _create_collection_from_sources(
     collection_name: str,
     source_ids: list[str],
     chunk_max_size: int,
     chunk_min_size: int,
     on_progress: Callable[[int, int, dict[str, Any]], None] | None = None,
+    *,
+    embed_model: str | None = None,
 ) -> dict[str, Any]:
     """
     Create a Qdrant collection by indexing pages from specified sources.
@@ -2672,12 +2690,25 @@ def _create_collection_from_sources(
     qdrant_url = get_qdrant_url().rstrip("/")
     qclient = QdrantClient(url=qdrant_url)
     
-    stats = {
+    stats: dict[str, Any] = {
         "total_pages": 0,
         "indexed_pages": 0,
         "total_chunks": 0,
         "skipped_pages": 0,
         "errors": [],
+        "skip_reasons": {
+            "read_error": 0,
+            "too_short": 0,
+            "chunk_failed": 0,
+            "no_valid_chunks": 0,
+            "embed_failed": 0,
+            "dim_mismatch": 0,
+            "other": 0,
+        },
+        "current_source_id": "",
+        "current_filename": "",
+        "current_phase": "",
+        "last_skip_reason": "",
     }
 
     hybrid_cfg = is_hybrid_sparse_enabled()
@@ -2718,49 +2749,62 @@ def _create_collection_from_sources(
     # Process each page
     for source_id, filename, entry, pages_dir, source_meta in candidates:
         page_path = os.path.join(pages_dir, filename)
-        
+        stats["current_source_id"] = source_id
+        stats["current_filename"] = filename
+        stats["current_phase"] = "reading"
+        stats["last_skip_reason"] = ""
+        if on_progress:
+            on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
+
         try:
             with open(page_path, "r", encoding="utf-8") as f:
                 md = f.read()
         except Exception as e:
-            stats["skipped_pages"] += 1
-            stats["errors"].append(f"Failed to read {source_id}/{filename}: {e}")
+            _record_page_skip(
+                stats,
+                "read_error",
+                f"Failed to read {source_id}/{filename}: {e}",
+            )
             processed += 1
             if on_progress:
-                on_progress(processed, total_pages, dict(stats))
+                on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
             continue
 
         page_meta, md = parse_and_strip_meta_block(md)
         # Simple validation - skip if too short
         if len(md.strip()) < 400:
-            stats["skipped_pages"] += 1
+            _record_page_skip(stats, "too_short")
             processed += 1
             if on_progress:
-                on_progress(processed, total_pages, dict(stats))
+                on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
             continue
 
         # Clean markdown
         md = _strip_markdown_simple(md)
 
         # Split into chunks
+        stats["current_phase"] = "chunking"
         try:
             chunks_with_paths = split_markdown_into_chunks(
                 md, max_chunk_size=chunk_max_size, min_chunk_size=chunk_min_size
             )
             chunks_with_paths = [(t, p) for t, p in chunks_with_paths if chunk_quality_ok(t)]
         except Exception as e:
-            stats["skipped_pages"] += 1
-            stats["errors"].append(f"Failed to chunk {source_id}/{filename}: {e}")
+            _record_page_skip(
+                stats,
+                "chunk_failed",
+                f"Failed to chunk {source_id}/{filename}: {e}",
+            )
             processed += 1
             if on_progress:
-                on_progress(processed, total_pages, dict(stats))
+                on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
             continue
 
         if not chunks_with_paths:
-            stats["skipped_pages"] += 1
+            _record_page_skip(stats, "no_valid_chunks")
             processed += 1
             if on_progress:
-                on_progress(processed, total_pages, dict(stats))
+                on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
             continue
 
         chunk_texts = [t for t, _ in chunks_with_paths]
@@ -2770,21 +2814,33 @@ def _create_collection_from_sources(
         ]
 
         # Get embeddings
+        stats["current_phase"] = "embedding"
+        if on_progress:
+            on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
         try:
-            embeddings = _get_embeddings_simple(embed_texts)
+            embeddings = _get_embeddings_simple(
+                embed_texts, embed_model_override=embed_model
+            )
         except Exception as e:
-            stats["skipped_pages"] += 1
-            stats["errors"].append(f"Failed to get embeddings for {source_id}/{filename}: {e}")
+            _record_page_skip(
+                stats,
+                "embed_failed",
+                f"Failed to get embeddings for {source_id}/{filename}: {e}",
+            )
             processed += 1
             if on_progress:
-                on_progress(processed, total_pages, dict(stats))
+                on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
             continue
 
         if not embeddings:
-            stats["skipped_pages"] += 1
+            _record_page_skip(
+                stats,
+                "embed_failed",
+                f"No embeddings returned for {source_id}/{filename}",
+            )
             processed += 1
             if on_progress:
-                on_progress(processed, total_pages, dict(stats))
+                on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
             continue
 
         dim = len(embeddings[0])
@@ -2798,12 +2854,19 @@ def _create_collection_from_sources(
             )
 
         if dim != first_dim:
-            stats["skipped_pages"] += 1
-            stats["errors"].append(f"Dimension mismatch for {source_id}/{filename}: {dim} != {first_dim}")
+            _record_page_skip(
+                stats,
+                "dim_mismatch",
+                f"Dimension mismatch for {source_id}/{filename}: {dim} != {first_dim}",
+            )
             processed += 1
             if on_progress:
-                on_progress(processed, total_pages, dict(stats))
+                on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
             continue
+
+        stats["current_phase"] = "saving"
+        if on_progress:
+            on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
         
         # Create points
         url_for_meta = page_meta.get("url") or entry.get("url")
@@ -2831,6 +2894,7 @@ def _create_collection_from_sources(
             if page_meta.get("doc_scope"):
                 meta_extra["doc_scope"] = page_meta["doc_scope"]
             display_meta = infer_chunk_display_meta(section_path)
+            section_path_joined = section_path_str  # same as hash segment; Qdrant filter helper
             payload = {
                 "source": source_id,
                 "url": url_for_meta or entry.get("url", ""),
@@ -2838,6 +2902,7 @@ def _create_collection_from_sources(
                 "chunk_id": chunk_hash,
                 "text": chunk_text,
                 "section_path": section_path,
+                "section_path_joined": section_path_joined,
                 "ios_versions": ios_versions,
                 "swift_versions": swift_versions,
                 "version": source_meta.get("last_crawled"),
@@ -2874,8 +2939,9 @@ def _create_collection_from_sources(
         stats["indexed_pages"] += 1
 
         processed += 1
+        stats["current_phase"] = "idle"
         if on_progress:
-            on_progress(processed, total_pages, dict(stats))
+            on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
     
     # Flush remaining batch
     if upsert_batch:
@@ -2910,7 +2976,6 @@ def get_crawler_sources() -> Any:
                 "last_crawled": meta.get("last_crawled"),
                 "total_pages": stats["total_pages"],
                 "indexed_pages": stats["indexed_pages"],
-                "dirty_pages": stats["dirty_pages"],
                 "has_meta": True,
             }
 
@@ -2946,7 +3011,6 @@ def get_crawler_sources() -> Any:
                 "last_crawled": None,
                 "total_pages": 0,
                 "indexed_pages": 0,
-                "dirty_pages": 0,
                 "has_meta": False,
                 "max_depth": config_source.get("max_depth", 2),
                 "crawler": config_source.get("crawler", "playwright"),
@@ -3008,7 +3072,6 @@ def get_crawler_source_pages(source_id: str) -> Any:
                 "filename": filename,
                 "url": page_data.get("url", ""),
                 "last_updated": page_data.get("last_updated"),
-                "dirty": page_data.get("dirty", False),
                 "has_chunks": bool(page_data.get("chunk_hashes")),
                 "chunk_count": len(page_data.get("chunk_hashes", [])),
             })
@@ -4093,6 +4156,7 @@ def _run_create_collection_job(
     source_ids: list[str],
     chunk_max_size: int,
     chunk_min_size: int,
+    embed_model: str | None = None,
 ) -> None:
     """Background task: run indexing and update job progress."""
     def on_progress(processed: int, total: int, st: dict[str, Any]) -> None:
@@ -4103,7 +4167,13 @@ def _run_create_collection_job(
                 _collection_jobs[job_id]["indexed_pages"] = st.get("indexed_pages", 0)
                 _collection_jobs[job_id]["total_chunks"] = st.get("total_chunks", 0)
                 _collection_jobs[job_id]["skipped_pages"] = st.get("skipped_pages", 0)
-                _collection_jobs[job_id]["errors"] = list(st.get("errors", [])[-5:])
+                _collection_jobs[job_id]["errors"] = list(st.get("errors", [])[-8:])
+                sr = st.get("skip_reasons") or {}
+                _collection_jobs[job_id]["skip_reasons"] = dict(sr)
+                _collection_jobs[job_id]["current_source_id"] = st.get("current_source_id", "")
+                _collection_jobs[job_id]["current_filename"] = st.get("current_filename", "")
+                _collection_jobs[job_id]["current_phase"] = st.get("current_phase", "")
+                _collection_jobs[job_id]["last_skip_reason"] = st.get("last_skip_reason", "")
 
     try:
         stats = _create_collection_from_sources(
@@ -4112,6 +4182,7 @@ def _run_create_collection_job(
             chunk_max_size=chunk_max_size,
             chunk_min_size=chunk_min_size,
             on_progress=on_progress,
+            embed_model=embed_model,
         )
         with _collection_jobs_lock:
             if job_id in _collection_jobs:
@@ -4120,6 +4191,11 @@ def _run_create_collection_job(
                 _collection_jobs[job_id]["processed_pages"] = stats.get("total_pages", 0)
                 _collection_jobs[job_id]["indexed_pages"] = stats.get("indexed_pages", 0)
                 _collection_jobs[job_id]["total_chunks"] = stats.get("total_chunks", 0)
+                _collection_jobs[job_id]["skipped_pages"] = stats.get("skipped_pages", 0)
+                _collection_jobs[job_id]["skip_reasons"] = dict(stats.get("skip_reasons") or {})
+                _collection_jobs[job_id]["current_phase"] = "complete"
+                _collection_jobs[job_id]["current_source_id"] = ""
+                _collection_jobs[job_id]["current_filename"] = ""
     except Exception as e:
         _ERROR_LOG.error("webui_routes.create_collection job", exc_info=True)
         with _collection_jobs_lock:
@@ -4139,11 +4215,17 @@ def get_create_collection_status(job_id: str) -> Any:
         "job_id": job_id,
         "status": job.get("status", "running"),
         "collection_name": job.get("collection_name", ""),
+        "source_ids": job.get("source_ids", []),
         "processed_pages": job.get("processed_pages", 0),
         "total_pages": job.get("total_pages", 0),
         "indexed_pages": job.get("indexed_pages", 0),
         "total_chunks": job.get("total_chunks", 0),
         "skipped_pages": job.get("skipped_pages", 0),
+        "skip_reasons": job.get("skip_reasons", {}),
+        "current_source_id": job.get("current_source_id", ""),
+        "current_filename": job.get("current_filename", ""),
+        "current_phase": job.get("current_phase", ""),
+        "last_skip_reason": job.get("last_skip_reason", ""),
         "errors": job.get("errors", []),
         "statistics": job.get("statistics"),
         "error": job.get("error"),
@@ -4161,6 +4243,8 @@ def create_collection() -> Any:
         chunk_min_size = int(body.get("chunk_min_size", 300))
         confidence_threshold = float(body.get("confidence_threshold", 0.75))
         top_k = int(body.get("top_k", 4))
+        embed_model_raw = str(body.get("rag_embed_model") or "").strip()
+        embed_model = embed_model_raw or None
 
         if not collection_name:
             return jsonify({"error": "collection_name is required"}), 400
@@ -4207,17 +4291,38 @@ def create_collection() -> Any:
             _collection_jobs[job_id] = {
                 "status": "running",
                 "collection_name": collection_name,
+                "source_ids": list(available_sources),
                 "processed_pages": 0,
                 "total_pages": total_pages,
                 "indexed_pages": 0,
                 "total_chunks": 0,
                 "skipped_pages": 0,
                 "errors": [],
+                "skip_reasons": {
+                    "read_error": 0,
+                    "too_short": 0,
+                    "chunk_failed": 0,
+                    "no_valid_chunks": 0,
+                    "embed_failed": 0,
+                    "dim_mismatch": 0,
+                    "other": 0,
+                },
+                "current_source_id": "",
+                "current_filename": "",
+                "current_phase": "",
+                "last_skip_reason": "",
             }
 
         thread = threading.Thread(
             target=_run_create_collection_job,
-            args=(job_id, collection_name, available_sources, chunk_max_size, chunk_min_size),
+            args=(
+                job_id,
+                collection_name,
+                available_sources,
+                chunk_max_size,
+                chunk_min_size,
+                embed_model,
+            ),
             daemon=True,
         )
         thread.start()

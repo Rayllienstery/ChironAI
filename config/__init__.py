@@ -151,6 +151,24 @@ def get_ollama_embed_model() -> str:
     )
 
 
+def get_ollama_embed_timeout_seconds() -> float:
+    """
+    HTTP read timeout for Ollama /api/embed (RAG query + indexing via OllamaEmbeddingProvider).
+    Override with OLLAMA_EMBED_TIMEOUT (seconds).
+    """
+    raw = os.getenv("OLLAMA_EMBED_TIMEOUT")
+    if raw is not None and str(raw).strip() != "":
+        try:
+            return max(10.0, float(raw))
+        except (TypeError, ValueError):
+            pass
+    try:
+        v = float(OLLAMA_CONFIG.get("embed_timeout_seconds", 180))
+        return max(10.0, v)
+    except (TypeError, ValueError):
+        return 180.0
+
+
 def get_ollama_rerank_model() -> str:
     """Return rerank model name (Ollama generate), allowing env override."""
     return os.getenv(

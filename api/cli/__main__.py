@@ -4,9 +4,6 @@ Unified CLI for ChironAI (tmrag).
 Usage from project root:
   python -m api.cli start              # start WebUI (Flask)
   python -m api.cli crawl [--dry-run] [--source ID]
-  python -m api.cli index [--dry-run] [--source ID] [--reindex-source ID]
-  python -m api.cli rebuild [--dry-run]
-  python -m api.cli update [--dry-run] [--source ID]
   python -m api.cli ingest <markdown_dir> [--collection NAME]
   python -m api.cli proxy              # start RAG proxy (OpenAI-compatible)
   python -m api.cli test                # run pytest tests/
@@ -54,47 +51,6 @@ def cmd_crawl(ns: argparse.Namespace) -> int:
         argv.append("--dry-run")
     for s in getattr(ns, "sources", None) or []:
         argv.extend(["--source", s])
-    return _run(argv)
-
-
-def cmd_index(ns: argparse.Namespace) -> int:
-    app = _app_py()
-    if not os.path.isfile(app):
-        print("WebUI/app.py not found.", file=sys.stderr)
-        return 1
-    argv = [app, "index"]
-    if getattr(ns, "dry_run", False):
-        argv.append("--dry-run")
-    for s in getattr(ns, "sources", None) or []:
-        argv.extend(["--source", s])
-    if getattr(ns, "reindex_source", None):
-        argv.extend(["--reindex-source", ns.reindex_source])
-    return _run(argv)
-
-
-def cmd_rebuild(ns: argparse.Namespace) -> int:
-    app = _app_py()
-    if not os.path.isfile(app):
-        print("WebUI/app.py not found.", file=sys.stderr)
-        return 1
-    argv = [app, "rebuild"]
-    if getattr(ns, "dry_run", False):
-        argv.append("--dry-run")
-    return _run(argv)
-
-
-def cmd_update(ns: argparse.Namespace) -> int:
-    app = _app_py()
-    if not os.path.isfile(app):
-        print("WebUI/app.py not found.", file=sys.stderr)
-        return 1
-    argv = [app, "update"]
-    if getattr(ns, "dry_run", False):
-        argv.append("--dry-run")
-    for s in getattr(ns, "sources", None) or []:
-        argv.extend(["--source", s])
-    if getattr(ns, "reindex_source", None):
-        argv.extend(["--reindex-source", ns.reindex_source])
     return _run(argv)
 
 
@@ -215,7 +171,7 @@ def cmd_test_single(ns: argparse.Namespace) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="tmrag",
-        description="ChironAI CLI: WebUI, crawl, index, ingest, proxy, tests.",
+        description="ChironAI CLI: WebUI, crawl, ingest, proxy, tests.",
     )
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
 
@@ -226,22 +182,6 @@ def main() -> None:
     p_crawl.add_argument("--dry-run", action="store_true", help="Do not write md/meta")
     p_crawl.add_argument("--source", action="append", dest="sources", metavar="ID", help="Limit to source id")
     p_crawl.set_defaults(_run=cmd_crawl)
-
-    p_index = sub.add_parser("index", help="Index dirty pages to Qdrant")
-    p_index.add_argument("--dry-run", action="store_true", help="Do not upsert")
-    p_index.add_argument("--source", action="append", dest="sources", metavar="ID", help="Limit to source id")
-    p_index.add_argument("--reindex-source", metavar="ID", help="Re-index all pages of this source")
-    p_index.set_defaults(_run=cmd_index)
-
-    p_rebuild = sub.add_parser("rebuild", help="Drop collection and full re-index")
-    p_rebuild.add_argument("--dry-run", action="store_true", help="Do not delete/index")
-    p_rebuild.set_defaults(_run=cmd_rebuild)
-
-    p_update = sub.add_parser("update", help="Crawl then index (full update)")
-    p_update.add_argument("--dry-run", action="store_true", help="Do not write")
-    p_update.add_argument("--source", action="append", dest="sources", metavar="ID", help="Limit to source id")
-    p_update.add_argument("--reindex-source", metavar="ID", help="(index step) Re-index all pages of this source")
-    p_update.set_defaults(_run=cmd_update)
 
     p_ingest = sub.add_parser("ingest", help="Ingest local markdown folder into Qdrant")
     p_ingest.add_argument("markdown_dir", help="Path to markdown folder")

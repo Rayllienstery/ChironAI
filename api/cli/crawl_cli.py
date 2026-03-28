@@ -1,11 +1,9 @@
 """
-CLI entrypoint for crawl/index/rebuild commands.
+CLI entrypoint for WebUI app.py commands.
 
 Delegates to WebUI/app.py. Usage from project root:
-  python -m api.cli.crawl_cli crawl [--dry-run]
-  python -m api.cli.crawl_cli index [--dry-run]
-  python -m api.cli.crawl_cli rebuild [--dry-run]
-  python -m api.cli.crawl_cli update [--dry-run]
+  python -m api.cli.crawl_cli start
+  python -m api.cli.crawl_cli crawl [--dry-run] [--source ID]
 """
 
 from __future__ import annotations

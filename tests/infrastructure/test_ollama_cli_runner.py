@@ -43,4 +43,6 @@ def test_invoke_embed_delegates() -> None:
         invoke_embed({"url": "http://h/api/embed", "json": {"model": "m", "input": "z"}, "timeout": 30})
     args, kwargs = m.call_args
     assert "embed" in args[0]
+    assert "--timeout" in args[0]
+    assert args[0][args[0].index("--timeout") + 1] == "30"
     assert json.loads(kwargs["input"])["url"] == "http://h/api/embed"

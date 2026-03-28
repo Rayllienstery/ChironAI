@@ -14,11 +14,10 @@ import time
 import json
 import hashlib
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Any, Callable
 import requests
 from urllib.parse import urlparse
 
-from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_embed
 import csv
 
 try:
@@ -60,24 +59,6 @@ def _fetch_apple_doc_raw_safe(url: str):
         _apple_fetch_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     return _apple_fetch_executor.submit(fetch_apple_doc_raw, url).result()
 
-from qdrant_client import QdrantClient
-from qdrant_client.http.models import (
-    VectorParams,
-    Distance,
-    PointStruct,
-    PointIdsList,
-    PayloadSchemaType,
-)
-from qdrant_client.http.exceptions import ResponseHandlingException
-
-from langchain_text_splitters import HTMLSemanticPreservingSplitter
-
-from domain.services.chunking import (
-    CHUNK_MAX_SIZE,
-    CHUNK_MIN_SIZE,
-    chunk_quality_ok,
-    split_markdown_into_chunks,
-)
 from domain.services.markdown_meta import parse_and_strip_meta_block
 
 try:
@@ -85,15 +66,6 @@ try:
 except ImportError:
     get_active_pipeline_name = None
     run_md_indexer_pipeline = None
-from domain.services.metadata_inference import (
-    build_embed_prefix,
-    estimate_token_count,
-    extract_versions,
-    infer_chunk_display_meta,
-    infer_metadata,
-)
-
-
 app = Flask(__name__)
 
 # Register shared WebUI API (status, RAG, Ollama, Open WebUI, crawler, etc.)
@@ -109,10 +81,6 @@ IS_CLI = False  # Set to True in CLI mode so we can adapt logging/progress
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 RAG_SOURCES_DIR = os.path.join(BASE_DIR, "rag_sources")
-COLLECTION_FILE = os.path.join(BASE_DIR, "last_collection.txt")
-
-# Single logical collection for all dev docs (RAG)
-RAG_COLLECTION_NAME = "dev_docs"
 
 # Load SOURCES from YAML config file
 def _load_sources_from_yaml() -> list[dict]:
@@ -278,61 +246,6 @@ CRAWL_MAX_RETRIES_429 = 3
 CRAWL_BACKOFF_BASE_SEC = 2  # exponential backoff: 2^attempt seconds, capped
 CRAWL_BACKOFF_MAX_SEC = 60
 
-# Files/pages with these substrings in the filename are not indexed (noisy reference pages, promo/showcase).
-# Filename = slug from URL (e.g. system-fonts-5ee35c84.md). Add substrings that filter out low-value pages.
-INDEX_EXCLUDE_FILENAME_SUBSTRINGS = [
-    # Reference dumps (huge lists, tables)
-    "system-fonts",
-    "sf-symbols",
-    "symbols-",
-    "character-set",
-    "unicode-",
-    "key-codes",
-    "keycodes",
-    "glyph-",
-    # Promo / showcase / featured (games, App of the Day — not technical docs)
-    "adventure",         # hello-kitty-island-adventure and similar promo games
-    "spotlight",        # Apple Spotlight stories
-    "featured",         # featured apps/games
-    "app-of-the-day",
-    # News / announcements / marketing for developers (not technical docs)
-    "news-",            # developer.apple.com/news/...
-    "newsroom",         # developer.apple.com/newsroom/...
-    "apple-news",       # pages about Apple News / News Partner Program
-    # Navigation table-of-contents pages (resource portals without their own technical docs)
-    "resources-",       # developer.apple.com/.../resources
-    # Global marketing / maps / developer centers / investor pages (not developer documentation)
-    "index-bbd8a4aa",
-    "index-e86693b7",
-    "index-92997f4f",
-    "index-736d3707",
-    "index-5103b240",
-    "index-70f9f2b3",
-    "index-f8089eb8",
-    "index-8ac5cb19",
-    "index-441438f1",
-    "index-587515ca",
-    "index-4cfc0399",
-    "index-7e38bb46",
-    "index-07e78366",
-    "index-76b9f20c",
-    "index-82c29db0",
-    "index-87db839d",
-    # Store / TV & Home / login / activity (outside developer docs)
-    "bag-75cad20f",
-    "tv-home-4b7b3889",
-    "login-eb7de4d3",
-    "accelerator-e234e5a9",
-    # Press release about parental controls — policy/marketing, not API docs
-    "apple-expands-tools-to-help-parents-protect-kids-and-teens-online",
-    # WWDC highlights/overview hubs (link directories, not technical docs)
-    "wwdc2021",
-    "wwdc2022",
-    "wwdc2023",
-    "wwdc2024",
-    "wwdc2025",
-]
-
 # Swift Book (docs.swift.org) filtering: allowlist/denylist of chapter slugs.
 SWIFT_BOOK_ALLOWED_SLUGS: set[str] = {
     "thebasics",
@@ -384,17 +297,6 @@ SWIFT_BOOK_EXCLUDED_SLUGS: set[str] = {
     # Book table-of-contents is allowed as a valid slug.
 }
 
-# If the beginning of the markdown (first N characters) contains one of these substrings — do not index the page (promo/showcase).
-# Skip indexing files with almost no engineering content (e.g. stub API refs, hub pages).
-INDEX_MIN_CONTENT_LENGTH = 400  # chars of body content (after meta/strip) below this → skip
-
-INDEX_EXCLUDE_CONTENT_HEAD_CHARS = 2000  # number of characters from the beginning of the file to check
-INDEX_EXCLUDE_CONTENT_SUBSTRINGS = [
-    "DEVELOPER STORIES",
-    "APP OF THE DAY",
-    "FEATURED APP",
-]
-
 
 def log(message: str) -> None:
     """Append message to in-memory log queue and print to stdout."""
@@ -429,134 +331,6 @@ def event_stream():
         else:
             time.sleep(0.5)
 
-EMBED_BATCH_SIZE = 6  # embeddinggemma is heavy; smaller batches are faster and reduce timeouts
-EMBED_REQUEST_TIMEOUT = 300  # seconds per request to /api/embed (embeddinggemma may take a while)
-
-# Ollama embedding model name. Must match rag_client.EMBED_MODEL_NAME.
-# By default we use bge-m3; you can override via RAG_EMBED_MODEL env var
-# (provider remains Ollama).
-EMBED_MODEL_NAME = os.getenv("RAG_EMBED_MODEL", "mxbai-embed-large")
-
-# Base Ollama endpoint for embeddings. If you need a different Ollama host/port,
-# change only this variable (or OLLAMA_EMBED_URL in rag_client.py).
-OLLAMA_EMBED_URL = os.getenv("OLLAMA_EMBED_URL", "http://localhost:11434/api/embed")
-
-
-EMBED_RETRY_ATTEMPTS = 2
-# A gentler backoff to give Ollama time to "catch its breath".
-EMBED_RETRY_SLEEP = (1, 3)  # seconds between attempts
-EMBED_TRUNCATE_CHARS = 4096  # max characters per text during degradation
-
-
-def get_embeddings(texts, model_name: str = EMBED_MODEL_NAME):
-    """
-    Embed a list of texts via Ollama.
-
-    The only place you need to change when switching the embed model:
-    - EMBED_MODEL_NAME / OLLAMA_EMBED_URL (or RAG_EMBED_MODEL / OLLAMA_EMBED_URL in the environment);
-    - optionally: how you parse the response format.
-
-    Expected response format from Ollama /api/embed:
-    {
-      "embeddings": [
-        [float, float, ...],  # one vector per input text
-        ...
-      ]
-    }
-    """
-    if not texts:
-        return []
-
-    def _call_embed(batch: list[str]) -> list[list[float]]:
-        """
-        Low-level call to /api/embed for a specific batch.
-        Assumes the batch size is reasonable (no recursive splitting).
-        """
-        try:
-            data = invoke_embed(
-                {
-                    "url": OLLAMA_EMBED_URL,
-                    "json": {"model": model_name, "input": batch},
-                    "timeout": EMBED_REQUEST_TIMEOUT,
-                },
-                default_timeout=float(EMBED_REQUEST_TIMEOUT),
-            )
-        except OllamaInteractorCliError as e:
-            raise RuntimeError(str(e)) from e
-        embeddings = data.get("embeddings")
-        if embeddings is None:
-            raise ValueError("No 'embeddings' key in Ollama response")
-        if len(embeddings) != len(batch):
-            raise ValueError(
-                f"Ollama /api/embed returned {len(embeddings)} embeddings for batch size {len(batch)}"
-            )
-        return embeddings
-
-    def _embed_with_backoff(batch: list[str]) -> list[list[float]]:
-        """
-        Attempt to embed the batch with retries. If the entire batch fails consistently,
-        we recursively split it; if the size reaches 1, we degrade to a shortened text.
-        """
-        last_error: Exception | None = None
-        for attempt in range(EMBED_RETRY_ATTEMPTS):
-            try:
-                return _call_embed(batch)
-            except Exception as e:
-                last_error = e
-                if attempt < EMBED_RETRY_ATTEMPTS - 1:
-                    sleep_sec = EMBED_RETRY_SLEEP[attempt]
-                    log(
-                        f"WARNING: Embedding attempt {attempt + 1} failed for batch(size={len(batch)}): {e}; "
-                        f"retry in {sleep_sec}s"
-                    )
-                    time.sleep(sleep_sec)
-
-        # If all attempts for the full batch fail, we reduce the load.
-        if len(batch) <= 1:
-            # A single problematic text: try a truncated version.
-            text = batch[0]
-            short = text[:EMBED_TRUNCATE_CHARS]
-            if short != text:
-                try:
-                    log(
-                        f"WARNING: Embedding failed for full text (len={len(text)}); "
-                        f"trying truncated version (len={len(short)})"
-                    )
-                    return _call_embed([short])
-                except Exception as e2:
-                    raise RuntimeError(
-                        f"Embedding failed for single text even after truncation: {e2}"
-                    ) from last_error
-            raise RuntimeError(
-                f"Embedding failed for single text (len={len(text)}): {last_error}"
-            ) from last_error
-
-        # Split the batch in half and embed each part separately.
-        mid = len(batch) // 2
-        left = _embed_with_backoff(batch[:mid])
-        right = _embed_with_backoff(batch[mid:])
-        return left + right
-
-    all_embeddings: list[list[float]] = []
-    total_batches = (len(texts) + EMBED_BATCH_SIZE - 1) // EMBED_BATCH_SIZE
-    for batch_idx, i in enumerate(range(0, len(texts), EMBED_BATCH_SIZE), start=1):
-        if IS_CLI and total_batches > 1:
-            ts = datetime.now().strftime("%H:%M:%S")
-            log(f"  [{ts}] embed batch {batch_idx}/{total_batches} ({len(texts)} chunks)")
-        batch = texts[i : i + EMBED_BATCH_SIZE]
-        try:
-            emb = _embed_with_backoff(batch)
-            all_embeddings.extend(emb)
-        except Exception as e:
-            log(
-                f"ERROR: Embedding error for batch {batch_idx}/{total_batches} "
-                f"(size={len(batch)}): {e}"
-            )
-            return []
-
-    return all_embeddings
-
-
 def _ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
@@ -567,15 +341,6 @@ def _now_iso() -> str:
 
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def _point_id_from_hash(h: str) -> int:
-    """
-    Build a Qdrant-compatible unsigned integer point id from a sha256 hex string.
-    Uses the first 16 hex chars (64 bits), which is deterministic and fits u64.
-    """
-    h = (h or "0" * 16)[:16]
-    return int(h, 16)
 
 
 def _source_dirs(source_id: str) -> tuple[str, str]:
@@ -1090,39 +855,6 @@ def _apply_markdown_cleanup_pipeline(md: str) -> tuple[dict[str, Any], str]:
     return (page_meta, body)
 
 
-def process_markdown_for_index(
-    source_id: str,
-    filename: str,
-    md: str | None = None,
-) -> dict[str, Any]:
-    """
-    Prepare markdown for indexing by applying the same cleaning pipeline as index_markdown.
-
-    Returns a dict:
-      - page_meta: dict extracted from the optional front‑matter/meta block
-      - source_md: original markdown contents as read from disk (or passed in)
-      - processed_md: markdown after meta strip + boilerplate/whitespace/noise filters
-
-    This helper is intentionally read‑only: it does not modify meta.json, dirty flags,
-    or any Qdrant state. It is used both by the real indexer and by WebUI indexer tools.
-    """
-    if md is None:
-        # Load markdown from disk when not provided (used by WebUI Indexer Tester).
-        _, pages_dir = _source_dirs(source_id)
-        page_path = os.path.join(pages_dir, filename)
-        with open(page_path, "r", encoding="utf-8") as f:
-            md = f.read()
-
-    original_md = md
-    page_meta, processed_md = _apply_markdown_cleanup_pipeline(md)
-
-    return {
-        "page_meta": page_meta,
-        "source_md": original_md,
-        "processed_md": processed_md,
-    }
-
-
 def _html_to_markdown_html2text(html: str) -> str:
     """
     HTML → markdown via html2text. Preserves code blocks (pre/code), lists, headings.
@@ -1297,7 +1029,6 @@ def _crawl_wwdc_transcripts_source(source: dict, dry_run: bool = False) -> None:
             "url": transcript_url,
             "hash": new_hash,
             "last_updated": _now_iso(),
-            "dirty": True,
         }
 
         log(f"[source={source_id}] Updated WWDC transcript markdown: {page_filename}")
@@ -1570,125 +1301,12 @@ async def run_async_crawl_playwright(
     return results
 
 
-def collection_name_from_url(_: str) -> str:
-    """
-    Single logical Qdrant collection for all sources.
-    URL is ignored intentionally.
-    """
-    return RAG_COLLECTION_NAME
-
-
-def _write_collection_file(name: str) -> None:
-    """Persist last used collection name for rag_client/search_rag."""
-    try:
-        with open(COLLECTION_FILE, "w", encoding="utf-8") as f:
-            f.write(name)
-    except Exception:
-        # Non-fatal
-        pass
-
-
-# Chunk size limits (chars) for RAG
-# Qdrant upsert batch size (points). We batch vectors across files to reduce
-# HTTP roundtrips while keeping memory usage predictable.
-BATCH_UPSERT_SIZE = 200
-
-
-def _ensure_qdrant_collection(qclient: QdrantClient, dim: int) -> None:
-    """Create Qdrant collection if missing; ensure payload indexes; emit human-friendly error if Qdrant is unreachable."""
-    # First, try to reach Qdrant and see if the collection exists.
-    try:
-        qclient.get_collection(RAG_COLLECTION_NAME)
-        _ensure_payload_indexes(qclient)
-        return
-    except ResponseHandlingException as e:
-        # Connection-level problem (e.g. Qdrant not running / port closed)
-        log("ERROR: Unable to connect to Qdrant at http://localhost:6333.")
-        log("   Make sure Qdrant is running (for example: `docker run -p 6333:6333 qdrant/qdrant`).")
-        log("   You can also use `python app.py index --dry-run` to test indexing without Qdrant.")
-        log(f"   Underlying error: {e}")
-        raise SystemExit(1)
-    except Exception:
-        # Any other error here likely means the collection is missing; fall through and try to create it.
-        pass
-
-    # If we got here, try to create/recreate the collection.
-    try:
-        qclient.recreate_collection(
-            RAG_COLLECTION_NAME,
-            vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
-        )
-        log(f"Ensured Qdrant collection '{RAG_COLLECTION_NAME}' (dim={dim})")
-        _write_collection_file(RAG_COLLECTION_NAME)
-        _ensure_payload_indexes(qclient)
-    except ResponseHandlingException as e:
-        log("ERROR: Unable to create Qdrant collection because Qdrant is not reachable at http://localhost:6333.")
-        log("   Start Qdrant first (for example: `docker run -p 6333:6333 qdrant/qdrant`),")
-        log("   or re-run this command with `--dry-run` to skip writing to Qdrant.")
-        log(f"   Underlying error: {e}")
-        raise SystemExit(1)
-    except Exception as e:
-        log(f" Failed to create Qdrant collection '{RAG_COLLECTION_NAME}': {e}")
-        raise
-
-
-def _flush_upsert_batch(qclient: QdrantClient | None, batch: list[PointStruct]) -> None:
-    """
-    Upsert a batch of points into Qdrant and clear the batch.
-
-    Batching reduces HTTP/API roundtrips significantly when indexing many
-    small files, without changing the logical semantics of index_markdown.
-    """
-    if not batch or qclient is None:
-        return
-    try:
-        qclient.upsert(collection_name=RAG_COLLECTION_NAME, points=batch)
-    finally:
-        batch.clear()
-
-
-def _ensure_payload_indexes(qclient: QdrantClient) -> None:
-    """
-    Ensure payload indexes for frequently used metadata fields.
-
-    Fields:
-    - language, technology, domain, product, doc_type: keyword
-    - ios_versions, swift_versions: keyword (arrays of strings)
-
-    Index creation is idempotent: if an index already exists, Qdrant will raise,
-    which we silently ignore to keep indexing robust.
-    """
-    index_fields = [
-        "language",
-        "technology",
-        "domain",
-        "product",
-        "doc_type",
-        "doc_scope",
-        "ios_versions",
-        "swift_versions",
-        "symbol",
-        "framework",
-        "section",
-    ]
-    for field in index_fields:
-        try:
-            qclient.create_payload_index(
-                collection_name=RAG_COLLECTION_NAME,
-                field_name=field,
-                field_schema=PayloadSchemaType.KEYWORD,
-            )
-        except Exception:
-            # Already exists or Qdrant rejected this field type; not fatal for indexing.
-            continue
-
-
 def crawl_source(source: dict, dry_run: bool = False) -> None:
     """
     Crawl a configured source:
     - Fetch HTML with Playwright
     - Normalize to markdown
-    - Update meta.json with content hashes and dirty flags (unless dry_run)
+    - Update meta.json with content hashes (unless dry_run)
     """
     source_id = source["id"]
 
@@ -1875,7 +1493,6 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
             "url": url,
             "hash": new_hash,
             "last_updated": _now_iso(),
-            "dirty": True,
         }
         
         if not is_callback:
@@ -1954,405 +1571,6 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
             print(f"  [{st:15}] {u}")
 
 
-def index_markdown(
-    incremental: bool = True,
-    source_filter: list[str] | None = None,
-    reindex_source_id: str | None = None,
-    dry_run: bool = False,
-    force_reindex_chunks: bool = False,
-) -> None:
-    """
-    Read markdown from rag_sources and index into Qdrant.
-    - incremental=True: only pages with dirty == True (unless reindex_source_id is set)
-    - source_filter: only process these source ids; None = all
-    - reindex_source_id: treat all pages of this source as dirty
-    - dry_run: do not upsert or clear dirty flags
-    """
-    qclient = QdrantClient(url="http://localhost:6333") if not dry_run else None
-    any_indexed = False
-    first_dim: int | None = None
-    # Summary of all skipped files in one indexing pass.
-    # Each element: {"source": ..., "filename": ..., "reason": "...", "details": "..."}.
-    skipped_files: list[dict[str, str]] = []
-    # Shared batch for upserts into Qdrant (batching chunks from different files).
-    upsert_batch: list[PointStruct] = []
-
-    sources = [s for s in SOURCES if source_filter is None or s["id"] in source_filter]
-    if not sources:
-        log("[index] No sources to index (empty filter?).")
-        return
-
-    # Collect all candidates (source_id, filename, entry, meta, pages_dir)
-    candidates: list[tuple[str, str, dict, dict, str]] = []
-    excluded_by_filter = 0
-    for source in sources:
-        source_id = source["id"]
-        source_url = source["url"]
-        meta = _load_meta(source_id, source_url)
-        pages_meta = meta.get("pages", {})
-        if not pages_meta:
-            continue
-        _, pages_dir = _source_dirs(source_id)
-        force_dirty = source_id == reindex_source_id
-        for filename, entry in pages_meta.items():
-            if incremental and not force_dirty and not entry.get("dirty", False):
-                continue
-            if any(sub in filename for sub in INDEX_EXCLUDE_FILENAME_SUBSTRINGS):
-                excluded_by_filter += 1
-                skipped_files.append(
-                    {
-                        "source": source_id,
-                        "filename": filename,
-                        "reason": "excluded_by_filename_filter",
-                    }
-                )
-                if not dry_run and filename in meta.get("pages", {}):
-                    meta["pages"][filename]["dirty"] = False
-                    _save_meta(source_id, meta)
-                continue
-            candidates.append((source_id, filename, entry, meta, pages_dir))
-
-    if excluded_by_filter:
-        log(f"[index] Excluded {excluded_by_filter} page(s) by INDEX_EXCLUDE_FILENAME_SUBSTRINGS.")
-
-    if not candidates:
-        log("[index] No pages to index.")
-        return
-
-    # Deduplication by content hash: same page from multiple runs → index once (prefer apple_documentation)
-    by_hash: dict[str, list[tuple[str, str, dict, dict, str]]] = {}
-    for c in candidates:
-        h = c[2].get("hash") or c[1]
-        by_hash.setdefault(h, []).append(c)
-    deduplicated: list[tuple[str, str, dict, dict, str]] = []
-    skipped_duplicates: list[tuple[str, str, dict]] = []
-    for h, items in by_hash.items():
-        items_sorted = sorted(items, key=lambda x: (0 if x[0] == "apple_documentation" else 1, x[0]))
-        keep = items_sorted[0]
-        deduplicated.append(keep)
-        for dup in items_sorted[1:]:
-            skipped_duplicates.append((dup[0], dup[1], dup[3]))
-
-    if skipped_duplicates:
-        log(f"[index] Skipping {len(skipped_duplicates)} duplicate page(s) (same content in another source).")
-        for sid, fname, m in skipped_duplicates:
-            if IS_CLI:
-                log(f"  skip duplicate: {sid}/pages/{fname}")
-            if not dry_run and fname in m.get("pages", {}):
-                m["pages"][fname]["dirty"] = False
-                _save_meta(sid, m)
-
-    total_pages = len(deduplicated)
-    log(
-        f"[index] {total_pages} page(s) to index (after dedup)"
-        + (" [dry-run]" if dry_run else "")
-    )
-
-    for idx, (source_id, filename, entry, meta, pages_dir) in enumerate(deduplicated, start=1):
-        log(f"[{idx}/{total_pages}] [index] Processing {source_id}/pages/{filename}")
-        page_path = os.path.join(pages_dir, filename)
-        try:
-            with open(page_path, "r", encoding="utf-8") as f:
-                md = f.read()
-        except Exception as e:
-            log(f" [index] Failed to read {page_path}: {e}")
-            skipped_files.append(
-                {
-                    "source": source_id,
-                    "filename": filename,
-                    "reason": "read_error",
-                    "details": str(e),
-                }
-            )
-            continue
-
-        # Validation: skip files wrapped in a single code block (broken conversion)
-        md_stripped = md.strip()
-        if md_stripped.startswith("```") and md_stripped.endswith("```"):
-            fence_count = md_stripped.count("```")
-            if fence_count == 2:
-                log(f"[index] Skipping file wrapped in single code block (broken conversion): {source_id}/pages/{filename}")
-                skipped_files.append(
-                    {
-                        "source": source_id,
-                        "filename": filename,
-                        "reason": "wrapped_in_code_block",
-                        "details": "Entire markdown wrapped in single code fence - indicates fallback conversion failure",
-                    }
-                )
-                if not dry_run and filename in meta.get("pages", {}):
-                    meta["pages"][filename]["dirty"] = False
-                    _save_meta(source_id, meta)
-                continue
-
-        processed = process_markdown_for_index(source_id, filename, md=md)
-        page_meta = processed["page_meta"]
-        md = processed["processed_md"]
-        if len(md.strip()) < INDEX_MIN_CONTENT_LENGTH:
-            log(f"[index] Skipping minimal content (body < {INDEX_MIN_CONTENT_LENGTH} chars): {source_id}/pages/{filename}")
-            skipped_files.append(
-                {
-                    "source": source_id,
-                    "filename": filename,
-                    "reason": "minimal_content",
-                    "details": f"Body content length {len(md.strip())} < {INDEX_MIN_CONTENT_LENGTH}",
-                }
-            )
-            if not dry_run and filename in meta.get("pages", {}):
-                meta["pages"][filename]["dirty"] = False
-                _save_meta(source_id, meta)
-            continue
-        head = md[:INDEX_EXCLUDE_CONTENT_HEAD_CHARS]
-        if any(sub in head for sub in INDEX_EXCLUDE_CONTENT_SUBSTRINGS):
-            log(f"[index] Skipping promo content (DEVELOPER STORIES): {source_id}/pages/{filename}")
-            if not dry_run and filename in meta.get("pages", {}):
-                meta["pages"][filename]["dirty"] = False
-                _save_meta(source_id, meta)
-            continue
-
-        chunks_with_paths = split_markdown_into_chunks(
-            md, max_chunk_size=CHUNK_MAX_SIZE, min_chunk_size=CHUNK_MIN_SIZE
-        )
-        chunks_with_paths = [(t, p) for t, p in chunks_with_paths if chunk_quality_ok(t)]
-        if not chunks_with_paths:
-            log(f"WARNING: [index] No chunks produced for {filename}")
-            skipped_files.append(
-                {
-                    "source": source_id,
-                    "filename": filename,
-                    "reason": "no_chunks",
-                }
-            )
-            continue
-
-        chunk_texts = [t for t, _ in chunks_with_paths]
-        embed_texts = [
-            build_embed_prefix(page_meta, sp) + t
-            for t, sp in chunks_with_paths
-        ]
-        embeddings = get_embeddings(embed_texts)
-        if not embeddings:
-            log(f"ERROR: [index] No embeddings for {filename}, skipping")
-            skipped_files.append(
-                {
-                    "source": source_id,
-                    "filename": filename,
-                    "reason": "no_embeddings",
-                }
-            )
-            continue
-
-        dim = len(embeddings[0])
-        if first_dim is None:
-            first_dim = dim
-            if not dry_run and qclient is not None:
-                _ensure_qdrant_collection(qclient, first_dim)
-
-        if dim != first_dim:
-            log(
-                f" [index] Dimension mismatch for {filename}: "
-                f"got {dim}, expected {first_dim}. Skipping this file."
-            )
-            log(
-                "   Hint: if you changed the embedding model (RAG_EMBED_MODEL) "
-                "and its vector dimension, run `python app.py rebuild` to "
-                "recreate the Qdrant collection with the new dim."
-            )
-            skipped_files.append(
-                {
-                    "source": source_id,
-                    "filename": filename,
-                    "reason": "dimension_mismatch",
-                }
-            )
-            continue
-
-        # --- Chunk-level diff: upsert only new/changed chunks, delete gone ones. ---
-        old_chunk_hashes: list[str] = entry.get("chunk_hashes") or []
-        if force_reindex_chunks:
-            # On a full rebuild the Qdrant collection is empty, so we ignore
-            # the cached chunk_hashes from meta.json and re-index all chunks.
-            old_chunk_hashes = []
-        old_hash_set = set(old_chunk_hashes)
-        new_chunk_hashes: list[str] = []
-        points_to_upsert: list[PointStruct] = []
-
-        for local_idx, ((chunk_text, section_path), vec) in enumerate(
-            zip(chunks_with_paths, embeddings)
-        ):
-            section_path_str = ":".join(section_path) if section_path else ""
-            # Stable, content-based chunk id:
-            # - source_id / filename / section_path_str identify the location in the docs
-            # - full chunk_text fixes the content of the chunk
-            # When inserting/removing surrounding paragraphs without changing the chunk text,
-            # its hash (and therefore its point id) will remain the same.
-            chunk_hash = _sha256(
-                f"{source_id}:{filename}:{section_path_str}:{chunk_text}"
-            )
-            new_chunk_hashes.append(chunk_hash)
-
-            if chunk_hash in old_hash_set:
-                # The chunk already exists in the index and the content did not change — don't upsert again.
-                continue
-
-            point_id = _point_id_from_hash(chunk_hash)
-            ios_versions, swift_versions = extract_versions(chunk_text)
-            if page_meta.get("ios_versions"):
-                ios_versions = sorted(set(ios_versions + page_meta["ios_versions"]))
-            if page_meta.get("swift_versions"):
-                swift_versions = sorted(set(swift_versions + page_meta["swift_versions"]))
-            url_for_meta = page_meta.get("url") or entry.get("url")
-            meta_extra = infer_metadata(
-                source_id=source_id,
-                filename=filename,
-                url=url_for_meta,
-                section_path=section_path,
-                text=chunk_text,
-            )
-            if page_meta.get("framework"):
-                meta_extra["technology"] = page_meta["framework"].lower()
-            if page_meta.get("doc_kind"):
-                meta_extra["doc_type"] = page_meta["doc_kind"]
-            if page_meta.get("doc_scope"):
-                meta_extra["doc_scope"] = page_meta["doc_scope"]
-            display_meta = infer_chunk_display_meta(section_path)
-            payload = {
-                "source": source_id,
-                "url": url_for_meta or entry.get("url", ""),
-                "path": f"pages/{filename}",
-                "chunk_id": chunk_hash,
-                "text": chunk_text,
-                "section_path": section_path,
-                "ios_versions": ios_versions,
-                "swift_versions": swift_versions,
-                "version": meta.get("last_crawled"),
-                **meta_extra,
-            }
-            if page_meta.get("framework"):
-                payload["framework"] = page_meta["framework"]
-            if display_meta.get("symbol"):
-                payload["symbol"] = display_meta["symbol"]
-            if display_meta.get("section"):
-                payload["section"] = display_meta["section"]
-            payload["token_count"] = estimate_token_count(chunk_text)
-            points_to_upsert.append(
-                PointStruct(
-                    id=point_id,
-                    vector=vec,
-                    payload=payload,
-                )
-            )
-
-        # Chunks that existed before but no longer appear in the updated page version.
-        new_hash_set = set(new_chunk_hashes)
-        hashes_to_delete = old_hash_set - new_hash_set
-        ids_to_delete = [_point_id_from_hash(h) for h in hashes_to_delete] if hashes_to_delete else []
-
-        num_upserts = len(points_to_upsert)
-        num_deletes = len(ids_to_delete)
-
-        if dry_run:
-            if num_upserts or num_deletes:
-                log(
-                    f"[index] [dry-run] Source '{source_id}' file '{filename}': "
-                    f"would upsert {num_upserts} vector(s), delete {num_deletes} old vector(s)"
-                )
-                any_indexed = True
-            else:
-                log(
-                    f"[index] [dry-run] Source '{source_id}' file '{filename}': "
-                    f"no changes at chunk level"
-                )
-            continue
-
-        # Real mode: first delete the "extra" chunks, then upsert the new/changed ones.
-        try:
-            if ids_to_delete and qclient is not None:
-                qclient.delete(
-                    collection_name=RAG_COLLECTION_NAME,
-                    points_selector=PointIdsList(points=ids_to_delete),
-                    wait=True,
-                )
-
-            if points_to_upsert:
-                upsert_batch.extend(points_to_upsert)
-                if len(upsert_batch) >= BATCH_UPSERT_SIZE:
-                    _flush_upsert_batch(qclient, upsert_batch)
-
-            # Update page metadata: new chunk_hashes and clear dirty.
-            if filename in meta.get("pages", {}):
-                meta["pages"][filename]["dirty"] = False
-                meta["pages"][filename]["chunk_hashes"] = new_chunk_hashes
-            _save_meta(source_id, meta)
-
-            if num_upserts or num_deletes:
-                any_indexed = True
-                ts = datetime.now().strftime("%H:%M:%S")
-                log(
-                    f"[{ts}] [index] Source '{source_id}' file '{filename}': "
-                    f"upserted {num_upserts} vector(s), deleted {num_deletes} old vector(s)"
-                )
-            else:
-                ts = datetime.now().strftime("%H:%M:%S")
-                log(
-                    f"[{ts}] [index] Source '{source_id}' file '{filename}': "
-                    f"no changes at chunk level"
-                )
-
-        except Exception as e:
-            log(
-                f" [index] Qdrant upsert/delete error for source '{source_id}', "
-                f"file '{filename}': {e}"
-            )
-            skipped_files.append(
-                {
-                    "source": source_id,
-                    "filename": filename,
-                    "reason": "upsert_error",
-                    "details": str(e),
-                }
-            )
-
-    # Final flush of the upsert batch (if anything is left).
-    if upsert_batch and not dry_run:
-        _flush_upsert_batch(qclient, upsert_batch)
-
-    if any_indexed and not dry_run:
-        _write_collection_file(RAG_COLLECTION_NAME)
-        log("[index] Indexing completed.")
-    elif any_indexed and dry_run:
-        log("[index] Dry-run completed (no writes).")
-    else:
-        log("[index] Nothing was indexed.")
-
-    # At the end — a compact array of skipped files (for index quality debugging).
-    if skipped_files:
-        try:
-            log("[index] Skipped files (JSON array):")
-            log(json.dumps(skipped_files, ensure_ascii=False, indent=2))
-        except Exception:
-            log(
-                f"[index] Skipped {len(skipped_files)} file(s); "
-                "see previous log messages for detailed reasons."
-            )
-
-
-def rebuild_qdrant(dry_run: bool = False) -> None:
-    """Drop the dev_docs collection and re-index all markdown pages from scratch."""
-    if dry_run:
-        log(f"[rebuild] [dry-run] Would drop collection '{RAG_COLLECTION_NAME}' and re-index all")
-        index_markdown(incremental=False, dry_run=True, force_reindex_chunks=True)
-        return
-    qclient = QdrantClient(url="http://localhost:6333")
-    log(f"[rebuild] Dropping collection '{RAG_COLLECTION_NAME}'")
-    try:
-        qclient.delete_collection(RAG_COLLECTION_NAME)
-    except Exception as e:
-        log(f"[rebuild] Failed to delete collection (may not exist): {e}")
-
-    index_markdown(incremental=False, force_reindex_chunks=True)
-
-
 def run_crawl_all_sources(
     source_filter: list[str] | None = None,
     dry_run: bool = False,
@@ -2362,150 +1580,28 @@ def run_crawl_all_sources(
     if not sources:
         log("No sources to crawl (empty filter?).")
         return
-    log("Starting crawl for " + (f"sources {[s['id'] for s in sources]}" if source_filter else "all configured sources") + (" [dry-run]" if dry_run else ""))
+    log(
+        "Starting crawl for "
+        + (f"sources {[s['id'] for s in sources]}" if source_filter else "all configured sources")
+        + (" [dry-run]" if dry_run else "")
+    )
     for source in sources:
         crawl_source(source, dry_run=dry_run)
     log("All sources crawled.")
 
-
-def run_index_all_sources(
-    incremental: bool = True,
-    source_filter: list[str] | None = None,
-    reindex_source: str | None = None,
-    dry_run: bool = False,
-) -> None:
-    """Index markdown from sources into Qdrant."""
-    log(
-        f"Starting index (incremental={incremental})"
-        + (f" sources={source_filter}" if source_filter else " all sources")
-        + (f" reindex_source={reindex_source}" if reindex_source else "")
-        + (" [dry-run]" if dry_run else "")
-    )
-    index_markdown(
-        incremental=incremental,
-        source_filter=source_filter,
-        reindex_source_id=reindex_source,
-        dry_run=dry_run,
-    )
-    log("Index step finished.")
-
-
-def run_rebuild_all(dry_run: bool = False) -> None:
-    """Rebuild Qdrant collection from local markdown store."""
-    log("Starting full rebuild of Qdrant from markdown store" + (" [dry-run]" if dry_run else ""))
-    rebuild_qdrant(dry_run=dry_run)
-    log("Rebuild finished.")
-
-
-def do_crawl(start_url):
-    global stop_flag, id_counter
-    try:
-        # Legacy one-off crawl directly into Qdrant (kept for backward compatibility).
-        # New, recommended flow:
-        #   python app.py crawl   -> update rag_sources markdown store
-        #   python app.py index   -> index dirty pages into Qdrant
-        #   python app.py rebuild -> drop + full re-index
-        if not _HAS_PLAYWRIGHT:
-            log("Playwright is required. Run: pip install playwright && playwright install chromium")
-            return
-        start_parsed = urlparse(start_url)
-        start_path = (start_parsed.path or "").strip("/")
-        start_segments = [s for s in start_path.split("/") if s]
-        allowed_prefix = "/" + "/".join(start_segments[:2]) + "/" if start_segments else "/"
-        results = asyncio.run(
-            run_async_crawl_playwright(
-                start_url,
-                max_depth=3,
-                allowed_prefix=allowed_prefix,
-                doc_only=False,
-                extra_seed_urls=[],
-                on_page_processed=None,
-                allowed_path_prefixes=None,
-                excluded_path_substrings=None,
-            )
-        )
-        total = len(results)
-        log(f"[1/4] Crawl finished. {total} pages found.")
-
-        qclient = QdrantClient(url="http://localhost:6333")
-        coll = collection_name_from_url(start_url)
-        _write_collection_file(coll)
-        log(f"Collection: {coll}")
-        created = False
-
-        for i, result in enumerate(results):
-            idx = i + 1
-            if not result.success:
-                log(f"[{idx}/{total}] Failed: {result.url}")
-                continue
-
-            url = result.url
-            log(f"📄 [{idx}/{total}] [2/4] Processing: {url}")
-
-            html = getattr(result, "cleaned_html", None) or getattr(result, "html", "") or ""
-            if not html:
-                log(f"[{idx}/{total}] Empty content")
-                continue
-
-            splitter = HTMLSemanticPreservingSplitter(
-                headers_to_split_on=[('h1','h1'), ('h2','h2'), ('h3','h3')],
-                max_chunk_size=1000
-            )
-            docs = splitter.split_text(html)
-            texts = [doc.page_content for doc in docs]
-
-            if not texts:
-                log(f"[{idx}/{total}] No chunks generated")
-                continue
-
-            log(f"[{idx}/{total}] [3/4] Chunks: {len(texts)}")
-            embeddings = get_embeddings(texts)
-            if not embeddings:
-                log(f"[{idx}/{total}] No embeddings, skipping")
-                continue
-
-            if not created:
-                dim = len(embeddings[0])
-                try:
-                    qclient.recreate_collection(coll, vectors_config=VectorParams(size=dim, distance=Distance.COSINE))
-                    log(f"Created Qdrant collection '{coll}' (dim={dim})")
-                except Exception as e:
-                    log(f" Qdrant creation error: {e}")
-                created = True
-
-            points = [PointStruct(id=id_counter + j, vector=vec, payload={"url": url, "text": texts[j]}) for j, vec in enumerate(embeddings)]
-            id_counter += len(points)
-
-            try:
-                qclient.upsert(collection_name=coll, points=points)
-                log(f"[{idx}/{total}] [4/4] Indexed {len(points)} vectors")
-            except Exception as e:
-                log(f" Qdrant insert error: {e}")
-
-    except Exception as e:
-        log(f"ERROR: Crawler exception: {e}")
-    finally:
-        stop_flag = True
-        log("Done.")
 
 if __name__ == "__main__":
     import argparse
     import sys
 
     parser = argparse.ArgumentParser(
-        description="RAG pipeline: crawl → markdown store → index → Qdrant; or start WebUI."
+        description="WebUI server or crawl: update local markdown store under rag_sources."
     )
     parser.add_argument(
         "command",
         nargs="?",
-        choices=["start", "crawl", "index", "rebuild", "update"],
-        help=(
-            "start: run WebUI (Flask); "
-            "crawl: update markdown store; "
-            "index: index dirty pages; "
-            "rebuild: drop + full re-index; "
-            "update: crawl then index"
-        ),
+        choices=["start", "crawl"],
+        help="start: run WebUI (Flask); crawl: update markdown store from configured sources",
     )
     parser.add_argument(
         "--source",
@@ -2523,12 +1619,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Crawl/index/rebuild without writing (crawl: no md/meta; index: no upsert; rebuild: no delete/index).",
-    )
-    parser.add_argument(
-        "--reindex-source",
-        metavar="SOURCE_ID",
-        help="(index only) Treat all pages of this source as dirty and re-index them.",
+        help="Crawl without writing md/meta.",
     )
     args = parser.parse_args()
 
@@ -2545,30 +1636,9 @@ if __name__ == "__main__":
     # CLI mode: enable progress bars and disable SSE log accumulation
     IS_CLI = True
 
-    if args.command == "crawl" or args.command == "update":
-        source_list = None if getattr(args, "crawl_all", False) else (args.sources if args.sources else None)
-    else:
-        source_list = args.sources if args.sources else None
+    source_list = None if getattr(args, "crawl_all", False) else (args.sources if args.sources else None)
     if args.command == "crawl":
         run_crawl_all_sources(source_filter=source_list, dry_run=args.dry_run)
-    elif args.command == "index":
-        run_index_all_sources(
-            incremental=True,
-            source_filter=source_list,
-            reindex_source=args.reindex_source,
-            dry_run=args.dry_run,
-        )
-    elif args.command == "rebuild":
-        run_rebuild_all(dry_run=args.dry_run)
-    elif args.command == "update":
-        # Full cycle: crawl (incremental by content) → index (incremental by dirty pages)
-        run_crawl_all_sources(source_filter=source_list, dry_run=args.dry_run)
-        run_index_all_sources(
-            incremental=True,
-            source_filter=source_list,
-            reindex_source=args.reindex_source,
-            dry_run=args.dry_run,
-        )
     else:
         parser.print_help()
         sys.exit(1)

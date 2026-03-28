@@ -172,6 +172,29 @@ def build_qdrant_filter(question: str) -> dict[str, Any] | None:
     return {"should": conditions}
 
 
+def merge_qdrant_filters(
+    base: dict[str, Any] | None,
+    extra: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """
+    AND-combine Qdrant filter dicts. ``base`` is typically ``build_qdrant_filter(question)``;
+    ``extra`` is caller-supplied. When both are set, both must match (nested under ``must``).
+    """
+    if not base:
+        return extra
+    if not extra:
+        return base
+    return {"must": [base, extra]}
+
+
+def extra_filter_section_path_joined_equals(joined: str) -> dict[str, Any] | None:
+    """Require payload ``section_path_joined`` to equal ``joined``; None if ``joined`` is empty."""
+    j = (joined or "").strip()
+    if not j:
+        return None
+    return {"must": [{"key": "section_path_joined", "match": {"value": j}}]}
+
+
 def doc_type_priority(hit: dict[str, Any]) -> int:
     """Priority score for hit by doc_type (higher = preferred for Q&A)."""
     payload = hit.get("payload") or {}
@@ -242,7 +265,8 @@ __all__ = [
     "MULTI_CHUNK_TOP_K", "MULTI_CHUNK_FINAL_K", "MAX_EMBED_TEXT_LENGTH",
     "SKIP_RAG_GREETINGS", "RAG_REQUIRED_KEYWORDS",
     "parse_versions_from_question", "is_version_question", "should_skip_rag_search",
-    "query_for_retrieval", "need_more_chunks", "build_qdrant_filter", "doc_type_priority",
+    "query_for_retrieval", "need_more_chunks", "build_qdrant_filter",
+    "merge_qdrant_filters", "extra_filter_section_path_joined_equals", "doc_type_priority",
     "doc_scope_priority", "combined_doc_priority",
     "expand_query_variants", "rrf_merge_hit_lists",
 ]

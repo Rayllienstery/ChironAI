@@ -31,6 +31,7 @@ from rag_service.domain.services.retrieval import (
     MULTI_CHUNK_TOP_K,
     RERANK_MAX_CANDIDATES,
     build_qdrant_filter,
+    merge_qdrant_filters,
     combined_doc_priority,
     expand_query_variants,
     is_version_question,
@@ -154,6 +155,7 @@ def search_rag(
     embed_provider: EmbeddingProvider,
     rerank_client: RerankClient | None,
     top_k: int | None = None,
+    extra_filter: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, float]]:
     """Run RAG retrieval: query_for_retrieval -> embed -> search -> rerank. Returns (hits, timings)."""
     timings: dict[str, float] = {
@@ -167,7 +169,7 @@ def search_rag(
     if top_k is None:
         top_k = MULTI_CHUNK_TOP_K if need_more_chunks(question) else get_retrieval_int("top_k", DEFAULT_TOP_K)
     hybrid_on = is_hybrid_sparse_enabled() and rag_repo.supports_hybrid()
-    filter_dict = build_qdrant_filter(question)
+    filter_dict = merge_qdrant_filters(build_qdrant_filter(question), extra_filter)
     k = max(top_k, RERANK_MAX_CANDIDATES) if not is_version_question(question) else top_k
     final_k = MULTI_CHUNK_FINAL_K if need_more_chunks(question) else FINAL_CONTEXT_K
 
@@ -287,6 +289,7 @@ def build_rag_context(
     context_chunk_chars: int,
     context_total_chars: int,
     top_k: int | None = None,
+    extra_filter: dict[str, Any] | None = None,
 ) -> tuple[RagContext, dict[str, float]]:
     """Build RAG context: search_rag -> framework_filter -> build_context_block."""
     empty_timings: dict[str, float] = {
@@ -302,7 +305,14 @@ def build_rag_context(
         _rag_log.debug("RAG skipped for query (greeting or no RAG-required keyword)")
         return RagContext("", [], 0.0), empty_timings
     try:
-        results, timings = search_rag(question, rag_repo, embed_provider, rerank_client, top_k=top_k)
+        results, timings = search_rag(
+            question,
+            rag_repo,
+            embed_provider,
+            rerank_client,
+            top_k=top_k,
+            extra_filter=extra_filter,
+        )
         timings["total_rag_s"] = (
             timings["embed_s"]
             + timings["search_s"]
@@ -333,12 +343,18 @@ def answer_question(
     confidence_threshold: float,
     model_name: str,
     reasoning_level: str | None = None,
+    extra_filter: dict[str, Any] | None = None,
 ) -> RagAnswerResponse:
     """Answer a question with RAG: build_rag_context -> build_system_content -> chat."""
     last_user = last_user_content(request.messages)
     ctx, _ = build_rag_context(
-        last_user, rag_repo, embed_provider, rerank_client,
-        context_chunk_chars, context_total_chars,
+        last_user,
+        rag_repo,
+        embed_provider,
+        rerank_client,
+        context_chunk_chars,
+        context_total_chars,
+        extra_filter=extra_filter,
     )
     system_content = build_system_content(
         system_prefix, system_suffix, ctx.context_text, ctx.max_score,
@@ -371,12 +387,18 @@ def prepare_ollama_messages(
     confidence_threshold: float,
     model_name: str,
     reasoning_level: str | None = None,
+    extra_filter: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """Build RAG context and Ollama message list (for streaming or custom chat). Returns (ollama_messages, model)."""
     last_user = last_user_content(request.messages)
     ctx, _ = build_rag_context(
-        last_user, rag_repo, embed_provider, rerank_client,
-        context_chunk_chars, context_total_chars,
+        last_user,
+        rag_repo,
+        embed_provider,
+        rerank_client,
+        context_chunk_chars,
+        context_total_chars,
+        extra_filter=extra_filter,
     )
     system_content = build_system_content(
         system_prefix, system_suffix, ctx.context_text, ctx.max_score,

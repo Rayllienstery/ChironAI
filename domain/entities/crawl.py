@@ -41,7 +41,6 @@ class IndexedPage:
     filename: str
     url: Optional[str]
     chunk_hashes: List[str]
-    dirty: bool = False
     extra: Dict[str, Any] = field(default_factory=dict)
 
 

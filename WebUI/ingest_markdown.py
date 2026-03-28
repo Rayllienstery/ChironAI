@@ -1,14 +1,16 @@
 """
 Ingest local Markdown files (e.g. from Apple-Developer-Documentation-Offline-Archive)
-into Qdrant: chunk -> embed (Ollama) -> upsert.
-Same payload shape as app.py (text + source) so rag_client/rag_proxy work unchanged.
+into Qdrant: semantic chunk (domain.services.chunking) -> embed (Ollama) -> upsert.
+
+Payload: text, source, path, section_path, section_path_joined — aligned with the main
+RAG indexer fields used for retrieval and optional Qdrant filters.
+
+Chunk sizes come from config indexing (chunk_max_size, chunk_min_size), same as WebUI
+"Create collection from sources".
 
 Embedding model and endpoint are shared with the main RAG pipeline:
 - Model name: taken from RAG_EMBED_MODEL (defaults to "mxbai-embed-large").
 - Embed URL: taken from OLLAMA_EMBED_URL (defaults to "http://localhost:11434/api/embed").
-
-To switch to another embedding model or Ollama host, change ONLY these env vars –
-the rest of the pipeline (including rag_client.py and app.py) will keep working.
 
 Usage:
   python ingest_markdown.py C:\path\to\Apple-Developer-Documentation-Offline-Archive\markdown
@@ -21,22 +23,24 @@ import sys
 from pathlib import Path
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_WEBUI_DIR = os.path.dirname(os.path.abspath(__file__))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
+if _WEBUI_DIR not in sys.path:
+    sys.path.insert(0, _WEBUI_DIR)
 
 from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_embed
 
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import VectorParams, Distance, PointStruct
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from ingest_markdown_common import chunks_for_local_ingest, qdrant_payload_local
 
 # Shared embedding configuration with app.py / rag_client.py
 QDRANT_URL = "http://localhost:6333"
 OLLAMA_EMBED_URL = os.getenv("OLLAMA_EMBED_URL", "http://localhost:11434/api/embed")
 EMBED_MODEL_NAME = os.getenv("RAG_EMBED_MODEL", "mxbai-embed-large")
 EMBED_BATCH_SIZE = 8
-CHUNK_SIZE = 1000
-CHUNK_OVERLAP = 200
 COLLECTION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_collection.txt")
 
 
@@ -118,12 +122,6 @@ def main():
     print(f"Collection: {collection}")
     print(f"Files: {len(md_files)}")
 
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=CHUNK_SIZE,
-        chunk_overlap=CHUNK_OVERLAP,
-        separators=["\n## ", "\n### ", "\n\n", "\n", " "],
-    )
-
     qclient = QdrantClient(url=QDRANT_URL)
     point_id = 1
     created = False
@@ -136,14 +134,11 @@ def main():
             print(f"  Skip {md_path}: {e}")
             continue
 
-        chunks = splitter.split_text(content)
-        if not chunks:
+        pairs = chunks_for_local_ingest(content)
+        if not pairs:
             continue
 
-        texts = [c.strip() for c in chunks if c.strip()]
-        if not texts:
-            continue
-
+        texts = [t for t, _ in pairs]
         embeddings = get_embeddings(texts)
         if len(embeddings) != len(texts):
             print(f"  Embedding count mismatch for {md_path}, skip")
@@ -163,7 +158,7 @@ def main():
             PointStruct(
                 id=point_id + j,
                 vector=vec,
-                payload={"text": texts[j], "source": rel_path},
+                payload=qdrant_payload_local(rel_path, pairs[j][0], pairs[j][1]),
             )
             for j, vec in enumerate(embeddings)
         ]

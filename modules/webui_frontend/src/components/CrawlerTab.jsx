@@ -3,6 +3,8 @@ import {
   getCrawlerSources,
   getCrawlerSourcePages,
   getRagCollections,
+  getModels,
+  getRagModelSettings,
   createCollection,
   getCreateCollectionStatus,
   crawlSource,
@@ -103,6 +105,161 @@ const MD_STEP_TYPES_META = [
   },
 ];
 
+const INDEXING_PHASE_LABELS = {
+  reading: "Reading file",
+  chunking: "Chunking markdown",
+  embedding: "Embedding vectors",
+  saving: "Writing to Qdrant",
+  idle: "",
+  complete: "Complete",
+};
+
+const SKIP_REASON_LABELS = {
+  read_error: "Read error",
+  too_short: "Too short (<400 chars)",
+  chunk_failed: "Chunking failed",
+  no_valid_chunks: "No quality chunks",
+  embed_failed: "Embedding failed",
+  dim_mismatch: "Vector dimension mismatch",
+  other: "Other",
+};
+
+function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
+  if (!progress) return null;
+  const isRunning = progress.status === "running";
+  const isSuccess = progress.status === "success";
+  const sr = progress.skip_reasons || {};
+  const skipEntries = Object.entries(sr).filter(([, n]) => n > 0);
+  const phaseKey = progress.current_phase || "";
+  const phaseLabel = INDEXING_PHASE_LABELS[phaseKey] || phaseKey;
+  const total = progress.total_pages || 0;
+  const processed = progress.processed_pages ?? 0;
+  const pct =
+    total > 0 ? Math.min(100, Math.round((100 * processed) / total)) : 0;
+  const sourcesLabel = (progress.source_ids || []).join(", ") || "—";
+  const currentFile =
+    progress.current_filename &&
+    `${progress.current_source_id || ""}/${progress.current_filename}`.replace(
+      /^\//,
+      "",
+    );
+
+  return (
+    <div
+      className={`create-collection-index-progress create-collection-index-progress--${variant}`}
+    >
+      {isRunning && (
+        <div className="create-collection-index-progress__hero">
+          <div
+            className="create-collection-activity-ring"
+            aria-hidden="true"
+            title="Indexing in progress"
+          />
+          <div className="create-collection-index-progress__hero-text">
+            {variant === "modal" && (
+              <div className="create-collection-index-progress__collection">
+                {collectionName || "Collection"}
+              </div>
+            )}
+            <div className="create-collection-index-progress__sources">
+              Sources: {sourcesLabel}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="create-collection-index-stats">
+        <div className="create-collection-index-stat">
+          <span className="create-collection-index-stat__value create-collection-index-stat__value--ok">
+            {progress.indexed_pages ?? 0}
+          </span>
+          <span className="create-collection-index-stat__label">indexed</span>
+        </div>
+        <div className="create-collection-index-stat">
+          <span className="create-collection-index-stat__value create-collection-index-stat__value--skip">
+            {progress.skipped_pages ?? 0}
+          </span>
+          <span className="create-collection-index-stat__label">skipped</span>
+        </div>
+        <div className="create-collection-index-stat">
+          <span className="create-collection-index-stat__value">
+            {progress.total_chunks ?? 0}
+          </span>
+          <span className="create-collection-index-stat__label">chunks</span>
+        </div>
+        <div className="create-collection-index-stat">
+          <span className="create-collection-index-stat__value">
+            {processed} / {total || "…"}
+          </span>
+          <span className="create-collection-index-stat__label">pages done</span>
+        </div>
+      </div>
+
+      {isRunning && (currentFile || phaseLabel) && (
+        <div className="create-collection-index-current">
+          {phaseLabel && phaseKey && (
+            <div className="create-collection-index-current__phase">
+              <span className="create-collection-index-current__phase-dot" />
+              {phaseLabel}
+            </div>
+          )}
+          {currentFile && (
+            <div
+              className="create-collection-index-current__file"
+              title={currentFile}
+            >
+              {currentFile}
+            </div>
+          )}
+        </div>
+      )}
+
+      {skipEntries.length > 0 && (
+        <div className="create-collection-index-skips">
+          <div className="create-collection-index-skips__title">Skip reasons</div>
+          <div className="create-collection-index-skips__pills">
+            {skipEntries.map(([key, n]) => (
+              <span key={key} className="create-collection-index-skip-pill">
+                {SKIP_REASON_LABELS[key] || key}: <strong>{n}</strong>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {total > 0 && isRunning && (
+        <div className="create-collection-toast-progress-bar-wrap create-collection-index-progress__bar">
+          <div
+            className="create-collection-toast-progress-bar-fill"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+
+      {isSuccess && (
+        <div className="create-collection-index-done">
+          Done: {progress.indexed_pages ?? 0} pages indexed into Qdrant,{" "}
+          {progress.skipped_pages ?? 0} skipped, {progress.total_chunks ?? 0}{" "}
+          chunks total.
+        </div>
+      )}
+
+      {progress.errors && progress.errors.length > 0 && (
+        <details className="create-collection-index-errors">
+          <summary>
+            Recent errors ({progress.errors.length})
+          </summary>
+          <ul>
+            {progress.errors.map((err, i) => (
+              <li key={i}>{String(err)}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
 function CrawlerTab() {
   const [loading, setLoading] = useState(true);
   const [sources, setSources] = useState([]);
@@ -119,6 +276,11 @@ function CrawlerTab() {
     chunk_min_size: 300,
     confidence_threshold: 0.75,
     top_k: 4,
+    rag_embed_model: "",
+  });
+  const [createEmbedModels, setCreateEmbedModels] = useState([]);
+  const [createEmbedDefaults, setCreateEmbedDefaults] = useState({
+    rag_embed_model: "bge-large",
   });
   const [creating, setCreating] = useState(false);
   const [createJobId, setCreateJobId] = useState(null);
@@ -217,6 +379,35 @@ function CrawlerTab() {
     loadCollections();
   }, []);
 
+  useEffect(() => {
+    if (!showCreateModal) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [list, settings] = await Promise.all([
+          getModels(),
+          getRagModelSettings(),
+        ]);
+        if (cancelled) return;
+        setCreateEmbedModels(Array.isArray(list) ? list : []);
+        const def =
+          (settings?.defaults?.rag_embed_model || "bge-large").trim() ||
+          "bge-large";
+        const saved = (settings?.rag_embed_model || "").trim();
+        setCreateEmbedDefaults({ rag_embed_model: def });
+        setCreateForm((prev) => ({
+          ...prev,
+          rag_embed_model: prev.rag_embed_model || saved || def,
+        }));
+      } catch (e) {
+        console.warn("Failed to load embedding models for create collection:", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showCreateModal]);
+
   // Poll create-collection job progress
   useEffect(() => {
     if (!createJobId) return;
@@ -230,6 +421,13 @@ function CrawlerTab() {
           indexed_pages: job.indexed_pages ?? 0,
           total_chunks: job.total_chunks ?? 0,
           skipped_pages: job.skipped_pages ?? 0,
+          skip_reasons: job.skip_reasons ?? {},
+          source_ids: job.source_ids ?? [],
+          current_source_id: job.current_source_id ?? "",
+          current_filename: job.current_filename ?? "",
+          current_phase: job.current_phase ?? "",
+          last_skip_reason: job.last_skip_reason ?? "",
+          errors: job.errors ?? [],
           error: job.error,
           statistics: job.statistics,
         });
@@ -244,6 +442,7 @@ function CrawlerTab() {
             chunk_min_size: 300,
             confidence_threshold: 0.75,
             top_k: 4,
+            rag_embed_model: "",
           });
           setShowCreateToast(true);
           await loadCollections();
@@ -260,7 +459,7 @@ function CrawlerTab() {
         setCreating(false);
         setError(e.message);
       }
-    }, 1500);
+    }, 1000);
     return () => clearInterval(interval);
   }, [createJobId]);
 
@@ -721,6 +920,7 @@ function CrawlerTab() {
           chunk_min_size: 300,
           confidence_threshold: 0.75,
           top_k: 4,
+          rag_embed_model: "",
         });
         await loadCollections();
         alert("Collection created successfully!");
@@ -1050,43 +1250,22 @@ function CrawlerTab() {
                 createForm.collection_name ||
                 "Collection"}
             </div>
-            {createProgress.status === "running" && (
-              <div className="create-collection-toast-running">
-                <span
-                  className="create-collection-toast-spinner"
-                  aria-hidden="true"
-                />
-                <span className="create-collection-toast-text">
-                  Indexed {createProgress.indexed_pages} /{" "}
-                  {createProgress.total_pages || "…"} pages (
-                  {createProgress.total_chunks} chunks)
-                </span>
+            {createProgress.status === "failed" && (
+              <div className="create-collection-toast-text create-collection-index-error-banner">
+                {(createProgress.error &&
+                  String(createProgress.error).slice(0, 400)) ||
+                  "Collection creation failed."}
               </div>
             )}
-            {(createProgress.status === "success" ||
-              createProgress.status === "failed") && (
-              <div className="create-collection-toast-text">
-                {createProgress.status === "success"
-                  ? `Indexed ${createProgress.indexed_pages ?? 0} pages, ${createProgress.total_chunks ?? 0} chunks.`
-                  : (createProgress.error &&
-                      String(createProgress.error).slice(0, 240)) ||
-                    "Collection creation failed."}
-              </div>
-            )}
-            {createProgress.total_pages > 0 &&
-              createProgress.status === "running" && (
-                <div className="create-collection-toast-progress-bar-wrap">
-                  <div
-                    className="create-collection-toast-progress-bar-fill"
-                    style={{
-                      width: `${Math.round(
-                        (100 * createProgress.processed_pages) /
-                          (createProgress.total_pages || 1),
-                      )}%`,
-                    }}
-                  />
-                </div>
-              )}
+            <CreateCollectionIndexProgress
+              progress={createProgress}
+              collectionName={
+                createCollectionName ||
+                createForm.collection_name ||
+                "Collection"
+              }
+              variant="toast"
+            />
           </div>
         </div>
       )}
@@ -1197,7 +1376,6 @@ function CrawlerTab() {
                     <th>Last Crawled</th>
                     <th>Total Pages</th>
                     <th>Indexed</th>
-                    <th>Dirty</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -1222,13 +1400,6 @@ function CrawlerTab() {
                             className={`status-badge ${source.indexed_pages > 0 ? "indexed" : "not-indexed"}`}
                           >
                             {source.indexed_pages || 0}
-                          </span>
-                        </td>
-                        <td>
-                          <span
-                            className={`status-badge ${source.dirty_pages > 0 ? "dirty" : "clean"}`}
-                          >
-                            {source.dirty_pages || 0}
                           </span>
                         </td>
                         <td>
@@ -1338,11 +1509,6 @@ function CrawlerTab() {
                                           </span>
                                           <span className="page-url">
                                             {page.url}
-                                          </span>
-                                          <span
-                                            className={`page-status ${page.dirty ? "dirty" : "clean"}`}
-                                          >
-                                            {page.dirty ? "Dirty" : "Clean"}
                                           </span>
                                           {page.has_chunks && (
                                             <span className="page-chunks">
@@ -2083,25 +2249,19 @@ function CrawlerTab() {
             </div>
             <div className="modal-body">
               {createProgress && (
-                <div className="create-collection-progress">
-                  <div className="progress-text">
-                    {createProgress.status === "running"
-                      ? `Indexed ${createProgress.indexed_pages} / ${createProgress.total_pages || "…"} pages (${createProgress.total_chunks} chunks)`
-                      : createProgress.status === "success"
-                        ? `Done: ${createProgress.indexed_pages} pages, ${createProgress.total_chunks} chunks`
-                        : null}
-                  </div>
-                  {createProgress.total_pages > 0 &&
-                    createProgress.status === "running" && (
-                      <div className="progress-bar-wrap">
-                        <div
-                          className="progress-bar-fill"
-                          style={{
-                            width: `${Math.round((100 * createProgress.processed_pages) / createProgress.total_pages)}%`,
-                          }}
-                        />
-                      </div>
-                    )}
+                <div className="create-collection-progress create-collection-progress--detailed">
+                  {createProgress.status === "failed" && (
+                    <div className="create-collection-index-error-banner">
+                      {(createProgress.error &&
+                        String(createProgress.error).slice(0, 400)) ||
+                        "Collection creation failed."}
+                    </div>
+                  )}
+                  <CreateCollectionIndexProgress
+                    progress={createProgress}
+                    collectionName={createForm.collection_name || "Collection"}
+                    variant="modal"
+                  />
                 </div>
               )}
               <div className="form-group">
@@ -2117,6 +2277,45 @@ function CrawlerTab() {
                   }
                   placeholder="my_collection"
                 />
+              </div>
+              <div className="form-group">
+                <label htmlFor="create-collection-embed-model">
+                  Embedding model (Ollama)
+                </label>
+                <select
+                  id="create-collection-embed-model"
+                  value={createForm.rag_embed_model}
+                  onChange={(e) =>
+                    setCreateForm((prev) => ({
+                      ...prev,
+                      rag_embed_model: e.target.value,
+                    }))
+                  }
+                  disabled={!createEmbedModels.length}
+                >
+                  <option value="">
+                    Server default ({createEmbedDefaults.rag_embed_model})
+                  </option>
+                  {createForm.rag_embed_model &&
+                    !createEmbedModels.some(
+                      (m) => m.id === createForm.rag_embed_model,
+                    ) && (
+                      <option value={createForm.rag_embed_model}>
+                        {createForm.rag_embed_model} (saved — not in current
+                        Ollama list)
+                      </option>
+                    )}
+                  {createEmbedModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name || m.id}
+                    </option>
+                  ))}
+                </select>
+                <p className="create-collection-embed-hint">
+                  Same pool as in RAG / Qdrant. Choose a model for this indexing
+                  run, or leave Server default to use the saved RAG embedding
+                  model (and vector dimension must match the model).
+                </p>
               </div>
               <div className="form-group">
                 <label>Select Sources *</label>

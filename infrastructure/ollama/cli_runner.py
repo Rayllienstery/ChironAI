@@ -182,10 +182,12 @@ def invoke_ping(*, base_url: str, timeout: float = 5.0) -> dict[str, Any]:
 
 def invoke_embed(stdin_obj: dict[str, Any], *, default_timeout: float = 120.0) -> dict[str, Any]:
     t = float(stdin_obj.get("timeout", default_timeout))
+    # CLI and stdin_obj must use the same HTTP timeout; subprocess budget must exceed it.
+    cli_t = max(1, int(t))
     return invoke_json(
-        ["embed", "--timeout", str(default_timeout)],
+        ["embed", "--timeout", str(cli_t)],
         stdin_obj=stdin_obj,
-        timeout=t + 30.0,
+        timeout=t + max(90.0, t * 0.25),
     )
 
 

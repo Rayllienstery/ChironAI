@@ -169,6 +169,10 @@ def build_context_block(
         total += len(snippet) + 2
         score = h.get("score", 0.0)
         rerank_score = h.get("rerank_score")
+        section_path = payload.get("section_path") or []
+        section_joined = payload.get("section_path_joined")
+        if section_joined is None and section_path:
+            section_joined = ":".join(str(s) for s in section_path)
         chunks_info.append({
             "index": idx,
             "score": f"{score:.4f}" if score else "N/A",
@@ -179,6 +183,8 @@ def build_context_block(
             "doc_type": payload.get("doc_type") or "N/A",
             "ios_versions": payload.get("ios_versions") or [],
             "swift_versions": payload.get("swift_versions") or [],
+            "section_path": section_path,
+            "section_path_joined": section_joined or "",
             "text_length": len(snippet),
             "text_preview": snippet[:100] + "..." if len(snippet) > 100 else snippet,
         })
