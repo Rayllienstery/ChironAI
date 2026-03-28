@@ -27,6 +27,7 @@ from domain.services.rerank import (
     reorder_hits_by_indices,
 )
 from domain.services.rag_trigger import compute_rag_trigger_score
+from infrastructure.ollama.openai_ollama_tool_bridge import openai_messages_to_ollama
 from domain.services.retrieval import (
     FINAL_CONTEXT_K,
     MULTI_CHUNK_FINAL_K,
@@ -326,11 +327,14 @@ def prepare_ollama_messages(
     rag_context: RagContext | None = None,
     trigger_threshold: int | None = None,
     force_rag: bool = False,
+    *,
+    native_tools: bool = False,
 ) -> tuple[list[dict[str, Any]], str]:
     """
     Build RAG context (unless rag_context provided) and Ollama message list (for streaming or custom chat).
     Returns (ollama_messages, model).
     When rag_context is provided, RAG retrieval is skipped and the given context is used.
+    When native_tools is True, preserve OpenAI tool protocol (assistant tool_calls, tool role) for Ollama /api/chat.
     """
     if rag_context is not None:
         ctx = rag_context
@@ -357,6 +361,12 @@ def prepare_ollama_messages(
         model_name,
     )
     ollama_messages = [{"role": "system", "content": system_content}]
+    if native_tools:
+        raw_msgs = [m for m in request.messages if isinstance(m, dict)]
+        ollama_messages.extend(openai_messages_to_ollama(raw_msgs))
+        model = request.model or model_name
+        return ollama_messages, model
+
     # ZED/OpenAI tool-result messages may omit `name` and provide `tool_call_id` instead.
     # Build a lookup from tool_call_id -> tool function name so we can label tool results
     # consistently in our plain-text Ollama prompt.

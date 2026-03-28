@@ -6,6 +6,7 @@ Calls Ollama via ollama_interactor CLI (subprocess).
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from typing import Any
 
@@ -15,6 +16,8 @@ except ImportError:
     get_ollama_chat_url = lambda: "http://localhost:11434/api/chat"  # type: ignore
     get_ollama_chat_model = lambda: "danielsheep/gpt-oss-20b-unsloth:UD-Q6_K_XL"  # type: ignore
     get_ollama_chat_options = lambda: {"num_predict": 3072, "temperature": 0.0, "top_p": 0.1}  # type: ignore
+
+import requests
 
 from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_chat, iter_chat_stream
 
@@ -77,6 +80,39 @@ class OllamaChatClient:
         except OllamaInteractorCliError as e:
             raise _chat_runtime_error(use_model, self._url, e) from e
 
+    def chat_api(self, body: dict[str, Any]) -> dict[str, Any]:
+        """
+        POST /api/chat with an arbitrary JSON body (e.g. tools, stream flag).
+        Returns the parsed top-level JSON object.
+        """
+        use_model = str(body.get("model") or self._model)
+        stdin_obj: dict[str, Any] = {"url": self._url, "json": body, "timeout": 600}
+        try:
+            return invoke_chat(stdin_obj, default_timeout=600)
+        except OllamaInteractorCliError as e:
+            raise _chat_runtime_error(use_model, self._url, e) from e
+
+    def chat_api_stream_final(self, body: dict[str, Any]) -> dict[str, Any]:
+        """
+        Streaming /api/chat: read NDJSON lines and build a non-stream-shaped response.
+
+        Ollama streams partial ``message`` fields; the last chunk with ``done: true`` may omit
+        fields that appeared only in earlier chunks, so we merge every ``message`` update.
+        """
+        use_model = str(body.get("model") or self._model)
+        payload = {**body, "stream": True}
+        opts = {**(self._default_options or {}), **(payload.get("options") or {})}
+        payload["options"] = opts
+        try:
+            resp = requests.post(self._url, json=payload, timeout=600, stream=True)
+            resp.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Ollama chat stream API error (model={use_model}, url={self._url}): {e}") from e
+        try:
+            return _aggregate_ollama_chat_stream_response(resp)
+        finally:
+            resp.close()
+
     def stream_chat(
         self,
         messages: list[dict[str, Any]],
@@ -97,6 +133,59 @@ class OllamaChatClient:
             yield from iter_chat_stream(stdin_obj, default_timeout=600)
         except OllamaInteractorCliError as e:
             raise _chat_runtime_error(use_model, self._url, e) from e
+
+
+def _merge_ollama_assistant_message_parts(acc: dict[str, Any], chunk: dict[str, Any]) -> dict[str, Any]:
+    """Merge streamed assistant ``message`` fragments (later chunks override when non-empty)."""
+    out = dict(acc)
+    for k, v in chunk.items():
+        if k == "content":
+            if v is None:
+                continue
+            if isinstance(v, str) and not v.strip() and out.get("content"):
+                continue
+            out[k] = v
+        elif k == "tool_calls" and v:
+            out[k] = v
+        elif v is not None and k not in ("content", "tool_calls"):
+            out[k] = v
+    return out
+
+
+def _aggregate_ollama_chat_stream_response(resp: Any) -> dict[str, Any]:
+    """Parse Ollama /api/chat NDJSON stream into one dict like a non-streaming API response."""
+    merged_message: dict[str, Any] = {}
+    last_done: dict[str, Any] | None = None
+    last_any: dict[str, Any] | None = None
+    for line in resp.iter_lines(decode_unicode=True):
+        if not line or not str(line).strip():
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        if obj.get("error") is not None:
+            return {"error": str(obj.get("error"))}
+        last_any = obj
+        m = obj.get("message")
+        if isinstance(m, dict):
+            merged_message = _merge_ollama_assistant_message_parts(merged_message, m)
+        if obj.get("done"):
+            last_done = obj
+
+    if last_done:
+        out = dict(last_done)
+        lm = last_done.get("message") if isinstance(last_done.get("message"), dict) else {}
+        final_msg = _merge_ollama_assistant_message_parts(merged_message, lm)
+        if not final_msg.get("content") and not final_msg.get("tool_calls") and merged_message:
+            final_msg = merged_message
+        out["message"] = final_msg
+        return out
+    if merged_message:
+        return {"message": merged_message, "done": True}
+    return last_any or {}
 
 
 __all__ = ["OllamaChatClient"]

@@ -220,3 +220,45 @@ def test_prepare_ollama_messages_infers_tool_result_name_from_tool_call_id() -> 
     assert "[tool_call:apply_file_edit]" in joined
     assert "[tool_result:apply_file_edit]" in joined
     assert model == "rag-ollama"
+
+
+def test_prepare_ollama_messages_native_tools_preserves_roles() -> None:
+    req = RagQuestionRequest(
+        messages=[
+            {"role": "user", "content": "edit"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "c1",
+                        "type": "function",
+                        "function": {"name": "t", "arguments": '{"x":1}'},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "c1", "content": "done"},
+        ],
+        model="m",
+        stream=False,
+        reasoning_level=None,
+    )
+    msgs, model = prepare_ollama_messages(
+        req,
+        MockRagRepo(),
+        MockEmbed(),
+        None,
+        "p",
+        "s",
+        500,
+        2000,
+        0.0,
+        "model-x",
+        rag_context=RagContext("", [], 0.0),
+        native_tools=True,
+    )
+    assert msgs[0]["role"] == "system"
+    assert msgs[2]["role"] == "assistant" and msgs[2]["tool_calls"]
+    assert msgs[2]["tool_calls"][0]["function"]["arguments"] == {"x": 1}
+    assert msgs[3] == {"role": "tool", "tool_name": "t", "content": "done"}
+    assert model == "m"

@@ -46,6 +46,12 @@ The host must supply:
 
 ChironAI’s [`rag_routes`](../../api/http/rag_routes.py) re-exports several application symbols so tests can `monkeypatch` them before `create_app()`.
 
+## Tool calling (IDE clients)
+
+When the request includes a non-empty `tools` list and `tool_choice` is not `"none"`, the proxy acts as a **mediator only**: it injects RAG and prompt template via `prepare_ollama_messages(..., native_tools=True)`, forwards `tools` and messages to **Ollama `/api/chat` native tool calling**, and maps the response back to OpenAI-style `tool_calls` (including streaming: one aggregated completion is emitted as SSE). The model must support tools; use a current Ollama build with tool calling enabled.
+
+If `tool_choice` is `"none"` or `tools` is empty, the legacy text-only path (no synthetic JSON tool shim) is used as before.
+
 ## Dependencies
 
 - Python ≥ 3.10

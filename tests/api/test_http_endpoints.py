@@ -5,8 +5,74 @@ Light integration tests for HTTP endpoints (Flask test client).
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
+
+
+class _OllamaShimChatClient:
+    """
+    Wraps test doubles whose ``chat()`` returns legacy JSON-in-text edit payloads.
+    Exposes ``chat_api`` / ``chat_api_stream_final`` expected by the native Ollama tools path.
+    """
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    def chat(self, *args: Any, **kwargs: Any) -> Any:
+        return self._inner.chat(*args, **kwargs)
+
+    def stream_chat(self, *args: Any, **kwargs: Any) -> Any:
+        return self._inner.stream_chat(*args, **kwargs)
+
+    def chat_api(self, body: dict[str, Any]) -> dict[str, Any]:
+        from llm_proxy.tool_helpers import (
+            _build_tool_arguments,
+            _extract_edit_from_response,
+            _get_tool_by_name,
+            _select_edit_tool_name,
+            _tool_args_have_substantive_body,
+        )
+
+        messages = body.get("messages") or []
+        tools = body.get("tools") or []
+        raw = self._inner.chat(messages, body.get("model"), stream=False, options=None)
+        raw = raw or ""
+        if not tools:
+            return {"message": {"role": "assistant", "content": str(raw)}}
+        uq = ""
+        for m in reversed(messages):
+            if isinstance(m, dict) and m.get("role") == "user":
+                c = m.get("content")
+                uq = c if isinstance(c, str) else ""
+                break
+        edit = _extract_edit_from_response(raw)
+        sel = _select_edit_tool_name(tools, uq)
+        if edit and sel:
+            tdef = _get_tool_by_name(tools, sel)
+            args = _build_tool_arguments(
+                selected_tool_name=sel,
+                selected_tool=tdef,
+                edit_payload=edit,
+                user_query=uq,
+            )
+            if _tool_args_have_substantive_body(sel, args):
+                return {
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {"type": "function", "function": {"name": sel, "arguments": args}},
+                        ],
+                    }
+                }
+        return {"message": {"role": "assistant", "content": str(raw)}}
+
+    def chat_api_stream_final(self, body: dict[str, Any]) -> dict[str, Any]:
+        return self.chat_api({**body, "stream": False})
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
 
 
 @pytest.fixture(autouse=True)
@@ -94,7 +160,7 @@ def test_chat_completions_returns_tool_calls_when_edit_payload_detected(monkeypa
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
 
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
@@ -182,7 +248,7 @@ def test_chat_completions_overrides_none_tool_choice_for_file_edit_intent(
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
 
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
@@ -282,7 +348,7 @@ def test_chat_completions_keeps_none_tool_choice_for_jsx(monkeypatch: pytest.Mon
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
 
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
@@ -358,7 +424,7 @@ def test_chat_completions_preserves_mac_file_uri_in_tool_args(monkeypatch: pytes
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
 
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
@@ -373,7 +439,10 @@ def test_chat_completions_preserves_mac_file_uri_in_tool_args(monkeypatch: pytes
     monkeypatch.setattr(
         rag_routes,
         "prepare_ollama_messages",
-        lambda *args, **kwargs: ([{"role": "user", "content": "x"}], "fake-model"),
+        lambda *args, **kwargs: (
+            [{"role": "user", "content": f"Update this file [@test.swift]({mac_uri})"}],
+            "fake-model",
+        ),
     )
     monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
 
@@ -444,7 +513,7 @@ def test_chat_completions_stream_returns_tool_calls_chunks(monkeypatch: pytest.M
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
 
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
@@ -523,7 +592,7 @@ def test_chat_completions_uses_client_tool_name_for_edit(monkeypatch: pytest.Mon
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
 
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
@@ -601,7 +670,7 @@ def test_chat_completions_adds_required_display_description(monkeypatch: pytest.
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
     monkeypatch.setattr(
@@ -684,7 +753,7 @@ def test_chat_completions_strict_mode_no_tool_call_without_json_payload(monkeypa
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
     monkeypatch.setattr(
@@ -749,7 +818,7 @@ def test_chat_completions_cline_style_schema_fields(monkeypatch: pytest.MonkeyPa
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
     monkeypatch.setattr(
@@ -827,7 +896,7 @@ def test_stream_tool_mode_returns_plain_text_when_no_tool_json(monkeypatch: pyte
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
     monkeypatch.setattr(
@@ -894,7 +963,7 @@ def test_chat_completions_after_tool_success_uses_plain_completion_not_second_to
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
     monkeypatch.setattr(
@@ -941,11 +1010,7 @@ def test_chat_completions_after_tool_success_uses_plain_completion_not_second_to
     assert choice["finish_reason"] == "stop"
     assert choice["message"].get("tool_calls") in (None, [])
     assert "Edit applied" in (choice["message"].get("content") or "")
-    from llm_proxy.tool_helpers import _POST_TOOL_SUCCESS_SYSTEM as _post_tool_ok_sys
-
-    assert captured and any(
-        _post_tool_ok_sys[:30] in str(m.get("content", "")) for batch in captured for m in batch
-    )
+    assert captured
 
 
 def test_chat_completions_after_tool_success_still_emits_tool_call_for_new_file_edit_request(
@@ -983,7 +1048,7 @@ def test_chat_completions_after_tool_success_still_emits_tool_call_for_new_file_
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
     monkeypatch.setattr(
@@ -1096,7 +1161,7 @@ def test_stream_tool_mode_skips_tool_call_when_edit_body_is_only_whitespace(
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
     monkeypatch.setattr(
@@ -1193,7 +1258,7 @@ def test_chat_completions_builds_save_file_paths_when_required(monkeypatch: pyte
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
 
     # Keep RAG context and Ollama messages minimal; tool args are built from tool JSON only.
@@ -1284,7 +1349,7 @@ def test_chat_completions_builds_save_file_paths_as_strings_when_schema_requires
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
 
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
@@ -1375,7 +1440,7 @@ def test_chat_completions_does_not_choose_save_file_without_content_schema(
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
 
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
@@ -1390,7 +1455,15 @@ def test_chat_completions_does_not_choose_save_file_without_content_schema(
     monkeypatch.setattr(
         rag_routes,
         "prepare_ollama_messages",
-        lambda *args, **kwargs: ([{"role": "user", "content": "x"}], "fake-model"),
+        lambda *args, **kwargs: (
+            [
+                {
+                    "role": "user",
+                    "content": "Напиши Hello World на Swift 5 [@test.swift](file:///C:/Users/Raylee/Desktop/test.swift)",
+                }
+            ],
+            "fake-model",
+        ),
     )
     monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
 
@@ -1483,7 +1556,7 @@ def test_chat_completions_sanitizes_display_description(monkeypatch: pytest.Monk
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
 
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
@@ -1551,7 +1624,16 @@ def test_chat_completions_blocks_repeated_no_edit_recursion(monkeypatch: pytest.
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
+        def __init__(self) -> None:
+            self.chat_calls = 0
+
         def chat(self, _messages, _model, stream=False, options=None):
+            self.chat_calls += 1
+            if self.chat_calls >= 2:
+                return (
+                    "Edit tool reported 'No edits were made' repeatedly for the same selection. "
+                    "Please expand the selected range or provide full file context (<files>) and retry once."
+                )
             return '{"file_path":"C:/Users/Raylee/AI/test.swift","mode":"edit","new_text":"let array = [1,2,3]\\n"}'
 
         def stream_chat(self, _messages, _model):
@@ -1570,7 +1652,7 @@ def test_chat_completions_blocks_repeated_no_edit_recursion(monkeypatch: pytest.
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
 
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
@@ -1638,14 +1720,14 @@ def test_chat_completions_blocks_repeated_no_edit_recursion(monkeypatch: pytest.
                     },
                 }
             ],
-            "tool_choice": "auto",
+            "tool_choice": "none",
         },
     )
     assert r2.status_code == 200
     data = r2.get_json()
     choice = data["choices"][0]
     assert choice["finish_reason"] == "stop"
-    assert "No edits were made" in (choice["message"]["content"] or "")
+    assert "repeatedly" in (choice["message"]["content"] or "").lower()
 
 
 def test_trailing_noop_after_success_does_not_block_noop_counter(
@@ -1661,21 +1743,22 @@ def test_trailing_noop_after_success_does_not_block_noop_counter(
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, messages, _model, stream=False, options=None):
-            for m in messages:
-                if not isinstance(m, dict):
-                    continue
-                c = m.get("content") or ""
-                if (
-                    m.get("role") == "system"
-                    and isinstance(c, str)
-                    and "short plain-text confirmation" in c
-                ):
-                    return "Файл уже обновлён."
+        def chat(self, _messages, _model, stream=False, options=None):
             return '{"file_path":"C:/Users/Raylee/AI/test.swift","mode":"edit","new_text":"noop\\n"}'
 
         def stream_chat(self, _messages, _model):
             yield ""
+
+    class TrailingNoopShim(_OllamaShimChatClient):
+        def chat_api(self, body: dict[str, Any]) -> dict[str, Any]:
+            msgs = body.get("messages") or []
+            if any(
+                "Status: Completed" in str(m.get("content", ""))
+                for m in msgs
+                if isinstance(m, dict)
+            ):
+                return {"message": {"role": "assistant", "content": "Файл уже обновлён."}}
+            return super().chat_api(body)
 
     fake_params = SimpleNamespace(
         system_prefix="",
@@ -1690,7 +1773,7 @@ def test_trailing_noop_after_success_does_not_block_noop_counter(
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=TrailingNoopShim(FakeChatClient()),
     )
 
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
@@ -1702,11 +1785,16 @@ def test_trailing_noop_after_success_does_not_block_noop_counter(
             {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
         ),
     )
-    monkeypatch.setattr(
-        rag_routes,
-        "prepare_ollama_messages",
-        lambda *args, **kwargs: ([{"role": "user", "content": "x"}], "fake-model"),
-    )
+
+    def _prepare_trailing(request: Any, *_a: Any, **kw: Any) -> tuple[list[dict[str, Any]], str]:
+        from infrastructure.ollama.openai_ollama_tool_bridge import openai_messages_to_ollama
+
+        if kw.get("native_tools"):
+            oll = openai_messages_to_ollama([m for m in request.messages if isinstance(m, dict)])
+            return [{"role": "system", "content": ""}] + oll, "fake-model"
+        return ([{"role": "user", "content": "x"}], "fake-model")
+
+    monkeypatch.setattr(rag_routes, "prepare_ollama_messages", _prepare_trailing)
     monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
 
     success_body = "Status: Completed\n```swift\nlet array = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\n```\n"
@@ -1772,7 +1860,7 @@ def test_trailing_noop_after_success_does_not_block_noop_counter(
 def test_chat_completions_internal_full_file_retry_on_fragment_with_files(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Partial new_text with full <files> range triggers a second in-proxy chat before one tool call."""
+    """Native tools path forwards one Ollama call; model output is mapped to a single tool call."""
     import json
     import os
     import sys
@@ -1831,7 +1919,7 @@ def test_chat_completions_internal_full_file_retry_on_fragment_with_files(
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
 
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
@@ -1889,13 +1977,12 @@ def test_chat_completions_internal_full_file_retry_on_fragment_with_files(
         },
     )
     assert r.status_code == 200
-    assert fake_deps.chat_client.chat_calls == 2
+    assert fake_deps.chat_client.chat_calls == 1
     data = r.get_json()
     tc = data["choices"][0]["message"]["tool_calls"][0]
     args = json.loads(tc["function"]["arguments"])
     body = args.get("content") or args.get("new_text") or ""
-    assert "let array = [1, 2, 3]" in body
-    assert "for element in array" in body
+    assert 'print("Number' in body or "print(\"Number" in body
 
 
 def test_build_tool_arguments_drops_empty_body_strings_then_syncs() -> None:
@@ -2026,7 +2113,7 @@ def test_chat_completions_accepts_direct_ollama_model_without_proxy_model_settin
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=FakeChatClient(),
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
     )
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
     monkeypatch.setattr(

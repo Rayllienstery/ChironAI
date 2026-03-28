@@ -310,20 +310,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         noop_retry_blocked = False
     selected_edit_tool_name = _select_edit_tool_name(tools, user_query)
     selected_edit_tool = _get_tool_by_name(tools, selected_edit_tool_name) if selected_edit_tool_name else None
-    # Cross-request recursion guard: if the same user intent+path was just successfully applied,
-    # suppress tool mode to avoid repeated empty/no-op tool calls from client retries.
-    try:
-        now_s = edit_state.now_s()
-        edit_state.prune_recent_success(now_s)
-        sig = _normalized_user_signature(user_query or "")
-        p = _normalized_path_for_cache(user_query or "")
-        if sig and p and (sig, p) in edit_state.recent_success:
-            if now_s - edit_state.recent_success[(sig, p)] < w.runtime.recent_success_ttl_s:
-                post_tool_success_turn = True
-    except Exception:
-        pass
-    # Safety: never use a non-write-capable file tool for overwrite/create. If the selected tool
-    # can't carry content, we will later fall back to terminal-based write.
     selected_tool_write_capable = _tool_schema_accepts_content(selected_edit_tool)
     # If the client omitted `tools` entirely but referenced a file, assume an IDE-side `edit_file`
     # tool exists (Zed supports it) and allow emitting tool_calls anyway.
@@ -333,9 +319,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             selected_edit_tool_name = "edit_file"
             selected_edit_tool = None
             selected_tool_write_capable = True
-    if duplicate_user_after_success:
-        # Treat as already completed; respond text-only and do not emit tool_calls.
-        post_tool_success_turn = True
     if tools and tool_choice_effective == "none" and selected_edit_tool_name:
         path_hint = (_extract_file_path_from_user_text(user_query or "") or "").lower()
         q_low = (user_query or "").lower()
@@ -348,6 +331,23 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         if swift_intent:
             tool_choice_effective = "auto"
             tool_choice_overridden_for_edit_intent = True
+    use_native_tools = bool(tools) and tool_choice_effective != "none"
+    if not use_native_tools:
+        # Cross-request recursion guard: if the same user intent+path was just successfully applied,
+        # suppress tool mode to avoid repeated empty/no-op tool calls from client retries.
+        try:
+            now_s = edit_state.now_s()
+            edit_state.prune_recent_success(now_s)
+            sig = _normalized_user_signature(user_query or "")
+            p = _normalized_path_for_cache(user_query or "")
+            if sig and p and (sig, p) in edit_state.recent_success:
+                if now_s - edit_state.recent_success[(sig, p)] < w.runtime.recent_success_ttl_s:
+                    post_tool_success_turn = True
+        except Exception:
+            pass
+        if duplicate_user_after_success:
+            # Treat as already completed; respond text-only and do not emit tool_calls.
+            post_tool_success_turn = True
     context_length = len(last_user.split())
     if system_prefix is not None:
         effective_prefix = prefix
@@ -413,7 +413,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         "user_query_preview": (user_query or "")[:500],
     }
 
-    if noop_retry_blocked:
+    if noop_retry_blocked and not use_native_tools:
         msg = (
             "Edit tool reported 'No edits were made' repeatedly for the same selection. "
             "Please expand the selected range or provide full file context (<files>) and retry once."
@@ -581,6 +581,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         bool(tools)
         and bool(selected_edit_tool_name)
         and tool_choice_effective != "none"
+        and not use_native_tools
         and not force_rag
         and not fetch_web_knowledge
         and not request_collection
@@ -840,6 +841,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             rag_context=rag_ctx_for_log,
             trigger_threshold=None,
             force_rag=force_rag,
+            native_tools=use_native_tools,
         )
         # Ensure use_model is not "rag-ollama" - use config model if needed
         if use_model == "rag-ollama":
@@ -868,6 +870,196 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         w.log_webui_error("rag_routes.chat_completions", e, {"stage": "prepare_rag"})
         _log_rag_error("prepare_rag", e)
         return jsonify({"error": str(e)}), 500
+
+    if use_native_tools:
+        from infrastructure.ollama.openai_ollama_tool_bridge import (
+            ollama_message_to_openai_assistant,
+            ollama_tools_from_openai,
+            openai_finish_reason_from_ollama,
+        )
+
+        trace["request"]["native_tools"] = True
+        _co = getattr(chat_client, "_default_options", None) or {}
+        oll_tools = ollama_tools_from_openai([t for t in tools if isinstance(t, dict)])
+        body_ollama: dict[str, object] = {
+            "model": use_model,
+            "messages": ollama_messages,
+            "stream": stream,
+            "options": dict(_co),
+        }
+        if oll_tools:
+            body_ollama["tools"] = oll_tools
+        if tool_choice_effective not in (None, "", "auto"):
+            body_ollama["tool_choice"] = tool_choice_effective
+
+        w.set_proxy_status(w.status_response)
+        _native_err: str | None = None
+        data: dict[str, object] = {}
+        try:
+            if stream:
+                stream_fn = getattr(chat_client, "chat_api_stream_final", None)
+                if callable(stream_fn):
+                    data = stream_fn(body_ollama)
+                else:
+                    _body_ns = {**body_ollama, "stream": False}
+                    chat_fn = getattr(chat_client, "chat_api", None)
+                    if callable(chat_fn):
+                        data = chat_fn(_body_ns)
+                    else:
+                        msg_only = chat_client.chat(ollama_messages, use_model, stream=False, options=None)
+                        data = {"message": {"role": "assistant", "content": msg_only}}
+            else:
+                chat_fn = getattr(chat_client, "chat_api", None)
+                if callable(chat_fn):
+                    data = chat_fn(body_ollama)
+                else:
+                    msg_only = chat_client.chat(ollama_messages, use_model, stream=False, options=None)
+                    data = {"message": {"role": "assistant", "content": msg_only}}
+        except Exception as e:
+            w.log_webui_error("rag_routes.chat_completions", e, {"stage": "native_tools_ollama"})
+            _log_rag_error("native_tools_ollama", e)
+            _native_err = str(e)
+        finally:
+            w.set_proxy_status(w.status_idle)
+            w.set_latest_request_seconds(time.time() - start_time)
+
+        if _native_err:
+            return jsonify({"error": _native_err}), 500
+
+        err_obj = data.get("error")
+        if err_obj:
+            return jsonify({"error": str(err_obj)}), 502
+
+        if not data:
+            return jsonify(
+                {"error": "Empty response from Ollama (stream or connection closed without data)"}
+            ), 502
+
+        oll_msg = data.get("message") if isinstance(data.get("message"), dict) else {}
+        if not oll_msg and not err_obj:
+            return jsonify(
+                {
+                    "error": "Ollama returned no assistant message",
+                    "detail": json.dumps(data, ensure_ascii=False)[:800],
+                }
+            ), 502
+        openai_msg = ollama_message_to_openai_assistant(oll_msg)
+        finish = openai_finish_reason_from_ollama(oll_msg)
+        tool_calls_out = openai_msg.get("tool_calls") if isinstance(openai_msg.get("tool_calls"), list) else []
+        content_out = openai_msg.get("content")
+        content_str = content_out if isinstance(content_out, str) else ("" if content_out is None else str(content_out))
+
+        latency_ms = int((time.time() - start_time) * 1000)
+        _pt = max(1, int(len(json.dumps(ollama_messages, ensure_ascii=False)) / 4))
+        _ct = max(1, int(len(content_str or "") / 4))
+        w.set_latest_request_total_tokens(_pt + _ct)
+        trace["ollama"]["tokens_estimates"] = {
+            "prompt_tokens_estimated": _pt,
+            "completion_tokens_estimated": _ct,
+            "total_tokens_estimated": _pt + _ct,
+        }
+        trace["response"] = {
+            "content_preview": (content_str or "")[:log_preview],
+            "content_length_chars": len(content_str or ""),
+            "latency_ms": latency_ms,
+            "tool_calls_count": len(tool_calls_out),
+            "native_tools": True,
+        }
+        if tool_calls_out:
+            trace["response"]["tool_calls"] = tool_calls_out
+        trace["steps"].append(
+            {
+                "name": "ollama_chat_native_tools",
+                "duration_ms": int(latency_ms),
+                "tokens_in_est": _pt,
+                "tokens_out_est": _ct,
+            }
+        )
+        w.set_current_trace(trace)
+
+        if stream:
+
+            def generate_sse_native():
+                oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+                if tool_calls_out:
+                    payload_calls: list[dict[str, object]] = []
+                    for i, tc in enumerate(tool_calls_out):
+                        if not isinstance(tc, dict):
+                            continue
+                        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+                        payload_calls.append(
+                            {
+                                "index": i,
+                                "id": tc.get("id"),
+                                "type": "function",
+                                "function": {
+                                    "name": fn.get("name"),
+                                    "arguments": fn.get("arguments"),
+                                },
+                            }
+                        )
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'tool_calls': payload_calls}, 'finish_reason': None}]})}\n\n"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls'}]})}\n\n"
+                else:
+                    if content_str:
+                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'content': content_str}, 'finish_reason': None}]})}\n\n"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish}]})}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return Response(
+                generate_sse_native(),
+                mimetype="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+
+        choice_msg: dict[str, object] = {
+            "role": "assistant",
+            "content": None if tool_calls_out else (content_str or None),
+        }
+        if tool_calls_out:
+            choice_msg["tool_calls"] = tool_calls_out
+        response_data: dict[str, object] = {
+            "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
+            "object": "chat.completion",
+            "created": 0,
+            "model": use_model,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": choice_msg,
+                    "finish_reason": finish,
+                }
+            ],
+        }
+        if include_rag_metadata and rag_ctx:
+            response_data["rag_metadata"] = {
+                "chunks_info": rag_ctx.chunks_info,
+                "max_score": rag_ctx.max_score,
+                "chunks_count": len(rag_ctx.chunks_info),
+            }
+        try:
+            session_manager = w.get_session_manager()
+            session_manager.get_or_create_session("proxy")
+            logs_repo = w.get_logs_repository()
+            logs_repo.add_log(
+                session_id="proxy",
+                level="INFO",
+                message=f"Proxy request (native tools): {user_query[:100]}...",
+                source="proxy",
+                metadata={
+                    "user_query": user_query[:500],
+                    "response_preview": (content_str or "")[:500],
+                    "trace_id": trace_id,
+                    "model": use_model,
+                    "latency_ms": latency_ms,
+                    "trace": trace,
+                    "stream": False,
+                },
+            )
+        except Exception as e:
+            _RAG_LOG.warning("Failed to log native-tools proxy request: %s", e)
+        return jsonify(response_data)
 
     if tools and tool_choice_effective != "none":
         if post_tool_success_turn:
