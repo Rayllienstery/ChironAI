@@ -90,8 +90,11 @@ from config import (
     get_rag_float,
     get_rag_int,
     get_rag_prompt_name,
+    get_retrieval_bool,
     get_retrieval_int,
 )
+from application.rag.hybrid_sparse import is_hybrid_sparse_enabled
+from infrastructure.rag.qdrant_point_builder import build_named_vectors
 from domain.services.rag_trigger import compute_rag_trigger_score
 from config.rag_prompts import (
     get_rag_system_prompt,
@@ -187,7 +190,14 @@ from infrastructure.ollama.cli_runner import (
     invoke_tags,
 )
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import VectorParams, Distance, PointStruct, PointIdsList, PayloadSchemaType
+from qdrant_client.http.models import (
+    Distance,
+    PointIdsList,
+    PointStruct,
+    PayloadSchemaType,
+    SparseVectorParams,
+    VectorParams,
+)
 from qdrant_client.http.exceptions import ResponseHandlingException
 
 # Import domain services for indexing
@@ -1895,14 +1905,22 @@ def get_rag_model_settings() -> Any:
         # For UI convenience, if rerank is enabled but model missing, show default.
         rerank_model = raw_rerank_model if raw_rerank_model else (default_rerank_model if rerank_for_rag else "")
 
+        yaml_hybrid = get_retrieval_bool("hybrid_sparse_enabled", True)
+        if isinstance(proxy_settings, dict) and "hybrid_sparse_enabled" in proxy_settings:
+            hybrid_sparse_enabled = bool(proxy_settings["hybrid_sparse_enabled"])
+        else:
+            hybrid_sparse_enabled = yaml_hybrid
+
         return jsonify(
             {
                 "rag_embed_model": rag_embed_model,
                 "rerank_for_rag": rerank_for_rag,
                 "rerank_model": rerank_model,
+                "hybrid_sparse_enabled": hybrid_sparse_enabled,
                 "defaults": {
                     "rag_embed_model": default_embed_model,
                     "rerank_model": default_rerank_model,
+                    "hybrid_sparse_enabled": yaml_hybrid,
                 },
             }
         )
@@ -1925,6 +1943,8 @@ def update_rag_model_settings() -> Any:
 
         rerank_for_rag = bool(body.get("rerank_for_rag", False))
         rerank_model = str(body.get("rerank_model") or "").strip()
+        yaml_hybrid = get_retrieval_bool("hybrid_sparse_enabled", True)
+        hybrid_sparse_enabled = bool(body.get("hybrid_sparse_enabled", yaml_hybrid))
 
         proxy_settings_json = settings_repo.get_app_setting("proxy_settings")
         proxy_settings: dict[str, Any] = {}
@@ -1935,6 +1955,7 @@ def update_rag_model_settings() -> Any:
                 proxy_settings = {}
 
         proxy_settings["rerank_for_rag"] = rerank_for_rag
+        proxy_settings["hybrid_sparse_enabled"] = hybrid_sparse_enabled
 
         # When enabled, default to a known-good reranker if user chose "Default".
         if rerank_for_rag:
@@ -1953,9 +1974,11 @@ def update_rag_model_settings() -> Any:
                 "rag_embed_model": rag_embed_model,
                 "rerank_for_rag": rerank_for_rag,
                 "rerank_model": proxy_settings.get("rerank_model") or "",
+                "hybrid_sparse_enabled": hybrid_sparse_enabled,
                 "defaults": {
                     "rag_embed_model": default_embed_model,
                     "rerank_model": default_rerank_model,
+                    "hybrid_sparse_enabled": yaml_hybrid,
                 },
             }
         )
@@ -2546,7 +2569,28 @@ def _strip_markdown_simple(md: str) -> str:
     return md.strip()
 
 
-def _ensure_collection_with_name(qclient: QdrantClient, collection_name: str, dim: int) -> None:
+def _qdrant_collection_has_sparse_vectors(qclient: QdrantClient, collection_name: str) -> bool:
+    """True if collection was created with sparse_vectors (hybrid indexing)."""
+    try:
+        info = qclient.get_collection(collection_name)
+        params = info.config.params
+        sv = getattr(params, "sparse_vectors", None)
+        if sv is None:
+            return False
+        if isinstance(sv, dict):
+            return len(sv) > 0
+        return bool(sv)
+    except Exception:
+        return False
+
+
+def _ensure_collection_with_name(
+    qclient: QdrantClient,
+    collection_name: str,
+    dim: int,
+    *,
+    hybrid_sparse: bool = False,
+) -> None:
     """Create Qdrant collection with specified name if it doesn't exist."""
     try:
         qclient.get_collection(collection_name)
@@ -2570,14 +2614,28 @@ def _ensure_collection_with_name(qclient: QdrantClient, collection_name: str, di
         return
     except Exception:
         pass
-    
-    # Create collection
+
+    # Create collection (dense-only or dense+sparse hybrid)
     try:
-        qclient.recreate_collection(
-            collection_name,
-            vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
-        )
-        _WEBUI_LOG.info(f"Created Qdrant collection '{collection_name}' (dim={dim})")
+        if hybrid_sparse:
+            qclient.recreate_collection(
+                collection_name,
+                vectors_config={
+                    "dense": VectorParams(size=dim, distance=Distance.COSINE),
+                },
+                sparse_vectors_config={
+                    "sparse": SparseVectorParams(),
+                },
+            )
+            _WEBUI_LOG.info(
+                f"Created Qdrant collection '{collection_name}' (dim={dim}, hybrid sparse)"
+            )
+        else:
+            qclient.recreate_collection(
+                collection_name,
+                vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
+            )
+            _WEBUI_LOG.info(f"Created Qdrant collection '{collection_name}' (dim={dim})")
         # Ensure payload indexes on new collection
         for field in ["language", "technology", "domain", "product", "doc_type", "doc_scope", "symbol", "framework", "section"]:
             try:
@@ -2621,7 +2679,10 @@ def _create_collection_from_sources(
         "skipped_pages": 0,
         "errors": [],
     }
-    
+
+    hybrid_cfg = is_hybrid_sparse_enabled()
+    effective_hybrid = False
+
     first_dim: int | None = None
     upsert_batch: list[PointStruct] = []
     BATCH_SIZE = 200
@@ -2729,7 +2790,12 @@ def _create_collection_from_sources(
         dim = len(embeddings[0])
         if first_dim is None:
             first_dim = dim
-            _ensure_collection_with_name(qclient, collection_name, first_dim)
+            _ensure_collection_with_name(
+                qclient, collection_name, first_dim, hybrid_sparse=hybrid_cfg
+            )
+            effective_hybrid = hybrid_cfg and _qdrant_collection_has_sparse_vectors(
+                qclient, collection_name
+            )
 
         if dim != first_dim:
             stats["skipped_pages"] += 1
@@ -2788,7 +2854,9 @@ def _create_collection_from_sources(
             upsert_batch.append(
                 PointStruct(
                     id=point_id,
-                    vector=vec,
+                    vector=build_named_vectors(
+                        chunk_text, vec, hybrid_sparse=effective_hybrid
+                    ),
                     payload=payload,
                 )
             )

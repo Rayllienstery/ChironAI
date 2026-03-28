@@ -11,8 +11,9 @@ import re
 from typing import Any
 
 try:
-    from config import get_retrieval_dict, get_retrieval_int, get_retrieval_list
+    from config import get_retrieval_bool, get_retrieval_dict, get_retrieval_int, get_retrieval_list
 except ImportError:
+    get_retrieval_bool = lambda k, d: d  # noqa: E731
     get_retrieval_dict = lambda k, d: d  # noqa: E731
     get_retrieval_int = lambda k, d: d  # noqa: E731
     get_retrieval_list = lambda k, d: d  # noqa: E731
@@ -35,6 +36,24 @@ DOC_TYPE_WEIGHT: dict[str, int] = get_retrieval_dict(
     {
         "conceptual": 3, "overview": 2, "tutorial": 1, "documentation": 1,
         "howto": 1, "release_notes": -2, "news": -2,
+    },
+)
+DOC_SCOPE_PREFERRED_FOR_QA: tuple[str, ...] = tuple(
+    get_retrieval_list(
+        "doc_scope_preferred_for_qa",
+        ["api_symbol", "guide", "tutorial"],
+    )
+)
+DOC_SCOPE_WEIGHT: dict[str, int] = get_retrieval_dict(
+    "doc_scope_weight",
+    {
+        "api_symbol": 2,
+        "guide": 1,
+        "tutorial": 1,
+        "discussion": 0,
+        "articles": 0,
+        "books": 0,
+        "forums": -1,
     },
 )
 MULTI_CHUNK_KEYWORDS: tuple[str, ...] = tuple(
@@ -140,15 +159,14 @@ def need_more_chunks(question: str) -> bool:
 
 
 def build_qdrant_filter(question: str) -> dict[str, Any] | None:
-    """Build Qdrant metadata filter for doc_type preference. None for version questions."""
+    """Build Qdrant metadata filter for doc_type / doc_scope preference. None for version questions."""
     if is_version_question(question):
         return None
-    if not DOC_TYPE_PREFERRED_FOR_QA:
-        return None
-    conditions = [
-        {"key": "doc_type", "match": {"value": dt}}
-        for dt in DOC_TYPE_PREFERRED_FOR_QA
-    ]
+    conditions: list[dict[str, Any]] = []
+    for dt in DOC_TYPE_PREFERRED_FOR_QA:
+        conditions.append({"key": "doc_type", "match": {"value": dt}})
+    for ds in DOC_SCOPE_PREFERRED_FOR_QA:
+        conditions.append({"key": "doc_scope", "match": {"value": ds}})
     if not conditions:
         return None
     return {"should": conditions}
@@ -161,6 +179,63 @@ def doc_type_priority(hit: dict[str, Any]) -> int:
     return int(DOC_TYPE_WEIGHT.get(doc_type, 0))
 
 
+def doc_scope_priority(hit: dict[str, Any]) -> int:
+    payload = hit.get("payload") or {}
+    doc_scope = (payload.get("doc_scope") or "").lower()
+    return int(DOC_SCOPE_WEIGHT.get(doc_scope, 0))
+
+
+def combined_doc_priority(hit: dict[str, Any]) -> int:
+    return doc_type_priority(hit) + doc_scope_priority(hit)
+
+
+def expand_query_variants(question: str) -> list[str]:
+    q = (question or "").strip()
+    if not q:
+        return []
+    if not get_retrieval_bool("query_expansion_enabled", False):
+        return [q]
+    max_v = max(1, get_retrieval_int("query_expansion_max_variants", 3))
+    abbrev = get_retrieval_dict("query_expansion_abbreviations", {})
+    variants: list[str] = [q]
+    qlower = q.lower()
+    for trigger, expansion in abbrev.items():
+        trig = str(trigger).strip()
+        if not trig or trig.lower() not in qlower:
+            continue
+        extra = f"{q} {expansion}".strip()
+        if extra not in variants:
+            variants.append(extra)
+        if len(variants) >= max_v:
+            break
+    return variants[:max_v]
+
+
+def rrf_merge_hit_lists(
+    ranked_lists: list[list[dict[str, Any]]],
+    *,
+    limit: int,
+    k: int = 60,
+) -> list[dict[str, Any]]:
+    scores: dict[Any, float] = {}
+    payloads: dict[Any, dict[str, Any]] = {}
+    for hits in ranked_lists:
+        for rank, h in enumerate(hits, start=1):
+            hid = h.get("id")
+            if hid is None:
+                continue
+            scores[hid] = scores.get(hid, 0.0) + 1.0 / (k + rank)
+            if hid not in payloads:
+                payloads[hid] = h
+    merged_ids = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)[:limit]
+    out: list[dict[str, Any]] = []
+    for hid in merged_ids:
+        base = dict(payloads[hid])
+        base["score"] = scores[hid]
+        out.append(base)
+    return out
+
+
 __all__ = [
     "RETRIEVAL_STOP_WORDS", "DOC_TYPE_PREFERRED_FOR_QA", "DOC_TYPE_WEIGHT",
     "MULTI_CHUNK_KEYWORDS", "RERANK_MAX_CANDIDATES", "FINAL_CONTEXT_K",
@@ -168,4 +243,6 @@ __all__ = [
     "SKIP_RAG_GREETINGS", "RAG_REQUIRED_KEYWORDS",
     "parse_versions_from_question", "is_version_question", "should_skip_rag_search",
     "query_for_retrieval", "need_more_chunks", "build_qdrant_filter", "doc_type_priority",
+    "doc_scope_priority", "combined_doc_priority",
+    "expand_query_variants", "rrf_merge_hit_lists",
 ]

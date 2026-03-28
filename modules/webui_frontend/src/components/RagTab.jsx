@@ -70,11 +70,13 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
   const [models, setModels] = useState([]);
   const [ragModelSettings, setRagModelSettings] = useState({
     rag_embed_model: '',
+    hybrid_sparse_enabled: true,
     rerank_for_rag: false,
     rerank_model: '',
   });
   const [ragModelDefaults, setRagModelDefaults] = useState({
     rag_embed_model: 'bge-large',
+    hybrid_sparse_enabled: true,
     rerank_model: 'bbjson/bge-reranker-base',
   });
   const [ragModelSaving, setRagModelSaving] = useState(false);
@@ -105,10 +107,12 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
       const data = await getRagModelSettings();
       setRagModelDefaults({
         rag_embed_model: (data?.defaults?.rag_embed_model || 'bge-large').trim() || 'bge-large',
+        hybrid_sparse_enabled: data?.defaults?.hybrid_sparse_enabled !== false,
         rerank_model: (data?.defaults?.rerank_model || 'bbjson/bge-reranker-base').trim() || 'bbjson/bge-reranker-base',
       });
       setRagModelSettings({
         rag_embed_model: data?.rag_embed_model || '',
+        hybrid_sparse_enabled: data?.hybrid_sparse_enabled !== false,
         rerank_for_rag: Boolean(data?.rerank_for_rag),
         rerank_model: data?.rerank_model || '',
       });
@@ -261,6 +265,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
     try {
       await updateRagModelSettings({
         rag_embed_model: ragModelSettings.rag_embed_model || '',
+        hybrid_sparse_enabled: Boolean(ragModelSettings.hybrid_sparse_enabled),
         rerank_for_rag: Boolean(ragModelSettings.rerank_for_rag),
         rerank_model: ragModelSettings.rerank_model || '',
       });
@@ -689,6 +694,29 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
             Empty selection uses the server default above (from env <code>RAG_EMBED_MODEL</code> or built-in fallback).
             If you change the embedding model, you typically need to re-create Qdrant collections (vector dimension may
             differ).
+          </p>
+
+          <div style={{ height: 12 }} />
+
+          <h4 className="rag-trigger-test-title" style={{ marginBottom: 8 }}>Hybrid sparse (dense + keyword)</h4>
+          <div className="rag-trigger-threshold-row">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                id="rag-hybrid-sparse-enabled"
+                checked={ragModelSettings.hybrid_sparse_enabled}
+                onChange={(e) =>
+                  setRagModelSettings((prev) => ({ ...prev, hybrid_sparse_enabled: e.target.checked }))
+                }
+              />
+              Enabled
+            </label>
+          </div>
+          <p className="rag-trigger-hint" style={{ marginTop: 0 }}>
+            One setting for both <strong>indexing new collections</strong> (writes dense + sparse vectors to Qdrant)
+            and <strong>retrieval</strong> (RRF fusion when the collection has sparse data). Turn off for legacy
+            dense-only collections or to skip sparse encoding. Config default:{' '}
+            {ragModelDefaults.hybrid_sparse_enabled ? 'on' : 'off'} (from <code>retrieval.yaml</code> if never saved).
           </p>
 
           <div style={{ height: 12 }} />

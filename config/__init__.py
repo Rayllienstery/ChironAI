@@ -213,6 +213,16 @@ def get_retrieval_dict(key: str, default: dict) -> dict:
     return value if isinstance(value, dict) else default
 
 
+def get_retrieval_bool(key: str, default: bool = False) -> bool:
+    """Helper to get boolean retrieval config with default."""
+    value = RETRIEVAL_CONFIG.get(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value) if value is not None else default
+
+
 def get_crawler_int(key: str, default: int) -> int:
     """Helper to get integer crawler config with default."""
     try:

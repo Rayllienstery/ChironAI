@@ -35,6 +35,63 @@ function LlmProxyTab({ onOpenRagModels }) {
           </ul>
         </div>
 
+        <details className="settings-section pipeline-details">
+          <summary>
+            <strong>Request pipeline (algorithm)</strong>
+            <span className="settings-hint"> — end-to-end path from HTTP body to response</span>
+          </summary>
+          <ol className="pipeline-steps">
+            <li>
+              <strong>Parse request</strong>: <code>POST /v1/chat/completions</code> (OpenAI-compatible JSON). Read{' '}
+              <code>messages</code>, <code>model</code> (e.g. <code>rag-ollama</code> maps to your configured Ollama
+              model), <code>stream</code>, optional <code>force_rag</code>, <code>include_rag_metadata</code>, tools,
+              reasoning hints. Entry: Flask blueprint from <code>llm_proxy</code> (<code>CoreModules/LlmProxy</code>).
+            </li>
+            <li>
+              <strong>Resolve last user message</strong>: the last user turn is the question for RAG and for the final
+              chat. System/developer/tool messages are preserved for context.
+            </li>
+            <li>
+              <strong>RAG gate</strong>: compute a trigger score (keywords, code blocks, technical terms). Skip vector
+              search for very short greetings or when required-keyword policy says so (unless{' '}
+              <code>force_rag</code>). Implemented in <code>domain.services.rag_trigger</code> /{' '}
+              <code>build_rag_context</code>.
+            </li>
+            <li>
+              <strong>Retrieval</strong> (<code>application.rag.use_cases.search_rag</code>): normalize the question with{' '}
+              <code>query_for_retrieval</code> (strip code fences, stop words, framework hints, optional API-symbol
+              expansion). Optionally run <strong>query expansion</strong> (config: extra paraphrases, merged with RRF).
+              Embed the query string(s), then search Qdrant: <strong>dense</strong> vector always; if the collection has
+              sparse vectors and <strong>hybrid sparse</strong> is enabled (RAG / Qdrant → Models for RAG / Qdrant), add a{' '}
+              <strong>keyword sparse</strong> vector and use hybrid fusion (RRF). That same toggle controls sparse vectors
+              when <strong>creating new collections</strong>. Metadata filters (<code>doc_type</code> / <code>doc_scope</code>)
+              may apply; empty results retry without filter. Version-focused questions add extra version-tuned searches before merge.
+            </li>
+            <li>
+              <strong>Rank</strong>: sort by document-type/scope priority, then optional <strong>LLM rerank</strong>{' '}
+              on a candidate subset when rerank is enabled.
+            </li>
+            <li>
+              <strong>Build context</strong>: <code>framework_filter</code> + <code>build_context_block</code> turn hits
+              into a single context string with citations metadata for the UI trace.
+            </li>
+            <li>
+              <strong>Prompt assembly</strong>: <code>prepare_ollama_messages</code> /{' '}
+              <code>build_system_content</code> prepend system instructions (prefix/suffix from config), inject RAG
+              context, then append the user/assistant/tool conversation for the downstream model.
+            </li>
+            <li>
+              <strong>LLM call</strong>: send messages to Ollama (<code>/api/chat</code>). Non-streaming returns one JSON
+              completion; streaming yields SSE chunks in OpenAI shape.
+            </li>
+            <li>
+              <strong>Response</strong>: JSON (or stream) with assistant content, model id, usage approximations, and
+              optional RAG trace when requested. The <strong>Proxy Trace</strong> tab shows per-request timings; this
+              section describes the static algorithm they reflect.
+            </li>
+          </ol>
+        </details>
+
         <div className="settings-section">
           <h3>Model Settings</h3>
           <ModelSettings onOpenRagModels={onOpenRagModels} />
@@ -45,4 +102,3 @@ function LlmProxyTab({ onOpenRagModels }) {
 }
 
 export default LlmProxyTab;
-

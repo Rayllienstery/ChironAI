@@ -20,6 +20,7 @@ from typing import Any
 import re
 
 from config import (  # type: ignore
+    get_retrieval_bool,
     get_retrieval_dict,
     get_retrieval_int,
     get_retrieval_list,
@@ -327,6 +328,60 @@ def combined_doc_priority(hit: dict[str, Any]) -> int:
     return doc_type_priority(hit) + doc_scope_priority(hit)
 
 
+def expand_query_variants(question: str) -> list[str]:
+    """
+    Build 1..N alternate query strings for retrieval (abbreviation expansion, etc.).
+    When expansion is disabled, returns a single-element list with the original question.
+    """
+    q = (question or "").strip()
+    if not q:
+        return []
+    if not get_retrieval_bool("query_expansion_enabled", False):
+        return [q]
+    max_v = max(1, get_retrieval_int("query_expansion_max_variants", 3))
+    abbrev = get_retrieval_dict("query_expansion_abbreviations", {})
+    variants: list[str] = [q]
+    qlower = q.lower()
+    for trigger, expansion in abbrev.items():
+        trig = str(trigger).strip()
+        if not trig or trig.lower() not in qlower:
+            continue
+        extra = f"{q} {expansion}".strip()
+        if extra not in variants:
+            variants.append(extra)
+        if len(variants) >= max_v:
+            break
+    return variants[:max_v]
+
+
+def rrf_merge_hit_lists(
+    ranked_lists: list[list[dict[str, Any]]],
+    *,
+    limit: int,
+    k: int = 60,
+) -> list[dict[str, Any]]:
+    """
+    Reciprocal rank fusion: merge several ranked hit lists, deduplicating by point id.
+    """
+    scores: dict[Any, float] = {}
+    payloads: dict[Any, dict[str, Any]] = {}
+    for hits in ranked_lists:
+        for rank, h in enumerate(hits, start=1):
+            hid = h.get("id")
+            if hid is None:
+                continue
+            scores[hid] = scores.get(hid, 0.0) + 1.0 / (k + rank)
+            if hid not in payloads:
+                payloads[hid] = h
+    merged_ids = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)[:limit]
+    out: list[dict[str, Any]] = []
+    for hid in merged_ids:
+        base = dict(payloads[hid])
+        base["score"] = scores[hid]
+        out.append(base)
+    return out
+
+
 __all__ = [
     "RETRIEVAL_STOP_WORDS",
     "DOC_TYPE_PREFERRED_FOR_QA",
@@ -350,5 +405,7 @@ __all__ = [
     "doc_type_priority",
     "doc_scope_priority",
     "combined_doc_priority",
+    "expand_query_variants",
+    "rrf_merge_hit_lists",
 ]
 

@@ -36,12 +36,16 @@ from domain.services.retrieval import (
     build_qdrant_filter,
     combined_doc_priority,
     doc_type_priority,
+    expand_query_variants,
     is_version_question,
     need_more_chunks,
     parse_versions_from_question,
     query_for_retrieval,
+    rrf_merge_hit_lists,
     should_skip_rag_search,
 )
+from application.rag.hybrid_sparse import is_hybrid_sparse_enabled
+from infrastructure.rag.sparse_text import normalize_text_for_sparse, text_to_sparse_vector
 
 _rag_log = logging.getLogger("trag.rag")
 
@@ -81,6 +85,52 @@ def _apply_rerank(
     return apply_rerank_scores_and_cut(hits, final_k)
 
 
+def _search_one(
+    rag_repo: RagRepository,
+    embed_provider: EmbeddingProvider,
+    search_query: str,
+    top_k: int,
+    filter_dict: dict[str, Any] | None,
+    *,
+    hybrid_on: bool,
+    timings: dict[str, float],
+) -> list[dict[str, Any]]:
+    t0 = time.perf_counter()
+    vec = embed_provider.embed(search_query)
+    timings["embed_s"] += time.perf_counter() - t0
+    timings["embed_tokens_in"] += 0 if not search_query else max(1, int(len(search_query) / 4))
+    si: list[int] | None = None
+    sv: list[float] | None = None
+    if hybrid_on:
+        si, sv = text_to_sparse_vector(normalize_text_for_sparse(search_query))
+        if not si:
+            si, sv = None, None
+    t0 = time.perf_counter()
+    if si and sv:
+        results = rag_repo.search(
+            vec,
+            top_k=top_k,
+            filter_dict=filter_dict,
+            sparse_indices=si,
+            sparse_values=sv,
+        )
+    else:
+        results = rag_repo.search(vec, top_k=top_k, filter_dict=filter_dict)
+    if filter_dict and not results:
+        if si and sv:
+            results = rag_repo.search(
+                vec,
+                top_k=top_k,
+                filter_dict=None,
+                sparse_indices=si,
+                sparse_values=sv,
+            )
+        else:
+            results = rag_repo.search(vec, top_k=top_k, filter_dict=None)
+    timings["search_s"] += time.perf_counter() - t0
+    return results
+
+
 def search_rag(
     question: str,
     rag_repo: RagRepository,
@@ -96,59 +146,96 @@ def search_rag(
         "embed_s": 0.0,
         "search_s": 0.0,
         "rerank_s": 0.0,
+        "expand_variants_s": 0.0,
         # Token estimates for UI trace; true tokenization isn't available here.
         "embed_tokens_in": 0.0,
         "rerank_prompt_tokens_in": 0.0,
     }
     if top_k is None:
         top_k = MULTI_CHUNK_TOP_K if need_more_chunks(question) else get_retrieval_int("top_k", DEFAULT_TOP_K)
-    search_query = query_for_retrieval(question)
-    t0 = time.perf_counter()
-    vec = embed_provider.embed(search_query)
-    timings["embed_s"] += time.perf_counter() - t0
-    timings["embed_tokens_in"] += 0 if not search_query else max(1, int(len(search_query) / 4))
+    hybrid_on = is_hybrid_sparse_enabled() and rag_repo.supports_hybrid()
     filter_dict = build_qdrant_filter(question)
     k = max(top_k, RERANK_MAX_CANDIDATES) if not is_version_question(question) else top_k
-    t0 = time.perf_counter()
-    results = rag_repo.search(vec, top_k=k, filter_dict=filter_dict)
-    if filter_dict and not results:
-        results = rag_repo.search(vec, top_k=k, filter_dict=None)
-    timings["search_s"] += time.perf_counter() - t0
     final_k = MULTI_CHUNK_FINAL_K if need_more_chunks(question) else FINAL_CONTEXT_K
+
     if not is_version_question(question):
+        t_exp0 = time.perf_counter()
+        variants = expand_query_variants(question)
+        timings["expand_variants_s"] += time.perf_counter() - t_exp0
+        per_variant_k = max(4, min(k, max(4, k // max(1, len(variants)))))
+        lists: list[list[dict[str, Any]]] = []
+        for variant in variants:
+            sq = query_for_retrieval(variant)
+            lists.append(
+                _search_one(
+                    rag_repo,
+                    embed_provider,
+                    sq,
+                    per_variant_k,
+                    filter_dict,
+                    hybrid_on=hybrid_on,
+                    timings=timings,
+                )
+            )
+        if len(lists) == 1:
+            results = lists[0]
+        else:
+            results = rrf_merge_hit_lists(lists, limit=k)
         results.sort(key=combined_doc_priority, reverse=True)
         t0 = time.perf_counter()
         results = _apply_rerank(question, results, rerank_client, final_k, timings=timings)
         timings["rerank_s"] += time.perf_counter() - t0
         return results, timings
+    search_query = query_for_retrieval(question)
+    results = _search_one(
+        rag_repo,
+        embed_provider,
+        search_query,
+        k,
+        filter_dict,
+        hybrid_on=hybrid_on,
+        timings=timings,
+    )
     ios_q, swift_q = parse_versions_from_question(question)
     extra_results: list[dict[str, Any]] = []
     for v in swift_q:
         qv = f"Swift {v} version RELEASE"
-        t0 = time.perf_counter()
-        vec_v = embed_provider.embed(qv)
-        timings["embed_s"] += time.perf_counter() - t0
-        timings["embed_tokens_in"] += 0 if not qv else max(1, int(len(qv) / 4))
-        t0 = time.perf_counter()
-        extra_results.extend(rag_repo.search(vec_v, top_k=6))
-        timings["search_s"] += time.perf_counter() - t0
+        extra_results.extend(
+            _search_one(
+                rag_repo,
+                embed_provider,
+                qv,
+                6,
+                filter_dict,
+                hybrid_on=hybrid_on,
+                timings=timings,
+            )
+        )
     for v in ios_q:
         qv = f"iOS {v} version RELEASE"
-        t0 = time.perf_counter()
-        vec_v = embed_provider.embed(qv)
-        timings["embed_s"] += time.perf_counter() - t0
-        timings["embed_tokens_in"] += 0 if not qv else max(1, int(len(qv) / 4))
-        t0 = time.perf_counter()
-        extra_results.extend(rag_repo.search(vec_v, top_k=6))
-        timings["search_s"] += time.perf_counter() - t0
+        extra_results.extend(
+            _search_one(
+                rag_repo,
+                embed_provider,
+                qv,
+                6,
+                filter_dict,
+                hybrid_on=hybrid_on,
+                timings=timings,
+            )
+        )
     if not extra_results:
-        t0 = time.perf_counter()
-        vec_version = embed_provider.embed("Swift version release number RELEASE")
-        timings["embed_s"] += time.perf_counter() - t0
-        timings["embed_tokens_in"] += max(1, int(len("Swift version release number RELEASE") / 4))
-        t0 = time.perf_counter()
-        extra_results.extend(rag_repo.search(vec_version, top_k=8))
-        timings["search_s"] += time.perf_counter() - t0
+        extra_results.extend(
+            _search_one(
+                rag_repo,
+                embed_provider,
+                "Swift version release number RELEASE",
+                8,
+                filter_dict,
+                hybrid_on=hybrid_on,
+                timings=timings,
+            )
+        )
     seen_ids = {r["id"] for r in results}
     for r in extra_results:
         if r["id"] not in seen_ids:
@@ -197,7 +284,13 @@ def build_rag_context(
     If rag_required_keywords is provided, it is used to decide when to skip RAG (no keyword in query); else config default.
     trigger_threshold overrides config when provided (e.g. from app settings).
     """
-    empty_timings: dict[str, float] = {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0}
+    empty_timings: dict[str, float] = {
+        "embed_s": 0.0,
+        "search_s": 0.0,
+        "rerank_s": 0.0,
+        "expand_variants_s": 0.0,
+        "total_rag_s": 0.0,
+    }
     if not question or not question.strip():
         return RagContext("", [], 0.0), empty_timings
     score, signals, triggered = compute_rag_trigger_score(
@@ -211,7 +304,12 @@ def build_rag_context(
         return RagContext("", [], 0.0), empty_timings
     try:
         results, timings = search_rag(question, rag_repo, embed_provider, rerank_client, top_k=top_k)
-        timings["total_rag_s"] = timings["embed_s"] + timings["search_s"] + timings["rerank_s"]
+        timings["total_rag_s"] = (
+            timings["embed_s"]
+            + timings["search_s"]
+            + timings["rerank_s"]
+            + timings.get("expand_variants_s", 0.0)
+        )
         if not results:
             return RagContext("", [], 0.0), timings
         results = framework_filter(question, results)

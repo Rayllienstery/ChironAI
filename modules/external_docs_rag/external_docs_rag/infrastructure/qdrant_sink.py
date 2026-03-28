@@ -10,12 +10,13 @@ from typing import Any
 
 try:
     from qdrant_client import QdrantClient
-    from qdrant_client.http.models import Distance, PointStruct, VectorParams
+    from qdrant_client.http.models import Distance, PointStruct, SparseVectorParams, VectorParams
     _HAS_QDRANT = True
 except ImportError:
     QdrantClient = None  # type: ignore
     PointStruct = None  # type: ignore
     VectorParams = None  # type: ignore
+    SparseVectorParams = None  # type: ignore
     Distance = None  # type: ignore
     _HAS_QDRANT = False
 
@@ -24,6 +25,20 @@ def _point_id_from_hash(chunk_hash: str) -> int:
     """Deterministic numeric id from content hash (first 8 bytes as signed int)."""
     h = hashlib.sha256(chunk_hash.encode("utf-8")).digest()
     return int.from_bytes(h[:8], "big", signed=False) % (2**63)
+
+
+def _collection_has_sparse(client: Any, collection_name: str) -> bool:
+    try:
+        info = client.get_collection(collection_name)
+        params = info.config.params
+        sv = getattr(params, "sparse_vectors", None)
+        if sv is None:
+            return False
+        if isinstance(sv, dict):
+            return len(sv) > 0
+        return bool(sv)
+    except Exception:
+        return False
 
 
 class QdrantChunkSink:
@@ -40,11 +55,12 @@ class QdrantChunkSink:
             self._client = QdrantClient(url=self._base_url)
         return self._client
 
-    def _ensure_collection(self, collection_name: str, vector_size: int) -> None:
+    def _ensure_collection(self, collection_name: str, vector_size: int, *, hybrid_sparse: bool) -> None:
         client = self._get_client()
+        if VectorParams is None or Distance is None:
+            return
         try:
             info = client.get_collection(collection_name)
-            # Check vector size matches
             if hasattr(info, "config") and info.config and hasattr(info.config, "params"):
                 size = getattr(info.config.params, "size", None)
                 if size is not None and size != vector_size:
@@ -52,7 +68,18 @@ class QdrantChunkSink:
                         collection_name,
                         vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
                     )
+            return
         except Exception:
+            pass
+        if hybrid_sparse and SparseVectorParams is not None:
+            client.recreate_collection(
+                collection_name,
+                vectors_config={
+                    "dense": VectorParams(size=vector_size, distance=Distance.COSINE),
+                },
+                sparse_vectors_config={"sparse": SparseVectorParams()},
+            )
+        else:
             client.recreate_collection(
                 collection_name,
                 vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
@@ -74,10 +101,30 @@ class QdrantChunkSink:
             return 0
         if not _HAS_QDRANT or PointStruct is None:
             return 0
-        self._ensure_collection(collection_name, vector_size)
+        hybrid_cfg = False
+        try:
+            from application.rag.hybrid_sparse import is_hybrid_sparse_enabled
+
+            hybrid_cfg = bool(is_hybrid_sparse_enabled())
+        except Exception:
+            try:
+                from config import get_retrieval_bool
+
+                hybrid_cfg = bool(get_retrieval_bool("hybrid_sparse_enabled", True))
+            except Exception:
+                hybrid_cfg = False
+        self._ensure_collection(collection_name, vector_size, hybrid_sparse=hybrid_cfg)
         client = self._get_client()
+        effective_hybrid = hybrid_cfg and _collection_has_sparse(client, collection_name)
+        try:
+            from infrastructure.rag.qdrant_point_builder import build_named_vectors
+        except Exception:
+
+            def build_named_vectors(text: str, dense: list[float], *, hybrid_sparse: bool) -> Any:
+                return dense
+
         points: list[PointStruct] = []
-        for i, (payload, vec) in enumerate(zip(chunks, vectors)):
+        for payload, vec in zip(chunks, vectors):
             text = payload.get("text", "")
             source_id = payload.get("source_id", "external")
             path = payload.get("path", "")
@@ -91,7 +138,8 @@ class QdrantChunkSink:
                 "url": payload.get("url", ""),
                 "section_path": section_path,
             }
-            points.append(PointStruct(id=point_id, vector=vec, payload=full_payload))
+            vec_payload = build_named_vectors(text, vec, hybrid_sparse=effective_hybrid)
+            points.append(PointStruct(id=point_id, vector=vec_payload, payload=full_payload))
         client.upsert(collection_name=collection_name, points=points)
         return len(points)
 

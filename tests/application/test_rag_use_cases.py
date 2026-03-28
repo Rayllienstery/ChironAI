@@ -17,7 +17,10 @@ class MockRagRepo:
     def get_collection_name(self) -> str:
         return "test"
 
-    def search(self, vector, top_k, filter_dict=None):
+    def supports_hybrid(self) -> bool:
+        return False
+
+    def search(self, vector, top_k, filter_dict=None, *, sparse_indices=None, sparse_values=None):
         if self._search_call_count is not None:
             self._search_call_count.append(1)
         return [
