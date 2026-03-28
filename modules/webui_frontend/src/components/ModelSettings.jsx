@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { getModels, getPrompts, getModelSettings, updateModelSettings, getRagCollections } from '../services/api';
 import './ModelSettings.css';
 
@@ -9,7 +9,6 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
   const [settings, setSettings] = useState({
     model: '',
     prompt_name: '',
-    swift_mode: 'default',
     temperature: 0.0,
     top_p: 0.1,
     reasoning_level: '',
@@ -19,6 +18,9 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
     rag_collection: '',
     rerank_for_rag: false,
     rerank_model: '',
+    model_missing: false,
+    prompt_missing: false,
+    collection_missing: false,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -35,17 +37,16 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
         getModelSettings(),
         getRagCollections().catch(() => ({ collections: [] })),
       ]);
-      
+
       setModels(modelsData);
-      // Filter out README prompt - it is documentation-only and should not be selectable
       const promptList = (promptsData.prompts || []).filter(
         (p) => p.name && p.name.toLowerCase() !== 'readme'
       );
       setPrompts(promptList);
       setCollections(collectionsData?.collections || []);
-      
+
       if (settingsData) {
-        setSettings(prev => ({ ...prev, ...settingsData }));
+        setSettings((prev) => ({ ...prev, ...settingsData }));
       }
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -54,22 +55,100 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
     }
   };
 
+  const ollamaModels = useMemo(() => models.filter((m) => m.id !== 'rag-ollama'), [models]);
+  const modelIds = useMemo(() => ollamaModels.map((m) => m.id), [ollamaModels]);
+  const promptNames = useMemo(() => prompts.map((p) => p.name).filter(Boolean), [prompts]);
+  const collectionNames = useMemo(() => collections.map((c) => c.name).filter(Boolean), [collections]);
+
+  const validationIssues = useMemo(() => {
+    const issues = [];
+    const m = (settings.model || '').trim();
+    const pn = (settings.prompt_name || '').trim();
+    const rc = (settings.rag_collection || '').trim();
+
+    const modelInList = Boolean(m && modelIds.includes(m));
+    const modelInvalid =
+      !m ||
+      m === 'rag-ollama' ||
+      (modelIds.length > 0 && !modelInList);
+
+    if (modelInvalid) {
+      if (m && modelIds.length > 0 && !modelInList) {
+        issues.push(`Model: saved value "${m}" is not in the current Ollama list — pick an available model.`);
+      } else {
+        issues.push('Model: select a concrete Ollama model (not rag-ollama).');
+      }
+    }
+
+    const promptOk = Boolean(pn && promptNames.includes(pn));
+    // Do not use stale API flag prompt_missing once the user picks a name from the current list.
+    if (!promptOk) {
+      if (promptNames.length === 0 && pn) {
+        issues.push('Prompt template: list failed to load — refresh the page or check /api/webui/prompts.');
+      } else if (pn && promptNames.length > 0 && !promptNames.includes(pn)) {
+        issues.push(`Prompt template: "${pn}" is not in the current prompts/*.md list — pick another name.`);
+      } else if (!pn) {
+        issues.push('Prompt template: select a valid template from the list.');
+      }
+    }
+
+    if (collectionNames.length === 0) {
+      issues.push('RAG collection: no Qdrant collections found — create one under RAG / Qdrant.');
+    } else {
+      if (!rc) {
+        issues.push('RAG collection: select a collection (required for LLM Proxy).');
+      } else if (!collectionNames.includes(rc)) {
+        issues.push(
+          `RAG collection: "${rc}" is missing or not in Qdrant — pick another collection.`
+        );
+      }
+    }
+
+    return issues;
+  }, [settings, modelIds, promptNames, collectionNames]);
+
   const handleChange = (field, value) => {
-    setSettings(prev => ({ ...prev, [field]: value }));
+    setSettings((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === 'prompt_name') {
+        next.prompt_missing = false;
+      }
+      if (field === 'model') {
+        next.model_missing = false;
+      }
+      if (field === 'rag_collection') {
+        next.collection_missing = false;
+      }
+      return next;
+    });
   };
 
   const handleSave = async () => {
+    if (validationIssues.length > 0) {
+      window.alert('Fix the configuration errors shown in red before saving.');
+      return;
+    }
     setSaving(true);
     try {
       await updateModelSettings(settings);
-      alert('Settings saved successfully');
+      window.alert('Settings saved successfully');
+      await loadData();
     } catch (error) {
       console.error('Failed to save settings:', error);
-      alert('Failed to save settings');
+      window.alert('Failed to save settings');
     } finally {
       setSaving(false);
     }
   };
+
+  const modelSelectValue = modelIds.includes((settings.model || '').trim()) ? settings.model : '';
+  const promptSelectValue = promptNames.includes((settings.prompt_name || '').trim())
+    ? settings.prompt_name
+    : '';
+  const collectionSelectValue =
+    collectionNames.length > 0 && collectionNames.includes((settings.rag_collection || '').trim())
+      ? settings.rag_collection
+      : '';
 
   if (loading) {
     return <div className="loading">Loading settings...</div>;
@@ -77,28 +156,46 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
 
   return (
     <div className="model-settings">
+      {validationIssues.length > 0 && (
+        <div className="settings-error-banner" role="alert">
+          <strong>Configuration errors</strong>
+          <ul>
+            {validationIssues.map((msg) => (
+              <li key={msg}>{msg}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="settings-form">
         <div className="form-group">
           <label>Model</label>
           <select
-            value={settings.model}
+            value={modelSelectValue}
             onChange={(e) => handleChange('model', e.target.value)}
           >
-            {models.map((model) => (
+            <option value="">Select Ollama model…</option>
+            {ollamaModels.map((model) => (
               <option key={model.id} value={model.id}>
                 {model.name}
               </option>
             ))}
           </select>
+          {(settings.model || '').trim() &&
+            !modelIds.includes((settings.model || '').trim()) &&
+            modelIds.length > 0 && (
+              <p className="settings-stale-value">
+                Saved in database: <code>{settings.model}</code> (not in current Ollama list)
+              </p>
+            )}
         </div>
 
         <div className="form-group">
           <label>Prompt Template</label>
           <select
-            value={settings.prompt_name}
+            value={promptSelectValue}
             onChange={(e) => handleChange('prompt_name', e.target.value)}
           >
-            <option value="">Default</option>
+            <option value="">Select prompt template…</option>
             {prompts
               .filter((prompt) => prompt.name && prompt.name.toLowerCase() !== 'readme')
               .map((prompt) => (
@@ -107,44 +204,38 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
                 </option>
               ))}
           </select>
-        </div>
-
-        <div className="form-group">
-          <label>Swift Mode</label>
-          <select
-            value={settings.swift_mode}
-            onChange={(e) => handleChange('swift_mode', e.target.value)}
-          >
-            <option value="default">Default</option>
-            <option value="swift5">Swift 5</option>
-            <option value="swift6">Swift 6</option>
-          </select>
+          {(settings.prompt_name || '').trim() &&
+            !promptNames.includes((settings.prompt_name || '').trim()) && (
+              <p className="settings-stale-value">
+                Saved in database: <code>{settings.prompt_name}</code> (file missing or not in list)
+              </p>
+            )}
         </div>
 
         <div className="form-group">
           <label>
-            Temperature: {settings.temperature.toFixed(1)}
+            Temperature: {Number(settings.temperature || 0).toFixed(1)}
           </label>
           <input
             type="range"
             min="0"
             max="20"
             step="0.1"
-            value={settings.temperature * 10}
+            value={Number(settings.temperature || 0) * 10}
             onChange={(e) => handleChange('temperature', parseFloat(e.target.value) / 10)}
           />
         </div>
 
         <div className="form-group">
           <label>
-            Top-p: {settings.top_p.toFixed(1)}
+            Top-p: {Number(settings.top_p || 0).toFixed(1)}
           </label>
           <input
             type="range"
             min="0"
             max="10"
             step="0.1"
-            value={settings.top_p * 10}
+            value={Number(settings.top_p || 0) * 10}
             onChange={(e) => handleChange('top_p', parseFloat(e.target.value) / 10)}
           />
         </div>
@@ -201,15 +292,15 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
         <div className="form-group">
           <label>RAG Collection</label>
           <select
-            value={settings.rag_collection || ''}
+            value={collectionSelectValue}
             onChange={(e) => handleChange('rag_collection', e.target.value)}
             disabled={collections.length === 0}
           >
             {collections.length === 0 ? (
-              <option value="">- No collections -</option>
+              <option value="">No collections — create one in RAG / Qdrant</option>
             ) : (
               <>
-                <option value="">Default (server fallback)</option>
+                <option value="">Select RAG collection…</option>
                 {collections.map((col) => (
                   <option key={col.name} value={col.name}>
                     {col.name} ({col.points_count || 0} vectors)
@@ -219,8 +310,15 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
             )}
           </select>
           <p className="setting-hint">
-            Default Qdrant collection for LLM Proxy RAG requests.
+            Qdrant collection used for LLM Proxy RAG (required).
           </p>
+          {(settings.rag_collection || '').trim() &&
+            collectionNames.length > 0 &&
+            !collectionNames.includes((settings.rag_collection || '').trim()) && (
+              <p className="settings-stale-value">
+                Saved in database: <code>{settings.rag_collection}</code> (not in current list)
+              </p>
+            )}
         </div>
 
         <div className="form-group checkbox-group">
@@ -259,15 +357,15 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
                 value={settings.rerank_model ?? ''}
                 onChange={(e) => handleChange('rerank_model', e.target.value)}
               >
-                <option value="">Default (from config)</option>
-                {models.map((m) => (
+                <option value="">No rerank model override</option>
+                {ollamaModels.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name}
                   </option>
                 ))}
               </select>
               <p className="setting-hint">
-                Model used for reranking retrieved chunks when &quot;Rerank for RAG&quot; is on. Same Ollama models as chat.
+                Model used for reranking when &quot;Rerank for RAG&quot; is on.
               </p>
             </>
           )}
@@ -276,7 +374,7 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
         <button
           className="save-button"
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || validationIssues.length > 0}
         >
           {saving ? 'Saving...' : 'Save Settings'}
         </button>
@@ -286,4 +384,3 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
 }
 
 export default ModelSettings;
-

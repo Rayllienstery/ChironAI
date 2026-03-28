@@ -351,6 +351,32 @@ def _client_selection_snippet(user_query: str, max_chars: int = 12000) -> str:
     )
 
 
+_CLIENT_FILES_FENCE_RE = re.compile(
+    r"<files>[\s\S]*?```(?:\w+)?[^\n]*\n([\s\S]*?)```",
+    flags=re.IGNORECASE,
+)
+
+
+def _client_files_excerpt_and_full_range(
+    user_query: str,
+) -> tuple[str | None, dict[str, object] | None]:
+    """First fenced body inside <files> and a 1-based range covering all its lines, or (None, None)."""
+    m = _CLIENT_FILES_FENCE_RE.search(user_query or "")
+    if not m:
+        return (None, None)
+    excerpt = (m.group(1) or "").rstrip("\n")
+    line_count = len(excerpt.splitlines()) if excerpt else 0
+    if line_count <= 0:
+        return (None, None)
+    range_obj: dict[str, object] = {
+        "start_line": 1,
+        "start_col": 1,
+        "end_line": int(line_count),
+        "end_col": 1,
+    }
+    return (excerpt, range_obj)
+
+
 def _client_files_snippet(user_query: str, max_chars: int = 12000) -> str:
     """
     Extract a full-file excerpt embedded by the client (e.g. Zed <files> blocks).
@@ -360,11 +386,10 @@ def _client_files_snippet(user_query: str, max_chars: int = 12000) -> str:
     raw_path = _extract_file_path_from_user_text(text or "")
     if not raw_path:
         return ""
-    # Capture the first fenced block inside <files>.
-    m = re.search(r"<files>[\\s\\S]*?```(?:\\w+)?[^\\n]*\\n([\\s\\S]*?)```", text, flags=re.IGNORECASE)
-    if not m:
+    excerpt, _fr = _client_files_excerpt_and_full_range(text)
+    if not excerpt:
         return ""
-    chunk = (m.group(1) or "").strip()
+    chunk = excerpt.strip()
     if not chunk:
         return ""
     if len(chunk) > max_chars:
@@ -375,6 +400,142 @@ def _client_files_snippet(user_query: str, max_chars: int = 12000) -> str:
         "Apply the user instruction to THIS file content; your tool JSON must include the full updated source "
         "(non-empty `content` / `new_text` / `replacement`).\n"
     )
+
+
+_ADDITIVE_INTENT_MARKERS = (
+    "add ",
+    "insert ",
+    "foreach",
+    "for each",
+    "also ",
+    "append ",
+    "include ",
+    "добав",
+    "встав",
+    "для каждого",
+    "ещё ",
+    "еще ",
+)
+_SHRINK_OR_REPLACE_MARKERS = (
+    "удали",
+    "delete ",
+    "remove ",
+    "сожми",
+    "shrink",
+    "replace whole",
+    "перепиши",
+    "rewrite ",
+    "replace entire",
+    "очисти",
+    "clear ",
+)
+
+
+def _ranges_equal_for_edit(a: dict[str, object], b: dict[str, object]) -> bool:
+    for k in ("start_line", "end_line", "start_col", "end_col"):
+        if a.get(k) != b.get(k):
+            return False
+    return True
+
+
+def _effective_edit_range_for_partial_guard(
+    user_query: str, edit_payload: dict[str, object]
+) -> tuple[dict[str, object] | None, dict[str, object] | None, str | None]:
+    """(effective_range, files_full_range, files_excerpt). files_* None when no <files> block."""
+    files_excerpt, files_range = _client_files_excerpt_and_full_range(user_query or "")
+    range_obj: dict[str, object] = {}
+    pr = edit_payload.get("range")
+    if isinstance(pr, dict) and pr:
+        range_obj = dict(pr)
+    if not range_obj:
+        span = _extract_line_span_from_user_text(user_query or "")
+        if span:
+            a, b = span
+            range_obj = {
+                "start_line": int(a),
+                "start_col": 1,
+                "end_line": int(b),
+                "end_col": 1,
+            }
+    if not range_obj and files_range:
+        range_obj = dict(files_range)
+    if not range_obj:
+        return (None, files_range, files_excerpt)
+    return (range_obj, files_range, files_excerpt)
+
+
+def _payload_body_looks_partial_vs_files_excerpt(user_query: str, excerpt: str, body: str) -> bool:
+    q = _strip_context_sections(user_query or "").lower()
+    if any(m in q for m in _SHRINK_OR_REPLACE_MARKERS):
+        return False
+    if not any(m in q for m in _ADDITIVE_INTENT_MARKERS):
+        return False
+    ex_lines = [ln for ln in excerpt.splitlines() if ln.strip()]
+    new_lines = [ln for ln in body.splitlines() if ln.strip()]
+    if not ex_lines:
+        return False
+    if len(new_lines) >= len(ex_lines):
+        return False
+    first_ex = ex_lines[0].strip()
+    if first_ex and first_ex in body:
+        return False
+    return True
+
+
+def _needs_internal_full_file_retry(
+    user_query: str,
+    edit_payload: dict[str, object],
+    selected_tool_name: str | None,
+) -> bool:
+    if not selected_tool_name or not _is_edit_like_tool_name(selected_tool_name):
+        return False
+    n = selected_tool_name.lower()
+    if "replace" in n and "range" in n:
+        return False
+    eff, fr, excerpt = _effective_edit_range_for_partial_guard(user_query, edit_payload)
+    if not excerpt or not fr or not eff:
+        return False
+    if not _ranges_equal_for_edit(eff, fr):
+        return False
+    body = _edit_payload_body_text(edit_payload)
+    if not body.strip():
+        return False
+    return _payload_body_looks_partial_vs_files_excerpt(user_query, excerpt, body)
+
+
+def _maybe_retry_edit_payload_full_file(
+    chat_client: object,
+    use_model: str,
+    user_query: str,
+    selected_tool_name: str | None,
+    selected_tool: dict[str, object] | None,
+    edit_payload: dict[str, object],
+) -> tuple[dict[str, object], bool]:
+    """If model returned a fragment for a full-<files> range edit, retry once inside the proxy."""
+    if not selected_tool_name or not _needs_internal_full_file_retry(
+        user_query, edit_payload, selected_tool_name
+    ):
+        return (edit_payload, False)
+    tool_json_instruction = _build_tool_json_instruction(selected_tool_name, selected_tool)
+    user_part = (user_query or "").strip()
+    fix = (
+        "\n\n[proxy:full_file_retry] The IDE attached the full current file in <files>. "
+        "Your last answer only put a code fragment in new_text/content. "
+        "Reply with ONE JSON object where new_text (or content) is the COMPLETE updated file: "
+        "keep all lines that should remain and apply the user's edit—do not send only the new loop/block."
+    )
+    messages: list[dict[str, object]] = []
+    if tool_json_instruction:
+        messages.append({"role": "system", "content": tool_json_instruction})
+    messages.append({"role": "user", "content": user_part + fix})
+    try:
+        raw = chat_client.chat(messages, use_model, stream=False, options=None)
+        new_ep = _extract_edit_from_response(raw or "")
+        if isinstance(new_ep, dict):
+            return (new_ep, True)
+    except Exception:
+        pass
+    return (edit_payload, False)
 
 
 def _strict_retry_user_content(user_query: str, selected_tool_name: str | None) -> str:
@@ -661,6 +822,78 @@ def _tool_result_looks_like_unintended_deletion(tool_text: str) -> bool:
     return False
 
 
+_TOOL_RESULT_FAILURE_MARKERS_STRICT = (
+    "failed to receive tool input",
+    "path not found",
+    "can't edit file",
+    "cannot edit file",
+    "can't create file",
+    "cannot create file",
+    "parent directory doesn't exist",
+    "parent directory does not exist",
+    "file not found",
+    "unknown variant",
+)
+
+
+def _collect_tool_result_contents_in_order(messages: list[object]) -> list[str]:
+    out: list[str] = []
+    for m in messages:
+        if not isinstance(m, dict) or m.get("role") != "tool":
+            continue
+        out.append(
+            str(
+                m.get("content")
+                or m.get("output")
+                or m.get("result")
+                or m.get("text")
+                or ""
+            )
+        )
+    return out
+
+
+def _tool_content_indicates_successful_edit(tool_text: str) -> bool:
+    """
+    True when one tool_result looks like the IDE applied a real edit.
+
+    Used so a trailing 'No edits were made.' after an earlier successful diff does not
+    trip the cross-request noop counter (Zed sometimes emits an extra no-op round).
+    """
+    t = (tool_text or "").strip()
+    if len(t) < 10:
+        return False
+    low = t.lower()
+    if "no edits were made" in low:
+        return False
+    if any(x in low for x in _TOOL_RESULT_FAILURE_MARKERS_STRICT):
+        return False
+    if low.startswith("no edits") and len(t) < 160:
+        return False
+    if _tool_result_looks_like_unintended_deletion(tool_text):
+        return False
+    if "completed" in low or "successfully" in low:
+        return True
+    if "```" in t:
+        for block in re.findall(r"```(?:[^\n`]*)\n([\s\S]*?)```", t, flags=re.IGNORECASE):
+            if len((block or "").strip()) > 6:
+                return True
+    if "diff" in low and re.search(r"^\+[^\n]", t, flags=re.MULTILINE):
+        return True
+    return False
+
+
+def _prior_tool_messages_include_successful_edit(messages: list[object]) -> bool:
+    """Any tool_result before the last one in the transcript looks like a successful edit."""
+    contents = _collect_tool_result_contents_in_order(messages)
+    if len(contents) < 2:
+        return False
+    for c in contents[:-1]:
+        if _tool_content_indicates_successful_edit(c):
+            return True
+    return False
+
+
 def _get_tool_by_name(tools: list[object], name: str | None) -> dict[str, object] | None:
     if not name:
         return None
@@ -845,6 +1078,16 @@ def _strip_placeholder_edit_lines(text: str) -> str:
     return "".join(out)
 
 
+def _edit_payload_body_text(edit_payload: dict[str, object]) -> str:
+    t = str(
+        edit_payload.get("new_text")
+        or edit_payload.get("content")
+        or edit_payload.get("replacement")
+        or ""
+    )
+    return _strip_placeholder_edit_lines(t)
+
+
 def _is_edit_like_tool_name(name: str) -> bool:
     n = (name or "").lower()
     return any(x in n for x in ("edit", "replace", "write", "patch", "apply", "save"))
@@ -881,6 +1124,25 @@ _POST_TOOL_SUCCESS_SYSTEM = (
     "Reply with a short plain-text confirmation only. Do not output JSON, do not call file-edit tools again, "
     "and do not propose another patch for the same change unless the user asked for more."
 )
+
+
+def _sync_edit_file_duplicate_body_fields(args: dict[str, object]) -> None:
+    """Mirror non-empty body across content/new_text/replacement for Zed-style edit tools."""
+    t = ""
+    if isinstance(args.get("content"), str) and str(args.get("content") or "").strip():
+        t = str(args.get("content"))
+    elif isinstance(args.get("new_text"), str) and str(args.get("new_text") or "").strip():
+        t = str(args.get("new_text"))
+    elif isinstance(args.get("replacement"), str) and str(args.get("replacement") or "").strip():
+        t = str(args.get("replacement"))
+    if not t:
+        return
+    if not isinstance(args.get("content"), str) or not str(args.get("content") or "").strip():
+        args["content"] = t
+    if not isinstance(args.get("new_text"), str) or not str(args.get("new_text") or "").strip():
+        args["new_text"] = t
+    if not isinstance(args.get("replacement"), str) or not str(args.get("replacement") or "").strip():
+        args["replacement"] = t
 
 
 def _build_tool_arguments(
@@ -949,22 +1211,10 @@ def _build_tool_arguments(
     # derive a safe full-file range to avoid destructive overwrite behavior.
     has_client_file_excerpt = False
     if not range_obj:
-        m_files = re.search(
-            r"<files>[\s\S]*?```(?:\w+)?[^\n]*\n([\s\S]*?)```",
-            user_query or "",
-            flags=re.IGNORECASE,
-        )
-        if m_files:
-            excerpt = (m_files.group(1) or "").rstrip("\n")
-            line_count = len(excerpt.splitlines()) if excerpt else 0
-            if line_count > 0:
-                has_client_file_excerpt = True
-                range_obj = {
-                    "start_line": 1,
-                    "start_col": 1,
-                    "end_line": int(line_count),
-                    "end_col": 1,
-                }
+        _ex_files, _range_files = _client_files_excerpt_and_full_range(user_query or "")
+        if _ex_files and _range_files:
+            has_client_file_excerpt = True
+            range_obj = dict(_range_files)
     new_text = str(edit_payload.get("new_text") or "")
     desc = _compact_display_description(user_query or "")
     if not desc:
@@ -1185,20 +1435,16 @@ def _build_tool_arguments(
     if _is_edit_like_tool_name(selected_tool_name):
         n = (selected_tool_name or "").lower()
         if "edit_file" in n or "apply_file_edit" in n:
-            t = ""
-            if isinstance(args.get("content"), str) and args.get("content", "").strip():
-                t = str(args.get("content"))
-            elif isinstance(args.get("new_text"), str) and args.get("new_text", "").strip():
-                t = str(args.get("new_text"))
-            elif isinstance(args.get("replacement"), str) and args.get("replacement", "").strip():
-                t = str(args.get("replacement"))
-            if t:
-                if not isinstance(args.get("content"), str) or not str(args.get("content") or "").strip():
-                    args["content"] = t
-                if not isinstance(args.get("new_text"), str) or not str(args.get("new_text") or "").strip():
-                    args["new_text"] = t
-                if not isinstance(args.get("replacement"), str) or not str(args.get("replacement") or "").strip():
-                    args["replacement"] = t
+            _sync_edit_file_duplicate_body_fields(args)
+
+    # Drop empty body strings so clients do not prefer an empty field over a filled one.
+    if _is_edit_like_tool_name(selected_tool_name):
+        for bk in ("replacement", "new_text", "content", "text", "new_content"):
+            if bk in args and isinstance(args[bk], str) and not str(args[bk]).strip():
+                del args[bk]
+        n = (selected_tool_name or "").lower()
+        if "edit_file" in n or "apply_file_edit" in n:
+            _sync_edit_file_duplicate_body_fields(args)
 
     return args
 
@@ -1334,6 +1580,8 @@ def create_app(
             _log_rag_error("parse_body", e)
             return jsonify({"error": "Invalid JSON"}), 400
         messages = body.get("messages") or []
+        if not messages:
+            return jsonify({"error": "messages is required"}), 400
         stream = body.get("stream", False)
         requested_model = body.get("model") or RAG_MODEL_ID
         tools = body.get("tools") if isinstance(body.get("tools"), list) else []
@@ -1402,6 +1650,23 @@ def create_app(
             and not tool_result_indicates_failure
             and (_last_user_idx < 0 or _last_user_idx < _last_tool_idx)
         )
+        # Zed may send a trailing "No edits were made." after an earlier successful apply; treat as done.
+        # Last message may be `user` (checkpoint) while `_ltl` still reflects the latest tool in the transcript.
+        _trailing_noop_after_prior_success = (
+            has_tool_result
+            and "no edits were made" in _ltl
+            and _prior_tool_messages_include_successful_edit(messages)
+        )
+        if not post_tool_success_turn and _trailing_noop_after_prior_success:
+            if _last_role == "tool" and (_last_user_idx < 0 or _last_user_idx < _last_tool_idx):
+                post_tool_success_turn = True
+            elif (
+                _last_role == "user"
+                and _last_tool_idx >= 0
+                and _last_user_idx >= 0
+                and _last_user_idx > _last_tool_idx
+            ):
+                post_tool_success_turn = True
         # Some clients re-send the same user instruction after a successful tool result.
         # If we already saw a successful tool result after the previous occurrence of the same user text,
         # suppress re-entering tool mode to avoid infinite "no-op" tool recursion.
@@ -1451,21 +1716,61 @@ def create_app(
                     _recent_success[(sig, p)] = now_s
         except Exception:
             pass
+
+        proxy_settings: dict[str, object] = {}
+        proxy_model_setting = ""
+        try:
+            _settings_repo_chat = get_settings_repository()
+            proxy_model_setting = (_settings_repo_chat.get_app_setting("proxy_model") or "").strip()
+            _ps_json = _settings_repo_chat.get_app_setting("proxy_settings")
+            if _ps_json:
+                proxy_settings = json.loads(_ps_json)
+        except Exception:
+            pass
+        if not proxy_model_setting and proxy_settings.get("model"):
+            proxy_model_setting = str(proxy_settings.get("model") or "").strip()
+
         fetch_web_knowledge_raw = body.get("fetch_web_knowledge")
         if fetch_web_knowledge_raw is None:
-            fetch_web_knowledge = False
-            try:
-                settings_repo = get_settings_repository()
-                proxy_settings_json = settings_repo.get_app_setting("proxy_settings")
-                if proxy_settings_json:
-                    proxy_settings = json.loads(proxy_settings_json)
-                    fetch_web_knowledge = bool(proxy_settings.get("fetch_web_knowledge", False))
-            except Exception:
-                fetch_web_knowledge = False
+            fetch_web_knowledge = bool(proxy_settings.get("fetch_web_knowledge", False))
         else:
             fetch_web_knowledge = bool(fetch_web_knowledge_raw)
-        if not messages:
-            return jsonify({"error": "messages is required"}), 400
+
+        try:
+            from config.rag_prompts import get_rag_system_prompt as _get_rag_prompt, rag_prompt_file_exists
+        except ImportError:
+            _get_rag_prompt = None  # type: ignore[assignment,misc]
+            rag_prompt_file_exists = lambda _n: False  # type: ignore[assignment,misc]
+
+        proxy_prompt_name_required: str | None = None
+        proxy_ollama_for_logical_id: str | None = None
+        if system_prefix is None:
+            if _get_rag_prompt is None:
+                return jsonify({"error": "RAG prompt module unavailable"}), 500
+            _pn = str(proxy_settings.get("prompt_name") or "").strip()
+            if not _pn or not rag_prompt_file_exists(_pn):
+                return jsonify(
+                    {
+                        "error": (
+                            "LLM Proxy is not configured: choose a valid Prompt template in WebUI "
+                            "(LLM Proxy → Model Settings). The file prompts/<name>.md must exist."
+                        ),
+                        "detail": f"prompt_name={_pn!r}" if _pn else "prompt_name is empty",
+                    }
+                ), 400
+            proxy_prompt_name_required = _pn
+            if requested_model == "rag-ollama" or requested_model == RAG_MODEL_ID:
+                if not proxy_model_setting or proxy_model_setting in ("rag-ollama", RAG_MODEL_ID):
+                    return jsonify(
+                        {
+                            "error": (
+                                "LLM Proxy is not configured: choose a concrete Ollama model in WebUI "
+                                "(LLM Proxy → Model Settings), not rag-ollama."
+                            ),
+                        }
+                    ), 400
+                proxy_ollama_for_logical_id = proxy_model_setting
+
         set_proxy_status(STATUS_RAG_SEARCH)
         last_user = last_user_content(messages)
         user_query = last_user  # Store for logging
@@ -1479,12 +1784,17 @@ def create_app(
                 p = _normalized_path_for_cache(user_query or "")
                 if sig and p:
                     key = (sig, p)
-                    prev_count, _prev_ts = _recent_noop.get(key, (0, 0.0))
-                    new_count = prev_count + 1
-                    _recent_noop[key] = (new_count, now_s)
-                    # Allow one retry with improved payload, then stop recursion.
-                    if new_count >= 2:
-                        noop_retry_blocked = True
+                    # Trailing no-op after an earlier successful edit in the same transcript
+                    # must not advance the noop counter (avoids false 'repeatedly' blocks).
+                    if _prior_tool_messages_include_successful_edit(messages):
+                        _recent_noop.pop(key, None)
+                    else:
+                        prev_count, _prev_ts = _recent_noop.get(key, (0, 0.0))
+                        new_count = prev_count + 1
+                        _recent_noop[key] = (new_count, now_s)
+                        # Allow one retry with improved payload, then stop recursion.
+                        if new_count >= 2:
+                            noop_retry_blocked = True
             elif has_tool_result and not tool_result_indicates_failure:
                 # Successful tool result clears recent noop counter for this signature/path.
                 sig = _normalized_user_signature(user_query or "")
@@ -1534,20 +1844,25 @@ def create_app(
                 tool_choice_effective = "auto"
                 tool_choice_overridden_for_edit_intent = True
         context_length = len(last_user.split())
-        effective_prefix = prefix
-        effective_suffix = suffix
+        if system_prefix is not None:
+            effective_prefix = prefix
+            effective_suffix = suffix
+        else:
+            effective_prefix, effective_suffix = _get_rag_prompt(proxy_prompt_name_required)
         effective_context_chunk_chars = context_chunk_chars
         effective_context_total_chars = context_total_chars
         effective_confidence_threshold = confidence_threshold
         effective_rag_repo = rag_repo
         effective_embed_provider = embed_provider
         effective_base_rerank_client = rerank_client
-        effective_ollama_model = ollama_model
+        if requested_model == "rag-ollama" or requested_model == RAG_MODEL_ID:
+            effective_ollama_model = proxy_ollama_for_logical_id or ollama_model
+        else:
+            effective_ollama_model = requested_model
         reasoning_level = determine_reasoning_level(
             last_user, context_length, effective_ollama_model, explicit_reasoning
         )
-        
-        # If model is "rag-ollama", use config model instead (rag-ollama is just a proxy identifier)
+
         actual_model = (
             effective_ollama_model
             if requested_model == "rag-ollama" or requested_model == RAG_MODEL_ID
@@ -1714,7 +2029,11 @@ def create_app(
                 request_collection = None
                 collection_source = "default"
         if request_collection:
-            req_params, req_deps = get_rag_answer_params(webui_dir=webui_dir, collection_name=request_collection)
+            req_params, req_deps = get_rag_answer_params(
+                webui_dir=webui_dir,
+                collection_name=request_collection,
+                prompt_name=proxy_prompt_name_required if system_prefix is None else None,
+            )
             effective_prefix = system_prefix if system_prefix is not None else req_params.system_prefix
             effective_suffix = system_suffix if system_suffix is not None else req_params.system_suffix
             effective_context_chunk_chars = req_params.context_chunk_chars
@@ -1734,6 +2053,15 @@ def create_app(
             trace["request"]["collection_source"] = collection_source
         else:
             trace["request"]["collection_source"] = "default"
+
+        if proxy_ollama_for_logical_id:
+            effective_ollama_model = proxy_ollama_for_logical_id
+        actual_model = (
+            effective_ollama_model
+            if requested_model == "rag-ollama" or requested_model == RAG_MODEL_ID
+            else requested_model
+        )
+        trace["request"]["actual_model"] = actual_model
 
         # Proxy: do not read settings from DB; rerank is configurable via proxy_rerank_enabled.
         effective_rerank_client = (
@@ -2144,6 +2472,16 @@ def create_app(
                     _log_rag_error("stream_tool_mode_strict_retry_2", e_strict2)
 
             if (not stream_tool_error) and edit_payload and selected_edit_tool_name:
+                edit_payload, did_full_file_retry = _maybe_retry_edit_payload_full_file(
+                    chat_client,
+                    use_model,
+                    user_query or last_user or "",
+                    selected_edit_tool_name,
+                    selected_edit_tool,
+                    edit_payload,
+                )
+                if did_full_file_retry:
+                    trace["request"]["internal_full_file_retry"] = True
                 tool_args = _build_tool_arguments(
                     selected_tool_name=selected_edit_tool_name,
                     selected_tool=selected_edit_tool,
@@ -2418,6 +2756,16 @@ def create_app(
         if (not stream) and tools and tool_choice_effective != "none" and not post_tool_success_turn:
             edit_payload = _extract_edit_from_response(content or "")
             if edit_payload and selected_edit_tool_name:
+                edit_payload, did_full_file_retry = _maybe_retry_edit_payload_full_file(
+                    chat_client,
+                    use_model,
+                    user_query or last_user or "",
+                    selected_edit_tool_name,
+                    selected_edit_tool,
+                    edit_payload,
+                )
+                if did_full_file_retry:
+                    trace["request"]["internal_full_file_retry"] = True
                 tool_args = _build_tool_arguments(
                     selected_tool_name=selected_edit_tool_name,
                     selected_tool=selected_edit_tool,
@@ -2460,6 +2808,16 @@ def create_app(
                     retried_content = chat_client.chat(strict_messages_ns, use_model, stream=False, options=None)
                     retried_payload = _extract_edit_from_response(retried_content or "")
                     if retried_payload:
+                        retried_payload, did_ff2 = _maybe_retry_edit_payload_full_file(
+                            chat_client,
+                            use_model,
+                            user_query or last_user or "",
+                            selected_edit_tool_name,
+                            selected_edit_tool,
+                            retried_payload,
+                        )
+                        if did_ff2:
+                            trace["request"]["internal_full_file_retry"] = True
                         tool_args = _build_tool_arguments(
                             selected_tool_name=selected_edit_tool_name,
                             selected_tool=selected_edit_tool,
@@ -2497,6 +2855,16 @@ def create_app(
                         retried2 = chat_client.chat(strict_messages_ns2, use_model, stream=False, options=None)
                         retried_payload2 = _extract_edit_from_response(retried2 or "")
                         if retried_payload2:
+                            retried_payload2, did_ff3 = _maybe_retry_edit_payload_full_file(
+                                chat_client,
+                                use_model,
+                                user_query or last_user or "",
+                                selected_edit_tool_name,
+                                selected_edit_tool,
+                                retried_payload2,
+                            )
+                            if did_ff3:
+                                trace["request"]["internal_full_file_retry"] = True
                             tool_args = _build_tool_arguments(
                                 selected_tool_name=selected_edit_tool_name,
                                 selected_tool=selected_edit_tool,

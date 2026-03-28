@@ -26,7 +26,6 @@ export async function getPrompts() {
     throw new Error('Failed to get prompts');
   }
   const data = await response.json();
-  // Return the full data object so we can access both prompts and swift_modes if needed
   return data;
 }
 

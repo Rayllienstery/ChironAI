@@ -94,7 +94,6 @@ async function sendQuery() {
     const topP = parseFloat(document.getElementById('topP').value) / 10;
     const reasoningLevel = document.getElementById('reasoningLevel').value || null;
     const codeOnly = document.getElementById('codeOnly').checked;
-    const swiftMode = document.getElementById('swiftMode').value;
     const includeRAGMetadata = document.getElementById('includeRAGMetadata').checked;
 
     const requestBody = {
@@ -104,7 +103,6 @@ async function sendQuery() {
         top_p: topP > 0 ? topP : null,
         reasoning_level: reasoningLevel,
         code_only: codeOnly,
-        swift_mode: swiftMode !== 'default' ? swiftMode : null,
         include_rag_metadata: includeRAGMetadata,
     };
 

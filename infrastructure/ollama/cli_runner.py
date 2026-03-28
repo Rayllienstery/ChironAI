@@ -1,12 +1,15 @@
 """
-Invoke CoreModules/OllamaInteractor CLI via subprocess.
+Ollama integration via CoreModules/OllamaInteractor.
 
-Host code must not `import ollama_interactor`. Configuration:
-- Default: ``sys.executable -m ollama_interactor`` with PYTHONPATH including
-  ``<repo>/CoreModules/OllamaInteractor`` when that layout exists.
-- Override: set ``OLLAMA_INTERACTOR_CMD`` to a shell-quoted prefix, e.g.
-  ``C:\\Python311\\python.exe -m ollama_interactor`` or ``ollama-interactor``.
-  When set, PYTHONPATH is not modified by this module.
+- **Tags / ping:** Prefer in-process ``ollama_interactor.ollama_http`` (same implementation
+  as the interactor package) when ``CoreModules/OllamaInteractor`` is present on disk.
+  On failure, fall back to ``python -m ollama_interactor`` subprocess.
+- **Other commands (chat, embed, …):** subprocess by default. Configuration:
+  - Default: ``sys.executable -m ollama_interactor`` with PYTHONPATH including
+    ``<repo>/CoreModules/OllamaInteractor`` when that layout exists.
+  - Override: set ``OLLAMA_INTERACTOR_CMD`` to a shell-quoted prefix, e.g.
+    ``C:\\Python311\\python.exe -m ollama_interactor`` or ``ollama-interactor``.
+    When set, PYTHONPATH is not modified by this module.
 """
 
 from __future__ import annotations
@@ -134,7 +137,29 @@ def invoke_json(
         raise OllamaInteractorCliError(f"invalid JSON stdout: {out[:500]}") from e
 
 
+def _ollama_interactor_http_module():
+    """Import ``ollama_interactor.ollama_http`` using repo-local package path, or None."""
+    idir = _interactor_pythonpath_dir()
+    if not idir:
+        return None
+    try:
+        if idir not in sys.path:
+            sys.path.insert(0, idir)
+        from ollama_interactor import ollama_http as oh  # noqa: PLC0415
+
+        return oh
+    except Exception:
+        return None
+
+
 def invoke_tags(*, base_url: str, timeout: float = 30.0) -> dict[str, Any]:
+    """GET Ollama ``/api/tags`` via OllamaInteractor HTTP helpers, else CLI."""
+    oh = _ollama_interactor_http_module()
+    if oh is not None:
+        try:
+            return oh.get_tags(base_url.rstrip("/"), timeout=timeout)
+        except Exception:
+            pass
     return invoke_json(
         ["tags", "--base-url", base_url, "--timeout", str(timeout)],
         timeout=timeout + 5.0,
@@ -142,6 +167,13 @@ def invoke_tags(*, base_url: str, timeout: float = 30.0) -> dict[str, Any]:
 
 
 def invoke_ping(*, base_url: str, timeout: float = 5.0) -> dict[str, Any]:
+    """Ping Ollama via OllamaInteractor HTTP helpers, else CLI."""
+    oh = _ollama_interactor_http_module()
+    if oh is not None:
+        try:
+            return oh.ping(base_url.rstrip("/"), timeout=timeout)
+        except Exception:
+            pass
     return invoke_json(
         ["ping", "--base-url", base_url, "--timeout", str(timeout)],
         timeout=timeout + 5.0,

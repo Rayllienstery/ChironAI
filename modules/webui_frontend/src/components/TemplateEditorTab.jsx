@@ -296,7 +296,7 @@ function TemplateEditorTab() {
     setError(null);
     try {
       const data = await getPrompts();
-      // getPrompts() returns { prompts: [...], swift_modes: [...] }
+      // getPrompts() returns { prompts: [...] }
       setPrompts(data?.prompts || []);
     } catch (e) {
       setError(e.message);

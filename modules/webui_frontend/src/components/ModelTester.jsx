@@ -8,11 +8,9 @@ function ModelTester({ sessionId }) {
   const [prompts, setPrompts] = useState([]);
   const [collections, setCollections] = useState([]);
   const [dataLoaded, setDataLoaded] = useState(false);
-  const hasSanitizedRef = useRef(false);
   const [settings, setSettings] = useState({
     model: '',
     prompt_name: '',
-    swift_mode: 'default',
     temperature: 0.0,
     top_p: 0.1,
     reasoning_level: '',
@@ -48,7 +46,6 @@ function ModelTester({ sessionId }) {
         getRagCollections().catch(() => ({ collections: [] })),
       ]);
       setModels(modelsData);
-      // getPrompts() returns { prompts: [...], swift_modes: [...] }
       const promptsList = promptsData?.prompts || [];
       console.log('Loaded prompts:', promptsList);
       setPrompts(promptsList);
@@ -62,7 +59,6 @@ function ModelTester({ sessionId }) {
 
   const loadTesterSettings = async () => {
     if (!sessionId) return;
-    hasSanitizedRef.current = false;
     setSettingsLoading(true);
     try {
       const data = await getTesterSettings(sessionId);
@@ -75,24 +71,6 @@ function ModelTester({ sessionId }) {
       setSettingsLoading(false);
     }
   };
-
-  // Reset saved model/collection to default if not present in current ollama/collections lists
-  useEffect(() => {
-    if (settingsLoading || !dataLoaded || hasSanitizedRef.current) return;
-    const modelIds = (models || []).map((m) => m.id || m.name);
-    const collectionNames = (collections || []).map((c) => c.name);
-    hasSanitizedRef.current = true;
-    setSettings((prev) => {
-      let next = { ...prev };
-      if (prev.model && (modelIds.length === 0 || !modelIds.includes(prev.model))) {
-        next.model = '';
-      }
-      if (prev.rag_collection && (collectionNames.length === 0 || !collectionNames.includes(prev.rag_collection))) {
-        next.rag_collection = (collections && collections[0]) ? collections[0].name : '';
-      }
-      return next;
-    });
-  }, [settingsLoading, dataLoaded, models, collections]);
 
   const handleSettingChange = (field, value) => {
     setSettings(prev => ({ ...prev, [field]: value }));
@@ -112,7 +90,19 @@ function ModelTester({ sessionId }) {
 
   const handleSend = async () => {
     if (!query.trim() || !sessionId) return;
-    
+    if (settings.use_rag && !(settings.prompt_name || '').trim()) {
+      window.alert('Select a prompt template when RAG is enabled.');
+      return;
+    }
+    if (
+      settings.use_rag &&
+      collections.length > 0 &&
+      !(settings.rag_collection || '').trim()
+    ) {
+      window.alert('Select a RAG collection when RAG is enabled.');
+      return;
+    }
+
     setLoading(true);
     setResponse('');
     setStats(null);
@@ -125,7 +115,6 @@ function ModelTester({ sessionId }) {
       ], {
         model: settings.model || undefined,
         prompt_name: settings.prompt_name || undefined,
-        swift_mode: settings.swift_mode !== 'default' ? settings.swift_mode : undefined,
         temperature: settings.temperature > 0 ? settings.temperature : undefined,
         top_p: settings.top_p > 0 ? settings.top_p : undefined,
         reasoning_level: settings.reasoning_level || undefined,
@@ -170,7 +159,6 @@ function ModelTester({ sessionId }) {
     try {
       const result = await testerPromptPreview({
         prompt_name: settings.prompt_name || undefined,
-        swift_mode: settings.swift_mode,
         user_message: query || '',
         use_rag: settings.use_rag,
       });
@@ -240,10 +228,10 @@ function ModelTester({ sessionId }) {
           <div className="form-group">
             <label>Model</label>
             <select
-              value={settings.model}
+              value={models.some((m) => (m.id || m.name) === settings.model) ? settings.model : ''}
               onChange={(e) => handleSettingChange('model', e.target.value)}
             >
-              <option value="">Default (rag-ollama)</option>
+              <option value="">Select model…</option>
               {models.map((model) => (
                 <option key={model.id || model.name} value={model.id || model.name}>
                   {model.name}
@@ -255,11 +243,13 @@ function ModelTester({ sessionId }) {
           <div className="form-group">
             <label>Prompt Template</label>
             <select
-              value={settings.prompt_name}
+              value={
+                prompts.some((p) => p.name === settings.prompt_name) ? settings.prompt_name : ''
+              }
               onChange={(e) => handleSettingChange('prompt_name', e.target.value)}
               className="prompt-template-select"
             >
-              <option value="">Default (system_rag_v1)</option>
+              <option value="">Select prompt template…</option>
               {prompts
                 .filter((p) => p.name && p.name.toLowerCase() !== 'readme')
                 .map((prompt) => (
@@ -273,18 +263,6 @@ function ModelTester({ sessionId }) {
                 Selected: <strong>{settings.prompt_name}</strong>
               </div>
             )}
-          </div>
-
-          <div className="form-group">
-            <label>Swift Mode</label>
-            <select
-              value={settings.swift_mode}
-              onChange={(e) => handleSettingChange('swift_mode', e.target.value)}
-            >
-              <option value="default">Default</option>
-              <option value="swift5">Swift 5</option>
-              <option value="swift6">Swift 6</option>
-            </select>
           </div>
 
           <div className="form-group">
@@ -377,18 +355,26 @@ function ModelTester({ sessionId }) {
             <div className="form-group">
               <label>RAG Collection</label>
               <select
-                value={collections.length === 0 ? '' : (settings.rag_collection || (collections[0]?.name ?? ''))}
+                value={
+                  collections.length > 0 &&
+                  collections.some((c) => c.name === settings.rag_collection)
+                    ? settings.rag_collection
+                    : ''
+                }
                 onChange={(e) => handleSettingChange('rag_collection', e.target.value)}
                 disabled={collections.length === 0}
               >
                 {collections.length === 0 ? (
                   <option value="">— No collections —</option>
                 ) : (
-                  collections.map((col) => (
-                    <option key={col.name} value={col.name}>
-                      {col.name} ({col.points_count || 0} vectors)
-                    </option>
-                  ))
+                  <>
+                    <option value="">Select RAG collection…</option>
+                    {collections.map((col) => (
+                      <option key={col.name} value={col.name}>
+                        {col.name} ({col.points_count || 0} vectors)
+                      </option>
+                    ))}
+                  </>
                 )}
               </select>
               <div className="form-hint">

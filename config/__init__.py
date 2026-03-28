@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any, Dict
+from urllib.parse import urlparse
 
 try:
     import yaml  # type: ignore
@@ -63,6 +64,57 @@ def get_ollama_chat_url() -> str:
         "OLLAMA_CHAT_URL",
         OLLAMA_CONFIG.get("chat_url", "http://localhost:11434/api/chat"),
     )
+
+
+def get_ollama_base_url() -> str:
+    """
+    Ollama HTTP API base ``scheme://host:port`` with no path (suitable for ``/api/tags``, etc.).
+
+    Order:
+    1. ``OLLAMA_BASE_URL`` if set (trailing ``/api/...`` segments are stripped if present).
+    2. Host and port from ``OLLAMA_CHAT_URL`` / ``models.yaml`` ``ollama.chat_url`` (same as RAG/chat).
+    3. ``http://localhost:11434`` (standard ``ollama serve`` default).
+
+    Note: ServiceStarter defaults to port 11343 for its Docker stack; WebUI model listing must not
+    use that unless you set ``OLLAMA_BASE_URL`` / ``OLLAMA_CHAT_URL`` accordingly.
+    """
+    api_suffixes = (
+        "/api/chat",
+        "/api/generate",
+        "/api/embed",
+        "/api/tags",
+        "/api/show",
+        "/api/ps",
+        "/api/pull",
+        "/api/push",
+    )
+
+    def _normalize_base(raw: str) -> str | None:
+        s = (raw or "").strip().rstrip("/")
+        if not s:
+            return None
+        for suf in api_suffixes:
+            if s.endswith(suf):
+                s = s[: -len(suf)].rstrip("/")
+                break
+        if "://" not in s:
+            s = f"http://{s}"
+        parsed = urlparse(s)
+        if parsed.scheme and parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+        return None
+
+    from_env = (os.getenv("OLLAMA_BASE_URL") or "").strip()
+    if from_env:
+        got = _normalize_base(from_env)
+        if got:
+            return got
+
+    chat = get_ollama_chat_url()
+    parsed = urlparse(chat)
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+    return "http://localhost:11434"
 
 
 def get_ollama_generate_url() -> str:

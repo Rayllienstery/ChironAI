@@ -9,6 +9,26 @@ from types import SimpleNamespace
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _rag_routes_llm_proxy_app_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """/chat/completions requires saved proxy_model + prompt_name unless create_app uses system_prefix."""
+    import json
+
+    import api.http.rag_routes as rag_routes
+
+    class _FakeRepo:
+        def get_app_setting(self, key: str):
+            if key == "proxy_model":
+                return "fake-proxy-ollama-model"
+            if key == "proxy_settings":
+                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
+            if key == "rag_collection":
+                return ""
+            return None
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: _FakeRepo())
+
+
 def test_health_endpoint() -> None:
     import os
     import sys
@@ -1624,3 +1644,408 @@ def test_chat_completions_blocks_repeated_no_edit_recursion(monkeypatch: pytest.
     choice = data["choices"][0]
     assert choice["finish_reason"] == "stop"
     assert "No edits were made" in (choice["message"]["content"] or "")
+
+
+def test_trailing_noop_after_success_does_not_block_noop_counter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After a real diff, a final 'No edits were made.' must not hit noop_retry_blocked (nor loop tools)."""
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    import api.http.rag_routes as rag_routes
+
+    class FakeChatClient:
+        def chat(self, messages, _model, stream=False, options=None):
+            for m in messages:
+                if not isinstance(m, dict):
+                    continue
+                c = m.get("content") or ""
+                if (
+                    m.get("role") == "system"
+                    and isinstance(c, str)
+                    and "short plain-text confirmation" in c
+                ):
+                    return "Файл уже обновлён."
+            return '{"file_path":"C:/Users/Raylee/AI/test.swift","mode":"edit","new_text":"noop\\n"}'
+
+        def stream_chat(self, _messages, _model):
+            yield ""
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fake-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=FakeChatClient(),
+    )
+
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda *args, **kwargs: ([{"role": "user", "content": "x"}], "fake-model"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    success_body = "Status: Completed\n```swift\nlet array = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\n```\n"
+    msgs = [
+        {
+            "role": "user",
+            "content": "[@test.swift (1:5)](file:///C:/Users/Raylee/AI/test.swift#L1:5) расширь массив",
+        },
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "edit_file", "arguments": "{}"}}],
+        },
+        {"role": "tool", "tool_call_id": "c1", "content": "No edits were made."},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{"id": "c2", "type": "function", "function": {"name": "edit_file", "arguments": "{}"}}],
+        },
+        {"role": "tool", "tool_call_id": "c2", "content": success_body},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{"id": "c3", "type": "function", "function": {"name": "edit_file", "arguments": "{}"}}],
+        },
+        {"role": "tool", "tool_call_id": "c3", "content": "No edits were made."},
+        {
+            "role": "user",
+            "content": "[@test.swift (1:5)](file:///C:/Users/Raylee/AI/test.swift#L1:5) расширь массив",
+        },
+    ]
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "rag-ollama",
+            "stream": False,
+            "messages": msgs,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "edit_file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+            "tool_choice": "auto",
+        },
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    choice = data["choices"][0]
+    content = choice["message"].get("content") or ""
+    assert "repeatedly" not in content.lower()
+    assert "expand the selected range" not in content.lower()
+    assert choice.get("finish_reason") == "stop"
+    assert "обновл" in content.lower() or "already" in content.lower()
+
+
+def test_chat_completions_internal_full_file_retry_on_fragment_with_files(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Partial new_text with full <files> range triggers a second in-proxy chat before one tool call."""
+    import json
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    import api.http.rag_routes as rag_routes
+
+    # Fewer non-empty lines than the 3-line <files> excerpt so partial-file guard fires.
+    partial = '    print("Number \\(element)")\n'
+    full = (
+        "let array = [1, 2, 3]\n"
+        "print(array)\n"
+        "helper()\n"
+        "for element in array {\n"
+        '    print("Number \\(element)")\n'
+        "}\n"
+    )
+
+    class FakeChatClient:
+        def __init__(self) -> None:
+            self.chat_calls = 0
+
+        def chat(self, _messages, _model, stream=False, options=None):
+            self.chat_calls += 1
+            if self.chat_calls == 1:
+                return json.dumps(
+                    {
+                        "file_path": "C:/Users/Raylee/AI/test.swift",
+                        "mode": "edit",
+                        "new_text": partial,
+                    }
+                )
+            return json.dumps(
+                {
+                    "file_path": "C:/Users/Raylee/AI/test.swift",
+                    "mode": "edit",
+                    "new_text": full,
+                }
+            )
+
+        def stream_chat(self, _messages, _model):
+            yield ""
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fake-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=FakeChatClient(),
+    )
+
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda *args, **kwargs: ([{"role": "user", "content": "x"}], "fake-model"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    user_content = (
+        "[@test.swift](file:///C:/Users/Raylee/AI/test.swift) foreach each element\n"
+        "<context>\nThe following items were attached by the user.\n<files>\n"
+        "```swift C:/Users/Raylee/AI/test.swift\n"
+        "let array = [1, 2, 3]\n"
+        "print(array)\n"
+        "helper()\n"
+        "```\n</files>\n</context>"
+    )
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "rag-ollama",
+            "stream": False,
+            "messages": [{"role": "user", "content": user_content}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "edit_file",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string"},
+                                "mode": {"type": "string"},
+                                "content": {"type": "string"},
+                            },
+                            "required": ["path", "mode", "content"],
+                        },
+                    },
+                }
+            ],
+            "tool_choice": "auto",
+        },
+    )
+    assert r.status_code == 200
+    assert fake_deps.chat_client.chat_calls == 2
+    data = r.get_json()
+    tc = data["choices"][0]["message"]["tool_calls"][0]
+    args = json.loads(tc["function"]["arguments"])
+    body = args.get("content") or args.get("new_text") or ""
+    assert "let array = [1, 2, 3]" in body
+    assert "for element in array" in body
+
+
+def test_build_tool_arguments_drops_empty_body_strings_then_syncs() -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    import api.http.rag_routes as rag_routes
+
+    args = rag_routes._build_tool_arguments(
+        selected_tool_name="edit_file",
+        selected_tool={
+            "function": {
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "mode": {"type": "string"},
+                        "content": {"type": "string"},
+                        "new_text": {"type": "string"},
+                    },
+                    "required": ["path", "mode", "content", "new_text"],
+                }
+            }
+        },
+        edit_payload={
+            "file_path": "C:/Users/Raylee/AI/test.swift",
+            "mode": "edit",
+            "new_text": "ONLYLINE\n",
+            "content": "",
+        },
+        user_query="[@test.swift](file:///C:/Users/Raylee/AI/test.swift) ok",
+    )
+    assert args.get("content") == "ONLYLINE\n"
+    assert args.get("new_text") == "ONLYLINE\n"
+    for k in ("content", "new_text", "replacement"):
+        if k in args:
+            assert str(args[k]).strip() != ""
+
+
+def test_chat_completions_400_when_proxy_model_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    import api.http.rag_routes as rag_routes
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == "proxy_settings":
+                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
+            if key == "proxy_model":
+                return ""
+            return None
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={"model": "rag-ollama", "messages": [{"role": "user", "content": "hi"}]},
+    )
+    assert r.status_code == 400
+    assert "model" in (r.get_json() or {}).get("error", "").lower()
+
+
+def test_chat_completions_400_when_prompt_template_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    import api.http.rag_routes as rag_routes
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == "proxy_settings":
+                return json.dumps({"prompt_name": ""})
+            if key == "proxy_model":
+                return "real-ollama-model"
+            return None
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={"model": "rag-ollama", "messages": [{"role": "user", "content": "hi"}]},
+    )
+    assert r.status_code == 400
+    err = (r.get_json() or {}).get("error", "")
+    assert "prompt" in err.lower() or "template" in err.lower()
+
+
+def test_chat_completions_accepts_direct_ollama_model_without_proxy_model_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Client may pass a concrete Ollama model id; proxy_model DB row is not required for that path."""
+    import json
+    from types import SimpleNamespace
+
+    import api.http.rag_routes as rag_routes
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == "proxy_settings":
+                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
+            if key == "proxy_model":
+                return ""
+            return None
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+
+    class FakeChatClient:
+        def chat(self, _messages, model, stream=False, options=None):
+            return "ok"
+
+        def stream_chat(self, _messages, _model):
+            yield ""
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="unused",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=FakeChatClient(),
+    )
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda *args, **kwargs: ([{"role": "user", "content": "hi"}], "llama3"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={"model": "llama3:latest", "messages": [{"role": "user", "content": "hi"}], "skip_rag": True},
+    )
+    assert r.status_code == 200

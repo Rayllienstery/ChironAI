@@ -94,8 +94,9 @@ from config import (
 )
 from domain.services.rag_trigger import compute_rag_trigger_score
 from config.rag_prompts import (
-    get_rag_system_prompt_swift_mode,
+    get_rag_system_prompt,
     list_rag_prompt_names,
+    rag_prompt_file_exists,
     PROMPTS_DIR,
     load_prompt,
 )
@@ -265,17 +266,13 @@ def _webui_service_starter():
 
 
 def _get_ollama_url() -> str:
-    """Ollama HTTP base URL for WebUI: ServiceStarter env defaults if package available."""
+    """Ollama HTTP base for WebUI (model list, ping): same origin as RAG/chat (config), not ServiceStarter port 11343."""
     try:
-        try:
-            from servicestarter.config import ServiceStarterConfig
-        except ModuleNotFoundError:
-            _ensure_servicestarter_on_path()
-            from servicestarter.config import ServiceStarterConfig
+        from config import get_ollama_base_url
 
-        return ServiceStarterConfig.from_env().ollama_base_url.rstrip("/")
+        return get_ollama_base_url().rstrip("/")
     except Exception:
-        return (os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
+        return (os.getenv("OLLAMA_BASE_URL") or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
 
 
 _INDEXER_APP_MODULE = None
@@ -310,12 +307,12 @@ def get_models() -> Any:
         ollama_url = _get_ollama_url()
         models_list = []
         
-        # Try to get models from Ollama (via OllamaInteractor CLI)
+        # Ollama model list: OllamaInteractor ollama_http.get_tags (in-process), CLI fallback
         try:
             data = invoke_tags(base_url=ollama_url.rstrip("/"), timeout=5.0)
             ollama_models = data.get("models", [])
             for model in ollama_models:
-                model_name = model.get("name", "")
+                model_name = (model.get("name") or model.get("model") or "").strip()
                 if model_name:
                     models_list.append({
                         "id": model_name,
@@ -355,7 +352,6 @@ def get_prompts() -> Any:
         names = list_rag_prompt_names()
         return jsonify({
             "prompts": [{"name": name, "id": name} for name in names],
-            "swift_modes": ["default", "swift5", "swift6"],
         })
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_prompts", exc_info=True)
@@ -810,7 +806,7 @@ def create_log() -> Any:
 def webui_chat() -> Any:
     """
     Enhanced chat endpoint that returns RAG chunks metadata.
-    
+
     Request body:
     - messages: list of message dicts
     - model: optional model name
@@ -818,13 +814,8 @@ def webui_chat() -> Any:
     - top_p: optional (0.0-1.0)
     - reasoning_level: optional
     - code_only: optional bool
-    - swift_mode: optional ("swift5", "swift6", "default")
-    - prompt_name: optional prompt name override
+    - prompt_name: optional override (otherwise from saved LLM Proxy settings)
     - include_rag_metadata: optional bool (default True for WebUI)
-    
-    Returns:
-    - Standard OpenAI format response
-    - Plus: rag_metadata with chunks_info, latency_ms, system_prompt_preview
     """
     start_time = time.time()
     try:
@@ -835,47 +826,73 @@ def webui_chat() -> Any:
         top_p = body.get("top_p")
         reasoning_level = body.get("reasoning_level")
         code_only = body.get("code_only", False)
-        swift_mode = body.get("swift_mode", "default")
-        prompt_name = body.get("prompt_name")
         include_rag_metadata = body.get("include_rag_metadata", True)
-        
+
         if not messages:
             return jsonify({"error": "messages is required"}), 400
         set_proxy_status(STATUS_RAG_SEARCH)
-        
-        # Get model settings for proxy requests
+
+        settings_repo = get_settings_repository()
+        proxy_settings: dict[str, Any] = {}
+        try:
+            psj = settings_repo.get_app_setting("proxy_settings")
+            if psj:
+                proxy_settings = json.loads(psj)
+        except Exception:
+            pass
+
+        prompt_name = (body.get("prompt_name") or proxy_settings.get("prompt_name") or "")
+        if isinstance(prompt_name, str):
+            prompt_name = prompt_name.strip()
+        else:
+            prompt_name = str(prompt_name or "").strip()
+        if not prompt_name or not rag_prompt_file_exists(prompt_name) or is_readme_name(prompt_name):
+            return jsonify(
+                {
+                    "error": "Invalid or missing prompt template. Set Prompt template in LLM Proxy settings.",
+                    "detail": f"prompt_name={prompt_name!r}" if prompt_name else "prompt_name is empty",
+                }
+            ), 400
+
+        stored_model = (settings_repo.get_app_setting("proxy_model") or "").strip()
+        if not stored_model and proxy_settings.get("model"):
+            stored_model = str(proxy_settings.get("model") or "").strip()
         if requested_model == "rag-ollama":
-            settings_repo = get_settings_repository()
-            stored_model = settings_repo.get_app_setting("proxy_model")
-            if stored_model:
-                requested_model = stored_model
-        
-        # Get collection name from request or settings; no config default — use first available or error
+            if not stored_model or stored_model == "rag-ollama":
+                return jsonify(
+                    {"error": "Choose a concrete Ollama model in LLM Proxy settings (not rag-ollama)."}
+                ), 400
+            requested_model = stored_model
+
+        # Get collection name from request or settings — explicit saved collection or error
         collection_name = (body.get("collection_name") or "").strip() or None
         if not collection_name:
-            settings_repo = get_settings_repository()
             collection_name = (settings_repo.get_app_setting("rag_collection") or "").strip() or None
         if not collection_name:
-            names = _get_qdrant_collection_names()
-            if not names:
-                return jsonify({
-                    "error": "No Qdrant collections. Create one in Crawler / RAG then try again.",
-                }), 400
-            collection_name = names[0]
+            return jsonify(
+                {
+                    "error": "No RAG collection selected. Choose a collection in LLM Proxy settings or pass collection_name.",
+                }
+            ), 400
+        q_names = _get_qdrant_collection_names()
+        if q_names and collection_name not in q_names:
+            return jsonify(
+                {
+                    "error": f"RAG collection {collection_name!r} not found in Qdrant.",
+                }
+            ), 400
 
         # Get RAG dependencies - try to find WebUI directory
         webui_dir = None
         possible_webui = os.path.join(_ROOT, "WebUI")
         if os.path.isdir(possible_webui):
             webui_dir = possible_webui
-        params, deps = get_rag_answer_params(webui_dir=webui_dir, collection_name=collection_name)
-        
-        # Get prompt with Swift mode
-        prefix, suffix = get_rag_system_prompt_swift_mode(prompt_name, swift_mode)
-        
-        # Override params if prompt_name provided
-        if prompt_name:
-            params = params._replace(system_prefix=prefix, system_suffix=suffix)
+        params, deps = get_rag_answer_params(
+            webui_dir=webui_dir,
+            collection_name=collection_name,
+            prompt_name=prompt_name,
+        )
+        prefix, suffix = params.system_prefix, params.system_suffix
         
         rag_repo = deps.rag_repo
         embed_provider = deps.embed_provider
@@ -914,9 +931,8 @@ def webui_chat() -> Any:
         
         last_user = last_user_content(messages)
         context_length = len(last_user.split())
-        # Use requested model if it's not "rag-ollama", otherwise use config model
         ollama_model = requested_model if requested_model != "rag-ollama" else params.model_name
-        
+
         # Determine reasoning level
         if not reasoning_level:
             reasoning_level = determine_reasoning_level(
@@ -1040,7 +1056,6 @@ def webui_chat() -> Any:
                 "temperature": temperature,
                 "top_p": top_p,
                 "reasoning_level": reasoning_level,
-                "swift_mode": swift_mode,
                 "code_only": code_only,
             },
             "response": response_data,
@@ -1075,35 +1090,52 @@ def get_model_settings() -> Any:
     """Get current model settings."""
     try:
         settings_repo = get_settings_repository()
-        
-        # Get stored proxy model or use default
-        stored_model = settings_repo.get_app_setting("proxy_model")
+
+        stored_model = (settings_repo.get_app_setting("proxy_model") or "").strip()
         stored_settings_json = settings_repo.get_app_setting("proxy_settings")
-        
-        default_settings = {
-            "model": stored_model or get_ollama_chat_model(),
-            "prompt_name": get_rag_prompt_name(),
-            "swift_mode": "default",
+        stored_rag_col = (settings_repo.get_app_setting("rag_collection") or "").strip()
+
+        out: dict[str, Any] = {
+            "model": stored_model,
+            "prompt_name": "",
             "temperature": get_rag_float("temperature", 0.0),
             "top_p": get_rag_float("top_p", 0.1),
             "reasoning_level": "",
             "code_only": False,
             "include_rag_metadata": True,
             "fetch_web_knowledge": False,
-            "rag_collection": (settings_repo.get_app_setting("rag_collection") or "").strip(),
+            "rag_collection": stored_rag_col,
             "rerank_for_rag": False,
-            "rerank_model": get_ollama_rerank_model(),
+            "rerank_model": "",
         }
-        
-        # Merge stored settings if available
+
         if stored_settings_json:
             try:
-                stored_settings = json.loads(stored_settings_json)
-                default_settings.update(stored_settings)
+                blob = json.loads(stored_settings_json)
+                for key, val in blob.items():
+                    if key in out:
+                        out[key] = val
+                    elif key == "rerank_for_rag":
+                        out["rerank_for_rag"] = bool(val)
+                    elif key == "rerank_model":
+                        out["rerank_model"] = str(val or "").strip()
+                    elif key == "model" and not out["model"]:
+                        out["model"] = str(val or "").strip()
             except json.JSONDecodeError:
                 pass
-        
-        return jsonify(default_settings)
+
+        pn = str(out.get("prompt_name") or "").strip()
+        try:
+            q_names = set(_get_qdrant_collection_names() or [])
+        except Exception:
+            q_names = set()
+        rc = str(out.get("rag_collection") or "").strip()
+
+        out["model_missing"] = (not out["model"]) or (out["model"] in ("rag-ollama",))
+        out["prompt_missing"] = (not pn) or (not rag_prompt_file_exists(pn)) or is_readme_name(pn)
+        out["collection_missing"] = bool(rc) and bool(q_names) and rc not in q_names
+
+        return jsonify(out)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_model_settings", exc_info=True)
         return jsonify({"error": str(e)}), 500
@@ -1138,11 +1170,9 @@ def get_tester_settings() -> Any:
         settings = settings_repo.get_tester_settings(session_id)
         
         if not settings:
-            # Return defaults from RAG config
             return jsonify({
                 "model": "",
-                "prompt_name": get_rag_prompt_name(),
-                "swift_mode": "default",
+                "prompt_name": "",
                 "temperature": 0.0,
                 "top_p": 0.1,
                 "reasoning_level": "",
@@ -1192,7 +1222,6 @@ def tester_chat() -> Any:
         fetch_web_knowledge = body.get("fetch_web_knowledge", False)
         model = body.get("model")
         prompt_name = body.get("prompt_name")
-        swift_mode = body.get("swift_mode", "default")
         temperature = body.get("temperature")
         top_p = body.get("top_p")
         reasoning_level = body.get("reasoning_level")
@@ -1210,7 +1239,6 @@ def tester_chat() -> Any:
         if tester_settings:
             model = model or tester_settings.get("model")
             prompt_name = prompt_name or tester_settings.get("prompt_name")
-            swift_mode = swift_mode or tester_settings.get("swift_mode", "default")
             temperature = temperature if temperature is not None else tester_settings.get("temperature")
             top_p = top_p if top_p is not None else tester_settings.get("top_p")
             reasoning_level = reasoning_level or tester_settings.get("reasoning_level")
@@ -1233,10 +1261,20 @@ def tester_chat() -> Any:
                 }), 400
             collection_name = names[0]
 
-        # Defaults from config
-        prompt_name = prompt_name or get_rag_prompt_name()
+        prompt_name = (prompt_name or "").strip() if isinstance(prompt_name, str) else str(prompt_name or "").strip()
+        if use_rag:
+            if not prompt_name or not rag_prompt_file_exists(prompt_name) or is_readme_name(prompt_name):
+                return jsonify(
+                    {
+                        "error": "Model Tester requires a valid prompt_name (prompts/*.md) when RAG is enabled.",
+                        "detail": f"prompt_name={prompt_name!r}" if prompt_name else "prompt_name is empty",
+                    }
+                ), 400
 
-        params, deps = get_rag_answer_params(collection_name=collection_name)
+        params, deps = get_rag_answer_params(
+            collection_name=collection_name,
+            prompt_name=prompt_name if use_rag else None,
+        )
         chat_client = deps.chat_client
         # Use selected model or fallback to config model
         ollama_model = model if model and model != "rag-ollama" else params.model_name
@@ -1276,7 +1314,7 @@ def tester_chat() -> Any:
             else:
                 effective_rerank_client = None
             
-            prefix, suffix = get_rag_system_prompt_swift_mode(prompt_name, swift_mode)
+            prefix, suffix = get_rag_system_prompt(prompt_name)
             
             context_length = len(last_user.split())
             if not reasoning_level:
@@ -1519,7 +1557,7 @@ def tester_chat() -> Any:
             
             # Add system prompt if needed
             if prompt_name:
-                prefix, _ = get_rag_system_prompt_swift_mode(prompt_name, swift_mode)
+                prefix, _ = get_rag_system_prompt(prompt_name)
                 if prefix:
                     ollama_messages.insert(0, {"role": "system", "content": prefix})
         
@@ -1595,13 +1633,11 @@ def tester_prompt_preview() -> Any:
     """
     try:
         body = request.get_json(force=True, silent=True) or {}
-        prompt_name = body.get("prompt_name") or get_rag_prompt_name()
-        swift_mode = body.get("swift_mode", "default")
+        prompt_name = (body.get("prompt_name") or "").strip() or get_rag_prompt_name()
         user_message = body.get("user_message") or ""
         use_rag = bool(body.get("use_rag", True))
 
-        # Base system template for the selected prompt + Swift mode
-        prefix, suffix = get_rag_system_prompt_swift_mode(prompt_name, swift_mode)
+        prefix, suffix = get_rag_system_prompt(prompt_name)
 
         # Build a representative system message using the same logic as runtime chat,
         # but with a lightweight placeholder instead of real RAG context.
@@ -1642,7 +1678,6 @@ def tester_prompt_preview() -> Any:
         return jsonify(
             {
                 "prompt_name": prompt_name,
-                "swift_mode": swift_mode,
                 # Kept for backward compatibility with older frontends
                 "system_prompt": prefix or "",
                 # New fields for full prompt visualization
