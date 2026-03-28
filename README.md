@@ -24,7 +24,7 @@ Install the **core library** and dev tools from the repository root (editable in
 pip install -r requirements-dev.txt
 ```
 
-This installs `chironai` from [`pyproject.toml`](pyproject.toml) (packages: `application`, `api`, `config`, `core`, `domain`, `infrastructure`, `utils`) plus `ollama-interactor`. Console entry points: `tmrag` / `chironai` → `api.cli`.
+This installs `chironai` from [`pyproject.toml`](pyproject.toml) (packages: `application`, `api`, `config`, `core`, `domain`, `infrastructure`, `utils`) plus `ollama-interactor`. For the OpenAI-compatible `/v1` proxy blueprint, also install `pip install -e CoreModules/LlmProxy` (package name `llm-proxy`). Console entry points: `tmrag` / `chironai` → `api.cli`.
 
 - Tests: `pytest` (config in `pyproject.toml`).
 - Architecture guard: `lint-imports` — ensures `domain` does not import `application`, `api`, or `infrastructure`.

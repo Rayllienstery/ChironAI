@@ -5,7 +5,9 @@
 #   - chironai (root packages: application, api, domain, infrastructure, …) + runtime deps
 #   - optional [dev]: pytest, pytest-cov, import-linter, ruff
 #   - ollama-interactor (Ollama HTTP CLI boundary)
+#   - llm-proxy (OpenAI-compatible /v1 Flask blueprint)
 
 -e .[dev]
 -e CoreModules/OllamaInteractor
 -e CoreModules/ServiceStarter
+-e CoreModules/LlmProxy

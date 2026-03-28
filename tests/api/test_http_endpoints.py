@@ -941,8 +941,10 @@ def test_chat_completions_after_tool_success_uses_plain_completion_not_second_to
     assert choice["finish_reason"] == "stop"
     assert choice["message"].get("tool_calls") in (None, [])
     assert "Edit applied" in (choice["message"].get("content") or "")
+    from llm_proxy.tool_helpers import _POST_TOOL_SUCCESS_SYSTEM as _post_tool_ok_sys
+
     assert captured and any(
-        rag_routes._POST_TOOL_SUCCESS_SYSTEM[:30] in str(m.get("content", "")) for batch in captured for m in batch
+        _post_tool_ok_sys[:30] in str(m.get("content", "")) for batch in captured for m in batch
     )
 
 
@@ -1903,9 +1905,9 @@ def test_build_tool_arguments_drops_empty_body_strings_then_syncs() -> None:
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     if root not in sys.path:
         sys.path.insert(0, root)
-    import api.http.rag_routes as rag_routes
+    from llm_proxy.tool_helpers import _build_tool_arguments
 
-    args = rag_routes._build_tool_arguments(
+    args = _build_tool_arguments(
         selected_tool_name="edit_file",
         selected_tool={
             "function": {
