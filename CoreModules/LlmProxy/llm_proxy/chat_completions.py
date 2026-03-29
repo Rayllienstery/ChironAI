@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 import uuid
@@ -13,7 +14,12 @@ from typing import Any
 from flask import Response, jsonify, request
 
 from llm_proxy import edit_state
-from llm_proxy.config import RAG_MODEL_ID
+from llm_proxy.config import (
+    DEFAULT_AUTOCOMPLETE_SYSTEM_PREFIX,
+    DEFAULT_AUTOCOMPLETE_SYSTEM_SUFFIX,
+    RAG_MODEL_ID,
+    is_rag_logical_model_id,
+)
 from llm_proxy.contracts import LlmProxyWiring
 from llm_proxy.tool_helpers import (
     _POST_TOOL_SUCCESS_SYSTEM,
@@ -40,6 +46,10 @@ from llm_proxy.tool_helpers import (
 )
 
 _RAG_LOG = logging.getLogger("llm_proxy")
+
+
+def _is_rag_logical_model_id(requested: str, rag_logical_id: str) -> bool:
+    return is_rag_logical_model_id(requested, rag_logical_id)
 
 
 def _log_rag_error(stage: str, error: Exception) -> None:
@@ -94,6 +104,10 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         return jsonify({"error": "messages is required"}), 400
     stream = body.get("stream", False)
     requested_model = body.get("model") or RAG_MODEL_ID
+    rt = w.runtime
+    autocomplete_id = rt.autocomplete_model_logical_id
+    is_autocomplete = requested_model == autocomplete_id
+    proxy_autocomplete_ollama: str | None = None
     tools = body.get("tools") if isinstance(body.get("tools"), list) else []
     tool_choice = body.get("tool_choice")
     tool_choice_effective = tool_choice if tool_choice not in (None, "") else "auto"
@@ -101,6 +115,8 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     explicit_reasoning = body.get("reasoning_level") or body.get("reasoning")
     include_rag_metadata = body.get("include_rag_metadata", False)
     force_rag = bool(body.get("force_rag"))
+    if is_autocomplete:
+        force_rag = False
     has_tool_result = any(isinstance(m, dict) and m.get("role") == "tool" for m in messages)
     last_tool_content = ""
     for m in reversed(messages):
@@ -240,18 +256,33 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     if not proxy_model_setting and proxy_settings.get("model"):
         proxy_model_setting = str(proxy_settings.get("model") or "").strip()
 
+    if is_autocomplete:
+        proxy_autocomplete_ollama = w.get_autocomplete_ollama_model()
+        if not proxy_autocomplete_ollama:
+            return jsonify(
+                {
+                    "error": (
+                        "LLM Proxy autocomplete is not configured: choose a concrete Ollama model "
+                        "for autocomplete in WebUI (LLM Proxy → Autocomplete), or set "
+                        "LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL."
+                    ),
+                }
+            ), 400
+
     fetch_web_knowledge_raw = body.get("fetch_web_knowledge")
     if fetch_web_knowledge_raw is None:
         fetch_web_knowledge = bool(proxy_settings.get("fetch_web_knowledge", False))
     else:
         fetch_web_knowledge = bool(fetch_web_knowledge_raw)
+    if is_autocomplete:
+        fetch_web_knowledge = False
 
     _get_rag_prompt = w.get_rag_prompt_prefix_suffix
     rag_prompt_file_exists = w.rag_prompt_file_exists
 
     proxy_prompt_name_required: str | None = None
     proxy_ollama_for_logical_id: str | None = None
-    if system_prefix is None:
+    if system_prefix is None and not is_autocomplete:
         _pn = str(proxy_settings.get("prompt_name") or "").strip()
         if not _pn or not rag_prompt_file_exists(_pn):
             return jsonify(
@@ -264,13 +295,15 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                 }
             ), 400
         proxy_prompt_name_required = _pn
-        if requested_model == "rag-ollama" or requested_model == RAG_MODEL_ID:
-            if not proxy_model_setting or proxy_model_setting in ("rag-ollama", RAG_MODEL_ID):
+        if _is_rag_logical_model_id(requested_model, rt.rag_model_logical_id):
+            if not proxy_model_setting or is_rag_logical_model_id(
+                proxy_model_setting.strip(), rt.rag_model_logical_id
+            ):
                 return jsonify(
                     {
                         "error": (
                             "LLM Proxy is not configured: choose a concrete Ollama model in WebUI "
-                            "(LLM Proxy → Model Settings), not rag-ollama."
+                            f"(LLM Proxy → Model Settings), not the logical id ({rt.rag_model_logical_id})."
                         ),
                     }
                 ), 400
@@ -349,7 +382,10 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             # Treat as already completed; respond text-only and do not emit tool_calls.
             post_tool_success_turn = True
     context_length = len(last_user.split())
-    if system_prefix is not None:
+    if is_autocomplete:
+        effective_prefix = (os.getenv("LLM_PROXY_AUTOCOMPLETE_SYSTEM_PREFIX") or "").strip() or DEFAULT_AUTOCOMPLETE_SYSTEM_PREFIX
+        effective_suffix = (os.getenv("LLM_PROXY_AUTOCOMPLETE_SYSTEM_SUFFIX") or "").strip() or DEFAULT_AUTOCOMPLETE_SYSTEM_SUFFIX
+    elif system_prefix is not None:
         effective_prefix = prefix
         effective_suffix = suffix
     else:
@@ -360,7 +396,9 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     effective_rag_repo = rag_repo
     effective_embed_provider = embed_provider
     effective_base_rerank_client = rerank_client
-    if requested_model == "rag-ollama" or requested_model == RAG_MODEL_ID:
+    if is_autocomplete:
+        effective_ollama_model = proxy_autocomplete_ollama or ""
+    elif _is_rag_logical_model_id(requested_model, rt.rag_model_logical_id):
         effective_ollama_model = proxy_ollama_for_logical_id or ollama_model
     else:
         effective_ollama_model = requested_model
@@ -370,7 +408,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
 
     actual_model = (
         effective_ollama_model
-        if requested_model == "rag-ollama" or requested_model == RAG_MODEL_ID
+        if _is_rag_logical_model_id(requested_model, rt.rag_model_logical_id) or is_autocomplete
         else requested_model
     )
 
@@ -411,6 +449,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         "fetch_web_knowledge": bool(fetch_web_knowledge),
         "reasoning_level": explicit_reasoning or reasoning_level,
         "user_query_preview": (user_query or "")[:500],
+        "is_autocomplete": bool(is_autocomplete),
     }
 
     if noop_retry_blocked and not use_native_tools:
@@ -533,7 +572,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         except Exception:
             request_collection = None
             collection_source = "default"
-    if request_collection:
+    if request_collection and not is_autocomplete:
         req_params, req_deps = w.get_rag_answer_params(
             webui_dir=webui_dir,
             collection_name=request_collection,
@@ -550,7 +589,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         effective_base_rerank_client = req_deps.rerank_client
         actual_model = (
             effective_ollama_model
-            if requested_model == "rag-ollama" or requested_model == RAG_MODEL_ID
+            if _is_rag_logical_model_id(requested_model, rt.rag_model_logical_id)
             else requested_model
         )
         trace["request"]["actual_model"] = actual_model
@@ -559,11 +598,13 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     else:
         trace["request"]["collection_source"] = "default"
 
-    if proxy_ollama_for_logical_id:
+    if proxy_ollama_for_logical_id and not is_autocomplete:
         effective_ollama_model = proxy_ollama_for_logical_id
+    if is_autocomplete:
+        effective_ollama_model = proxy_autocomplete_ollama or effective_ollama_model
     actual_model = (
         effective_ollama_model
-        if requested_model == "rag-ollama" or requested_model == RAG_MODEL_ID
+        if _is_rag_logical_model_id(requested_model, rt.rag_model_logical_id) or is_autocomplete
         else requested_model
     )
     trace["request"]["actual_model"] = actual_model
@@ -593,7 +634,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             )
         )
     )
-    skip_rag_retrieval = explicit_skip_rag or local_tool_edit_fast_path
+    skip_rag_retrieval = explicit_skip_rag or local_tool_edit_fast_path or is_autocomplete
     trace["request"]["skip_rag_retrieval"] = bool(skip_rag_retrieval)
 
     # Build RAG context: multi-collection (external_docs_rag) when triggered, else single collection
@@ -825,7 +866,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         "snippets_chars": 0,
     }
     _bf = getattr(w, "build_web_supplement_for_proxy", None)
-    if callable(_bf):
+    if callable(_bf) and not is_autocomplete:
         try:
             _tws = time.time()
             _mx = float(rag_ctx_for_log.max_score) if rag_ctx_for_log is not None else 0.0
@@ -890,8 +931,10 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             native_tools=use_native_tools,
             web_supplement=web_supplement_text,
         )
-        # Ensure use_model is not "rag-ollama" - use config model if needed
-        if use_model == "rag-ollama":
+        # Ensure use_model is not a logical id — use resolved Ollama tag
+        if is_rag_logical_model_id(use_model, rt.rag_model_logical_id):
+            use_model = effective_ollama_model
+        if use_model == autocomplete_id:
             use_model = effective_ollama_model
 
         # Store what we send to Ollama (preview + sizes only)
@@ -1102,6 +1145,8 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                     "latency_ms": latency_ms,
                     "trace": trace,
                     "stream": False,
+                    "is_autocomplete": bool(is_autocomplete),
+                    "requested_model": requested_model,
                 },
             )
         except Exception as e:
@@ -1419,6 +1464,8 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                         "rag_steps": rag_timings,
                         "trace": trace,
                         "stream": True,
+                        "is_autocomplete": bool(is_autocomplete),
+                        "requested_model": requested_model,
                     }
                     logs_repo.add_log(
                         session_id="proxy",
@@ -1681,6 +1728,8 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             "rag_steps": rag_timings,
             "trace": trace,
             "stream": False,
+            "is_autocomplete": bool(is_autocomplete),
+            "requested_model": requested_model,
         }
         logs_repo.add_log(
             session_id="proxy",

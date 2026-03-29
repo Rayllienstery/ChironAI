@@ -95,6 +95,66 @@ def _rag_routes_llm_proxy_app_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: _FakeRepo())
 
 
+def test_proxy_logs_passes_autocomplete_only_to_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GET /api/webui/proxy-logs?autocomplete_only=1 filters autocomplete rows in the repository."""
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    import api.http.webui_routes as wr
+
+    last_kwargs: dict = {}
+
+    class FakeRepo:
+        def get_logs(self, **kwargs):
+            last_kwargs.clear()
+            last_kwargs.update(kwargs)
+            return []
+
+    monkeypatch.setattr(wr, "get_logs_repository", lambda: FakeRepo())
+
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    client = app.test_client()
+    r = client.get("/api/webui/proxy-logs?autocomplete_only=1&limit=5")
+    assert r.status_code == 200
+    assert last_kwargs.get("autocomplete_only") is True
+    assert last_kwargs.get("session_id") == "proxy"
+
+
+def test_proxy_logs_default_no_autocomplete_filter(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    import api.http.webui_routes as wr
+
+    last_kwargs: dict = {}
+
+    class FakeRepo:
+        def get_logs(self, **kwargs):
+            last_kwargs.clear()
+            last_kwargs.update(kwargs)
+            return []
+
+    monkeypatch.setattr(wr, "get_logs_repository", lambda: FakeRepo())
+
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    client = app.test_client()
+    r = client.get("/api/webui/proxy-logs?limit=5")
+    assert r.status_code == 200
+    assert last_kwargs.get("autocomplete_only") is None
+
+
 def test_health_endpoint() -> None:
     import os
     import sys
@@ -124,7 +184,98 @@ def test_models_endpoint() -> None:
     data = r.get_json()
     assert "data" in data
     assert len(data["data"]) >= 1
-    assert data["data"][0]["id"] == "rag-ollama"
+    assert data["data"][0]["id"] == "ChironAI-Worker"
+
+
+def test_models_endpoint_includes_chironai_autocomplete_when_backend_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Second logical id appears in /v1/models when autocomplete Ollama tag is set (env or WebUI)."""
+    import os
+    import sys
+
+    monkeypatch.setenv("LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL", "tiny-model:latest")
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    client = app.test_client()
+    r = client.get("/v1/models")
+    assert r.status_code == 200
+    data = r.get_json() or {}
+    ids = [m.get("id") for m in data.get("data") or []]
+    assert "ChironAI-Worker" in ids
+    assert "ChironAI-Autocomplete" in ids
+
+
+def test_chat_completions_chironai_autocomplete_without_prompt_template(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Logical id ChironAI-Autocomplete maps to configured Ollama and does not require WebUI prompt template."""
+    import json
+    from types import SimpleNamespace
+
+    import api.http.rag_routes as rag_routes
+
+    monkeypatch.setenv("LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL", "fast-ac-model")
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == "proxy_settings":
+                return json.dumps({})
+            if key == "proxy_model":
+                return ""
+            return None
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+
+    class FakeChatClient:
+        def chat(self, _messages, model, stream=False, options=None):
+            return "ok"
+
+        def stream_chat(self, _messages, _model):
+            yield ""
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="unused",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
+    )
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda *args, **kwargs: ([{"role": "user", "content": "hi"}], "fast-ac-model"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={"model": "ChironAI-Autocomplete", "messages": [{"role": "user", "content": "hi"}]},
+    )
+    assert r.status_code == 200
+    body = r.get_json() or {}
+    assert body.get("model") == "fast-ac-model"
 
 
 def test_chat_completions_returns_tool_calls_when_edit_payload_detected(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -180,7 +331,7 @@ def test_chat_completions_returns_tool_calls_when_edit_payload_detected(monkeypa
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "messages": [{"role": "user", "content": "[@App.jsx (283:293)] Внеси это изменение в файл"}],
             "tools": [
                 {
@@ -273,7 +424,7 @@ def test_chat_completions_overrides_none_tool_choice_for_file_edit_intent(
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "messages": [
                 {
                     "role": "user",
@@ -372,7 +523,7 @@ def test_chat_completions_keeps_none_tool_choice_for_jsx(monkeypatch: pytest.Mon
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "messages": [
                 {
                     "role": "user",
@@ -451,7 +602,7 @@ def test_chat_completions_preserves_mac_file_uri_in_tool_args(monkeypatch: pytes
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "messages": [{"role": "user", "content": f"Update this file [@test.swift]({mac_uri})"}],
             "tools": [
                 {
@@ -533,7 +684,7 @@ def test_chat_completions_stream_returns_tool_calls_chunks(monkeypatch: pytest.M
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "stream": True,
             "messages": [{"role": "user", "content": "[@App.jsx (283:293)] Внеси это изменение в файл"}],
             "tools": [
@@ -612,7 +763,7 @@ def test_chat_completions_uses_client_tool_name_for_edit(monkeypatch: pytest.Mon
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "messages": [{"role": "user", "content": "[@App.jsx (283:293)] Внеси это изменение в файл"}],
             "tools": [
                 {
@@ -689,7 +840,7 @@ def test_chat_completions_adds_required_display_description(monkeypatch: pytest.
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "messages": [{"role": "user", "content": "Edit this range"}],
             "tools": [
                 {
@@ -772,7 +923,7 @@ def test_chat_completions_strict_mode_no_tool_call_without_json_payload(monkeypa
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "messages": [{"role": "user", "content": "[@App.jsx (283:293)] edit"}],
             "tools": [{"type": "function", "function": {"name": "edit_file", "parameters": {"type": "object"}}}],
             "tool_choice": "auto",
@@ -837,7 +988,7 @@ def test_chat_completions_cline_style_schema_fields(monkeypatch: pytest.MonkeyPa
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "messages": [{"role": "user", "content": "Edit this range"}],
             "tools": [
                 {
@@ -915,7 +1066,7 @@ def test_stream_tool_mode_returns_plain_text_when_no_tool_json(monkeypatch: pyte
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "stream": True,
             "messages": [{"role": "user", "content": "edit this"}],
             "tools": [{"type": "function", "function": {"name": "edit_file", "parameters": {"type": "object"}}}],
@@ -997,7 +1148,7 @@ def test_chat_completions_after_tool_success_uses_plain_completion_not_second_to
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "stream": False,
             "messages": messages,
             "tools": [{"type": "function", "function": {"name": "edit_file", "parameters": {"type": "object"}}}],
@@ -1084,7 +1235,7 @@ def test_chat_completions_after_tool_success_still_emits_tool_call_for_new_file_
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "stream": False,
             "messages": messages,
             "tools": [
@@ -1180,7 +1331,7 @@ def test_stream_tool_mode_skips_tool_call_when_edit_body_is_only_whitespace(
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "stream": True,
             "messages": [{"role": "user", "content": "edit App.jsx"}],
             "tools": [{"type": "function", "function": {"name": "edit_file", "parameters": {"type": "object"}}}],
@@ -1283,7 +1434,7 @@ def test_chat_completions_builds_save_file_paths_when_required(monkeypatch: pyte
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "messages": [{"role": "user", "content": "Create build_and_run.bat"}],
             "tools": [
                 {
@@ -1373,7 +1524,7 @@ def test_chat_completions_builds_save_file_paths_as_strings_when_schema_requires
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "messages": [{"role": "user", "content": "Write Hello World to test.swift"}],
             "tools": [
                 {
@@ -1472,7 +1623,7 @@ def test_chat_completions_does_not_choose_save_file_without_content_schema(
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "messages": [
                 {
                     "role": "user",
@@ -1580,7 +1731,7 @@ def test_chat_completions_sanitizes_display_description(monkeypatch: pytest.Monk
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "messages": [
                 {
                     "role": "user",
@@ -1688,7 +1839,7 @@ def test_chat_completions_blocks_repeated_no_edit_recursion(monkeypatch: pytest.
     r1 = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "stream": False,
             "messages": first_messages,
             "tools": [
@@ -1708,7 +1859,7 @@ def test_chat_completions_blocks_repeated_no_edit_recursion(monkeypatch: pytest.
     r2 = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "stream": False,
             "messages": second_messages,
             "tools": [
@@ -1832,7 +1983,7 @@ def test_trailing_noop_after_success_does_not_block_noop_counter(
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "stream": False,
             "messages": msgs,
             "tools": [
@@ -1953,7 +2104,7 @@ def test_chat_completions_internal_full_file_retry_on_fragment_with_files(
     r = client.post(
         "/v1/chat/completions",
         json={
-            "model": "rag-ollama",
+            "model": "ChironAI-Worker",
             "stream": False,
             "messages": [{"role": "user", "content": user_content}],
             "tools": [
@@ -2043,7 +2194,7 @@ def test_chat_completions_400_when_proxy_model_missing(monkeypatch: pytest.Monke
     client = app.test_client()
     r = client.post(
         "/v1/chat/completions",
-        json={"model": "rag-ollama", "messages": [{"role": "user", "content": "hi"}]},
+        json={"model": "ChironAI-Worker", "messages": [{"role": "user", "content": "hi"}]},
     )
     assert r.status_code == 400
     assert "model" in (r.get_json() or {}).get("error", "").lower()
@@ -2067,7 +2218,7 @@ def test_chat_completions_400_when_prompt_template_missing(monkeypatch: pytest.M
     client = app.test_client()
     r = client.post(
         "/v1/chat/completions",
-        json={"model": "rag-ollama", "messages": [{"role": "user", "content": "hi"}]},
+        json={"model": "ChironAI-Worker", "messages": [{"role": "user", "content": "hi"}]},
     )
     assert r.status_code == 400
     err = (r.get_json() or {}).get("error", "")

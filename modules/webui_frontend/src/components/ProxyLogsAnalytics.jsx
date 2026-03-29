@@ -130,11 +130,17 @@ function ProxyLogsAnalytics({
   onDateSelect,
   onDateReset,
   periodLabel,
+  variant = 'proxy',
 }) {
   const agg = aggregateLogs(logs);
+  const isAc = variant === 'autocomplete';
 
   return (
-    <div className="proxy-logs-analytics" role="region" aria-label="Proxy logs analytics">
+    <div
+      className="proxy-logs-analytics"
+      role="region"
+      aria-label={isAc ? 'Autocomplete logs analytics' : 'Proxy logs analytics'}
+    >
       <div className="proxy-logs-analytics-controls">
         <div className="proxy-logs-period-tabs" role="tablist" aria-label="Time period">
           {PERIODS.map((p) => (
@@ -165,10 +171,19 @@ function ProxyLogsAnalytics({
       </div>
 
       <p className="proxy-logs-analytics-summary" aria-live="polite">
-        Total requests: {agg.totalRequests}. With RAG: {agg.withRag}. Without RAG: {agg.withoutRag}.
+        {isAc ? (
+          <>
+            Total autocomplete requests: {agg.totalRequests}. Pie chart shows resolved Ollama model tags (no RAG on this
+            path).
+          </>
+        ) : (
+          <>
+            Total requests: {agg.totalRequests}. With RAG: {agg.withRag}. Without RAG: {agg.withoutRag}.
+          </>
+        )}
       </p>
 
-      <div className="proxy-logs-pies">
+      <div className={`proxy-logs-pies ${isAc ? 'proxy-logs-pies--autocomplete' : ''}`}>
         <div className="proxy-logs-pie-block" role="figure" aria-label="Models used">
           <h3 className="proxy-logs-pie-title">Models used</h3>
           <ResponsiveContainer width="100%" height={220}>
@@ -192,51 +207,55 @@ function ProxyLogsAnalytics({
           </ResponsiveContainer>
         </div>
 
-        <div className="proxy-logs-pie-block" role="figure" aria-label="RAG chunks by doc type">
-          <h3 className="proxy-logs-pie-title">RAG chunks by doc type</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie
-                data={agg.ragDocTypeData}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                outerRadius={70}
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-              >
-                {agg.ragDocTypeData.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(value) => [value, 'Chunk uses']} />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
+        {!isAc && (
+          <>
+            <div className="proxy-logs-pie-block" role="figure" aria-label="RAG chunks by doc type">
+              <h3 className="proxy-logs-pie-title">RAG chunks by doc type</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie
+                    data={agg.ragDocTypeData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={70}
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  >
+                    {agg.ragDocTypeData.map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => [value, 'Chunk uses']} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
 
-        <div className="proxy-logs-pie-block" role="figure" aria-label="RAG vs without RAG">
-          <h3 className="proxy-logs-pie-title">RAG vs without RAG</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie
-                data={agg.ragVsNoRagData}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                outerRadius={70}
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-              >
-                {agg.ragVsNoRagData.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(value) => [value, 'Requests']} />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
+            <div className="proxy-logs-pie-block" role="figure" aria-label="RAG vs without RAG">
+              <h3 className="proxy-logs-pie-title">RAG vs without RAG</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie
+                    data={agg.ragVsNoRagData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={70}
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  >
+                    {agg.ragVsNoRagData.map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => [value, 'Requests']} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="proxy-logs-tops">

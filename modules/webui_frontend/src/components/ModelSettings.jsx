@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { getModels, getPrompts, getModelSettings, updateModelSettings, getRagCollections } from '../services/api';
+import { isLogicalRagModelId } from '../constants/llmProxyModels';
 import './ModelSettings.css';
 
 function ModelSettings({ sessionId, onOpenRagModels }) {
@@ -58,7 +59,10 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
     }
   };
 
-  const ollamaModels = useMemo(() => models.filter((m) => m.id !== 'rag-ollama'), [models]);
+  const ollamaModels = useMemo(
+    () => models.filter((m) => !isLogicalRagModelId(m.id)),
+    [models]
+  );
   const modelIds = useMemo(() => ollamaModels.map((m) => m.id), [ollamaModels]);
   const promptNames = useMemo(() => prompts.map((p) => p.name).filter(Boolean), [prompts]);
   const collectionNames = useMemo(() => collections.map((c) => c.name).filter(Boolean), [collections]);
@@ -72,14 +76,14 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
     const modelInList = Boolean(m && modelIds.includes(m));
     const modelInvalid =
       !m ||
-      m === 'rag-ollama' ||
+      isLogicalRagModelId(m) ||
       (modelIds.length > 0 && !modelInList);
 
     if (modelInvalid) {
       if (m && modelIds.length > 0 && !modelInList) {
         issues.push(`Model: saved value "${m}" is not in the current Ollama list — pick an available model.`);
       } else {
-        issues.push('Model: select a concrete Ollama model (not rag-ollama).');
+        issues.push('Model: select a concrete Ollama model (not ChironAI-Worker).');
       }
     }
 

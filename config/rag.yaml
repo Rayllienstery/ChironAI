@@ -22,7 +22,7 @@ rag:
   top_k: 4
   confidence_threshold: 0.75
   log_preview_chars: 800
-  model_id: "rag-ollama"
+  model_id: "ChironAI-Worker"
   reasoning_level_models:
     - "gpt-oss"
     - "gpt-oss-20b"

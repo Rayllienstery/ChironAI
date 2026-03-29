@@ -30,19 +30,27 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
 
     @bp.route("/v1/models", methods=["GET"])
     def list_models():
-        return jsonify(
+        data: list[dict[str, object]] = [
             {
-                "object": "list",
-                "data": [
+                "id": wiring.runtime.rag_model_logical_id,
+                "object": "model",
+                "created": 0,
+                "owned_by": "local",
+            }
+        ]
+        try:
+            if wiring.get_autocomplete_ollama_model():
+                data.append(
                     {
-                        "id": wiring.runtime.rag_model_logical_id,
+                        "id": wiring.runtime.autocomplete_model_logical_id,
                         "object": "model",
                         "created": 0,
                         "owned_by": "local",
                     }
-                ],
-            }
-        )
+                )
+        except Exception:
+            pass
+        return jsonify({"object": "list", "data": data})
 
     @bp.route("/v1/chat/completions", methods=["POST"])
     def chat_completions():

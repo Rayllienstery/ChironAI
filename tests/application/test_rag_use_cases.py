@@ -161,7 +161,7 @@ def test_prepare_ollama_messages_keeps_tool_cycle_context() -> None:
             },
             {"role": "tool", "name": "apply_file_edit", "content": '{"ok":true}'},
         ],
-        model="rag-ollama",
+        model="ChironAI-Worker",
         stream=False,
         reasoning_level=None,
     )
@@ -181,7 +181,7 @@ def test_prepare_ollama_messages_keeps_tool_cycle_context() -> None:
     joined = "\n".join(m.get("content", "") for m in msgs if isinstance(m, dict))
     assert "[tool_call:apply_file_edit]" in joined
     assert "[tool_result:apply_file_edit]" in joined
-    assert model == "rag-ollama"
+    assert model == "ChironAI-Worker"
 
 
 def test_prepare_ollama_messages_infers_tool_result_name_from_tool_call_id() -> None:
@@ -202,7 +202,7 @@ def test_prepare_ollama_messages_infers_tool_result_name_from_tool_call_id() -> 
             # ZED/OpenAI-compatible tool-results may omit `name` and provide only `tool_call_id`.
             {"role": "tool", "tool_call_id": "call_1", "content": '{"ok":true}'},
         ],
-        model="rag-ollama",
+        model="ChironAI-Worker",
         stream=False,
         reasoning_level=None,
     )
@@ -222,7 +222,7 @@ def test_prepare_ollama_messages_infers_tool_result_name_from_tool_call_id() -> 
     joined = "\n".join(m.get("content", "") for m in msgs if isinstance(m, dict))
     assert "[tool_call:apply_file_edit]" in joined
     assert "[tool_result:apply_file_edit]" in joined
-    assert model == "rag-ollama"
+    assert model == "ChironAI-Worker"
 
 
 def test_prepare_ollama_messages_native_tools_preserves_roles() -> None:

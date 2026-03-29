@@ -64,6 +64,7 @@ class LogsRepository:
         include_system: bool = True,
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
+        autocomplete_only: Optional[bool] = None,
     ) -> list[dict[str, Any]]:
         """
         Get logs for a session.
@@ -77,6 +78,7 @@ class LogsRepository:
             include_system: Include system session logs
             from_date: Only return logs with timestamp >= from_date (ISO or YYYY-MM-DD)
             to_date: Only return logs with timestamp <= to_date (ISO or YYYY-MM-DD)
+            autocomplete_only: If True, only rows whose metadata JSON has is_autocomplete true
 
         Returns:
             List of log dicts
@@ -112,6 +114,12 @@ class LogsRepository:
             if to_date is not None:
                 query += " AND timestamp <= ?"
                 params.append(to_date)
+
+            if autocomplete_only is True:
+                query += (
+                    " AND metadata IS NOT NULL "
+                    "AND json_extract(metadata, '$.is_autocomplete') = 1"
+                )
 
             query += " ORDER BY id DESC LIMIT ?"
             params.append(limit)

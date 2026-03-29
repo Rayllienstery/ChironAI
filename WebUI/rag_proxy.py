@@ -5,7 +5,7 @@ returns OpenAI-format response. Listen on 0.0.0.0:8080 for remote access (e.g. Z
 
 Usage:
   On PC: python rag_proxy.py  (after starting Ollama and Qdrant)
-  On Mac Zed: OpenAI API Compatible -> API URL: http://<PC_IP>:8080, model: rag-ollama
+  On Mac Zed: OpenAI API Compatible -> API URL: http://<PC_IP>:8080, model: ChironAI-Worker
   Windows firewall: allow inbound on port 8080.
 
 Uses api.http.rag_routes.create_app; prompt and model come from config via application.rag.params.

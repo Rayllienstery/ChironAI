@@ -1,21 +1,48 @@
 import React, { useState } from 'react';
 import ModelSettings from './ModelSettings';
+import LlmProxyAutocompletePanel from './LlmProxyAutocompletePanel';
 import LlmProxyWebInteractionPanel from './LlmProxyWebInteractionPanel';
 import './SettingsTab.css';
 import './LlmProxyTab.css';
 
 const SUB_TABS = [
   { id: 'overview', label: 'Overview' },
+  { id: 'autocomplete', label: 'Autocomplete' },
   { id: 'web-interaction', label: 'Web Interaction' },
 ];
 
-function LlmProxyTab({ onOpenRagModels }) {
+function LlmProxyTab({ onOpenRagModels, onOpenLogs }) {
   const [subTab, setSubTab] = useState('overview');
 
   return (
     <div className="settings-tab llm-proxy-tab">
       <div className="llm-proxy-header">
-        <h2>LLM Proxy</h2>
+        <div className="llm-proxy-header-row">
+          <h2>LLM Proxy</h2>
+          {typeof onOpenLogs === 'function' && (
+            <button
+              type="button"
+              className="llm-proxy-open-logs-btn"
+              onClick={onOpenLogs}
+              aria-label="Open Logs tab to view proxy and autocomplete request history"
+            >
+              <svg
+                className="llm-proxy-open-logs-icon"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden
+              >
+                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" />
+              </svg>
+              <span className="llm-proxy-open-logs-label">View Logs</span>
+              <span className="llm-proxy-open-logs-chevron" aria-hidden>
+                →
+              </span>
+            </button>
+          )}
+        </div>
         <div className="llm-proxy-subtabs" role="tablist" aria-label="LLM Proxy sections">
           {SUB_TABS.map((tab) => (
             <button
@@ -38,7 +65,9 @@ function LlmProxyTab({ onOpenRagModels }) {
             <h3>How to use the proxy</h3>
             <p className="settings-intro">
               This is an OpenAI-compatible RAG proxy backed by Ollama and Qdrant. Point your editor or tools to the
-              proxy base URL and use the <code>rag-ollama</code> model for completions with context.
+              proxy base URL and use the <code>ChironAI-Worker</code> model for chat with context. Optional inline
+              completions use logical id <code>ChironAI-Autocomplete</code> — configure it on the{' '}
+              <strong>Autocomplete</strong> tab.
             </p>
             <ul className="settings-instructions">
               <li>
@@ -48,12 +77,13 @@ function LlmProxyTab({ onOpenRagModels }) {
               </li>
               <li>
                 <strong>Zed</strong>: in AI settings choose <em>OpenAI API Compatible</em>, set the API URL to the base
-                URL above, and select the <code>rag-ollama</code> model. API key can be left empty unless you add your own
-                authentication.
+                URL above. Use <code>ChironAI-Worker</code> for assistant chat; for inline completions use{' '}
+                <code>ChironAI-Autocomplete</code> after you configure it (see the <strong>Autocomplete</strong> tab).
+                API key can be left empty unless you add your own authentication.
               </li>
               <li>
                 <strong>VSCode + Continue.dev</strong>: configure an OpenAI-compatible provider, set the base URL to this
-                proxy, and use the <code>rag-ollama</code> model.
+                proxy, and use the <code>ChironAI-Worker</code> model.
               </li>
               <li>
                 The model and RAG behavior for the proxy are controlled by the settings below. Web and GitHub options
@@ -70,7 +100,7 @@ function LlmProxyTab({ onOpenRagModels }) {
             <ol className="pipeline-steps">
               <li>
                 <strong>Parse request</strong>: <code>POST /v1/chat/completions</code> (OpenAI-compatible JSON). Read{' '}
-                <code>messages</code>, <code>model</code> (e.g. <code>rag-ollama</code> maps to your configured Ollama
+                <code>messages</code>, <code>model</code> (e.g. <code>ChironAI-Worker</code> maps to your configured Ollama
                 model), <code>stream</code>, optional <code>force_rag</code>, <code>include_rag_metadata</code>, tools,
                 reasoning hints. Entry: Flask blueprint from <code>llm_proxy</code> (<code>CoreModules/LlmProxy</code>).
               </li>
@@ -131,6 +161,8 @@ function LlmProxyTab({ onOpenRagModels }) {
           </div>
         </div>
       )}
+
+      {subTab === 'autocomplete' && <LlmProxyAutocompletePanel />}
 
       {subTab === 'web-interaction' && <LlmProxyWebInteractionPanel />}
     </div>

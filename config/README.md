@@ -61,7 +61,7 @@ Controls RAG context size and model behavior:
 - `context_total_chars`: Total context limit (default: 7000)
 - `top_k`: Candidates per search (default: 4)
 - `confidence_threshold`: Min score for "confirmed" RAG (default: 0.75)
-- `model_id`: OpenAI-compatible model ID (default: "rag-ollama")
+- `model_id`: OpenAI-compatible model ID (default: "ChironAI-Worker")
 - `reasoning_level_models`: Model name substrings supporting reasoning levels
 
 ### retrieval.yaml

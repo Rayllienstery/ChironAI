@@ -11,6 +11,10 @@ def test_wants_freshness_latest() -> None:
     assert wants_freshness_or_release("What is the latest Swift version?") is True
 
 
+def test_wants_freshness_current_word() -> None:
+    assert wants_freshness_or_release("What is the current iOS version?") is True
+
+
 def test_wants_freshness_ios_version() -> None:
     assert wants_freshness_or_release("Does iOS 26 support X?") is True
 

@@ -8,7 +8,7 @@ from web_interaction.triggers import WebSupplementTrigger
 
 _FENCE_RE = re.compile(r"```[\w]*\n[\s\S]*?```|```[\s\S]*?```", re.MULTILINE)
 _VERSION_HINT_RE = re.compile(
-    r"\bios\s*\d{1,2}\b|\b20\d{2}\b|swift\s*6|swift\s*5|xcode\s*\d",
+    r"\bios\s*\d{1,3}\b|\b20\d{2}\b|swift\s*6|swift\s*5|xcode\s*\d",
     re.IGNORECASE,
 )
 

@@ -8,6 +8,17 @@ from urllib.parse import urlparse
 Snippet = dict[str, str]
 
 
+def _snippet_from_ddg_dict(r: dict[str, str]) -> Snippet | None:
+    if not isinstance(r, dict):
+        return None
+    title = str(r.get("title") or "").strip()
+    href = str(r.get("href") or r.get("url") or "").strip()
+    body = str(r.get("body") or "").strip()
+    if not href and not body:
+        return None
+    return {"title": title, "url": href, "body": body}
+
+
 def _normalize_url_key(url: str) -> str:
     u = (url or "").strip().lower()
     if not u:
@@ -32,6 +43,10 @@ def search_snippets(
     """
     Return up to max_n results: {title, url, body} (body = snippet text).
     Empty list on failure or empty query.
+
+    duckduckgo_search's public ``text()`` currently forces the Bing backend only; in many
+    regions or when Bing HTML changes, it returns no rows. We fall back to DDG lite, then
+    DDG html (same as the library's private backends) when the primary path is empty.
     """
     q = (query or "").strip()
     if not q or max_n <= 0:
@@ -45,19 +60,46 @@ def search_snippets(
     try:
         with DDGS() as ddgs:
             for r in ddgs.text(q, region=region, max_results=max_n):
-                if not isinstance(r, dict):
-                    continue
-                title = str(r.get("title") or "").strip()
-                href = str(r.get("href") or r.get("url") or "").strip()
-                body = str(r.get("body") or "").strip()
-                if not href and not body:
-                    continue
-                out.append({"title": title, "url": href, "body": body})
+                sn = _snippet_from_ddg_dict(r) if isinstance(r, dict) else None
+                if sn:
+                    out.append(sn)
                 if len(out) >= max_n:
                     break
     except Exception:
-        return []
-    return out
+        pass
+
+    def _merge_fallback(rows: list[dict[str, str]] | None) -> None:
+        seen = {_normalize_url_key(s.get("url") or "") for s in out if s.get("url")}
+        for r in rows or []:
+            if len(out) >= max_n:
+                break
+            sn = _snippet_from_ddg_dict(r)
+            if not sn:
+                continue
+            key = _normalize_url_key(sn.get("url") or "")
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            out.append(sn)
+
+    if len(out) < max_n:
+        try:
+            with DDGS() as ddgs:
+                lite_rows = ddgs._text_lite(q, region=region, timelimit=None, max_results=max_n)
+            _merge_fallback(lite_rows)
+        except Exception:
+            pass
+
+    if len(out) < max_n:
+        try:
+            with DDGS() as ddgs:
+                html_rows = ddgs._text_html(q, region=region, timelimit=None, max_results=max_n)
+            _merge_fallback(html_rows)
+        except Exception:
+            pass
+
+    return out[:max_n]
 
 
 def search_snippets_multi(

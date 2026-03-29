@@ -15,6 +15,20 @@ import {
 } from '../services/api';
 import './RagTestsTab.css';
 
+/** Cloud/metered Ollama tags (e.g. qwen3.5:cloud, …:397b-cloud) may bill tokens. */
+function modelTagLooksCloud(modelId) {
+  const s = String(modelId || '').trim().toLowerCase();
+  if (!s) return false;
+  return s.includes(':cloud') || s.endsWith('-cloud');
+}
+
+function confirmCloudRagRun(modelId) {
+  if (!modelTagLooksCloud(modelId)) return true;
+  return window.confirm(
+    'Выбрана модель с тегом cloud — прогон RAG Tests может расходовать платные токены. Продолжить?'
+  );
+}
+
 function RagTestsTab({
   runJobId = null,
   running = false,
@@ -111,7 +125,10 @@ function RagTestsTab({
       const list = await getModels();
       setModels(list || []);
       if (!selectedModel && list?.length) {
-        const ragModel = list.find((m) => m.id === 'rag-ollama') || list[0];
+        const ragModel =
+          list.find((m) => m.id === 'ChironAI-Worker') ||
+          list.find((m) => m.id === 'rag-ollama') ||
+          list[0];
         setSelectedModel(ragModel.id || '');
       }
     } catch (e) {
@@ -254,6 +271,7 @@ function RagTestsTab({
       setError('Select a Qdrant collection first');
       return;
     }
+    if (!confirmCloudRagRun(selectedModel)) return;
     setError(null);
     try {
       await onStartRun(runBody({ filter: filters.platform || filters.framework || filters.difficulty ? filters : undefined }));
@@ -271,6 +289,7 @@ function RagTestsTab({
       setError('Select a Qdrant collection first');
       return;
     }
+    if (!confirmCloudRagRun(selectedModel)) return;
     setError(null);
     try {
       await onStartRun(runBody({
@@ -298,6 +317,7 @@ function RagTestsTab({
       setError('Select at least one test');
       return;
     }
+    if (!confirmCloudRagRun(selectedModel)) return;
     setError(null);
     try {
       await onStartRun(runBody({ test_ids: Array.from(selectedTestIds) }));
@@ -315,6 +335,7 @@ function RagTestsTab({
       setError('Select a Qdrant collection first');
       return;
     }
+    if (!confirmCloudRagRun(selectedModel)) return;
     setError(null);
     try {
       await onStartRun(runBody({ test_ids: [testId] }));

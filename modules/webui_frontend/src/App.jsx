@@ -331,6 +331,7 @@ function App() {
               setActiveTab("rag");
               setScrollToRagModelsSection(true);
             }}
+            onOpenLogs={() => setActiveTab("logs")}
           />
         );
       case "template-editor":

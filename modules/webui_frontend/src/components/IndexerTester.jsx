@@ -221,7 +221,10 @@ function IndexerTester() {
         const models = list || [];
         setLlmModels(models);
         if (models.length > 0 && !llmSelectedModel) {
-          const preferred = models.find((m) => m.id === 'rag-ollama') || models[0];
+          const preferred =
+            models.find((m) => m.id === 'ChironAI-Worker') ||
+            models.find((m) => m.id === 'rag-ollama') ||
+            models[0];
           setLlmSelectedModel(preferred.id || preferred.name || '');
         }
       })

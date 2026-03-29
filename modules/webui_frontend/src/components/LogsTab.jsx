@@ -65,7 +65,7 @@ function getPeriodLabel(period, selectedDate) {
 }
 
 function LogsTab({ sessionId }) {
-  const [viewMode, setViewMode] = useState('logs'); // 'logs' or 'proxy'
+  const [viewMode, setViewMode] = useState('logs'); // 'logs' | 'proxy' | 'autocomplete'
   const [logs, setLogs] = useState([]);
   const [levelFilter, setLevelFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
@@ -89,12 +89,13 @@ function LogsTab({ sessionId }) {
   const loadLogs = useCallback(async () => {
     setLoading(true);
     try {
-      if (viewMode === 'proxy') {
+      if (viewMode === 'proxy' || viewMode === 'autocomplete') {
         const { from, to } = getDateRangeForProxyLogs(period, selectedDate);
         const data = await getProxyLogs({
           from: from || undefined,
           to: to || undefined,
           limit: PROXY_LOGS_ANALYTICS_LIMIT,
+          autocompleteOnly: viewMode === 'autocomplete',
         });
         const newLogs = data.logs || [];
         setLogs((prev) => {
@@ -141,7 +142,7 @@ function LogsTab({ sessionId }) {
       }, 3000);
       return () => stopLogPolling();
     }
-    if (viewMode === 'proxy') {
+    if (viewMode === 'proxy' || viewMode === 'autocomplete') {
       const interval = setInterval(loadLogs, 3000);
       return () => clearInterval(interval);
     }
@@ -222,6 +223,7 @@ function LogsTab({ sessionId }) {
       metadata = {};
     }
     
+    const isAc = Boolean(metadata.is_autocomplete);
     const ragContext = metadata.rag_context || {};
     const chunksCount = ragContext.chunks_count || 0;
     const maxScore = ragContext.max_score;
@@ -233,6 +235,11 @@ function LogsTab({ sessionId }) {
           <div className="log-title">
             <span className="log-icon">ℹ️</span>
             <span className="log-summary">Proxy Request</span>
+            {isAc && (
+              <span className="proxy-log-ac-badge" title="ChironAI-Autocomplete logical model">
+                Autocomplete
+              </span>
+            )}
           </div>
           <span className="log-timestamp">{formatTimestamp(log.timestamp)}</span>
         </div>
@@ -369,6 +376,12 @@ function LogsTab({ sessionId }) {
             >
               Proxy Logs
             </button>
+            <button
+              className={viewMode === 'autocomplete' ? 'active' : ''}
+              onClick={() => setViewMode('autocomplete')}
+            >
+              Autocomplete Logs
+            </button>
           </div>
         </div>
         <div className="logs-controls">
@@ -398,7 +411,7 @@ function LogsTab({ sessionId }) {
         </div>
       </div>
 
-      {viewMode === 'proxy' && (
+      {(viewMode === 'proxy' || viewMode === 'autocomplete') && (
         <ProxyLogsAnalytics
           logs={logs}
           period={period}
@@ -407,6 +420,7 @@ function LogsTab({ sessionId }) {
           onDateSelect={setSelectedDate}
           onDateReset={() => setSelectedDate(null)}
           periodLabel={getPeriodLabel(period, selectedDate)}
+          variant={viewMode === 'autocomplete' ? 'autocomplete' : 'proxy'}
         />
       )}
 
@@ -414,12 +428,20 @@ function LogsTab({ sessionId }) {
         {viewMode === 'logs' && !sessionId ? (
           <div className="loading">No session available. Session is loading or could not be created.</div>
         ) : loading && logs.length === 0 ? (
-          <div className="loading">Loading {viewMode === 'proxy' ? 'proxy ' : ''}logs...</div>
+          <div className="loading">
+            Loading{' '}
+            {viewMode === 'proxy' ? 'proxy ' : viewMode === 'autocomplete' ? 'autocomplete ' : ''}
+            logs...
+          </div>
         ) : logs.length === 0 ? (
-          <div className="empty-state">No {viewMode === 'proxy' ? 'proxy ' : ''}logs found</div>
+          <div className="empty-state">
+            No{' '}
+            {viewMode === 'proxy' ? 'proxy ' : viewMode === 'autocomplete' ? 'autocomplete ' : ''}
+            logs found
+          </div>
         ) : (
           logs.map((log) => 
-            viewMode === 'proxy' ? renderProxyLog(log) : (
+            viewMode === 'proxy' || viewMode === 'autocomplete' ? renderProxyLog(log) : (
               <div key={log.id} className={getLevelClass(log.level)}>
                 <div className="log-header">
                   <div className="log-title">

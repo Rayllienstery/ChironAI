@@ -12,6 +12,18 @@
 - [ ] iPhone notifications
 - [ ] Web framework search - work the same as crawl...
 
+- [ ] Check RAG Quality TASK
+- [x] rag-ollama -> ChironAI-Worker (default logical id `ChironAI-Worker`; `rag-ollama` still accepted)
+- [ ] Autocomplete model inside proxy
+- [ ] Crawler / Indexer - улучшить понимание того что было проиндексировано, а что нет - Indexed is ok, but skipped count is mandatory
+- [ ] Indexing debug - why so much <400 chars filtering, probably it is useful files
+- [ ] Indexing debug - Embedding failed: 3
+Recent errors (3)
+Failed to get embeddings for apple_documentation/visionos-a1eb03fc.md: 500 Server Error: Internal Server Error for url: http://localhost:11434/api/embed
+Failed to get embeddings for apple_documentation/menustyle-18306f84.md: 500 Server Error: Internal Server Error for url: http://localhost:11434/api/embed
+Failed to get embeddings for wwdc_sessions_2019_plus/wwdc2023-10241-transcript-eng-json-1bc00f62.md: 500 Server Error: Internal Server Error for url: http://localhost:11434/api/embed
+
+
 ## Bugs
  - [ ] Proxy If RAG is not started the response is empty
 
@@ -153,7 +165,7 @@
 ## 9. Инфраструктура (опционально)
 
 - [ ] **Docker** — Dockerfile для прокси (без краулера): Python, Flask, зависимости; опционально docker-compose с сервисами ollama, qdrant, rag-proxy для локального стенда.
-- [ ] **Версионирование API** — если планируется несколько клиентов: префикс `/v1/` для chat completions и явная версия в ответе (уже есть `model: rag-ollama` — достаточно для v0.3).
+- [ ] **Версионирование API** — если планируется несколько клиентов: префикс `/v1/` для chat completions и явная версия в ответе (уже есть `model: ChironAI-Worker` — достаточно для v0.3).
 
 ---
 
@@ -198,7 +210,7 @@
 ### 11.1 Манифест и конфигурация
 
 - [ ] **Подключить манифест в конфиг** — добавить ссылку на `SENIOR_IOS_ASSISTANT_MANIFEST.md` в документации (`README` или `docs/`), кратко описать, как этот режим отличается от обычного RAG‑чата.
-- [ ] **Логическое имя модели** — в конфиге (`config/models.yaml` или новом YAML) ввести логическое имя профиля, например `senior-ios-assistant`, которое мапится на `rag-ollama` и конкретный Ollama‑chat‑модель.
+- [ ] **Логическое имя модели** — в конфиге (`config/models.yaml` или новом YAML) ввести логическое имя профиля, например `senior-ios-assistant`, которое мапится на `ChironAI-Worker` и конкретный Ollama‑chat‑модель.
 - [ ] **Отдельный системный промпт** — завести отдельный Markdown‑промпт (например, `prompts/system_senior_ios_assistant_v1.md`), отражающий принципы из манифеста (роль Senior iOS Dev, акцент на архитектуре, конкурентности, тестируемости).
 - [ ] **Режимы Swift 5 / Swift 6** — для Senior iOS Assistant явно поддержать выбор целевой версии Swift (см. TODO 2.1): либо через отдельные промпты, либо через параметр, прокидываемый в промпт.
 

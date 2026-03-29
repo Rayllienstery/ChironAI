@@ -161,6 +161,8 @@ from domain.services.prompt_builder import (
     last_user_content,
     build_system_content,
 )
+from llm_proxy.config import RAG_MODEL_ID, is_rag_logical_model
+
 from infrastructure.database import (
     get_session_manager,
     get_logs_repository,
@@ -321,8 +323,8 @@ def get_models() -> Any:
         
         # Always add RAG proxy model as first option
         models_list.insert(0, {
-            "id": "rag-ollama",
-            "name": "rag-ollama",
+            "id": RAG_MODEL_ID,
+            "name": RAG_MODEL_ID,
             "description": "RAG-enabled Ollama model (proxy)",
         })
         
@@ -723,6 +725,8 @@ def get_proxy_logs() -> Any:
         since_id = request.args.get("since_id")
         from_date = request.args.get("from")
         to_date = request.args.get("to")
+        ac_raw = (request.args.get("autocomplete_only") or "").strip().lower()
+        autocomplete_only = ac_raw in ("1", "true", "yes")
 
         logs_repo = get_logs_repository()
         logs = logs_repo.get_logs(
@@ -733,6 +737,7 @@ def get_proxy_logs() -> Any:
             source="proxy",
             from_date=from_date or None,
             to_date=to_date or None,
+            autocomplete_only=autocomplete_only if autocomplete_only else None,
         )
 
         return jsonify({"logs": logs})
@@ -809,7 +814,7 @@ def webui_chat() -> Any:
     try:
         body = request.get_json(force=True, silent=True) or {}
         messages = body.get("messages") or []
-        requested_model = body.get("model") or "rag-ollama"
+        requested_model = body.get("model") or RAG_MODEL_ID
         temperature = body.get("temperature")
         top_p = body.get("top_p")
         reasoning_level = body.get("reasoning_level")
@@ -845,10 +850,15 @@ def webui_chat() -> Any:
         stored_model = (settings_repo.get_app_setting("proxy_model") or "").strip()
         if not stored_model and proxy_settings.get("model"):
             stored_model = str(proxy_settings.get("model") or "").strip()
-        if requested_model == "rag-ollama":
-            if not stored_model or stored_model == "rag-ollama":
+        if is_rag_logical_model(requested_model):
+            if not stored_model or is_rag_logical_model(stored_model):
                 return jsonify(
-                    {"error": "Choose a concrete Ollama model in LLM Proxy settings (not rag-ollama)."}
+                    {
+                        "error": (
+                            f"Choose a concrete Ollama model in LLM Proxy settings "
+                            f"(not the logical RAG id {RAG_MODEL_ID})."
+                        ),
+                    }
                 ), 400
             requested_model = stored_model
 
@@ -919,7 +929,7 @@ def webui_chat() -> Any:
         
         last_user = last_user_content(messages)
         context_length = len(last_user.split())
-        ollama_model = requested_model if requested_model != "rag-ollama" else params.model_name
+        ollama_model = requested_model if not is_rag_logical_model(requested_model) else params.model_name
 
         # Determine reasoning level
         if not reasoning_level:
@@ -983,8 +993,8 @@ def webui_chat() -> Any:
             trigger_threshold=trigger_threshold,
             web_supplement=web_sup_text,
         )
-        # Ensure use_model is not "rag-ollama" - use config model if needed
-        if use_model == "rag-ollama":
+        # Ensure use_model is not a logical RAG id — use config model if needed
+        if is_rag_logical_model(use_model):
             use_model = params.model_name
 
         # Add code_only instruction if requested
@@ -1097,6 +1107,7 @@ def get_model_settings() -> Any:
         stored_model = (settings_repo.get_app_setting("proxy_model") or "").strip()
         stored_settings_json = settings_repo.get_app_setting("proxy_settings")
         stored_rag_col = (settings_repo.get_app_setting("rag_collection") or "").strip()
+        stored_autocomplete = (settings_repo.get_app_setting("proxy_autocomplete_model") or "").strip()
 
         out: dict[str, Any] = {
             "model": stored_model,
@@ -1116,6 +1127,7 @@ def get_model_settings() -> Any:
             "rag_collection": stored_rag_col,
             "rerank_for_rag": False,
             "rerank_model": "",
+            "autocomplete_model": stored_autocomplete,
         }
 
         if stored_settings_json:
@@ -1140,7 +1152,7 @@ def get_model_settings() -> Any:
             q_names = set()
         rc = str(out.get("rag_collection") or "").strip()
 
-        out["model_missing"] = (not out["model"]) or (out["model"] in ("rag-ollama",))
+        out["model_missing"] = (not out["model"]) or is_rag_logical_model(out["model"])
         out["prompt_missing"] = (not pn) or (not rag_prompt_file_exists(pn)) or is_readme_name(pn)
         out["collection_missing"] = bool(rc) and bool(q_names) and rc not in q_names
 
@@ -1158,6 +1170,8 @@ def update_model_settings() -> Any:
         settings_repo = get_settings_repository()
         if body.get("model") is not None:
             settings_repo.set_app_setting("proxy_model", str(body["model"]))
+        if body.get("autocomplete_model") is not None:
+            settings_repo.set_app_setting("proxy_autocomplete_model", str(body.get("autocomplete_model") or "").strip())
         if body.get("rag_collection") is not None:
             settings_repo.set_app_setting("rag_collection", str(body.get("rag_collection") or "").strip())
         existing_blob: dict[str, Any] = {}
@@ -1296,7 +1310,7 @@ def tester_chat() -> Any:
         )
         chat_client = deps.chat_client
         # Use selected model or fallback to config model
-        ollama_model = model if model and model != "rag-ollama" else params.model_name
+        ollama_model = model if model and not is_rag_logical_model(model) else params.model_name
         
         last_user = last_user_content(messages)
         
@@ -1559,9 +1573,7 @@ def tester_chat() -> Any:
             except Exception:
                 web_sup_text_tester = None
 
-            # Use the actual Ollama model name here; "rag-ollama" is the logical
-            # OpenAI-compatible model id, not an Ollama model. Passing it here
-            # causes 404 MODEL_NOT_FOUND from Ollama.
+            # Use the actual Ollama model name here; logical RAG id is not an Ollama tag.
             req = RagQuestionRequest(
                 messages=messages,
                 model=ollama_model,
@@ -1586,14 +1598,14 @@ def tester_chat() -> Any:
                 trigger_threshold=trigger_threshold,
                 web_supplement=web_sup_text_tester,
             )
-            # Ensure use_model is not "rag-ollama" - use config model if needed
-            if use_model == "rag-ollama":
+            # Ensure use_model is not a logical RAG id — use config model if needed
+            if is_rag_logical_model(use_model):
                 use_model = params.model_name
         else:
             # Direct chat without RAG
             use_model = ollama_model
-            # Ensure use_model is not "rag-ollama" - use config model if needed
-            if use_model == "rag-ollama":
+            # Ensure use_model is not a logical RAG id — use config model if needed
+            if is_rag_logical_model(use_model):
                 use_model = params.model_name
             ollama_messages = messages.copy()
             
@@ -1690,7 +1702,7 @@ def tester_prompt_preview() -> Any:
         try:
             model_name = get_ollama_chat_model()
         except Exception:
-            model_name = "rag-ollama"
+            model_name = RAG_MODEL_ID
 
         if use_rag:
             context_block = (
@@ -3528,7 +3540,7 @@ def _run_one_indexer_evaluate(
             + "\n\n### REMOVED CONTENT\n\n"
             + removed_content
         )
-    use_model = model if model and model != "rag-ollama" else params.model_name
+    use_model = model if model and not is_rag_logical_model(model) else params.model_name
     if not use_model:
         raise ValueError("No chat model configured")
     system_prompt = _get_indexer_evaluate_system_prompt()
@@ -3605,7 +3617,7 @@ def _batch_eval_worker(job_id: str, source_id: str, model: str | None, count: in
                 _batch_eval_jobs[job_id]["error"] = str(e)
         return
     chat_client = deps.chat_client
-    use_model = model if model and model != "rag-ollama" else (params.model_name if params else None)
+    use_model = model if model and not is_rag_logical_model(model) else (params.model_name if params else None)
     if not use_model:
         with _batch_eval_lock:
             if job_id in _batch_eval_jobs:

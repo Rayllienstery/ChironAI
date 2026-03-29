@@ -88,6 +88,9 @@ class LlmProxyWiring:
     rag_context_factory: Callable[..., Any]
     rag_question_request_factory: Callable[..., Any]
 
+    get_autocomplete_ollama_model: Callable[[], str | None]
+    """Resolved Ollama tag for autocomplete logical id (env / WebUI); None if unset."""
+
     external_docs: LlmProxyExternalDocsBundle = field(default_factory=LlmProxyExternalDocsBundle)
 
     ingest_external_source: Callable[[str], tuple[dict[str, Any], int]] | None = None

@@ -129,11 +129,12 @@ export async function getLogs(sessionId, options = {}) {
 
 export async function getProxyLogs(options = {}) {
   const params = new URLSearchParams();
-  const { limit, since_id, from, to } = options;
+  const { limit, since_id, from, to, autocompleteOnly } = options;
   if (limit != null) params.set('limit', String(limit));
   if (since_id != null) params.set('since_id', String(since_id));
   if (from != null && from !== '') params.set('from', from);
   if (to != null && to !== '') params.set('to', to);
+  if (autocompleteOnly) params.set('autocomplete_only', '1');
   const response = await fetch(`${API_BASE}/proxy-logs?${params}`);
   if (!response.ok) {
     throw new Error('Failed to get proxy logs');

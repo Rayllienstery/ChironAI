@@ -25,7 +25,8 @@ from rag_service.domain.services.prompt_builder import (
     last_user_content,
 )
 
-RAG_MODEL_ID = "rag-ollama"
+RAG_MODEL_ID = "ChironAI-Worker"
+RAG_MODEL_LEGACY_IDS: tuple[str, ...] = ("rag-ollama",)
 _LOG = logging.getLogger("rag_service.api")
 
 
@@ -79,7 +80,9 @@ def create_app(
         reasoning_level = determine_reasoning_level(
             last_user, context_length, ollama_model, explicit_reasoning
         )
-        actual_model = ollama_model if requested_model in (RAG_MODEL_ID, "rag-ollama") else requested_model
+        actual_model = (
+            ollama_model if requested_model in (RAG_MODEL_ID, *RAG_MODEL_LEGACY_IDS) else requested_model
+        )
         rag_ctx_for_log = None
         rag_timings: dict[str, float] = {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0}
         try:
@@ -101,7 +104,7 @@ def create_app(
                 prefix, suffix, context_chunk_chars, context_total_chars,
                 confidence_threshold, ollama_model, reasoning_level=reasoning_level,
             )
-            if use_model == "rag-ollama":
+            if use_model in (RAG_MODEL_ID, *RAG_MODEL_LEGACY_IDS):
                 use_model = ollama_model
         except Exception as e:
             _LOG.error("prepare_rag: %s", e)

@@ -225,6 +225,20 @@ def _ingest_external_source(source_id: str) -> tuple[dict[str, Any], int]:
         return {"error": str(e)}, 500
 
 
+def _get_autocomplete_ollama_model() -> str | None:
+    """Ollama model tag for ChironAI-Autocomplete logical id: env overrides WebUI."""
+    env_m = (os.getenv("LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL") or "").strip()
+    if env_m:
+        return env_m
+    try:
+        import api.http.rag_routes as rr
+
+        repo = rr.get_settings_repository()
+        return (repo.get_app_setting("proxy_autocomplete_model") or "").strip() or None
+    except Exception:
+        return None
+
+
 def build_llm_proxy_wiring(
     *,
     params: RAGAnswerParams,
@@ -283,6 +297,7 @@ def build_llm_proxy_wiring(
         last_user_content=rr.last_user_content,
         rag_context_factory=rr.RagContext,
         rag_question_request_factory=rr.RagQuestionRequest,
+        get_autocomplete_ollama_model=_get_autocomplete_ollama_model,
         external_docs=_external_docs_bundle(),
         ingest_external_source=_ingest_external_source,
         build_web_supplement_for_proxy=build_web_supplement_for_proxy,

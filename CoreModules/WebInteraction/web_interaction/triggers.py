@@ -24,7 +24,8 @@ _FRESHNESS_PHRASES_RU = (
     "релиз",
 )
 
-_IOS_VERSION_RE = re.compile(r"\bios\s*\d{1,2}\b", re.IGNORECASE)
+# iOS 9 … iOS 26+ (1–3 digits); matches "iOS 26", "iOS 18.2" prefix handled elsewhere
+_IOS_VERSION_RE = re.compile(r"\bios\s*\d{1,3}\b", re.IGNORECASE)
 
 # Framework / library names (extend as needed)
 _FRAMEWORK_TOKENS = frozenset(
@@ -60,6 +61,9 @@ def wants_freshness_or_release(user_message: str) -> bool:
     if not q:
         return False
     if _IOS_VERSION_RE.search(user_message or ""):
+        return True
+    # Standalone "current" (TODO: freshness keywords) — not "currently"
+    if re.search(r"\bcurrent\b", user_message or "", re.IGNORECASE):
         return True
     for p in _FRESHNESS_PHRASES_EN:
         if p in q:
