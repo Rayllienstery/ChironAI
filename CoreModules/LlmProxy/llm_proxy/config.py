@@ -15,12 +15,6 @@ RAG_MODEL_LEGACY_IDS: tuple[str, ...] = ("rag-ollama",)
 # Logical model id for fast inline/code completion (no RAG); same OpenAI contract as RAG_MODEL_ID
 AUTOCOMPLETE_MODEL_ID = "ChironAI-Autocomplete"
 
-# Default system prompt fragments when using the autocomplete logical id (override via env)
-DEFAULT_AUTOCOMPLETE_SYSTEM_PREFIX = (
-    "You are a fast code completion assistant. Continue the user's code concisely and in the same language and style."
-)
-DEFAULT_AUTOCOMPLETE_SYSTEM_SUFFIX = ""
-
 
 @dataclass(frozen=True)
 class LlmProxyRuntimeConfig:

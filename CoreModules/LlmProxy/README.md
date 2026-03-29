@@ -7,6 +7,7 @@ Installable package **`llm-proxy`**: OpenAI-compatible HTTP surface for the Chir
 | GET | `/v1` | API metadata |
 | GET | `/v1/models` | Lists logical model ids: RAG chat (`ChironAI-Worker` by default) and, when configured, autocomplete (`ChironAI-Autocomplete` by default) |
 | POST | `/v1/chat/completions` | Chat with optional RAG, tools, streaming |
+| POST | `/v1/completions` | OpenAI legacy completions (`choices[].text`) — implemented as transparent **`POST …/api/generate`** upstream (same as raw Ollama). No RAG, no WebUI prompt template, no web supplement. Optional `LLM_PROXY_COMPLETIONS_RAW` (`true` by default: sets Ollama `raw`). Zed **edit prediction** (`open_ai_compatible_api`): use `http://<host>:<port>/v1/completions`. |
 | POST | `/v1/files/apply-edit` | Apply a line/column range edit in the workspace |
 | POST | `/v1/external-docs/ingest` | Ingest an external-docs source (host-dependent) |
 
@@ -33,9 +34,9 @@ Pytest adds `CoreModules/LlmProxy` to `pythonpath` in the root [`pyproject.toml`
 | `LLM_PROXY_RAG_MODEL_ID` | Logical model id for RAG chat in `/v1/models` (default `ChironAI-Worker`; legacy alias `rag-ollama` still accepted in requests) |
 | `LLM_PROXY_AUTOCOMPLETE_MODEL_ID` | Logical id for fast inline completion (default `ChironAI-Autocomplete`) |
 | `LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL` | Concrete Ollama tag for autocomplete (overrides WebUI `proxy_autocomplete_model` when set) |
-| `LLM_PROXY_AUTOCOMPLETE_SYSTEM_PREFIX` / `LLM_PROXY_AUTOCOMPLETE_SYSTEM_SUFFIX` | Optional overrides for minimal system prompt when using the autocomplete logical id |
+| `LLM_PROXY_COMPLETIONS_RAW` | If not `0`/`false`/`no`, `/v1/completions` sets Ollama `raw: true` on `/api/generate` (default: on) |
 
-Autocomplete is **additive**: same `/v1/chat/completions` endpoint; requests with `model` set to the autocomplete logical id skip RAG and use a small Ollama model from WebUI or env. The second entry appears in `/v1/models` only after that backend model is configured.
+Autocomplete is **additive**: same `/v1/chat/completions` endpoint; requests with `model` set to the autocomplete logical id skip RAG (and web supplement) and use the small Ollama model from WebUI or env. System prompt comes from the same WebUI **Prompt template** (`prompt_name`) as chat. The second entry appears in `/v1/models` only after that backend model is configured.
 
 ## Wiring contract
 

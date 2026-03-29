@@ -210,8 +210,10 @@ def test_models_endpoint_includes_chironai_autocomplete_when_backend_configured(
     assert "ChironAI-Autocomplete" in ids
 
 
-def test_chat_completions_chironai_autocomplete_without_prompt_template(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Logical id ChironAI-Autocomplete maps to configured Ollama and does not require WebUI prompt template."""
+def test_chat_completions_chironai_autocomplete_uses_same_prompt_template_as_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Logical id ChironAI-Autocomplete uses the same prompt template as Worker and maps to the AC Ollama tag."""
     import json
     from types import SimpleNamespace
 
@@ -222,7 +224,7 @@ def test_chat_completions_chironai_autocomplete_without_prompt_template(monkeypa
     class Repo:
         def get_app_setting(self, key: str):
             if key == "proxy_settings":
-                return json.dumps({})
+                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
             if key == "proxy_model":
                 return ""
             return None
@@ -245,12 +247,39 @@ def test_chat_completions_chironai_autocomplete_without_prompt_template(monkeypa
         model_name="unused",
         log_preview_chars=200,
     )
+    fc = FakeChatClient()
+    fc._url = "http://ollama.test:11434/api/chat"
     fake_deps = SimpleNamespace(
         rag_repo=object(),
         embed_provider=object(),
         rerank_client=None,
-        chat_client=_OllamaShimChatClient(FakeChatClient()),
+        chat_client=_OllamaShimChatClient(fc),
     )
+    ollama_captured: dict = {}
+
+    def _fake_ollama_generate_post(url, json=None, timeout=None, stream=False, **kwargs):
+        ollama_captured["url"] = url
+        ollama_captured["body"] = json
+
+        class _Resp:
+            def raise_for_status(self) -> None:
+                pass
+
+            def json(self):
+                return {
+                    "response": "generated",
+                    "done": True,
+                    "done_reason": "stop",
+                    "prompt_eval_count": 3,
+                    "eval_count": 2,
+                }
+
+            def close(self) -> None:
+                pass
+
+        return _Resp()
+
+    monkeypatch.setattr("llm_proxy.completions_generate.requests.post", _fake_ollama_generate_post)
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
     monkeypatch.setattr(
         rag_routes,
@@ -283,6 +312,138 @@ def test_chat_completions_chironai_autocomplete_without_prompt_template(monkeypa
     )
     assert r_root.status_code == 200
     assert (r_root.get_json() or {}).get("model") == "fast-ac-model"
+
+    r_legacy = client.post(
+        "/v1",
+        json={"model": "ChironAI-Autocomplete", "prompt": "def foo():"},
+    )
+    assert r_legacy.status_code == 200
+    leg = r_legacy.get_json() or {}
+    assert leg.get("object") == "text_completion"
+    assert leg.get("model") == "ChironAI-Autocomplete"
+    leg_choices = leg.get("choices") or []
+    assert len(leg_choices) >= 1
+    assert leg_choices[0].get("text") == "generated"
+    assert str(ollama_captured.get("url", "")).endswith("/api/generate")
+    lego = ollama_captured.get("body") or {}
+    assert lego.get("model") == "fast-ac-model"
+    assert lego.get("prompt") == "def foo():"
+
+    r_zed = client.post(
+        "/v1/completions",
+        json={"model": "ChironAI-Autocomplete", "prompt": "def foo():", "max_tokens": 64},
+    )
+    assert r_zed.status_code == 200
+    zj = r_zed.get_json() or {}
+    assert zj.get("object") == "text_completion"
+    zchoices = zj.get("choices") or []
+    assert len(zchoices) >= 1
+    assert "text" in zchoices[0]
+    assert zchoices[0].get("index") == 0
+    assert zchoices[0].get("text") == "generated"
+    assert zj.get("model") == "ChironAI-Autocomplete"
+    assert str(ollama_captured.get("url", "")).endswith("/api/generate")
+    ob = ollama_captured.get("body") or {}
+    assert ob.get("model") == "fast-ac-model"
+    assert ob.get("prompt") == "def foo():"
+    assert ob.get("raw") is True
+    assert ob.get("options", {}).get("num_predict") == 64
+
+
+def test_v1_completions_forwards_suffix_to_ollama_generate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OpenAI ``suffix`` is passed as native Ollama ``suffix`` (FIM), not merged into prompt."""
+    import json
+    from types import SimpleNamespace
+
+    import api.http.rag_routes as rag_routes
+
+    monkeypatch.setenv("LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL", "fast-ac-model")
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == "proxy_settings":
+                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
+            if key == "proxy_model":
+                return "worker-ollama"
+            return None
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+
+    class FakeChatClient:
+        def chat(self, *_a, **_k):
+            return "x"
+
+        def stream_chat(self, *_a, **_k):
+            yield ""
+
+    fc = FakeChatClient()
+    fc._url = "http://ollama.test:11434/api/chat"
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="worker-ollama",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=_OllamaShimChatClient(fc),
+    )
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda *args, **kwargs: ([{"role": "user", "content": "u"}], "worker-ollama"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    ollama_captured: dict = {}
+
+    def _fake_post(url, json=None, timeout=None, stream=False, **kwargs):
+        ollama_captured["body"] = json
+
+        class _Resp:
+            def raise_for_status(self) -> None:
+                pass
+
+            def json(self):
+                return {"response": "mid", "done": True, "done_reason": "stop"}
+
+            def close(self) -> None:
+                pass
+
+        return _Resp()
+
+    monkeypatch.setattr("llm_proxy.completions_generate.requests.post", _fake_post)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/completions",
+        json={
+            "model": "ChironAI-Autocomplete",
+            "prompt": "<|fim_prefix|>a",
+            "suffix": "<|fim_suffix|>b<|fim_middle|>",
+            "max_tokens": 32,
+        },
+    )
+    assert r.status_code == 200
+    ob = ollama_captured.get("body") or {}
+    assert ob.get("prompt") == "<|fim_prefix|>a"
+    assert ob.get("suffix") == "<|fim_suffix|>b<|fim_middle|>"
+    assert ob.get("options", {}).get("num_predict") == 32
 
 
 def test_chat_completions_returns_tool_calls_when_edit_payload_detected(monkeypatch: pytest.MonkeyPatch) -> None:

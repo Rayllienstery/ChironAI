@@ -62,10 +62,11 @@ function LlmProxyAutocompletePanel() {
       <div className="settings-section">
         <h3>Autocomplete model</h3>
         <p className="settings-intro">
-          Inline completions use the same OpenAI-compatible proxy as chat: logical model id{' '}
-          <code>{LOGICAL_AUTOCOMPLETE_ID}</code> in <code>GET /v1/models</code> and{' '}
-          <code>POST /v1/chat/completions</code>. No RAG — use a small, fast Ollama model here. Chat continues to use{' '}
-          <code>ChironAI-Worker</code> with your main model and RAG.
+          Logical id <code>{LOGICAL_AUTOCOMPLETE_ID}</code> in <code>GET /v1/models</code> maps to the Ollama model you
+          pick below. <strong>Assistant chat</strong> still uses the WebUI prompt template, RAG, and{' '}
+          <code>POST /v1/chat/completions</code>. <strong>Zed edit prediction</strong> uses{' '}
+          <code>POST /v1/completions</code>, which the proxy forwards to native Ollama <code>/api/generate</code> (same as
+          connecting Zed straight to Ollama): no RAG, no web supplement, no template file — only the prompt Zed sends.
         </p>
         <div className="form-group">
           <label htmlFor="autocomplete-model-select">Ollama model for autocomplete</label>
@@ -107,7 +108,15 @@ function LlmProxyAutocompletePanel() {
         <h3>Zed (chat + autocomplete)</h3>
         <ol className="settings-instructions">
           <li>
-            Use the proxy base URL (same host/port as ChironAI), without trailing <code>/v1</code>.
+            <strong>Edit prediction</strong> (OpenAI-compatible): set API URL to{' '}
+            <code>
+              http://&lt;host&gt;:&lt;port&gt;/v1/completions
+            </code>{' '}
+            — proxied to Ollama <code>/api/generate</code>; not <code>/v1/chat/completions</code>.
+          </li>
+          <li>
+            Assistant <strong>chat</strong>: proxy base URL without trailing <code>/v1</code> (see LLM Proxy
+            Overview).
           </li>
           <li>
             Provider: <em>OpenAI-compatible</em>. API key empty unless you added auth on the proxy.

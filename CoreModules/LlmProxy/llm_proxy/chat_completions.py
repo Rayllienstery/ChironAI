@@ -14,12 +14,7 @@ from typing import Any
 from flask import Response, jsonify, request
 
 from llm_proxy.ollama_think import resolve_ollama_think
-from llm_proxy.config import (
-    DEFAULT_AUTOCOMPLETE_SYSTEM_PREFIX,
-    DEFAULT_AUTOCOMPLETE_SYSTEM_SUFFIX,
-    RAG_MODEL_ID,
-    is_rag_logical_model_id,
-)
+from llm_proxy.config import RAG_MODEL_ID, is_rag_logical_model_id
 from llm_proxy.contracts import LlmProxyWiring
 from llm_proxy.tool_helpers import (
     _build_tool_arguments,
@@ -108,6 +103,43 @@ def _proxy_ollama_chat_text(
     return (text, None)
 
 
+def _normalize_request_messages(body: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    OpenAI chat uses ``messages``; some clients POST legacy ``prompt`` / ``suffix`` instead.
+    Map to a single user message without model-specific fill-in-the-middle tokens.
+    """
+    raw = body.get("messages")
+    if isinstance(raw, list) and len(raw) > 0:
+        return raw
+
+    prompt: str | None = None
+    p_raw = body.get("prompt")
+    if isinstance(p_raw, str):
+        prompt = p_raw
+    elif isinstance(p_raw, list):
+        parts: list[str] = []
+        for p in p_raw:
+            if isinstance(p, str):
+                parts.append(p)
+        if parts:
+            prompt = "".join(parts)
+
+    suffix = body.get("suffix")
+    suffix_s = suffix if isinstance(suffix, str) else ""
+
+    if isinstance(prompt, str) and prompt:
+        if suffix_s:
+            content = f"{prompt}\n{suffix_s}"
+            return [{"role": "user", "content": content}]
+        return [{"role": "user", "content": prompt}]
+
+    inp = body.get("input")
+    if isinstance(inp, str) and inp.strip():
+        return [{"role": "user", "content": inp}]
+
+    return []
+
+
 def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     b = w.base
     prefix = b.prefix
@@ -151,9 +183,10 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         w.log_webui_error("rag_routes.chat_completions", e, {"stage": "parse_body"})
         _log_rag_error("parse_body", e)
         return jsonify({"error": "Invalid JSON"}), 400
-    messages = body.get("messages") or []
+    messages = _normalize_request_messages(body)
     if not messages:
         return jsonify({"error": "messages is required"}), 400
+    body["messages"] = messages
 
     proxy_settings: dict[str, object] = {}
     proxy_model_setting = ""
@@ -184,6 +217,9 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     force_rag = bool(body.get("force_rag"))
     if is_autocomplete:
         force_rag = False
+        tools = []
+        body["tools"] = []
+        tool_choice_effective = "none"
     has_tool_result = any(isinstance(m, dict) and m.get("role") == "tool" for m in messages)
     last_tool_content = ""
     for m in reversed(messages):
@@ -266,7 +302,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
 
     proxy_prompt_name_required: str | None = None
     proxy_ollama_for_logical_id: str | None = None
-    if system_prefix is None and not is_autocomplete:
+    if system_prefix is None:
         _pn = str(proxy_settings.get("prompt_name") or "").strip()
         if not _pn or not rag_prompt_file_exists(_pn):
             return jsonify(
@@ -309,10 +345,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             selected_tool_write_capable = True
     use_native_tools = bool(tools) and tool_choice_effective != "none"
     context_length = len(last_user.split())
-    if is_autocomplete:
-        effective_prefix = (os.getenv("LLM_PROXY_AUTOCOMPLETE_SYSTEM_PREFIX") or "").strip() or DEFAULT_AUTOCOMPLETE_SYSTEM_PREFIX
-        effective_suffix = (os.getenv("LLM_PROXY_AUTOCOMPLETE_SYSTEM_SUFFIX") or "").strip() or DEFAULT_AUTOCOMPLETE_SYSTEM_SUFFIX
-    elif system_prefix is not None:
+    if system_prefix is not None:
         effective_prefix = prefix
         effective_suffix = suffix
     else:
@@ -1256,7 +1289,11 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                                 "object": "chat.completion.chunk",
                                 "model": use_model,
                                 "choices": [
-                                    {"index": 0, "delta": {"content": content}, "finish_reason": None},
+                                    {
+                                        "index": 0,
+                                        "delta": {"content": content},
+                                        "finish_reason": None,
+                                    },
                                 ],
                             }
                             yield f"data: {json.dumps(chunk)}\n\n"
@@ -1270,7 +1307,11 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                         "object": "chat.completion.chunk",
                         "model": use_model,
                         "choices": [
-                            {"index": 0, "delta": {"content": full_response}, "finish_reason": None},
+                            {
+                                "index": 0,
+                                "delta": {"content": full_response},
+                                "finish_reason": None,
+                            },
                         ],
                     }
                     yield f"data: {json.dumps(chunk)}\n\n"
@@ -1440,6 +1481,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     if tool_calls:
         trace["response"]["tool_calls"] = tool_calls
         w.set_current_trace(trace)
+
     _msg_obj: dict[str, object] = {
         "role": "assistant",
         "content": None if tool_calls else content,
