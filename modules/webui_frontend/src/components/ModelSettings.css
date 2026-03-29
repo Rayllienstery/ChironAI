@@ -63,7 +63,7 @@
 }
 
 .form-group .navigate-rag-models-button:hover {
-  background: var(--md-sys-color-surface-container-high, rgba(128, 128, 128, 0.12));
+  background: var(--md-sys-color-surface-container-high);
 }
 
 .form-group input[type="range"] {
@@ -87,7 +87,7 @@
 .setting-hint {
   margin: var(--md-sys-spacing-xs) 0 0 0;
   font-size: 0.875rem;
-  color: var(--md-sys-color-on-surface-variant, #666);
+  color: var(--md-sys-color-on-surface-variant);
   font-style: italic;
 }
 

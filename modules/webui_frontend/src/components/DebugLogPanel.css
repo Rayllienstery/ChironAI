@@ -44,7 +44,7 @@
   justify-content: space-between;
   align-items: center;
   padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   font: var(--md-sys-typescale-title-small-font);
   font-weight: 600;

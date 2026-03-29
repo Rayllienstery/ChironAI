@@ -295,7 +295,12 @@ function App() {
   const renderTabContent = () => {
     switch (activeTab) {
       case "dashboard":
-        return <DashboardTab />;
+        return (
+          <DashboardTab
+            onNavigate={setActiveTab}
+            onOpenLogs={() => setActiveTab("logs")}
+          />
+        );
       case "proxy-trace":
         return <ProxyTraceTab />;
       case "logs":

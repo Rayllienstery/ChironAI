@@ -23,7 +23,7 @@
   
   --md-sys-color-surface: #FFFFFF;
   --md-sys-color-on-surface: #1C1B1F;
-  --md-sys-color-surface-variant: #E7E0EC;
+  --md-sys-color-surface-tint-neutral: #E7E0EC;
   --md-sys-color-on-surface-variant: #49454F;
   --md-sys-color-surface-container: #E7E0EC;
   --md-sys-color-surface-container-high: #ECE6F0;
@@ -75,6 +75,20 @@
   --md-sys-shape-corner-medium: 12px;
   --md-sys-shape-corner-large: 16px;
   --md-sys-shape-corner-extra-large: 28px;
+  /* Pill buttons (was missing → invalid border-radius and square corners) */
+  --md-sys-shape-corner-full: 9999px;
+
+  /* Neutral fill without M3 surface-variant lavender (hue follows on-surface + surface only) */
+  --md-sys-color-surface-tint-neutral: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface) 7%,
+    var(--md-sys-color-surface)
+  );
+
+  /* Semi-transparent accents (follow current primary / tertiary — no fixed purple) */
+  --md-sys-color-primary-tint-12: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+  --md-sys-color-primary-tint-15: color-mix(in srgb, var(--md-sys-color-primary) 15%, transparent);
+  --md-sys-color-tertiary-tint-12: color-mix(in srgb, var(--md-sys-color-tertiary) 12%, transparent);
 }
 
 /* Dark Theme */
@@ -101,7 +115,7 @@
   
   --md-sys-color-surface: #1C1B1F;
   --md-sys-color-on-surface: #E6E1E5;
-  --md-sys-color-surface-variant: #49454F;
+  --md-sys-color-surface-tint-neutral: #49454F;
   --md-sys-color-on-surface-variant: #CAC4D0;
   --md-sys-color-surface-container: #211F26;
   --md-sys-color-surface-container-high: #2B2930;

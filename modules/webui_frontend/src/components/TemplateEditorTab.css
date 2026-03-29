@@ -45,7 +45,7 @@
   flex: 1;
   padding: 8px 16px;
   border: none;
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   color: var(--md-sys-color-on-surface-variant);
   cursor: pointer;
   font: var(--md-sys-typescale-label-medium-font);
@@ -111,7 +111,7 @@
   padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
   border-radius: var(--md-sys-shape-corner-small);
   border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -120,7 +120,7 @@
 }
 
 .template-item:hover {
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   border-color: var(--md-sys-color-outline);
 }
 
@@ -141,7 +141,7 @@
 }
 
 .template-item.readme-item {
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   border-color: var(--md-sys-color-outline-variant);
   opacity: 0.9;
 }
@@ -176,7 +176,7 @@
 }
 
 .template-action-button:hover:not(:disabled) {
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   border-color: var(--md-sys-color-outline);
 }
 
@@ -252,13 +252,13 @@
 
 .template-name-with-rename:hover .template-rename-inline-button {
   opacity: 1;
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   border-color: var(--md-sys-color-outline);
 }
 
 .template-rename-inline-button:hover:not(:disabled) {
   opacity: 1;
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   border-color: var(--md-sys-color-outline);
 }
 
@@ -297,7 +297,7 @@
 .template-mode-button {
   padding: 6px 12px;
   border: none;
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   color: var(--md-sys-color-on-surface-variant);
   cursor: pointer;
   font: var(--md-sys-typescale-label-medium-font);
@@ -321,7 +321,7 @@
   padding: 6px 12px;
   border-radius: var(--md-sys-shape-corner-small);
   border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   color: var(--md-sys-color-on-surface);
   cursor: pointer;
   font: var(--md-sys-typescale-label-medium-font);
@@ -430,7 +430,7 @@
 .template-readme-notice {
   padding: 6px 12px;
   border-radius: var(--md-sys-shape-corner-small);
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   color: var(--md-sys-color-on-surface-variant);
   font: var(--md-sys-typescale-label-medium-font);
   font-size: 0.875rem;
@@ -447,7 +447,7 @@
   padding: var(--md-sys-spacing-sm);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-small);
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   overflow-y: auto;
   max-height: 100%;
 }
@@ -523,7 +523,7 @@
 }
 
 .template-help-modal-close:hover {
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   color: var(--md-sys-color-on-surface);
 }
 
@@ -573,7 +573,7 @@
 }
 
 .template-help-tab:hover:not(.active) {
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   color: var(--md-sys-color-on-surface);
 }
 
@@ -636,7 +636,7 @@
   gap: var(--md-sys-spacing-sm);
   padding: var(--md-sys-spacing-sm);
   border-radius: var(--md-sys-shape-corner-small);
-  border: 1px solid #000;
+  border: 1px solid var(--md-sys-color-outline);
   border-left: 3px solid;
 }
 
@@ -668,7 +668,7 @@
 }
 
 .template-help-structure-preview {
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-small);
   padding: var(--md-sys-spacing-md);
@@ -694,7 +694,7 @@
 }
 
 .template-intelligent-hints {
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-small);
   padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);

@@ -24,7 +24,7 @@
 
 .crawler-subtab {
   border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   color: var(--md-sys-color-on-surface);
   padding: 6px 10px;
   border-radius: 999px;
@@ -48,7 +48,7 @@
   padding: 6px 12px;
   border-radius: var(--md-sys-shape-corner-small);
   border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   color: var(--md-sys-color-on-surface);
   cursor: pointer;
   font: var(--md-sys-typescale-label-medium-font);
@@ -85,7 +85,7 @@
 .crawler-progress-panel {
   padding: 16px;
   border-radius: var(--md-sys-shape-corner-medium);
-  background: var(--md-sys-color-surface-container-high, var(--md-sys-color-surface-variant));
+  background: var(--md-sys-color-surface-container-high, var(--md-sys-color-surface-tint-neutral));
   border: 1px solid var(--md-sys-color-outline-variant);
 }
 
@@ -110,7 +110,7 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  border: 2.5px solid var(--md-sys-color-surface-variant);
+  border: 2.5px solid var(--md-sys-color-surface-tint-neutral);
   border-top-color: var(--md-sys-color-primary);
   border-right-color: var(--md-sys-color-primary-container, var(--md-sys-color-primary));
   animation: crawler-progress-spin 0.75s linear infinite;
@@ -205,7 +205,7 @@
 
 .details-cell {
   padding: var(--md-sys-spacing-md) !important;
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   border-radius: var(--md-sys-shape-corner-medium);
 }
 
@@ -283,7 +283,7 @@
   border: none;
   border-radius: var(--md-sys-shape-corner-medium);
   padding: var(--md-sys-spacing-sm);
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   box-shadow: var(--md-sys-elevation-level1);
 }
 
@@ -341,7 +341,7 @@
 }
 
 .status-badge.not-indexed {
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   color: var(--md-sys-color-on-surface-variant);
 }
 
@@ -425,7 +425,7 @@
 }
 
 .modal-close:hover {
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
 }
 
 .modal-body {
@@ -444,7 +444,7 @@
 .create-collection-progress {
   margin-bottom: var(--md-sys-spacing-lg);
   padding: var(--md-sys-spacing-md);
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   border-radius: var(--md-sys-shape-corner-small);
 }
 
@@ -653,7 +653,7 @@
   max-width: 480px;
   padding: 16px 16px 14px;
   border-radius: var(--md-sys-shape-corner-medium);
-  background: var(--md-sys-color-surface-container-high, var(--md-sys-color-surface-variant));
+  background: var(--md-sys-color-surface-container-high, var(--md-sys-color-surface-tint-neutral));
   border: 1px solid var(--md-sys-color-outline-variant);
   box-shadow: var(--md-sys-elevation-level2);
 }
@@ -723,7 +723,7 @@
 }
 
 .create-collection-toast-close:hover {
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
 }
 
 .create-collection-toast-spinner {
@@ -842,7 +842,7 @@
 }
 
 .create-collection-index-stat__value--skip {
-  color: var(--md-sys-color-error, #b3261e);
+  color: var(--md-sys-color-error);
 }
 
 .create-collection-index-stat__label {
@@ -858,7 +858,7 @@
   gap: 4px;
   padding: 8px 10px;
   border-radius: var(--md-sys-shape-corner-small);
-  background: var(--md-sys-color-surface-container-lowest, rgba(0, 0, 0, 0.04));
+  background: var(--md-sys-color-surface-container-lowest);
   border: 1px dashed var(--md-sys-color-outline-variant);
   min-width: 0;
 }
@@ -916,7 +916,7 @@
   font: var(--md-sys-typescale-body-small-font);
   padding: 4px 8px;
   border-radius: 999px;
-  background: var(--md-sys-color-error-container, rgba(179, 38, 30, 0.12));
+  background: var(--md-sys-color-error-container);
   color: var(--md-sys-color-on-error-container, var(--md-sys-color-on-surface));
   border: 1px solid var(--md-sys-color-outline-variant);
 }
@@ -1016,7 +1016,7 @@
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-small);
   padding: var(--md-sys-spacing-sm);
-  background: var(--md-sys-color-surface-container-low, var(--md-sys-color-surface-variant));
+  background: var(--md-sys-color-surface-container-low, var(--md-sys-color-surface-tint-neutral));
   position: relative;
 }
 
@@ -1224,7 +1224,7 @@
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-small);
   padding: var(--md-sys-spacing-md);
-  background: var(--md-sys-color-surface-container-low, var(--md-sys-color-surface-variant));
+  background: var(--md-sys-color-surface-container-low, var(--md-sys-color-surface-tint-neutral));
 }
 
 .md-pipeline-step-option-title {

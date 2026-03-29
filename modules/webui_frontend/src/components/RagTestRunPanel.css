@@ -35,7 +35,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid var(--md-sys-color-surface-variant);
+  border: 2px solid var(--md-sys-color-surface-tint-neutral);
   border-top-color: var(--md-sys-color-primary);
   animation: rag-test-run-spinner-spin 0.75s linear infinite;
   flex-shrink: 0;
@@ -56,7 +56,7 @@
   padding: 4px 10px;
   border-radius: var(--md-sys-shape-corner-small);
   border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   color: var(--md-sys-color-on-surface);
   font: var(--md-sys-typescale-label-small-font);
   cursor: pointer;
@@ -133,7 +133,7 @@
 .rag-test-run-panel-bar-wrap {
   height: 6px;
   border-radius: 3px;
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   overflow: hidden;
 }
 

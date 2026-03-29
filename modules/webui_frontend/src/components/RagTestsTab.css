@@ -52,7 +52,7 @@
   padding: 8px 14px;
   border-radius: var(--md-sys-shape-corner-small);
   border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   color: var(--md-sys-color-on-surface);
   cursor: pointer;
   font: var(--md-sys-typescale-label-medium-font);
@@ -95,7 +95,7 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  border: 2.5px solid var(--md-sys-color-surface-variant);
+  border: 2.5px solid var(--md-sys-color-surface-tint-neutral);
   border-top-color: var(--md-sys-color-primary);
   border-right-color: var(--md-sys-color-primary-container);
   animation: rag-tests-spinner-spin 0.75s linear infinite;
@@ -178,7 +178,7 @@
 .rag-tests-progress-bar-wrap {
   height: 8px;
   border-radius: 4px;
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   overflow: hidden;
 }
 
@@ -222,7 +222,7 @@
 }
 
 .rag-tests-table th {
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   font-weight: 600;
 }
 
@@ -287,7 +287,7 @@
   margin: 0;
   padding: 10px;
   overflow-x: auto;
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   border-radius: 4px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -516,7 +516,7 @@
 }
 
 .rag-tests-history-table th {
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   font-weight: 600;
 }
 
@@ -600,7 +600,7 @@
   position: relative;
   height: 8px;
   border-radius: 4px;
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   overflow: hidden;
   margin-bottom: 6px;
 }

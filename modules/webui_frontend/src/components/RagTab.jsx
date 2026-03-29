@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   getRagStatus,
   getRagCollections,
@@ -15,8 +15,8 @@ import {
   getModels,
   getRagModelSettings,
   updateRagModelSettings,
-  getPipelinePreview,
 } from '../services/api';
+import { useMergedPipelinePreview } from '../hooks/useMergedPipelinePreview';
 import PipelineCiDiagram from './PipelineCiDiagram';
 import './RagTab.css';
 
@@ -83,16 +83,11 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
   });
   const [ragModelSaving, setRagModelSaving] = useState(false);
   const [ragModelSaveNotice, setRagModelSaveNotice] = useState(null);
-  const [pipelineSnapshot, setPipelineSnapshot] = useState(null);
 
-  const loadPipelinePreview = useCallback(async () => {
-    try {
-      const p = await getPipelinePreview();
-      setPipelineSnapshot(p);
-    } catch (e) {
-      console.error('Failed to load pipeline preview', e);
-    }
-  }, []);
+  const { merged: pipelineMerged, reload: reloadPipelinePreview } = useMergedPipelinePreview({
+    liveHybridSparse: ragModelSettings.hybrid_sparse_enabled,
+    liveRerankForRag: ragModelSettings.rerank_for_rag,
+  });
 
   useEffect(() => {
     if (!scrollToModelsSection) return undefined;
@@ -192,24 +187,13 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
     loadFrameworkSettings();
     loadModels();
     loadRagModelSettings();
-    loadPipelinePreview();
   }, [
     loadKeywordCollections,
     loadTriggerSettings,
     loadFrameworkSettings,
     loadModels,
     loadRagModelSettings,
-    loadPipelinePreview,
   ]);
-
-  const pipelineMerged = useMemo(() => {
-    if (!pipelineSnapshot) return null;
-    return {
-      ...pipelineSnapshot,
-      hybrid_sparse_enabled: ragModelSettings.hybrid_sparse_enabled,
-      rerank_for_rag: ragModelSettings.rerank_for_rag,
-    };
-  }, [pipelineSnapshot, ragModelSettings]);
 
   const handleStart = async () => {
     setBusy(true);
@@ -299,7 +283,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
         rerank_model: ragModelSettings.rerank_model || '',
       });
       await loadRagModelSettings();
-      await loadPipelinePreview();
+      await reloadPipelinePreview();
       setRagModelSaveNotice({ type: 'success', text: 'Models saved. Values below match the server.' });
       window.setTimeout(() => setRagModelSaveNotice(null), 6000);
     } catch (e) {
@@ -465,7 +449,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
               loadKeywordCollections();
               loadTriggerSettings();
               loadFrameworkSettings();
-              loadPipelinePreview();
+              reloadPipelinePreview();
             }}
             disabled={busy}
           >

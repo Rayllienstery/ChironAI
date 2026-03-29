@@ -25,7 +25,7 @@
 
 .logs-view-toggle button {
   padding: var(--md-sys-spacing-xs) var(--md-sys-spacing-md);
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   color: var(--md-sys-color-on-surface-variant);
   border: 1px solid var(--md-sys-color-outline);
   border-radius: var(--md-sys-shape-corner-small);
@@ -35,7 +35,7 @@
 }
 
 .logs-view-toggle button:hover {
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   border-color: var(--md-sys-color-primary);
 }
 
@@ -141,7 +141,7 @@
 .empty-state {
   padding: var(--md-sys-spacing-xl, 24px);
   text-align: center;
-  color: var(--md-sys-color-on-surface-variant, #666);
+  color: var(--md-sys-color-on-surface-variant);
   font-style: italic;
   min-height: 60px;
 }
@@ -149,7 +149,7 @@
 .loading {
   padding: var(--md-sys-spacing-xl, 24px);
   text-align: center;
-  color: var(--md-sys-color-on-surface-variant, #666);
+  color: var(--md-sys-color-on-surface-variant);
   min-height: 80px;
   display: flex;
   align-items: center;
@@ -236,7 +236,7 @@
 .proxy-log-rag-hint {
   font-size: 12px;
   font-weight: normal;
-  color: var(--md-sys-color-on-surface-variant, #666);
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 .proxy-log-rag-info {
@@ -422,7 +422,7 @@
 
 .proxy-logs-period-tabs button {
   padding: var(--md-sys-spacing-xs) var(--md-sys-spacing-sm);
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   color: var(--md-sys-color-on-surface-variant);
   border: 1px solid var(--md-sys-color-outline);
   border-radius: var(--md-sys-shape-corner-small);
@@ -555,7 +555,7 @@
 
 .proxy-logs-calendar-nav {
   padding: var(--md-sys-spacing-xs) var(--md-sys-spacing-sm);
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   color: var(--md-sys-color-on-surface-variant);
   border: 1px solid var(--md-sys-color-outline);
   border-radius: var(--md-sys-shape-corner-small);
@@ -615,7 +615,7 @@
 }
 
 .proxy-logs-calendar-day:not(.empty):hover {
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   border-color: var(--md-sys-color-outline);
 }
 
@@ -638,7 +638,7 @@
 .proxy-logs-calendar-reset {
   margin-top: var(--md-sys-spacing-sm);
   padding: var(--md-sys-spacing-xs) var(--md-sys-spacing-sm);
-  background: var(--md-sys-color-surface-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
   color: var(--md-sys-color-on-surface-variant);
   border: 1px solid var(--md-sys-color-outline);
   border-radius: var(--md-sys-shape-corner-small);

@@ -7,6 +7,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { useThemeChartColors } from '../hooks/useThemeChartColors';
 import ProxyLogsPeriodCalendar from './ProxyLogsPeriodCalendar';
 
 const PERIODS = [
@@ -15,11 +16,6 @@ const PERIODS = [
   { id: 'month', label: 'Month' },
   { id: 'year', label: 'Year' },
   { id: 'all', label: 'All time' },
-];
-
-const PIE_COLORS = [
-  '#6750A4', '#7D5260', '#B58392', '#E8DEF8', '#D0BCFF',
-  '#938F99', '#79747E', '#49454F', '#21005D', '#DED8E1',
 ];
 
 const TOP_N = 10;
@@ -134,6 +130,7 @@ function ProxyLogsAnalytics({
 }) {
   const agg = aggregateLogs(logs);
   const isAc = variant === 'autocomplete';
+  const pieColors = useThemeChartColors();
 
   return (
     <div
@@ -198,7 +195,7 @@ function ProxyLogsAnalytics({
                 label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
               >
                 {agg.modelPieData.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                  <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
                 ))}
               </Pie>
               <Tooltip formatter={(value) => [value, 'Requests']} />
@@ -223,7 +220,7 @@ function ProxyLogsAnalytics({
                     label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                   >
                     {agg.ragDocTypeData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                      <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
                     ))}
                   </Pie>
                   <Tooltip formatter={(value) => [value, 'Chunk uses']} />
@@ -246,7 +243,7 @@ function ProxyLogsAnalytics({
                     label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                   >
                     {agg.ragVsNoRagData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                      <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
                     ))}
                   </Pie>
                   <Tooltip formatter={(value) => [value, 'Requests']} />
