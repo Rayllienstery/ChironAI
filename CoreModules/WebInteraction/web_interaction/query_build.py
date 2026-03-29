@@ -21,6 +21,19 @@ def compact_ws(text: str) -> str:
     return " ".join((text or "").split()).strip()
 
 
+def clip_zed_context_tail_for_search(user_message: str) -> str:
+    """
+    Zed may append another instruction after </context> (e.g. title generation).
+    Web search should use only the primary task inside/before the closing tag.
+    """
+    t = user_message or ""
+    il = t.lower()
+    pos = il.find("</context>")
+    if pos != -1:
+        return t[: pos + len("</context>")]
+    return t
+
+
 def truncate_query(text: str, max_len: int = 280) -> str:
     t = compact_ws(text)
     if len(t) <= max_len:
@@ -36,7 +49,8 @@ def build_search_queries(user_message: str, trigger: WebSupplementTrigger, *, ma
     """
     Return 1–2 search strings: primary cleaned message; optional second query by trigger.
     """
-    cleaned = truncate_query(strip_code_fences(user_message or ""), max_len=max_len)
+    clipped = clip_zed_context_tail_for_search(user_message or "")
+    cleaned = truncate_query(strip_code_fences(clipped), max_len=max_len)
     if not cleaned:
         return []
 

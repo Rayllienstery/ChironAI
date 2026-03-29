@@ -37,7 +37,6 @@ _FRAMEWORK_TOKENS = frozenset(
         "combine",
         "asyncawait",
         "async/await",
-        "observation",
         "@observable",
         "alamofire",
         "kingfisher",

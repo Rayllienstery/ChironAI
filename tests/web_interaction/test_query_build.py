@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from web_interaction.query_build import build_search_queries, strip_code_fences
+from web_interaction.query_build import (
+    build_search_queries,
+    clip_zed_context_tail_for_search,
+    strip_code_fences,
+)
 
 
 def test_strip_code_fences() -> None:
@@ -32,6 +36,23 @@ def test_build_queries_low_confidence_adds_site() -> None:
 
 def test_build_queries_empty_after_strip() -> None:
     assert build_search_queries("```\nonly code\n```", "keywords") == []
+
+
+def test_clip_zed_context_tail_drops_title_suffix() -> None:
+    raw = (
+        "[@TODO.md](file:///x/TODO.md) move to POST_MVP.md <context></context> "
+        "Generate a concise 3-7 word title for this conversation"
+    )
+    clipped = clip_zed_context_tail_for_search(raw)
+    assert "Generate a concise" not in clipped
+    assert "</context>" in clipped
+
+
+def test_build_queries_after_context_clip_excludes_trailing_instruction() -> None:
+    raw = "Task A </context> Generate a concise title"
+    qs = build_search_queries(raw, "keywords")
+    assert qs
+    assert "Generate a concise" not in " ".join(qs)
 
 
 def test_build_web_supplement_multi_backend_low_conf_framework() -> None:

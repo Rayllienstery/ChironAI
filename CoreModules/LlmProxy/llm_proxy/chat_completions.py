@@ -13,7 +13,10 @@ from typing import Any
 
 from flask import Response, jsonify, request
 
+from infrastructure.ollama.openai_ollama_tool_bridge import arguments_to_ollama_object
+
 from llm_proxy import edit_state
+from llm_proxy.ollama_think import resolve_ollama_think
 from llm_proxy.config import (
     DEFAULT_AUTOCOMPLETE_SYSTEM_PREFIX,
     DEFAULT_AUTOCOMPLETE_SYSTEM_SUFFIX,
@@ -32,6 +35,7 @@ from llm_proxy.tool_helpers import (
     _extract_line_span_from_user_text,
     _extract_tool_name,
     _get_tool_by_name,
+    _is_edit_like_tool_name,
     _maybe_retry_edit_payload_full_file,
     _normalized_path_for_cache,
     _normalized_user_signature,
@@ -42,6 +46,7 @@ from llm_proxy.tool_helpers import (
     _tool_args_have_substantive_body,
     _tool_result_looks_like_unintended_deletion,
     _tool_schema_accepts_content,
+    _workspace_doc_refactor_intent,
     _workspace_selection_snippet,
 )
 
@@ -54,6 +59,118 @@ def _is_rag_logical_model_id(requested: str, rag_logical_id: str) -> bool:
 
 def _log_rag_error(stage: str, error: Exception) -> None:
     _RAG_LOG.error("RAG stage=%s | %s: %s", stage, type(error).__name__, error)
+
+
+def _normalize_native_openai_tool_calls_for_edit_tools(
+    tool_calls: list[Any],
+    tools: list[Any],
+    user_query: str,
+) -> tuple[list[Any], list[str]]:
+    """
+    Apply _build_tool_arguments to edit-like native tool_calls before returning them to the client.
+    Non-edit tools and any normalization failures keep the original tool call.
+    """
+    out: list[Any] = []
+    errors: list[str] = []
+    for tc in tool_calls:
+        if not isinstance(tc, dict):
+            out.append(tc)
+            continue
+        fn = tc.get("function") if isinstance(tc.get("function"), dict) else None
+        if not isinstance(fn, dict):
+            out.append(tc)
+            continue
+        name = fn.get("name")
+        name_s = str(name) if name else ""
+        if not _is_edit_like_tool_name(name_s):
+            out.append(tc)
+            continue
+        raw_args = fn.get("arguments")
+        try:
+            if isinstance(raw_args, dict):
+                parsed: dict[str, Any] = {str(k): v for k, v in raw_args.items()}
+            elif isinstance(raw_args, str):
+                parsed = dict(arguments_to_ollama_object(raw_args))
+            else:
+                parsed = dict(arguments_to_ollama_object(raw_args))
+        except Exception as e:
+            errors.append(f"{name_s}:parse:{type(e).__name__}:{e}")
+            out.append(tc)
+            continue
+        tool_def = _get_tool_by_name(tools, name_s)
+        try:
+            normalized = _build_tool_arguments(
+                selected_tool_name=name_s,
+                selected_tool=tool_def,
+                edit_payload=parsed,
+                user_query=user_query,
+            )
+        except Exception as e:
+            errors.append(f"{name_s}:build:{type(e).__name__}:{e}")
+            out.append(tc)
+            continue
+        new_fn = {**fn, "arguments": json.dumps(normalized, ensure_ascii=False)}
+        new_tc = {**tc, "function": new_fn}
+        out.append(new_tc)
+    return out, errors
+
+
+_OLLAMA_TRACE_MSG_PREVIEW = 300
+
+
+def _trace_ollama_messages_for_ui(ollama_messages: list[Any]) -> list[dict[str, Any]]:
+    """Snapshots messages for Proxy Trace (preview + full text for the WebUI modal)."""
+    out: list[dict[str, Any]] = []
+    for m in ollama_messages:
+        if not isinstance(m, dict):
+            continue
+        role = m.get("role") or ""
+        _raw_content = m.get("content")
+        if isinstance(_raw_content, str):
+            content_str = _raw_content
+        elif _raw_content is None:
+            content_str = ""
+        else:
+            content_str = json.dumps(_raw_content, ensure_ascii=False)
+        content_len = len(content_str)
+        lim = _OLLAMA_TRACE_MSG_PREVIEW
+        out.append(
+            {
+                "role": str(role),
+                "content_length_chars": int(content_len),
+                "content_preview": content_str[:lim] + ("..." if content_len > lim else ""),
+                "content_full": content_str,
+            }
+        )
+    return out
+
+
+def _proxy_ollama_chat_text(
+    chat_client: Any,
+    messages: list[dict[str, Any]],
+    model: str,
+    think: bool | str | None,
+) -> tuple[str, str | None]:
+    """Non-stream /api/chat; returns (assistant content, thinking text or None)."""
+    _co = getattr(chat_client, "_default_options", None) or {}
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "options": dict(_co),
+    }
+    if think is not None:
+        payload["think"] = think
+    chat_fn = getattr(chat_client, "chat_api", None)
+    if callable(chat_fn):
+        data = chat_fn(payload)
+        msg = data.get("message") if isinstance(data.get("message"), dict) else {}
+        content = (msg.get("content") or "").strip() if isinstance(msg, dict) else ""
+        th = msg.get("thinking") if isinstance(msg, dict) else None
+        thinking_out = th.strip() if isinstance(th, str) else None
+        return (content, thinking_out or None)
+    text = chat_client.chat(messages, model, stream=False, options=None, think=think)
+    return (text, None)
 
 
 def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
@@ -405,6 +522,8 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     reasoning_level = w.determine_reasoning_level(
         last_user, context_length, effective_ollama_model, explicit_reasoning
     )
+    resolved_think = resolve_ollama_think(body, reasoning_level, effective_ollama_model)
+    reasoning_for_prompt = None if resolved_think is not None else reasoning_level
 
     actual_model = (
         effective_ollama_model
@@ -448,6 +567,8 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         "force_rag": bool(force_rag),
         "fetch_web_knowledge": bool(fetch_web_knowledge),
         "reasoning_level": explicit_reasoning or reasoning_level,
+        "reasoning_for_prompt": reasoning_for_prompt,
+        "ollama_think": resolved_think,
         "user_query_preview": (user_query or "")[:500],
         "is_autocomplete": bool(is_autocomplete),
     }
@@ -618,6 +739,10 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     # Skip embed/search/rerank when the client is doing a local selection-based edit (typical Zed flow).
     # Model Tester feels faster largely because use_rag=false avoids this entire retrieval stack.
     explicit_skip_rag = bool(body.get("skip_rag"))
+    doc_refactor_intent = _workspace_doc_refactor_intent(last_user or "")
+    doc_refactor_skip = bool(doc_refactor_intent and not force_rag)
+    trace["request"]["doc_refactor_intent"] = bool(doc_refactor_intent)
+    trace["request"]["doc_refactor_skip"] = bool(doc_refactor_skip)
     local_tool_edit_fast_path = (
         bool(tools)
         and bool(selected_edit_tool_name)
@@ -634,7 +759,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             )
         )
     )
-    skip_rag_retrieval = explicit_skip_rag or local_tool_edit_fast_path or is_autocomplete
+    skip_rag_retrieval = explicit_skip_rag or local_tool_edit_fast_path or is_autocomplete or doc_refactor_skip
     trace["request"]["skip_rag_retrieval"] = bool(skip_rag_retrieval)
 
     # Build RAG context: multi-collection (external_docs_rag) when triggered, else single collection
@@ -867,23 +992,30 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     }
     _bf = getattr(w, "build_web_supplement_for_proxy", None)
     if callable(_bf) and not is_autocomplete:
-        try:
-            _tws = time.time()
-            _mx = float(rag_ctx_for_log.max_score) if rag_ctx_for_log is not None else 0.0
-            ps: dict[str, Any] = {str(k): v for k, v in (proxy_settings or {}).items()}
-            web_supplement_text, web_sup_meta = _bf(
-                last_user or "",
-                _mx,
-                float(effective_confidence_threshold),
-                ps,
-            )
+        if doc_refactor_skip:
             web_sup_meta = {
                 **web_sup_meta,
-                "duration_ms": int((time.time() - _tws) * 1000),
+                "skip_reason": "workspace_doc_refactor",
+                "duration_ms": 0,
             }
-        except Exception as _wse:
-            web_sup_meta = {**web_sup_meta, "error": str(_wse)}
-            web_supplement_text = None
+        else:
+            try:
+                _tws = time.time()
+                _mx = float(rag_ctx_for_log.max_score) if rag_ctx_for_log is not None else 0.0
+                ps: dict[str, Any] = {str(k): v for k, v in (proxy_settings or {}).items()}
+                web_supplement_text, web_sup_meta = _bf(
+                    last_user or "",
+                    _mx,
+                    float(effective_confidence_threshold),
+                    ps,
+                )
+                web_sup_meta = {
+                    **web_sup_meta,
+                    "duration_ms": int((time.time() - _tws) * 1000),
+                }
+            except Exception as _wse:
+                web_sup_meta = {**web_sup_meta, "error": str(_wse)}
+                web_supplement_text = None
     trace["internet"]["web_supplement"] = {
         "used": bool(web_sup_meta.get("used")),
         "trigger": web_sup_meta.get("trigger"),
@@ -910,7 +1042,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             messages=messages,
             model=actual_model,  # Use actual_model instead of requested_model
             stream=stream,
-            reasoning_level=reasoning_level,
+            reasoning_level=reasoning_for_prompt,
         )
         ollama_messages, use_model = w.prepare_ollama_messages(
             req,
@@ -923,7 +1055,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             effective_context_total_chars,
             effective_confidence_threshold,
             effective_ollama_model,
-            reasoning_level=reasoning_level,
+            reasoning_level=reasoning_for_prompt,
             rag_required_keywords=rag_keywords,
             rag_context=rag_ctx_for_log,
             trigger_threshold=None,
@@ -937,25 +1069,9 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         if use_model == autocomplete_id:
             use_model = effective_ollama_model
 
-        # Store what we send to Ollama (preview + sizes only)
-        _msg_preview_limit = 300
-        _ollama_messages_preview: list[dict[str, object]] = []
-        for m in ollama_messages:
-            if not isinstance(m, dict):
-                continue
-            role = m.get("role") or ""
-            content_str = m.get("content") or ""
-            content_len = len(content_str)
-            _ollama_messages_preview.append(
-                {
-                    "role": str(role),
-                    "content_length_chars": int(content_len),
-                    "content_preview": content_str[:_msg_preview_limit]
-                    + ("..." if content_len > _msg_preview_limit else ""),
-                }
-            )
         trace["ollama"]["model"] = use_model
-        trace["ollama"]["messages"] = _ollama_messages_preview
+        trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(ollama_messages)
+        trace["ollama"]["think"] = resolved_think
     except Exception as e:
         w.log_webui_error("rag_routes.chat_completions", e, {"stage": "prepare_rag"})
         _log_rag_error("prepare_rag", e)
@@ -977,6 +1093,8 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             "stream": stream,
             "options": dict(_co),
         }
+        if resolved_think is not None:
+            body_ollama["think"] = resolved_think
         if oll_tools:
             body_ollama["tools"] = oll_tools
         if tool_choice_effective not in (None, "", "auto"):
@@ -996,14 +1114,18 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                     if callable(chat_fn):
                         data = chat_fn(_body_ns)
                     else:
-                        msg_only = chat_client.chat(ollama_messages, use_model, stream=False, options=None)
+                        msg_only = chat_client.chat(
+                            ollama_messages, use_model, stream=False, options=None, think=resolved_think
+                        )
                         data = {"message": {"role": "assistant", "content": msg_only}}
             else:
                 chat_fn = getattr(chat_client, "chat_api", None)
                 if callable(chat_fn):
                     data = chat_fn(body_ollama)
                 else:
-                    msg_only = chat_client.chat(ollama_messages, use_model, stream=False, options=None)
+                    msg_only = chat_client.chat(
+                        ollama_messages, use_model, stream=False, options=None, think=resolved_think
+                    )
                     data = {"message": {"role": "assistant", "content": msg_only}}
         except Exception as e:
             w.log_webui_error("rag_routes.chat_completions", e, {"stage": "native_tools_ollama"})
@@ -1036,6 +1158,13 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         openai_msg = ollama_message_to_openai_assistant(oll_msg)
         finish = openai_finish_reason_from_ollama(oll_msg)
         tool_calls_out = openai_msg.get("tool_calls") if isinstance(openai_msg.get("tool_calls"), list) else []
+        native_tool_args_normalize_errors: list[str] = []
+        if tool_calls_out:
+            tool_calls_out, native_tool_args_normalize_errors = _normalize_native_openai_tool_calls_for_edit_tools(
+                tool_calls_out,
+                tools,
+                user_query or last_user or "",
+            )
         content_out = openai_msg.get("content")
         content_str = content_out if isinstance(content_out, str) else ("" if content_out is None else str(content_out))
 
@@ -1055,6 +1184,8 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             "tool_calls_count": len(tool_calls_out),
             "native_tools": True,
         }
+        if native_tool_args_normalize_errors:
+            trace["response"]["native_tool_args_normalize_errors"] = native_tool_args_normalize_errors[:5]
         if tool_calls_out:
             trace["response"]["tool_calls"] = tool_calls_out
         trace["steps"].append(
@@ -1092,6 +1223,9 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                     yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'tool_calls': payload_calls}, 'finish_reason': None}]})}\n\n"
                     yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls'}]})}\n\n"
                 else:
+                    _nr = openai_msg.get("reasoning_content")
+                    if isinstance(_nr, str) and _nr.strip():
+                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'reasoning_content': _nr}, 'finish_reason': None}]})}\n\n"
                     if content_str:
                         yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'content': content_str}, 'finish_reason': None}]})}\n\n"
                     yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish}]})}\n\n"
@@ -1107,6 +1241,9 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             "role": "assistant",
             "content": None if tool_calls_out else (content_str or None),
         }
+        _rc = openai_msg.get("reasoning_content")
+        if isinstance(_rc, str) and _rc.strip():
+            choice_msg["reasoning_content"] = _rc
         if tool_calls_out:
             choice_msg["tool_calls"] = tool_calls_out
         response_data: dict[str, object] = {
@@ -1171,6 +1308,10 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             if excerpt_sys:
                 ollama_messages.append({"role": "system", "content": excerpt_sys})
 
+        trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(ollama_messages)
+        trace["ollama"]["model"] = use_model
+        w.set_current_trace(trace)
+
     stream_tool_mode = bool(
         stream and tools and tool_choice_effective != "none" and not post_tool_success_turn
     )
@@ -1179,7 +1320,9 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         stream_start_time = time.time()
         stream_tool_error: str | None = None
         try:
-            streamed_content = chat_client.chat(ollama_messages, use_model, stream=False, options=None)
+            streamed_content = chat_client.chat(
+                ollama_messages, use_model, stream=False, options=None, think=resolved_think
+            )
         except Exception as e:
             # Retry once with compact context; large prompts can trigger Ollama 500 on some models.
             compact_messages: list[dict[str, object]] = []
@@ -1191,7 +1334,13 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                 if isinstance(last_user_msg, dict):
                     compact_messages.append(last_user_msg)
             try:
-                streamed_content = chat_client.chat(compact_messages or ollama_messages, use_model, stream=False, options=None)
+                streamed_content = chat_client.chat(
+                    compact_messages or ollama_messages,
+                    use_model,
+                    stream=False,
+                    options=None,
+                    think=resolved_think,
+                )
             except Exception as e2:
                 w.log_webui_error("rag_routes.chat_completions", e2, {"stage": "chat_stream_tool_mode"})
                 _log_rag_error("chat_stream_tool_mode", e2)
@@ -1224,7 +1373,9 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                 }
             )
             try:
-                retried_content = chat_client.chat(strict_messages, use_model, stream=False, options=None)
+                retried_content = chat_client.chat(
+                    strict_messages, use_model, stream=False, options=None, think=resolved_think
+                )
                 tool_plain_fallback = (retried_content or "").strip() or tool_plain_fallback
                 edit_payload = _extract_edit_from_response(retried_content or "")
             except Exception as e2:
@@ -1249,7 +1400,9 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                 }
             )
             try:
-                retried2 = chat_client.chat(strict_messages2, use_model, stream=False, options=None)
+                retried2 = chat_client.chat(
+                    strict_messages2, use_model, stream=False, options=None, think=resolved_think
+                )
                 tool_plain_fallback = (retried2 or "").strip() or tool_plain_fallback
                 edit_payload = _extract_edit_from_response(retried2 or "")
             except Exception as e_strict2:
@@ -1268,6 +1421,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                 selected_edit_tool_name,
                 selected_edit_tool,
                 edit_payload,
+                think=resolved_think,
             )
             if did_full_file_retry:
                 trace["request"]["internal_full_file_retry"] = True
@@ -1342,7 +1496,12 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                     }
                 )
                 tool_plain_fallback = (
-                    (chat_client.chat(minimal_messages, use_model, stream=False, options=None) or "").strip()
+                    (
+                        chat_client.chat(
+                            minimal_messages, use_model, stream=False, options=None, think=resolved_think
+                        )
+                        or ""
+                    ).strip()
                 )
             except Exception:
                 tool_plain_fallback = ""
@@ -1380,23 +1539,71 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             preview = ""
             stream_start_time = time.time()
             full_response = ""
+            full_reasoning = ""
             emitted_any = False
             total_tokens_holder = [0]
+            _co = getattr(chat_client, "_default_options", None) or {}
+            stream_body: dict[str, Any] = {
+                "model": use_model,
+                "messages": ollama_messages,
+                "stream": True,
+                "options": dict(_co),
+            }
+            if resolved_think is not None:
+                stream_body["think"] = resolved_think
+            iter_fn = getattr(chat_client, "iter_chat_api_stream_openai_parts", None)
             try:
-                for content in chat_client.stream_chat(ollama_messages, use_model):
-                    if content:
-                        full_response += content
-                        preview += content[: max(0, log_preview - len(preview))]
-                        emitted_any = True
-                        chunk = {
-                            "id": oid,
-                            "object": "chat.completion.chunk",
-                            "model": use_model,
-                            "choices": [
-                                {"index": 0, "delta": {"content": content}, "finish_reason": None},
-                            ],
-                        }
-                        yield f"data: {json.dumps(chunk)}\n\n"
+                if callable(iter_fn):
+                    for kind, text in iter_fn(stream_body):
+                        if kind == "error":
+                            raise RuntimeError(text)
+                        if kind == "reasoning" and text:
+                            full_reasoning += text
+                            emitted_any = True
+                            preview += text[: max(0, log_preview - len(preview))]
+                            chunk = {
+                                "id": oid,
+                                "object": "chat.completion.chunk",
+                                "model": use_model,
+                                "choices": [
+                                    {
+                                        "index": 0,
+                                        "delta": {"reasoning_content": text},
+                                        "finish_reason": None,
+                                    },
+                                ],
+                            }
+                            yield f"data: {json.dumps(chunk)}\n\n"
+                        elif kind == "content" and text:
+                            full_response += text
+                            preview += text[: max(0, log_preview - len(preview))]
+                            emitted_any = True
+                            chunk = {
+                                "id": oid,
+                                "object": "chat.completion.chunk",
+                                "model": use_model,
+                                "choices": [
+                                    {"index": 0, "delta": {"content": text}, "finish_reason": None},
+                                ],
+                            }
+                            yield f"data: {json.dumps(chunk)}\n\n"
+                else:
+                    for content in chat_client.stream_chat(
+                        ollama_messages, use_model, think=resolved_think
+                    ):
+                        if content:
+                            full_response += content
+                            preview += content[: max(0, log_preview - len(preview))]
+                            emitted_any = True
+                            chunk = {
+                                "id": oid,
+                                "object": "chat.completion.chunk",
+                                "model": use_model,
+                                "choices": [
+                                    {"index": 0, "delta": {"content": content}, "finish_reason": None},
+                                ],
+                            }
+                            yield f"data: {json.dumps(chunk)}\n\n"
                 if not emitted_any:
                     full_response = (
                         "Model returned an empty response; no tool call was emitted. Please retry."
@@ -1498,9 +1705,12 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             mimetype="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+    assistant_reasoning: str | None = None
     try:
         w.set_proxy_status(w.status_response)
-        content = chat_client.chat(ollama_messages, use_model, stream=False, options=None)
+        content, assistant_reasoning = _proxy_ollama_chat_text(
+            chat_client, ollama_messages, use_model, resolved_think
+        )
     except Exception as e:
         w.log_webui_error("rag_routes.chat_completions", e, {"stage": "chat"})
         _log_rag_error("chat", e)
@@ -1554,6 +1764,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                 selected_edit_tool_name,
                 selected_edit_tool,
                 edit_payload,
+                think=resolved_think,
             )
             if did_full_file_retry:
                 trace["request"]["internal_full_file_retry"] = True
@@ -1596,7 +1807,9 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             )
             retried_payload: dict[str, object] | None = None
             try:
-                retried_content = chat_client.chat(strict_messages_ns, use_model, stream=False, options=None)
+                retried_content = chat_client.chat(
+                    strict_messages_ns, use_model, stream=False, options=None, think=resolved_think
+                )
                 retried_payload = _extract_edit_from_response(retried_content or "")
                 if retried_payload:
                     retried_payload, did_ff2 = _maybe_retry_edit_payload_full_file(
@@ -1606,6 +1819,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                         selected_edit_tool_name,
                         selected_edit_tool,
                         retried_payload,
+                        think=resolved_think,
                     )
                     if did_ff2:
                         trace["request"]["internal_full_file_retry"] = True
@@ -1643,7 +1857,9 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                     }
                 )
                 try:
-                    retried2 = chat_client.chat(strict_messages_ns2, use_model, stream=False, options=None)
+                    retried2 = chat_client.chat(
+                        strict_messages_ns2, use_model, stream=False, options=None, think=resolved_think
+                    )
                     retried_payload2 = _extract_edit_from_response(retried2 or "")
                     if retried_payload2:
                         retried_payload2, did_ff3 = _maybe_retry_edit_payload_full_file(
@@ -1653,6 +1869,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                             selected_edit_tool_name,
                             selected_edit_tool,
                             retried_payload2,
+                            think=resolved_think,
                         )
                         if did_ff3:
                             trace["request"]["internal_full_file_retry"] = True
@@ -1685,13 +1902,17 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     if tool_calls:
         trace["response"]["tool_calls"] = tool_calls
         w.set_current_trace(trace)
+    _msg_obj: dict[str, object] = {
+        "role": "assistant",
+        "content": None if tool_calls else content,
+    }
+    if assistant_reasoning:
+        _msg_obj["reasoning_content"] = assistant_reasoning
+    if tool_calls:
+        _msg_obj["tool_calls"] = tool_calls
     choice = {
         "index": 0,
-        "message": {
-            "role": "assistant",
-            "content": None if tool_calls else content,
-            **({"tool_calls": tool_calls} if tool_calls else {}),
-        },
+        "message": _msg_obj,
         "finish_reason": "tool_calls" if tool_calls else "stop",
     }
     response_data = {

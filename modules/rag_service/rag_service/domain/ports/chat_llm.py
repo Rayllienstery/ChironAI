@@ -20,6 +20,7 @@ class ChatLLMClient(Protocol):
         model: str,
         stream: bool = False,
         options: dict[str, Any] | None = None,
+        think: bool | str | None = None,
     ) -> str:
         """
         Send messages and return the assistant reply as a string.
@@ -33,6 +34,7 @@ class ChatLLMClient(Protocol):
         messages: list[dict[str, Any]],
         model: str,
         options: dict[str, Any] | None = None,
+        think: bool | str | None = None,
     ) -> Iterator[str]:
         """Stream chat: yield content chunks. Optional; fallback to chat() if not implemented."""
         ...

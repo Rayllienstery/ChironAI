@@ -138,6 +138,40 @@ def _extract_line_span_from_user_text(user_text: str) -> tuple[int, int] | None:
     return (a, b)
 
 
+_MD_LINE_ANCHOR_RE = re.compile(r"\.md[^\s)\]]*#L(\d+):(\d+)", re.IGNORECASE)
+
+
+def _workspace_doc_refactor_intent(user_text: str) -> bool:
+    """
+    True when the user is clearly reorganizing repo docs (move lines to another .md),
+    not asking Apple/framework questions. Skips RAG + web supplement to avoid noise.
+    """
+    t = user_text or ""
+    low = t.lower()
+    if "file://" not in low and "[@" not in t:
+        return False
+    if ".md" not in low and ".markdown" not in low:
+        return False
+    has_span = _extract_line_span_from_user_text(t) is not None
+    m = _MD_LINE_ANCHOR_RE.search(t)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        has_span = has_span or (a >= 1 and b >= 1 and a <= b)
+    if not has_span:
+        return False
+    return bool(
+        "новый файл" in low
+        or "вынеси" in low
+        or "вынести" in low
+        or "перенеси" in low
+        or "отдельный файл" in low
+        or "new file" in low
+        or "extract to" in low
+        or "move to" in low
+        or "split into" in low
+    )
+
+
 def _strip_context_sections(text: str) -> str:
     """Remove client-injected context blocks so we can dedup and retry reliably."""
     s = (text or "")
@@ -393,6 +427,7 @@ def _maybe_retry_edit_payload_full_file(
     selected_tool_name: str | None,
     selected_tool: dict[str, object] | None,
     edit_payload: dict[str, object],
+    think: bool | str | None = None,
 ) -> tuple[dict[str, object], bool]:
     """If model returned a fragment for a full-<files> range edit, retry once inside the proxy."""
     if not selected_tool_name or not _needs_internal_full_file_retry(
@@ -412,7 +447,7 @@ def _maybe_retry_edit_payload_full_file(
         messages.append({"role": "system", "content": tool_json_instruction})
     messages.append({"role": "user", "content": user_part + fix})
     try:
-        raw = chat_client.chat(messages, use_model, stream=False, options=None)
+        raw = chat_client.chat(messages, use_model, stream=False, options=None, think=think)
         new_ep = _extract_edit_from_response(raw or "")
         if isinstance(new_ep, dict):
             return (new_ep, True)
@@ -1068,7 +1103,12 @@ def _build_tool_arguments(
         if _ex_files and _range_files:
             has_client_file_excerpt = True
             range_obj = dict(_range_files)
-    new_text = str(edit_payload.get("new_text") or "")
+    new_text = str(
+        edit_payload.get("new_text")
+        or edit_payload.get("content")
+        or edit_payload.get("replacement")
+        or ""
+    )
     desc = _compact_display_description(user_query or "")
     if not desc:
         desc = f"Apply requested edit via {selected_tool_name}"
@@ -1105,6 +1145,24 @@ def _build_tool_arguments(
             except Exception:
                 exists = False
             mode_value = "overwrite" if exists else "create"
+
+    # Models often return mode=overwrite together with a line range. Some IDEs treat overwrite as
+    # "replace the whole file", ignoring range, which truncates the file to the fragment.
+    if (
+        mode_value == "overwrite"
+        and has_range
+        and ("edit_file" in tool_name_l or "apply_file_edit" in tool_name_l)
+    ):
+        try:
+            fp_for_exists2 = file_path
+            if isinstance(fp_for_exists2, str) and fp_for_exists2.startswith("file:///"):
+                fp_for_exists2 = fp_for_exists2[8:]
+            p2 = Path(fp_for_exists2)
+            exists2 = p2.exists() if p2.is_absolute() else (_workspace_root() / fp_for_exists2).exists()
+        except Exception:
+            exists2 = False
+        if exists2:
+            mode_value = "edit"
 
     canonical_values: dict[str, object] = {
         "file_path": file_path,

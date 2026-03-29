@@ -177,6 +177,9 @@ def ollama_message_to_openai_assistant(ollama_msg: dict[str, Any]) -> dict[str, 
         msg["content"] = None
     if openai_calls:
         msg["tool_calls"] = openai_calls
+    thinking = ollama_msg.get("thinking")
+    if isinstance(thinking, str) and thinking.strip():
+        msg["reasoning_content"] = thinking
     return msg
 
 

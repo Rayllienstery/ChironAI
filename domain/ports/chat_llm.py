@@ -19,6 +19,7 @@ class ChatLLMClient(Protocol):
         model: str,
         stream: bool = False,
         options: dict[str, Any] | None = None,
+        think: bool | str | None = None,
     ) -> str:
         """
         Send messages and return the assistant reply as a string.

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Literal
 
 try:
     from config import get_ollama_chat_model, get_ollama_chat_url, get_ollama_chat_options
@@ -19,7 +19,7 @@ except ImportError:
 
 import requests
 
-from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_chat, iter_chat_stream
+from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_chat
 
 
 def _chat_runtime_error(use_model: str, url: str, exc: OllamaInteractorCliError) -> RuntimeError:
@@ -59,6 +59,7 @@ class OllamaChatClient:
         model: str,
         stream: bool = False,
         options: dict[str, Any] | None = None,
+        think: bool | str | None = None,
     ) -> str:
         """Send messages and return the assistant reply. Non-stream only for string return."""
         use_model = model or self._model
@@ -69,6 +70,8 @@ class OllamaChatClient:
             "stream": stream,
             "options": opts,
         }
+        if think is not None:
+            payload["think"] = think
         if stream:
             return ""
         stdin_obj: dict[str, Any] = {"url": self._url, "json": payload, "timeout": 600}
@@ -118,8 +121,9 @@ class OllamaChatClient:
         messages: list[dict[str, Any]],
         model: str,
         options: dict[str, Any] | None = None,
+        think: bool | str | None = None,
     ) -> Iterator[str]:
-        """Stream chat: yield content chunks from Ollama NDJSON stream via CLI."""
+        """Stream chat: yield content chunks from Ollama via HTTP NDJSON (reasoning is not yielded here)."""
         use_model = model or self._model
         opts = {**(self._default_options or {}), **(options or {})}
         payload: dict[str, Any] = {
@@ -128,11 +132,71 @@ class OllamaChatClient:
             "stream": True,
             "options": opts,
         }
-        stdin_obj: dict[str, Any] = {"url": self._url, "json": payload, "timeout": 600}
+        if think is not None:
+            payload["think"] = think
+        for kind, text in self.iter_chat_api_stream_openai_parts(payload):
+            if kind == "content":
+                yield text
+
+    def iter_chat_api_stream_openai_parts(
+        self,
+        body: dict[str, Any],
+    ) -> Iterator[tuple[Literal["reasoning", "content", "error"], str]]:
+        """
+        Stream /api/chat over HTTP; yield (\"reasoning\", delta) and (\"content\", delta) for OpenAI SSE
+        (e.g. Zed expects delta.reasoning_content). Uses cumulative merge + suffix deltas.
+        """
+        use_model = str(body.get("model") or self._model)
+        payload = {**body, "stream": True}
+        opts = {**(self._default_options or {}), **(payload.get("options") or {})}
+        payload["options"] = opts
         try:
-            yield from iter_chat_stream(stdin_obj, default_timeout=600)
-        except OllamaInteractorCliError as e:
-            raise _chat_runtime_error(use_model, self._url, e) from e
+            resp = requests.post(self._url, json=payload, timeout=600, stream=True)
+            resp.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            yield ("error", f"Ollama chat stream API error (model={use_model}, url={self._url}): {e}")
+            return
+        merged: dict[str, Any] = {}
+        prev_th = ""
+        prev_co = ""
+        try:
+            for line in resp.iter_lines(decode_unicode=True):
+                if not line or not str(line).strip():
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+                if obj.get("error") is not None:
+                    yield ("error", str(obj.get("error")))
+                    return
+                m = obj.get("message")
+                if isinstance(m, dict):
+                    merged = _merge_ollama_assistant_message_parts(merged, m)
+                th = merged.get("thinking") if isinstance(merged.get("thinking"), str) else ""
+                co = merged.get("content") if isinstance(merged.get("content"), str) else ""
+                if th.startswith(prev_th) and len(th) >= len(prev_th):
+                    suffix = th[len(prev_th) :]
+                    if suffix:
+                        yield ("reasoning", suffix)
+                    prev_th = th
+                elif th != prev_th:
+                    if th:
+                        yield ("reasoning", th)
+                    prev_th = th
+                if co.startswith(prev_co) and len(co) >= len(prev_co):
+                    suffix_c = co[len(prev_co) :]
+                    if suffix_c:
+                        yield ("content", suffix_c)
+                    prev_co = co
+                elif co != prev_co:
+                    if co:
+                        yield ("content", co)
+                    prev_co = co
+        finally:
+            resp.close()
 
 
 def _merge_ollama_assistant_message_parts(acc: dict[str, Any], chunk: dict[str, Any]) -> dict[str, Any]:
@@ -145,9 +209,15 @@ def _merge_ollama_assistant_message_parts(acc: dict[str, Any], chunk: dict[str, 
             if isinstance(v, str) and not v.strip() and out.get("content"):
                 continue
             out[k] = v
+        elif k == "thinking":
+            if v is None:
+                continue
+            if isinstance(v, str) and not v.strip() and out.get("thinking"):
+                continue
+            out[k] = v
         elif k == "tool_calls" and v:
             out[k] = v
-        elif v is not None and k not in ("content", "tool_calls"):
+        elif v is not None and k not in ("content", "tool_calls", "thinking"):
             out[k] = v
     return out
 

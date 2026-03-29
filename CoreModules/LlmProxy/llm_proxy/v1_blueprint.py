@@ -11,6 +11,7 @@ from llm_proxy.chat_completions import run_chat_completions
 from llm_proxy.config import RAG_MODEL_ID
 from llm_proxy.edit_state import configure_ttl
 from llm_proxy.external_ingest import run_external_docs_ingest
+from llm_proxy.ollama_upstream import forward_ollama_api
 from llm_proxy.workspace import set_workspace_root
 
 if TYPE_CHECKING:
@@ -55,6 +56,29 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
     @bp.route("/v1/chat/completions", methods=["POST"])
     def chat_completions():
         return run_chat_completions(wiring)
+
+    @bp.route("/api/tags", methods=["GET"])
+    def ollama_tags_proxy():
+        """Zed (Ollama provider) lists models via GET /api/tags — must hit upstream Ollama."""
+        return forward_ollama_api(wiring, "tags")
+
+    @bp.route("/api/show", methods=["POST"])
+    def ollama_show_proxy():
+        """Model details (e.g. supports_thinking); Zed calls POST /api/show."""
+        return forward_ollama_api(wiring, "show")
+
+    @bp.route("/api/generate", methods=["POST"])
+    def ollama_generate_proxy():
+        """Inline / legacy generate; some clients POST /api/generate."""
+        return forward_ollama_api(wiring, "generate")
+
+    @bp.route("/api/chat", methods=["POST"])
+    def ollama_chat_proxy():
+        """
+        Transparent proxy to upstream Ollama /api/chat (same JSON body, including `think`).
+        Use the proxy host as Zed's Ollama API URL together with /api/tags + /api/show above.
+        """
+        return forward_ollama_api(wiring, "chat")
 
     @bp.route("/v1/files/apply-edit", methods=["POST"])
     def apply_file_edit():

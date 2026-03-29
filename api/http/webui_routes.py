@@ -1304,13 +1304,31 @@ def tester_chat() -> Any:
                     }
                 ), 400
 
+        stored_proxy_model = (settings_repo.get_app_setting("proxy_model") or "").strip()
+        try:
+            ps_global = settings_repo.get_app_setting("proxy_settings")
+            if ps_global:
+                _pg = json.loads(ps_global)
+                if not stored_proxy_model and _pg.get("model"):
+                    stored_proxy_model = str(_pg.get("model") or "").strip()
+        except Exception:
+            pass
+
         params, deps = get_rag_answer_params(
             collection_name=collection_name,
             prompt_name=prompt_name if use_rag else None,
         )
         chat_client = deps.chat_client
-        # Use selected model or fallback to config model
-        ollama_model = model if model and not is_rag_logical_model(model) else params.model_name
+        # Same resolution as /api/webui/chat: concrete Ollama tag from LLM Proxy settings, not only env.
+        model_req = (str(model).strip() if model is not None else "")
+        if model_req and not is_rag_logical_model(model_req):
+            ollama_model = model_req
+        elif stored_proxy_model and not is_rag_logical_model(stored_proxy_model):
+            ollama_model = stored_proxy_model
+        else:
+            ollama_model = params.model_name
+        if is_rag_logical_model(ollama_model):
+            ollama_model = params.model_name
         
         last_user = last_user_content(messages)
         

@@ -38,6 +38,187 @@ function toPct(n, d) {
   return Math.max(0, Math.min(999, v));
 }
 
+function traceModelFields(trace) {
+  if (!trace) {
+    return { headerShort: 'N/A', ollama: null, requested: null, actual: null };
+  }
+  const req = trace.request || {};
+  const oll = trace.ollama || {};
+  const ollama = oll.model != null && oll.model !== '' ? String(oll.model) : null;
+  const requested =
+    req.requested_model != null && req.requested_model !== '' ? String(req.requested_model) : null;
+  const actual = req.actual_model != null && req.actual_model !== '' ? String(req.actual_model) : null;
+  const headerShort = ollama || actual || requested || 'N/A';
+  return { headerShort, ollama, requested, actual };
+}
+
+function mdFencedBlock(text) {
+  const body = text == null ? '' : String(text);
+  let fence = '```';
+  while (body.includes(fence)) {
+    fence += '`';
+  }
+  return `${fence}\n${body}\n${fence}`;
+}
+
+/** @param {object} params */
+export function buildProxyTraceMarkdown({
+  mode,
+  livePayload,
+  selectedTrace,
+  historyMeta,
+  graph,
+  modelMaxContextTokens,
+  selectedStepIndex,
+}) {
+  const lines = [];
+  const nowIso = new Date().toISOString();
+  lines.push('# Proxy Trace Export', '');
+  lines.push(`**Generated:** ${nowIso}`, `**Mode:** ${mode}`, '');
+
+  if (mode === 'live') {
+    lines.push('## Summary (Live)', '');
+    lines.push(`- **Status:** ${livePayload?.status ?? 'N/A'}`);
+    lines.push(`- **Updated:** ${formatTs(livePayload?.updated_at)}`, '');
+  }
+
+  if (mode === 'history' && historyMeta) {
+    lines.push('## History entry', '');
+    lines.push(
+      `- **Trace ID:** ${historyMeta.trace_id ?? selectedTrace?.trace_id ?? 'N/A'}`,
+    );
+    lines.push(`- **Log timestamp:** ${formatTs(historyMeta.timestamp)}`);
+    lines.push(`- **Latency (ms):** ${historyMeta.latency_ms ?? 'N/A'}`);
+    if (historyMeta.user_query) {
+      lines.push('- **User query:**', mdFencedBlock(String(historyMeta.user_query)));
+    }
+    lines.push('');
+  }
+
+  if (!selectedTrace) {
+    lines.push('*(No trace data.)*', '');
+    return lines.join('\n');
+  }
+
+  const { ollama, requested, actual } = traceModelFields(selectedTrace);
+  lines.push('## Models', '');
+  lines.push(`- **Model (Ollama):** ${ollama ?? 'N/A'}`);
+  lines.push(`- **Model (resolved / request):** ${actual ?? 'N/A'}`);
+  lines.push(`- **Requested model:** ${requested ?? 'N/A'}`, '');
+
+  lines.push('## Context usage', '');
+  lines.push(
+    `- **RAG budget used:** ${graph.ragUsedPct == null ? 'N/A' : `${graph.ragUsedPct.toFixed(1)}%`}`,
+  );
+  lines.push(
+    `- **Model window used:** ${graph.modelPct == null ? 'N/A' : `${graph.modelPct.toFixed(1)}%`}`,
+  );
+  lines.push(`- **Total tokens (est):** ${graph.totalTokens ?? 'N/A'}`);
+  lines.push(`- **Model max context tokens (setting):** ${modelMaxContextTokens || 'N/A'}`, '');
+
+  const steps = selectedTrace.steps || [];
+  lines.push('## Steps', '');
+  if (steps.length) {
+    steps.forEach((s, idx) => {
+      const mark = idx === selectedStepIndex ? ' (selected)' : '';
+      lines.push(
+        `${idx + 1}. **${s.name || 'step'}**${mark} — ${s.duration_ms != null ? `${s.duration_ms} ms` : ''}`,
+      );
+    });
+  } else {
+    lines.push('*(No steps.)*');
+  }
+  lines.push('');
+
+  const sel = steps[selectedStepIndex] || null;
+  lines.push('## Selected step', '');
+  if (sel) {
+    lines.push(`- **Name:** ${sel.name}`);
+    lines.push(`- **Duration (ms):** ${sel.duration_ms ?? 'N/A'}`);
+    lines.push(`- **Tokens in (est):** ${sel.tokens_in_est ?? 'N/A'}`);
+    lines.push(`- **Tokens out (est):** ${sel.tokens_out_est ?? 0}`);
+  } else {
+    lines.push('*(None.)*');
+  }
+  lines.push('');
+
+  lines.push('## Trace', '');
+  lines.push(`- **Trace ID:** ${selectedTrace.trace_id ?? 'N/A'}`);
+  lines.push(`- **Created:** ${formatTs(selectedTrace.created_at)}`, '');
+
+  lines.push('## RAG Context', '');
+  const ragCtx = selectedTrace.rag?.context;
+  if (ragCtx) {
+    lines.push(`- **Context chars used:** ${ragCtx.context_chars_used}`);
+    lines.push(`- **Context budget chars:** ${ragCtx.context_budget_chars}`);
+    lines.push(`- **Chunks:** ${ragCtx.chunks?.length ?? 0}`, '');
+    const chunks = ragCtx.chunks || [];
+    chunks.forEach((c, i) => {
+      lines.push(`### Chunk ${i + 1}: ${c.label || 'N/A'}`, '');
+      if (c.text_length != null) {
+        lines.push(`_${c.text_length} chars_`, '');
+      }
+      lines.push(mdFencedBlock(c.text_preview || ''), '');
+    });
+  } else {
+    lines.push('*(No RAG context.)*', '');
+  }
+
+  const internet = selectedTrace.internet || {};
+  lines.push('## Internet / On-demand', '');
+  lines.push(`- **Used:** ${internet.used ? 'Yes' : 'No'}`);
+  lines.push(`- **Fetch (s):** ${internet.fetch_s ?? 0}`);
+  lines.push(`- **Discovery (s):** ${internet.discovery_s ?? 0}`);
+  lines.push(
+    `- **Background refresh:** ${internet.background_refresh_started ? 'Started' : 'No'}`,
+    '',
+  );
+
+  lines.push('## Messages sent to model', '');
+  const msgs = selectedTrace.ollama?.messages;
+  if (msgs?.length) {
+    msgs.forEach((m, idx) => {
+      lines.push(`### ${m.role || 'message'} (${idx + 1})`, '');
+      if (m.content_length_chars != null) {
+        lines.push(`_${m.content_length_chars} chars_`, '');
+      }
+      lines.push(mdFencedBlock(m.content_full || m.content_preview || ''), '');
+    });
+  } else {
+    lines.push('*(Messages not available.)*', '');
+  }
+
+  lines.push('## Model response', '');
+  lines.push(`- **Latency (ms):** ${selectedTrace.response?.latency_ms ?? 'N/A'}`, '');
+  lines.push(mdFencedBlock(selectedTrace.response?.content_preview || ''), '');
+
+  return lines.join('\n');
+}
+
+function ollamaMessageFullText(m) {
+  if (!m) return '';
+  if (m.content_full != null && m.content_full !== '') return String(m.content_full);
+  return m.content_preview != null ? String(m.content_preview) : '';
+}
+
+/** True when the trace payload includes full message body (not only the short preview). */
+function ollamaMessageHasStoredFullText(m) {
+  return m != null && m.content_full != null && String(m.content_full).length > 0;
+}
+
+function downloadMarkdown(filename, text) {
+  const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function ProxyTraceTab() {
   const [mode, setMode] = useState('live'); // 'live' | 'history'
   const [livePayload, setLivePayload] = useState({ trace: null, status: null, updated_at: null });
@@ -48,6 +229,7 @@ export default function ProxyTraceTab() {
   const [modelMaxContextTokens, setModelMaxContextTokens] = useState(0);
   const [modelMaxContextTokensDraft, setModelMaxContextTokensDraft] = useState('');
   const [savingModelMax, setSavingModelMax] = useState(false);
+  const [messageModal, setMessageModal] = useState(null);
 
   const pollTimerRef = useRef(null);
 
@@ -152,6 +334,15 @@ export default function ProxyTraceTab() {
     setSelectedStepIndex(0);
   }, [selectedTrace?.trace_id]);
 
+  useEffect(() => {
+    if (!messageModal) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setMessageModal(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [messageModal]);
+
   const graph = useMemo(() => {
     const rag = selectedTrace?.rag?.context;
     const ragUsedPct = rag?.context_budget_chars
@@ -163,11 +354,37 @@ export default function ProxyTraceTab() {
     return { ragUsedPct, modelPct, totalTokens };
   }, [selectedTrace, modelMaxContextTokens]);
 
+  const historyMeta = useMemo(() => {
+    if (mode !== 'history' || selectedHistoryIndex == null) return null;
+    return historyTraces[selectedHistoryIndex]?.meta ?? null;
+  }, [mode, selectedHistoryIndex, historyTraces]);
+
+  const modelInfo = useMemo(() => traceModelFields(selectedTrace), [selectedTrace]);
+
   const selectedStep = steps[selectedStepIndex] || null;
 
   const ragChunks = selectedTrace?.rag?.context?.chunks || [];
-  const ragTimings = selectedTrace?.rag?.timings || {};
   const internet = selectedTrace?.internet || {};
+
+  const exportFilename = () => {
+    const id = (selectedTrace && selectedTrace.trace_id) || 'unknown';
+    const stamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    return `proxy-trace-${mode}-${id}-${stamp}.md`;
+  };
+
+  const handleExportMarkdown = () => {
+    if (!selectedTrace) return;
+    const md = buildProxyTraceMarkdown({
+      mode,
+      livePayload,
+      selectedTrace,
+      historyMeta,
+      graph,
+      modelMaxContextTokens,
+      selectedStepIndex,
+    });
+    downloadMarkdown(exportFilename(), md);
+  };
 
   const commitModelMax = async () => {
     const draft = Number(modelMaxContextTokensDraft);
@@ -204,22 +421,40 @@ export default function ProxyTraceTab() {
           </button>
         </div>
 
-        {mode === 'live' ? (
-          <div className="live-meta">
-            <div>
-              <span className="label">Status:</span> {livePayload?.status || 'N/A'}
+        <div className="proxy-trace-header-right">
+          {mode === 'live' ? (
+            <div className="live-meta">
+              <div>
+                <span className="label">Status:</span> {livePayload?.status || 'N/A'}
+              </div>
+              <div>
+                <span className="label">Updated:</span> {formatTs(livePayload?.updated_at)}
+              </div>
+              <div>
+                <span className="label">Model:</span> {modelInfo.headerShort}
+              </div>
             </div>
-            <div>
-              <span className="label">Updated:</span> {formatTs(livePayload?.updated_at)}
+          ) : (
+            <div className="live-meta">
+              <div>
+                <span className="label">Loaded:</span> {historyTraces.length} traces (last {HISTORY_LIMIT})
+              </div>
+              {selectedTrace ? (
+                <div>
+                  <span className="label">Model:</span> {modelInfo.headerShort}
+                </div>
+              ) : null}
             </div>
-          </div>
-        ) : (
-          <div className="live-meta">
-            <div>
-              <span className="label">Loaded:</span> {historyTraces.length} traces (last {HISTORY_LIMIT})
-            </div>
-          </div>
-        )}
+          )}
+          <button
+            type="button"
+            className="btn proxy-trace-export-btn"
+            disabled={!selectedTrace}
+            onClick={handleExportMarkdown}
+          >
+            Export
+          </button>
+        </div>
       </div>
 
       <div className="proxy-trace-grid">
@@ -324,6 +559,15 @@ export default function ProxyTraceTab() {
                 <div className="detail-row">
                   <span className="label">Created:</span> {formatTs(selectedTrace.created_at)}
                 </div>
+                <div className="detail-row">
+                  <span className="label">Model (Ollama):</span> {modelInfo.ollama ?? 'N/A'}
+                </div>
+                <div className="detail-row">
+                  <span className="label">Model (resolved):</span> {modelInfo.actual ?? 'N/A'}
+                </div>
+                <div className="detail-row">
+                  <span className="label">Requested model:</span> {modelInfo.requested ?? 'N/A'}
+                </div>
 
                 <div className="separator" />
 
@@ -405,9 +649,24 @@ export default function ProxyTraceTab() {
                       <div key={`${m.role}-${idx}`} className="message-item">
                         <div className="message-head">
                           <span className="message-role">{m.role}</span>
-                          <span className="message-meta">
-                            {m.content_length_chars != null ? `${m.content_length_chars} chars` : ''}
-                          </span>
+                          <div className="message-head-actions">
+                            <span className="message-meta">
+                              {m.content_length_chars != null ? `${m.content_length_chars} chars` : ''}
+                            </span>
+                            <button
+                              type="button"
+                              className="message-view-full-btn"
+                              onClick={() =>
+                                setMessageModal({
+                                  title: `${m.role || 'message'} (${idx + 1})`,
+                                  body: ollamaMessageFullText(m),
+                                  previewOnly: !ollamaMessageHasStoredFullText(m),
+                                })
+                              }
+                            >
+                              View Full
+                            </button>
+                          </div>
                         </div>
                         <pre className="message-preview">{m.content_preview}</pre>
                       </div>
@@ -456,6 +715,45 @@ export default function ProxyTraceTab() {
           ) : null}
         </div>
       </div>
+
+      {messageModal ? (
+        <div
+          className="proxy-trace-modal-overlay"
+          role="presentation"
+          onClick={() => setMessageModal(null)}
+        >
+          <div
+            className="proxy-trace-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="proxy-trace-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="proxy-trace-modal-header">
+              <h2 id="proxy-trace-modal-title" className="proxy-trace-modal-title">
+                {messageModal.title}
+              </h2>
+              <button
+                type="button"
+                className="proxy-trace-modal-close"
+                onClick={() => setMessageModal(null)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            {messageModal.previewOnly ? (
+              <div className="proxy-trace-modal-note" role="status">
+                Showing the short preview only. Full bodies are stored once the proxy API persists{' '}
+                <code className="proxy-trace-modal-note-code">content_full</code> on each message — restart the
+                server so it runs the latest backend code, then send a new chat request. Older History entries
+                may remain preview-only.
+              </div>
+            ) : null}
+            <pre className="proxy-trace-modal-body">{messageModal.body}</pre>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

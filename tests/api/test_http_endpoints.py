@@ -356,6 +356,150 @@ def test_chat_completions_returns_tool_calls_when_edit_payload_detected(monkeypa
     assert choice["message"]["tool_calls"][0]["function"]["name"] == "apply_file_edit"
 
 
+def test_chat_completions_native_tools_normalize_edit_file_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native Ollama tool_calls should pass through _build_tool_arguments (path, range, body sync)."""
+    import json
+    import os
+    import sys
+    from pathlib import Path
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    import api.http.rag_routes as rag_routes
+
+    test_file = Path(root) / "tests" / "_tmp_native_tool_normalize.swift"
+    try:
+        if test_file.exists():
+            test_file.unlink()
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_file.write_text("let array = [1, 2, 3]\nprint(array)\n", encoding="utf-8")
+        file_uri = "file:///" + str(test_file).replace("\\", "/")
+
+        class NativeMessyOllamaClient:
+            def chat_api(self, body: dict[str, Any]) -> dict[str, Any]:
+                return {
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "type": "function",
+                                "function": {
+                                    "name": "edit_file",
+                                    "arguments": {
+                                        "path": "test.swift",
+                                        "mode": "overwrite",
+                                        "content": '    print("x")\n',
+                                    },
+                                },
+                            }
+                        ],
+                    }
+                }
+
+            def chat(self, *_a: Any, **_k: Any) -> str:
+                return ""
+
+            def stream_chat(self, *_a: Any, **_k: Any) -> Any:
+                yield ""
+
+        fake_params = SimpleNamespace(
+            system_prefix="",
+            system_suffix="",
+            context_chunk_chars=500,
+            context_total_chars=2000,
+            confidence_threshold=0.0,
+            model_name="fake-model",
+            log_preview_chars=200,
+        )
+        fake_deps = SimpleNamespace(
+            rag_repo=object(),
+            embed_provider=object(),
+            rerank_client=None,
+            chat_client=NativeMessyOllamaClient(),
+        )
+
+        monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+        monkeypatch.setattr(
+            rag_routes,
+            "build_rag_context",
+            lambda *args, **kwargs: (
+                SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+                {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+            ),
+        )
+
+        def _prepare_native(request: Any, *_a: Any, **kw: Any) -> tuple[list[dict[str, Any]], str]:
+            from infrastructure.ollama.openai_ollama_tool_bridge import openai_messages_to_ollama
+
+            if kw.get("native_tools"):
+                oll = openai_messages_to_ollama([m for m in request.messages if isinstance(m, dict)])
+                return [{"role": "system", "content": "system"}] + oll, "fake-model"
+            return ([{"role": "user", "content": "x"}], "fake-model")
+
+        monkeypatch.setattr(rag_routes, "prepare_ollama_messages", _prepare_native)
+        monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+        app = rag_routes.create_app()
+        client = app.test_client()
+        r = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "ChironAI-Worker",
+                "stream": False,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            f"[@_tmp_native_tool_normalize.swift (1:2)]({file_uri}) foreach each element"
+                        ),
+                    }
+                ],
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "edit_file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "path": {"type": "string"},
+                                    "mode": {"type": "string"},
+                                    "content": {"type": "string"},
+                                },
+                                "required": ["path", "mode", "content"],
+                            },
+                        },
+                    }
+                ],
+                "tool_choice": "auto",
+            },
+        )
+        assert r.status_code == 200, r.get_data(as_text=True)
+        data = r.get_json() or {}
+        choice = data["choices"][0]
+        assert choice["finish_reason"] == "tool_calls"
+        tcs = choice["message"]["tool_calls"]
+        assert tcs
+        args = json.loads(tcs[0]["function"]["arguments"])
+        path_val = str(args.get("path") or args.get("file_path") or "")
+        assert test_file.name in path_val
+        assert str(test_file.resolve()).replace("\\", "/") in path_val.replace("\\", "/") or file_uri.replace(
+            "file:///", ""
+        ) in path_val.replace("\\", "/")
+        rge = args.get("range")
+        assert isinstance(rge, dict)
+        assert rge.get("start_line") == 1
+        assert rge.get("end_line") == 2
+        assert args.get("mode") == "edit"
+    finally:
+        if test_file.exists():
+            test_file.unlink()
+
+
 def test_chat_completions_overrides_none_tool_choice_for_file_edit_intent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2134,6 +2278,53 @@ def test_chat_completions_internal_full_file_retry_on_fragment_with_files(
     args = json.loads(tc["function"]["arguments"])
     body = args.get("content") or args.get("new_text") or ""
     assert 'print("Number' in body or "print(\"Number" in body
+
+
+def test_build_tool_arguments_overwrite_becomes_edit_when_range_and_file_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """overwrite + range on existing file would truncate in some IDEs; force edit."""
+    import os
+    import sys
+    from pathlib import Path
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    monkeypatch.setattr("llm_proxy.workspace._workspace_root_fn", lambda: Path(root))
+    from llm_proxy.tool_helpers import _build_tool_arguments
+    tmp = Path(root) / "tests" / "_tmp_overwrite_range_edit.swift"
+    try:
+        tmp.write_text("a\nb\nc\n", encoding="utf-8")
+        uri = tmp.as_uri()
+        args = _build_tool_arguments(
+            selected_tool_name="edit_file",
+            selected_tool={
+                "function": {
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string"},
+                            "mode": {"type": "string"},
+                            "content": {"type": "string"},
+                        },
+                        "required": ["path", "mode", "content"],
+                    },
+                },
+            },
+            edit_payload={
+                "path": "bogus.swift",
+                "mode": "overwrite",
+                "content": "x\n",
+                "range": {"start_line": 1, "start_col": 1, "end_line": 2, "end_col": 1},
+            },
+            user_query=f"[@x]({uri}) fix",
+        )
+        assert args.get("mode") == "edit"
+        assert str(tmp.resolve()) in str(args.get("path") or "") or tmp.name in str(args.get("path") or "")
+    finally:
+        if tmp.exists():
+            tmp.unlink()
 
 
 def test_build_tool_arguments_drops_empty_body_strings_then_syncs() -> None:
