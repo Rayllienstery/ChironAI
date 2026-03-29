@@ -1,0 +1,129 @@
+/* Outer card: shared `.settings-section` from SettingsTab.css (surface, elevation, radius). */
+
+.llm-proxy-pipeline-panel--loading {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.llm-proxy-pipeline-panel__header {
+  margin-bottom: var(--md-sys-spacing-md);
+  width: 100%;
+}
+
+.llm-proxy-pipeline-panel__header h3 {
+  margin: 0 0 var(--md-sys-spacing-sm) 0;
+  font: var(--md-sys-typescale-headline-small-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.llm-proxy-pipeline-panel__lede {
+  margin: 0 0 var(--md-sys-spacing-sm) 0;
+  font: var(--md-sys-typescale-body-medium-font);
+  line-height: 1.55;
+  color: var(--md-sys-color-on-surface);
+  width: 100%;
+  max-width: none;
+}
+
+.llm-proxy-pipeline-panel__dirty-hint {
+  margin: 0 0 var(--md-sys-spacing-md) 0;
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-tertiary, #6a4a1c);
+  width: 100%;
+  max-width: none;
+}
+
+.llm-proxy-pipeline-panel__controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-lg);
+  margin-bottom: var(--md-sys-spacing-lg);
+}
+
+.llm-proxy-pipeline-panel__field label:first-child,
+.llm-proxy-pipeline-panel__field > label {
+  font: var(--md-sys-typescale-label-large-font);
+  color: var(--md-sys-color-on-surface);
+  display: block;
+  margin-bottom: var(--md-sys-spacing-xs);
+}
+
+.llm-proxy-pipeline-panel__subcard {
+  padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+  background: var(--md-sys-color-surface, #fff);
+  border: 1px solid var(--md-sys-color-outline-variant, rgba(0, 0, 0, 0.12));
+  border-radius: var(--md-sys-shape-corner-medium, 12px);
+  box-shadow: var(--md-sys-elevation-level1, 0 1px 2px rgba(0, 0, 0, 0.06));
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.llm-proxy-pipeline-panel__checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--md-sys-spacing-lg);
+  cursor: pointer;
+  margin: 0;
+}
+
+.llm-proxy-pipeline-panel__checkbox-row input[type='checkbox'] {
+  margin: 0.35rem 0 0 0;
+  flex-shrink: 0;
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: var(--md-sys-color-primary);
+}
+
+.llm-proxy-pipeline-panel__checkbox-title {
+  font: var(--md-sys-typescale-title-medium-font, var(--md-sys-typescale-label-large-font));
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+  line-height: 1.35;
+  flex: 1;
+  min-width: 0;
+}
+
+.llm-proxy-pipeline-panel__subcard .llm-proxy-pipeline-panel__help {
+  margin: var(--md-sys-spacing-md) 0 0 0;
+}
+
+.llm-proxy-pipeline-panel__field select {
+  width: 100%;
+  max-width: none;
+  padding: var(--md-sys-spacing-sm);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.llm-proxy-pipeline-panel__help {
+  margin: var(--md-sys-spacing-sm) 0 0 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--md-sys-color-on-surface-variant);
+  width: 100%;
+  max-width: none;
+}
+
+.llm-proxy-pipeline-panel__footer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--md-sys-spacing-sm);
+  padding-top: var(--md-sys-spacing-md);
+  border-top: 1px solid var(--md-sys-color-outline-variant, rgba(0, 0, 0, 0.08));
+}
+
+.llm-proxy-pipeline-panel__footer .save-button {
+  margin-top: 0;
+}
+
+.llm-proxy-pipeline-panel__footer-note {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--md-sys-color-on-surface-variant);
+  width: 100%;
+  max-width: none;
+}
+

@@ -50,7 +50,13 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
       setCollections(collectionsData?.collections || []);
 
       if (settingsData) {
-        setSettings((prev) => ({ ...prev, ...settingsData }));
+        setSettings((prev) => {
+          const next = { ...prev, ...settingsData };
+          delete next.proxy_tool_policy;
+          delete next.proxy_stateful_guards;
+          delete next.proxy_text_tool_retries;
+          return next;
+        });
       }
     } catch (error) {
       console.error('Failed to load data:', error);

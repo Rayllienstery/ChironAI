@@ -500,6 +500,284 @@ def test_chat_completions_native_tools_normalize_edit_file_arguments(
             test_file.unlink()
 
 
+def test_chat_completions_native_tools_passthrough_skips_argument_normalize(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With proxy_tool_policy=passthrough, native tool_calls arguments are not rewritten."""
+    import json
+    import os
+    import sys
+    from pathlib import Path
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    import api.http.rag_routes as rag_routes
+
+    test_file = Path(root) / "tests" / "_tmp_native_tool_passthrough.swift"
+    try:
+        if test_file.exists():
+            test_file.unlink()
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_file.write_text("let array = [1, 2, 3]\nprint(array)\n", encoding="utf-8")
+        file_uri = "file:///" + str(test_file).replace("\\", "/")
+
+        class Repo:
+            def get_app_setting(self, key: str):
+                if key == "proxy_model":
+                    return "fake-proxy-ollama-model"
+                if key == "proxy_settings":
+                    return json.dumps(
+                        {
+                            "prompt_name": "system_senior_ios_assistant_v1",
+                            "proxy_tool_policy": "passthrough",
+                        }
+                    )
+                if key == "rag_collection":
+                    return ""
+                return None
+
+        monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+
+        class NativeMessyOllamaClient:
+            def chat_api(self, body: dict[str, Any]) -> dict[str, Any]:
+                return {
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "type": "function",
+                                "function": {
+                                    "name": "edit_file",
+                                    "arguments": {
+                                        "path": "test.swift",
+                                        "mode": "overwrite",
+                                        "content": '    print("x")\n',
+                                    },
+                                },
+                            }
+                        ],
+                    }
+                }
+
+            def chat(self, *_a: Any, **_k: Any) -> str:
+                return ""
+
+            def stream_chat(self, *_a: Any, **_k: Any) -> Any:
+                yield ""
+
+        fake_params = SimpleNamespace(
+            system_prefix="",
+            system_suffix="",
+            context_chunk_chars=500,
+            context_total_chars=2000,
+            confidence_threshold=0.0,
+            model_name="fake-model",
+            log_preview_chars=200,
+        )
+        fake_deps = SimpleNamespace(
+            rag_repo=object(),
+            embed_provider=object(),
+            rerank_client=None,
+            chat_client=NativeMessyOllamaClient(),
+        )
+
+        monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+        monkeypatch.setattr(
+            rag_routes,
+            "build_rag_context",
+            lambda *args, **kwargs: (
+                SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+                {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+            ),
+        )
+
+        def _prepare_native(request: Any, *_a: Any, **kw: Any) -> tuple[list[dict[str, Any]], str]:
+            from infrastructure.ollama.openai_ollama_tool_bridge import openai_messages_to_ollama
+
+            if kw.get("native_tools"):
+                oll = openai_messages_to_ollama([m for m in request.messages if isinstance(m, dict)])
+                return [{"role": "system", "content": "system"}] + oll, "fake-model"
+            return ([{"role": "user", "content": "x"}], "fake-model")
+
+        monkeypatch.setattr(rag_routes, "prepare_ollama_messages", _prepare_native)
+        monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+        app = rag_routes.create_app()
+        client = app.test_client()
+        r = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "ChironAI-Worker",
+                "stream": False,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            f"[@_tmp_native_tool_passthrough.swift (1:2)]({file_uri}) foreach each element"
+                        ),
+                    }
+                ],
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "edit_file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "path": {"type": "string"},
+                                    "mode": {"type": "string"},
+                                    "content": {"type": "string"},
+                                },
+                                "required": ["path", "mode", "content"],
+                            },
+                        },
+                    }
+                ],
+                "tool_choice": "auto",
+            },
+        )
+        assert r.status_code == 200, r.get_data(as_text=True)
+        data = r.get_json() or {}
+        choice = data["choices"][0]
+        assert choice["finish_reason"] == "tool_calls"
+        args = json.loads(choice["message"]["tool_calls"][0]["function"]["arguments"])
+        assert args.get("path") == "test.swift"
+        assert args.get("mode") == "overwrite"
+    finally:
+        if test_file.exists():
+            test_file.unlink()
+
+
+def test_chat_completions_respects_none_tool_choice_when_stateful_guards_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Swift file + tool_choice none stays text-only when proxy_stateful_guards is false."""
+    import json
+    import os
+    import sys
+    from pathlib import Path
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    import api.http.rag_routes as rag_routes
+
+    test_file = Path(root) / "tests" / "_tmp_test_guards_off.swift"
+    if test_file.exists():
+        test_file.unlink()
+    test_file.parent.mkdir(parents=True, exist_ok=True)
+    test_file.write_text("", encoding="utf-8")
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == "proxy_model":
+                return "fake-proxy-ollama-model"
+            if key == "proxy_settings":
+                return json.dumps(
+                    {
+                        "prompt_name": "system_senior_ios_assistant_v1",
+                        "proxy_stateful_guards": False,
+                    }
+                )
+            if key == "rag_collection":
+                return ""
+            return None
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+
+    class FakeChatClient:
+        def chat(self, _messages, _model, stream=False, options=None):
+            tmp_path = str(test_file).replace("\\", "/")
+            return (
+                '{"file_path":"'+tmp_path+'",'
+                '"mode":"edit",'
+                '"new_text":"import UIKit\\n\\nclass SimpleViewController: UIViewController {}\\n"}'
+            )
+
+        def stream_chat(self, _messages, _model):
+            yield ""
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fake-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=_OllamaShimChatClient(FakeChatClient()),
+    )
+
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda *args, **kwargs: ([{"role": "user", "content": "x"}], "fake-model"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    file_uri = "file:///" + str(test_file).replace("\\", "/")
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "ChironAI-Worker",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"[@_tmp_test_guards_off.swift]({file_uri}) Напиши простой пример UIViewController",
+                }
+            ],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "edit_file",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string"},
+                                "mode": {"type": "string"},
+                                "display_description": {"type": "string"},
+                                "content": {"type": "string"},
+                            },
+                            "required": ["path", "mode", "content"],
+                        },
+                    },
+                },
+            ],
+            "tool_choice": "none",
+        },
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    choice = data["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert not choice["message"].get("tool_calls")
+    content = choice["message"].get("content") or ""
+    assert "UIKit" in content or "file_path" in content
+
+    if test_file.exists():
+        test_file.unlink()
+
+
 def test_chat_completions_overrides_none_tool_choice_for_file_edit_intent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

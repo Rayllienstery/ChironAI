@@ -59,6 +59,26 @@ When the request includes a non-empty `tools` list and `tool_choice` is not `"no
 
 If `tool_choice` is `"none"` or `tools` is empty, the legacy text-only path (no synthetic JSON tool shim) is used as before.
 
+## Pipeline behavior (WebUI + env)
+
+The WebUI **LLM Proxy → Model Settings** block **Proxy pipeline** persists three flags in `proxy_settings` (defaults match **Legacy**, so upgrades stay behavior-preserving). Each request’s effective values are also attached to the proxy trace under `request.proxy_pipeline_policy`.
+
+| Setting (`proxy_settings` key) | Legacy default | What it controls |
+|--------------------------------|----------------|------------------|
+| `proxy_tool_policy` | `normalize` | **`passthrough`**: skip rewriting native `tool_calls` arguments after Ollama (`_normalize_native_openai_tool_calls_for_edit_tools`) and skip the extra multi-file append system hint. **`normalize`**: current path rewrite + hint behavior. |
+| `proxy_stateful_guards` | `true` | **`false`**: no cross-request `edit_state` updates for success/noop, no `noop_retry_blocked` early response, no transcript heuristics that force `post_tool_success_turn` (trailing noop, duplicate user), no Swift `tool_choice` `none`→`auto` override, and no `_POST_TOOL_SUCCESS_SYSTEM` injection on the text-tool path. |
+| `proxy_text_tool_retries` | `true` | **`false`**: no strict JSON retries, no `_maybe_retry_edit_payload_full_file`, and no minimal empty-response chat for the stream tool path—only the primary model output is used (plus the existing compact retry on Ollama errors where applicable). |
+
+Environment variables **override** saved settings for automation/CI (non-empty / recognized values only):
+
+| Variable | Values |
+|----------|--------|
+| `LLM_PROXY_TOOL_POLICY` | `normalize` or `passthrough` |
+| `LLM_PROXY_STATEFUL_GUARDS` | `0`/`false`/`off` or `1`/`true`/`on` |
+| `LLM_PROXY_TEXT_TOOL_RETRIES` | same as above |
+
+**Strict pass-through** (as in the product plan) is: `proxy_tool_policy=passthrough`, `proxy_stateful_guards=false`, `proxy_text_tool_retries=false`. RAG/system assembly from the template remains the proxy’s intentional enrichment; these flags only gate “extra” mutation and hidden follow-up chats.
+
 ## Dependencies
 
 - Python ≥ 3.10
