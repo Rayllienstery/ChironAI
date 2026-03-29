@@ -241,6 +241,18 @@ export async function getRagModelSettings() {
   return response.json();
 }
 
+/** Proxy/RAG pipeline flags for the GitLab-style diagram (see /api/webui/pipeline-preview). */
+export async function getPipelinePreview() {
+  const response = await fetch(`${API_BASE}/pipeline-preview`, {
+    method: 'GET',
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to load pipeline preview');
+  }
+  return response.json();
+}
+
 export async function updateRagModelSettings(settings) {
   const response = await fetch(`${API_BASE}/rag-model-settings`, {
     method: 'POST',

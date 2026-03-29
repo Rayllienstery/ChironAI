@@ -86,3 +86,16 @@ class TestBuildSystemContent:
     def test_adds_low_confidence_warning_when_below_threshold(self) -> None:
         out = build_system_content("P", "S", "ctx", 0.5, 0.75, None, "m")
         assert "0.75" in out or "low" in out.lower() or "confidence" in out.lower()
+
+    def test_inserts_web_supplement_between_context_and_suffix(self) -> None:
+        out = build_system_content(
+            "P",
+            "S",
+            "CTX",
+            0.9,
+            0.75,
+            None,
+            "m",
+            web_supplement="WEBONLY",
+        )
+        assert out.index("CTX") < out.index("WEBONLY") < out.index("S")

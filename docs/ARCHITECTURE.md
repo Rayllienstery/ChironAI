@@ -62,6 +62,7 @@ The repository root is an installable project **`chironai`** ([`pyproject.toml`]
 - **`CoreModules/OllamaInteractor`**: separate distribution `ollama-interactor`; the app invokes it via subprocess (see `infrastructure/ollama/cli_runner.py`).
 - **`CoreModules/ServiceStarter`**: separate distribution `service-starter`; Docker Desktop + Ollama install (Windows), Qdrant/Open WebUI containers, and status (`pip install -e CoreModules/ServiceStarter`). WebUI delegates start/stop to it (see `api/http/webui_routes.py`).
 - **`CoreModules/LlmProxy`**: separate distribution `llm-proxy`; OpenAI-compatible `/v1` HTTP surface (chat completions, models, apply-edit, external-docs ingest) as a Flask blueprint. The host app supplies a `LlmProxyWiring` built in [`api/http/llm_proxy_wiring.py`](../api/http/llm_proxy_wiring.py); see [`CoreModules/LlmProxy/README.md`](../CoreModules/LlmProxy/README.md).
+- **`CoreModules/WebInteraction`**: separate distribution `web-interaction`; free web snippet helpers (DuckDuckGo search, trigger heuristics) used when building the proxy system prompt. Wired from [`api/http/llm_proxy_wiring.py`](../api/http/llm_proxy_wiring.py); see [`CoreModules/WebInteraction/README.md`](../CoreModules/WebInteraction/README.md).
 - **Import boundaries**: [import-linter](https://github.com/seddonym/import-linter) contract `domain_is_inner_layer` forbids `domain` → `application` | `api` | `infrastructure`. Run `lint-imports` after `pip install -r requirements-dev.txt`.
 
 ## Adding a new source or model

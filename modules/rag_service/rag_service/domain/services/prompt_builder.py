@@ -141,10 +141,13 @@ def build_system_content(
     confidence_threshold: float,
     reasoning_level: ReasoningLevel | None,
     model_name: str,
+    web_supplement: str | None = None,
 ) -> str:
-    """Build final system message: prefix + optional reasoning + context block + suffix."""
+    """Build final system message; optional web_supplement after RAG block, before suffix."""
+    ws = (web_supplement or "").strip()
+    web_part = ("\n\n" + ws) if ws else ""
     if context_block:
-        doc_block = context_block + suffix
+        doc_block = context_block + web_part + suffix
         if max_retrieval_score < confidence_threshold:
             doc_block += (
                 "\nRetrieval confidence is low (best score < {:.2f}). "
@@ -154,7 +157,7 @@ def build_system_content(
         doc_block = (
             "The local documentation base did not return any relevant fragments for this query. "
             "Answer as an experienced Swift expert from your own knowledge and provide a complete answer.\n"
-        ) + suffix
+        ) + web_part + suffix
     reasoning_instruction = ""
     if reasoning_level and model_name and any(kw in model_name.lower() for kw in REASONING_LEVEL_MODELS):
         reasoning_instruction = f"\n\nReasoning: {reasoning_level}\n"

@@ -15,6 +15,9 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
     code_only: false,
     include_rag_metadata: true,
     fetch_web_knowledge: false,
+    web_interaction_enabled: false,
+    web_interaction_on_keywords: true,
+    web_interaction_on_low_confidence_framework: true,
     rag_collection: '',
     rerank_for_rag: false,
     rerank_model: '',
@@ -273,20 +276,6 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
             />
             Include RAG metadata
           </label>
-        </div>
-
-        <div className="form-group checkbox-group">
-          <label>
-            <input
-              type="checkbox"
-              checked={settings.fetch_web_knowledge}
-              onChange={(e) => handleChange('fetch_web_knowledge', e.target.checked)}
-            />
-            Fetch Web knowledge
-          </label>
-          <p className="setting-hint">
-            Fetch framework docs from the web (e.g. Alamofire, TCA) and merge with RAG context.
-          </p>
         </div>
 
         <div className="form-group">

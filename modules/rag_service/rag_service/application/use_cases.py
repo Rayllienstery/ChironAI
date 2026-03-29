@@ -388,6 +388,8 @@ def prepare_ollama_messages(
     model_name: str,
     reasoning_level: str | None = None,
     extra_filter: dict[str, Any] | None = None,
+    *,
+    web_supplement: str | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """Build RAG context and Ollama message list (for streaming or custom chat). Returns (ollama_messages, model)."""
     last_user = last_user_content(request.messages)
@@ -401,8 +403,14 @@ def prepare_ollama_messages(
         extra_filter=extra_filter,
     )
     system_content = build_system_content(
-        system_prefix, system_suffix, ctx.context_text, ctx.max_score,
-        confidence_threshold, reasoning_level, model_name,
+        system_prefix,
+        system_suffix,
+        ctx.context_text,
+        ctx.max_score,
+        confidence_threshold,
+        reasoning_level,
+        model_name,
+        web_supplement=web_supplement,
     )
     ollama_messages = [{"role": "system", "content": system_content}]
     for m in request.messages:

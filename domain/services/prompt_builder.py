@@ -199,13 +199,17 @@ def build_system_content(
     confidence_threshold: float,
     reasoning_level: ReasoningLevel | None,
     model_name: str,
+    web_supplement: str | None = None,
 ) -> str:
     """
     Build final system message: prefix + optional reasoning + context block (with optional
-    low-confidence caveat) + suffix.
+    low-confidence caveat) + suffix. Optional web_supplement is inserted after the RAG context
+    block and before suffix (DuckDuckGo snippets; labeled in the supplement text itself).
     """
+    ws = (web_supplement or "").strip()
+    web_part = ("\n\n" + ws) if ws else ""
     if context_block:
-        doc_block = context_block + suffix
+        doc_block = context_block + web_part + suffix
         if max_retrieval_score < confidence_threshold:
             doc_block += (
                 "\nRetrieval confidence is low (best score < {:.2f}). "
@@ -218,7 +222,7 @@ def build_system_content(
             "the local Apple docs did not yield matches. "
             "Answer as an experienced Swift expert from your own knowledge: provide a complete, structured answer "
             "and clearly conclude.\n"
-        ) + suffix
+        ) + web_part + suffix
     reasoning_instruction = ""
     if reasoning_level and model_name:
         if any(kw in model_name.lower() for kw in REASONING_LEVEL_MODELS):

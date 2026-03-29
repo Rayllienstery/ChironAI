@@ -34,6 +34,10 @@ _MODULES_EXT_RAG = os.path.join(_ROOT, "modules", "external_docs_rag")
 if _MODULES_EXT_RAG not in sys.path:
     sys.path.insert(0, _MODULES_EXT_RAG)
 
+_WEBINTERACTION = os.path.join(_ROOT, "CoreModules", "WebInteraction")
+if _WEBINTERACTION not in sys.path:
+    sys.path.insert(0, _WEBINTERACTION)
+
 try:
     from external_docs_rag.application.use_cases import (
         build_merged_rag_context,
@@ -68,6 +72,89 @@ except ImportError:
     get_keyword_collections_repository = None  # type: ignore[assignment,misc]
 
 _RAG_LOG = logging.getLogger("trag.rag")
+
+
+def build_web_supplement_for_proxy(
+    last_user: str,
+    max_score: float,
+    confidence_threshold: float,
+    proxy_settings: dict[str, Any],
+) -> tuple[str | None, dict[str, Any]]:
+    """
+    Free DuckDuckGo snippets when Web Interaction settings + triggers allow.
+    Returns (text_or_none, meta) for proxy trace.
+    """
+    meta: dict[str, Any] = {
+        "trigger": "none",
+        "used": False,
+        "error": None,
+        "snippets_chars": 0,
+        "queries": [],
+        "cache_hit": False,
+        "fetch_used": False,
+        "wikipedia_used": False,
+        "ddg_news": False,
+        "domains_top": [],
+        "snippets_count": 0,
+    }
+    try:
+        from web_interaction.config import ddg_news_enabled, ddg_region_for_message, max_results_default
+        from web_interaction.fetch_excerpt import fetch_page_env_enabled
+        from web_interaction.supplement import build_web_supplement_bundle, should_fetch_web_supplement
+        from web_interaction.wikipedia_fallback import wikipedia_env_enabled
+    except ImportError:
+        return None, meta
+
+    master = bool(proxy_settings.get("web_interaction_enabled", False))
+    on_kw = bool(proxy_settings.get("web_interaction_on_keywords", True))
+    on_fw = bool(proxy_settings.get("web_interaction_on_low_confidence_framework", True))
+
+    ok, trigger = should_fetch_web_supplement(
+        last_user or "",
+        master_enabled=master,
+        on_keywords=on_kw,
+        on_low_confidence_framework=on_fw,
+        max_score=float(max_score or 0.0),
+        confidence_threshold=float(confidence_threshold or 0.0),
+    )
+    meta["trigger"] = trigger
+    if not ok:
+        return None, meta
+    try:
+        n = max_results_default()
+        enable_news = bool(proxy_settings.get("web_interaction_ddg_news", False)) or ddg_news_enabled()
+        enable_fetch = bool(proxy_settings.get("web_interaction_fetch_page", False)) or fetch_page_env_enabled()
+        enable_wiki = bool(proxy_settings.get("web_interaction_wikipedia", False)) or wikipedia_env_enabled()
+        text, dbg = build_web_supplement_bundle(
+            (last_user or "").strip(),
+            trigger=trigger,  # type: ignore[arg-type]
+            max_n=n,
+            region=ddg_region_for_message(last_user or ""),
+            ddg_news=enable_news,
+            fetch_page=enable_fetch,
+            wikipedia=enable_wiki,
+        )
+        for k in (
+            "queries",
+            "cache_hit",
+            "fetch_used",
+            "wikipedia_used",
+            "ddg_news",
+            "domains_top",
+            "snippets_count",
+            "snippets_chars",
+        ):
+            if k in dbg:
+                meta[k] = dbg[k]
+    except Exception as e:
+        meta["error"] = str(e)
+        _RAG_LOG.warning("web supplement fetch failed: %s", e)
+        return None, meta
+    if not (text or "").strip():
+        return None, meta
+    meta["used"] = True
+    meta["snippets_chars"] = len(text)
+    return text, meta
 
 
 def _get_rag_required_keywords_from_module() -> list[str] | None:
@@ -198,4 +285,5 @@ def build_llm_proxy_wiring(
         rag_question_request_factory=rr.RagQuestionRequest,
         external_docs=_external_docs_bundle(),
         ingest_external_source=_ingest_external_source,
+        build_web_supplement_for_proxy=build_web_supplement_for_proxy,
     )

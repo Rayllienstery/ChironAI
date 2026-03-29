@@ -1,0 +1,75 @@
+/* Full width: pipeline + sections use the whole main content area (not 800px settings column). */
+.llm-proxy-tab.settings-tab {
+  max-width: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.llm-proxy-web-panel.settings-form {
+  width: 100%;
+  max-width: none;
+}
+
+.llm-proxy-tab .llm-proxy-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--md-sys-spacing-md);
+  margin-bottom: var(--md-sys-spacing-md);
+}
+
+.llm-proxy-tab .llm-proxy-header h2 {
+  margin: 0;
+  font: var(--md-sys-typescale-headline-small-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.llm-proxy-subtabs {
+  display: flex;
+  gap: 8px;
+}
+
+.llm-proxy-subtab {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface);
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.llm-proxy-subtab:hover {
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.llm-proxy-subtab-active {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border-color: var(--md-sys-color-primary);
+}
+
+.llm-proxy-web-panel .form-actions {
+  margin-top: var(--md-sys-spacing-lg);
+}
+
+.llm-proxy-web-panel .btn-primary {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.llm-proxy-web-panel .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.llm-proxy-web-panel .settings-subsection-title {
+  margin: var(--md-sys-spacing-md) 0 var(--md-sys-spacing-xs) 0;
+  font: var(--md-sys-typescale-title-small-font);
+  color: var(--md-sys-color-on-surface);
+}

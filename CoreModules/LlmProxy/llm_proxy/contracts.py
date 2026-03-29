@@ -92,3 +92,6 @@ class LlmProxyWiring:
 
     ingest_external_source: Callable[[str], tuple[dict[str, Any], int]] | None = None
     """POST /v1/external-docs/ingest: returns (json_dict, http_status). None -> 503."""
+
+    build_web_supplement_for_proxy: Callable[[str, float, float, dict[str, Any]], tuple[str | None, dict[str, Any]]] | None = None
+    """Optional (last_user, max_score, confidence_threshold, proxy_settings) -> (supplement text or None, trace meta)."""

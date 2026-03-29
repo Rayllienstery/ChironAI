@@ -815,7 +815,53 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         _RAG_LOG.warning(f"Failed to build RAG context for logging: {e}")
         rag_context_data = None
     w.set_proxy_status(w.status_preparing_response)
-    
+
+    web_supplement_text: str | None = None
+    web_sup_meta: dict[str, Any] = {
+        "trigger": "none",
+        "used": False,
+        "error": None,
+        "duration_ms": 0,
+        "snippets_chars": 0,
+    }
+    _bf = getattr(w, "build_web_supplement_for_proxy", None)
+    if callable(_bf):
+        try:
+            _tws = time.time()
+            _mx = float(rag_ctx_for_log.max_score) if rag_ctx_for_log is not None else 0.0
+            ps: dict[str, Any] = {str(k): v for k, v in (proxy_settings or {}).items()}
+            web_supplement_text, web_sup_meta = _bf(
+                last_user or "",
+                _mx,
+                float(effective_confidence_threshold),
+                ps,
+            )
+            web_sup_meta = {
+                **web_sup_meta,
+                "duration_ms": int((time.time() - _tws) * 1000),
+            }
+        except Exception as _wse:
+            web_sup_meta = {**web_sup_meta, "error": str(_wse)}
+            web_supplement_text = None
+    trace["internet"]["web_supplement"] = {
+        "used": bool(web_sup_meta.get("used")),
+        "trigger": web_sup_meta.get("trigger"),
+        "error": web_sup_meta.get("error"),
+        "duration_ms": web_sup_meta.get("duration_ms", 0),
+        "snippets_chars": web_sup_meta.get("snippets_chars", 0),
+        "queries": web_sup_meta.get("queries") or [],
+        "cache_hit": bool(web_sup_meta.get("cache_hit")),
+        "fetch_used": bool(web_sup_meta.get("fetch_used")),
+        "wikipedia_used": bool(web_sup_meta.get("wikipedia_used")),
+        "ddg_news": bool(web_sup_meta.get("ddg_news")),
+        "domains_top": web_sup_meta.get("domains_top") or [],
+        "snippets_count": int(web_sup_meta.get("snippets_count") or 0),
+    }
+    trace["internet"]["used"] = bool(
+        trace["internet"].get("used") or trace["internet"]["web_supplement"].get("used")
+    )
+    w.set_current_trace(trace)
+
     # Reuse the same RAG context for messages (single RAG call per request)
     rag_ctx = rag_ctx_for_log if (include_rag_metadata and rag_ctx_for_log) else None
     try:
@@ -842,6 +888,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             trigger_threshold=None,
             force_rag=force_rag,
             native_tools=use_native_tools,
+            web_supplement=web_supplement_text,
         )
         # Ensure use_model is not "rag-ollama" - use config model if needed
         if use_model == "rag-ollama":

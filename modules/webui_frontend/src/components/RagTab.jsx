@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   getRagStatus,
   getRagCollections,
@@ -15,7 +15,9 @@ import {
   getModels,
   getRagModelSettings,
   updateRagModelSettings,
+  getPipelinePreview,
 } from '../services/api';
+import PipelineCiDiagram from './PipelineCiDiagram';
 import './RagTab.css';
 
 function wordsInMultipleCollections(collections) {
@@ -81,6 +83,16 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
   });
   const [ragModelSaving, setRagModelSaving] = useState(false);
   const [ragModelSaveNotice, setRagModelSaveNotice] = useState(null);
+  const [pipelineSnapshot, setPipelineSnapshot] = useState(null);
+
+  const loadPipelinePreview = useCallback(async () => {
+    try {
+      const p = await getPipelinePreview();
+      setPipelineSnapshot(p);
+    } catch (e) {
+      console.error('Failed to load pipeline preview', e);
+    }
+  }, []);
 
   useEffect(() => {
     if (!scrollToModelsSection) return undefined;
@@ -180,7 +192,24 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
     loadFrameworkSettings();
     loadModels();
     loadRagModelSettings();
-  }, [loadKeywordCollections, loadTriggerSettings, loadFrameworkSettings, loadModels, loadRagModelSettings]);
+    loadPipelinePreview();
+  }, [
+    loadKeywordCollections,
+    loadTriggerSettings,
+    loadFrameworkSettings,
+    loadModels,
+    loadRagModelSettings,
+    loadPipelinePreview,
+  ]);
+
+  const pipelineMerged = useMemo(() => {
+    if (!pipelineSnapshot) return null;
+    return {
+      ...pipelineSnapshot,
+      hybrid_sparse_enabled: ragModelSettings.hybrid_sparse_enabled,
+      rerank_for_rag: ragModelSettings.rerank_for_rag,
+    };
+  }, [pipelineSnapshot, ragModelSettings]);
 
   const handleStart = async () => {
     setBusy(true);
@@ -270,6 +299,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
         rerank_model: ragModelSettings.rerank_model || '',
       });
       await loadRagModelSettings();
+      await loadPipelinePreview();
       setRagModelSaveNotice({ type: 'success', text: 'Models saved. Values below match the server.' });
       window.setTimeout(() => setRagModelSaveNotice(null), 6000);
     } catch (e) {
@@ -435,6 +465,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
               loadKeywordCollections();
               loadTriggerSettings();
               loadFrameworkSettings();
+              loadPipelinePreview();
             }}
             disabled={busy}
           >
@@ -474,6 +505,12 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
           )}
         </div>
       )}
+
+      <PipelineCiDiagram
+        data={pipelineMerged}
+        title="LLM proxy pipeline (RAG + supplements)"
+        subtitle="Green stages are enabled with current settings; gray are off. Unsaved hybrid/rerank toggles below update the bottom row live. Web and GitHub flags are edited under LLM Proxy → Web interaction."
+      />
 
       <div
         className="rag-keywords-card"

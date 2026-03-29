@@ -444,12 +444,14 @@ def prepare_ollama_messages(
     extra_filter: dict[str, Any] | None = None,
     *,
     native_tools: bool = False,
+    web_supplement: str | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """
     Build RAG context (unless rag_context provided) and Ollama message list (for streaming or custom chat).
     Returns (ollama_messages, model).
     When rag_context is provided, RAG retrieval is skipped and the given context is used.
     When native_tools is True, preserve OpenAI tool protocol (assistant tool_calls, tool role) for Ollama /api/chat.
+    Optional web_supplement is inserted after the RAG context in the system message (e.g. DuckDuckGo snippets).
     """
     if rag_context is not None:
         ctx = rag_context
@@ -475,6 +477,7 @@ def prepare_ollama_messages(
         confidence_threshold,
         reasoning_level,
         model_name,
+        web_supplement=web_supplement,
     )
     ollama_messages = [{"role": "system", "content": system_content}]
     if native_tools:

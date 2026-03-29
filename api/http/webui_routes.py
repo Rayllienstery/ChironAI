@@ -39,6 +39,10 @@ if _MODULES_RAG not in sys.path:
 _MODULES_EXT_RAG = os.path.join(_ROOT, "modules", "external_docs_rag")
 if _MODULES_EXT_RAG not in sys.path:
     sys.path.insert(0, _MODULES_EXT_RAG)
+# CoreModules/WebInteraction (web_interaction package).
+_WEBINTERACTION = os.path.join(_ROOT, "CoreModules", "WebInteraction")
+if _WEBINTERACTION not in sys.path:
+    sys.path.insert(0, _WEBINTERACTION)
 
 from application.container import default_embed_provider, default_rerank_client
 from application.rag.collection_freshness import check_collection_freshness
@@ -939,7 +943,21 @@ def webui_chat() -> Any:
         if rag_timings:
             set_latest_request_rag_steps(rag_timings)
         set_proxy_status(STATUS_PREPARING_RESPONSE)
-        
+
+        web_sup_text: str | None = None
+        try:
+            from api.http.llm_proxy_wiring import build_web_supplement_for_proxy
+
+            ps_chat: dict[str, Any] = {str(k): v for k, v in (proxy_settings or {}).items()}
+            web_sup_text, _ = build_web_supplement_for_proxy(
+                last_user or "",
+                float(ctx.max_score),
+                float(params.confidence_threshold),
+                ps_chat,
+            )
+        except Exception:
+            web_sup_text = None
+
         # Prepare messages
         req = RagQuestionRequest(
             messages=messages,
@@ -947,7 +965,7 @@ def webui_chat() -> Any:
             stream=False,
             reasoning_level=reasoning_level,
         )
-        
+
         ollama_messages, use_model = prepare_ollama_messages(
             req,
             rag_repo,
@@ -963,6 +981,7 @@ def webui_chat() -> Any:
             rag_required_keywords=rag_keywords,
             rag_context=ctx,
             trigger_threshold=trigger_threshold,
+            web_supplement=web_sup_text,
         )
         # Ensure use_model is not "rag-ollama" - use config model if needed
         if use_model == "rag-ollama":
@@ -1088,6 +1107,12 @@ def get_model_settings() -> Any:
             "code_only": False,
             "include_rag_metadata": True,
             "fetch_web_knowledge": False,
+            "web_interaction_enabled": False,
+            "web_interaction_on_keywords": True,
+            "web_interaction_on_low_confidence_framework": True,
+            "web_interaction_ddg_news": False,
+            "web_interaction_fetch_page": False,
+            "web_interaction_wikipedia": False,
             "rag_collection": stored_rag_col,
             "rerank_for_rag": False,
             "rerank_model": "",
@@ -1135,8 +1160,18 @@ def update_model_settings() -> Any:
             settings_repo.set_app_setting("proxy_model", str(body["model"]))
         if body.get("rag_collection") is not None:
             settings_repo.set_app_setting("rag_collection", str(body.get("rag_collection") or "").strip())
-        settings_repo.set_app_setting("proxy_settings", json.dumps(body))
-        return jsonify({"status": "ok", "settings": body})
+        existing_blob: dict[str, Any] = {}
+        try:
+            raw_ps = settings_repo.get_app_setting("proxy_settings")
+            if raw_ps:
+                existing_blob = json.loads(raw_ps)
+                if not isinstance(existing_blob, dict):
+                    existing_blob = {}
+        except (json.JSONDecodeError, TypeError):
+            existing_blob = {}
+        merged = {**existing_blob, **body}
+        settings_repo.set_app_setting("proxy_settings", json.dumps(merged))
+        return jsonify({"status": "ok", "settings": merged})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.update_model_settings", exc_info=True)
         return jsonify({"error": str(e)}), 500
@@ -1501,7 +1536,29 @@ def tester_chat() -> Any:
                     context_chars = sum(int(c.get("text_length") or 0) for c in rag_chunks_info)
                 else:
                     context_chars = None
-            
+
+            web_sup_text_tester: str | None = None
+            try:
+                from api.http.llm_proxy_wiring import build_web_supplement_for_proxy
+
+                ps_t: dict[str, Any] = {}
+                try:
+                    _raw_ps = settings_repo.get_app_setting("proxy_settings")
+                    if _raw_ps:
+                        _parsed = json.loads(_raw_ps)
+                        if isinstance(_parsed, dict):
+                            ps_t = {str(k): v for k, v in _parsed.items()}
+                except Exception:
+                    ps_t = {}
+                web_sup_text_tester, _ = build_web_supplement_for_proxy(
+                    last_user or "",
+                    float(ctx.max_score),
+                    float(params.confidence_threshold),
+                    ps_t,
+                )
+            except Exception:
+                web_sup_text_tester = None
+
             # Use the actual Ollama model name here; "rag-ollama" is the logical
             # OpenAI-compatible model id, not an Ollama model. Passing it here
             # causes 404 MODEL_NOT_FOUND from Ollama.
@@ -1511,7 +1568,7 @@ def tester_chat() -> Any:
                 stream=False,
                 reasoning_level=reasoning_level,
             )
-            
+
             ollama_messages, use_model = prepare_ollama_messages(
                 req,
                 rag_repo,
@@ -1527,6 +1584,7 @@ def tester_chat() -> Any:
                 rag_required_keywords=rag_keywords,
                 rag_context=ctx,
                 trigger_threshold=trigger_threshold,
+                web_supplement=web_sup_text_tester,
             )
             # Ensure use_model is not "rag-ollama" - use config model if needed
             if use_model == "rag-ollama":
@@ -1900,6 +1958,88 @@ def get_rag_model_settings() -> Any:
         )
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_rag_model_settings", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/pipeline-preview", methods=["GET"])
+def get_pipeline_preview() -> Any:
+    """
+    Snapshot of proxy/RAG pipeline flags for Web UI (GitLab-style diagram).
+    Includes persisted proxy_settings, RAG collection name, hybrid/rerank, and WebInteraction env gates.
+    """
+    try:
+        settings_repo = get_settings_repository()
+        rag_col = (settings_repo.get_app_setting("rag_collection") or "").strip()
+        rag_collection_configured = bool(rag_col)
+
+        proxy_settings: dict[str, Any] = {}
+        psj = settings_repo.get_app_setting("proxy_settings")
+        if psj:
+            try:
+                proxy_settings = json.loads(psj) or {}
+            except json.JSONDecodeError:
+                proxy_settings = {}
+
+        fetch_web_knowledge = bool(proxy_settings.get("fetch_web_knowledge", False))
+        web_interaction_enabled = bool(proxy_settings.get("web_interaction_enabled", False))
+        web_interaction_on_keywords = bool(proxy_settings.get("web_interaction_on_keywords", True))
+        web_interaction_on_low_confidence_framework = bool(
+            proxy_settings.get("web_interaction_on_low_confidence_framework", True)
+        )
+        rerank_for_rag = bool(proxy_settings.get("rerank_for_rag", False))
+        yaml_hybrid = get_retrieval_bool("hybrid_sparse_enabled", True)
+        if isinstance(proxy_settings, dict) and "hybrid_sparse_enabled" in proxy_settings:
+            hybrid_sparse_enabled = bool(proxy_settings["hybrid_sparse_enabled"])
+        else:
+            hybrid_sparse_enabled = yaml_hybrid
+
+        ui_news = bool(proxy_settings.get("web_interaction_ddg_news", False))
+        ui_fetch = bool(proxy_settings.get("web_interaction_fetch_page", False))
+        ui_wiki = bool(proxy_settings.get("web_interaction_wikipedia", False))
+
+        raw_news = False
+        raw_fetch = False
+        raw_wiki = False
+        global_web = True
+        try:
+            from web_interaction.config import ddg_news_enabled, web_interaction_globally_enabled
+            from web_interaction.fetch_excerpt import fetch_page_env_enabled
+            from web_interaction.wikipedia_fallback import wikipedia_env_enabled
+
+            global_web = web_interaction_globally_enabled()
+            raw_news = ddg_news_enabled()
+            raw_fetch = fetch_page_env_enabled()
+            raw_wiki = wikipedia_env_enabled()
+        except ImportError:
+            pass
+
+        env_payload = {
+            "web_interaction_globally_enabled": global_web,
+            "ddg_news": ui_news or raw_news,
+            "fetch_page": ui_fetch or raw_fetch,
+            "wikipedia": ui_wiki or raw_wiki,
+        }
+        env_raw_payload = {
+            "ddg_news": raw_news,
+            "fetch_page": raw_fetch,
+            "wikipedia": raw_wiki,
+        }
+
+        return jsonify(
+            {
+                "rag_collection_configured": rag_collection_configured,
+                "hybrid_sparse_enabled": hybrid_sparse_enabled,
+                "rerank_for_rag": rerank_for_rag,
+                "fetch_web_knowledge": fetch_web_knowledge,
+                "web_interaction_enabled": web_interaction_enabled,
+                "web_interaction_on_keywords": web_interaction_on_keywords,
+                "web_interaction_on_low_confidence_framework": web_interaction_on_low_confidence_framework,
+                "env": env_payload,
+                "env_raw": env_raw_payload,
+            }
+        )
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_pipeline_preview", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
