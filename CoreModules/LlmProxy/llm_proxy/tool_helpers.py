@@ -490,6 +490,104 @@ def _strict_retry_user_content(user_query: str, selected_tool_name: str | None) 
     return base + "".join(extra_parts) + excerpt
 
 
+def _collect_ordered_file_uris(user_text: str) -> list[str]:
+    """Distinct ``file:`` URIs in document order (fragment stripped; stable for multi-file user turns)."""
+    raw = user_text or ""
+    out: list[str] = []
+    seen: set[str] = set()
+    for m in re.finditer(r"file:///[^\s)#]+", raw, re.IGNORECASE):
+        u = (m.group(0) or "").strip().split("#", 1)[0].strip()
+        if not u:
+            continue
+        key = u.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(u)
+    if not out:
+        for m in re.finditer(r"file://[^\s)#]+", raw, re.IGNORECASE):
+            u = (m.group(0) or "").strip().split("#", 1)[0].strip()
+            if u.lower().startswith("file:///"):
+                continue
+            key = u.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(u)
+    return out
+
+
+def _user_intent_copy_or_append_across_files(user_text: str) -> bool:
+    """User likely edits a *destination* file (second ref), not the primary attachment."""
+    low = (user_text or "").lower()
+    for needle in (
+        "to the end of",
+        "copy to",
+        "append to",
+        "paste to",
+        "add to the end",
+        "into the end",
+        "в конец",
+        "скопируй",
+        "копируй",
+        "копировать",
+        "допиши",
+        "перенеси в",
+    ):
+        if needle in low:
+            return True
+    return False
+
+
+def _extract_file_path_for_edit_tool_precedence(user_text: str) -> str | None:
+    """
+    Path hint for `_build_tool_arguments`: when the user names two files and asks to copy/append
+    into another file, the *last* ``file:`` URI is usually the edit target (destination).
+    Otherwise fall back to the first reference (legacy behavior).
+    """
+    if _user_intent_copy_or_append_across_files(user_text):
+        uris = _collect_ordered_file_uris(user_text)
+        if len(uris) >= 2:
+            return uris[-1]
+    return _extract_file_path_from_user_text(user_text)
+
+
+def _native_multifile_append_system_hint(user_text: str) -> str | None:
+    """
+    Extra system line for Ollama native tools: steer away from shell file-copy and bogus ``*_end``
+    filenames when the user asked to append source text into another file.
+    """
+    if not _user_intent_copy_or_append_across_files(user_text):
+        return None
+    uris = _collect_ordered_file_uris(user_text)
+    if len(uris) < 2:
+        return None
+    dest = _tool_path_from_uri_or_path(uris[-1])
+    src = _tool_path_from_uri_or_path(uris[0])
+    if not dest or not src:
+        return None
+    return (
+        "Multi-file append task: Put the requested source line(s) at the **end** of the **destination** "
+        f"file only. Destination (edit this file): `{dest}`. Source (read/selection only; do not save "
+        f"as a renamed duplicate): `{src}`. "
+        "Use a file edit or patch tool on the destination path; append lines at EOF. "
+        "Do **not** run shell copy/move/rename. Do **not** create new files by adding suffixes like "
+        "`_end`, `_copy`, or similar to the source name unless the user explicitly asked for a new file."
+    )
+
+
+def _insert_system_before_last_user_message(
+    messages: list[dict[str, object]], content: str
+) -> None:
+    body = (content or "").strip()
+    if not body:
+        return
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].get("role") == "user":
+            messages.insert(i, {"role": "system", "content": body})
+            return
+
+
 def _extract_file_path_from_user_text(user_text: str) -> str | None:
     if not user_text:
         return None
@@ -1040,7 +1138,7 @@ def _build_tool_arguments(
     edit_payload: dict[str, object],
     user_query: str,
 ) -> dict[str, object]:
-    user_path = _extract_file_path_from_user_text(user_query or "")
+    user_path = _extract_file_path_for_edit_tool_precedence(user_query or "")
     payload_raw_path = str(edit_payload.get("file_path") or edit_payload.get("path") or "")
     normalized_payload_path = _normalize_tool_path(payload_raw_path) if payload_raw_path else ""
     file_path = normalized_payload_path

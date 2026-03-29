@@ -35,8 +35,10 @@ from llm_proxy.tool_helpers import (
     _extract_line_span_from_user_text,
     _extract_tool_name,
     _get_tool_by_name,
+    _insert_system_before_last_user_message,
     _is_edit_like_tool_name,
     _maybe_retry_edit_payload_full_file,
+    _native_multifile_append_system_hint,
     _normalized_path_for_cache,
     _normalized_user_signature,
     _prior_tool_messages_include_successful_edit,
@@ -769,7 +771,9 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     trace["internet"] = {"background_refresh_started": False}
     try:
         if skip_rag_retrieval:
-            rag_ctx_for_log = w.rag_context_factory(context_text="", chunks_info=[], max_score=0.0)
+            rag_ctx_for_log = w.rag_context_factory(
+                context_text="", chunks_info=[], max_score=0.0, retrieval_skipped=True
+            )
             trace["rag"]["retrieval_skipped"] = True
         else:
             trace["rag"]["retrieval_skipped"] = False
@@ -1063,6 +1067,10 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             native_tools=use_native_tools,
             web_supplement=web_supplement_text,
         )
+        if use_native_tools:
+            _mh = _native_multifile_append_system_hint(last_user or user_query or "")
+            if _mh:
+                _insert_system_before_last_user_message(ollama_messages, _mh)
         # Ensure use_model is not a logical id — use resolved Ollama tag
         if is_rag_logical_model_id(use_model, rt.rag_model_logical_id):
             use_model = effective_ollama_model

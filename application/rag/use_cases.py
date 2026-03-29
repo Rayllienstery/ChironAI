@@ -406,6 +406,7 @@ def answer_question(
         confidence_threshold,
         reasoning_level,
         model_name,
+        retrieval_skipped=ctx.retrieval_skipped,
     )
     ollama_messages = [{"role": "system", "content": system_content}]
     for m in request.messages:
@@ -478,6 +479,7 @@ def prepare_ollama_messages(
         reasoning_level,
         model_name,
         web_supplement=web_supplement,
+        retrieval_skipped=ctx.retrieval_skipped,
     )
     ollama_messages = [{"role": "system", "content": system_content}]
     if native_tools:

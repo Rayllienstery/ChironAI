@@ -14,6 +14,8 @@
 
 - [ ] Check RAG Quality TASK
 - [x] rag-ollama -> ChironAI-Worker (default logical id `ChironAI-Worker`; `rag-ollama` still accepted)
+- [ ] Thinking mode passing
+- [ ] Thinking progress passing
 - [ ] Autocomplete model inside proxy
 - [ ] Crawler / Indexer - улучшить понимание того что было проиндексировано, а что нет - Indexed is ok, but skipped count is mandatory
 - [ ] Indexing debug - why so much <400 chars filtering, probably it is useful files

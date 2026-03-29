@@ -77,20 +77,25 @@ class TestBuildContextBlock:
 
 
 class TestBuildSystemContent:
-    def test_includes_prefix_and_suffix(self) -> None:
+    def test_includes_prefix_suffix_and_primary_task_block(self) -> None:
         out = build_system_content("PREFIX", "SUFFIX", "ctx", 0.8, 0.75, None, "model")
         assert "PREFIX" in out
         assert "SUFFIX" in out
+        assert "PRIMARY TASK" in out
+        assert "highest priority" in out
+        assert "BEGIN SUPPLEMENTARY KNOWLEDGE" in out
+        assert "END SUPPLEMENTARY KNOWLEDGE" in out
         assert "ctx" in out
 
-    def test_adds_low_confidence_warning_when_below_threshold(self) -> None:
+    def test_low_confidence_note_ignores_snippets_not_caveat_in_answer(self) -> None:
         out = build_system_content("P", "S", "ctx", 0.5, 0.75, None, "m")
-        assert "0.75" in out or "low" in out.lower() or "confidence" in out.lower()
+        assert "optional background" in out.lower() or "ignore" in out.lower()
+        assert "State that the provided fragments" not in out
 
-    def test_inserts_web_supplement_between_context_and_suffix(self) -> None:
+    def test_inserts_web_supplement_in_delimited_section_before_suffix(self) -> None:
         out = build_system_content(
             "P",
-            "S",
+            "TAIL_SUFFIX",
             "CTX",
             0.9,
             0.75,
@@ -98,4 +103,21 @@ class TestBuildSystemContent:
             "m",
             web_supplement="WEBONLY",
         )
-        assert out.index("CTX") < out.index("WEBONLY") < out.index("S")
+        assert out.index("CTX") < out.index("WEBONLY") < out.index("TAIL_SUFFIX")
+        assert "BEGIN WEB SUPPLEMENT" in out
+        assert "END WEB SUPPLEMENT" in out
+
+    def test_retrieval_skipped_empty_context_skips_no_hits_boilerplate(self) -> None:
+        out = build_system_content(
+            "P",
+            "TAIL_SUFFIX",
+            "",
+            0.0,
+            0.75,
+            None,
+            "model",
+            retrieval_skipped=True,
+        )
+        assert "local documentation base did not return" not in out.lower()
+        assert "PRIMARY TASK" in out
+        assert out.rstrip().endswith("TAIL_SUFFIX")

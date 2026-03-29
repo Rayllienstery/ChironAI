@@ -49,6 +49,8 @@ class RagContext:
     context_text: str
     chunks_info: list[dict[str, Any]]
     max_score: float = 0.0
+    #: True when retrieval was not run (e.g. client ``skip_rag``); avoids "zero hits" boilerplate in system prompt.
+    retrieval_skipped: bool = False
 
 
 @dataclass

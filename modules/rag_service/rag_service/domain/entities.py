@@ -49,6 +49,7 @@ class RagContext:
     context_text: str
     chunks_info: list[dict[str, Any]]
     max_score: float = 0.0
+    retrieval_skipped: bool = False
 
 
 @dataclass
