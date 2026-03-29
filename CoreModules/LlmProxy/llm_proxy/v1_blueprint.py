@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 from llm_proxy.apply_edit import run_apply_file_edit
 from llm_proxy.chat_completions import run_chat_completions
 from llm_proxy.config import RAG_MODEL_ID
-from llm_proxy.edit_state import configure_ttl
 from llm_proxy.external_ingest import run_external_docs_ingest
 from llm_proxy.ollama_upstream import forward_ollama_api
 from llm_proxy.workspace import set_workspace_root
@@ -19,14 +18,17 @@ if TYPE_CHECKING:
 
 
 def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
-    """Register /v1/* routes; call `set_workspace_root` and TTL from `wiring.runtime`."""
+    """Register /v1/* routes; call `set_workspace_root` from `wiring.runtime`."""
     set_workspace_root(wiring.workspace_root)
-    configure_ttl(wiring.runtime.recent_success_ttl_s, wiring.runtime.recent_noop_ttl_s)
 
     bp = Blueprint("llm_proxy_v1", __name__)
 
-    @bp.route("/v1", methods=["GET"])
+    @bp.route("/v1", methods=["GET", "POST"])
     def v1_root():
+        # Some OpenAI-compatible clients set base URL to …/v1 and POST to that path
+        # instead of …/v1/chat/completions; accept POST here for autocomplete/chat.
+        if request.method == "POST":
+            return run_chat_completions(wiring)
         return jsonify({"object": "api", "version": "v1"})
 
     @bp.route("/v1/models", methods=["GET"])

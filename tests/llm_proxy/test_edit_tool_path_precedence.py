@@ -62,42 +62,6 @@ def test_extract_file_path_for_edit_prefers_last_uri_on_copy_to_end(monkeypatch:
                 p.unlink()
 
 
-def test_native_multifile_append_hint_lists_dest_and_forbids_shell_copy() -> None:
-    from llm_proxy.tool_helpers import _native_multifile_append_system_hint
-
-    msg = (
-        "[@File1.md (1:1)](file:///C:/Users/Raylee/Desktop/Test/File1.md#L1:1)\n"
-        " copy to the end of file \n"
-        "[@File2.md](file:///C:/Users/Raylee/Desktop/Test/File2.md)\n"
-    )
-    h = _native_multifile_append_system_hint(msg)
-    assert h
-    assert "File2.md" in h
-    assert "File1.md" in h
-    assert "_end" in h
-    assert "shell" in h.lower()
-
-
-def test_native_multifile_append_hint_none_without_second_uri() -> None:
-    from llm_proxy.tool_helpers import _native_multifile_append_system_hint
-
-    assert _native_multifile_append_system_hint("copy to end [@a](file:///C:/only.md)") is None
-
-
-def test_insert_system_before_last_user() -> None:
-    from llm_proxy.tool_helpers import _insert_system_before_last_user_message
-
-    msgs: list = [
-        {"role": "system", "content": "a"},
-        {"role": "user", "content": "u1"},
-        {"role": "assistant", "content": "ok"},
-        {"role": "user", "content": "u2"},
-    ]
-    _insert_system_before_last_user_message(msgs, "HINT")
-    assert msgs[3] == {"role": "system", "content": "HINT"}
-    assert msgs[4] == {"role": "user", "content": "u2"}
-
-
 def test_single_file_still_uses_first_uri(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("llm_proxy.workspace._workspace_root_fn", lambda: Path(root))
     from llm_proxy.tool_helpers import _extract_file_path_for_edit_tool_precedence

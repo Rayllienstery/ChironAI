@@ -28,8 +28,6 @@ class LlmProxyRuntimeConfig:
 
     rag_model_logical_id: str = RAG_MODEL_ID
     autocomplete_model_logical_id: str = AUTOCOMPLETE_MODEL_ID
-    recent_success_ttl_s: float = 45.0
-    recent_noop_ttl_s: float = 120.0
 
     @classmethod
     def from_env(cls) -> LlmProxyRuntimeConfig:
@@ -38,8 +36,6 @@ class LlmProxyRuntimeConfig:
         return cls(
             rag_model_logical_id=rag_id,
             autocomplete_model_logical_id=ac_id,
-            recent_success_ttl_s=float(os.getenv("LLM_PROXY_RECENT_SUCCESS_TTL_S", "45")),
-            recent_noop_ttl_s=float(os.getenv("LLM_PROXY_RECENT_NOOP_TTL_S", "120")),
         )
 
 

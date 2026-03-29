@@ -26,7 +26,7 @@ Pytest adds `CoreModules/LlmProxy` to `pythonpath` in the root [`pyproject.toml`
 
 - **`create_v1_blueprint(wiring: LlmProxyWiring) -> flask.Blueprint`** — register on the Flask app with `url_prefix=""` so paths stay `/v1/...`.
 - **`LlmProxyWiring`** — frozen dataclass of callables and config (`contracts.py`).
-- **`LlmProxyRuntimeConfig`** — module-owned defaults (logical model id, TTLs for edit retry caches); override via environment:
+- **`LlmProxyRuntimeConfig`** — module-owned defaults (logical model ids); override via environment:
 
 | Variable | Purpose |
 |----------|---------|
@@ -34,8 +34,6 @@ Pytest adds `CoreModules/LlmProxy` to `pythonpath` in the root [`pyproject.toml`
 | `LLM_PROXY_AUTOCOMPLETE_MODEL_ID` | Logical id for fast inline completion (default `ChironAI-Autocomplete`) |
 | `LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL` | Concrete Ollama tag for autocomplete (overrides WebUI `proxy_autocomplete_model` when set) |
 | `LLM_PROXY_AUTOCOMPLETE_SYSTEM_PREFIX` / `LLM_PROXY_AUTOCOMPLETE_SYSTEM_SUFFIX` | Optional overrides for minimal system prompt when using the autocomplete logical id |
-| `LLM_PROXY_RECENT_SUCCESS_TTL_S` | TTL for cross-request “success” suppression (default `45`) |
-| `LLM_PROXY_RECENT_NOOP_TTL_S` | TTL for noop retry tracking (default `120`) |
 
 Autocomplete is **additive**: same `/v1/chat/completions` endpoint; requests with `model` set to the autocomplete logical id skip RAG and use a small Ollama model from WebUI or env. The second entry appears in `/v1/models` only after that backend model is configured.
 
@@ -59,25 +57,20 @@ When the request includes a non-empty `tools` list and `tool_choice` is not `"no
 
 If `tool_choice` is `"none"` or `tools` is empty, the legacy text-only path (no synthetic JSON tool shim) is used as before.
 
-## Pipeline behavior (WebUI + env)
+## Proxy pipeline (single mode)
 
-The WebUI **LLM Proxy → Model Settings** block **Proxy pipeline** persists three flags in `proxy_settings` (defaults match **Legacy**, so upgrades stay behavior-preserving). Each request’s effective values are also attached to the proxy trace under `request.proxy_pipeline_policy`.
+The handler runs in **passthrough-only** mode. The proxy still enriches requests the same way as before for RAG, prompt templates, optional web/external-docs context, and OpenAI↔Ollama mapping.
 
-| Setting (`proxy_settings` key) | Legacy default | What it controls |
-|--------------------------------|----------------|------------------|
-| `proxy_tool_policy` | `normalize` | **`passthrough`**: skip rewriting native `tool_calls` arguments after Ollama (`_normalize_native_openai_tool_calls_for_edit_tools`) and skip the extra multi-file append system hint. **`normalize`**: current path rewrite + hint behavior. |
-| `proxy_stateful_guards` | `true` | **`false`**: no cross-request `edit_state` updates for success/noop, no `noop_retry_blocked` early response, no transcript heuristics that force `post_tool_success_turn` (trailing noop, duplicate user), no Swift `tool_choice` `none`→`auto` override, and no `_POST_TOOL_SUCCESS_SYSTEM` injection on the text-tool path. |
-| `proxy_text_tool_retries` | `true` | **`false`**: no strict JSON retries, no `_maybe_retry_edit_payload_full_file`, and no minimal empty-response chat for the stream tool path—only the primary model output is used (plus the existing compact retry on Ollama errors where applicable). |
+It **does not**:
 
-Environment variables **override** saved settings for automation/CI (non-empty / recognized values only):
+- Rewrite native `tool_calls` arguments returned by Ollama (client sees the model’s JSON as mapped by the bridge).
+- Inject extra system hints aimed at multi-file append workflows.
+- Keep cross-request edit success / noop state, block “repeated noop” loops early, extend `post_tool_success_turn` with transcript heuristics, override `tool_choice: none` to `auto` for Swift-style edit prompts, or inject post-tool success system text on the legacy JSON-tool path.
+- Run hidden follow-up model calls for strict JSON tool retries, full-file edit retries, or minimal empty-response recovery on the stream tool path (the compact Ollama error retry when the primary chat call fails may still apply).
 
-| Variable | Values |
-|----------|--------|
-| `LLM_PROXY_TOOL_POLICY` | `normalize` or `passthrough` |
-| `LLM_PROXY_STATEFUL_GUARDS` | `0`/`false`/`off` or `1`/`true`/`on` |
-| `LLM_PROXY_TEXT_TOOL_RETRIES` | same as above |
+The proxy trace includes `request.proxy_pipeline: "passthrough_only"` for visibility.
 
-**Strict pass-through** (as in the product plan) is: `proxy_tool_policy=passthrough`, `proxy_stateful_guards=false`, `proxy_text_tool_retries=false`. RAG/system assembly from the template remains the proxy’s intentional enrichment; these flags only gate “extra” mutation and hidden follow-up chats.
+**Breaking change:** `proxy_tool_policy`, `proxy_stateful_guards`, `proxy_text_tool_retries`, and env vars `LLM_PROXY_TOOL_POLICY`, `LLM_PROXY_STATEFUL_GUARDS`, `LLM_PROXY_TEXT_TOOL_RETRIES`, `LLM_PROXY_RECENT_SUCCESS_TTL_S`, `LLM_PROXY_RECENT_NOOP_TTL_S` are removed. Older `proxy_settings` JSON keys in the DB are ignored.
 
 ## Dependencies
 

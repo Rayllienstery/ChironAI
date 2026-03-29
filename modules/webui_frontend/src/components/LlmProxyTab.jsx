@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import ModelSettings from './ModelSettings';
-import LlmProxyPipelinePanel from './LlmProxyPipelinePanel';
 import LlmProxyAutocompletePanel from './LlmProxyAutocompletePanel';
 import LlmProxyWebInteractionPanel from './LlmProxyWebInteractionPanel';
 import './SettingsTab.css';
@@ -155,8 +154,6 @@ function LlmProxyTab({ onOpenRagModels, onOpenLogs }) {
               </li>
             </ol>
           </details>
-
-          <LlmProxyPipelinePanel />
 
           <div className="settings-section">
             <h3>Model Settings</h3>

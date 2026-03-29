@@ -13,11 +13,7 @@ from typing import Any
 
 from flask import Response, jsonify, request
 
-from infrastructure.ollama.openai_ollama_tool_bridge import arguments_to_ollama_object
-
-from llm_proxy import edit_state
 from llm_proxy.ollama_think import resolve_ollama_think
-from llm_proxy.pipeline_policy import resolve_proxy_pipeline_policy
 from llm_proxy.config import (
     DEFAULT_AUTOCOMPLETE_SYSTEM_PREFIX,
     DEFAULT_AUTOCOMPLETE_SYSTEM_SUFFIX,
@@ -26,7 +22,6 @@ from llm_proxy.config import (
 )
 from llm_proxy.contracts import LlmProxyWiring
 from llm_proxy.tool_helpers import (
-    _POST_TOOL_SUCCESS_SYSTEM,
     _build_tool_arguments,
     _build_tool_json_instruction,
     _client_files_snippet,
@@ -36,16 +31,7 @@ from llm_proxy.tool_helpers import (
     _extract_line_span_from_user_text,
     _extract_tool_name,
     _get_tool_by_name,
-    _insert_system_before_last_user_message,
-    _is_edit_like_tool_name,
-    _maybe_retry_edit_payload_full_file,
-    _native_multifile_append_system_hint,
-    _normalized_path_for_cache,
-    _normalized_user_signature,
-    _prior_tool_messages_include_successful_edit,
     _select_edit_tool_name,
-    _strict_retry_user_content,
-    _strip_context_sections,
     _tool_args_have_substantive_body,
     _tool_result_looks_like_unintended_deletion,
     _tool_schema_accepts_content,
@@ -62,60 +48,6 @@ def _is_rag_logical_model_id(requested: str, rag_logical_id: str) -> bool:
 
 def _log_rag_error(stage: str, error: Exception) -> None:
     _RAG_LOG.error("RAG stage=%s | %s: %s", stage, type(error).__name__, error)
-
-
-def _normalize_native_openai_tool_calls_for_edit_tools(
-    tool_calls: list[Any],
-    tools: list[Any],
-    user_query: str,
-) -> tuple[list[Any], list[str]]:
-    """
-    Apply _build_tool_arguments to edit-like native tool_calls before returning them to the client.
-    Non-edit tools and any normalization failures keep the original tool call.
-    """
-    out: list[Any] = []
-    errors: list[str] = []
-    for tc in tool_calls:
-        if not isinstance(tc, dict):
-            out.append(tc)
-            continue
-        fn = tc.get("function") if isinstance(tc.get("function"), dict) else None
-        if not isinstance(fn, dict):
-            out.append(tc)
-            continue
-        name = fn.get("name")
-        name_s = str(name) if name else ""
-        if not _is_edit_like_tool_name(name_s):
-            out.append(tc)
-            continue
-        raw_args = fn.get("arguments")
-        try:
-            if isinstance(raw_args, dict):
-                parsed: dict[str, Any] = {str(k): v for k, v in raw_args.items()}
-            elif isinstance(raw_args, str):
-                parsed = dict(arguments_to_ollama_object(raw_args))
-            else:
-                parsed = dict(arguments_to_ollama_object(raw_args))
-        except Exception as e:
-            errors.append(f"{name_s}:parse:{type(e).__name__}:{e}")
-            out.append(tc)
-            continue
-        tool_def = _get_tool_by_name(tools, name_s)
-        try:
-            normalized = _build_tool_arguments(
-                selected_tool_name=name_s,
-                selected_tool=tool_def,
-                edit_payload=parsed,
-                user_query=user_query,
-            )
-        except Exception as e:
-            errors.append(f"{name_s}:build:{type(e).__name__}:{e}")
-            out.append(tc)
-            continue
-        new_fn = {**fn, "arguments": json.dumps(normalized, ensure_ascii=False)}
-        new_tc = {**tc, "function": new_fn}
-        out.append(new_tc)
-    return out, errors
 
 
 _OLLAMA_TRACE_MSG_PREVIEW = 300
@@ -237,12 +169,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         pass
     if not proxy_model_setting and proxy_settings.get("model"):
         proxy_model_setting = str(proxy_settings.get("model") or "").strip()
-    pipeline_policy = resolve_proxy_pipeline_policy(
-        proxy_settings if isinstance(proxy_settings, dict) else {}
-    )
-    tool_policy = pipeline_policy["tool_policy"]
-    stateful_guards = pipeline_policy["stateful_guards"]
-    text_tool_retries = pipeline_policy["text_tool_retries"]
 
     stream = body.get("stream", False)
     requested_model = body.get("model") or RAG_MODEL_ID
@@ -253,7 +179,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     tools = body.get("tools") if isinstance(body.get("tools"), list) else []
     tool_choice = body.get("tool_choice")
     tool_choice_effective = tool_choice if tool_choice not in (None, "") else "auto"
-    tool_choice_overridden_for_edit_intent = False
     explicit_reasoning = body.get("reasoning_level") or body.get("reasoning")
     include_rag_metadata = body.get("include_rag_metadata", False)
     force_rag = bool(body.get("force_rag"))
@@ -295,7 +220,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     _last_role = _last_msg.get("role") if isinstance(_last_msg, dict) else None
     _last_tool_idx = -1
     _last_user_idx = -1
-    _prev_user_idx = -1
     for i in range(len(messages) - 1, -1, -1):
         mi = messages[i]
         if not isinstance(mi, dict):
@@ -303,11 +227,8 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         r = mi.get("role")
         if _last_tool_idx < 0 and r == "tool":
             _last_tool_idx = i
-        if r == "user":
-            if _last_user_idx < 0:
-                _last_user_idx = i
-            elif _prev_user_idx < 0:
-                _prev_user_idx = i
+        if r == "user" and _last_user_idx < 0:
+            _last_user_idx = i
         if _last_tool_idx >= 0 and _last_user_idx >= 0:
             break
     # Only treat it as a "post tool success" turn when the latest message is a tool result
@@ -318,76 +239,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         and not tool_result_indicates_failure
         and (_last_user_idx < 0 or _last_user_idx < _last_tool_idx)
     )
-    # Zed may send a trailing "No edits were made." after an earlier successful apply; treat as done.
-    # Last message may be `user` (checkpoint) while `_ltl` still reflects the latest tool in the transcript.
-    _trailing_noop_after_prior_success = (
-        has_tool_result
-        and "no edits were made" in _ltl
-        and _prior_tool_messages_include_successful_edit(messages)
-    )
-    if (
-        stateful_guards
-        and not post_tool_success_turn
-        and _trailing_noop_after_prior_success
-    ):
-        if _last_role == "tool" and (_last_user_idx < 0 or _last_user_idx < _last_tool_idx):
-            post_tool_success_turn = True
-        elif (
-            _last_role == "user"
-            and _last_tool_idx >= 0
-            and _last_user_idx >= 0
-            and _last_user_idx > _last_tool_idx
-        ):
-            post_tool_success_turn = True
-    # Some clients re-send the same user instruction after a successful tool result.
-    # If we already saw a successful tool result after the previous occurrence of the same user text,
-    # suppress re-entering tool mode to avoid infinite "no-op" tool recursion.
-    duplicate_user_after_success = False
-    try:
-        if stateful_guards and _last_user_idx >= 0 and _prev_user_idx >= 0:
-            last_user_text = w.last_user_content([messages[_last_user_idx]])  # type: ignore[arg-type]
-            prev_user_text = w.last_user_content([messages[_prev_user_idx]])  # type: ignore[arg-type]
-            last_sig = _normalized_user_signature(last_user_text)
-            prev_sig = _normalized_user_signature(prev_user_text)
-            if last_sig and prev_sig and last_sig == prev_sig:
-                # Look for any tool result between prev_user and last_user.
-                for j in range(_prev_user_idx + 1, _last_user_idx):
-                    mj = messages[j]
-                    if isinstance(mj, dict) and mj.get("role") == "tool":
-                        c = str(mj.get("content") or mj.get("output") or mj.get("result") or "")
-                        if c and ("clean" in c.lower() or "ok" in c.lower() or "success" in c.lower()):
-                            duplicate_user_after_success = True
-                            break
-    except Exception:
-        duplicate_user_after_success = False
-
-    # Update recent-success cache when we see a successful tool result.
-    try:
-        if stateful_guards and has_tool_result and not tool_result_indicates_failure and last_tool_content:
-            # Attribute success to the user message that PRECEDES the last tool result,
-            # not necessarily the last user message in the entire list (clients may append a new user turn).
-            tool_idx = _last_tool_idx if _last_tool_idx >= 0 else -1
-            user_for_tool = ""
-            if tool_idx > 0:
-                for j in range(tool_idx - 1, -1, -1):
-                    mj = messages[j]
-                    if isinstance(mj, dict) and mj.get("role") == "user":
-                        c = mj.get("content")
-                        if isinstance(c, str):
-                            user_for_tool = c
-                        elif isinstance(c, list):
-                            user_for_tool = " ".join(
-                                p.get("text", "") for p in c if isinstance(p, dict) and p.get("type") == "text"
-                            )
-                        break
-            sig = _normalized_user_signature(user_for_tool)
-            p = _normalized_path_for_cache(user_for_tool)
-            if sig and p and any(x in _ltl for x in ("clean", "ok", "success", "completed")):
-                now_s = edit_state.now_s()
-                edit_state.prune_recent_success(now_s)
-                edit_state.recent_success[(sig, p)] = now_s
-    except Exception:
-        pass
 
     if is_autocomplete:
         proxy_autocomplete_ollama = w.get_autocomplete_ollama_model()
@@ -445,36 +296,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     w.set_proxy_status(w.status_rag_search)
     last_user = w.last_user_content(messages)
     user_query = last_user  # Store for logging
-    # Track repeated "No edits were made." failures for the same request signature/path.
-    noop_retry_blocked = False
-    if stateful_guards:
-        try:
-            now_s = edit_state.now_s()
-            edit_state.prune_recent_noop(now_s)
-            if "no edits were made" in _ltl:
-                sig = _normalized_user_signature(user_query or "")
-                p = _normalized_path_for_cache(user_query or "")
-                if sig and p:
-                    key = (sig, p)
-                    # Trailing no-op after an earlier successful edit in the same transcript
-                    # must not advance the noop counter (avoids false 'repeatedly' blocks).
-                    if _prior_tool_messages_include_successful_edit(messages):
-                        edit_state.recent_noop.pop(key, None)
-                    else:
-                        prev_count, _prev_ts = edit_state.recent_noop.get(key, (0, 0.0))
-                        new_count = prev_count + 1
-                        edit_state.recent_noop[key] = (new_count, now_s)
-                        # Allow one retry with improved payload, then stop recursion.
-                        if new_count >= 2:
-                            noop_retry_blocked = True
-            elif has_tool_result and not tool_result_indicates_failure:
-                # Successful tool result clears recent noop counter for this signature/path.
-                sig = _normalized_user_signature(user_query or "")
-                p = _normalized_path_for_cache(user_query or "")
-                if sig and p:
-                    edit_state.recent_noop.pop((sig, p), None)
-        except Exception:
-            noop_retry_blocked = False
     selected_edit_tool_name = _select_edit_tool_name(tools, user_query)
     selected_edit_tool = _get_tool_by_name(tools, selected_edit_tool_name) if selected_edit_tool_name else None
     selected_tool_write_capable = _tool_schema_accepts_content(selected_edit_tool)
@@ -486,36 +307,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             selected_edit_tool_name = "edit_file"
             selected_edit_tool = None
             selected_tool_write_capable = True
-    if stateful_guards and tools and tool_choice_effective == "none" and selected_edit_tool_name:
-        path_hint = (_extract_file_path_from_user_text(user_query or "") or "").lower()
-        q_low = (user_query or "").lower()
-        swift_intent = (
-            path_hint.endswith(".swift")
-            or "uiviewcontroller" in q_low
-            or "swiftui" in q_low
-            or "import uikit" in q_low
-        )
-        if swift_intent:
-            tool_choice_effective = "auto"
-            tool_choice_overridden_for_edit_intent = True
     use_native_tools = bool(tools) and tool_choice_effective != "none"
-    if not use_native_tools:
-        # Cross-request recursion guard: if the same user intent+path was just successfully applied,
-        # suppress tool mode to avoid repeated empty/no-op tool calls from client retries.
-        if stateful_guards:
-            try:
-                now_s = edit_state.now_s()
-                edit_state.prune_recent_success(now_s)
-                sig = _normalized_user_signature(user_query or "")
-                p = _normalized_path_for_cache(user_query or "")
-                if sig and p and (sig, p) in edit_state.recent_success:
-                    if now_s - edit_state.recent_success[(sig, p)] < w.runtime.recent_success_ttl_s:
-                        post_tool_success_turn = True
-            except Exception:
-                pass
-        if duplicate_user_after_success:
-            # Treat as already completed; respond text-only and do not emit tool_calls.
-            post_tool_success_turn = True
     context_length = len(last_user.split())
     if is_autocomplete:
         effective_prefix = (os.getenv("LLM_PROXY_AUTOCOMPLETE_SYSTEM_PREFIX") or "").strip() or DEFAULT_AUTOCOMPLETE_SYSTEM_PREFIX
@@ -552,11 +344,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     trace["request"] = {
         "requested_model": requested_model,
         "actual_model": actual_model,
-        "proxy_pipeline_policy": {
-            "tool_policy": tool_policy,
-            "stateful_guards": stateful_guards,
-            "text_tool_retries": text_tool_retries,
-        },
+        "proxy_pipeline": "passthrough_only",
         "stream": bool(stream),
         "include_rag_metadata": bool(include_rag_metadata),
         "tools_count": len(tools),
@@ -573,20 +361,10 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         "tool_choice_effective": tool_choice_effective
         if isinstance(tool_choice_effective, (str, dict))
         else str(tool_choice_effective),
-        "tool_choice_overridden_for_edit_intent": bool(
-            tool_choice_overridden_for_edit_intent
-        ),
         "has_tool_result": bool(has_tool_result),
         "tool_result_indicates_failure": bool(tool_result_indicates_failure),
         "post_tool_success_turn": bool(post_tool_success_turn),
         "tool_result_last_content_preview": (last_tool_content[:240] if last_tool_content else ""),
-        "duplicate_user_after_success": bool(duplicate_user_after_success),
-        "recent_success_cache_hit": bool(
-            _normalized_user_signature(user_query or "")
-            and _normalized_path_for_cache(user_query or "")
-            and (_normalized_user_signature(user_query or ""), _normalized_path_for_cache(user_query or ""))
-            in edit_state.recent_success
-        ),
         "force_rag": bool(force_rag),
         "fetch_web_knowledge": bool(fetch_web_knowledge),
         "reasoning_level": explicit_reasoning or reasoning_level,
@@ -595,45 +373,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         "user_query_preview": (user_query or "")[:500],
         "is_autocomplete": bool(is_autocomplete),
     }
-
-    if noop_retry_blocked and not use_native_tools:
-        msg = (
-            "Edit tool reported 'No edits were made' repeatedly for the same selection. "
-            "Please expand the selected range or provide full file context (<files>) and retry once."
-        )
-        trace["response"] = {
-            "content_preview": msg[:log_preview],
-            "content_length_chars": len(msg),
-            "tool_calls_count": 0,
-        }
-        w.set_current_trace(trace)
-        if stream:
-            def generate_sse_noop_block():
-                oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': actual_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': actual_model, 'choices': [{'index': 0, 'delta': {'content': msg}, 'finish_reason': None}]})}\n\n"
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': actual_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
-                yield "data: [DONE]\n\n"
-            return Response(
-                generate_sse_noop_block(),
-                mimetype="text/event-stream",
-                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-            )
-        return jsonify(
-            {
-                "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
-                "object": "chat.completion",
-                "created": 0,
-                "model": actual_model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": msg},
-                        "finish_reason": "stop",
-                    }
-                ],
-            }
-        )
 
     # IDE-independent mode: do not fail fast solely on schema checks.
     # Some clients expose incomplete tool schemas but still accept write payloads at runtime.
@@ -1088,10 +827,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             native_tools=use_native_tools,
             web_supplement=web_supplement_text,
         )
-        if use_native_tools and tool_policy != "passthrough":
-            _mh = _native_multifile_append_system_hint(last_user or user_query or "")
-            if _mh:
-                _insert_system_before_last_user_message(ollama_messages, _mh)
         # Ensure use_model is not a logical id — use resolved Ollama tag
         if is_rag_logical_model_id(use_model, rt.rag_model_logical_id):
             use_model = effective_ollama_model
@@ -1187,13 +922,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         openai_msg = ollama_message_to_openai_assistant(oll_msg)
         finish = openai_finish_reason_from_ollama(oll_msg)
         tool_calls_out = openai_msg.get("tool_calls") if isinstance(openai_msg.get("tool_calls"), list) else []
-        native_tool_args_normalize_errors: list[str] = []
-        if tool_calls_out and tool_policy != "passthrough":
-            tool_calls_out, native_tool_args_normalize_errors = _normalize_native_openai_tool_calls_for_edit_tools(
-                tool_calls_out,
-                tools,
-                user_query or last_user or "",
-            )
         content_out = openai_msg.get("content")
         content_str = content_out if isinstance(content_out, str) else ("" if content_out is None else str(content_out))
 
@@ -1213,8 +941,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             "tool_calls_count": len(tool_calls_out),
             "native_tools": True,
         }
-        if native_tool_args_normalize_errors:
-            trace["response"]["native_tool_args_normalize_errors"] = native_tool_args_normalize_errors[:5]
         if tool_calls_out:
             trace["response"]["tool_calls"] = tool_calls_out
         trace["steps"].append(
@@ -1320,9 +1046,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         return jsonify(response_data)
 
     if tools and tool_choice_effective != "none":
-        if post_tool_success_turn and stateful_guards:
-            ollama_messages.append({"role": "system", "content": _POST_TOOL_SUCCESS_SYSTEM})
-        elif not post_tool_success_turn:
+        if not post_tool_success_turn:
             tool_json_instruction = _build_tool_json_instruction(
                 selected_edit_tool_name, selected_edit_tool
             )
@@ -1386,75 +1110,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         edit_payload = _extract_edit_from_response(streamed_content or "")
         tool_plain_fallback = (streamed_content or "").strip()
 
-        if text_tool_retries and (not stream_tool_error) and not edit_payload and selected_edit_tool_name:
-            tool_json_instruction = _build_tool_json_instruction(
-                selected_edit_tool_name, selected_edit_tool
-            )
-            strict_messages: list[dict[str, object]] = []
-            if tool_json_instruction:
-                strict_messages.append({"role": "system", "content": tool_json_instruction})
-            strict_messages.append(
-                {
-                    "role": "user",
-                    "content": _strict_retry_user_content(
-                        user_query or last_user or "", selected_edit_tool_name
-                    ),
-                }
-            )
-            try:
-                retried_content = chat_client.chat(
-                    strict_messages, use_model, stream=False, options=None, think=resolved_think
-                )
-                tool_plain_fallback = (retried_content or "").strip() or tool_plain_fallback
-                edit_payload = _extract_edit_from_response(retried_content or "")
-            except Exception as e2:
-                w.log_webui_error("rag_routes.chat_completions", e2, {"stage": "stream_tool_mode_strict_retry"})
-                _log_rag_error("stream_tool_mode_strict_retry", e2)
-                edit_payload = None
-
-        if text_tool_retries and (not stream_tool_error) and not edit_payload and selected_edit_tool_name:
-            tool_json_instruction2 = _build_tool_json_instruction(
-                selected_edit_tool_name, selected_edit_tool
-            )
-            strict_messages2: list[dict[str, object]] = []
-            if tool_json_instruction2:
-                strict_messages2.append({"role": "system", "content": tool_json_instruction2})
-            strict_messages2.append(
-                {
-                    "role": "user",
-                    "content": _strict_retry_user_content(
-                        user_query or last_user or "", selected_edit_tool_name
-                    )
-                    + " Your previous JSON was invalid or omitted required code fields (empty replacement/new_text/content). Output ONE JSON object that includes the actual code.",
-                }
-            )
-            try:
-                retried2 = chat_client.chat(
-                    strict_messages2, use_model, stream=False, options=None, think=resolved_think
-                )
-                tool_plain_fallback = (retried2 or "").strip() or tool_plain_fallback
-                edit_payload = _extract_edit_from_response(retried2 or "")
-            except Exception as e_strict2:
-                w.log_webui_error(
-                    "rag_routes.chat_completions",
-                    e_strict2,
-                    {"stage": "stream_tool_mode_strict_retry_2"},
-                )
-                _log_rag_error("stream_tool_mode_strict_retry_2", e_strict2)
-
         if (not stream_tool_error) and edit_payload and selected_edit_tool_name:
-            if text_tool_retries:
-                edit_payload, did_full_file_retry = _maybe_retry_edit_payload_full_file(
-                    chat_client,
-                    use_model,
-                    user_query or last_user or "",
-                    selected_edit_tool_name,
-                    selected_edit_tool,
-                    edit_payload,
-                    think=resolved_think,
-                )
-                if did_full_file_retry:
-                    trace["request"]["internal_full_file_retry"] = True
             tool_args = _build_tool_arguments(
                 selected_tool_name=selected_edit_tool_name,
                 selected_tool=selected_edit_tool,
@@ -1505,46 +1161,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                     mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
                 )
-        if (
-            text_tool_retries
-            and (not stream_tool_error)
-            and (not edit_payload)
-            and (not tool_plain_fallback)
-        ):
-            # Some Ollama models occasionally return an empty string. Do not stream "nothing":
-            # return a short plain-text message so the client can surface an error instead
-            # of waiting on an invisible response.
-            try:
-                minimal_messages: list[dict[str, object]] = []
-                # Ultra-minimal retry: strip volatile context/attachments.
-                minimal_user = _strip_context_sections(user_query or last_user or "")
-                tool_json_instruction_m = _build_tool_json_instruction(
-                    selected_edit_tool_name, selected_edit_tool
-                )
-                if tool_json_instruction_m:
-                    minimal_messages.append({"role": "system", "content": tool_json_instruction_m})
-                minimal_messages.append(
-                    {
-                        "role": "user",
-                        "content": (minimal_user or (user_query or last_user or "")).strip()
-                        + "\n\nReturn ONE JSON tool object if tools are enabled; otherwise 1-2 sentences.",
-                    }
-                )
-                tool_plain_fallback = (
-                    (
-                        chat_client.chat(
-                            minimal_messages, use_model, stream=False, options=None, think=resolved_think
-                        )
-                        or ""
-                    ).strip()
-                )
-            except Exception:
-                tool_plain_fallback = ""
-            if not tool_plain_fallback:
-                tool_plain_fallback = (
-                    "Model returned an empty response; no tool call was emitted. Please retry."
-                )
-        elif (not stream_tool_error) and (not edit_payload) and (not tool_plain_fallback):
+        if (not stream_tool_error) and (not edit_payload) and (not tool_plain_fallback):
             tool_plain_fallback = (
                 "Model returned an empty response; no tool call was emitted. Please retry."
             )
@@ -1796,18 +1413,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     if (not stream) and tools and tool_choice_effective != "none" and not post_tool_success_turn:
         edit_payload = _extract_edit_from_response(content or "")
         if edit_payload and selected_edit_tool_name:
-            if text_tool_retries:
-                edit_payload, did_full_file_retry = _maybe_retry_edit_payload_full_file(
-                    chat_client,
-                    use_model,
-                    user_query or last_user or "",
-                    selected_edit_tool_name,
-                    selected_edit_tool,
-                    edit_payload,
-                    think=resolved_think,
-                )
-                if did_full_file_retry:
-                    trace["request"]["internal_full_file_retry"] = True
             tool_args = _build_tool_arguments(
                 selected_tool_name=selected_edit_tool_name,
                 selected_tool=selected_edit_tool,
@@ -1830,113 +1435,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                     f"Cannot apply edit: client tool `{selected_edit_tool_name}` schema does not accept file content. "
                     "Enable a write-capable file edit tool in the IDE (e.g., edit_file/save_file/replace_in_file_range with content/new_text/replacement)."
                 )
-        if text_tool_retries and (not tool_calls) and selected_edit_tool_name:
-            tool_json_instruction = _build_tool_json_instruction(
-                selected_edit_tool_name, selected_edit_tool
-            )
-            strict_messages_ns: list[dict[str, object]] = []
-            if tool_json_instruction:
-                strict_messages_ns.append({"role": "system", "content": tool_json_instruction})
-            strict_messages_ns.append(
-                {
-                    "role": "user",
-                    "content": _strict_retry_user_content(
-                        user_query or last_user or "", selected_edit_tool_name
-                    ),
-                }
-            )
-            retried_payload: dict[str, object] | None = None
-            try:
-                retried_content = chat_client.chat(
-                    strict_messages_ns, use_model, stream=False, options=None, think=resolved_think
-                )
-                retried_payload = _extract_edit_from_response(retried_content or "")
-                if retried_payload:
-                    retried_payload, did_ff2 = _maybe_retry_edit_payload_full_file(
-                        chat_client,
-                        use_model,
-                        user_query or last_user or "",
-                        selected_edit_tool_name,
-                        selected_edit_tool,
-                        retried_payload,
-                        think=resolved_think,
-                    )
-                    if did_ff2:
-                        trace["request"]["internal_full_file_retry"] = True
-                    tool_args = _build_tool_arguments(
-                        selected_tool_name=selected_edit_tool_name,
-                        selected_tool=selected_edit_tool,
-                        edit_payload=retried_payload,
-                        user_query=user_query,
-                    )
-                    if selected_tool_write_capable and _tool_args_have_substantive_body(selected_edit_tool_name, tool_args):
-                        tool_calls = [
-                            {
-                                "id": f"call_{uuid.uuid4().hex[:24]}",
-                                "type": "function",
-                                "function": {
-                                    "name": selected_edit_tool_name,
-                                    "arguments": json.dumps(tool_args, ensure_ascii=False),
-                                },
-                            }
-                        ]
-            except Exception as e3:
-                w.log_webui_error("rag_routes.chat_completions", e3, {"stage": "non_stream_tool_mode_strict_retry"})
-                _log_rag_error("non_stream_tool_mode_strict_retry", e3)
-            if not tool_calls and selected_edit_tool_name:
-                strict_messages_ns2: list[dict[str, object]] = []
-                if tool_json_instruction:
-                    strict_messages_ns2.append({"role": "system", "content": tool_json_instruction})
-                strict_messages_ns2.append(
-                    {
-                        "role": "user",
-                        "content": _strict_retry_user_content(
-                            user_query or last_user or "", selected_edit_tool_name
-                        )
-                        + " Your previous JSON was invalid or omitted required code fields (empty replacement/new_text/content). Output ONE JSON object that includes the actual code.",
-                    }
-                )
-                try:
-                    retried2 = chat_client.chat(
-                        strict_messages_ns2, use_model, stream=False, options=None, think=resolved_think
-                    )
-                    retried_payload2 = _extract_edit_from_response(retried2 or "")
-                    if retried_payload2:
-                        retried_payload2, did_ff3 = _maybe_retry_edit_payload_full_file(
-                            chat_client,
-                            use_model,
-                            user_query or last_user or "",
-                            selected_edit_tool_name,
-                            selected_edit_tool,
-                            retried_payload2,
-                            think=resolved_think,
-                        )
-                        if did_ff3:
-                            trace["request"]["internal_full_file_retry"] = True
-                        tool_args = _build_tool_arguments(
-                            selected_tool_name=selected_edit_tool_name,
-                            selected_tool=selected_edit_tool,
-                            edit_payload=retried_payload2,
-                            user_query=user_query,
-                        )
-                        if selected_tool_write_capable and _tool_args_have_substantive_body(selected_edit_tool_name, tool_args):
-                            tool_calls = [
-                                {
-                                    "id": f"call_{uuid.uuid4().hex[:24]}",
-                                    "type": "function",
-                                    "function": {
-                                        "name": selected_edit_tool_name,
-                                        "arguments": json.dumps(tool_args, ensure_ascii=False),
-                                    },
-                                }
-                            ]
-                except Exception as e4:
-                    w.log_webui_error(
-                        "rag_routes.chat_completions",
-                        e4,
-                        {"stage": "non_stream_tool_mode_strict_retry_2"},
-                    )
-                    _log_rag_error("non_stream_tool_mode_strict_retry_2", e4)
 
     trace["response"]["tool_calls_count"] = len(tool_calls)
     if tool_calls:

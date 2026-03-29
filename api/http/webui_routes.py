@@ -1128,9 +1128,6 @@ def get_model_settings() -> Any:
             "rerank_for_rag": False,
             "rerank_model": "",
             "autocomplete_model": stored_autocomplete,
-            "proxy_tool_policy": "normalize",
-            "proxy_stateful_guards": True,
-            "proxy_text_tool_retries": True,
         }
 
         if stored_settings_json:
