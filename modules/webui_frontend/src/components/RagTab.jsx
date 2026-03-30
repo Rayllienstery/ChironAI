@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import Card from './Card';
 import {
   getRagStatus,
   getRagCollections,
@@ -496,12 +497,18 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
         subtitle="Green stages are enabled with current settings; gray are off. Unsaved hybrid/rerank toggles below update the bottom row live. Web and GitHub flags are edited under LLM Proxy → Web interaction."
       />
 
-      <div
+      <Card
         className="rag-keywords-card"
         role="button"
         tabIndex={0}
         onClick={() => setSheetOpen(true)}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSheetOpen(true); } }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setSheetOpen(true);
+          }
+        }}
+        elevateOnHover
         aria-label="Manage keywords that trigger RAG search"
       >
         <h3 className="rag-keywords-card-title">Keywords that trigger RAG search</h3>
@@ -537,9 +544,9 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
         >
           Manage keywords
         </button>
-      </div>
+      </Card>
 
-      <div className="rag-trigger-card">
+      <Card className="rag-trigger-card" elevation="var(--md-sys-elevation-level1)">
         <h3 className="rag-trigger-card-title">RAG trigger threshold</h3>
         <p className="rag-trigger-card-description">
           RAG runs when the message score is at least this value. Score is the sum of signals below.
@@ -629,9 +636,9 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
             </div>
           )}
         </div>
-      </div>
+      </Card>
 
-      <div className="rag-trigger-card">
+      <Card className="rag-trigger-card" elevation="var(--md-sys-elevation-level1)">
         <h3 className="rag-trigger-card-title">Framework docs versioning</h3>
         <p className="rag-trigger-card-description">
           Configure how long the latest framework documentation collections (e.g. Alamofire_x.m.n_latest) stay fresh
@@ -673,7 +680,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
           Value 1–3650 days. Controls when Alamofire_x.m.n_latest and similar collections will be refreshed from
           GitHub (default 90 days).
         </p>
-      </div>
+      </Card>
 
       <div
         id="rag-qdrant-models-section"
@@ -892,10 +899,11 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
 
       {sheetOpen && (
         <div className="rag-sheet-overlay" onClick={() => setSheetOpen(false)}>
-          <div
+          <Card
             className="rag-sheet"
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
+            elevation="var(--md-sys-elevation-level3)"
           >
             <div className="rag-sheet-header">
               <h3>Keywords that trigger RAG search</h3>
@@ -1044,7 +1052,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
                 Close
               </button>
             </div>
-          </div>
+          </Card>
         </div>
       )}
 

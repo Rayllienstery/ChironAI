@@ -85,7 +85,7 @@
 
 .card {
   background: var(--md-sys-color-surface);
-  border: 1px solid var(--md-sys-color-outline-variant);
+  border: none;
   border-radius: var(--md-sys-shape-corner-large);
   padding: var(--md-sys-spacing-md);
   box-shadow: var(--md-sys-elevation-level1);
@@ -123,7 +123,7 @@
   height: 12px;
   border-radius: 999px;
   background: var(--md-sys-color-surface-tint-neutral);
-  border: 1px solid var(--md-sys-color-outline-variant);
+  border: none;
   margin-top: 8px;
 }
 
@@ -194,15 +194,16 @@
   text-align: left;
   padding: var(--md-sys-spacing-sm);
   border-radius: var(--md-sys-shape-corner-small);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background: transparent;
+  border: none;
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level1);
   cursor: pointer;
   color: var(--md-sys-color-on-surface);
 }
 
 .step-item.active {
   background: var(--md-sys-color-primary-tint-15);
-  border-color: var(--md-sys-color-primary);
+  box-shadow: var(--md-sys-elevation-level2);
 }
 
 .step-name {
@@ -254,9 +255,10 @@
 }
 
 .chunk-item {
-  border: 1px solid var(--md-sys-color-outline-variant);
+  border: none;
   border-radius: var(--md-sys-shape-corner-small);
-  background: var(--md-sys-color-surface-tint-neutral);
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level1);
   padding: var(--md-sys-spacing-sm);
 }
 
@@ -292,9 +294,10 @@
 }
 
 .message-item {
-  border: 1px solid var(--md-sys-color-outline-variant);
+  border: none;
   border-radius: var(--md-sys-shape-corner-small);
-  background: var(--md-sys-color-surface-tint-neutral);
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level1);
   padding: var(--md-sys-spacing-sm);
 }
 
@@ -367,8 +370,9 @@
 .history-item {
   text-align: left;
   border-radius: var(--md-sys-shape-corner-small);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background: transparent;
+  border: none;
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level1);
   padding: var(--md-sys-spacing-sm);
   cursor: pointer;
   color: var(--md-sys-color-on-surface);
@@ -376,7 +380,7 @@
 
 .history-item.active {
   background: var(--md-sys-color-primary-tint-12);
-  border-color: var(--md-sys-color-primary);
+  box-shadow: var(--md-sys-elevation-level2);
 }
 
 .history-title {

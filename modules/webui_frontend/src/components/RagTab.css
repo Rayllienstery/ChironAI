@@ -39,8 +39,9 @@
 .rag-button {
   padding: 6px 12px;
   border-radius: var(--md-sys-shape-corner-small);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-tint-neutral);
+  border: none;
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level1);
   color: var(--md-sys-color-on-surface);
   cursor: pointer;
   font: var(--md-sys-typescale-label-medium-font);
@@ -49,7 +50,7 @@
 .rag-button.primary {
   background: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
-  border-color: var(--md-sys-color-primary);
+  border: none;
 }
 
 .rag-button.ghost {

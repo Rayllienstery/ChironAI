@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import Card from './Card';
 import {
   getModels,
   getPrompts,
@@ -638,7 +639,7 @@ function RagTestsTab({
       </div>
 
       {running && runProgress && (
-        <div className="rag-tests-progress-panel" role="status" aria-live="polite">
+        <Card className="rag-tests-progress-panel" role="status" aria-live="polite">
           <div className="rag-tests-progress-header">
             <span className="rag-tests-progress-spinner" aria-hidden="true" />
             <span className="rag-tests-progress-title">Running tests</span>
@@ -682,7 +683,7 @@ function RagTestsTab({
               }}
             />
           </div>
-        </div>
+        </Card>
       )}
       {(error || runError) && (
         <div className="rag-tests-error" role="alert">
@@ -947,7 +948,7 @@ function RagTestsTab({
         </label>
       </div>
 
-      <div className="rag-tests-table-wrap">
+      <Card className="rag-tests-table-wrap" elevation="var(--md-sys-elevation-level1)">
         <table className="rag-tests-table" role="table">
           <thead>
             <tr>
@@ -1099,7 +1100,7 @@ function RagTestsTab({
             })}
           </tbody>
         </table>
-      </div>
+      </Card>
 
       {failResults.length > 0 && (
         <div className="rag-tests-fail-drilldown">

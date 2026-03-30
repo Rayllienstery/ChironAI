@@ -44,14 +44,32 @@ html, body {
   gap: var(--md-sys-spacing-sm);
 }
 
+.app-card {
+  background: var(--app-card-bg, var(--md-sys-color-surface)) !important;
+  border: none !important;
+  border-radius: var(--app-card-radius, var(--md-sys-shape-corner-medium)) !important;
+  box-shadow: var(--app-card-box-shadow, var(--md-sys-elevation-level1)) !important;
+}
+
+.app-card--interactive {
+  cursor: pointer;
+}
+
+.app-card--elevate-on-hover:hover {
+  box-shadow: var(--app-card-box-shadow-hover, var(--md-sys-elevation-level2)) !important;
+}
+
+.app-card:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
 .metric-card {
   display: inline-flex;
   align-items: center;
   gap: var(--md-sys-spacing-xs);
   padding: 4px 10px;
-  border-radius: var(--md-sys-shape-corner-small);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background: transparent;
+  border-radius: var(--md-sys-shape-corner-medium);
   font-size: 12px;
 }
 
@@ -112,8 +130,6 @@ html, body {
   gap: var(--md-sys-spacing-xs);
   padding: 4px 10px;
   border-radius: 999px;
-  background: var(--md-sys-color-surface-tint-neutral);
-  border: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .status-dot {
@@ -174,8 +190,9 @@ html, body {
   margin-left: var(--md-sys-spacing-xs);
   padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface);
+  border: none;
+  background: transparent;
+  appearance: none;
   color: var(--md-sys-color-on-surface);
   font: var(--md-sys-typescale-label-small-font);
   cursor: pointer;
@@ -189,8 +206,9 @@ html, body {
 .status-link-button {
   padding: 2px 6px;
   border-radius: 999px;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface);
+  border: none;
+  background: transparent;
+  appearance: none;
   color: var(--md-sys-color-on-surface);
   font-size: 13px;
   cursor: pointer;
@@ -203,8 +221,9 @@ html, body {
 .server-stop-button {
   padding: 4px 12px;
   border-radius: var(--md-sys-shape-corner-small);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface);
+  border: none;
+  background: transparent;
+  appearance: none;
   color: var(--md-sys-color-on-surface);
   font: var(--md-sys-typescale-label-medium-font);
   cursor: pointer;

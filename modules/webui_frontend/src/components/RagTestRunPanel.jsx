@@ -1,4 +1,5 @@
 import React from 'react';
+import Card from './Card';
 import './RagTestRunPanel.css';
 
 function RagTestRunPanel({ running, runProgress, runError, onCancel, onGoToRagTests }) {
@@ -8,7 +9,13 @@ function RagTestRunPanel({ running, runProgress, runError, onCancel, onGoToRagTe
   const pct = total ? Math.round((current / total) * 100) : 0;
 
   return (
-    <div className="rag-test-run-panel" role="status" aria-live="polite" aria-label="RAG tests run progress">
+    <Card
+      className="rag-test-run-panel"
+      role="status"
+      aria-live="polite"
+      aria-label="RAG tests run progress"
+      elevation="var(--md-sys-elevation-level3)"
+    >
       <div className="rag-test-run-panel-header">
         <span className="rag-test-run-panel-title">
           {running ? (
@@ -73,7 +80,7 @@ function RagTestRunPanel({ running, runProgress, runError, onCancel, onGoToRagTe
           </p>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 

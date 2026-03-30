@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import Card from "./Card";
 import {
   getCrawlerSources,
   getCrawlerSourcePages,
@@ -1206,7 +1207,7 @@ function CrawlerTab() {
       </div>
 
       {activeSection === "crawler" && crawlingSources.size > 0 && (
-        <div
+        <Card
           className="crawler-progress-panel crawler-progress-panel-fixed"
           role="status"
           aria-live="polite"
@@ -1218,7 +1219,7 @@ function CrawlerTab() {
               {Array.from(crawlingSources).join(", ")}
             </span>
           </div>
-        </div>
+        </Card>
       )}
 
       {activeSection === "crawler" && createProgress && showCreateToast && (

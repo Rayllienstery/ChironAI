@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getLogs } from '../services/api';
 import { startLogPolling, stopLogPolling } from '../services/logs';
+import Card from './Card';
 import './DebugLogPanel.css';
 
 function DebugLogPanel({ open, onToggle, sessionId }) {
@@ -125,9 +126,11 @@ function DebugLogPanel({ open, onToggle, sessionId }) {
         {open ? '▼' : '▲'} Debug Log
       </button>
       
-      <div
+      <Card
+        as="div"
         ref={panelRef}
         className={`debug-log-panel ${open ? 'open' : ''}`}
+        elevation="var(--md-sys-elevation-level5)"
       >
         <div className="debug-log-header">
           <span>Debug Log</span>
@@ -155,7 +158,7 @@ function DebugLogPanel({ open, onToggle, sessionId }) {
             <button onClick={loadLogs}>Refresh</button>
           </div>
         </div>
-        
+
         <div className="debug-log-content">
           {logs.length === 0 ? (
             <div className="empty-state">No logs</div>
@@ -175,7 +178,7 @@ function DebugLogPanel({ open, onToggle, sessionId }) {
           )}
           <div ref={logsEndRef} />
         </div>
-      </div>
+      </Card>
     </>
   );
 }

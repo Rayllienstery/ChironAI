@@ -30,6 +30,7 @@ import TestingTab from "./components/TestingTab";
 import TemplateEditorTab from "./components/TemplateEditorTab";
 import DebugLogPanel from "./components/DebugLogPanel";
 import ProxyTraceTab from "./components/ProxyTraceTab";
+import Card from "./components/Card";
 import {
   getSession,
   getSettings,
@@ -450,7 +451,7 @@ function App() {
         <div className="app-header-row">
           <h1>TMRAG</h1>
           <div className="app-header-status">
-            <div className="status-pill">
+            <Card className="status-pill">
               <span
                 className={`status-dot ${statusLoading ? "updating" : ollamaStatus.running ? "running" : "stopped"}`}
               />
@@ -465,7 +466,8 @@ function App() {
                   {ollamaStatus.running ? "Running" : "Stopped"}
                 </span>
               )}
-              <button
+              <Card
+                as="button"
                 type="button"
                 className="status-button"
                 disabled={statusBusy || statusLoading}
@@ -474,19 +476,20 @@ function App() {
                 }
               >
                 {ollamaStatus.running ? "Stop" : "Start"}
-              </button>
+              </Card>
               {!statusLoading && ollamaStatus.running && ollamaStatus.url && (
-                <button
+                <Card
+                  as="button"
                   type="button"
                   className="status-link-button"
                   title="Open Ollama UI"
                   onClick={openOllamaUI}
                 >
                   🔗
-                </button>
+                </Card>
               )}
-            </div>
-            <div className="status-pill">
+            </Card>
+            <Card className="status-pill">
               <span
                 className={`status-dot ${statusLoading ? "updating" : ragStatusInfo.running ? "running" : "stopped"}`}
               />
@@ -501,7 +504,8 @@ function App() {
                   {ragStatusInfo.running ? "Running" : "Stopped"}
                 </span>
               )}
-              <button
+              <Card
+                as="button"
                 type="button"
                 className="status-button"
                 disabled={statusBusy || statusLoading}
@@ -510,19 +514,20 @@ function App() {
                 }
               >
                 {ragStatusInfo.running ? "Stop" : "Start"}
-              </button>
+              </Card>
               {!statusLoading && ragStatusInfo.running && ragStatusInfo.url && (
-                <button
+                <Card
+                  as="button"
                   type="button"
                   className="status-link-button"
                   title="Open RAG / Qdrant UI"
                   onClick={openRagUI}
                 >
                   🔗
-                </button>
+                </Card>
               )}
-            </div>
-            <div className="status-pill">
+            </Card>
+            <Card className="status-pill">
               <span
                 className={`status-dot ${statusLoading ? "updating" : openWebUiStatus.running ? "running" : "stopped"}`}
               />
@@ -537,7 +542,8 @@ function App() {
                   {openWebUiStatus.running ? "Running" : "Stopped"}
                 </span>
               )}
-              <button
+              <Card
+                as="button"
                 type="button"
                 className="status-button"
                 disabled={statusBusy || statusLoading}
@@ -548,34 +554,31 @@ function App() {
                 }
               >
                 {openWebUiStatus.running ? "Stop" : "Start"}
-              </button>
+              </Card>
               {!statusLoading &&
                 openWebUiStatus.running &&
                 openWebUiStatus.url && (
-                  <button
+                  <Card
+                    as="button"
                     type="button"
                     className="status-link-button"
                     title="Open Open WebUI"
                     onClick={openOpenWebUiUI}
                   >
                     🔗
-                  </button>
+                  </Card>
                 )}
-            </div>
-            <button
-              type="button"
-              className="server-stop-button"
-              onClick={handleServerStop}
-            >
+            </Card>
+            <Card as="button" type="button" className="server-stop-button" onClick={handleServerStop}>
               Stop WebUI
-            </button>
+            </Card>
           </div>
         </div>
         {sessionId && (
           <div className="app-header-metrics">
             {dashboardMetrics?.gpu != null && (
               <>
-                <div className="metric-card">
+                <Card className="metric-card">
                   <span className="metric-label">GPU util</span>
                   <span className="metric-value">
                     {dashboardMetrics.gpu.utilization_pct != null
@@ -583,8 +586,8 @@ function App() {
                       : "—"}
                   </span>
                   <Sparkline data={metricsHistory.gpu_util} />
-                </div>
-                <div className="metric-card">
+                </Card>
+                <Card className="metric-card">
                   <span className="metric-label">GPU memory</span>
                   <span className="metric-value">
                     {dashboardMetrics.gpu.memory_used_mb != null &&
@@ -593,8 +596,8 @@ function App() {
                       : "—"}
                   </span>
                   <Sparkline data={metricsHistory.gpu_mem_used} />
-                </div>
-                <div className="metric-card">
+                </Card>
+                <Card className="metric-card">
                   <span className="metric-label">GPU temp</span>
                   <span className="metric-value">
                     {dashboardMetrics.gpu.temperature_c != null
@@ -602,10 +605,10 @@ function App() {
                       : "—"}
                   </span>
                   <Sparkline data={metricsHistory.gpu_temp} />
-                </div>
+                </Card>
               </>
             )}
-            <div className="metric-card metric-card-combined">
+            <Card className="metric-card metric-card-combined">
               <span className="metric-segment">
                 <span className="metric-label">Proxy</span>
                 <span className="metric-value">
@@ -661,7 +664,7 @@ function App() {
                     : "—"}
                 </span>
               </span>
-            </div>
+            </Card>
           </div>
         )}
       </header>
