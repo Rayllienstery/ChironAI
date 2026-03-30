@@ -83,40 +83,15 @@ def _merge_ollama_visible_text(thinking: str | None, content: str | None) -> str
     return c or t
 
 
-def passthrough_think_from_body(body: dict[str, Any]) -> bool | str | None:
-    """Pass Ollama ``think`` only when the client included the key (mediator; no derived mapping)."""
-    if "think" not in body:
-        return None
-    raw = body.get("think")
-    if isinstance(raw, bool):
-        return raw
-    if isinstance(raw, str):
-        return raw
-    if isinstance(raw, (int, float)):
-        if raw == 1:
-            return True
-        if raw == 0:
-            return False
-    return None
-
-
 def _ollama_native_think_broken_for_model(model_name: str | None) -> bool:
-    """Ollama native ``think`` with Qwen3 often returns only placeholder output (e.g. ``.``)."""
+    """
+    Legacy compatibility helper.
+
+    Note: the proxy no longer forwards any ``think`` flag/option to Ollama.
+    This helper remains only for gating Ollama native-tools behavior for models that
+    historically degenerate with tool calling under heavy context.
+    """
     return "qwen3" in (model_name or "").lower()
-
-
-def effective_ollama_think_from_body(body: dict[str, Any], ollama_model: str | None) -> bool | str | None:
-    """
-    Value actually sent to Ollama ``/api/chat``.
-
-    For Qwen3, omitting ``think`` often leaves the model's template with thinking enabled by default,
-    which yields placeholder-only output. Always send explicit ``think: false`` for those models.
-    For other models, passthrough only when the client sent ``think`` (mediator).
-    """
-    raw = passthrough_think_from_body(body)
-    if _ollama_native_think_broken_for_model(ollama_model):
-        return False
-    return raw
 
 
 _PLACEHOLDER_REPLY_FALLBACK_EN = (
@@ -153,7 +128,6 @@ def _proxy_ollama_chat_text(
     chat_client: Any,
     messages: list[dict[str, Any]],
     model: str,
-    think: bool | str | None,
 ) -> str:
     """Non-stream /api/chat; returns merged visible assistant text (thinking + content)."""
     _co = getattr(chat_client, "_default_options", None) or {}
@@ -163,8 +137,6 @@ def _proxy_ollama_chat_text(
         "stream": False,
         "options": dict(_co),
     }
-    if think is not None:
-        payload["think"] = think
     chat_fn = getattr(chat_client, "chat_api", None)
     if callable(chat_fn):
         data = chat_fn(payload)
@@ -173,7 +145,7 @@ def _proxy_ollama_chat_text(
         th = msg.get("thinking") if isinstance(msg, dict) else None
         thinking_out = th.strip() if isinstance(th, str) else None
         return _merge_ollama_visible_text(thinking_out, content)
-    text = chat_client.chat(messages, model, stream=False, options=None, think=think)
+    text = chat_client.chat(messages, model, stream=False, options=None, think=None)
     return (text or "").strip()
 
 
@@ -331,12 +303,6 @@ def _run_chat_completions_primitive_passthrough(
         base_ollama_model=b.ollama_model,
         proxy_autocomplete_ollama=proxy_autocomplete_ollama,
     )
-    # Disable Qwen3 "think by default" unless the client explicitly asked for `think`.
-    # Qwen3 + native tools often degenerates into placeholder-only output (e.g. ".") when `think`
-    # is omitted and model templates enable thinking implicitly.
-    ollama_think = passthrough_think_from_body(body)
-    if ollama_think is None and _ollama_native_think_broken_for_model(use_model):
-        ollama_think = False
 
     ollama_messages = _ollamaize_messages(messages)
     last_user = w.last_user_content(messages)
@@ -354,13 +320,12 @@ def _run_chat_completions_primitive_passthrough(
         "tool_choice_effective": tool_choice_effective
         if isinstance(tool_choice_effective, (str, dict))
         else str(tool_choice_effective),
-        "ollama_think": ollama_think,
         "user_query_preview": user_query[:500],
         "native_tools": bool(use_native_tools),
     }
     trace["rag"] = {"retrieval_skipped": True, "context": None, "timings": {}}
     trace["internet"] = {"used": False, "background_refresh_started": False, "web_supplement": {"used": False}}
-    trace["ollama"] = {"model": use_model, "think": ollama_think}
+    trace["ollama"] = {"model": use_model}
     trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(ollama_messages)
     trace["steps"] = []
     w.set_current_trace(trace)
@@ -415,8 +380,6 @@ def _run_chat_completions_primitive_passthrough(
                 "stream": True,
                 "options": dict(_co),
             }
-            if ollama_think is not None:
-                stream_body["think"] = ollama_think
 
             iter_fn = getattr(chat_client, "iter_chat_api_stream_openai_parts", None)
             stream_error: str | None = None
@@ -439,7 +402,7 @@ def _run_chat_completions_primitive_passthrough(
                             }
                             yield f"data: {json.dumps(chunk)}\n\n"
                 else:
-                    for content in chat_client.stream_chat(ollama_messages, use_model, think=ollama_think):
+                    for content in chat_client.stream_chat(ollama_messages, use_model, think=None):
                         if content:
                             full_response += content
                             preview += content[: max(0, log_preview - len(preview))]
@@ -506,7 +469,7 @@ def _run_chat_completions_primitive_passthrough(
     # Non-stream text mode
     try:
         w.set_proxy_status(w.status_response)
-        content = _proxy_ollama_chat_text(chat_client, ollama_messages, use_model, ollama_think)
+        content = _proxy_ollama_chat_text(chat_client, ollama_messages, use_model)
     except Exception as e:
         w.log_webui_error("rag_routes.chat_completions", e, {"stage": "primitive_chat"})
         _log_rag_error("primitive_chat", e)
@@ -788,7 +751,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     reasoning_level = w.determine_reasoning_level(
         last_user, context_length, effective_ollama_model, explicit_reasoning
     )
-    ollama_think = effective_ollama_think_from_body(body, effective_ollama_model)
     reasoning_for_prompt = reasoning_level
 
     actual_model = (
@@ -825,7 +787,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         "fetch_web_knowledge": bool(fetch_web_knowledge),
         "reasoning_level": explicit_reasoning or reasoning_level,
         "reasoning_for_prompt": reasoning_for_prompt,
-        "ollama_think": ollama_think,
         "user_query_preview": (user_query or "")[:500],
         "is_autocomplete": bool(is_autocomplete),
     }
@@ -1292,7 +1253,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
 
         trace["ollama"]["model"] = use_model
         trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(ollama_messages)
-        trace["ollama"]["think"] = ollama_think
     except Exception as e:
         w.log_webui_error("rag_routes.chat_completions", e, {"stage": "prepare_rag"})
         _log_rag_error("prepare_rag", e)
@@ -1314,8 +1274,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             "stream": stream,
             "options": dict(_co),
         }
-        if ollama_think is not None:
-            body_ollama["think"] = ollama_think
         if oll_tools:
             body_ollama["tools"] = oll_tools
         if tool_choice_effective not in (None, "", "auto"):
@@ -1336,7 +1294,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                         data = chat_fn(_body_ns)
                     else:
                         msg_only = chat_client.chat(
-                            ollama_messages, use_model, stream=False, options=None, think=ollama_think
+                            ollama_messages, use_model, stream=False, options=None, think=None
                         )
                         data = {"message": {"role": "assistant", "content": msg_only}}
             else:
@@ -1345,7 +1303,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                     data = chat_fn(body_ollama)
                 else:
                     msg_only = chat_client.chat(
-                        ollama_messages, use_model, stream=False, options=None, think=ollama_think
+                        ollama_messages, use_model, stream=False, options=None, think=None
                     )
                     data = {"message": {"role": "assistant", "content": msg_only}}
         except Exception as e:
@@ -1525,7 +1483,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         stream_tool_error: str | None = None
         try:
             streamed_content = chat_client.chat(
-                ollama_messages, use_model, stream=False, options=None, think=ollama_think
+                ollama_messages, use_model, stream=False, options=None, think=None
             )
         except Exception as e:
             # Retry once with compact context; large prompts can trigger Ollama 500 on some models.
@@ -1543,7 +1501,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                     use_model,
                     stream=False,
                     options=None,
-                    think=ollama_think,
+                    think=None,
                 )
             except Exception as e2:
                 w.log_webui_error("rag_routes.chat_completions", e2, {"stage": "chat_stream_tool_mode"})
@@ -1655,8 +1613,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                 "stream": True,
                 "options": dict(_co),
             }
-            if ollama_think is not None:
-                stream_body["think"] = ollama_think
             iter_fn = getattr(chat_client, "iter_chat_api_stream_openai_parts", None)
             try:
                 if callable(iter_fn):
@@ -1678,7 +1634,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                             yield f"data: {json.dumps(chunk)}\n\n"
                 else:
                     for content in chat_client.stream_chat(
-                        ollama_messages, use_model, think=ollama_think
+                        ollama_messages, use_model, think=None
                     ):
                         if content:
                             full_response += content
@@ -1822,7 +1778,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     try:
         w.set_proxy_status(w.status_response)
         content = _proxy_ollama_chat_text(
-            chat_client, ollama_messages, use_model, ollama_think
+            chat_client, ollama_messages, use_model
         )
         if _degenerate_assistant_reply(content):
             content = _PLACEHOLDER_REPLY_FALLBACK_EN
