@@ -123,7 +123,7 @@ class OllamaChatClient:
         options: dict[str, Any] | None = None,
         think: bool | str | None = None,
     ) -> Iterator[str]:
-        """Stream chat: yield content chunks from Ollama via HTTP NDJSON (reasoning is not yielded here)."""
+        """Stream chat: yield text chunks from Ollama (thinking and content merged into one stream)."""
         use_model = model or self._model
         opts = {**(self._default_options or {}), **(options or {})}
         payload: dict[str, Any] = {
@@ -141,10 +141,10 @@ class OllamaChatClient:
     def iter_chat_api_stream_openai_parts(
         self,
         body: dict[str, Any],
-    ) -> Iterator[tuple[Literal["reasoning", "content", "error"], str]]:
+    ) -> Iterator[tuple[Literal["content", "error"], str]]:
         """
-        Stream /api/chat over HTTP; yield (\"reasoning\", delta) and (\"content\", delta) for OpenAI SSE
-        (e.g. Zed expects delta.reasoning_content). Uses cumulative merge + suffix deltas.
+        Stream /api/chat over HTTP; yield (\"content\", delta) for both thinking and content suffixes
+        (single visible stream). Uses cumulative merge + suffix deltas.
         """
         use_model = str(body.get("model") or self._model)
         payload = {**body, "stream": True}
@@ -180,11 +180,11 @@ class OllamaChatClient:
                 if th.startswith(prev_th) and len(th) >= len(prev_th):
                     suffix = th[len(prev_th) :]
                     if suffix:
-                        yield ("reasoning", suffix)
+                        yield ("content", suffix)
                     prev_th = th
                 elif th != prev_th:
                     if th:
-                        yield ("reasoning", th)
+                        yield ("content", th)
                     prev_th = th
                 if co.startswith(prev_co) and len(co) >= len(prev_co):
                     suffix_c = co[len(prev_co) :]

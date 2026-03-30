@@ -15,21 +15,32 @@ from typing import Any
 
 from domain.value_objects import REASONING_LEVEL_VALUES, ReasoningLevel
 
-
 # Models that support reasoning levels (GPT-OSS family).
 REASONING_LEVEL_MODELS = ("gpt-oss", "gpt-oss-20b", "gpt-oss-120b")
 
 # User task vs retrieved docs: keep English headings stable for model compliance.
 _TASK_PRIORITY_BLOCK = """## PRIMARY TASK (highest priority)
 
-The user's latest message and any client-attached context in that turn (files, selections, paths) define **what you must do now**. Execute that work first, including any required tool calls.
+Your **only** primary input for this turn is the user's latest message and any material attached in that same turn (files, selections, paths, pasted code). Answer **that** task first: explain, edit, refactor, or reason about **that** content.
 
-Do not delay or replace this work to discuss retrieved text below. If anything below conflicts with the user's request or attachments, **ignore the retrieved material** for this turn.
+Blocks below labeled supplementary knowledge or web supplement come from **retrieval** (indexed documentation). For the topics they cover, treat that material as **accurate (source of truth)** when you rely on it. It is **not** the user's attachment and may be **off-topic** for their task—you are **not required** to use it in your answer; omit it whenever it does not help. Never respond as if a retrieved excerpt were the user's code or the object of their question.
+
+If retrieval conflicts with the user's wording or attachments, **prefer the user**.
 
 """
 
-_RAG_KNOWLEDGE_BEGIN = "=== BEGIN SUPPLEMENTARY KNOWLEDGE (optional reference only; not the user task) ==="
+_RAG_KNOWLEDGE_BEGIN = "=== BEGIN SUPPLEMENTARY KNOWLEDGE (indexed docs — not the user task or attached file) ==="
 _RAG_KNOWLEDGE_END = "=== END SUPPLEMENTARY KNOWLEDGE ==="
+
+_RAG_TRUST_AND_OPTIONAL_USE = (
+    "These excerpts are grounded in retrieved documentation: where they apply, treat them as **trustworthy** "
+    "for what they describe. They may still be **irrelevant** to the user's question—you are **not obliged** "
+    "to cite or use them; answer from the user's message and attachments when that is enough.\n\n"
+)
+
+_RAG_RETRIEVAL_REMINDER = (
+    "Reminder: center your answer on the user's message and attachments; use the retrieved text only when it helps.\n"
+)
 
 _WEB_SUPPLEMENT_BEGIN = "=== BEGIN WEB SUPPLEMENT (optional background) ==="
 _WEB_SUPPLEMENT_END = "=== END WEB SUPPLEMENT ==="
@@ -236,19 +247,18 @@ def build_system_content(
 
     if ctx_stripped:
         supplement_parts.append(
-            f"{_RAG_KNOWLEDGE_BEGIN}\n{ctx_stripped}\n{_RAG_KNOWLEDGE_END}"
+            f"{_RAG_KNOWLEDGE_BEGIN}\n{_RAG_TRUST_AND_OPTIONAL_USE}{ctx_stripped}\n{_RAG_KNOWLEDGE_END}\n{_RAG_RETRIEVAL_REMINDER}"
         )
         if max_retrieval_score < confidence_threshold:
             supplement_parts.append(
-                "Note: Retrieval match quality is low. The snippets above are optional background only. "
-                "If they do not help the user's task, ignore them and proceed.\n"
+                "Note: Retrieval match quality is low—these snippets may be a weak fit for the question. "
+                "You are still not required to use them; prioritize the user's message and attachments.\n"
             )
     elif not retrieval_skipped:
         no_hits = (
             "The local documentation base did not return any relevant fragments for this query. "
-            "This does NOT mean that the requested versions, APIs, or features do not exist—only that "
-            "the local Apple docs did not yield matches. "
-            "You may still answer from your own knowledge when that helps the user's task.\n"
+            "That only reflects retrieval—not the user's question or any files they attached. "
+            "Answer from attachments and general knowledge as needed.\n"
         )
         supplement_parts.append(
             f"{_RAG_KNOWLEDGE_BEGIN}\n{no_hits.strip()}\n{_RAG_KNOWLEDGE_END}"
@@ -256,7 +266,10 @@ def build_system_content(
 
     ws = (web_supplement or "").strip()
     if ws:
-        supplement_parts.append(f"{_WEB_SUPPLEMENT_BEGIN}\n{ws}\n{_WEB_SUPPLEMENT_END}")
+        supplement_parts.append(
+            f"{_WEB_SUPPLEMENT_BEGIN}\n{ws}\n{_WEB_SUPPLEMENT_END}\n"
+            "Reminder: web text above is optional context only; center your answer on the user's message and attachments.\n"
+        )
 
     middle = "\n\n".join(s.rstrip() for s in supplement_parts) if supplement_parts else ""
     tail = (suffix or "").strip()

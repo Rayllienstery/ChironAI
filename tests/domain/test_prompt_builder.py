@@ -4,8 +4,6 @@ Unit tests for domain.services.prompt_builder.
 
 from __future__ import annotations
 
-import pytest
-
 from domain.services.prompt_builder import (
     build_context_block,
     build_system_content,
@@ -82,14 +80,14 @@ class TestBuildSystemContent:
         assert "PREFIX" in out
         assert "SUFFIX" in out
         assert "PRIMARY TASK" in out
-        assert "highest priority" in out
+        assert "primary input" in out.lower()
         assert "BEGIN SUPPLEMENTARY KNOWLEDGE" in out
         assert "END SUPPLEMENTARY KNOWLEDGE" in out
         assert "ctx" in out
 
     def test_low_confidence_note_ignores_snippets_not_caveat_in_answer(self) -> None:
         out = build_system_content("P", "S", "ctx", 0.5, 0.75, None, "m")
-        assert "optional background" in out.lower() or "ignore" in out.lower()
+        assert "not required" in out.lower() or "prioritize" in out.lower()
         assert "State that the provided fragments" not in out
 
     def test_inserts_web_supplement_in_delimited_section_before_suffix(self) -> None:
@@ -121,3 +119,15 @@ class TestBuildSystemContent:
         assert "local documentation base did not return" not in out.lower()
         assert "PRIMARY TASK" in out
         assert out.rstrip().endswith("TAIL_SUFFIX")
+
+    def test_rag_section_trusts_docs_but_optional_use(self) -> None:
+        out = build_system_content("P", "S", "chunk text", 0.9, 0.75, None, "model")
+        assert "trustworthy" in out.lower() or "source of truth" in out.lower()
+        assert "not obliged" in out.lower() or "not required" in out.lower()
+
+    def test_web_supplement_has_optional_context_reminder(self) -> None:
+        out = build_system_content(
+            "P", "S", "CTX", 0.9, 0.75, None, "m", web_supplement="fetched"
+        )
+        assert "WEB SUPPLEMENT" in out
+        assert "optional" in out.lower()

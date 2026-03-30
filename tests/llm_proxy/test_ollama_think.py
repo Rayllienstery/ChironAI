@@ -1,37 +1,56 @@
-"""Tests for Ollama `think` resolution and OpenAI bridge mapping."""
+"""Tests for transparent think passthrough and merged assistant content (no reasoning_content)."""
 
 from __future__ import annotations
 
-from llm_proxy.ollama_think import coerce_think_for_model, resolve_ollama_think
+from llm_proxy.chat_completions import (
+    _is_micro_garbage_reply,
+    _is_placeholder_only_reply,
+    effective_ollama_think_from_body,
+    passthrough_think_from_body,
+)
 from infrastructure.ollama.openai_ollama_tool_bridge import ollama_message_to_openai_assistant
 
 
-def test_resolve_explicit_think_bool_wins_over_reasoning_level() -> None:
-    body = {"think": False, "reasoning_effort": "high"}
-    r = resolve_ollama_think(body, "high", "qwen3:latest")
-    assert r is False
+def test_effective_think_forces_false_for_qwen3() -> None:
+    assert effective_ollama_think_from_body({}, "qwen3.5:9b") is False
+    assert effective_ollama_think_from_body({"think": True}, "qwen3.5:9b") is False
+    assert effective_ollama_think_from_body({"think": False}, "qwen3.5:9b") is False
+    assert effective_ollama_think_from_body({"think": "high"}, "Qwen3:latest") is False
+    assert effective_ollama_think_from_body({}, "llama3.2:latest") is None
+    assert effective_ollama_think_from_body({"think": True}, "llama3.2:latest") is True
 
 
-def test_resolve_reasoning_effort_when_no_think() -> None:
-    body = {"reasoning_effort": "low"}
-    r = resolve_ollama_think(body, "medium", "gpt-oss-20b")
-    assert r == "low"
+def test_passthrough_think_only_when_body_contains_key() -> None:
+    assert passthrough_think_from_body({}) is None
+    assert passthrough_think_from_body({"think": True}) is True
+    assert passthrough_think_from_body({"think": False}) is False
+    assert passthrough_think_from_body({"think": "medium"}) == "medium"
+    assert passthrough_think_from_body({"think": 1}) is True
+    assert passthrough_think_from_body({"think": 0}) is False
 
 
-def test_resolve_derived_reasoning_level() -> None:
-    body = {}
-    r = resolve_ollama_think(body, "high", "some-model")
-    assert r == "high"
-
-
-def test_coerce_gpt_oss_bool_to_medium_or_false() -> None:
-    assert coerce_think_for_model(True, "gpt-oss-20b") == "medium"
-    assert coerce_think_for_model(False, "gpt-oss-20b") is False
-
-
-def test_ollama_message_maps_thinking_to_reasoning_content() -> None:
+def test_ollama_message_merges_thinking_into_content() -> None:
     msg = ollama_message_to_openai_assistant(
         {"role": "assistant", "content": "answer", "thinking": "step 1..."}
     )
-    assert msg.get("reasoning_content") == "step 1..."
-    assert msg.get("content") == "answer"
+    assert msg.get("reasoning_content") is None
+    assert msg.get("content") == "step 1...\n\nanswer"
+
+
+def test_is_micro_garbage_reply_detects_single_cyrillic_word() -> None:
+    assert _is_micro_garbage_reply("установке") is True
+    assert _is_micro_garbage_reply("hello world") is False
+
+
+def test_is_placeholder_only_reply_detects_dot_only() -> None:
+    assert _is_placeholder_only_reply(".") is True
+    assert _is_placeholder_only_reply("  .  ") is True
+    assert _is_placeholder_only_reply("") is True
+    assert _is_placeholder_only_reply("hello") is False
+    assert _is_placeholder_only_reply("a" * 121) is False
+
+
+def test_ollama_message_thinking_only_still_content() -> None:
+    msg = ollama_message_to_openai_assistant({"role": "assistant", "thinking": "only think"})
+    assert msg.get("reasoning_content") is None
+    assert msg.get("content") == "only think"

@@ -382,10 +382,10 @@ def answer_question(
     Returns RagAnswerResponse (content, model, finish_reason).
     When rag_context is provided, RAG retrieval is skipped and the given context is used.
     """
+    last_user = last_user_content(request.messages)
     if rag_context is not None:
         ctx = rag_context
     else:
-        last_user = last_user_content(request.messages)
         ctx, _ = build_rag_context(
             last_user,
             rag_repo,
@@ -454,10 +454,10 @@ def prepare_ollama_messages(
     When native_tools is True, preserve OpenAI tool protocol (assistant tool_calls, tool role) for Ollama /api/chat.
     Optional web_supplement is inserted after the RAG context in the system message (e.g. DuckDuckGo snippets).
     """
+    last_user = last_user_content(request.messages)
     if rag_context is not None:
         ctx = rag_context
     else:
-        last_user = last_user_content(request.messages)
         ctx, _ = build_rag_context(
             last_user,
             rag_repo,
