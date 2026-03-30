@@ -214,6 +214,338 @@ def _normalize_request_messages(body: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+def _resolve_ollama_model_for_primitive_passthrough(
+    *,
+    requested_model: str,
+    runtime_rag_logical_id: str,
+    runtime_autocomplete_logical_id: str,
+    proxy_model_setting: str,
+    base_ollama_model: str,
+    proxy_autocomplete_ollama: str | None,
+) -> str:
+    """
+    Resolve a concrete Ollama model tag for primitive passthrough without requiring prompt templates.
+
+    Rules:
+    - Autocomplete logical id -> configured autocomplete Ollama tag (if set) else base model.
+    - RAG logical id -> concrete model from WebUI setting (`proxy_model_setting`) else base model.
+    - Any other model -> treat as concrete tag requested by the client.
+    """
+    req = (requested_model or "").strip()
+    if not req:
+        return (base_ollama_model or "").strip()
+
+    if req == runtime_autocomplete_logical_id:
+        return (proxy_autocomplete_ollama or base_ollama_model or "").strip()
+
+    if _is_rag_logical_model_id(req, runtime_rag_logical_id):
+        pm = (proxy_model_setting or "").strip()
+        if pm and not _is_rag_logical_model_id(pm, runtime_rag_logical_id):
+            return pm
+        return (base_ollama_model or "").strip()
+
+    return req
+
+
+def _run_chat_completions_primitive_passthrough(
+    w: LlmProxyWiring,
+    *,
+    body: dict[str, Any],
+    messages: list[dict[str, Any]],
+    requested_model: str,
+    proxy_model_setting: str,
+    proxy_autocomplete_ollama: str | None,
+    trace_id: str,
+    trace: dict[str, Any],
+    start_time: float,
+) -> Response | tuple[Response, int]:
+    """
+    Primitive mediator mode (for debugging): forward client messages to Ollama with minimal changes.
+
+    - No RAG retrieval, no prompt template enforcement, no web supplement, no synthetic system messages.
+    - `think` is pure passthrough: only forwarded if present in the request body.
+    - Tools: if provided, use the native-tools bridge only (no JSON-tool shims/instructions).
+    """
+    b = w.base
+    rt = w.runtime
+    chat_client = b.chat_client
+    log_preview = b.log_preview
+
+    stream = bool(body.get("stream", False))
+    tools = body.get("tools") if isinstance(body.get("tools"), list) else []
+    tool_choice = body.get("tool_choice")
+    tool_choice_effective = tool_choice if tool_choice not in (None, "") else "auto"
+    # NOTE: Zed's tool calling UX for local models often works via in-band prompting and a local
+    # tool runner, not Ollama native tool calling. Passing the IDE tool schema to Ollama's native
+    # `tools` frequently degenerates (e.g. Qwen returns placeholders like "." or ")").
+    # For "mediator only" passthrough, treat tools as out-of-band and do not enable Ollama native tools.
+    use_native_tools = False
+
+    def _to_content_str(raw: object) -> str:
+        # Ollama expects message content as a string.
+        if isinstance(raw, str):
+            return raw
+        if raw is None:
+            return ""
+        if isinstance(raw, list):
+            # OpenAI-style content parts: [{"type":"text","text":"..."}]
+            parts: list[str] = []
+            for p in raw:
+                if isinstance(p, dict) and p.get("type") == "text":
+                    parts.append(str(p.get("text") or ""))
+            if parts:
+                return " ".join(s for s in parts if s).strip()
+            # Fall back to a compact JSON string if the list isn't text-parts.
+            return json.dumps(raw, ensure_ascii=False)
+        if isinstance(raw, dict):
+            return json.dumps(raw, ensure_ascii=False)
+        return str(raw)
+
+    def _ollamaize_messages(src: list[dict[str, Any]]) -> list[dict[str, str]]:
+        """
+        Minimal normalization for Ollama /api/chat.
+
+        - Coerce `content` into a string (OpenAI multi-part -> joined text).
+        - Keep roles; but if a `tool` role appears without native tools enabled, coerce to `user`
+          to avoid Ollama 400 on unsupported roles.
+        """
+        out: list[dict[str, str]] = []
+        for m in src or []:
+            if not isinstance(m, dict):
+                continue
+            role = str(m.get("role") or "user")
+            content = _to_content_str(m.get("content"))
+            if role == "tool" and not use_native_tools:
+                role = "user"
+                content = f"TOOL RESULT:\n{content}".strip()
+            if role not in ("system", "user", "assistant", "tool"):
+                role = "user"
+            out.append({"role": role, "content": content})
+        return out
+
+    use_model = _resolve_ollama_model_for_primitive_passthrough(
+        requested_model=requested_model,
+        runtime_rag_logical_id=rt.rag_model_logical_id,
+        runtime_autocomplete_logical_id=rt.autocomplete_model_logical_id,
+        proxy_model_setting=proxy_model_setting,
+        base_ollama_model=b.ollama_model,
+        proxy_autocomplete_ollama=proxy_autocomplete_ollama,
+    )
+    # Disable Qwen3 "think by default" unless the client explicitly asked for `think`.
+    # Qwen3 + native tools often degenerates into placeholder-only output (e.g. ".") when `think`
+    # is omitted and model templates enable thinking implicitly.
+    ollama_think = passthrough_think_from_body(body)
+    if ollama_think is None and _ollama_native_think_broken_for_model(use_model):
+        ollama_think = False
+
+    ollama_messages = _ollamaize_messages(messages)
+    last_user = w.last_user_content(messages)
+    user_query = last_user or ""
+
+    trace["request"] = {
+        "requested_model": requested_model,
+        "actual_model": use_model,
+        "proxy_pipeline": "primitive_passthrough",
+        "stream": bool(stream),
+        "include_rag_metadata": bool(body.get("include_rag_metadata", False)),
+        "tools_count": len(tools),
+        "tools_names_preview": [n for n in (_extract_tool_name(t) for t in tools) if n][:20],
+        "tool_choice": tool_choice if isinstance(tool_choice, (str, dict)) else None,
+        "tool_choice_effective": tool_choice_effective
+        if isinstance(tool_choice_effective, (str, dict))
+        else str(tool_choice_effective),
+        "ollama_think": ollama_think,
+        "user_query_preview": user_query[:500],
+        "native_tools": bool(use_native_tools),
+    }
+    trace["rag"] = {"retrieval_skipped": True, "context": None, "timings": {}}
+    trace["internet"] = {"used": False, "background_refresh_started": False, "web_supplement": {"used": False}}
+    trace["ollama"] = {"model": use_model, "think": ollama_think}
+    trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(ollama_messages)
+    trace["steps"] = []
+    w.set_current_trace(trace)
+
+    def _approx_tokens(text: str) -> int:
+        if not text:
+            return 0
+        return max(1, int(len(text) / 4))
+
+    def _persist_log(content_preview: str, latency_ms: int, prompt_tokens: int, completion_tokens: int) -> None:
+        try:
+            session_manager = w.get_session_manager()
+            session_manager.get_or_create_session("proxy")
+            logs_repo = w.get_logs_repository()
+            logs_repo.add_log(
+                session_id="proxy",
+                level="INFO",
+                message=f"Proxy request (primitive): {user_query[:100]}...",
+                source="proxy",
+                metadata={
+                    "user_query": user_query[:500],
+                    "response_preview": content_preview[:500],
+                    "trace_id": trace_id,
+                    "model": use_model,
+                    "latency_ms": latency_ms,
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                    "trace": trace,
+                    "stream": bool(stream),
+                    "requested_model": requested_model,
+                },
+            )
+        except Exception as e:
+            _RAG_LOG.warning("Failed to log primitive proxy request: %s", e)
+
+    # Text-only path (no tools)
+    if stream:
+        w.set_proxy_status(w.status_response)
+
+        def generate_sse():
+            oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+            preview = ""
+            stream_start_time = time.time()
+            full_response = ""
+            emitted_any = False
+            total_tokens_holder = [0]
+            _co = getattr(chat_client, "_default_options", None) or {}
+            stream_body: dict[str, Any] = {
+                "model": use_model,
+                "messages": ollama_messages,
+                "stream": True,
+                "options": dict(_co),
+            }
+            if ollama_think is not None:
+                stream_body["think"] = ollama_think
+
+            iter_fn = getattr(chat_client, "iter_chat_api_stream_openai_parts", None)
+            stream_error: str | None = None
+            try:
+                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+                if callable(iter_fn):
+                    for kind, text in iter_fn(stream_body):
+                        if kind == "error":
+                            stream_error = str(text)
+                            break
+                        if kind == "content" and text:
+                            full_response += text
+                            preview += text[: max(0, log_preview - len(preview))]
+                            emitted_any = True
+                            chunk = {
+                                "id": oid,
+                                "object": "chat.completion.chunk",
+                                "model": use_model,
+                                "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}],
+                            }
+                            yield f"data: {json.dumps(chunk)}\n\n"
+                else:
+                    for content in chat_client.stream_chat(ollama_messages, use_model, think=ollama_think):
+                        if content:
+                            full_response += content
+                            preview += content[: max(0, log_preview - len(preview))]
+                            emitted_any = True
+                            chunk = {
+                                "id": oid,
+                                "object": "chat.completion.chunk",
+                                "model": use_model,
+                                "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}],
+                            }
+                            yield f"data: {json.dumps(chunk)}\n\n"
+
+                stream_latency_ms = int((time.time() - stream_start_time) * 1000)
+                prompt_text = " ".join(
+                    (m.get("content") or "") for m in ollama_messages if isinstance(m, dict)
+                )
+                prompt_tokens_approx = _approx_tokens(prompt_text)
+                completion_tokens_approx = _approx_tokens(full_response)
+                total_tokens_holder[0] = prompt_tokens_approx + completion_tokens_approx
+                w.set_latest_request_total_tokens(total_tokens_holder[0] or None)
+
+                trace["ollama"]["tokens_estimates"] = {
+                    "prompt_tokens_estimated": prompt_tokens_approx,
+                    "completion_tokens_estimated": completion_tokens_approx,
+                    "total_tokens_estimated": total_tokens_holder[0],
+                }
+                trace["response"] = {
+                    "content_preview": full_response[:log_preview] + ("..." if len(full_response) > log_preview else ""),
+                    "content_length_chars": len(full_response),
+                    "latency_ms": stream_latency_ms,
+                }
+                trace["steps"].append(
+                    {"name": "ollama_chat", "duration_ms": int(stream_latency_ms), "tokens_in_est": prompt_tokens_approx, "tokens_out_est": completion_tokens_approx}
+                )
+                w.set_current_trace(trace)
+                _persist_log(full_response[:500], stream_latency_ms, prompt_tokens_approx, completion_tokens_approx)
+            except Exception as e:
+                stream_error = str(e)
+            finally:
+                w.set_proxy_status(w.status_idle)
+                w.set_latest_request_seconds(time.time() - start_time)
+
+            if stream_error and not emitted_any:
+                # Emit a minimal error message so the client receives a valid chunked stream.
+                err_text = f"[proxy stream error] {stream_error}"
+                chunk = {
+                    "id": oid,
+                    "object": "chat.completion.chunk",
+                    "model": use_model,
+                    "choices": [{"index": 0, "delta": {"content": err_text}, "finish_reason": None}],
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
+                full_response = err_text
+
+            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return Response(
+            generate_sse(),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    # Non-stream text mode
+    try:
+        w.set_proxy_status(w.status_response)
+        content = _proxy_ollama_chat_text(chat_client, ollama_messages, use_model, ollama_think)
+    except Exception as e:
+        w.log_webui_error("rag_routes.chat_completions", e, {"stage": "primitive_chat"})
+        _log_rag_error("primitive_chat", e)
+        return jsonify({"error": str(e)}), 500
+    finally:
+        w.set_proxy_status(w.status_idle)
+        w.set_latest_request_seconds(time.time() - start_time)
+
+    latency_ms = int((time.time() - start_time) * 1000)
+    prompt_text = " ".join((m.get("content") or "") for m in ollama_messages if isinstance(m, dict))
+    prompt_tokens_approx = _approx_tokens(prompt_text)
+    completion_tokens_approx = _approx_tokens(content or "")
+    w.set_latest_request_total_tokens(prompt_tokens_approx + completion_tokens_approx)
+
+    content_len = len(content or "")
+    content_preview = (content or "")[:log_preview] + ("..." if content_len > log_preview else "")
+
+    trace["ollama"]["tokens_estimates"] = {
+        "prompt_tokens_estimated": prompt_tokens_approx,
+        "completion_tokens_estimated": completion_tokens_approx,
+        "total_tokens_estimated": prompt_tokens_approx + completion_tokens_approx,
+    }
+    trace["response"] = {"content_preview": content_preview, "content_length_chars": content_len, "latency_ms": latency_ms}
+    trace["steps"].append(
+        {"name": "ollama_chat", "duration_ms": int(latency_ms), "tokens_in_est": prompt_tokens_approx, "tokens_out_est": completion_tokens_approx}
+    )
+    w.set_current_trace(trace)
+    _persist_log((content or "")[:500], latency_ms, prompt_tokens_approx, completion_tokens_approx)
+
+    response_data: dict[str, object] = {
+        "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
+        "object": "chat.completion",
+        "created": 0,
+        "model": use_model,
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
+    }
+    return jsonify(response_data)
+
+
 def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     b = w.base
     prefix = b.prefix
@@ -363,6 +695,24 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                 }
             ), 400
 
+    # OpenAI-compatible passthrough for all /v1/chat/completions requests:
+    # bypass RAG + prompt-template enrichment entirely and forward the client messages to Ollama
+    # with minimal changes (mediator only).
+    #
+    # This must run BEFORE any prompt-template validation (prompt_name existence checks).
+    w.set_proxy_status(w.status_preparing_response)
+    return _run_chat_completions_primitive_passthrough(
+        w,
+        body=body,
+        messages=messages,
+        requested_model=str(requested_model or ""),
+        proxy_model_setting=proxy_model_setting,
+        proxy_autocomplete_ollama=proxy_autocomplete_ollama,
+        trace_id=trace_id,
+        trace=trace,
+        start_time=start_time,
+    )
+
     fetch_web_knowledge_raw = body.get("fetch_web_knowledge")
     if fetch_web_knowledge_raw is None:
         fetch_web_knowledge = bool(proxy_settings.get("fetch_web_knowledge", False))
@@ -401,7 +751,6 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                         ),
                     }
                 ), 400
-            proxy_ollama_for_logical_id = proxy_model_setting
 
     w.set_proxy_status(w.status_rag_search)
     last_user = w.last_user_content(messages)
