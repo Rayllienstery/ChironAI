@@ -453,6 +453,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         "actual_model": actual_model,
         "proxy_pipeline": "passthrough_only",
         "stream": bool(stream),
+        "ollama_chat_stream": False,
         "include_rag_metadata": bool(include_rag_metadata),
         "tools_count": len(tools),
         "tools_names_preview": [n for n in (_extract_tool_name(t) for t in tools) if n][:20],
@@ -944,6 +945,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         trace["ollama"]["model"] = use_model
         trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(ollama_messages)
         trace["ollama"]["think"] = ollama_think
+        trace["ollama"]["chat_stream"] = False
     except Exception as e:
         w.log_webui_error("rag_routes.chat_completions", e, {"stage": "prepare_rag"})
         _log_rag_error("prepare_rag", e)
@@ -962,7 +964,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         body_ollama: dict[str, object] = {
             "model": use_model,
             "messages": ollama_messages,
-            "stream": stream,
+            "stream": False,
             "options": dict(_co),
         }
         if ollama_think is not None:
@@ -976,29 +978,14 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         _native_err: str | None = None
         data: dict[str, object] = {}
         try:
-            if stream:
-                stream_fn = getattr(chat_client, "chat_api_stream_final", None)
-                if callable(stream_fn):
-                    data = stream_fn(body_ollama)
-                else:
-                    _body_ns = {**body_ollama, "stream": False}
-                    chat_fn = getattr(chat_client, "chat_api", None)
-                    if callable(chat_fn):
-                        data = chat_fn(_body_ns)
-                    else:
-                        msg_only = chat_client.chat(
-                            ollama_messages, use_model, stream=False, options=None, think=ollama_think
-                        )
-                        data = {"message": {"role": "assistant", "content": msg_only}}
+            chat_fn = getattr(chat_client, "chat_api", None)
+            if callable(chat_fn):
+                data = chat_fn(body_ollama)
             else:
-                chat_fn = getattr(chat_client, "chat_api", None)
-                if callable(chat_fn):
-                    data = chat_fn(body_ollama)
-                else:
-                    msg_only = chat_client.chat(
-                        ollama_messages, use_model, stream=False, options=None, think=ollama_think
-                    )
-                    data = {"message": {"role": "assistant", "content": msg_only}}
+                msg_only = chat_client.chat(
+                    ollama_messages, use_model, stream=False, options=None, think=ollama_think
+                )
+                data = {"message": {"role": "assistant", "content": msg_only}}
         except Exception as e:
             w.log_webui_error("rag_routes.chat_completions", e, {"stage": "native_tools_ollama"})
             _log_rag_error("native_tools_ollama", e)
@@ -1297,92 +1284,33 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             preview = ""
             stream_start_time = time.time()
             full_response = ""
-            emitted_any = False
             total_tokens_holder = [0]
-            _co = getattr(chat_client, "_default_options", None) or {}
-            stream_body: dict[str, Any] = {
-                "model": use_model,
-                "messages": ollama_messages,
-                "stream": True,
-                "options": dict(_co),
-            }
-            if ollama_think is not None:
-                stream_body["think"] = ollama_think
-            iter_fn = getattr(chat_client, "iter_chat_api_stream_openai_parts", None)
             try:
-                if callable(iter_fn):
-                    for kind, text in iter_fn(stream_body):
-                        if kind == "error":
-                            raise RuntimeError(text)
-                        if kind == "content" and text:
-                            full_response += text
-                            preview += text[: max(0, log_preview - len(preview))]
-                            emitted_any = True
-                            chunk = {
-                                "id": oid,
-                                "object": "chat.completion.chunk",
-                                "model": use_model,
-                                "choices": [
-                                    {"index": 0, "delta": {"content": text}, "finish_reason": None},
-                                ],
-                            }
-                            yield f"data: {json.dumps(chunk)}\n\n"
-                else:
-                    for content in chat_client.stream_chat(
-                        ollama_messages, use_model, think=ollama_think
-                    ):
-                        if content:
-                            full_response += content
-                            preview += content[: max(0, log_preview - len(preview))]
-                            emitted_any = True
-                            chunk = {
-                                "id": oid,
-                                "object": "chat.completion.chunk",
-                                "model": use_model,
-                                "choices": [
-                                    {
-                                        "index": 0,
-                                        "delta": {"content": content},
-                                        "finish_reason": None,
-                                    },
-                                ],
-                            }
-                            yield f"data: {json.dumps(chunk)}\n\n"
-                if not emitted_any:
+                # Ollama /api/chat: always non-streaming; OpenAI SSE is synthesized from one full reply.
+                full_response = _proxy_ollama_chat_text(
+                    chat_client, ollama_messages, use_model, ollama_think
+                )
+                if not (full_response or "").strip():
                     full_response = (
                         "Model returned an empty response; no tool call was emitted. Please retry."
                     )
-                    preview = full_response[:log_preview]
-                    chunk = {
-                        "id": oid,
-                        "object": "chat.completion.chunk",
-                        "model": use_model,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": {"content": full_response},
-                                "finish_reason": None,
-                            },
-                        ],
-                    }
-                    yield f"data: {json.dumps(chunk)}\n\n"
                 elif _degenerate_assistant_reply(full_response):
-                    corrective = "\n\n" + _PLACEHOLDER_REPLY_FALLBACK_EN
                     full_response = _PLACEHOLDER_REPLY_FALLBACK_EN
-                    preview = full_response[:log_preview]
-                    chunk = {
-                        "id": oid,
-                        "object": "chat.completion.chunk",
-                        "model": use_model,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": {"content": corrective},
-                                "finish_reason": None,
-                            },
-                        ],
-                    }
-                    yield f"data: {json.dumps(chunk)}\n\n"
+                preview = full_response[:log_preview]
+
+                chunk = {
+                    "id": oid,
+                    "object": "chat.completion.chunk",
+                    "model": use_model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": full_response},
+                            "finish_reason": None,
+                        },
+                    ],
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
 
                 # Log streaming request
                 stream_latency_ms = int((time.time() - stream_start_time) * 1000)
@@ -1436,6 +1364,7 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                         "rag_steps": rag_timings,
                         "trace": trace,
                         "stream": True,
+                        "ollama_chat_stream": False,
                         "is_autocomplete": bool(is_autocomplete),
                         "requested_model": requested_model,
                     }

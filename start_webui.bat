@@ -5,6 +5,7 @@ cd /d "%~dp0"
 echo Starting RAG Proxy WebUI server...
 echo Working directory: %CD%
 echo WebUI will be available at: http://localhost:8080/webui
+echo Proxy V2 (Ollama passthrough): http://localhost:8081  (config: server.pass_proxy_v2_port)
 echo (API: /api/webui/* ; frontend: modules\webui_frontend)
 echo.
 echo If you updated the code, run start_webui.bat again to load changes (this window closes when the server stops).

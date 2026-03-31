@@ -63,6 +63,7 @@ def create_app(
         system_prefix=system_prefix,
         system_suffix=system_suffix,
     )
+    app.extensions["llm_proxy_wiring"] = wiring
     app.register_blueprint(create_v1_blueprint(wiring))
 
     @app.route("/")

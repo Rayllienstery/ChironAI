@@ -77,13 +77,12 @@ def _resolve_ollama_model(w: LlmProxyWiring, requested: str) -> tuple[str | None
 
 
 def _openai_to_ollama_generate_body(openai: dict[str, Any], ollama_model: str, prompt: str) -> dict[str, Any]:
-    stream = bool(openai.get("stream", False))
     raw_on = os.getenv("LLM_PROXY_COMPLETIONS_RAW", "true").strip().lower() not in ("0", "false", "no")
 
     body: dict[str, Any] = {
         "model": ollama_model,
         "prompt": prompt,
-        "stream": stream,
+        "stream": False,
     }
     if raw_on:
         body["raw"] = True
@@ -146,62 +145,17 @@ def run_legacy_completions_via_ollama_generate(
         return jsonify({"error": "prompt is required"}), 400
 
     ollama_body = _openai_to_ollama_generate_body(openai_body, ollama_tag, prompt)
+    client_stream = bool(openai_body.get("stream", False))
 
     chat_url = get_configured_ollama_chat_url(w)
     base = ollama_api_base_from_chat_url(chat_url)
     url = f"{base}/api/generate"
 
-    stream = bool(ollama_body.get("stream", False))
-
     try:
-        if stream:
-            upstream = requests.post(url, json=ollama_body, timeout=600, stream=True)
-            upstream.raise_for_status()
-        else:
-            upstream = requests.post(url, json=ollama_body, timeout=600, stream=False)
-            upstream.raise_for_status()
+        upstream = requests.post(url, json=ollama_body, timeout=600, stream=False)
+        upstream.raise_for_status()
     except requests.RequestException as e:
         return jsonify({"error": str(e)}), 502
-
-    if stream:
-
-        def generate():
-            oid = f"cmpl-{uuid.uuid4().hex[:24]}"
-            saw_done = False
-            try:
-                for line in upstream.iter_lines(decode_unicode=True):
-                    if not line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if not isinstance(obj, dict):
-                        continue
-                    err_obj = obj.get("error")
-                    if err_obj:
-                        yield f"data: {json.dumps({'error': err_obj if isinstance(err_obj, str) else str(err_obj)})}\n\n"
-                        break
-                    piece = obj.get("response")
-                    if isinstance(piece, str) and piece:
-                        yield legacy_completions_stream_line(oid, req_model, piece, None)
-                    if obj.get("done"):
-                        saw_done = True
-                        dr = obj.get("done_reason")
-                        fr = _map_done_reason_to_finish(dr if isinstance(dr, str) else None)
-                        yield legacy_completions_stream_line(oid, req_model, "", fr)
-                        break
-            finally:
-                upstream.close()
-            if not saw_done:
-                yield legacy_completions_stream_line(oid, req_model, "", "stop")
-            yield "data: [DONE]\n\n"
-
-        return Response(
-            stream_with_context(generate()),
-            mimetype="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
 
     try:
         data = upstream.json()
@@ -225,6 +179,21 @@ def run_legacy_completions_via_ollama_generate(
     if pt == 0 and ct == 0:
         pt = max(1, len(prompt) // 4)
         ct = max(1, len(text) // 4 if text else 1)
+
+    if client_stream:
+
+        def generate():
+            oid = f"cmpl-{uuid.uuid4().hex[:24]}"
+            if text:
+                yield legacy_completions_stream_line(oid, req_model, text, None)
+            yield legacy_completions_stream_line(oid, req_model, "", finish)
+            yield "data: [DONE]\n\n"
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     rd = non_stream_text_completion_response(
         use_model=req_model,

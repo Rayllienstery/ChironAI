@@ -7,12 +7,14 @@
 ## Keys:
 ## - server.host: bind address for rag_proxy (0.0.0.0 to accept LAN clients).
 ## - server.port: TCP port for rag_proxy (default 8080).
+## - server.pass_proxy_v2_port: Ollama passthrough Proxy V2 (default 8081). Override PASS_PROXY_V2_PORT.
 ## - qdrant.url: base URL of Qdrant HTTP API.
 ## - qdrant.collection_name: logical collection name for dev docs.
 
 server:
   host: "0.0.0.0"
   port: 8080
+  pass_proxy_v2_port: 8081
 
 ## WebUI (Flask app for crawl/index UI)
 ## - webui.port: port for tmrag start (default 5000).

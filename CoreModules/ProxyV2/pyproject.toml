@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "proxy-v2"
+version = "0.1.0"
+description = "Ollama passthrough HTTP proxy with live trace (no RAG in-proxy)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["flask>=2.3", "requests>=2.28"]
+
+[tool.setuptools]
+packages = ["proxy_v2"]

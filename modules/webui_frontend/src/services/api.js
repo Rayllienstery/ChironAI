@@ -152,6 +152,28 @@ export async function getProxyTraceCurrent() {
   return response.json();
 }
 
+export async function getProxyV2Settings() {
+  const response = await fetch(`${API_BASE}/proxy-v2/settings`, { method: 'GET' });
+  if (!response.ok) throw new Error('Failed to get Proxy V2 settings');
+  return response.json();
+}
+
+export async function updateProxyV2Settings(settings) {
+  const response = await fetch(`${API_BASE}/proxy-v2/settings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  if (!response.ok) throw new Error('Failed to update Proxy V2 settings');
+  return response.json();
+}
+
+export async function getProxyV2TraceCurrent() {
+  const response = await fetch(`${API_BASE}/proxy-v2/trace/current`, { method: 'GET' });
+  if (!response.ok) throw new Error('Failed to get Proxy V2 trace');
+  return response.json();
+}
+
 export async function getSettings() {
   const response = await fetch(`${API_BASE}/settings`);
   if (!response.ok) {

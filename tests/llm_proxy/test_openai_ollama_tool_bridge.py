@@ -90,3 +90,36 @@ def test_ollama_tools_from_openai_filters_non_dict() -> None:
 
 def test_arguments_to_openai_string() -> None:
     assert arguments_to_openai_string({"a": True}) == '{"a": true}'
+
+
+def test_openai_messages_system_multipart_list_not_python_repr() -> None:
+    openai = [
+        {
+            "role": "system",
+            "content": [
+                {"type": "text", "text": "Line A"},
+                {"type": "text", "text": "Line B"},
+            ],
+        },
+        {"role": "user", "content": "ok"},
+    ]
+    ollama = openai_messages_to_ollama(openai)
+    assert ollama[0]["role"] == "system"
+    assert "Line A" in ollama[0]["content"]
+    assert "Line B" in ollama[0]["content"]
+    assert not ollama[0]["content"].startswith("[")
+
+
+def test_openai_messages_developer_maps_to_system() -> None:
+    openai = [{"role": "developer", "content": "dev rules"}, {"role": "user", "content": "hi"}]
+    ollama = openai_messages_to_ollama(openai)
+    assert ollama[0] == {"role": "system", "content": "dev rules"}
+    assert ollama[1]["role"] == "user"
+
+
+def test_openai_unknown_role_preserved_as_user() -> None:
+    openai = [{"role": "custom", "content": "payload"}]
+    ollama = openai_messages_to_ollama(openai)
+    assert ollama[0]["role"] == "user"
+    assert "custom" in ollama[0]["content"]
+    assert "payload" in ollama[0]["content"]

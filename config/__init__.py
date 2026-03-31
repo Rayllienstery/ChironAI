@@ -335,6 +335,17 @@ def get_server_port() -> int:
     return int(SERVER_CONFIG.get("port", 8080))
 
 
+def get_pass_proxy_v2_port() -> int:
+    """TCP port for Proxy V2 (Ollama passthrough). Env ``PASS_PROXY_V2_PORT`` overrides ``server.pass_proxy_v2_port``."""
+    try:
+        port = os.getenv("PASS_PROXY_V2_PORT")
+        if port:
+            return int(port)
+    except (TypeError, ValueError):
+        pass
+    return int(SERVER_CONFIG.get("pass_proxy_v2_port", 8081))
+
+
 def get_webui_port() -> int:
     """Return WebUI Flask app port (tmrag start), allowing env override."""
     try:

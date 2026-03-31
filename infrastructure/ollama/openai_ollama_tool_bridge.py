@@ -41,16 +41,52 @@ def arguments_to_openai_string(obj: object | None) -> str:
         return "{}"
 
 
-def _user_content_to_text(content: object) -> str:
+def _openai_message_content_to_text(content: object) -> str:
+    """
+    Flatten OpenAI/Chat-style message content for Ollama (string or content-parts array).
+
+    Important: system/developer messages may use the same multipart list shape as user;
+    using str(list) would produce useless Python repr and breaks model behavior.
+    """
     if isinstance(content, list):
         parts: list[str] = []
         for p in content:
-            if isinstance(p, dict) and p.get("type") == "text":
-                parts.append(str(p.get("text", "")))
+            if isinstance(p, dict):
+                typ = p.get("type")
+                if typ == "text" or (typ is None and "text" in p):
+                    parts.append(str(p.get("text", "")))
+                    continue
+                if typ == "image_url":
+                    iu = p.get("image_url")
+                    url = ""
+                    if isinstance(iu, str):
+                        url = iu
+                    elif isinstance(iu, dict):
+                        url = str(iu.get("url") or "")
+                    parts.append(f"[image]{f' {url}' if url else ''}")
+                    continue
+                try:
+                    parts.append(json.dumps(p, ensure_ascii=False))
+                except (TypeError, ValueError):
+                    parts.append(str(p))
+                continue
+            if p is None:
+                continue
+            parts.append(str(p))
         return "\n".join(parts) if parts else ""
     if content is None:
         return ""
+    if isinstance(content, dict):
+        try:
+            return json.dumps(content, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return str(content)
     return str(content)
+
+
+def _user_content_to_text(content: object) -> str:
+    """Deprecated name; use _openai_message_content_to_text."""
+    return _openai_message_content_to_text(content)
 
 
 def _build_tool_call_id_to_name(messages: list[dict[str, Any]]) -> dict[str, str]:
@@ -83,14 +119,14 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
         if not isinstance(m, dict):
             continue
         role = m.get("role")
-        if role == "system":
-            ollama.append({"role": "system", "content": str(m.get("content") or "")})
+        if role in ("system", "developer"):
+            ollama.append({"role": "system", "content": _openai_message_content_to_text(m.get("content"))})
             continue
         if role == "user":
-            ollama.append({"role": "user", "content": _user_content_to_text(m.get("content"))})
+            ollama.append({"role": "user", "content": _openai_message_content_to_text(m.get("content"))})
             continue
         if role == "assistant":
-            text = _user_content_to_text(m.get("content"))
+            text = _openai_message_content_to_text(m.get("content"))
             tcs = m.get("tool_calls")
             if isinstance(tcs, list) and tcs:
                 ollama_calls: list[dict[str, Any]] = []
@@ -128,6 +164,22 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
             content = raw_c if isinstance(raw_c, str) else json.dumps(raw_c, ensure_ascii=False)
             ollama.append({"role": "tool", "tool_name": name, "content": content})
             continue
+        if role == "function":
+            name = m.get("name")
+            if not isinstance(name, str) or not name:
+                name = "function"
+            raw_c = m.get("content")
+            content = raw_c if isinstance(raw_c, str) else json.dumps(raw_c, ensure_ascii=False)
+            ollama.append({"role": "tool", "tool_name": name, "content": content})
+            continue
+        extra = _openai_message_content_to_text(m.get("content"))
+        label = str(role) if role not in (None, "") else "unknown"
+        ollama.append(
+            {
+                "role": "user",
+                "content": f"[openai_message role={label}]\n{extra}" if extra else f"[openai_message role={label}]",
+            }
+        )
     return ollama
 
 

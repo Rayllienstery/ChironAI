@@ -1,0 +1,364 @@
+/* Full-width tab (override SettingsTab 800px cap — same pattern as LlmProxyTab) */
+.proxy-v2-tab.settings-tab {
+  max-width: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.proxy-v2-tab {
+  padding: 0 0 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+}
+
+.proxy-v2-top {
+  max-width: 960px;
+}
+
+.proxy-v2-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 1rem;
+}
+
+.proxy-v2-header-right {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.proxy-v2-intro {
+  margin-bottom: 1rem;
+}
+
+.proxy-v2-model {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 1.5rem;
+}
+
+.proxy-v2-model .settings-select {
+  min-width: 240px;
+}
+
+/* Full-width trace panel */
+.proxy-v2-trace-panel {
+  width: 100%;
+  margin-top: var(--md-sys-spacing-md);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  padding-top: var(--md-sys-spacing-lg);
+}
+
+.proxy-v2-trace-toolbar {
+  margin-bottom: var(--md-sys-spacing-md);
+}
+
+.proxy-v2-trace-toolbar h3 {
+  margin: 0 0 var(--md-sys-spacing-xs) 0;
+  font: var(--md-sys-typescale-title-large-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.proxy-v2-trace-meta {
+  font: var(--md-sys-typescale-body-medium-font);
+  color: var(--md-sys-color-on-surface-variant);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 0;
+}
+
+.proxy-v2-trunc {
+  color: var(--md-sys-color-tertiary);
+  font-weight: 600;
+}
+
+.proxy-v2-trace-tabs-row {
+  margin-top: var(--md-sys-spacing-sm);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-sm);
+  flex-wrap: wrap;
+}
+
+.proxy-v2-trace-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 32px;
+}
+
+.proxy-v2-trace-tabs-empty {
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.proxy-v2-trace-tab-btn {
+  border-radius: 999px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-low);
+  padding: 4px 10px;
+  cursor: pointer;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.proxy-v2-trace-tab-btn.is-active {
+  border-color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 8%, var(--md-sys-color-surface-container-low));
+}
+
+.proxy-v2-trace-tab-id {
+  font: var(--md-sys-typescale-label-small-font);
+  color: var(--md-sys-color-on-surface);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.proxy-v2-trace-tab-meta {
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.proxy-v2-trace-reset-btn {
+  white-space: nowrap;
+}
+
+.proxy-v2-trace-empty {
+  padding: var(--md-sys-spacing-xl);
+  text-align: center;
+  background: var(--md-sys-color-surface-container-low);
+  border-radius: var(--md-sys-shape-corner-large);
+  border: 1px dashed var(--md-sys-color-outline-variant);
+}
+
+.proxy-v2-trace-empty-title {
+  font: var(--md-sys-typescale-title-medium-font);
+  color: var(--md-sys-color-on-surface);
+  margin: 0 0 var(--md-sys-spacing-sm);
+}
+
+.proxy-v2-trace-empty-hint {
+  font: var(--md-sys-typescale-body-medium-font);
+  color: var(--md-sys-color-on-surface-variant);
+  margin: 0 0 var(--md-sys-spacing-md);
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.proxy-v2-trace-empty-meta {
+  font: var(--md-sys-typescale-label-medium-font);
+  color: var(--md-sys-color-on-surface-variant);
+  margin: 0;
+}
+
+.proxy-v2-trace-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-md);
+  width: 100%;
+}
+
+.proxy-v2-card {
+  background: var(--md-sys-color-surface-container-low);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-large);
+  padding: var(--md-sys-spacing-md);
+  color: var(--md-sys-color-on-surface);
+}
+
+.proxy-v2-card-error {
+  border-color: var(--md-sys-color-error);
+  background: color-mix(in srgb, var(--md-sys-color-error) 8%, var(--md-sys-color-surface-container-low));
+}
+
+.proxy-v2-section-title {
+  margin: 0 0 var(--md-sys-spacing-sm) 0;
+  font: var(--md-sys-typescale-title-small-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.proxy-v2-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--md-sys-spacing-md);
+}
+
+.proxy-v2-summary-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.proxy-v2-k {
+  font: var(--md-sys-typescale-label-medium-font);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.proxy-v2-v {
+  font: var(--md-sys-typescale-body-medium-font);
+  color: var(--md-sys-color-on-surface);
+  word-break: break-word;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.break-all {
+  word-break: break-all;
+}
+
+.proxy-v2-dl {
+  display: grid;
+  grid-template-columns: minmax(100px, 160px) 1fr;
+  gap: 8px 16px;
+  margin: 0;
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.proxy-v2-dl dt {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium-font);
+}
+
+.proxy-v2-dl dd {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+}
+
+.proxy-v2-details {
+  margin-top: var(--md-sys-spacing-sm);
+}
+
+.proxy-v2-details summary {
+  cursor: pointer;
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-label-large-font);
+  margin-bottom: var(--md-sys-spacing-xs);
+}
+
+.proxy-v2-code {
+  margin: var(--md-sys-spacing-sm) 0 0;
+  padding: var(--md-sys-spacing-md);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  overflow: auto;
+  max-height: 320px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.proxy-v2-tb {
+  max-height: 240px;
+  color: var(--md-sys-color-on-error-container);
+  background: var(--md-sys-color-error-container);
+  border-color: var(--md-sys-color-error);
+}
+
+.proxy-v2-phases {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.proxy-v2-phase {
+  margin-bottom: var(--md-sys-spacing-md);
+}
+
+.proxy-v2-phase-name {
+  font: var(--md-sys-typescale-label-large-font);
+  color: var(--md-sys-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.proxy-v2-phase-json {
+  margin: 0;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface);
+  border-radius: var(--md-sys-shape-corner-small);
+  overflow: auto;
+  max-height: 200px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.proxy-v2-stream-scroll {
+  max-height: min(50vh, 480px);
+  overflow: auto;
+  padding: var(--md-sys-spacing-sm);
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+}
+
+.proxy-v2-stream-line {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--md-sys-color-on-surface);
+}
+
+.proxy-v2-stream-line:last-child {
+  border-bottom: none;
+}
+
+.proxy-v2-badge-warn {
+  margin-left: 8px;
+  font: var(--md-sys-typescale-label-medium-font);
+  color: var(--md-sys-color-tertiary);
+}
+
+.proxy-v2-badge-muted {
+  margin-left: 8px;
+  font: var(--md-sys-typescale-label-medium-font);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.proxy-v2-error-block {
+  margin-top: var(--md-sys-spacing-sm);
+}
+
+.proxy-v2-error-msg {
+  margin: 0 0 var(--md-sys-spacing-xs);
+  color: var(--md-sys-color-error);
+  font-weight: 600;
+}
+
+.proxy-v2-raw-toggle {
+  margin-bottom: var(--md-sys-spacing-sm);
+}
+
+.proxy-v2-raw-json {
+  max-height: min(70vh, 720px);
+}
+
+.proxy-v2-tab.loading {
+  padding: 24px;
+}

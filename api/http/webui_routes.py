@@ -764,6 +764,54 @@ def get_proxy_trace_current() -> Any:
         return jsonify({"error": str(e)}), 500
 
 
+def _ensure_proxy_v2_on_path() -> None:
+    candidate = os.path.join(_ROOT, "CoreModules", "ProxyV2")
+    if os.path.isdir(candidate) and candidate not in sys.path:
+        sys.path.insert(0, candidate)
+
+
+@webui_bp.route("/proxy-v2/settings", methods=["GET"])
+def get_proxy_v2_settings() -> Any:
+    try:
+        settings_repo = get_settings_repository()
+        model = (settings_repo.get_app_setting("proxy_v2_model") or "").strip()
+        return jsonify({"model": model})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_proxy_v2_settings", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/proxy-v2/settings", methods=["POST"])
+def update_proxy_v2_settings() -> Any:
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        model = str(body.get("model") or "").strip()
+        get_settings_repository().set_app_setting("proxy_v2_model", model)
+        return jsonify({"status": "ok", "model": model})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.update_proxy_v2_settings", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/proxy-v2/trace/current", methods=["GET"])
+def get_proxy_v2_trace_current() -> Any:
+    try:
+        _ensure_proxy_v2_on_path()
+        from proxy_v2.trace_store import get_current_trace as get_v2_trace
+        from proxy_v2.trace_store import get_current_trace_updated_at as get_v2_trace_updated_at
+
+        return jsonify(
+            {
+                "trace": get_v2_trace(),
+                "status": "live",
+                "updated_at": get_v2_trace_updated_at(),
+            }
+        )
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_proxy_v2_trace_current", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @webui_bp.route("/logs", methods=["POST"])
 def create_log() -> Any:
     """Create a log entry."""
