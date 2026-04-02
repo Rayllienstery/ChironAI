@@ -1,5 +1,6 @@
-.model-settings {
-  max-width: 800px;
+.llm-proxy-tab .model-settings {
+  max-width: none;
+  width: 100%;
 }
 
 .settings-error-banner {
@@ -118,4 +119,3 @@
   text-align: center;
   color: var(--md-sys-color-on-surface-variant);
 }
-

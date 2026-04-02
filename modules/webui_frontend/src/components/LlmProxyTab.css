@@ -5,7 +5,19 @@
   box-sizing: border-box;
 }
 
-.llm-proxy-web-panel.settings-form {
+.llm-proxy-tab > .settings-tab > .settings-form {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.llm-proxy-tab > .settings-tab > .settings-form > .settings-section {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.llm-proxy-tab > .settings-tab > .llm-proxy-web-panel.settings-form {
   width: 100%;
   max-width: none;
 }
@@ -37,7 +49,7 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 18px;
+  padding: 10px 14px;
   border-radius: 999px;
   border: 1px solid var(--md-sys-color-outline-variant);
   background: linear-gradient(
@@ -87,7 +99,8 @@
 .llm-proxy-open-logs-chevron {
   font-size: 1.1em;
   opacity: 0.85;
-  margin-left: -2px;
+  margin-left: 8px;
+  margin-right: 12px;
 }
 
 .llm-proxy-subtabs {

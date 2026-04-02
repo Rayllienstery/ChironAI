@@ -72,9 +72,26 @@ class RagAnswerResponse:
     finish_reason: str = "stop"
 
 
+@dataclass
+class QueryIntent:
+    """
+    Parsed intent for a RAG question, used to build metadata filters
+    and adjust document priority.
+
+    symbol: API symbol or type name (e.g. UIViewController, handleEvents).
+    framework: High-level technology/framework (e.g. uikit, swiftui, combine).
+    section_hint: Optional section preference (e.g. discussion, overview, examples).
+    """
+
+    symbol: str | None = None
+    framework: str | None = None
+    section_hint: str | None = None
+
+
 __all__ = [
     "RagChunk",
     "RagContext",
     "RagQuestionRequest",
     "RagAnswerResponse",
+    "QueryIntent",
 ]

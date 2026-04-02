@@ -33,3 +33,4 @@ if not %WEBUI_EXIT%==0 (
   echo Server exited with an error. Check the message above.
 )
 exit /b %WEBUI_EXIT%
+pause

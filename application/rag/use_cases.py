@@ -12,7 +12,7 @@ import logging
 import time
 from typing import Any
 
-from domain.entities.rag import RagAnswerResponse, RagContext, RagQuestionRequest
+from domain.entities.rag import QueryIntent, RagAnswerResponse, RagContext, RagQuestionRequest
 from domain.ports import ChatLLMClient, EmbeddingProvider, RagRepository, RerankClient
 from domain.services.prompt_builder import (
     build_context_block,
@@ -36,6 +36,7 @@ from domain.services.retrieval import (
     build_qdrant_filter,
     merge_qdrant_filters,
     combined_doc_priority,
+    intent_match_priority,
     doc_type_priority,
     expand_query_variants,
     is_version_question,
@@ -43,6 +44,10 @@ from domain.services.retrieval import (
     parse_versions_from_question,
     query_for_retrieval,
     rrf_merge_hit_lists,
+    extra_filter_framework_equals,
+    extra_filter_section_path_joined_equals,
+    extra_filter_symbol_equals,
+    infer_query_intent,
     should_skip_rag_search,
 )
 from application.rag.hybrid_sparse import is_hybrid_sparse_enabled
@@ -139,6 +144,7 @@ def search_rag(
     rerank_client: RerankClient | None,
     top_k: int | None = None,
     extra_filter: dict[str, Any] | None = None,
+    intent: QueryIntent | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, float]]:
     """
     Run RAG retrieval for a question: query_for_retrieval -> embed -> search -> rerank.
@@ -186,7 +192,13 @@ def search_rag(
             results = lists[0]
         else:
             results = rrf_merge_hit_lists(lists, limit=k)
-        results.sort(key=combined_doc_priority, reverse=True)
+        if intent is not None:
+            results.sort(
+                key=lambda h: combined_doc_priority(h) + intent_match_priority(h, intent),
+                reverse=True,
+            )
+        else:
+            results.sort(key=combined_doc_priority, reverse=True)
         t0 = time.perf_counter()
         results = _apply_rerank(question, results, rerank_client, final_k, timings=timings)
         timings["rerank_s"] += time.perf_counter() - t0
@@ -264,7 +276,13 @@ def search_rag(
 
     if ios_set or swift_set:
         results.sort(key=_score, reverse=True)
-        results.sort(key=combined_doc_priority, reverse=True)
+        if intent is not None:
+            results.sort(
+                key=lambda h: combined_doc_priority(h) + intent_match_priority(h, intent),
+                reverse=True,
+            )
+        else:
+            results.sort(key=combined_doc_priority, reverse=True)
     t0 = time.perf_counter()
     results = _apply_rerank(question, results, rerank_client, final_k, timings=timings)
     timings["rerank_s"] += time.perf_counter() - t0
@@ -309,6 +327,16 @@ def build_rag_context(
     ):
         _rag_log.debug("RAG skipped for query (greeting or score below threshold)")
         return RagContext("", [], 0.0), empty_timings
+    # Infer high-level intent (symbol/framework/section) for metadata-aware retrieval.
+    intent = infer_query_intent(question)
+
+    # Merge caller-provided extra_filter with symbol/framework filters derived from intent.
+    intent_filter = merge_qdrant_filters(
+        extra_filter_symbol_equals(intent.symbol),
+        extra_filter_framework_equals(intent.framework),
+    )
+    combined_extra_filter = merge_qdrant_filters(extra_filter, intent_filter)
+
     try:
         results, timings = search_rag(
             question,
@@ -316,7 +344,8 @@ def build_rag_context(
             embed_provider,
             rerank_client,
             top_k=top_k,
-            extra_filter=extra_filter,
+            extra_filter=combined_extra_filter,
+            intent=intent,
         )
         timings["total_rag_s"] = (
             timings["embed_s"]

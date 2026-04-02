@@ -19,6 +19,8 @@ from typing import Any
 
 import re
 
+from domain.entities.rag import QueryIntent
+
 from config import (  # type: ignore
     get_retrieval_bool,
     get_retrieval_dict,
@@ -86,6 +88,23 @@ DOC_SCOPE_WEIGHT: dict[str, int] = get_retrieval_dict(
         "books": 0,
         "forums": -1,
     },
+)
+
+# Concept/topic aliases for query expansion. Keys are lowercased phrases that,
+# when present in the normalized question, should bias retrieval toward more
+# specific documentation regions. Values are additional tokens appended to the
+# retrieval query. Backed by config so hosts can tune behavior without code changes.
+_DEFAULT_CONCEPT_ALIASES: dict[str, str] = {
+    # Observation framework / Observable macro in UIKit and SwiftUI.
+    # These aliases avoid hardcoding a single Apple doc URL while still
+    # steering the embedding toward the relevant documentation cluster.
+    "observable macro": " observation tracking observation framework updating views automatically with observation tracking ",
+    "observable": " observation tracking observation framework ",
+    "observation tracking": " observation tracking observation framework ",
+}
+CONCEPT_ALIASES: dict[str, str] = get_retrieval_dict(
+    "concept_aliases",
+    _DEFAULT_CONCEPT_ALIASES,
 )
 
 MULTI_CHUNK_KEYWORDS: tuple[str, ...] = tuple(
@@ -242,6 +261,17 @@ def query_for_retrieval(question: str) -> str:
     elif "swiftui" in q and "uikit" not in q:
         out = out + " SwiftUI View"
 
+    # Concept/topic aliases: when the normalized question contains certain
+    # phrases (e.g. Observable macro), append configured bias tokens.
+    if CONCEPT_ALIASES:
+        q_compact = f" {q} "
+        for alias, expansion in CONCEPT_ALIASES.items():
+            a = (alias or "").strip().lower()
+            if not a:
+                continue
+            if f" {a} " in q_compact:
+                out = f"{out} {expansion}".strip()
+
     # For version questions, bias retrieval toward version/release chunks.
     ios_q, swift_q = parse_versions_from_question(question)
     if ios_q or swift_q or "version" in q_raw.lower() or "latest" in q_raw.lower():
@@ -333,6 +363,28 @@ def extra_filter_section_path_joined_equals(joined: str) -> dict[str, Any] | Non
     return {"must": [{"key": "section_path_joined", "match": {"value": j}}]}
 
 
+def extra_filter_symbol_equals(symbol: str | None) -> dict[str, Any] | None:
+    """
+    Extra filter requiring payload ``symbol`` to equal the given value.
+    Returns None when symbol is empty.
+    """
+    s = (symbol or "").strip()
+    if not s:
+        return None
+    return {"must": [{"key": "symbol", "match": {"value": s}}]}
+
+
+def extra_filter_framework_equals(framework: str | None) -> dict[str, Any] | None:
+    """
+    Extra filter requiring payload ``framework`` to equal the given value.
+    Returns None when framework is empty.
+    """
+    f = (framework or "").strip().lower()
+    if not f:
+        return None
+    return {"must": [{"key": "framework", "match": {"value": f}}]}
+
+
 def doc_type_priority(hit: dict[str, Any]) -> int:
     """
     Compute priority score for a hit based on its doc_type.
@@ -360,6 +412,68 @@ def doc_scope_priority(hit: dict[str, Any]) -> int:
 def combined_doc_priority(hit: dict[str, Any]) -> int:
     """Combined priority from doc_type and doc_scope for sorting retrieval results."""
     return doc_type_priority(hit) + doc_scope_priority(hit)
+
+
+def intent_match_priority(hit: dict[str, Any], intent: QueryIntent | None) -> int:
+    """
+    Additional priority from intent match (symbol/framework/section).
+
+    This is added on top of combined_doc_priority when QueryIntent is available.
+    """
+    if intent is None:
+        return 0
+    payload = hit.get("payload") or {}
+    score = 0
+    symbol = (payload.get("symbol") or "").strip()
+    framework = (payload.get("framework") or "").strip().lower()
+    section = (payload.get("section") or "").strip().lower()
+    if intent.symbol and symbol and intent.symbol == symbol:
+        score += 4
+    if intent.framework and framework and intent.framework == intent.framework.lower():
+        score += 2
+    if intent.section_hint and section and intent.section_hint.lower() == section:
+        score += 1
+    return score
+
+
+def infer_query_intent(question: str) -> QueryIntent:
+    """
+    Infer QueryIntent from the raw question text.
+
+    - symbol: first API-like symbol (PascalCase / CamelCase) when present.
+    - framework: detected high-level framework/technology (uikit, swiftui, combine, observation).
+    - section_hint: simple hint for section type (discussion/overview/examples).
+    """
+    q_raw = (question or "").strip()
+    q_lower = q_raw.lower()
+
+    # Symbol: first API-like token; skip very short ones to avoid obvious noise.
+    symbol: str | None = None
+    for match in _API_SYMBOL_RE.findall(q_raw):
+        if len(match) >= 4:
+            symbol = match
+            break
+
+    framework: str | None = None
+    if "uikit" in q_lower:
+        framework = "uikit"
+    elif "swiftui" in q_lower:
+        framework = "swiftui"
+    elif "combine" in q_lower:
+        framework = "combine"
+    elif "observation" in q_lower or "@observable" in q_lower or "observable" in q_lower:
+        # Observation framework / Observable macro in Swift.
+        framework = "observation"
+
+    section_hint: str | None = None
+    if "пример" in q_lower or "example" in q_lower or "sample" in q_lower:
+        section_hint = "example"
+    elif "как работает" in q_lower or "how does" in q_lower or "how it works" in q_lower:
+        section_hint = "discussion"
+    elif "overview" in q_lower:
+        section_hint = "overview"
+
+    return QueryIntent(symbol=symbol, framework=framework, section_hint=section_hint)
 
 
 def expand_query_variants(question: str) -> list[str]:
@@ -438,9 +552,13 @@ __all__ = [
     "build_qdrant_filter",
     "merge_qdrant_filters",
     "extra_filter_section_path_joined_equals",
+    "extra_filter_symbol_equals",
+    "extra_filter_framework_equals",
     "doc_type_priority",
     "doc_scope_priority",
     "combined_doc_priority",
+    "intent_match_priority",
+    "infer_query_intent",
     "expand_query_variants",
     "rrf_merge_hit_lists",
 ]

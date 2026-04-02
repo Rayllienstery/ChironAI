@@ -148,6 +148,20 @@ class TestComputeRagTriggerScore:
         assert score >= RAG_TRIGGER_THRESHOLD
         assert triggered is True
 
+    def test_observable_uikit_question_triggers_rag(self) -> None:
+        score, _, triggered = compute_rag_trigger_score(
+            "Observable macro + UIKit iOS 18+"
+        )
+        assert score >= RAG_TRIGGER_THRESHOLD
+        assert triggered is True
+
+    def test_observable_uikit_question_triggers_rag(self) -> None:
+        score, _, triggered = compute_rag_trigger_score(
+            "Observable macro + UIKit iOS 18+"
+        )
+        assert score >= RAG_TRIGGER_THRESHOLD
+        assert triggered is True
+
 
 class TestShouldSkipRagSearch:
     """Test skip decision: greeting (exact + short + no tech) or score < threshold."""

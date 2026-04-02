@@ -8,7 +8,11 @@ import pytest
 
 from domain.services.retrieval import (
     build_qdrant_filter,
+    extra_filter_framework_equals,
     extra_filter_section_path_joined_equals,
+    extra_filter_symbol_equals,
+    infer_query_intent,
+    intent_match_priority,
     is_version_question,
     merge_qdrant_filters,
     need_more_chunks,
@@ -16,6 +20,7 @@ from domain.services.retrieval import (
     query_for_retrieval,
     should_skip_rag_search,
 )
+from domain.entities.rag import QueryIntent
 
 
 class TestParseVersionsFromQuestion:
@@ -106,6 +111,16 @@ class TestQueryForRetrieval:
         # No PascalCase type name; should not contain "API view" (lowercase "view" is not a symbol)
         assert "API view" not in q or "View" in q
 
+    def test_observable_uikit_query_contains_observation_tracking_bias(self) -> None:
+        q = query_for_retrieval("Observable macro + UIKit iOS 18+")
+        # RAG query should carry strong hints toward Observation/observation tracking docs.
+        assert "observation tracking" in q
+
+    def test_observable_uikit_query_contains_observation_tracking_bias(self) -> None:
+        q = query_for_retrieval("Observable macro + UIKit iOS 18+")
+        # RAG query should carry strong hints toward Observation/observation tracking docs.
+        assert "observation tracking" in q
+
 
 class TestShouldSkipRagSearch:
     def test_returns_true_for_hi(self) -> None:
@@ -159,6 +174,48 @@ class TestBuildQdrantFilter:
     def test_returns_filter_dict_for_question(self) -> None:
         f = build_qdrant_filter("What is Observable?")
         assert f is None or (isinstance(f, dict) and "should" in f)
+
+
+class TestSymbolAwareExtrasAndIntent:
+    def test_extra_filter_symbol_equals_builds_filter(self) -> None:
+        f = extra_filter_symbol_equals("handleEvents")
+        assert f is not None
+        must = f.get("must") or []
+        assert any(isinstance(c, dict) and c.get("key") == "symbol" for c in must)
+
+    def test_extra_filter_framework_equals_builds_filter(self) -> None:
+        f = extra_filter_framework_equals("uikit")
+        assert f is not None
+        must = f.get("must") or []
+        assert any(isinstance(c, dict) and c.get("key") == "framework" for c in must)
+
+    def test_infer_query_intent_extracts_symbol_and_framework(self) -> None:
+        intent = infer_query_intent("Как работает handleEvents в Combine для iOS 18?")
+        assert isinstance(intent, QueryIntent)
+        assert intent.symbol == "handleEvents"
+        assert intent.framework in ("combine", "observation")
+
+    def test_intent_match_priority_prefers_matching_symbol_and_framework(self) -> None:
+        intent = QueryIntent(symbol="handleEvents", framework="combine")
+        hit_match = {
+            "payload": {
+                "symbol": "handleEvents",
+                "framework": "combine",
+                "doc_type": "api_ref",
+                "doc_scope": "api_symbol",
+            }
+        }
+        hit_mismatch = {
+            "payload": {
+                "symbol": "OtherSymbol",
+                "framework": "uikit",
+                "doc_type": "api_ref",
+                "doc_scope": "api_symbol",
+            }
+        }
+        score_match = intent_match_priority(hit_match, intent)
+        score_mismatch = intent_match_priority(hit_mismatch, intent)
+        assert score_match > score_mismatch
 
 
 class TestMergeQdrantFilters:

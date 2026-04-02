@@ -90,10 +90,10 @@ function TemplateEditorTab() {
   const runPromptLinter = (text) => {
     const warnings = [];
     const lowerText = text.toLowerCase();
-    
+
     // Check for explicit constraints
-    if (!lowerText.includes('constraint') && 
-        !lowerText.includes('limit') && 
+    if (!lowerText.includes('constraint') &&
+        !lowerText.includes('limit') &&
         !lowerText.includes('requirement') &&
         !lowerText.includes('must') &&
         !lowerText.includes('should') &&
@@ -104,7 +104,7 @@ function TemplateEditorTab() {
         severity: 'warning'
       });
     }
-    
+
     // Check for architecture
     const architectureKeywords = ['architecture', 'mvvm', 'mvc', 'clean', 'pattern', 'structure', 'design pattern'];
     if (!architectureKeywords.some(keyword => lowerText.includes(keyword))) {
@@ -114,7 +114,7 @@ function TemplateEditorTab() {
         severity: 'warning'
       });
     }
-    
+
     // Check for format requirements
     const formatKeywords = ['format', 'output format', 'structure', 'layout', 'style', 'template'];
     if (!formatKeywords.some(keyword => lowerText.includes(keyword))) {
@@ -124,7 +124,7 @@ function TemplateEditorTab() {
         severity: 'info'
       });
     }
-    
+
     // Check for Swift version
     const swiftVersionKeywords = ['swift', 'ios', 'swift 5', 'swift 6', 'swiftui', 'version'];
     if (!swiftVersionKeywords.some(keyword => lowerText.includes(keyword))) {
@@ -134,7 +134,7 @@ function TemplateEditorTab() {
         severity: 'warning'
       });
     }
-    
+
     // Check for context
     if (text.length < 50) {
       warnings.push({
@@ -143,20 +143,20 @@ function TemplateEditorTab() {
         severity: 'info'
       });
     }
-    
+
     return warnings;
   };
 
   const structurePrompt = (text) => {
     const lines = text.split('\n').map(l => l.trim()).filter(l => l);
-    
+
     const sections = {
       context: [],
       constraints: [],
       architecture: [],
       expectedOutput: []
     };
-    
+
     let currentSection = 'context';
     const sectionKeywords = {
       context: ['context', 'background', 'situation', 'problem', 'scenario'],
@@ -164,10 +164,10 @@ function TemplateEditorTab() {
       architecture: ['architecture', 'mvvm', 'mvc', 'clean', 'pattern', 'structure', 'design'],
       expectedOutput: ['output', 'result', 'format', 'structure', 'should return', 'expected']
     };
-    
+
     lines.forEach(line => {
       const lowerLine = line.toLowerCase();
-      
+
       // Check if line indicates a section
       for (const [section, keywords] of Object.entries(sectionKeywords)) {
         if (keywords.some(keyword => lowerLine.includes(keyword))) {
@@ -175,10 +175,10 @@ function TemplateEditorTab() {
           break;
         }
       }
-      
+
       sections[currentSection].push(line);
     });
-    
+
     // Build structured prompt
     let structured = '';
     if (sections.context.length > 0) {
@@ -193,18 +193,18 @@ function TemplateEditorTab() {
     if (sections.expectedOutput.length > 0) {
       structured += `## Expected Output\n${sections.expectedOutput.join('\n')}\n\n`;
     }
-    
+
     // If no sections were detected, put everything in context
     if (!structured) {
       structured = `## Context\n${text}\n\n`;
     }
-    
+
     return structured.trim();
   };
 
   const handleLintPrompt = () => {
-    const currentText = editMode === 'raw' 
-      ? editorFields.rawContent 
+    const currentText = editMode === 'raw'
+      ? editorFields.rawContent
       : assembleContent();
     const warnings = runPromptLinter(currentText);
     setLinterWarnings(warnings);
@@ -213,11 +213,11 @@ function TemplateEditorTab() {
   };
 
   const handleStructurePrompt = () => {
-    const currentText = editMode === 'raw' 
-      ? editorFields.rawContent 
+    const currentText = editMode === 'raw'
+      ? editorFields.rawContent
       : assembleContent();
     const structured = structurePrompt(currentText);
-    
+
     if (editMode === 'raw') {
       setEditorFields(prev => ({ ...prev, rawContent: structured }));
     } else {
@@ -226,12 +226,12 @@ function TemplateEditorTab() {
       let title = '';
       let description = '';
       let body = structured;
-      
+
       if (lines.length > 0 && lines[0].startsWith('## ')) {
         title = lines[0].substring(3);
         body = lines.slice(1).join('\n');
       }
-      
+
       setEditorFields(prev => ({
         ...prev,
         title: title,
@@ -255,14 +255,14 @@ function TemplateEditorTab() {
     // Real-time intelligent hints
     try {
       if (viewMode === 'templates' && selectedPromptName && !isReadme(selectedPromptName)) {
-        const currentText = editMode === 'raw' 
-          ? editorFields.rawContent 
+        const currentText = editMode === 'raw'
+          ? editorFields.rawContent
           : assembleContent();
         const warnings = runPromptLinter(currentText);
         setLinterWarnings(warnings);
       } else if (viewMode === 'trash' && selectedTrashName) {
-        const currentText = editMode === 'raw' 
-          ? editorFields.rawContent 
+        const currentText = editMode === 'raw'
+          ? editorFields.rawContent
           : assembleContent();
         const warnings = runPromptLinter(currentText);
         setLinterWarnings(warnings);
@@ -325,13 +325,13 @@ function TemplateEditorTab() {
     try {
       const data = await getTrashPromptContent(trashName);
       const content = data.content || '';
-      
+
       // Parse structured content same way as regular prompts
       const lines = content.split('\n');
       let title = '';
       let description = '';
       let body = content;
-      
+
       if (lines.length > 0 && lines[0].trim()) {
         const firstLine = lines[0].trim();
         if (firstLine.startsWith('# ')) {
@@ -342,7 +342,7 @@ function TemplateEditorTab() {
           body = lines.slice(1).join('\n');
         }
       }
-      
+
       if (lines.length > 1 && lines[1].trim() && !lines[1].trim().startsWith('#')) {
         description = lines[1].trim();
         if (title) {
@@ -351,7 +351,7 @@ function TemplateEditorTab() {
           body = lines.slice(1).join('\n');
         }
       }
-      
+
       setEditorFields({
         title: title,
         description: description,
@@ -372,14 +372,14 @@ function TemplateEditorTab() {
     try {
       const data = await getPromptContent(name);
       const content = data.content || '';
-      
+
       // Try to parse structured content
       // Look for title/description patterns or use raw content
       const lines = content.split('\n');
       let title = '';
       let description = '';
       let body = content;
-      
+
       // Simple heuristic: first line might be title, second might be description
       if (lines.length > 0 && lines[0].trim()) {
         const firstLine = lines[0].trim();
@@ -391,7 +391,7 @@ function TemplateEditorTab() {
           body = lines.slice(1).join('\n');
         }
       }
-      
+
       if (lines.length > 1 && lines[1].trim() && !lines[1].trim().startsWith('#')) {
         description = lines[1].trim();
         if (title) {
@@ -400,7 +400,7 @@ function TemplateEditorTab() {
           body = lines.slice(1).join('\n');
         }
       }
-      
+
       setEditorFields({
         title: title,
         description: description,
@@ -446,19 +446,19 @@ function TemplateEditorTab() {
   const handleSave = async () => {
     if (viewMode === 'templates') {
       if (!selectedPromptName) return;
-      
+
       if (isReadme(selectedPromptName)) {
         setError('README cannot be edited');
         return;
       }
-      
+
       setIsSaving(true);
       setError(null);
       try {
-        const content = editMode === 'raw' 
-          ? editorFields.rawContent 
+        const content = editMode === 'raw'
+          ? editorFields.rawContent
           : assembleContent();
-        
+
         await updatePrompt(selectedPromptName, { content });
         setIsDirty(false);
         await loadPrompts();
@@ -469,14 +469,14 @@ function TemplateEditorTab() {
       }
     } else if (viewMode === 'trash') {
       if (!selectedTrashName) return;
-      
+
       setIsSaving(true);
       setError(null);
       try {
-        const content = editMode === 'raw' 
-          ? editorFields.rawContent 
+        const content = editMode === 'raw'
+          ? editorFields.rawContent
           : assembleContent();
-        
+
         await updateTrashPrompt(selectedTrashName, content);
         setIsDirty(false);
         await loadTrashPrompts();
@@ -490,17 +490,17 @@ function TemplateEditorTab() {
 
   const handleDuplicate = async () => {
     if (viewMode !== 'templates' || !selectedPromptName) return;
-    
+
     const baseName = selectedPromptName;
     let newName = `${baseName}-copy`;
     let counter = 1;
-    
+
     // Find available name
     while (prompts.some(p => p.name === newName)) {
       newName = `${baseName}-copy-${counter}`;
       counter++;
     }
-    
+
     setIsSaving(true);
     setError(null);
     try {
@@ -519,14 +519,14 @@ function TemplateEditorTab() {
 
   const handleDelete = async () => {
     if (!selectedPromptName) return;
-    
+
     const confirmed = window.confirm(
       `Move template "${selectedPromptName}" to trash?\n\nYou can restore it later from the trash.`
     );
     if (!confirmed) {
       return;
     }
-    
+
     setIsSaving(true);
     setError(null);
     try {
@@ -555,13 +555,13 @@ function TemplateEditorTab() {
       handleRenameCancel();
       return;
     }
-    
+
     // Prevent renaming to README
     if (isReadme(renameValue)) {
       setError('Cannot rename to README');
       return;
     }
-    
+
     setIsSaving(true);
     setError(null);
     try {
@@ -593,7 +593,7 @@ function TemplateEditorTab() {
 
   const handleRestore = async () => {
     if (!selectedTrashName) return;
-    
+
     setIsSaving(true);
     setError(null);
     try {
@@ -613,7 +613,7 @@ function TemplateEditorTab() {
     if (!window.confirm('Permanently delete all items in trash? This action cannot be undone.')) {
       return;
     }
-    
+
     setIsSaving(true);
     setError(null);
     try {
@@ -648,25 +648,25 @@ function TemplateEditorTab() {
       setError('Template name is required');
       return;
     }
-    
+
     // Prevent creating README
     if (isReadme(newTemplateName.trim())) {
       setError('Cannot create a file named README');
       return;
     }
-    
+
     if (prompts.some(p => p.name === newTemplateName.trim())) {
       setError('A template with this name already exists');
       return;
     }
-    
+
     setIsSaving(true);
     setError(null);
     try {
-      const content = editMode === 'raw' 
-        ? editorFields.rawContent 
+      const content = editMode === 'raw'
+        ? editorFields.rawContent
         : assembleContent();
-      
+
       await createPrompt({
         name: newTemplateName.trim(),
         content: content || '# New Template\n\n',
@@ -768,7 +768,7 @@ function TemplateEditorTab() {
               </button>
             </div>
           </div>
-          
+
           {isLoading ? (
             <div className="loading">Loading {viewMode === 'templates' ? 'templates' : 'trash'}...</div>
           ) : viewMode === 'templates' ? (
@@ -777,40 +777,40 @@ function TemplateEditorTab() {
             ) : (() => {
               const readmePrompts = prompts.filter(p => isReadme(p.name));
               const regularPrompts = prompts.filter(p => !isReadme(p.name));
-              
+
               return (
                 <>
                   {readmePrompts.length > 0 && (
-                    <div className="template-section">
-                      <div className="template-section-header">README</div>
-                      <div className="template-list">
-                        {readmePrompts.map((prompt) => (
-                          <div
-                            key={prompt.name}
-                            className={`template-item readme-item ${selectedPromptName === prompt.name ? 'selected' : ''}`}
-                            onClick={() => handleSelectPrompt(prompt.name)}
-                          >
-                            <div className="template-item-name">{prompt.name}</div>
-                            {selectedPromptName === prompt.name && (
-                              <div className="template-item-actions">
-                                <button
-                                  type="button"
-                                  className="template-action-button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDuplicate();
-                                  }}
-                                  disabled={isSaving}
-                                  title="Duplicate"
-                                >
-                                  <span className="material-symbols-outlined">content_copy</span>
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                    <div className="template-list">
+                      {readmePrompts.map((prompt) => (
+                        <div
+                          key={prompt.name}
+                          className={`template-item readme-item ${selectedPromptName === prompt.name ? 'selected' : ''}`}
+                          onClick={() => handleSelectPrompt(prompt.name)}
+                        >
+                          <div className="template-item-name">{prompt.name}</div>
+                          {selectedPromptName === prompt.name && (
+                            <div className="template-item-actions">
+                              <button
+                                type="button"
+                                className="template-action-button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDuplicate();
+                                }}
+                                disabled={isSaving}
+                                title="Duplicate"
+                              >
+                                <span className="material-symbols-outlined">content_copy</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
+                  )}
+                  {readmePrompts.length > 0 && regularPrompts.length > 0 && (
+                    <div style={{ height: 'var(--md-sys-spacing-lg)' }} />
                   )}
                   {regularPrompts.length > 0 && (
                     <div className="template-section">
@@ -825,42 +825,6 @@ function TemplateEditorTab() {
                             <div className="template-item-name">{prompt.name}</div>
                             {selectedPromptName === prompt.name && (
                               <div className="template-item-actions">
-                                <button
-                                  type="button"
-                                  className="template-action-button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDuplicate();
-                                  }}
-                                  disabled={isSaving}
-                                  title="Duplicate"
-                                >
-                                  <span className="material-symbols-outlined">content_copy</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  className="template-action-button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleRenameStart();
-                                  }}
-                                  disabled={isSaving}
-                                  title="Rename"
-                                >
-                                  <span className="material-symbols-outlined">edit</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  className="template-action-button delete"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDelete();
-                                  }}
-                                  disabled={isSaving}
-                                  title="Move to trash"
-                                >
-                                  <span className="material-symbols-outlined">delete</span>
-                                </button>
                               </div>
                             )}
                           </div>
@@ -1267,6 +1231,26 @@ function TemplateEditorTab() {
                         </button>
                         <button
                           type="button"
+                          className="template-button"
+                          onClick={handleDuplicate}
+                          disabled={isSaving}
+                          title="Duplicate template"
+                        >
+                          <span className="material-symbols-outlined">content_copy</span>
+                          Duplicate
+                        </button>
+                        <button
+                          type="button"
+                          className="template-button delete"
+                          onClick={handleDelete}
+                          disabled={isSaving}
+                          title="Move to trash"
+                        >
+                          <span className="material-symbols-outlined">delete</span>
+                          Delete
+                        </button>
+                        <button
+                          type="button"
                           className="template-button primary"
                           onClick={handleSave}
                           disabled={isSaving || isLoadingContent || !isDirty}
@@ -1376,7 +1360,7 @@ function TemplateEditorTab() {
           ) : (
             <div className="template-editor-empty">
               <p>
-                {viewMode === 'templates' 
+                {viewMode === 'templates'
                   ? 'Select a template from the list to edit, or click "New" to create one'
                   : 'Select an item from trash to edit or restore'}
               </p>
@@ -1411,8 +1395,8 @@ function TemplateEditorTab() {
                 type="button"
                 className={`template-help-tab ${helpModalTab === 'linter' ? 'active' : ''}`}
                 onClick={() => {
-                  const currentText = editMode === 'raw' 
-                    ? editorFields.rawContent 
+                  const currentText = editMode === 'raw'
+                    ? editorFields.rawContent
                     : assembleContent();
                   const warnings = runPromptLinter(currentText);
                   setLinterWarnings(warnings);
@@ -1526,4 +1510,3 @@ function TemplateEditorTab() {
 }
 
 export default TemplateEditorTab;
-
