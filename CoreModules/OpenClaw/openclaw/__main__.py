@@ -17,6 +17,7 @@ if _OPENCLAW not in sys.path:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)
     os.environ.setdefault("CHIRONAI_WEBUI_DIR", os.path.join(_ROOT, "WebUI"))
 
     from config import (

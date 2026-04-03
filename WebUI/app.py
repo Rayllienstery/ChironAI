@@ -1628,7 +1628,11 @@ if __name__ == "__main__":
         sys.exit(0)
 
     if args.command == "start":
+        import logging
+
         from config import get_webui_port
+
+        logging.getLogger("werkzeug").setLevel(logging.WARNING)
         port = get_webui_port()
         app.run(host="0.0.0.0", port=port)
         sys.exit(0)

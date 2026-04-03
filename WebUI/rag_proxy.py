@@ -33,6 +33,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+# Werkzeug logs every HTTP request at INFO; hide that noise (errors still use WARNING+).
+logging.getLogger("werkzeug").setLevel(logging.WARNING)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 # Frontend moved to modules/webui_frontend
