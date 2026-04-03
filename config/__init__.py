@@ -48,6 +48,7 @@ _models_cfg = _load_yaml("models.yaml")
 _retrieval_cfg = _load_yaml("retrieval.yaml")
 _crawler_cfg = _load_yaml("crawler.yaml")
 _indexing_cfg = _load_yaml("indexing.yaml")
+_openclaw_cfg = _load_yaml("openclaw.yaml")
 
 RAG_CONFIG: Dict[str, Any] = _rag_cfg.get("rag", {})
 SERVER_CONFIG: Dict[str, Any] = _server_cfg.get("server", {})
@@ -56,6 +57,7 @@ OLLAMA_CONFIG: Dict[str, Any] = _models_cfg.get("ollama", {})
 RETRIEVAL_CONFIG: Dict[str, Any] = _retrieval_cfg.get("retrieval", {})
 CRAWLER_CONFIG: Dict[str, Any] = _crawler_cfg.get("crawler", {})
 INDEXING_CONFIG: Dict[str, Any] = _indexing_cfg.get("indexing", {})
+OPENCLAW_CONFIG: Dict[str, Any] = _openclaw_cfg.get("openclaw", {})
 
 
 def get_ollama_chat_url() -> str:
@@ -362,4 +364,81 @@ def get_log_level() -> int:
     """Return logging level (e.g. logging.INFO). Env LOG_LEVEL overrides config."""
     name = os.getenv("LOG_LEVEL", _server_cfg.get("logging", {}).get("level", "INFO"))
     return getattr(__import__("logging"), name.upper(), 20)  # 20 = INFO
+
+
+def get_openclaw_enabled() -> bool:
+    """OpenClaw agent HTTP + optional MCP info server. ``OPENCLAW_ENABLED=0`` disables."""
+    env = os.getenv("OPENCLAW_ENABLED", "").strip().lower()
+    if env in ("0", "false", "no", "off"):
+        return False
+    if env in ("1", "true", "yes", "on"):
+        return True
+    return bool(OPENCLAW_CONFIG.get("enabled", True))
+
+
+def get_openclaw_host() -> str:
+    return os.getenv("OPENCLAW_HOST", str(OPENCLAW_CONFIG.get("host", "0.0.0.0")))
+
+
+def get_openclaw_openai_port() -> int:
+    try:
+        p = os.getenv("OPENCLAW_OPENAI_PORT")
+        if p:
+            return int(p)
+    except (TypeError, ValueError):
+        pass
+    return int(OPENCLAW_CONFIG.get("openai_port", 8082))
+
+
+def get_openclaw_mcp_port() -> int:
+    try:
+        p = os.getenv("OPENCLAW_MCP_PORT")
+        if p:
+            return int(p)
+    except (TypeError, ValueError):
+        pass
+    return int(OPENCLAW_CONFIG.get("mcp_port", 8083))
+
+
+def get_openclaw_mcp_http_enabled() -> bool:
+    env = os.getenv("OPENCLAW_MCP_HTTP", "").strip().lower()
+    if env in ("0", "false", "no", "off"):
+        return False
+    if env in ("1", "true", "yes", "on"):
+        return True
+    return bool(OPENCLAW_CONFIG.get("mcp_http_enabled", True))
+
+
+def get_openclaw_max_agent_steps() -> int:
+    try:
+        v = os.getenv("OPENCLAW_MAX_AGENT_STEPS")
+        if v:
+            return max(1, int(v))
+    except (TypeError, ValueError):
+        pass
+    return max(1, int(OPENCLAW_CONFIG.get("max_agent_steps", 12)))
+
+
+def get_openclaw_logical_model_id() -> str:
+    return os.getenv(
+        "OPENCLAW_LOGICAL_MODEL_ID",
+        str(OPENCLAW_CONFIG.get("logical_model_id", "OpenClaw-Agent")),
+    ).strip() or "OpenClaw-Agent"
+
+
+def get_openclaw_trace_buffer_size() -> int:
+    try:
+        return max(10, int(OPENCLAW_CONFIG.get("trace_buffer_size", 80)))
+    except (TypeError, ValueError):
+        return 80
+
+
+def get_openclaw_vendor_config() -> Dict[str, Any]:
+    v = OPENCLAW_CONFIG.get("vendor") if isinstance(OPENCLAW_CONFIG.get("vendor"), dict) else {}
+    return {
+        "github_owner": os.getenv("OPENCLAW_GITHUB_OWNER", str(v.get("github_owner", "ultraworkers"))),
+        "github_repo": os.getenv("OPENCLAW_GITHUB_REPO", str(v.get("github_repo", "claw-code-parity"))),
+        "branch": os.getenv("OPENCLAW_VENDOR_BRANCH", str(v.get("branch", "main"))),
+        "root_relative": str(v.get("root_relative", "vendor/claw-code")),
+    }
 

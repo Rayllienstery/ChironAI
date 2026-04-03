@@ -63,6 +63,50 @@ def _start_pass_proxy_v2(main_app) -> None:
 
 threading.Thread(target=_start_pass_proxy_v2, args=(app,), name="proxy_v2_boot", daemon=True).start()
 
+
+def _start_openclaw_servers(_main_app) -> None:
+    try:
+        from config import (
+            get_openclaw_enabled,
+            get_openclaw_host,
+            get_openclaw_mcp_http_enabled,
+            get_openclaw_mcp_port,
+            get_openclaw_openai_port,
+            get_openclaw_trace_buffer_size,
+        )
+    except Exception:
+        return
+    if not get_openclaw_enabled():
+        return
+    _oc = os.path.join(PROJECT_ROOT, "CoreModules", "OpenClaw")
+    if _oc not in sys.path:
+        sys.path.insert(0, _oc)
+    try:
+        from werkzeug.serving import make_server
+
+        from openclaw.http_server import create_openclaw_flask_app
+        from openclaw.mcp_info_app import create_mcp_info_app
+        from openclaw.trace_store import configure as openclaw_trace_configure
+
+        openclaw_trace_configure(get_openclaw_trace_buffer_size())
+        host = get_openclaw_host()
+        oa_port = get_openclaw_openai_port()
+        oapp = create_openclaw_flask_app()
+        srv = make_server(host, oa_port, oapp, threaded=True)
+        threading.Thread(target=srv.serve_forever, name="openclaw_openai", daemon=True).start()
+        logging.getLogger(__name__).info("OpenClaw OpenAI listening on %s:%s", host, oa_port)
+        if get_openclaw_mcp_http_enabled():
+            mp = get_openclaw_mcp_port()
+            mapp = create_mcp_info_app()
+            srv_m = make_server(host, mp, mapp, threaded=True)
+            threading.Thread(target=srv_m.serve_forever, name="openclaw_mcp_info", daemon=True).start()
+            logging.getLogger(__name__).info("OpenClaw MCP info listening on %s:%s", host, mp)
+    except Exception:
+        logging.getLogger(__name__).exception("OpenClaw servers failed to start; continuing without them")
+
+
+threading.Thread(target=_start_openclaw_servers, args=(app,), name="openclaw_boot", daemon=True).start()
+
 # Serve static files from webui_frontend
 # Check if React build exists, otherwise fall back to old HTML
 REACT_BUILD_DIR = os.path.join(WEBUI_FRONTEND_DIR, "dist")

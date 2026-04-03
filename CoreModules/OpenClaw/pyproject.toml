@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openclaw"
+version = "0.1.0"
+description = "ChironAI OpenClaw agent HTTP (OpenAI-style) + traces + vendor helpers"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["flask>=2.3", "requests>=2.28"]
+
+[tool.setuptools]
+packages = ["openclaw"]
+
+[project.scripts]
+openclaw-serve = "openclaw.__main__:main"

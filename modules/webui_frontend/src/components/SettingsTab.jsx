@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getSettings, updateSettings, getRagCollections } from '../services/api';
-import ModelSettings from './ModelSettings';
+import { getSettings, updateSettings } from '../services/api';
 import './SettingsTab.css';
 
 const ACCENT_COLORS = [
@@ -18,7 +17,6 @@ const ACCENT_COLORS = [
 
 function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange }) {
   const [settings, setSettings] = useState({});
-  const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [localThemeMode, setLocalThemeMode] = useState(themeMode || 'system');
@@ -27,17 +25,7 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange }) {
 
   useEffect(() => {
     loadSettings();
-    loadCollections();
   }, []);
-
-  const loadCollections = async () => {
-    try {
-      const data = await getRagCollections().catch(() => ({ collections: [] }));
-      setCollections(data?.collections || []);
-    } catch (error) {
-      console.error('Failed to load collections:', error);
-    }
-  };
 
   useEffect(() => {
     if (themeMode) setLocalThemeMode(themeMode);
@@ -191,34 +179,6 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange }) {
               </div>
             </div>
           )}
-        </div>
-
-        <div className="settings-section">
-          <h3>RAG Settings</h3>
-          
-          <div className="form-group">
-            <label>RAG Collection</label>
-            <select
-              value={collections.length === 0 ? '' : (settings.rag_collection || (collections[0]?.name ?? ''))}
-              onChange={(e) => handleChange('rag_collection', e.target.value)}
-              disabled={collections.length === 0}
-            >
-              {collections.length === 0 ? (
-                <option value="">— No collections —</option>
-              ) : (
-                collections.map((col) => (
-                  <option key={col.name} value={col.name}>
-                    {col.name} ({col.points_count || 0} vectors)
-                  </option>
-                ))
-              )}
-            </select>
-            <div className="form-hint">
-              {collections.length === 0
-                ? 'No Qdrant collections. Create one in Crawler / RAG then come back.'
-                : 'Qdrant collection for RAG retrieval in main chat. If empty, first collection is used.'}
-            </div>
-          </div>
         </div>
 
         <div className="settings-section">

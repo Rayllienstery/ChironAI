@@ -31,6 +31,8 @@ import TemplateEditorTab from "./components/TemplateEditorTab";
 import DebugLogPanel from "./components/DebugLogPanel";
 import ProxyTraceTab from "./components/ProxyTraceTab";
 import ProxyV2Tab from "./components/ProxyV2Tab";
+import ClawOpenAITab from "./components/ClawOpenAITab";
+import ClawMcpTab from "./components/ClawMcpTab";
 import Card from "./components/Card";
 import {
   getSession,
@@ -318,6 +320,8 @@ function App() {
     { id: "llm-proxy", label: "LLM Proxy" },
     { id: "proxy-trace", label: "Proxy Trace" },
     { id: "proxy-v2", label: "Proxy V2" },
+    { id: "claw-openai", label: "Claw OpenAI" },
+    { id: "claw-mcp", label: "Claw MCP" },
     { id: "logs", label: "Logs" },
     { id: "rag", label: "RAG / Qdrant" },
     { id: "crawler", label: "Crawler / Indexer" },
@@ -338,6 +342,10 @@ function App() {
         return <ProxyTraceTab />;
       case "proxy-v2":
         return <ProxyV2Tab />;
+      case "claw-openai":
+        return <ClawOpenAITab />;
+      case "claw-mcp":
+        return <ClawMcpTab />;
       case "logs":
         return <LogsTab sessionId={sessionId} />;
       case "testing":

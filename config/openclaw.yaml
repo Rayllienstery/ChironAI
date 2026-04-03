@@ -1,0 +1,26 @@
+## OpenClaw — agent HTTP (OpenAI-compatible) + optional MCP info port + vendor claw-code
+##
+## Env overrides (examples):
+##   OPENCLAW_ENABLED=0
+##   OPENCLAW_OPENAI_PORT=8082
+##   OPENCLAW_MCP_PORT=8083
+##   OPENCLAW_MAX_AGENT_STEPS=16
+##   OPENCLAW_GITHUB_OWNER=ultraworkers
+##   OPENCLAW_GITHUB_REPO=claw-code-parity
+##   CHIRONAI_WEBUI_DIR — WebUI folder for RAG wiring (default: <repo>/WebUI)
+
+openclaw:
+  enabled: true
+  host: "0.0.0.0"
+  openai_port: 8082
+  mcp_port: 8083
+  mcp_http_enabled: true
+  max_agent_steps: 12
+  request_timeout_seconds: 300
+  logical_model_id: "OpenClaw-Agent"
+  trace_buffer_size: 80
+  vendor:
+    github_owner: "ultraworkers"
+    github_repo: "claw-code-parity"
+    branch: "main"
+    root_relative: "vendor/claw-code"

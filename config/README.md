@@ -13,7 +13,8 @@ config/
 ├── crawler.yaml      # Web crawling concurrency, timeouts, path filters
 ├── indexing.yaml     # Content filtering, chunking, embedding batch sizes
 ├── models.yaml       # Ollama endpoints, model names, generation options
-└── server.yaml       # Flask server host/port, Qdrant connection
+├── server.yaml       # Flask server host/port, Qdrant connection
+└── openclaw.yaml     # OpenClaw agent HTTP (8082), MCP info (8083), vendor GitHub
 ```
 
 ## Usage

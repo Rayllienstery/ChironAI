@@ -113,19 +113,20 @@
   --md-sys-color-error-container: #93000A;
   --md-sys-color-on-error-container: #FFDAD6;
   
-  --md-sys-color-surface: #1C1B1F;
+  /* Background darker than surface so cards (surface) read clearly */
+  --md-sys-color-surface: #2C2A33;
   --md-sys-color-on-surface: #E6E1E5;
   --md-sys-color-surface-tint-neutral: #49454F;
   --md-sys-color-on-surface-variant: #CAC4D0;
-  --md-sys-color-surface-container: #211F26;
-  --md-sys-color-surface-container-high: #2B2930;
-  --md-sys-color-surface-container-low: #1D1B20;
-  --md-sys-color-surface-container-lowest: #1C1B1F;
+  --md-sys-color-surface-container: #34323C;
+  --md-sys-color-surface-container-high: #3D3A45;
+  --md-sys-color-surface-container-low: #25232B;
+  --md-sys-color-surface-container-lowest: #1A181E;
   
   --md-sys-color-outline: #938F99;
-  --md-sys-color-outline-variant: #49454F;
+  --md-sys-color-outline-variant: #5E5966;
   
-  --md-sys-color-background: #1C1B1F;
+  --md-sys-color-background: #121014;
   --md-sys-color-on-background: #E6E1E5;
   
   --md-sys-elevation-level1: 0px 1px 3px 0px rgba(0, 0, 0, 0.3), 0px 4px 8px 3px rgba(0, 0, 0, 0.15);

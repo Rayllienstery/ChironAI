@@ -51,6 +51,10 @@ html, body {
   box-shadow: var(--app-card-box-shadow, var(--md-sys-elevation-level1)) !important;
 }
 
+:root.theme-dark .app-card {
+  border: 1px solid var(--md-sys-color-outline-variant) !important;
+}
+
 .app-card--interactive {
   cursor: pointer;
 }
@@ -317,5 +321,30 @@ md-tabs {
 :root.theme-dark .rag-button {
   border: 1px solid var(--md-sys-color-background) !important;
   color: var(--md-sys-color-background) !important;
+}
+
+/*
+ * Single-choice <select>: replace the native dropdown glyph (often flush-right on Windows)
+ * with a theme-colored chevron inset from the trailing edge.
+ */
+select:not([multiple]):not([size]) {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-inline-end: 2.75rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath fill='%2349454F' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1.125rem 1.125rem;
+  cursor: pointer;
+}
+
+:root.theme-dark select:not([multiple]):not([size]) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath fill='%23CAC4D0' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+}
+
+select:not([multiple]):not([size]):disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 

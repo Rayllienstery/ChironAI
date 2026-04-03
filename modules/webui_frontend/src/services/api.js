@@ -1004,3 +1004,86 @@ export async function updateCrawlerSource(sourceId, sourceConfig) {
   return response.json();
 }
 
+// --- OpenClaw (optional Core Module) ---
+const OPENCLAW_BASE = `${API_BASE}/openclaw`;
+
+export async function getOpenclawStatus() {
+  const response = await fetch(`${OPENCLAW_BASE}/status`);
+  if (!response.ok) {
+    throw new Error('Failed to get OpenClaw status');
+  }
+  return response.json();
+}
+
+export async function getOpenclawTraces(limit = 40) {
+  const response = await fetch(`${OPENCLAW_BASE}/traces?limit=${encodeURIComponent(limit)}`);
+  if (!response.ok) {
+    throw new Error('Failed to get OpenClaw traces');
+  }
+  return response.json();
+}
+
+export async function clearOpenclawTraces() {
+  const response = await fetch(`${OPENCLAW_BASE}/traces/clear`, { method: 'POST' });
+  if (!response.ok) {
+    throw new Error('Failed to clear traces');
+  }
+  return response.json();
+}
+
+export async function getOpenclawVendorMainSha() {
+  const response = await fetch(`${OPENCLAW_BASE}/vendor/main-sha`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return { ok: false, error: data.error || 'request failed' };
+  }
+  return data;
+}
+
+export async function getOpenclawVendorVersions() {
+  const response = await fetch(`${OPENCLAW_BASE}/vendor/versions`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return { ok: false, versions: [] };
+  }
+  return data;
+}
+
+export async function syncOpenclawVendor() {
+  const response = await fetch(`${OPENCLAW_BASE}/vendor/sync`, { method: 'POST' });
+  const data = await response.json().catch(() => ({}));
+  return data;
+}
+
+export async function rollbackOpenclawVendor(sha) {
+  const response = await fetch(`${OPENCLAW_BASE}/vendor/rollback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sha }),
+  });
+  const data = await response.json().catch(() => ({}));
+  return data;
+}
+
+export async function getOpenclawSettings() {
+  const response = await fetch(`${OPENCLAW_BASE}/settings`);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to get OpenClaw settings');
+  }
+  return response.json();
+}
+
+export async function updateOpenclawSettings(settings) {
+  const response = await fetch(`${OPENCLAW_BASE}/settings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Failed to update OpenClaw settings');
+  }
+  return data;
+}
+

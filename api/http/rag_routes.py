@@ -108,6 +108,13 @@ def create_app(
 
     app.register_blueprint(webui_bp)
 
+    try:
+        from api.http.openclaw_webui import register_openclaw_webui
+
+        register_openclaw_webui(app)
+    except ImportError:
+        pass
+
     return app
 
 
