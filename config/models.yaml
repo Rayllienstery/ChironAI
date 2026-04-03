@@ -19,8 +19,8 @@ ollama:
   chat_url: "http://localhost:11434/api/chat"
   generate_url: "http://localhost:11434/api/generate"
   embed_url: "http://localhost:11434/api/embed"
-  chat_model: "danielsheep/gpt-oss-20b-unsloth:UD-Q6_K_XL"
-  rerank_model: "danielsheep/gpt-oss-20b-unsloth:UD-Q6_K_XL"
+  chat_model: ""
+  rerank_model: ""
   embed_model: "mxbai-embed-large"
   timeout_seconds: 300
   embed_timeout_seconds: 180

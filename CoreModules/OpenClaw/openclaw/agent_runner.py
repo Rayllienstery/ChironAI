@@ -99,6 +99,33 @@ def run_openclaw_chat_completion(
     except Exception:
         configured = ""
     ollama_model = configured or params.model_name
+    if not str(ollama_model or "").strip():
+        # Configuration error: no concrete Ollama model selected for OpenClaw.
+        err_msg = "No default Ollama model configured for OpenClaw. Select one in Claw OpenAI tab."
+        if trace_callback is not None:
+            trace_callback(
+                {
+                    "trace_id": str(uuid.uuid4()),
+                    "ts_ms": int(time.time() * 1000),
+                    "logical_model_id": logical_model_id,
+                    "resolved_model": "",
+                    "elapsed_ms": 0,
+                    "steps": [
+                        {"kind": "config_error", "step": 0, "ok": False, "error": err_msg}
+                    ],
+                    "step_count": 1,
+                    "total_prompt_tokens_est": 0,
+                    "total_completion_tokens_est": 0,
+                    "final": True,
+                    "error": err_msg,
+                }
+            )
+        return {
+            "error": {
+                "message": err_msg,
+                "type": "model_not_configured",
+            }
+        }, 400
     requested = body.get("model")
     use_model = ollama_model
     if isinstance(requested, str) and requested.strip() and requested.strip() != logical_model_id:

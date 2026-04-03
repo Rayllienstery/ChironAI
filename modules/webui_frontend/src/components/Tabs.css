@@ -1,35 +1,87 @@
+/* Top-level tabs bar */
 .tabs-container {
-  background: var(--md-sys-color-surface);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  box-shadow: var(--md-sys-elevation-level1);
+  width: 100%;
+  background: var(--app-tabs-container-bg);
+  border-bottom: 1px solid var(--app-tabs-border-color);
+  box-shadow: var(--app-tabs-shadow);
 }
 
 .tabs {
   display: flex;
-  gap: 0;
-  padding: 0 var(--md-sys-spacing-md);
+  flex-wrap: wrap;
+  row-gap: var(--app-tabs-row-gap);
+  column-gap: var(--app-tabs-column-gap);
+  padding-inline: var(--app-tabs-padding-inline);
+  padding-block: var(--app-tabs-padding-block);
+  margin: 0 auto;
+  max-width: var(--app-page-max-width);
 }
 
 .tab {
-  padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: var(--app-tab-min-width);
+  max-width: var(--app-tab-max-width);
+  padding-inline: var(--app-tab-padding-inline);
+  padding-block: var(--app-tab-padding-block);
   background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
-  font: var(--md-sys-typescale-label-large-font);
-  color: var(--md-sys-color-on-surface-variant);
+  border-radius: var(--app-tab-radius) var(--app-tab-radius) 0 0;
+  border-bottom: var(--app-tab-indicator-height) solid transparent;
+  font: var(--app-tab-label-font);
+  color: var(--app-tab-label-color);
   cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
+  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+  flex: 1 1 auto;
 }
 
 .tab:hover {
-  background: var(--md-sys-color-surface-tint-neutral);
-  color: var(--md-sys-color-on-surface);
+  background-color: var(--app-tab-hover-bg);
+  color: var(--app-tab-label-color-hover);
 }
 
 .tab.active {
-  color: var(--md-sys-color-primary);
-  border-bottom-color: var(--md-sys-color-primary);
+  color: var(--app-tab-label-color-active);
+  border-bottom-color: var(--app-tab-indicator-color);
   font-weight: 500;
 }
 
+.tab-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-error-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background-color: var(--app-tab-error-badge-bg);
+  color: var(--app-tab-error-badge-color);
+  font: var(--md-sys-typescale-label-small-font);
+}
+
+/* Waterfall / responsive tweaks */
+@media (max-width: 960px) {
+  .tabs {
+    padding-inline: var(--md-sys-spacing-md);
+  }
+
+  .tab {
+    flex: 1 1 45%;
+  }
+}
+
+@media (max-width: 640px) {
+  .tab {
+    flex: 1 1 100%;
+    padding-inline: var(--md-sys-spacing-md);
+  }
+}

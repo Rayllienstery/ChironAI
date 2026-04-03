@@ -78,6 +78,43 @@
   /* Pill buttons (was missing → invalid border-radius and square corners) */
   --md-sys-shape-corner-full: 9999px;
 
+  /* Application-level layout tokens */
+  --app-page-max-width: 1280px;
+
+  /*
+   * Tabs / top navigation
+   * These tokens form the public API for all tab-like navigation components.
+   * Components MUST use only these variables for colors, spacings and radii.
+   */
+  --app-tabs-container-bg: var(--md-sys-color-surface);
+  --app-tabs-border-color: var(--md-sys-color-outline-variant);
+  --app-tabs-shadow: var(--md-sys-elevation-level1);
+
+  --app-tabs-row-gap: var(--md-sys-spacing-xs);
+  --app-tabs-column-gap: 0;
+  --app-tabs-padding-inline: var(--md-sys-spacing-lg);
+  --app-tabs-padding-block: 0;
+
+  --app-tab-padding-inline: var(--md-sys-spacing-lg);
+  --app-tab-padding-block: var(--md-sys-spacing-md);
+  --app-tab-min-width: 96px;
+  --app-tab-max-width: 260px;
+  --app-tab-radius: var(--md-sys-shape-corner-large);
+
+  --app-tab-label-font: var(--md-sys-typescale-label-large-font);
+  --app-tab-label-color: var(--md-sys-color-on-surface-variant);
+  --app-tab-label-color-hover: var(--md-sys-color-on-surface);
+  --app-tab-label-color-active: var(--md-sys-color-primary);
+
+  --app-tab-indicator-height: 2px;
+  --app-tab-indicator-color: var(--md-sys-color-primary);
+
+  --app-tab-hover-bg: var(--md-sys-color-surface-tint-neutral);
+
+  --app-tab-error-indicator-color: var(--md-sys-color-error);
+  --app-tab-error-badge-bg: color-mix(in srgb, var(--md-sys-color-error) 10%, transparent);
+  --app-tab-error-badge-color: var(--md-sys-color-error);
+
   /* Neutral fill without M3 surface-variant lavender (hue follows on-surface + surface only) */
   --md-sys-color-surface-tint-neutral: color-mix(
     in srgb,

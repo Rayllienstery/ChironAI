@@ -12,7 +12,7 @@ import {
 } from '../services/api';
 import './SettingsTab.css';
 
-function ClawOpenAITab() {
+function ClawOpenAITab({ onModelStatusChange }) {
   const [status, setStatus] = useState(null);
   const [traces, setTraces] = useState([]);
   const [mainSha, setMainSha] = useState(null);
@@ -35,8 +35,16 @@ function ClawOpenAITab() {
         if (v.ok) setVersions(v.versions || []);
       }
       if (settings?.ok) {
-        setAvailableModels(settings.available_models || []);
-        setDefaultModel(settings.default_model || '');
+        const models = settings.available_models || [];
+        const def = settings.default_model || '';
+        setAvailableModels(models);
+        setDefaultModel(def);
+        if (typeof onModelStatusChange === 'function') {
+          const inList = Boolean(def && models.some((m) => m.id === def || m.name === def));
+          onModelStatusChange(!inList);
+        }
+      } else if (typeof onModelStatusChange === 'function') {
+        onModelStatusChange(true);
       }
     } catch (e) {
       setErr(String(e.message || e));

@@ -136,13 +136,12 @@ def get_ollama_embed_url() -> str:
 
 
 def get_ollama_chat_model() -> str:
-    """Return chat model name, allowing env override."""
-    return os.getenv(
-        "OLLAMA_CHAT_MODEL",
-        OLLAMA_CONFIG.get(
-            "chat_model", "danielsheep/gpt-oss-20b-unsloth:UD-Q6_K_XL"
-        ),
-    )
+    """Return chat model name, allowing env override. Empty string means 'not configured'."""
+    env_val = os.getenv("OLLAMA_CHAT_MODEL")
+    if env_val is not None:
+        return env_val.strip()
+    raw = OLLAMA_CONFIG.get("chat_model", "")
+    return str(raw).strip()
 
 
 def get_ollama_embed_model() -> str:

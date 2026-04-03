@@ -3,7 +3,7 @@ import { getModels, getPrompts, getModelSettings, updateModelSettings, getRagCol
 import { isLogicalRagModelId } from '../constants/llmProxyModels';
 import './ModelSettings.css';
 
-function ModelSettings({ sessionId, onOpenRagModels }) {
+function ModelSettings({ sessionId, onOpenRagModels, onModelStatusChange }) {
   const [models, setModels] = useState([]);
   const [prompts, setPrompts] = useState([]);
   const [collections, setCollections] = useState([]);
@@ -119,6 +119,16 @@ function ModelSettings({ sessionId, onOpenRagModels }) {
 
     return issues;
   }, [settings, modelIds, promptNames, collectionNames]);
+
+  useEffect(() => {
+    if (typeof onModelStatusChange === 'function') {
+      const m = (settings.model || '').trim();
+      const modelInList = Boolean(m && modelIds.includes(m));
+      const modelInvalid =
+        !m || isLogicalRagModelId(m) || (modelIds.length > 0 && !modelInList);
+      onModelStatusChange(modelInvalid);
+    }
+  }, [onModelStatusChange, settings.model, modelIds]);
 
   const handleChange = (field, value) => {
     setSettings((prev) => {

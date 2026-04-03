@@ -11,7 +11,7 @@ const SUB_TABS = [
   { id: 'web-interaction', label: 'Web Interaction' },
 ];
 
-function LlmProxyTab({ onOpenRagModels, onOpenLogs }) {
+function LlmProxyTab({ onOpenRagModels, onOpenLogs, onModelStatusChange }) {
   const [subTab, setSubTab] = useState('overview');
 
   return (
@@ -157,7 +157,10 @@ function LlmProxyTab({ onOpenRagModels, onOpenLogs }) {
 
           <div className="settings-section">
             <h3>Model Settings</h3>
-            <ModelSettings onOpenRagModels={onOpenRagModels} />
+            <ModelSettings
+              onOpenRagModels={onOpenRagModels}
+              onModelStatusChange={onModelStatusChange}
+            />
           </div>
         </div>
       )}

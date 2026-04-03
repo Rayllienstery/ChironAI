@@ -101,6 +101,7 @@ function App() {
   const [ragTestRunProgress, setRagTestRunProgress] = useState(null);
   const [ragTestRunResults, setRagTestRunResults] = useState([]);
   const [ragTestRunError, setRagTestRunError] = useState(null);
+  const [tabErrors, setTabErrors] = useState({});
   const [themeMode, setThemeMode] = useState("system");
   const [lightAccent, setLightAccent] = useState("purple");
   const [darkAccent, setDarkAccent] = useState("cyan");
@@ -343,7 +344,13 @@ function App() {
       case "proxy-v2":
         return <ProxyV2Tab />;
       case "claw-openai":
-        return <ClawOpenAITab />;
+        return (
+          <ClawOpenAITab
+            onModelStatusChange={(hasError) =>
+              setTabErrors((prev) => ({ ...prev, "claw-openai": hasError }))
+            }
+          />
+        );
       case "claw-mcp":
         return <ClawMcpTab />;
       case "logs":
@@ -361,6 +368,9 @@ function App() {
             runError={ragTestRunError}
             onStartRun={handleRagTestRunStart}
             onCancelRun={handleRagTestRunCancel}
+            onClawOpenAiModelStatusChange={(hasError) =>
+              setTabErrors((prev) => ({ ...prev, "claw-openai": hasError }))
+            }
           />
         );
       case "rag":
@@ -380,6 +390,9 @@ function App() {
               setScrollToRagModelsSection(true);
             }}
             onOpenLogs={() => setActiveTab("logs")}
+            onModelStatusChange={(hasError) =>
+              setTabErrors((prev) => ({ ...prev, "llm-proxy": hasError }))
+            }
           />
         );
       case "template-editor":
@@ -730,7 +743,7 @@ function App() {
         )}
       </header>
 
-      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} tabErrors={tabErrors} />
 
       <main className="app-main">
         {sessionId ? (
