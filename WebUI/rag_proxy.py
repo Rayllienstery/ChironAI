@@ -22,7 +22,7 @@ if _ROOT_DIR not in sys.path:
 
 from flask import send_from_directory
 
-from config import get_log_level, get_server_host, get_server_port
+from config import get_log_level, get_server_port
 from api.http.rag_routes import create_app
 
 logging.basicConfig(

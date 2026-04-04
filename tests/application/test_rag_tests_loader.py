@@ -4,10 +4,8 @@ Unit tests for application.rag_tests.loader.
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
-import pytest
 
 from application.rag_tests.loader import (
     get_rag_tests_root,

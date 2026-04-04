@@ -4,7 +4,6 @@ Unit tests for domain.services.markdown_meta.
 
 from __future__ import annotations
 
-import pytest
 
 from domain.services.markdown_meta import parse_and_strip_meta_block
 

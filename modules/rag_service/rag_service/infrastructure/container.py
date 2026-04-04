@@ -6,9 +6,7 @@ Builds default infrastructure implementations. Requires project root on PYTHONPA
 
 from __future__ import annotations
 
-import os
 
-from rag_service.domain.ports import ChatLLMClient, EmbeddingProvider, RagRepository, RerankClient
 from rag_service.infrastructure.ollama_chat import OllamaChatClient
 from rag_service.infrastructure.ollama_embedding import OllamaEmbeddingProvider
 from rag_service.infrastructure.ollama_rerank import OllamaRerankClient

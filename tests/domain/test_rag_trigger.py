@@ -7,7 +7,6 @@ API signature, file extension, technical phrases (strong/weak), greeting + short
 
 from __future__ import annotations
 
-import pytest
 
 from domain.services.rag_trigger import (
     RAG_TRIGGER_THRESHOLD,

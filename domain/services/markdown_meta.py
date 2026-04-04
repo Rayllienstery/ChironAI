@@ -7,7 +7,6 @@ and parse into structured payload (url, framework, doc_kind, availability).
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 

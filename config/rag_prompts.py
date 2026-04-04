@@ -9,7 +9,6 @@ Used by rag_proxy (HTTP), rag_client (CLI), and api/http/rag_routes.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 # Project root (parent of config/)

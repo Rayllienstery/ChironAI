@@ -1,4 +1,3 @@
-import json
 import sqlite3
 
 conn = sqlite3.connect("logs/webui.db")

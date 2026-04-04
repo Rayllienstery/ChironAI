@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from crawler_service.domain.entities import CrawlResult, CrawlSource
-from crawler_service.domain.errors import CrawlError
-from crawler_service.domain.ports import CrawlRunner
 
 
 class PlaywrightCrawler:

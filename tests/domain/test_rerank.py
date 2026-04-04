@@ -4,7 +4,6 @@ Unit tests for domain.services.rerank.
 
 from __future__ import annotations
 
-import pytest
 
 from domain.services.rerank import (
     apply_rerank_scores_and_cut,

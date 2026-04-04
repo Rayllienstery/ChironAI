@@ -1,6 +1,5 @@
 """Tests for md_ingestion_service.domain.services.filtering."""
 
-import pytest
 
 from md_ingestion_service.domain.entities import FilterRule, MarkdownFile
 from md_ingestion_service.domain.services.filtering import apply_filter, default_filter_rule

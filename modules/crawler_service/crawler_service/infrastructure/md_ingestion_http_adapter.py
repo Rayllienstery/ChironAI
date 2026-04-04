@@ -8,7 +8,6 @@ from typing import Any
 import requests
 
 from crawler_service.domain.entities import CrawlResult
-from crawler_service.domain.ports import MdIngestionClient
 
 MD_INGESTION_URL = os.getenv("MD_INGESTION_SERVICE_URL", "http://localhost:5002")
 

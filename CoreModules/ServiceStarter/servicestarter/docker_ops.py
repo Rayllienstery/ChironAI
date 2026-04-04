@@ -66,7 +66,6 @@ def wait_for_docker_engine(
         return True, "docker engine ready"
 
     if start_desktop_on_windows:
-        import os
         import sys
 
         if sys.platform == "win32":

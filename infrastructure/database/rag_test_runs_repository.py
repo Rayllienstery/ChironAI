@@ -217,7 +217,6 @@ class RagTestRunsRepository:
                     continue
                 for t in tests:
                     framework = (t.get("framework") or "").strip()
-                    platform = (t.get("platform") or "").strip()
                     difficulty = (t.get("difficulty") or "").strip() or "unknown"
                     status = (t.get("status") or "").upper()
                     if framework.lower() in ("swiftui", "uikit"):

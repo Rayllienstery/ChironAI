@@ -8,7 +8,6 @@ Used by rag_client.py and api.http.rag_routes so both share the same logic.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import NamedTuple
 

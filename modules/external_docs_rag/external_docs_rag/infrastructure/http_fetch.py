@@ -6,7 +6,7 @@ Uses only public HTTP(S); no paid APIs.
 from __future__ import annotations
 
 import re
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
 from external_docs_rag.domain.entities import FetchedDocument
 

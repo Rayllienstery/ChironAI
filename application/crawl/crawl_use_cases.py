@@ -16,7 +16,7 @@ from domain.entities.crawl import CrawlSource
 def run_crawl_all_sources(
     sources: list[CrawlSource],
     crawl_fn: Callable[[str], Any],
-    markdown_store: Any,  # MarkdownStore - kept as Any for now as this is a stub
+    _markdown_store: Any,  # MarkdownStore - reserved for future wiring
 ) -> str:
     """
     Crawl all sources and update markdown store.

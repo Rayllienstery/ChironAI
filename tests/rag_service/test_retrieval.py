@@ -1,6 +1,5 @@
 """Tests for rag_service.domain.services.retrieval."""
 
-import pytest
 
 from rag_service.domain.services.retrieval import (
     is_version_question,

@@ -1,8 +1,7 @@
 """Tests for crawler_service.domain.entities."""
 
-import pytest
 
-from crawler_service.domain.entities import CrawlSource, crawl_source_from_dict
+from crawler_service.domain.entities import crawl_source_from_dict
 
 
 def test_crawl_source_from_dict() -> None:

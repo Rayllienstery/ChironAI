@@ -4,7 +4,6 @@ Unit tests for domain.services.metadata_inference.
 
 from __future__ import annotations
 
-import pytest
 
 from domain.services.metadata_inference import extract_versions, infer_metadata
 

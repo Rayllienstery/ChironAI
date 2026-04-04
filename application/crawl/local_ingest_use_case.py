@@ -14,8 +14,8 @@ def ingest_markdown_folder(
     markdown_dir: str,
     source_id: str,
     embed_provider: Any,  # EmbeddingProvider - kept as Any for now as this is a stub
-    index_writer: Any,  # Index writer interface - kept as Any for now as this is a stub
-    chunking_service: Any,  # Chunking service - kept as Any for now as this is a stub
+    _index_writer: Any,  # Index writer interface - reserved for future wiring
+    _chunking_service: Any,  # Chunking service - reserved for future wiring
     metadata_inference: Any,  # Metadata inference - kept as Any for now as this is a stub
 ) -> dict[str, Any]:
     """

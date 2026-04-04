@@ -13,7 +13,7 @@ import uuid
 
 from flask import Flask, Response, jsonify, request
 
-from rag_service.application.params import RAGDependencies, get_rag_answer_params
+from rag_service.application.params import get_rag_answer_params
 from rag_service.application.use_cases import (
     answer_question,
     build_rag_context,
@@ -44,7 +44,6 @@ def create_app(
     context_total_chars = params.context_total_chars
     confidence_threshold = params.confidence_threshold
     ollama_model = params.model_name
-    log_preview = params.log_preview_chars
     rag_repo = deps.rag_repo
     embed_provider = deps.embed_provider
     rerank_client = deps.rerank_client

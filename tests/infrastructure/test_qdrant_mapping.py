@@ -4,7 +4,6 @@ Focused tests for Qdrant payload structure and search request shape.
 
 from __future__ import annotations
 
-import pytest
 
 
 def test_qdrant_search_body_shape() -> None:

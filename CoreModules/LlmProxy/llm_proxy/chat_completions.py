@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
 import time
 import uuid
@@ -236,7 +235,6 @@ def run_chat_completions(
     start_time = time.time()
     user_query = ""
     rag_context_data = None
-    response_content = ""
     latency_ms = 0
     prompt_tokens_approx = 0
     completion_tokens_approx = 0
@@ -1170,7 +1168,7 @@ def run_chat_completions(
             streamed_content = chat_client.chat(
                 ollama_messages, use_model, stream=False, options=None, think=ollama_think
             )
-        except Exception as e:
+        except Exception:
             # Retry once with compact context; large prompts can trigger Ollama 500 on some models.
             compact_messages: list[dict[str, object]] = []
             if ollama_messages:
@@ -1354,7 +1352,7 @@ def run_chat_completions(
                 
                 try:
                     session_manager = w.get_session_manager()
-                    session = session_manager.get_or_create_session("proxy")
+                    session_manager.get_or_create_session("proxy")
                     logs_repo = w.get_logs_repository()
                     log_metadata = {
                         "user_query": user_query[:500],
@@ -1515,7 +1513,7 @@ def run_chat_completions(
     # Persist trace for non-stream requests
     try:
         session_manager = w.get_session_manager()
-        session = session_manager.get_or_create_session("proxy")
+        session_manager.get_or_create_session("proxy")
         logs_repo = w.get_logs_repository()
         log_metadata = {
             "user_query": user_query[:500],

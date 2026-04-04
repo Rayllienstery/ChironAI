@@ -1,4 +1,4 @@
-"""
+r"""
 Ingest local Markdown files (e.g. from Apple-Developer-Documentation-Offline-Archive)
 into Qdrant: semantic chunk (domain.services.chunking) -> embed (Ollama) -> upsert.
 

@@ -10,7 +10,6 @@ Returns (score, signals, triggered) for structured logging.
 from __future__ import annotations
 
 import re
-from typing import Any
 
 try:
     from config import get_retrieval_int, get_retrieval_list

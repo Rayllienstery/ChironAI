@@ -1,8 +1,7 @@
-from flask import Flask, request, Response
+from flask import Flask
 import os
 import re
 import sys
-import threading
 
 # Project root (for domain/config) when running from WebUI.
 _ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1550,7 +1549,7 @@ def crawl_source(source: dict, dry_run: bool = False) -> None:
             continue
         
         # Process the result
-        processed = process_single_page(result, is_callback=False)
+        process_single_page(result, is_callback=False)
         cli_progress(f"Crawl {source_id}", i, total)
 
     if not dry_run:

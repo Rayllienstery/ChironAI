@@ -4,7 +4,6 @@ Unit tests for application.rag.use_cases with mocked ports.
 
 from __future__ import annotations
 
-import pytest
 
 from application.rag.use_cases import build_rag_context, prepare_ollama_messages, search_rag
 from domain.entities.rag import RagContext, RagQuestionRequest

@@ -16,7 +16,6 @@ import sys
 import threading
 import time
 import uuid
-from subprocess import run, Popen
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -50,7 +49,7 @@ if _MD_INGESTION not in sys.path:
 
 from application.container import default_embed_provider, default_rerank_client
 from application.rag.collection_freshness import check_collection_freshness
-from application.rag.params import RAGDependencies, get_rag_answer_params
+from application.rag.params import get_rag_answer_params
 from application.rag.use_cases import build_rag_context, prepare_ollama_messages
 
 try:
@@ -93,7 +92,6 @@ from config import (
     get_default_rag_top_k,
     get_framework_collection_ttl_days,
     get_ollama_chat_model,
-    get_ollama_rerank_model,
     get_clawcode_host,
     get_clawcode_logical_model_id,
     get_clawcode_openai_port,
@@ -115,7 +113,6 @@ from config.rag_prompts import (
     list_rag_prompt_names,
     rag_prompt_file_exists,
     PROMPTS_DIR,
-    load_prompt,
 )
 
 # Trash directory for deleted prompts
@@ -200,7 +197,6 @@ from api.http.proxy_trace import get_current_trace, get_current_trace_updated_at
 import requests
 
 from infrastructure.ollama.cli_runner import (
-    OllamaInteractorCliError,
     invoke_embed,
     invoke_ping,
     invoke_tags,
@@ -208,18 +204,14 @@ from infrastructure.ollama.cli_runner import (
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import (
     Distance,
-    PointIdsList,
     PointStruct,
     PayloadSchemaType,
     SparseVectorParams,
     VectorParams,
 )
-from qdrant_client.http.exceptions import ResponseHandlingException
 
 # Import domain services for indexing
 from domain.services.chunking import (
-    CHUNK_MAX_SIZE,
-    CHUNK_MIN_SIZE,
     chunk_quality_ok,
     split_markdown_into_chunks,
 )
@@ -260,7 +252,6 @@ except ImportError:
 import hashlib
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor
 import subprocess
 
 # In-memory buffer for dev console (last 50 requests)
@@ -1052,7 +1043,6 @@ def webui_chat() -> Any:
         
         rag_repo = deps.rag_repo
         embed_provider = deps.embed_provider
-        rerank_client = deps.rerank_client
         chat_client = deps.chat_client
 
         # Override embedding model per WebUI app_settings (rag_embed_model).
@@ -1546,7 +1536,6 @@ def tester_chat() -> Any:
             # Use RAG flow
             rag_repo = deps.rag_repo
             embed_provider = deps.embed_provider
-            rerank_client = deps.rerank_client
 
             # Override embedding model per WebUI app_settings (rag_embed_model).
             selected_embed_model = (settings_repo.get_app_setting("rag_embed_model") or "").strip()
@@ -3198,7 +3187,6 @@ def _create_collection_from_sources(
                 on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
             continue
 
-        chunk_texts = [t for t, _ in chunks_with_paths]
         embed_texts = [
             build_embed_prefix(page_meta, sp) + t
             for t, sp in chunks_with_paths
@@ -4364,7 +4352,6 @@ def get_crawl_status(source_id: str) -> Any:
 def _load_sources_config() -> list[dict]:
     """Load sources from config/sources.yaml."""
     try:
-        from pathlib import Path
         import yaml
         
         config_path = os.path.join(_ROOT, "config", "sources.yaml")
@@ -4383,7 +4370,6 @@ def _load_sources_config() -> list[dict]:
 def _save_sources_config(sources: list[dict]) -> bool:
     """Save sources to config/sources.yaml. Returns True on success."""
     try:
-        from pathlib import Path
         import yaml
         
         config_path = os.path.join(_ROOT, "config", "sources.yaml")
@@ -4633,8 +4619,6 @@ def create_collection() -> Any:
         source_ids = body.get("source_ids", [])
         chunk_max_size = int(body.get("chunk_max_size", 1200))
         chunk_min_size = int(body.get("chunk_min_size", 300))
-        confidence_threshold = float(body.get("confidence_threshold", 0.75))
-        top_k = int(body.get("top_k", 4))
         embed_model_raw = str(body.get("rag_embed_model") or "").strip()
         embed_model = embed_model_raw or None
 
@@ -4656,7 +4640,6 @@ def create_collection() -> Any:
         except Exception:
             pass
 
-        sources_dir = _get_crawler_sources_dir()
         available_sources = []
         for source_id in source_ids:
             meta = _load_source_meta(source_id)

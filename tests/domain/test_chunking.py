@@ -7,7 +7,6 @@ from __future__ import annotations
 import pytest
 
 from domain.services.chunking import (
-    CHUNK_OVERLAP,
     chunk_quality_ok,
     split_markdown_into_chunks,
     _is_heading_only_chunk,
@@ -71,6 +70,7 @@ class TestSplitMarkdownIntoChunks:
         chunks_with_overlap = split_markdown_into_chunks(
             md, max_chunk_size=150, min_chunk_size=20, chunk_overlap=30
         )
+        assert len(chunks_no_overlap) >= 1
         assert len(chunks_with_overlap) >= 2
         for text, path in chunks_with_overlap:
             assert isinstance(text, str) and len(text) >= 1

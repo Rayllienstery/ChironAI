@@ -34,7 +34,6 @@ except ImportError:
         if not md:
             return []
         max_sz = max_chunk_size or CHUNK_MAX_SIZE
-        min_sz = min_chunk_size or CHUNK_MIN_SIZE
         paragraphs = [p.strip() for p in md.split("\n\n") if p.strip()]
         chunks: list[tuple[str, list[str]]] = []
         current: list[str] = []

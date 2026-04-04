@@ -11,7 +11,6 @@ from typing import Any, Callable
 
 from application.rag.params import RAGAnswerParams, RAGDependencies, get_rag_answer_params
 from application.rag.use_cases import build_rag_context
-from domain.entities.rag import RagQuestionRequest
 from infrastructure.database import get_settings_repository
 from infrastructure.ollama.chat_client import normalize_ollama_chat_options
 from infrastructure.ollama.openai_ollama_tool_bridge import (
@@ -233,7 +232,6 @@ def run_clawcode_chat_completion(
 
     # Some clients (e.g. editors) always send stream=true for OpenAI-compatible APIs.
     # ClawCode currently returns a single non-streaming completion; ignore the flag for now.
-    stream = bool(body.get("stream"))
 
     # ClawCode-specific app_settings (collection + default Ollama model).
     configured = ""

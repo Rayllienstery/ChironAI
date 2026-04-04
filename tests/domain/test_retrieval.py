@@ -4,7 +4,6 @@ Unit tests for domain.services.retrieval.
 
 from __future__ import annotations
 
-import pytest
 
 from domain.services.retrieval import (
     build_qdrant_filter,

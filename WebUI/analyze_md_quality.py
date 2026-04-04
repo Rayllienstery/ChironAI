@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Analyze markdown files quality for RAG."""
-import os
 import re
 from pathlib import Path
 

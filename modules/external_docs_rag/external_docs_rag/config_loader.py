@@ -5,7 +5,6 @@ Load external_sources, rag_sources, and github_repos from YAML config.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from typing import Any
 
 from external_docs_rag.domain.entities import ExternalSource, RagSourceConfig

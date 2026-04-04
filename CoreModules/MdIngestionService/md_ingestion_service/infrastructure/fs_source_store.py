@@ -7,7 +7,6 @@ from __future__ import annotations
 import os
 
 from md_ingestion_service.domain.entities import MarkdownFile
-from md_ingestion_service.domain.ports import SourceStore
 
 
 class FsSourceStore:

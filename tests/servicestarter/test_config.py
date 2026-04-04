@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 
 import pytest
 
@@ -22,7 +21,8 @@ def clean_ollama_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(k, raising=False)
 
 
-def test_default_ollama_port_11343(clean_ollama_env: None) -> None:
+@pytest.mark.usefixtures("clean_ollama_env")
+def test_default_ollama_port_11343() -> None:
     cfg = ServiceStarterConfig.from_env()
     assert ":11343" in cfg.ollama_base_url or cfg.ollama_base_url.endswith("11343")
     assert "11343" in cfg.ollama_listen

@@ -15,7 +15,6 @@ from external_docs_rag.domain.entities import (
     IngestResult,
     RagContext,
     RagSourceConfig,
-    VersionConstraint,
 )
 from external_docs_rag.domain.ports import ChunkSink, EmbeddingPort, FetchClient, RagSearchPort
 from external_docs_rag.domain.services.chunking import chunk_quality_ok, split_markdown_into_chunks
@@ -24,10 +23,8 @@ from external_docs_rag.domain.services.context_ordering import (
     wants_version_or_requirements,
 )
 from external_docs_rag.domain.services.framework_candidates import (
-    ParsedFrameworkQuery,
     extract_candidate_framework_names,
     extract_framework_version_pairs,
-    parse_framework_version_constraints,
 )
 from external_docs_rag.infrastructure.content_parser import parse_document_to_markdown
 from external_docs_rag.infrastructure.github_tree import list_markdown_raw_urls
@@ -422,8 +419,6 @@ def build_merged_rag_context(
     max_score = 0.0
     already_covered: set[str] = set()
 
-    # Resolve framework version constraints for version-aware external docs RAG
-    parsed_frameworks: list[ParsedFrameworkQuery] = parse_framework_version_constraints(question)
     version_pairs = extract_framework_version_pairs(question)
     ref_by_source_id: dict[str, str] = {}
     for name, version in version_pairs:

@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -23,6 +23,27 @@ share/python-wheels/
 *.egg
 MANIFEST
 .ruff_cache/
+
+# JavaScript / React / Vite (frontend)
+node_modules/
+**/node_modules/
+.npm/
+.pnpm-store/
+.pnpm-debug.log*
+
+# Vite cache (custom cacheDir or tooling defaults)
+.vite/
+**/.vite/
+
+# ESLint / Stylelint / TypeScript incremental
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+
+# Frontend tests & E2E output
+coverage/
+playwright-report/
+test-results/
 
 # Virtual environments
 venv/
@@ -75,6 +96,7 @@ tmp/
 temp/
 *.tmp
 .cache/
+reports/
 
 # OS files
 Thumbs.db

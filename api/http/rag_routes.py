@@ -24,14 +24,10 @@ _MODULES_EXT_RAG = os.path.join(_ROOT, "modules", "external_docs_rag")
 if _MODULES_EXT_RAG not in sys.path:
     sys.path.insert(0, _MODULES_EXT_RAG)
 
-from application.rag.collection_freshness import check_collection_freshness
 from application.rag.params import get_rag_answer_params
 from application.rag.use_cases import build_rag_context, prepare_ollama_messages
 from config.rag_prompts import get_rag_system_prompt, rag_prompt_file_exists
-from domain.entities.rag import RagContext, RagQuestionRequest
-from domain.services.prompt_builder import determine_reasoning_level, last_user_content
-from infrastructure.database import get_logs_repository, get_session_manager, get_settings_repository
-from infrastructure.logging.webui_error_logger import log_webui_error
+from infrastructure.database import get_settings_repository
 from llm_proxy import create_v1_blueprint
 
 try:

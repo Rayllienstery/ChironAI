@@ -934,7 +934,7 @@ def _paragraph_mentions_different_subject(text: str, current_scope: str) -> bool
     return False
 
 
-def _add_scope_markers_to_section(section: AppleDocSection, parent_h2_heading: Optional[str] = None) -> AppleDocSection:
+def _add_scope_markers_to_section(section: AppleDocSection, _parent_h2_heading: Optional[str] = None) -> AppleDocSection:
     """
     Add scope markers to paragraphs in H3 sections for conceptual_strategy documents.
     This improves retrieval precision by making the subject explicit.

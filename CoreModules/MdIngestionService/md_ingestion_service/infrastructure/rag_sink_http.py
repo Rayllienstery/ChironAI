@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from md_ingestion_service.domain.ports import OutputSink
 
 # Optional: use env RAG_SERVICE_URL for base URL of rag_service
 RAG_SERVICE_URL = os.getenv("RAG_SERVICE_URL", "http://localhost:5001")

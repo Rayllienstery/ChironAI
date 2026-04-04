@@ -37,6 +37,7 @@ dev = [
   "pytest-cov>=4.0.0",
   "import-linter>=2.0",
   "ruff>=0.8.0",
+  "vulture>=2.14",
 ]
 
 [project.scripts]
@@ -114,3 +115,32 @@ name = "domain_is_inner_layer"
 type = "forbidden"
 source_modules = ["domain"]
 forbidden_modules = ["application", "api", "infrastructure"]
+
+# Dead code scan: `python -m vulture` (reads paths/exclude from here; default --config pyproject.toml).
+[tool.vulture]
+min_confidence = 80
+paths = [
+  "application",
+  "api",
+  "config",
+  "domain",
+  "infrastructure",
+  "utils",
+  "CoreModules",
+  "WebUI",
+  "modules",
+  "scripts",
+  "tests",
+]
+exclude = [
+  "vendor",
+  "backups",
+  ".venv",
+  "venv",
+  "modules/webui_frontend",
+  "modules/open_webui",
+]
+ignore_decorators = [
+  "@*.route",
+  "@*.before_first_request",
+]
