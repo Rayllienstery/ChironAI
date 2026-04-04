@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import shutil
+import stat
 import subprocess
 import urllib.error
 import urllib.request
@@ -11,6 +14,46 @@ from pathlib import Path
 from typing import Any
 
 _LOG = logging.getLogger("openclaw.vendor")
+
+# Written after a successful materialize; avoids treating stripped trees as incomplete.
+_VENDOR_SNAPSHOT_MARKER = ".openclaw-vendor-snapshot"
+
+
+def _rmtree_onerror(func, path, _exc_info):
+    try:
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+    except OSError:
+        pass
+
+
+def _strip_vendor_git(dest: Path) -> None:
+    """Remove nested .git so the main repo is not a 'nested git repository' (e.g. Cursor checkpoints)."""
+    git_dir = dest / ".git"
+    if not git_dir.exists():
+        return
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["cmd", "/c", "attrib", "-r", f"{git_dir}\\*.*", "/s", "/d"],
+                capture_output=True,
+                text=True,
+                timeout=300,
+                cwd=str(dest),
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    try:
+        shutil.rmtree(git_dir, onerror=_rmtree_onerror)
+    except OSError:
+        shutil.rmtree(git_dir, ignore_errors=True)
+
+
+def _write_vendor_snapshot_marker(dest: Path) -> None:
+    try:
+        (dest / _VENDOR_SNAPSHOT_MARKER).write_text("1\n", encoding="utf-8")
+    except OSError:
+        pass
 
 
 def fetch_main_sha(owner: str, repo: str, token: str | None = None) -> str | None:
@@ -67,13 +110,43 @@ def list_version_shas(root: Path) -> list[str]:
     return sorted(out)
 
 
+def migrate_strip_nested_git_all_versions(project_root: Path, root_relative: str) -> int:
+    """
+    Remove nested ``.git`` under versions/<sha> (IDEs e.g. Cursor disable checkpoints otherwise).
+    Writes ``.openclaw-vendor-snapshot`` when stripping or when a tree has no .git yet.
+    Returns the number of directories that had ``.git`` removed.
+    """
+    root = vendor_root(project_root, root_relative)
+    d = root / "versions"
+    if not d.is_dir():
+        return 0
+    stripped = 0
+    for child in d.iterdir():
+        n = child.name.lower()
+        if not child.is_dir() or len(n) != 40 or not all(c in "0123456789abcdef" for c in n):
+            continue
+        if (child / ".git").is_dir():
+            _strip_vendor_git(child)
+            _write_vendor_snapshot_marker(child)
+            stripped += 1
+        elif not (child / _VENDOR_SNAPSHOT_MARKER).is_file() and any(child.iterdir()):
+            _write_vendor_snapshot_marker(child)
+    return stripped
+
+
 def ensure_clone(owner: str, repo: str, sha: str, dest: Path) -> tuple[bool, str]:
     """
     Materialize ``dest`` as a git checkout of ``sha`` (full SHA recommended).
     Returns (ok, message).
     """
-    if dest.is_dir() and (dest / ".git").is_dir():
-        return True, "already exists"
+    marker = dest / _VENDOR_SNAPSHOT_MARKER
+    if dest.is_dir():
+        if marker.is_file():
+            return True, "already exists"
+        if (dest / ".git").is_dir():
+            _strip_vendor_git(dest)
+            _write_vendor_snapshot_marker(dest)
+            return True, "already exists (stripped nested .git)"
 
     remote = f"https://github.com/{owner}/{repo}.git"
     try:
@@ -92,6 +165,8 @@ def ensure_clone(owner: str, repo: str, sha: str, dest: Path) -> tuple[bool, str
                 err = (r.stderr or r.stdout or "git failed")[:2000]
                 _rmtree_retry(dest)
                 return False, f"{' '.join(cmd)}: {err}"
+        _strip_vendor_git(dest)
+        _write_vendor_snapshot_marker(dest)
         return True, "cloned"
     except (OSError, subprocess.TimeoutExpired) as e:
         _rmtree_retry(dest)
@@ -99,8 +174,6 @@ def ensure_clone(owner: str, repo: str, sha: str, dest: Path) -> tuple[bool, str
 
 
 def _rmtree_retry(path: Path) -> None:
-    import shutil
-
     try:
         shutil.rmtree(path, ignore_errors=True)
     except OSError:

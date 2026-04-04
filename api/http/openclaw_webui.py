@@ -15,6 +15,7 @@ from flask import Blueprint, jsonify, request
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _OPENCLAW_SRC = _REPO_ROOT / "CoreModules" / "OpenClaw"
+_VENDOR_NESTED_GIT_MIGRATED = False
 
 
 def _ensure_openclaw_path() -> bool:
@@ -53,9 +54,13 @@ def openclaw_status():
             get_server_host,
         )
         from infrastructure.database import get_settings_repository
-        from openclaw.vendor_manager import read_active
+        from openclaw.vendor_manager import migrate_strip_nested_git_all_versions, read_active
 
         vc = get_openclaw_vendor_config()
+        global _VENDOR_NESTED_GIT_MIGRATED
+        if not _VENDOR_NESTED_GIT_MIGRATED:
+            migrate_strip_nested_git_all_versions(_REPO_ROOT, vc["root_relative"])
+            _VENDOR_NESTED_GIT_MIGRATED = True
         settings_repo = get_settings_repository()
         stored_default = (settings_repo.get_app_setting("openclaw_default_model") or "").strip()
         effective_default = stored_default or get_ollama_chat_model()
