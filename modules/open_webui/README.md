@@ -55,4 +55,4 @@ The main WebUI backend (Flask) exposes:
 
 ## Structure
 
-This module is **documentation and integration only**: no separate Python package. Backend routes live in the main WebUI backend (`api/http/webui_routes.py`); frontend status pill and API calls live in `modules/webui_frontend`.
+This module is **documentation and integration only**: no separate Python package. Backend routes live in the main WebUI backend (`api/http/webui_routes.py`); frontend status pill and API calls live in `CoreModules/CoreUI`.

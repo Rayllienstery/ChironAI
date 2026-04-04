@@ -421,7 +421,7 @@ def _resolve_workspace_relative_path_hint(path_hint: str) -> str:
         # Basename case (e.g. App.jsx)
         candidates = [
             hint,
-            f"modules/webui_frontend/src/{hint}",
+            f"CoreModules/CoreUI/src/{hint}",
             f"src/{hint}",
             f"WebUI/{hint}",
         ]

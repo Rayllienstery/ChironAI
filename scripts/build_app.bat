@@ -12,7 +12,7 @@ if \"%REPO_ROOT:~-1%\"==\"\\\" set REPO_ROOT=%REPO_ROOT:~0,-1%
 rem --------------------------------------------------------------------
 rem  2. Build the React frontend
 rem --------------------------------------------------------------------
-set "FRONTEND=%REPO_ROOT%\modules\webui_frontend"
+set "FRONTEND=%REPO_ROOT%\CoreModules\CoreUI"
 
 echo.
 echo Building the React app in: %FRONTEND%
@@ -57,5 +57,5 @@ rem  3. Done (markdown ingestion is Python-only: CoreModules/MdIngestionService)
 rem --------------------------------------------------------------------
 echo.
 echo Build completed successfully!
-echo The React app is ready in 'modules\webui_frontend\dist/'.
+echo The React app is ready in 'CoreModules\CoreUI\dist/'.
 echo.

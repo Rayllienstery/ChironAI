@@ -17,8 +17,8 @@ config/              — Configuration (YAML + env)
 utils/               — Pure helpers
 tests/               — Pytest (domain, application, api, infrastructure)
 
-modules/             — Separate projects: rag_service, crawler_service, webui_backend, webui_frontend  
-CoreModules/         — Shared core apps/libs (e.g. LlmProxy, MdIngestionService / `md_ingestion_service`)
+modules/             — Separate projects: rag_service, crawler_service, webui_backend  
+CoreModules/         — Shared core apps/libs (e.g. LlmProxy, CoreUI React SPA, MdIngestionService / `md_ingestion_service`)
 core/                — (Target) config, shared, contracts
 ```
 

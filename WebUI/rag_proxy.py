@@ -34,8 +34,8 @@ logging.basicConfig(
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
-# Frontend moved to modules/webui_frontend
-WEBUI_FRONTEND_DIR = os.path.join(PROJECT_ROOT, "modules", "webui_frontend")
+# Frontend: CoreUI (React) under CoreModules
+WEBUI_FRONTEND_DIR = os.path.join(PROJECT_ROOT, "CoreModules", "CoreUI")
 
 # create_app() registers webui_bp, so /api/webui/* (open-webui/status, start, stop, etc.) is available
 app = create_app(webui_dir=BASE_DIR)
@@ -84,7 +84,7 @@ def _start_clawcode_servers(_main_app) -> None:
 
 threading.Thread(target=_start_clawcode_servers, args=(app,), name="clawcode_boot", daemon=True).start()
 
-# Serve static files from webui_frontend
+# Serve static files from CoreModules/CoreUI
 # Check if React build exists, otherwise fall back to old HTML
 REACT_BUILD_DIR = os.path.join(WEBUI_FRONTEND_DIR, "dist")
 REACT_BUILD_INDEX = os.path.join(REACT_BUILD_DIR, "index.html")
@@ -103,11 +103,11 @@ def webui_index():
     if os.path.exists(index_path):
         with open(index_path, "r", encoding="utf-8") as f:
             return f.read()
-    return "WebUI not found. Please ensure modules/webui_frontend/dist/index.html exists (run npm run build in modules/webui_frontend).", 404
+    return "WebUI not found. Please ensure CoreModules/CoreUI/dist/index.html exists (run npm run build in CoreModules/CoreUI).", 404
 
 @app.route("/webui/<path:filename>")
 def webui_static(filename):
-    """Serve static files from webui_frontend (React build or old files)."""
+    """Serve static files from CoreUI (React build or old files)."""
     # Try React build first
     react_file_path = os.path.join(REACT_BUILD_DIR, filename)
     if os.path.exists(react_file_path) and os.path.isfile(react_file_path):

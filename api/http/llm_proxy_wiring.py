@@ -9,8 +9,16 @@ from pathlib import Path
 from typing import Any
 
 from application.rag.params import RAGAnswerParams, RAGDependencies
+from infrastructure.database import get_settings_repository
 from llm_proxy.config import LlmProxyRuntimeConfig
 from llm_proxy.contracts import LlmProxyBaseContext, LlmProxyExternalDocsBundle, LlmProxyWiring
+
+try:
+    from config import get_framework_collection_ttl_days, get_proxy_rerank_enabled, get_qdrant_url
+except ImportError:
+    get_proxy_rerank_enabled = lambda: False  # type: ignore[assignment,misc]
+    get_qdrant_url = lambda: "http://localhost:6333"  # type: ignore[assignment,misc]
+    get_framework_collection_ttl_days = lambda: 90  # type: ignore[assignment,misc]
 
 from api.http.proxy_status import (
     STATUS_IDLE,
@@ -191,8 +199,6 @@ def _external_docs_bundle() -> LlmProxyExternalDocsBundle:
 
 
 def _ingest_external_source(source_id: str) -> tuple[dict[str, Any], int]:
-    import api.http.rag_routes as rr
-
     if not _EXTERNAL_DOCS_RAG_AVAILABLE or ingest_source_to_collection is None:
         return {"error": "external_docs_rag module not available"}, 503
     try:
@@ -201,7 +207,7 @@ def _ingest_external_source(source_id: str) -> tuple[dict[str, Any], int]:
         if not source:
             return {"error": f"Source '{source_id}' not found"}, 404
         try:
-            qdrant_url = rr.get_qdrant_url()
+            qdrant_url = get_qdrant_url()
         except Exception:
             qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6333")
         result = ingest_source_to_collection(
@@ -231,9 +237,7 @@ def _get_autocomplete_ollama_model() -> str | None:
     if env_m:
         return env_m
     try:
-        import api.http.rag_routes as rr
-
-        repo = rr.get_settings_repository()
+        repo = get_settings_repository()
         return (repo.get_app_setting("proxy_autocomplete_model") or "").strip() or None
     except Exception:
         return None

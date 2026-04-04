@@ -96,7 +96,7 @@ src = [
 exclude = [
   ".venv",
   "venv",
-  "modules/webui_frontend",
+  "CoreModules/CoreUI",
   "modules/open_webui",
 ]
 
@@ -137,7 +137,7 @@ exclude = [
   "backups",
   ".venv",
   "venv",
-  "modules/webui_frontend",
+  "CoreModules/CoreUI",
   "modules/open_webui",
 ]
 ignore_decorators = [

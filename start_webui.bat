@@ -2,10 +2,10 @@
 REM Always run from the folder where this batch file lives (important when started via shortcut)
 cd /d "%~dp0"
 
-echo Starting RAG Proxy WebUI server...
+echo Starting ChironAI server...
 echo Working directory: %CD%
 echo WebUI will be available at: http://localhost:8080/webui
-echo (API: /api/webui/* ; frontend: modules\webui_frontend)
+echo (API: /api/webui/* ; frontend: CoreModules\CoreUI)
 echo.
 echo If you updated the code, run start_webui.bat again to load changes (this window closes when the server stops).
 echo.

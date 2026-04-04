@@ -1,0 +1,337 @@
+/* Material 3 Design Tokens */
+:root {
+  /* Color System - Material 3 Light Theme (default) */
+  --md-sys-color-primary: #6750A4;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #EADDFF;
+  --md-sys-color-on-primary-container: #21005D;
+  
+  --md-sys-color-secondary: #625B71;
+  --md-sys-color-on-secondary: #FFFFFF;
+  --md-sys-color-secondary-container: #E8DEF8;
+  --md-sys-color-on-secondary-container: #1D192B;
+  
+  --md-sys-color-tertiary: #7D5260;
+  --md-sys-color-on-tertiary: #FFFFFF;
+  --md-sys-color-tertiary-container: #FFD8E4;
+  --md-sys-color-on-tertiary-container: #31111D;
+  
+  --md-sys-color-error: #BA1A1A;
+  --md-sys-color-on-error: #FFFFFF;
+  --md-sys-color-error-container: #FFDAD6;
+  --md-sys-color-on-error-container: #410002;
+  
+  --md-sys-color-surface: #FFFFFF;
+  --md-sys-color-on-surface: #1C1B1F;
+  --md-sys-color-surface-tint-neutral: #E7E0EC;
+  --md-sys-color-on-surface-variant: #49454F;
+  --md-sys-color-surface-container: #E7E0EC;
+  --md-sys-color-surface-container-high: #ECE6F0;
+  --md-sys-color-surface-container-low: #F3EDF7;
+  --md-sys-color-surface-container-lowest: #F5F0F7;
+  
+  --md-sys-color-outline: #79747E;
+  --md-sys-color-outline-variant: #CAC4D0;
+  
+  --md-sys-color-background: #FAFAFA;
+  --md-sys-color-on-background: #1C1B1F;
+  
+  /* Elevation */
+  --md-sys-elevation-level0: none;
+  --md-sys-elevation-level1: 0px 1px 2px 0px rgba(0, 0, 0, 0.3), 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level2: 0px 1px 2px 0px rgba(0, 0, 0, 0.3), 0px 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level3: 0px 1px 3px 0px rgba(0, 0, 0, 0.3), 0px 4px 8px 3px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level4: 0px 2px 3px 0px rgba(0, 0, 0, 0.3), 0px 6px 10px 4px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level5: 0px 4px 4px 0px rgba(0, 0, 0, 0.3), 0px 8px 12px 6px rgba(0, 0, 0, 0.15);
+  
+  /* Typography */
+  --md-sys-typescale-display-large-font: 400 57px/64px 'Roboto', sans-serif;
+  --md-sys-typescale-display-medium-font: 400 45px/52px 'Roboto', sans-serif;
+  --md-sys-typescale-display-small-font: 400 36px/44px 'Roboto', sans-serif;
+  --md-sys-typescale-headline-large-font: 400 32px/40px 'Roboto', sans-serif;
+  --md-sys-typescale-headline-medium-font: 400 28px/36px 'Roboto', sans-serif;
+  --md-sys-typescale-headline-small-font: 400 24px/32px 'Roboto', sans-serif;
+  --md-sys-typescale-title-large-font: 500 22px/28px 'Roboto', sans-serif;
+  --md-sys-typescale-title-medium-font: 500 16px/24px 'Roboto', sans-serif;
+  --md-sys-typescale-title-small-font: 500 14px/20px 'Roboto', sans-serif;
+  --md-sys-typescale-label-large-font: 500 14px/20px 'Roboto', sans-serif;
+  --md-sys-typescale-label-medium-font: 500 12px/16px 'Roboto', sans-serif;
+  --md-sys-typescale-label-small-font: 500 11px/16px 'Roboto', sans-serif;
+  --md-sys-typescale-body-large-font: 400 16px/24px 'Roboto', sans-serif;
+  --md-sys-typescale-body-medium-font: 400 14px/20px 'Roboto', sans-serif;
+  --md-sys-typescale-body-small-font: 400 12px/16px 'Roboto', sans-serif;
+  
+  /* Spacing */
+  --md-sys-spacing-xs: 4px;
+  --md-sys-spacing-sm: 8px;
+  --md-sys-spacing-md: 16px;
+  --md-sys-spacing-lg: 24px;
+  --md-sys-spacing-xl: 32px;
+  
+  /* Border Radius */
+  --md-sys-shape-corner-none: 0px;
+  --md-sys-shape-corner-extra-small: 4px;
+  --md-sys-shape-corner-small: 8px;
+  --md-sys-shape-corner-medium: 12px;
+  --md-sys-shape-corner-large: 16px;
+  --md-sys-shape-corner-extra-large: 28px;
+  /* Pill buttons (was missing → invalid border-radius and square corners) */
+  --md-sys-shape-corner-full: 9999px;
+
+  /* Application-level layout tokens */
+  --app-page-max-width: 1280px;
+
+  /*
+   * Tabs / top navigation
+   * These tokens form the public API for all tab-like navigation components.
+   * Components MUST use only these variables for colors, spacings and radii.
+   */
+  --app-tabs-container-bg: var(--md-sys-color-surface);
+  --app-tabs-border-color: var(--md-sys-color-outline-variant);
+  --app-tabs-shadow: var(--md-sys-elevation-level1);
+
+  --app-tabs-row-gap: var(--md-sys-spacing-xs);
+  --app-tabs-column-gap: 0;
+  --app-tabs-padding-inline: var(--md-sys-spacing-lg);
+  --app-tabs-padding-block: 0;
+
+  --app-tab-padding-inline: var(--md-sys-spacing-lg);
+  --app-tab-padding-block: var(--md-sys-spacing-md);
+  --app-tab-min-width: 96px;
+  --app-tab-max-width: 260px;
+  --app-tab-radius: var(--md-sys-shape-corner-large);
+
+  --app-tab-label-font: var(--md-sys-typescale-label-large-font);
+  --app-tab-label-color: var(--md-sys-color-on-surface-variant);
+  --app-tab-label-color-hover: var(--md-sys-color-on-surface);
+  --app-tab-label-color-active: var(--md-sys-color-primary);
+
+  --app-tab-indicator-height: 2px;
+  --app-tab-indicator-color: var(--md-sys-color-primary);
+
+  --app-tab-hover-bg: var(--md-sys-color-surface-tint-neutral);
+
+  --app-tab-error-indicator-color: var(--md-sys-color-error);
+  --app-tab-error-badge-bg: color-mix(in srgb, var(--md-sys-color-error) 10%, transparent);
+  --app-tab-error-badge-color: var(--md-sys-color-error);
+
+  /* Neutral fill without M3 surface-variant lavender (hue follows on-surface + surface only) */
+  --md-sys-color-surface-tint-neutral: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface) 7%,
+    var(--md-sys-color-surface)
+  );
+
+  /* Semi-transparent accents (follow current primary / tertiary — no fixed purple) */
+  --md-sys-color-primary-tint-12: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+  --md-sys-color-primary-tint-15: color-mix(in srgb, var(--md-sys-color-primary) 15%, transparent);
+  --md-sys-color-tertiary-tint-12: color-mix(in srgb, var(--md-sys-color-tertiary) 12%, transparent);
+
+  /* CoreUI sidebar (Material Dashboard–style active pill) */
+  --coreui-sidenav-active-bg: #344767;
+  --coreui-sidenav-active-fg: #ffffff;
+  --coreui-sidenav-collapsed-bg: #344767;
+  --coreui-sidenav-collapsed-active-bg: rgba(255, 255, 255, 0.2);
+  --coreui-sidebar-width-expanded: 260px;
+  --coreui-sidebar-width-collapsed: 72px;
+}
+
+/* Dark Theme */
+.theme-dark {
+  --md-sys-color-primary: #D0BCFF;
+  --md-sys-color-on-primary: #381E72;
+  --md-sys-color-primary-container: #4F378B;
+  --md-sys-color-on-primary-container: #EADDFF;
+  
+  --md-sys-color-secondary: #CCC2DC;
+  --md-sys-color-on-secondary: #332D41;
+  --md-sys-color-secondary-container: #4A4458;
+  --md-sys-color-on-secondary-container: #E8DEF8;
+  
+  --md-sys-color-tertiary: #EFB8C8;
+  --md-sys-color-on-tertiary: #492532;
+  --md-sys-color-tertiary-container: #633B48;
+  --md-sys-color-on-tertiary-container: #FFD8E4;
+  
+  --md-sys-color-error: #FFB4AB;
+  --md-sys-color-on-error: #690005;
+  --md-sys-color-error-container: #93000A;
+  --md-sys-color-on-error-container: #FFDAD6;
+  
+  /* Background darker than surface so cards (surface) read clearly */
+  --md-sys-color-surface: #2C2A33;
+  --md-sys-color-on-surface: #E6E1E5;
+  --md-sys-color-surface-tint-neutral: #49454F;
+  --md-sys-color-on-surface-variant: #CAC4D0;
+  --md-sys-color-surface-container: #34323C;
+  --md-sys-color-surface-container-high: #3D3A45;
+  --md-sys-color-surface-container-low: #25232B;
+  --md-sys-color-surface-container-lowest: #1A181E;
+  
+  --md-sys-color-outline: #938F99;
+  --md-sys-color-outline-variant: #5E5966;
+  
+  --md-sys-color-background: #121014;
+  --md-sys-color-on-background: #E6E1E5;
+  
+  --md-sys-elevation-level1: 0px 1px 3px 0px rgba(0, 0, 0, 0.3), 0px 4px 8px 3px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level2: 0px 2px 3px 0px rgba(0, 0, 0, 0.3), 0px 6px 10px 4px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level3: 0px 1px 3px 0px rgba(0, 0, 0, 0.3), 0px 8px 12px 6px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level4: 0px 4px 4px 0px rgba(0, 0, 0, 0.3), 0px 12px 16px 8px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level5: 0px 8px 4px 0px rgba(0, 0, 0, 0.3), 0px 16px 24px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Accent Colors */
+[data-accent-color="purple"] {
+  --md-sys-color-primary: #6750A4;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #EADDFF;
+  --md-sys-color-on-primary-container: #21005D;
+}
+
+.theme-dark[data-accent-color="purple"] {
+  --md-sys-color-primary: #D0BCFF;
+  --md-sys-color-on-primary: #381E72;
+  --md-sys-color-primary-container: #4F378B;
+  --md-sys-color-on-primary-container: #EADDFF;
+}
+
+[data-accent-color="cyan"] {
+  --md-sys-color-primary: #00BCD4;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #B2EBF2;
+  --md-sys-color-on-primary-container: #004D40;
+}
+
+.theme-dark[data-accent-color="cyan"] {
+  --md-sys-color-primary: #4DD0E1;
+  --md-sys-color-on-primary: #004D40;
+  --md-sys-color-primary-container: #00838F;
+  --md-sys-color-on-primary-container: #B2EBF2;
+}
+
+[data-accent-color="dark-green"] {
+  --md-sys-color-primary: #4CAF50;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #C8E6C9;
+  --md-sys-color-on-primary-container: #1B5E20;
+}
+
+.theme-dark[data-accent-color="dark-green"] {
+  --md-sys-color-primary: #81C784;
+  --md-sys-color-on-primary: #1B5E20;
+  --md-sys-color-primary-container: #2E7D32;
+  --md-sys-color-on-primary-container: #C8E6C9;
+}
+
+[data-accent-color="blue"] {
+  --md-sys-color-primary: #2196F3;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #BBDEFB;
+  --md-sys-color-on-primary-container: #0D47A1;
+}
+
+.theme-dark[data-accent-color="blue"] {
+  --md-sys-color-primary: #64B5F6;
+  --md-sys-color-on-primary: #0D47A1;
+  --md-sys-color-primary-container: #1565C0;
+  --md-sys-color-on-primary-container: #BBDEFB;
+}
+
+[data-accent-color="orange"] {
+  --md-sys-color-primary: #FF9800;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #FFE0B2;
+  --md-sys-color-on-primary-container: #E65100;
+}
+
+.theme-dark[data-accent-color="orange"] {
+  --md-sys-color-primary: #FFB74D;
+  --md-sys-color-on-primary: #E65100;
+  --md-sys-color-primary-container: #F57C00;
+  --md-sys-color-on-primary-container: #FFE0B2;
+}
+
+[data-accent-color="red"] {
+  --md-sys-color-primary: #F44336;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #FFCDD2;
+  --md-sys-color-on-primary-container: #B71C1C;
+}
+
+.theme-dark[data-accent-color="red"] {
+  --md-sys-color-primary: #E57373;
+  --md-sys-color-on-primary: #B71C1C;
+  --md-sys-color-primary-container: #C62828;
+  --md-sys-color-on-primary-container: #FFCDD2;
+}
+
+[data-accent-color="pink"] {
+  --md-sys-color-primary: #E91E63;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #F8BBD0;
+  --md-sys-color-on-primary-container: #880E4F;
+}
+
+.theme-dark[data-accent-color="pink"] {
+  --md-sys-color-primary: #F06292;
+  --md-sys-color-on-primary: #880E4F;
+  --md-sys-color-primary-container: #AD1457;
+  --md-sys-color-on-primary-container: #F8BBD0;
+}
+
+[data-accent-color="teal"] {
+  --md-sys-color-primary: #009688;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #B2DFDB;
+  --md-sys-color-on-primary-container: #004D40;
+}
+
+.theme-dark[data-accent-color="teal"] {
+  --md-sys-color-primary: #4DB6AC;
+  --md-sys-color-on-primary: #004D40;
+  --md-sys-color-primary-container: #00695C;
+  --md-sys-color-on-primary-container: #B2DFDB;
+}
+
+[data-accent-color="indigo"] {
+  --md-sys-color-primary: #3F51B5;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #C5CAE9;
+  --md-sys-color-on-primary-container: #1A237E;
+}
+
+.theme-dark[data-accent-color="indigo"] {
+  --md-sys-color-primary: #7986CB;
+  --md-sys-color-on-primary: #1A237E;
+  --md-sys-color-primary-container: #283593;
+  --md-sys-color-on-primary-container: #C5CAE9;
+}
+
+[data-accent-color="amber"] {
+  --md-sys-color-primary: #FFC107;
+  --md-sys-color-on-primary: #000000;
+  --md-sys-color-primary-container: #FFF9C4;
+  --md-sys-color-on-primary-container: #F57F17;
+}
+
+.theme-dark[data-accent-color="amber"] {
+  --md-sys-color-primary: #FFD54F;
+  --md-sys-color-on-primary: #F57F17;
+  --md-sys-color-primary-container: #F9A825;
+  --md-sys-color-on-primary-container: #FFF9C4;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--md-sys-color-background);
+  color: var(--md-sys-color-on-background);
+  font: var(--md-sys-typescale-body-medium-font);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}

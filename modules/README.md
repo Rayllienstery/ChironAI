@@ -8,7 +8,7 @@ Business-domain projects (services and applications) live here. Each subdirector
 | [md_ingestion_service](../CoreModules/MdIngestionService/README.md) | Markdown/document ingestion, filtering, `prepare_markdown_for_indexing`, chunking (package under **CoreModules**) |
 | [crawler_service](crawler_service/README.md) | Web/docs crawling, scheduling, feeding results to md_ingestion |
 | [webui_backend](webui_backend/README.md) | WebUI backend: dashboard, settings, logs, aggregation over other services |
-| [webui_frontend](webui_frontend/README.md) | React SPA; talks to webui_backend only via HTTP |
+| [CoreUI](../CoreModules/CoreUI/README.md) | React SPA (WebUI); talks to API via HTTP |
 | [open_webui](open_webui/README.md) | Open WebUI Docker container; status/start/stop in WebUI header |
 
 Communication between modules is via **interfaces** defined in `core/contracts/`. No cross-import of concrete implementations.

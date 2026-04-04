@@ -458,7 +458,7 @@ def test_chat_completions_returns_tool_calls_when_edit_payload_detected(monkeypa
     class FakeChatClient:
         def chat(self, _messages, _model, stream=False, options=None):
             return (
-                '{"file_path":"modules/webui_frontend/src/App.jsx",'
+                '{"file_path":"CoreModules/CoreUI/src/App.jsx",'
                 '"range":{"start_line":283,"start_col":1,"end_line":293,"end_col":1},'
                 '"new_text":"const tabs = [];"}'
             )
@@ -953,7 +953,7 @@ def test_chat_completions_stream_returns_tool_calls_chunks(monkeypatch: pytest.M
     class FakeChatClient:
         def chat(self, _messages, _model, stream=False, options=None):
             return (
-                '{"file_path":"modules/webui_frontend/src/App.jsx",'
+                '{"file_path":"CoreModules/CoreUI/src/App.jsx",'
                 '"range":{"start_line":283,"start_col":1,"end_line":293,"end_col":1},'
                 '"new_text":"const tabs = [];"}'
             )
@@ -1032,7 +1032,7 @@ def test_chat_completions_uses_client_tool_name_for_edit(monkeypatch: pytest.Mon
     class FakeChatClient:
         def chat(self, _messages, _model, stream=False, options=None):
             return (
-                '{"file_path":"modules/webui_frontend/src/App.jsx",'
+                '{"file_path":"CoreModules/CoreUI/src/App.jsx",'
                 '"range":{"start_line":283,"start_col":1,"end_line":293,"end_col":1},'
                 '"new_text":"const tabs = [];"}'
             )
@@ -1110,7 +1110,7 @@ def test_chat_completions_adds_required_display_description(monkeypatch: pytest.
     class FakeChatClient:
         def chat(self, _messages, _model, stream=False, options=None):
             return (
-                '{"file_path":"modules/webui_frontend/src/App.jsx",'
+                '{"file_path":"CoreModules/CoreUI/src/App.jsx",'
                 '"range":{"start_line":283,"start_col":1,"end_line":293,"end_col":1},'
                 '"new_text":"const tabs = [];"}'
             )
@@ -1179,7 +1179,7 @@ def test_chat_completions_adds_required_display_description(monkeypatch: pytest.
     assert tc["function"]["name"] == "edit_file"
     args = json.loads(tc["function"]["arguments"])
     assert args["display_description"]
-    assert args["path"] == "modules/webui_frontend/src/App.jsx"
+    assert args["path"] == "CoreModules/CoreUI/src/App.jsx"
     assert args["mode"] == "edit"
     assert "file_path" not in args
     assert "content" in args and args["content"].strip()
@@ -1258,7 +1258,7 @@ def test_chat_completions_cline_style_schema_fields(monkeypatch: pytest.MonkeyPa
     class FakeChatClient:
         def chat(self, _messages, _model, stream=False, options=None):
             return (
-                '{"file_path":"modules/webui_frontend/src/App.jsx",'
+                '{"file_path":"CoreModules/CoreUI/src/App.jsx",'
                 '"range":{"start_line":283,"start_col":1,"end_line":293,"end_col":1},'
                 '"new_text":"const tabs = [];"}'
             )
@@ -1324,7 +1324,7 @@ def test_chat_completions_cline_style_schema_fields(monkeypatch: pytest.MonkeyPa
     tc = data["choices"][0]["message"]["tool_calls"][0]
     args = json.loads(tc["function"]["arguments"])
     assert set(args.keys()) == {"path", "replacement"}
-    assert args["path"] == "modules/webui_frontend/src/App.jsx"
+    assert args["path"] == "CoreModules/CoreUI/src/App.jsx"
     assert args["replacement"] == "const tabs = [];"
 
 
@@ -1601,7 +1601,7 @@ def test_stream_tool_mode_skips_tool_call_when_edit_body_is_only_whitespace(
     class FakeChatClient:
         def chat(self, _messages, _model, stream=False, options=None):
             return (
-                '{"file_path":"modules/webui_frontend/src/App.jsx",'
+                '{"file_path":"CoreModules/CoreUI/src/App.jsx",'
                 '"mode":"edit",'
                 '"new_text":"  \\n\\t  "}'
             )

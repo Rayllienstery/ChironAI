@@ -4,7 +4,7 @@
 #
 # Modular layout (see docs/MODULAR_STRUCTURE.md):
 # - rag_service (port 5001), md_ingestion_service (5002), crawler_service (5003), webui_backend (5000)
-# - Frontend: modules/webui_frontend (build and serve via webui_backend or proxy)
+# - Frontend: CoreModules/CoreUI (build and serve via webui_backend or proxy)
 # Run Python services from repo root with PYTHONPATH=. or install each module.
 
 services:
