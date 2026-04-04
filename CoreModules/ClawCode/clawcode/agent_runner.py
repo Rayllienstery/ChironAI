@@ -22,7 +22,7 @@ from infrastructure.ollama.openai_ollama_tool_bridge import (
     openai_messages_to_ollama,
 )
 
-_LOG = logging.getLogger("openclaw.agent")
+_LOG = logging.getLogger("clawcode.agent")
 
 # Per-field caps for trace / DB metadata (avoid huge SQLite rows).
 _TRACE_FIELD_CAP = 48_000
@@ -52,7 +52,7 @@ RAG_QUERY_TOOL: dict[str, Any] = {
 }
 
 DEFAULT_AGENT_SYSTEM = (
-    "You are the ChironAI OpenClaw coding agent. "
+    "You are the ChironAI ClawCode coding agent. "
     "For substantive technical questions (APIs, frameworks, iOS/Swift behavior, architecture), you must call "
     "rag_query at least once with a short, focused query derived from the user's question before your final answer, "
     "then ground your explanation in retrieved excerpts when they are relevant. "
@@ -112,7 +112,7 @@ def _rag_metadata_from_agent_steps(steps: list[dict[str, Any]]) -> dict[str, Any
         "max_score": max_score,
         "context_chars": ctx_chars,
         "rag_queries": rag_queries,
-        "openclaw_pipeline": True,
+        "clawcode_pipeline": True,
     }
 
 
@@ -216,7 +216,7 @@ def _trace_request_summary(body: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def run_openclaw_chat_completion(
+def run_clawcode_chat_completion(
     body: dict[str, Any],
     *,
     webui_dir: str | None,
@@ -232,33 +232,33 @@ def run_openclaw_chat_completion(
         return {"error": {"message": "messages required", "type": "invalid_request_error"}}, 400
 
     # Some clients (e.g. editors) always send stream=true for OpenAI-compatible APIs.
-    # OpenClaw currently returns a single non-streaming completion; ignore the flag for now.
+    # ClawCode currently returns a single non-streaming completion; ignore the flag for now.
     stream = bool(body.get("stream"))
 
-    # OpenClaw-specific app_settings (collection + default Ollama model).
+    # ClawCode-specific app_settings (collection + default Ollama model).
     configured = ""
-    openclaw_collection: str | None = None
+    clawcode_collection: str | None = None
     oc_temp_override: float | None = None
     oc_top_p_override: float | None = None
     oc_think_request = False
     try:
         repo = get_settings_repository()
-        configured = (repo.get_app_setting("openclaw_default_model") or "").strip()
-        _oc = (repo.get_app_setting("openclaw_rag_collection") or "").strip()
-        openclaw_collection = _oc if _oc else None
-        _ts = (repo.get_app_setting("openclaw_chat_temperature") or "").strip()
+        configured = (repo.get_app_setting("clawcode_default_model") or "").strip()
+        _oc = (repo.get_app_setting("clawcode_rag_collection") or "").strip()
+        clawcode_collection = _oc if _oc else None
+        _ts = (repo.get_app_setting("clawcode_chat_temperature") or "").strip()
         if _ts:
             try:
                 oc_temp_override = float(_ts)
             except (TypeError, ValueError):
                 oc_temp_override = None
-        _tp = (repo.get_app_setting("openclaw_chat_top_p") or "").strip()
+        _tp = (repo.get_app_setting("clawcode_chat_top_p") or "").strip()
         if _tp:
             try:
                 oc_top_p_override = float(_tp)
             except (TypeError, ValueError):
                 oc_top_p_override = None
-        _th = (repo.get_app_setting("openclaw_chat_think") or "").strip().lower()
+        _th = (repo.get_app_setting("clawcode_chat_think") or "").strip().lower()
         oc_think_request = _th in ("1", "true", "yes")
     except Exception:
         pass
@@ -267,13 +267,13 @@ def run_openclaw_chat_completion(
     deps: RAGDependencies
     params, deps = get_rag_answer_params(
         webui_dir=webui_dir,
-        collection_name=openclaw_collection,
+        collection_name=clawcode_collection,
     )
     chat_client = deps.chat_client
     ollama_model = configured or params.model_name
     if not str(ollama_model or "").strip():
-        # Configuration error: no concrete Ollama model selected for OpenClaw.
-        err_msg = "No default Ollama model configured for OpenClaw. Select one in WebUI → Claw Proxy."
+        # Configuration error: no concrete Ollama model selected for ClawCode.
+        err_msg = "No default Ollama model configured for ClawCode. Select one in WebUI → Claw Proxy."
         if trace_callback is not None:
             trace_callback(
                 {
@@ -354,7 +354,7 @@ def run_openclaw_chat_completion(
                 return {"error": {"message": "Chat client has no chat_api", "type": "api_error"}}, 500
             data = chat_fn(payload)
         except Exception as e:
-            _LOG.exception("openclaw ollama chat_api failed: %s", e)
+            _LOG.exception("clawcode ollama chat_api failed: %s", e)
             err = str(e)
             steps_out.append(
                 {
@@ -536,7 +536,7 @@ def run_openclaw_chat_completion(
                         "kind": "tool_unhandled",
                         "name": name,
                         "step": step_idx,
-                        "note": "OpenClaw only executes rag_query in-tree; pass-through not implemented",
+                        "note": "ClawCode only executes rag_query in-tree; pass-through not implemented",
                     }
                 )
                 openai_messages.append(
@@ -544,7 +544,7 @@ def run_openclaw_chat_completion(
                         "role": "tool",
                         "tool_call_id": call_id,
                         "name": name or "unknown",
-                        "content": json.dumps({"error": "tool not executed by OpenClaw runtime"}),
+                        "content": json.dumps({"error": "tool not executed by ClawCode runtime"}),
                     }
                 )
 

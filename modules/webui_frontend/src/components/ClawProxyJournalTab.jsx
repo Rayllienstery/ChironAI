@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  getOpenclawJournal,
-  clearOpenclawJournal,
-  getOpenclawTraces,
-  clearOpenclawTraces,
+  getClawCodeJournal,
+  clearClawCodeJournal,
+  getClawCodeTraces,
+  clearClawCodeTraces,
 } from '../services/api';
 import './DashboardTab.css';
 import './TestingTab.css';
@@ -153,7 +153,7 @@ export default function ClawProxyJournalTab() {
     setErr(null);
     try {
       const { from, to } = getDateRangeForJournal(period, selectedDate);
-      const data = await getOpenclawJournal({
+      const data = await getClawCodeJournal({
         limit: JOURNAL_LIMIT,
         from: from || undefined,
         to: to || undefined,
@@ -176,7 +176,7 @@ export default function ClawProxyJournalTab() {
     let cancelled = false;
     const poll = async () => {
       try {
-        const data = await getOpenclawTraces(25);
+        const data = await getClawCodeTraces(25);
         if (!cancelled) setLiveTraces(data.traces || []);
       } catch {
         if (!cancelled) setLiveTraces([]);
@@ -194,9 +194,9 @@ export default function ClawProxyJournalTab() {
   const meta = selectedLog?.metadata && typeof selectedLog.metadata === 'object' ? selectedLog.metadata : null;
 
   const clearDb = async () => {
-    if (!window.confirm('Delete all persisted OpenClaw journal entries from the database?')) return;
+    if (!window.confirm('Delete all persisted ClawCode journal entries from the database?')) return;
     try {
-      await clearOpenclawJournal();
+      await clearClawCodeJournal();
       setSelectedId(null);
       await loadJournal();
     } catch (e) {
@@ -206,8 +206,8 @@ export default function ClawProxyJournalTab() {
 
   const clearRam = async () => {
     try {
-      await clearOpenclawTraces();
-      const data = await getOpenclawTraces(25);
+      await clearClawCodeTraces();
+      const data = await getClawCodeTraces(25);
       setLiveTraces(data.traces || []);
     } catch (e) {
       setErr(String(e.message || e));

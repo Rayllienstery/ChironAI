@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  getOpenclawStatus,
-  getOpenclawTraces,
-  clearOpenclawTraces,
-  getOpenclawVendorMainSha,
-  syncOpenclawVendor,
-  rollbackOpenclawVendor,
-  getOpenclawVendorVersions,
-  getOpenclawSettings,
-  updateOpenclawSettings,
+  getClawCodeStatus,
+  getClawCodeTraces,
+  clearClawCodeTraces,
+  getClawCodeVendorMainSha,
+  syncClawCodeVendor,
+  rollbackClawCodeVendor,
+  getClawCodeVendorVersions,
+  getClawCodeSettings,
+  updateClawCodeSettings,
   getRagCollections,
 } from '../services/api';
 import './DashboardTab.css';
@@ -51,7 +51,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
     setErr(null);
     try {
       const [s, colData] = await Promise.all([
-        getOpenclawStatus(),
+        getClawCodeStatus(),
         getRagCollections().catch(() => ({ collections: [] })),
       ]);
       setStatus(s);
@@ -59,13 +59,13 @@ function ClawProxyPanel({ onModelStatusChange }) {
       let settings = null;
       if (s.available) {
         try {
-          settings = await getOpenclawSettings();
+          settings = await getClawCodeSettings();
         } catch {
           settings = null;
         }
-        const t = await getOpenclawTraces(50);
+        const t = await getClawCodeTraces(50);
         setTraces(t.traces || []);
-        const v = await getOpenclawVendorVersions();
+        const v = await getClawCodeVendorVersions();
         if (v.ok) setVersions(v.versions || []);
       }
       const notify = onModelStatusChangeRef.current;
@@ -104,7 +104,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
     setBusy(true);
     setErr(null);
     try {
-      const r = await getOpenclawVendorMainSha();
+      const r = await getClawCodeVendorMainSha();
       if (r.ok) setMainSha(r.sha);
       else setErr(r.error || 'Could not read main SHA');
     } catch (e) {
@@ -118,7 +118,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
     setBusy(true);
     setErr(null);
     try {
-      const r = await syncOpenclawVendor();
+      const r = await syncClawCodeVendor();
       if (!r.ok) setErr(r.error || 'Sync failed');
       await refresh();
     } catch (e) {
@@ -137,7 +137,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
     setBusy(true);
     setErr(null);
     try {
-      const r = await rollbackOpenclawVendor(sha);
+      const r = await rollbackClawCodeVendor(sha);
       if (!r.ok) setErr(r.error || 'Rollback failed');
       await refresh();
     } catch (e) {
@@ -149,7 +149,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
 
   const doClearTraces = async () => {
     try {
-      await clearOpenclawTraces();
+      await clearClawCodeTraces();
       await refresh();
     } catch (e) {
       setErr(String(e.message || e));
@@ -159,7 +159,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
   if (!status) {
     return (
       <div className="dashboard-layout">
-        <p className="dashboard-card-muted">Loading OpenClaw…</p>
+        <p className="dashboard-card-muted">Loading ClawCode…</p>
       </div>
     );
   }
@@ -178,7 +178,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
             <h2 id="claw-proxy-unavailable-heading">Claw Proxy</h2>
           </div>
           <p className="dashboard-card-muted">
-            OpenClaw is not available ({status.reason || 'unknown'}). Install <code>CoreModules/OpenClaw</code> and
+            ClawCode is not available ({status.reason || 'unknown'}). Install <code>CoreModules/ClawCode</code> and
             ensure the app was restarted.
           </p>
         </section>
@@ -204,7 +204,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
     setBusy(true);
     setErr(null);
     try {
-      await updateOpenclawSettings(payload);
+      await updateClawCodeSettings(payload);
       await refresh();
     } catch (e) {
       setErr(String(e.message || e));
@@ -217,13 +217,13 @@ function ClawProxyPanel({ onModelStatusChange }) {
     <div className="dashboard-layout">
       <section className="dashboard-card" aria-labelledby="claw-proxy-intro-heading">
         <div className="dashboard-card-header">
-          <h2 id="claw-proxy-intro-heading">OpenClaw HTTP agent</h2>
+          <h2 id="claw-proxy-intro-heading">ClawCode HTTP agent</h2>
         </div>
         <p className="dashboard-card-muted">
           <strong>OpenAI</strong> (<code>POST /v1/chat/completions</code>) and <strong>Anthropic</strong> (
           <code>POST /v1/messages</code>) <strong>agent</strong> endpoints share the same loop and{' '}
           <code>rag_query</code> tool (ChironAI RAG). Default port <code>8082</code> (see{' '}
-          <code>config/openclaw.yaml</code>). Documentation: <code>Claw.md</code>, <code>docs/OPENCLAW_VSCODE.md</code>.
+          <code>config/clawcode.yaml</code>). Documentation: <code>Claw.md</code>, <code>docs/CLAWCODE_VSCODE.md</code>.
         </p>
         {err && <div className="dashboard-card-error">{err}</div>}
       </section>
@@ -257,7 +257,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
             </div>
             <div className="dashboard-proxy-sections">
               <p className="dashboard-card-muted">
-                Qdrant collection used for OpenClaw <code>rag_query</code> (same idea as LLM Proxy). Leave as
+                Qdrant collection used for ClawCode <code>rag_query</code> (same idea as LLM Proxy). Leave as
                 &quot;Config default&quot; to use <code>config/server.yaml</code> <code>qdrant.collection_name</code>
                 {configDefaultRag ? (
                   <>
@@ -273,7 +273,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
                   value={collectionSelectValue || ''}
                   onChange={(e) => setRagCollection(e.target.value)}
                   disabled={collections.length === 0}
-                  aria-label="RAG collection for OpenClaw"
+                  aria-label="RAG collection for ClawCode"
                 >
                   <option value="">
                     {collections.length === 0
@@ -295,7 +295,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
                     try {
                       setBusy(true);
                       setErr(null);
-                      await updateOpenclawSettings({ rag_collection: ragCollection });
+                      await updateClawCodeSettings({ rag_collection: ragCollection });
                       await refresh();
                     } catch (e) {
                       setErr(String(e.message || e));
@@ -352,7 +352,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
             </div>
             <div className="dashboard-proxy-sections">
               <p className="dashboard-card-muted">
-                This is the <strong>Ollama model</strong> OpenClaw will use when clients request{' '}
+                This is the <strong>Ollama model</strong> ClawCode will use when clients request{' '}
                 <code>{status.logical_model_id}</code> without overriding <code>model</code>. The list comes from Ollama{' '}
                 <code>/api/tags</code>.
               </p>
@@ -378,7 +378,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
                     try {
                       setBusy(true);
                       setErr(null);
-                      await updateOpenclawSettings({ default_model: defaultModel });
+                      await updateClawCodeSettings({ default_model: defaultModel });
                       await refresh();
                     } catch (e) {
                       setErr(String(e.message || e));
@@ -399,7 +399,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
             </div>
             <div className="dashboard-proxy-sections">
               <p className="dashboard-card-muted">
-                OpenClaw-only overrides. Empty fields fall back to <code>config/models.yaml</code> chat options
+                ClawCode-only overrides. Empty fields fall back to <code>config/models.yaml</code> chat options
                 (temperature / top_p) or YAML/env max steps (effective now: <strong>{effectiveMaxSteps}</strong>; YAML
                 default: <strong>{configMaxStepsYaml}</strong>).
                 {globalTemp != null && globalTopP != null && (
@@ -431,7 +431,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
                     value={tempInput}
                     onChange={(e) => setTempInput(e.target.value)}
                     placeholder={globalTemp != null ? String(globalTemp) : 'inherit'}
-                    aria-label="OpenClaw temperature override"
+                    aria-label="ClawCode temperature override"
                   />
                 </label>
                 <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -442,7 +442,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
                     value={topPInput}
                     onChange={(e) => setTopPInput(e.target.value)}
                     placeholder={globalTopP != null ? String(globalTopP) : 'inherit'}
-                    aria-label="OpenClaw top_p override"
+                    aria-label="ClawCode top_p override"
                   />
                 </label>
                 <label

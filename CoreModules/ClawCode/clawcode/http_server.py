@@ -1,4 +1,4 @@
-"""Flask app: OpenAI-compatible /v1/chat/completions and Anthropic /v1/messages for OpenClaw agent."""
+"""Flask app: OpenAI-compatible /v1/chat/completions and Anthropic /v1/messages for ClawCode agent."""
 
 from __future__ import annotations
 
@@ -24,11 +24,11 @@ from llm_proxy.anthropic_compat import (
     wants_anthropic_models_list,
 )
 
-from openclaw.agent_runner import run_openclaw_chat_completion
-from openclaw.trace_journal import persist_openclaw_trace_to_db
-from openclaw.trace_store import append as trace_append
+from clawcode.agent_runner import run_clawcode_chat_completion
+from clawcode.trace_journal import persist_clawcode_trace_to_db
+from clawcode.trace_store import append as trace_append
 
-_LOG = logging.getLogger("openclaw.http")
+_LOG = logging.getLogger("clawcode.http")
 
 
 def project_root() -> Path:
@@ -42,7 +42,7 @@ def default_webui_dir() -> str:
     return str(project_root() / "WebUI")
 
 
-def _openclaw_openai_models_rows() -> tuple[str, list[dict[str, object]]]:
+def _clawcode_openai_models_rows() -> tuple[str, list[dict[str, object]]]:
     """
     Return (logical_model_id, data_rows) matching the OpenAI /v1/models list shape
     (without the outer wrapper).
@@ -53,11 +53,11 @@ def _openclaw_openai_models_rows() -> tuple[str, list[dict[str, object]]]:
         from config import (
             get_ollama_base_url,
             get_ollama_chat_model,
-            get_openclaw_logical_model_id,
+            get_clawcode_logical_model_id,
         )
         from infrastructure.ollama.cli_runner import invoke_tags
 
-        logical = get_openclaw_logical_model_id()
+        logical = get_clawcode_logical_model_id()
         base_url = get_ollama_base_url()
         tags = invoke_tags(base_url=base_url, timeout=5.0)
         models = tags.get("models") or []
@@ -84,47 +84,47 @@ def _openclaw_openai_models_rows() -> tuple[str, list[dict[str, object]]]:
     return logical, data
 
 
-def create_openclaw_flask_app() -> Flask:
+def create_clawcode_flask_app() -> Flask:
     app = Flask(__name__)
     webui_dir = default_webui_dir()
 
     @app.get("/health")
     def health():
-        return jsonify({"status": "ok", "service": "openclaw-openai-anthropic"})
+        return jsonify({"status": "ok", "service": "clawcode-openai-anthropic"})
 
     @app.get("/v1/models")
     def models():
         """
-        List models visible to OpenClaw.
+        List models visible to ClawCode.
 
         With header ``anthropic-version`` (any non-empty value): Anthropic-shaped JSON.
         Otherwise: OpenAI-shaped list.
         """
-        logical, rows = _openclaw_openai_models_rows()
+        logical, rows = _clawcode_openai_models_rows()
         if wants_anthropic_models_list(request.headers):
             ids = [logical] + [str(r.get("id")) for r in rows if isinstance(r, dict) and r.get("id")]
             return jsonify(anthropic_models_list_payload(ids))
         return jsonify(
             {
                 "object": "list",
-                "data": [{"id": logical, "object": "model", "owned_by": "openclaw"}] + rows,
+                "data": [{"id": logical, "object": "model", "owned_by": "clawcode"}] + rows,
             }
         )
 
     def _run_agent(openai_body: dict) -> tuple[dict, int]:
         try:
-            from config import get_openclaw_logical_model_id, get_openclaw_max_agent_steps
+            from config import get_clawcode_logical_model_id, get_clawcode_max_agent_steps
 
-            max_steps = get_openclaw_max_agent_steps()
-            logical_id = get_openclaw_logical_model_id()
+            max_steps = get_clawcode_max_agent_steps()
+            logical_id = get_clawcode_logical_model_id()
         except Exception:
             max_steps, logical_id = 40, "Claw-Agent"
 
         def _cb(rec: dict) -> None:
             trace_append(rec)
-            persist_openclaw_trace_to_db(rec)
+            persist_clawcode_trace_to_db(rec)
 
-        return run_openclaw_chat_completion(
+        return run_clawcode_chat_completion(
             openai_body,
             webui_dir=webui_dir,
             max_steps=max_steps,

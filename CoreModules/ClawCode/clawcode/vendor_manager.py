@@ -13,10 +13,10 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-_LOG = logging.getLogger("openclaw.vendor")
+_LOG = logging.getLogger("clawcode.vendor")
 
 # Written after a successful materialize; avoids treating stripped trees as incomplete.
-_VENDOR_SNAPSHOT_MARKER = ".openclaw-vendor-snapshot"
+_VENDOR_SNAPSHOT_MARKER = ".clawcode-vendor-snapshot"
 
 
 def _rmtree_onerror(func, path, _exc_info):
@@ -113,7 +113,7 @@ def list_version_shas(root: Path) -> list[str]:
 def migrate_strip_nested_git_all_versions(project_root: Path, root_relative: str) -> int:
     """
     Remove nested ``.git`` under versions/<sha> (IDEs e.g. Cursor disable checkpoints otherwise).
-    Writes ``.openclaw-vendor-snapshot`` when stripping or when a tree has no .git yet.
+    Writes ``.clawcode-vendor-snapshot`` when stripping or when a tree has no .git yet.
     Returns the number of directories that had ``.git`` removed.
     """
     root = vendor_root(project_root, root_relative)

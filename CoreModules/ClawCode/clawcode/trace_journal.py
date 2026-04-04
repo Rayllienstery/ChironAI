@@ -1,4 +1,4 @@
-"""Persist OpenClaw agent traces to WebUI SQLite (same process as main app; WEBUI_DB_PATH)."""
+"""Persist ClawCode agent traces to WebUI SQLite (same process as main app; WEBUI_DB_PATH)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-_LOG = logging.getLogger("openclaw.journal")
+_LOG = logging.getLogger("clawcode.journal")
 
 # Approximate cap for metadata JSON; trim steps if exceeded.
 _METADATA_JSON_SOFT_CAP = 450_000
@@ -45,10 +45,10 @@ def _shrink_trace_payload(rec: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def persist_openclaw_trace_to_db(rec: dict[str, Any]) -> None:
+def persist_clawcode_trace_to_db(rec: dict[str, Any]) -> None:
     """
-    Write one trace row to logs (session_id=openclaw, source=openclaw).
-    Safe no-op if infrastructure is unavailable (standalone OpenClaw test).
+    Write one trace row to logs (session_id=clawcode, source=clawcode).
+    Safe no-op if infrastructure is unavailable (standalone ClawCode test).
     """
     try:
         from infrastructure.database import get_logs_repository
@@ -57,7 +57,7 @@ def persist_openclaw_trace_to_db(rec: dict[str, Any]) -> None:
         return
 
     try:
-        get_session_manager().get_or_create_session("openclaw")
+        get_session_manager().get_or_create_session("clawcode")
     except Exception:
         pass
 
@@ -66,7 +66,7 @@ def persist_openclaw_trace_to_db(rec: dict[str, Any]) -> None:
     elapsed = rec.get("elapsed_ms")
     model = str(rec.get("resolved_model") or "")
     err = rec.get("error")
-    line = f"OpenClaw {tid_short} · {elapsed}ms · {model}"
+    line = f"ClawCode {tid_short} · {elapsed}ms · {model}"
     if err:
         line += f" · {err}"[:200]
 
@@ -91,11 +91,11 @@ def persist_openclaw_trace_to_db(rec: dict[str, Any]) -> None:
     try:
         repo = get_logs_repository()
         repo.add_log(
-            session_id="openclaw",
+            session_id="clawcode",
             level="INFO",
             message=line[:500],
-            source="openclaw",
+            source="clawcode",
             metadata=payload,
         )
     except Exception:
-        _LOG.exception("persist_openclaw_trace_to_db failed")
+        _LOG.exception("persist_clawcode_trace_to_db failed")

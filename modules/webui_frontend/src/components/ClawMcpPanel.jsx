@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { getOpenclawStatus } from '../services/api';
+import { getClawCodeStatus } from '../services/api';
 import './DashboardTab.css';
 
 function ClawMcpPanel() {
@@ -9,7 +9,7 @@ function ClawMcpPanel() {
   const refresh = useCallback(async () => {
     setErr(null);
     try {
-      const s = await getOpenclawStatus();
+      const s = await getClawCodeStatus();
       setStatus(s);
     } catch (e) {
       setStatus({ available: false, reason: e.message || 'request failed' });
@@ -42,7 +42,7 @@ function ClawMcpPanel() {
             <h2 id="claw-mcp-unavailable-heading">MCP</h2>
           </div>
           <p className="dashboard-card-muted">
-            OpenClaw unavailable ({status.reason || 'unknown'}).
+            ClawCode unavailable ({status.reason || 'unknown'}).
             {err && <span className="dashboard-card-error"> {err}</span>}
           </p>
         </section>
@@ -88,7 +88,7 @@ function ClawMcpPanel() {
               </li>
               <li style={{ marginBottom: 'var(--md-sys-spacing-sm)' }}>
                 <strong>VS Code MCP servers</strong> → configure per Microsoft / extension docs (stdio command). See{' '}
-                <code>docs/OPENCLAW_VSCODE.md</code>.
+                <code>docs/CLAWCODE_VSCODE.md</code>.
               </li>
               <li>
                 <strong>Info endpoint</strong>:{' '}

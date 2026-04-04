@@ -94,9 +94,9 @@ from config import (
     get_framework_collection_ttl_days,
     get_ollama_chat_model,
     get_ollama_rerank_model,
-    get_openclaw_host,
-    get_openclaw_logical_model_id,
-    get_openclaw_openai_port,
+    get_clawcode_host,
+    get_clawcode_logical_model_id,
+    get_clawcode_openai_port,
     get_qdrant_collection_name,
     get_qdrant_url,
     get_rag_float,
@@ -300,13 +300,13 @@ def _get_ollama_url() -> str:
         return (os.getenv("OLLAMA_BASE_URL") or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
 
 
-def _openclaw_openai_http_base() -> str:
-    """HTTP origin for OpenClaw OpenAI-compatible API (e.g. http://127.0.0.1:8082)."""
-    env = (os.getenv("OPENCLAW_OPENAI_BASE_URL") or "").strip().rstrip("/")
+def _clawcode_openai_http_base() -> str:
+    """HTTP origin for ClawCode OpenAI-compatible API (e.g. http://127.0.0.1:8082)."""
+    env = (os.getenv("CLAWCODE_OPENAI_BASE_URL") or "").strip().rstrip("/")
     if env:
         return env
-    host = get_openclaw_host()
-    port = get_openclaw_openai_port()
+    host = get_clawcode_host()
+    port = get_clawcode_openai_port()
     if host in ("0.0.0.0", "::", ""):
         dh = get_server_host()
         if dh in ("0.0.0.0", "::", ""):
@@ -315,17 +315,17 @@ def _openclaw_openai_http_base() -> str:
     return f"http://{host}:{port}".rstrip("/")
 
 
-def _is_openclaw_logical_model_requested(model_id: str) -> bool:
+def _is_clawcode_logical_model_requested(model_id: str) -> bool:
     a = (model_id or "").strip().lower()
     if not a:
         return False
-    return a == get_openclaw_logical_model_id().strip().lower()
+    return a == get_clawcode_logical_model_id().strip().lower()
 
 
-def _webui_chat_forward_openclaw(body: dict[str, Any], start_time: float) -> Any:
-    """POST chat to OpenClaw /v1/chat/completions (full agent + RAG pipeline on OpenClaw port)."""
-    logical_id = get_openclaw_logical_model_id()
-    base = _openclaw_openai_http_base()
+def _webui_chat_forward_clawcode(body: dict[str, Any], start_time: float) -> Any:
+    """POST chat to ClawCode /v1/chat/completions (full agent + RAG pipeline on ClawCode port)."""
+    logical_id = get_clawcode_logical_model_id()
+    base = _clawcode_openai_http_base()
     forward: dict[str, Any] = {
         "model": logical_id,
         "messages": body.get("messages") or [],
@@ -334,7 +334,7 @@ def _webui_chat_forward_openclaw(body: dict[str, Any], start_time: float) -> Any
         if key in body and body[key] is not None:
             forward[key] = body[key]
     try:
-        timeout_sec = float(os.getenv("OPENCLAW_CHAT_TIMEOUT_SEC", "600"))
+        timeout_sec = float(os.getenv("CLAWCODE_CHAT_TIMEOUT_SEC", "600"))
     except (TypeError, ValueError):
         timeout_sec = 600.0
     set_proxy_status(STATUS_RESPONSE)
@@ -345,21 +345,21 @@ def _webui_chat_forward_openclaw(body: dict[str, Any], start_time: float) -> Any
             timeout=(10.0, timeout_sec),
         )
     except requests.RequestException as e:
-        return jsonify({"error": f"OpenClaw unreachable at {base}: {e}"}), 502
+        return jsonify({"error": f"ClawCode unreachable at {base}: {e}"}), 502
 
     try:
         data = resp.json() if resp.content else {}
     except ValueError:
         data = {}
     if not isinstance(data, dict):
-        return jsonify({"error": "OpenClaw returned non-JSON response"}), 502
+        return jsonify({"error": "ClawCode returned non-JSON response"}), 502
 
     if resp.status_code >= 400:
         err = data.get("error")
         if isinstance(err, dict):
             msg = str(err.get("message") or err)
         else:
-            msg = str(err or resp.text or "OpenClaw error")
+            msg = str(err or resp.text or "ClawCode error")
         return jsonify({"error": msg}), 502
 
     latency_ms = int((time.time() - start_time) * 1000)
@@ -439,12 +439,12 @@ def get_models() -> Any:
             "description": "RAG-enabled Ollama model (proxy)",
         })
 
-        oc_id = get_openclaw_logical_model_id()
-        oc_base = _openclaw_openai_http_base()
+        cc_id = get_clawcode_logical_model_id()
+        cc_base = _clawcode_openai_http_base()
         models_list.insert(1, {
-            "id": oc_id,
-            "name": oc_id,
-            "description": f"OpenClaw agent (full pipeline via {oc_base})",
+            "id": cc_id,
+            "name": cc_id,
+            "description": f"ClawCode agent (full pipeline via {cc_base})",
         })
 
         return jsonify({"models": models_list})
@@ -978,8 +978,8 @@ def webui_chat() -> Any:
         if not messages:
             return jsonify({"error": "messages is required"}), 400
 
-        if _is_openclaw_logical_model_requested(requested_model):
-            return _webui_chat_forward_openclaw(body, start_time)
+        if _is_clawcode_logical_model_requested(requested_model):
+            return _webui_chat_forward_clawcode(body, start_time)
 
         set_proxy_status(STATUS_RAG_SEARCH)
 
@@ -1325,7 +1325,7 @@ def get_model_settings() -> Any:
 
 @webui_bp.route("/llm-proxy/status", methods=["GET"])
 def llm_proxy_status() -> Any:
-    """Base URL and effective LLM Proxy settings for WebUI Status card (parity with OpenClaw /status)."""
+    """Base URL and effective LLM Proxy settings for WebUI Status card (parity with ClawCode /status)."""
     try:
         settings_repo = get_settings_repository()
         stored_model = (settings_repo.get_app_setting("proxy_model") or "").strip()

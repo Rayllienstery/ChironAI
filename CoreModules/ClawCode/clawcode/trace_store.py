@@ -1,4 +1,4 @@
-"""In-memory ring buffer of OpenClaw request traces (shared with WebUI API on 8080)."""
+"""In-memory ring buffer of ClawCode request traces (shared with WebUI API on 8080)."""
 
 from __future__ import annotations
 

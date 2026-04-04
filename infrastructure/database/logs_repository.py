@@ -226,11 +226,11 @@ class LogsRepository:
             conn.commit()
             return cursor.rowcount or 0
 
-    def delete_openclaw_logs(self) -> int:
-        """Delete OpenClaw journal rows (``session_id='openclaw'``, ``source='openclaw'``)."""
+    def delete_clawcode_logs(self) -> int:
+        """Delete ClawCode journal rows (``session_id='clawcode'``, ``source='clawcode'``)."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
-                "DELETE FROM logs WHERE session_id = 'openclaw' AND source = 'openclaw'"
+                "DELETE FROM logs WHERE session_id = 'clawcode' AND source = 'clawcode'"
             )
             conn.commit()
             return cursor.rowcount or 0
