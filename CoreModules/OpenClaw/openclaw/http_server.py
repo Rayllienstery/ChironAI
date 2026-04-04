@@ -9,6 +9,7 @@ from pathlib import Path
 from flask import Flask, jsonify, request
 
 from openclaw.agent_runner import run_openclaw_chat_completion
+from openclaw.trace_journal import persist_openclaw_trace_to_db
 from openclaw.trace_store import append as trace_append
 
 _LOG = logging.getLogger("openclaw.http")
@@ -101,6 +102,7 @@ def create_openclaw_flask_app() -> Flask:
 
         def _cb(rec: dict) -> None:
             trace_append(rec)
+            persist_openclaw_trace_to_db(rec)
 
         try:
             resp, code = run_openclaw_chat_completion(

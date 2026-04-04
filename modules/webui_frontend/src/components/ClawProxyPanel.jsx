@@ -45,6 +45,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
   const [topPInput, setTopPInput] = useState('');
   const [globalTemp, setGlobalTemp] = useState(null);
   const [globalTopP, setGlobalTopP] = useState(null);
+  const [chatThink, setChatThink] = useState(false);
 
   const refresh = useCallback(async () => {
     setErr(null);
@@ -82,6 +83,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
         setTopPInput(settings.stored_chat_top_p != null ? String(settings.stored_chat_top_p) : '');
         setGlobalTemp(settings.global_chat_temperature);
         setGlobalTopP(settings.global_chat_top_p);
+        setChatThink(Boolean(settings.chat_think));
         if (typeof notify === 'function') {
           const inList = Boolean(def && models.some((m) => m.id === def || m.name === def));
           notify(!inList);
@@ -198,6 +200,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
     }
     payload.chat_temperature = tempInput.trim() === '' ? null : tempInput.trim();
     payload.chat_top_p = topPInput.trim() === '' ? null : topPInput.trim();
+    payload.chat_think = chatThink;
     setBusy(true);
     setErr(null);
     try {
@@ -440,6 +443,18 @@ function ClawProxyPanel({ onModelStatusChange }) {
                     placeholder={globalTopP != null ? String(globalTopP) : 'inherit'}
                     aria-label="OpenClaw top_p override"
                   />
+                </label>
+                <label
+                  className="dashboard-card-muted"
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'flex-end' }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={chatThink}
+                    onChange={(e) => setChatThink(e.target.checked)}
+                    aria-label="Request Ollama extended thinking when supported"
+                  />
+                  Ollama <code>think</code> (if model supports it)
                 </label>
                 <button
                   type="button"

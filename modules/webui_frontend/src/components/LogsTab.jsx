@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { getLogs, getProxyLogs } from '../services/api';
+import { getLogs, getProxyLogs, clearLogs, clearProxyLogs } from '../services/api';
 import { startLogPolling, stopLogPolling } from '../services/logs';
 import ProxyLogsAnalytics from './ProxyLogsAnalytics';
 import './LogsTab.css';
@@ -123,6 +123,23 @@ function LogsTab({ sessionId }) {
       setLoading(false);
     }
   }, [viewMode, period, selectedDate, sessionId, levelFilter, sourceFilter]);
+
+  const handleClearLogs = useCallback(async () => {
+    try {
+      if (viewMode === 'logs') {
+        if (!sessionId) return;
+        await clearLogs(sessionId);
+      } else if (viewMode === 'proxy') {
+        await clearProxyLogs({});
+      } else if (viewMode === 'autocomplete') {
+        await clearProxyLogs({ autocompleteOnly: true });
+      }
+      setLogs([]);
+      await loadLogs();
+    } catch (error) {
+      console.error('Failed to clear logs:', error);
+    }
+  }, [viewMode, sessionId, loadLogs]);
 
   useEffect(() => {
     if (viewMode === 'logs' && !sessionId) return;
@@ -407,6 +424,13 @@ function LogsTab({ sessionId }) {
               </select>
             </>
           )}
+          <button
+            onClick={handleClearLogs}
+            disabled={viewMode === 'logs' && !sessionId}
+            style={{ marginRight: '10px', cursor: 'pointer' }}
+          >
+            Clear
+          </button>
           <button onClick={loadLogs}>Refresh</button>
         </div>
       </div>

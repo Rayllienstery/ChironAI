@@ -192,6 +192,49 @@ class LogsRepository:
             logs.reverse()
             return logs
 
+    def delete_logs_for_session(
+        self,
+        session_id: str,
+        *,
+        include_system: bool = True,
+    ) -> int:
+        """Delete log rows for a WebUI session; optionally shared ``system`` rows (same as GET)."""
+        with sqlite3.connect(self.db_path) as conn:
+            if include_system:
+                cursor = conn.execute(
+                    "DELETE FROM logs WHERE session_id = ? OR session_id = 'system'",
+                    (session_id,),
+                )
+            else:
+                cursor = conn.execute(
+                    "DELETE FROM logs WHERE session_id = ?",
+                    (session_id,),
+                )
+            conn.commit()
+            return cursor.rowcount or 0
+
+    def delete_proxy_logs(self, *, autocomplete_only: bool = False) -> int:
+        """Delete proxy request logs (``session_id='proxy'``, ``source='proxy'``)."""
+        with sqlite3.connect(self.db_path) as conn:
+            query = "DELETE FROM logs WHERE session_id = 'proxy' AND source = 'proxy'"
+            if autocomplete_only:
+                query += (
+                    " AND metadata IS NOT NULL "
+                    "AND json_extract(metadata, '$.is_autocomplete') = 1"
+                )
+            cursor = conn.execute(query)
+            conn.commit()
+            return cursor.rowcount or 0
+
+    def delete_openclaw_logs(self) -> int:
+        """Delete OpenClaw journal rows (``session_id='openclaw'``, ``source='openclaw'``)."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "DELETE FROM logs WHERE session_id = 'openclaw' AND source = 'openclaw'"
+            )
+            conn.commit()
+            return cursor.rowcount or 0
+
 
 # Global instance
 _logs_repository: Optional[LogsRepository] = None

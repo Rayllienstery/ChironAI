@@ -127,6 +127,35 @@ export async function getLogs(sessionId, options = {}) {
   return response.json();
 }
 
+export async function clearLogs(sessionId, options = {}) {
+  const params = new URLSearchParams({ session_id: sessionId });
+  if (options.includeSystem === false) {
+    params.set('include_system', '0');
+  }
+  const response = await fetch(`${API_BASE}/logs?${params}`, { method: 'DELETE' });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to clear logs');
+  }
+  return response.json();
+}
+
+export async function clearProxyLogs(options = {}) {
+  const params = new URLSearchParams();
+  if (options.autocompleteOnly) {
+    params.set('autocomplete_only', '1');
+  }
+  const response = await fetch(
+    `${API_BASE}/proxy-logs${params.toString() ? `?${params}` : ''}`,
+    { method: 'DELETE' }
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to clear proxy logs');
+  }
+  return response.json();
+}
+
 export async function getProxyLogs(options = {}) {
   const params = new URLSearchParams();
   const { limit, since_id, from, to, autocompleteOnly } = options;
@@ -1007,6 +1036,30 @@ export async function clearOpenclawTraces() {
     throw new Error('Failed to clear traces');
   }
   return response.json();
+}
+
+export async function getOpenclawJournal(options = {}) {
+  const params = new URLSearchParams();
+  const { limit, since_id, from, to } = options;
+  if (limit != null) params.set('limit', String(limit));
+  if (since_id != null) params.set('since_id', String(since_id));
+  if (from != null && from !== '') params.set('from', from);
+  if (to != null && to !== '') params.set('to', to);
+  const response = await fetch(`${OPENCLAW_BASE}/journal?${params}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Failed to load OpenClaw journal');
+  }
+  return data;
+}
+
+export async function clearOpenclawJournal() {
+  const response = await fetch(`${OPENCLAW_BASE}/journal`, { method: 'DELETE' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Failed to clear OpenClaw journal');
+  }
+  return data;
 }
 
 export async function getOpenclawVendorMainSha() {

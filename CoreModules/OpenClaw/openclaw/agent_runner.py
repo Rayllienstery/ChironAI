@@ -24,6 +24,11 @@ from infrastructure.ollama.openai_ollama_tool_bridge import (
 
 _LOG = logging.getLogger("openclaw.agent")
 
+# Per-field caps for trace / DB metadata (avoid huge SQLite rows).
+_TRACE_FIELD_CAP = 48_000
+_TRACE_MSG_CAP = 12_000
+_TRACE_TOOL_ARGS_CAP = 4_000
+
 RAG_QUERY_TOOL: dict[str, Any] = {
     "type": "function",
     "function": {
@@ -127,6 +132,90 @@ def _process_rss_mb() -> float | None:
         return None
 
 
+def _cap_trace_text(s: object | None, limit: int) -> tuple[str, bool]:
+    if s is None:
+        return "", False
+    t = s if isinstance(s, str) else str(s)
+    if len(t) <= limit:
+        return t, False
+    return t[:limit] + "\n…[truncated]", True
+
+
+def _openai_content_preview(msg: dict[str, Any]) -> str:
+    c = msg.get("content")
+    if c is None:
+        return ""
+    if isinstance(c, str):
+        return c
+    try:
+        return json.dumps(c, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return str(c)
+
+
+def _compact_tool_calls_for_trace(openai_assistant: dict[str, Any]) -> list[dict[str, Any]]:
+    tcs = openai_assistant.get("tool_calls")
+    if not isinstance(tcs, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for tc in tcs:
+        if not isinstance(tc, dict):
+            continue
+        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+        name = str(fn.get("name") or "") if isinstance(fn, dict) else ""
+        raw_args = fn.get("arguments") if isinstance(fn, dict) else None
+        if isinstance(raw_args, str):
+            arg_s = raw_args
+        else:
+            try:
+                arg_s = json.dumps(raw_args, ensure_ascii=False) if raw_args is not None else ""
+            except (TypeError, ValueError):
+                arg_s = str(raw_args)
+        arg_s, arg_trunc = _cap_trace_text(arg_s, _TRACE_TOOL_ARGS_CAP)
+        out.append(
+            {
+                "id": str(tc.get("id") or ""),
+                "name": name,
+                "arguments": arg_s,
+                "arguments_truncated": arg_trunc,
+            }
+        )
+    return out
+
+
+def _trace_request_summary(body: dict[str, Any]) -> dict[str, Any]:
+    """Sanitized request snapshot for traces (no full tool schemas)."""
+    raw_msgs = body.get("messages")
+    msgs_out: list[dict[str, Any]] = []
+    if isinstance(raw_msgs, list):
+        for m in raw_msgs:
+            if not isinstance(m, dict):
+                continue
+            role = str(m.get("role") or "")
+            text, trunc = _cap_trace_text(_openai_content_preview(m), _TRACE_MSG_CAP)
+            entry: dict[str, Any] = {"role": role, "content": text, "content_truncated": trunc}
+            if m.get("name"):
+                entry["name"] = str(m.get("name"))
+            if m.get("tool_call_id"):
+                entry["tool_call_id"] = str(m.get("tool_call_id"))
+            msgs_out.append(entry)
+    tools = body.get("tools")
+    tool_names: list[str] = []
+    if isinstance(tools, list):
+        for t in tools:
+            if not isinstance(t, dict) or t.get("type") != "function":
+                continue
+            fn = t.get("function")
+            if isinstance(fn, dict) and fn.get("name"):
+                tool_names.append(str(fn.get("name")))
+    return {
+        "model": body.get("model"),
+        "stream": bool(body.get("stream")),
+        "messages": msgs_out,
+        "client_tool_names": tool_names,
+    }
+
+
 def run_openclaw_chat_completion(
     body: dict[str, Any],
     *,
@@ -151,6 +240,7 @@ def run_openclaw_chat_completion(
     openclaw_collection: str | None = None
     oc_temp_override: float | None = None
     oc_top_p_override: float | None = None
+    oc_think_request = False
     try:
         repo = get_settings_repository()
         configured = (repo.get_app_setting("openclaw_default_model") or "").strip()
@@ -168,6 +258,8 @@ def run_openclaw_chat_completion(
                 oc_top_p_override = float(_tp)
             except (TypeError, ValueError):
                 oc_top_p_override = None
+        _th = (repo.get_app_setting("openclaw_chat_think") or "").strip().lower()
+        oc_think_request = _th in ("1", "true", "yes")
     except Exception:
         pass
 
@@ -190,6 +282,8 @@ def run_openclaw_chat_completion(
                     "logical_model_id": logical_model_id,
                     "resolved_model": "",
                     "elapsed_ms": 0,
+                    "request": _trace_request_summary(body),
+                    "think_requested": oc_think_request,
                     "steps": [
                         {"kind": "config_error", "step": 0, "ok": False, "error": err_msg}
                     ],
@@ -198,6 +292,7 @@ def run_openclaw_chat_completion(
                     "total_completion_tokens_est": 0,
                     "final": True,
                     "error": err_msg,
+                    "client_model": body.get("model"),
                 }
             )
         return {
@@ -249,6 +344,8 @@ def run_openclaw_chat_completion(
         }
         if oll_tools:
             payload["tools"] = oll_tools
+        if oc_think_request:
+            payload["think"] = True
 
         t0 = time.perf_counter()
         try:
@@ -280,6 +377,7 @@ def run_openclaw_chat_completion(
                 total_in,
                 total_out,
                 error=err,
+                think_requested=oc_think_request,
             )
             return {"error": {"message": err, "type": "api_error"}}, 502
 
@@ -308,6 +406,7 @@ def run_openclaw_chat_completion(
                 total_in,
                 total_out,
                 error=err,
+                think_requested=oc_think_request,
             )
             return {"error": {"message": err, "type": "upstream_error"}}, 502
 
@@ -320,6 +419,11 @@ def run_openclaw_chat_completion(
         tool_calls = openai_assistant.get("tool_calls") if isinstance(openai_assistant.get("tool_calls"), list) else []
         finish = openai_finish_reason_from_ollama(oll_msg)
 
+        th_raw, th_trunc = _cap_trace_text(oll_msg.get("thinking"), _TRACE_FIELD_CAP)
+        co_raw, co_trunc = _cap_trace_text(oll_msg.get("content"), _TRACE_FIELD_CAP)
+        vis, vis_trunc = _cap_trace_text(_openai_content_preview(openai_assistant), _TRACE_FIELD_CAP)
+        tc_compact = _compact_tool_calls_for_trace(openai_assistant)
+
         steps_out.append(
             {
                 "kind": "model_call",
@@ -331,6 +435,13 @@ def run_openclaw_chat_completion(
                 "prompt_tokens_est": pt,
                 "completion_tokens_est": ct,
                 "tool_calls_count": len(tool_calls),
+                "thinking_raw": th_raw,
+                "thinking_truncated": th_trunc,
+                "assistant_content_raw": co_raw,
+                "assistant_content_raw_truncated": co_trunc,
+                "assistant_visible": vis,
+                "assistant_visible_truncated": vis_trunc,
+                "tool_calls": tc_compact,
             }
         )
 
@@ -354,6 +465,9 @@ def run_openclaw_chat_completion(
                 total_in,
                 total_out,
                 final=True,
+                final_assistant=openai_assistant,
+                finish_reason=finish,
+                think_requested=oc_think_request,
             )
             return resp, 200
 
@@ -445,6 +559,7 @@ def run_openclaw_chat_completion(
         total_in,
         total_out,
         error="max_agent_steps exceeded",
+        think_requested=oc_think_request,
     )
     return {
         "error": {
@@ -499,16 +614,21 @@ def _emit_trace(
     *,
     final: bool = False,
     error: str | None = None,
+    final_assistant: dict[str, Any] | None = None,
+    finish_reason: str | None = None,
+    think_requested: bool = False,
 ) -> None:
     if cb is None:
         return
     elapsed_ms = int((time.perf_counter() - started) * 1000)
-    rec = {
+    rec: dict[str, Any] = {
         "trace_id": trace_id,
         "ts_ms": int(time.time() * 1000),
         "logical_model_id": logical_model_id,
         "resolved_model": resolved_model,
         "elapsed_ms": elapsed_ms,
+        "request": _trace_request_summary(body),
+        "think_requested": think_requested,
         "steps": steps,
         "step_count": len(steps),
         "total_prompt_tokens_est": total_in,
@@ -518,4 +638,19 @@ def _emit_trace(
         "error": error,
         "client_model": body.get("model"),
     }
+    if final and final_assistant is not None:
+        fa = dict(final_assistant)
+        raw_c = fa.get("content")
+        if raw_c is not None and not isinstance(raw_c, str):
+            try:
+                raw_c = json.dumps(raw_c, ensure_ascii=False)
+            except (TypeError, ValueError):
+                raw_c = str(raw_c)
+        fc, ftrunc = _cap_trace_text(raw_c, _TRACE_FIELD_CAP)
+        rec["final_message"] = {
+            "role": str(fa.get("role") or "assistant"),
+            "content": fc,
+            "content_truncated": ftrunc,
+            "finish_reason": finish_reason,
+        }
     cb(rec)

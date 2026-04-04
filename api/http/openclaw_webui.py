@@ -129,6 +129,48 @@ def openclaw_traces_clear():
     return jsonify({"ok": True})
 
 
+@openclaw_bp.get("/journal")
+def openclaw_journal_get():
+    """Persisted OpenClaw traces from SQLite (session_id=openclaw)."""
+    try:
+        lim_raw = request.args.get("limit", "200")
+        limit = max(1, min(5000, int(lim_raw)))
+    except (TypeError, ValueError):
+        limit = 200
+    since_id = request.args.get("since_id")
+    from_date = (request.args.get("from") or "").strip() or None
+    to_date = (request.args.get("to") or "").strip() or None
+    try:
+        from infrastructure.database import get_logs_repository
+
+        logs_repo = get_logs_repository()
+        logs = logs_repo.get_logs(
+            session_id="openclaw",
+            level="INFO",
+            limit=limit,
+            since_id=int(since_id) if since_id else None,
+            source="openclaw",
+            include_system=False,
+            from_date=from_date,
+            to_date=to_date,
+        )
+        return jsonify({"ok": True, "logs": logs})
+    except Exception as e:
+        return jsonify({"ok": False, "logs": [], "error": str(e)}), 500
+
+
+@openclaw_bp.delete("/journal")
+def openclaw_journal_delete():
+    """Delete persisted OpenClaw journal rows (does not clear in-memory trace buffer)."""
+    try:
+        from infrastructure.database import get_logs_repository
+
+        deleted = get_logs_repository().delete_openclaw_logs()
+        return jsonify({"ok": True, "deleted_count": deleted})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @openclaw_bp.get("/vendor/main-sha")
 def openclaw_vendor_main_sha():
     if not _ensure_openclaw_path():
@@ -238,6 +280,8 @@ def openclaw_get_settings():
         stored_max_steps = (repo.get_app_setting("openclaw_max_agent_steps") or "").strip()
         stored_temp = (repo.get_app_setting("openclaw_chat_temperature") or "").strip()
         stored_top_p = (repo.get_app_setting("openclaw_chat_top_p") or "").strip()
+        stored_think = (repo.get_app_setting("openclaw_chat_think") or "").strip().lower()
+        chat_think = stored_think in ("1", "true", "yes")
         global_opts = get_ollama_chat_options() or {}
 
         base_url = get_ollama_base_url()
@@ -268,6 +312,8 @@ def openclaw_get_settings():
                 "config_max_agent_steps_yaml": get_openclaw_max_agent_steps_config_yaml(),
                 "stored_chat_temperature": stored_temp,
                 "stored_chat_top_p": stored_top_p,
+                "chat_think": chat_think,
+                "stored_chat_think": stored_think,
                 "global_chat_temperature": global_opts.get("temperature"),
                 "global_chat_top_p": global_opts.get("top_p"),
             }
@@ -292,7 +338,7 @@ def openclaw_update_settings():
     Persist OpenClaw settings.
 
     Body may include any of:
-    - default_model, rag_collection, max_agent_steps, chat_temperature, chat_top_p
+    - default_model, rag_collection, max_agent_steps, chat_temperature, chat_top_p, chat_think
     Use null or empty string where supported to clear stored override.
     """
     if not _ensure_openclaw_path():
@@ -304,6 +350,7 @@ def openclaw_update_settings():
         "max_agent_steps",
         "chat_temperature",
         "chat_top_p",
+        "chat_think",
     )
     if not any(k in body for k in allowed):
         return jsonify(
@@ -376,6 +423,16 @@ def openclaw_update_settings():
                     return jsonify({"ok": False, "error": "chat_top_p must be in (0, 1]"}), 400
                 repo.set_app_setting("openclaw_chat_top_p", tp)
                 out["chat_top_p"] = tp
+
+        if "chat_think" in body:
+            raw = body.get("chat_think")
+            if raw is None or raw is False or raw == "":
+                repo.set_app_setting("openclaw_chat_think", "")
+                out["chat_think"] = False
+            else:
+                truthy = raw is True or raw == 1 or str(raw).strip().lower() in ("1", "true", "yes")
+                repo.set_app_setting("openclaw_chat_think", "1" if truthy else "")
+                out["chat_think"] = truthy
 
         return jsonify(out)
     except Exception as e:

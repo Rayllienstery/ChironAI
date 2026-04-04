@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import ClawProxyPanel from './ClawProxyPanel';
 import ClawMcpPanel from './ClawMcpPanel';
+import ClawProxyJournalTab from './ClawProxyJournalTab';
 import './DashboardTab.css';
 import './TestingTab.css';
 
@@ -30,10 +31,20 @@ function ClawProxyTab({ onModelStatusChange }) {
           >
             MCP
           </button>
+          <button
+            type="button"
+            className={`testing-subtab ${subTab === 'journal' ? 'testing-subtab-active' : ''}`}
+            role="tab"
+            aria-selected={subTab === 'journal'}
+            onClick={() => setSubTab('journal')}
+          >
+            Journal
+          </button>
         </div>
       </div>
       {subTab === 'proxy' && <ClawProxyPanel onModelStatusChange={onModelStatusChange} />}
       {subTab === 'mcp' && <ClawMcpPanel />}
+      {subTab === 'journal' && <ClawProxyJournalTab />}
     </div>
   );
 }

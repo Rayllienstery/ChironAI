@@ -908,6 +908,41 @@ def create_log() -> Any:
         return jsonify({"error": str(e)}), 500
 
 
+@webui_bp.route("/logs", methods=["DELETE"])
+def delete_logs() -> Any:
+    """Delete log entries for a session from the database (matches GET scope by default)."""
+    try:
+        session_id = request.args.get("session_id")
+        if not session_id:
+            return jsonify({"error": "session_id is required"}), 400
+        inc_raw = (request.args.get("include_system") or "1").strip().lower()
+        include_system = inc_raw not in ("0", "false", "no")
+
+        logs_repo = get_logs_repository()
+        deleted = logs_repo.delete_logs_for_session(
+            session_id, include_system=include_system
+        )
+        return jsonify({"status": "ok", "deleted_count": deleted})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.delete_logs", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/proxy-logs", methods=["DELETE"])
+def delete_proxy_logs() -> Any:
+    """Delete proxy (and optionally autocomplete-only) logs from the database."""
+    try:
+        ac_raw = (request.args.get("autocomplete_only") or "").strip().lower()
+        autocomplete_only = ac_raw in ("1", "true", "yes")
+
+        logs_repo = get_logs_repository()
+        deleted = logs_repo.delete_proxy_logs(autocomplete_only=autocomplete_only)
+        return jsonify({"status": "ok", "deleted_count": deleted})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.delete_proxy_logs", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @webui_bp.route("/chat", methods=["POST"])
 def webui_chat() -> Any:
     """
@@ -2389,9 +2424,38 @@ def _get_qdrant_collection_names() -> list[str]:
 def rag_collections() -> Any:
     """Return detailed information about Qdrant collections."""
     url = get_qdrant_url().rstrip("/")
+
+    ttl_days = get_framework_collection_ttl_days()
+    default_top_k = get_default_rag_top_k()
     try:
-        # First get list of collections via HTTP API
+        settings_repo = get_settings_repository()
+        ttl_raw = settings_repo.get_app_setting("framework_collection_ttl_days")
+        if ttl_raw is not None and str(ttl_raw).strip() != "":
+            try:
+                ttl_days = int(ttl_raw)
+            except (TypeError, ValueError):
+                pass
+        top_k_raw = settings_repo.get_app_setting("default_rag_top_k")
+        if top_k_raw is not None and str(top_k_raw).strip() != "":
+            try:
+                default_top_k = int(top_k_raw)
+            except (TypeError, ValueError):
+                pass
+    except Exception:
+        pass
+
+    try:
         resp = requests.get(f"{url}/collections", timeout=5)
+    except requests.exceptions.RequestException as e:
+        _WEBUI_LOG.warning("Qdrant unreachable at %s: %s", url, e)
+        return jsonify({
+            "collections": [],
+            "error": "qdrant_unreachable",
+            "ttl_days": ttl_days,
+            "default_rag_top_k": default_top_k,
+        })
+
+    try:
         if not resp.ok:
             _WEBUI_LOG.warning("Qdrant /collections returned %s: %s", resp.status_code, resp.text)
             return jsonify({"collections": [], "error": f"HTTP {resp.status_code}"}), resp.status_code
@@ -2474,26 +2538,6 @@ def rag_collections() -> Any:
                 _WEBUI_LOG.warning("Failed to get collection %s via QdrantClient: %s", name, e)
                 detailed.append({"name": name})
 
-        # TTL and default top_k (app_settings override config)
-        ttl_days = get_framework_collection_ttl_days()
-        default_top_k = get_default_rag_top_k()
-        try:
-            settings_repo = get_settings_repository()
-            ttl_raw = settings_repo.get_app_setting("framework_collection_ttl_days")
-            if ttl_raw is not None and str(ttl_raw).strip() != "":
-                try:
-                    ttl_days = int(ttl_raw)
-                except (TypeError, ValueError):
-                    pass
-            top_k_raw = settings_repo.get_app_setting("default_rag_top_k")
-            if top_k_raw is not None and str(top_k_raw).strip() != "":
-                try:
-                    default_top_k = int(top_k_raw)
-                except (TypeError, ValueError):
-                    pass
-        except Exception:
-            pass
-
         return jsonify({
             "collections": detailed,
             "ttl_days": ttl_days,
@@ -2501,7 +2545,12 @@ def rag_collections() -> Any:
         })
     except Exception as e:
         _WEBUI_LOG.error("Failed to get Qdrant collections: %s", e, exc_info=True)
-        return jsonify({"collections": [], "error": str(e)}), 500
+        return jsonify({
+            "collections": [],
+            "error": str(e),
+            "ttl_days": ttl_days,
+            "default_rag_top_k": default_top_k,
+        }), 500
 
 
 @webui_bp.route("/rag/collection-settings", methods=["POST"])
