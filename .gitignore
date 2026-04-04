@@ -100,3 +100,6 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# ClawCode vendor archived parity snapshots (active checkout: vendor/claw-code/versions/)
+vendor/claw-code/backups/

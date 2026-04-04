@@ -1094,11 +1094,11 @@ export async function syncClawCodeVendor() {
   return data;
 }
 
-export async function rollbackClawCodeVendor(sha) {
-  const response = await fetch(`${CLAWCODE_BASE}/vendor/rollback`, {
+export async function rollbackClawCodeVendorPrevious() {
+  const response = await fetch(`${CLAWCODE_BASE}/vendor/rollback-previous`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sha }),
+    body: JSON.stringify({}),
   });
   const data = await response.json().catch(() => ({}));
   return data;

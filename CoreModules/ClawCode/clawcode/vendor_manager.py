@@ -1,4 +1,4 @@
-"""Vendor claw-code: GitHub main SHA, clone into versions/<sha>, active pointer."""
+"""Vendor claw-code: GitHub main SHA, active tree in versions/<sha>, archives in backups/<sha>."""
 
 from __future__ import annotations
 
@@ -56,6 +56,21 @@ def _write_vendor_snapshot_marker(dest: Path) -> None:
         pass
 
 
+def _is_sha_dir_name(name: str) -> bool:
+    n = name.lower()
+    return len(n) == 40 and all(c in "0123456789abcdef" for c in n)
+
+
+def _iter_sha_children(parent: Path) -> list[Path]:
+    if not parent.is_dir():
+        return []
+    out: list[Path] = []
+    for child in parent.iterdir():
+        if child.is_dir() and _is_sha_dir_name(child.name):
+            out.append(child)
+    return out
+
+
 def fetch_main_sha(owner: str, repo: str, token: str | None = None) -> str | None:
     """Return 40-char commit SHA for default branch tip (GitHub REST)."""
     url = f"https://api.github.com/repos/{owner}/{repo}/commits/main"
@@ -89,48 +104,115 @@ def read_active(root: Path) -> dict[str, Any] | None:
         return None
 
 
-def write_active(root: Path, sha: str) -> None:
+def history_from_active(data: dict[str, Any] | None) -> list[str]:
+    """Activation order newest-first; falls back to [sha] when history is missing."""
+    if not data:
+        return []
+    raw = data.get("history")
+    if isinstance(raw, list):
+        out: list[str] = []
+        for x in raw:
+            if isinstance(x, str) and _is_sha_dir_name(x):
+                out.append(x.lower())
+        if out:
+            return out
+    s = (data.get("sha") or "").strip().lower()
+    return [s] if _is_sha_dir_name(s) else []
+
+
+def can_rollback(root: Path) -> bool:
+    return len(history_from_active(read_active(root))) >= 2
+
+
+def write_active(root: Path, sha: str, history: list[str]) -> None:
     root.mkdir(parents=True, exist_ok=True)
+    sha = sha.lower()
+    norm: list[str] = []
+    seen: set[str] = set()
+    for h in history:
+        if not isinstance(h, str) or not _is_sha_dir_name(h):
+            continue
+        hl = h.lower()
+        if hl in seen:
+            continue
+        seen.add(hl)
+        norm.append(hl)
+    if not norm or norm[0] != sha:
+        norm = [sha] + [h for h in norm if h != sha]
     rel = f"versions/{sha}"
     (root / "active.json").write_text(
-        json.dumps({"sha": sha, "path": rel}, indent=2),
+        json.dumps({"sha": sha, "path": rel, "history": norm}, indent=2),
         encoding="utf-8",
     )
 
 
-def list_version_shas(root: Path) -> list[str]:
-    d = root / "versions"
-    if not d.is_dir():
-        return []
-    out = []
-    for child in d.iterdir():
+def _rmtree_retry(path: Path) -> None:
+    try:
+        shutil.rmtree(path, ignore_errors=True)
+    except OSError:
+        pass
+
+
+def _move_into_backup_replace(root: Path, src: Path, sha: str) -> None:
+    """Move src (versions/<sha>) to backups/<sha>, replacing existing backup."""
+    dst = root / "backups" / sha.lower()
+    (root / "backups").mkdir(parents=True, exist_ok=True)
+    if dst.exists():
+        _rmtree_retry(dst)
+    shutil.move(str(src), str(dst))
+
+
+def migrate_inactive_versions_to_backups(root: Path) -> None:
+    """
+    Keep only the active SHA under versions/; move other version dirs to backups/.
+    No-op if active.json is missing or has no valid sha.
+    """
+    data = read_active(root)
+    hist = history_from_active(data)
+    if not hist:
+        return
+    active_sha = hist[0]
+    vdir = root / "versions"
+    if not vdir.is_dir():
+        return
+    for child in _iter_sha_children(vdir):
         n = child.name.lower()
-        if child.is_dir() and len(n) == 40 and all(c in "0123456789abcdef" for c in n):
-            out.append(n)
-    return sorted(out)
+        if n == active_sha:
+            continue
+        try:
+            _move_into_backup_replace(root, child, n)
+        except OSError as e:
+            _LOG.warning("migrate_inactive_versions_to_backups: move %s failed: %s", n, e)
+
+
+def list_version_shas(root: Path) -> list[str]:
+    """All installed SHAs (active under versions/ and archives under backups/)."""
+    found: set[str] = set()
+    for base in (root / "versions", root / "backups"):
+        for child in _iter_sha_children(base):
+            found.add(child.name.lower())
+    return sorted(found)
 
 
 def migrate_strip_nested_git_all_versions(project_root: Path, root_relative: str) -> int:
     """
-    Remove nested ``.git`` under versions/<sha> (IDEs e.g. Cursor disable checkpoints otherwise).
+    Remove nested ``.git`` under versions/<sha> and backups/<sha>.
     Writes ``.clawcode-vendor-snapshot`` when stripping or when a tree has no .git yet.
     Returns the number of directories that had ``.git`` removed.
     """
     root = vendor_root(project_root, root_relative)
-    d = root / "versions"
-    if not d.is_dir():
-        return 0
     stripped = 0
-    for child in d.iterdir():
-        n = child.name.lower()
-        if not child.is_dir() or len(n) != 40 or not all(c in "0123456789abcdef" for c in n):
+    for sub in ("versions", "backups"):
+        d = root / sub
+        if not d.is_dir():
             continue
-        if (child / ".git").is_dir():
-            _strip_vendor_git(child)
-            _write_vendor_snapshot_marker(child)
-            stripped += 1
-        elif not (child / _VENDOR_SNAPSHOT_MARKER).is_file() and any(child.iterdir()):
-            _write_vendor_snapshot_marker(child)
+        for child in _iter_sha_children(d):
+            if (child / ".git").is_dir():
+                _strip_vendor_git(child)
+                _write_vendor_snapshot_marker(child)
+                stripped += 1
+            elif not (child / _VENDOR_SNAPSHOT_MARKER).is_file() and any(child.iterdir()):
+                _write_vendor_snapshot_marker(child)
     return stripped
 
 
@@ -173,13 +255,6 @@ def ensure_clone(owner: str, repo: str, sha: str, dest: Path) -> tuple[bool, str
         return False, str(e)
 
 
-def _rmtree_retry(path: Path) -> None:
-    try:
-        shutil.rmtree(path, ignore_errors=True)
-    except OSError:
-        pass
-
-
 def sync_latest(
     project_root: Path,
     owner: str,
@@ -187,23 +262,77 @@ def sync_latest(
     root_relative: str,
     token: str | None = None,
 ) -> dict[str, Any]:
-    """Fetch main SHA from GitHub; clone into versions/<sha>; set active."""
+    """Fetch main SHA from GitHub; materialize under versions/<sha>; archive prior active in backups/."""
     sha = fetch_main_sha(owner, repo, token=token)
     if not sha or len(sha) < 40:
         return {"ok": False, "error": "could not resolve full main SHA from GitHub"}
+    new_sha = sha.lower()
     root = vendor_root(project_root, root_relative)
-    dest = root / "versions" / sha.lower()
-    ok, msg = ensure_clone(owner, repo, sha.lower(), dest)
-    if not ok:
-        return {"ok": False, "error": msg}
-    write_active(root, sha.lower())
-    return {"ok": True, "sha": sha.lower(), "message": msg, "path": str(dest)}
+    migrate_inactive_versions_to_backups(root)
+    prev = read_active(root)
+    old_sha = (prev.get("sha") or "").strip().lower() if prev else ""
+    old_hist = history_from_active(prev)
+
+    versions_new = root / "versions" / new_sha
+    backups_new = root / "backups" / new_sha
+
+    if backups_new.is_dir() and not versions_new.is_dir():
+        (root / "versions").mkdir(parents=True, exist_ok=True)
+        shutil.move(str(backups_new), str(versions_new))
+        msg = "restored from backups"
+    else:
+        ok, msg = ensure_clone(owner, repo, new_sha, versions_new)
+        if not ok:
+            return {"ok": False, "error": msg}
+
+    if old_sha and old_sha != new_sha:
+        old_path = root / "versions" / old_sha
+        if old_path.is_dir():
+            try:
+                _move_into_backup_replace(root, old_path, old_sha)
+            except OSError as e:
+                return {"ok": False, "error": f"archive previous version failed: {e}"}
+
+    if not old_sha:
+        new_hist = [new_sha]
+    elif old_sha == new_sha:
+        new_hist = old_hist if old_hist and old_hist[0] == new_sha else [new_sha]
+    else:
+        tail = [h for h in old_hist if h not in (new_sha, old_sha)]
+        new_hist = [new_sha, old_sha] + tail
+
+    write_active(root, new_sha, new_hist)
+    return {"ok": True, "sha": new_sha, "message": msg, "path": str(versions_new)}
 
 
-def rollback(project_root: Path, sha: str, root_relative: str) -> dict[str, Any]:
+def rollback_to_previous(project_root: Path, root_relative: str) -> dict[str, Any]:
+    """Archive current versions/<sha> to backups/, restore previous SHA from backups if needed."""
     root = vendor_root(project_root, root_relative)
-    dest = root / "versions" / sha.lower()
-    if not dest.is_dir():
-        return {"ok": False, "error": f"version not found: {sha}"}
-    write_active(root, sha.lower())
-    return {"ok": True, "sha": sha.lower()}
+    migrate_inactive_versions_to_backups(root)
+    data = read_active(root)
+    hist = history_from_active(data)
+    if len(hist) < 2:
+        return {"ok": False, "error": "no previous version"}
+    current, target = hist[0], hist[1]
+
+    v_cur = root / "versions" / current
+    if v_cur.is_dir():
+        try:
+            _move_into_backup_replace(root, v_cur, current)
+        except OSError as e:
+            return {"ok": False, "error": f"archive current version failed: {e}"}
+
+    v_tgt = root / "versions" / target
+    b_tgt = root / "backups" / target
+    if not v_tgt.is_dir():
+        if b_tgt.is_dir():
+            (root / "versions").mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.move(str(b_tgt), str(v_tgt))
+            except OSError as e:
+                return {"ok": False, "error": f"restore previous version failed: {e}"}
+        else:
+            return {"ok": False, "error": f"target version not found: {target}"}
+
+    write_active(root, target, hist[1:])
+    return {"ok": True, "sha": target}

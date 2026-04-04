@@ -5,7 +5,7 @@ import {
   clearClawCodeTraces,
   getClawCodeVendorMainSha,
   syncClawCodeVendor,
-  rollbackClawCodeVendor,
+  rollbackClawCodeVendorPrevious,
   getClawCodeVendorVersions,
   getClawCodeSettings,
   updateClawCodeSettings,
@@ -30,8 +30,8 @@ function ClawProxyPanel({ onModelStatusChange }) {
   const [traces, setTraces] = useState([]);
   const [mainSha, setMainSha] = useState(null);
   const [versions, setVersions] = useState([]);
+  const [canRollback, setCanRollback] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [rollbackSha, setRollbackSha] = useState('');
   const [err, setErr] = useState(null);
   const [availableModels, setAvailableModels] = useState([]);
   const [defaultModel, setDefaultModel] = useState('');
@@ -66,7 +66,13 @@ function ClawProxyPanel({ onModelStatusChange }) {
         const t = await getClawCodeTraces(50);
         setTraces(t.traces || []);
         const v = await getClawCodeVendorVersions();
-        if (v.ok) setVersions(v.versions || []);
+        if (v.ok) {
+          setVersions(v.versions || []);
+          setCanRollback(Boolean(v.can_rollback));
+        } else {
+          setVersions([]);
+          setCanRollback(false);
+        }
       }
       const notify = onModelStatusChangeRef.current;
       if (settings?.ok) {
@@ -128,16 +134,11 @@ function ClawProxyPanel({ onModelStatusChange }) {
     }
   };
 
-  const doRollback = async () => {
-    const sha = rollbackSha.trim().toLowerCase();
-    if (sha.length !== 40) {
-      setErr('Enter full 40-character commit SHA');
-      return;
-    }
+  const doRollbackPrevious = async () => {
     setBusy(true);
     setErr(null);
     try {
-      const r = await rollbackClawCodeVendor(sha);
+      const r = await rollbackClawCodeVendorPrevious();
       if (!r.ok) setErr(r.error || 'Rollback failed');
       await refresh();
     } catch (e) {
@@ -476,8 +477,9 @@ function ClawProxyPanel({ onModelStatusChange }) {
             </div>
             <div className="dashboard-proxy-sections">
               <p className="dashboard-card-muted">
-                GitHub: {status.vendor?.github_owner}/{status.vendor?.github_repo} branch {status.vendor?.branch}. Clones
-                into <code>{status.vendor?.root_relative}/versions/&lt;sha&gt;</code> — old versions are kept.
+                GitHub: {status.vendor?.github_owner}/{status.vendor?.github_repo} branch {status.vendor?.branch}. Active
+                checkout: <code>{status.vendor?.root_relative}/versions/&lt;sha&gt;</code>. Archived copies:{' '}
+                <code>{status.vendor?.root_relative}/backups/&lt;sha&gt;</code>.
               </p>
               {kvRow('Active', <code>{status.vendor?.active?.sha || 'none'}</code>, 'active')}
               {kvRow('main@GitHub', mainSha ? <code>{mainSha}</code> : '—', 'main')}
@@ -494,16 +496,14 @@ function ClawProxyPanel({ onModelStatusChange }) {
                 {versions.length ? versions.map((s) => <code key={s}>{s.slice(0, 7)}… </code>) : 'none'}
               </p>
               <div className="dashboard-card-actions">
-                <input
-                  type="text"
-                  className="dashboard-card-field"
-                  placeholder="full 40-char sha to activate"
-                  value={rollbackSha}
-                  onChange={(e) => setRollbackSha(e.target.value)}
-                  aria-label="Rollback SHA"
-                />
-                <button type="button" className="dashboard-primary-btn" onClick={doRollback} disabled={busy}>
-                  Rollback to SHA
+                <button
+                  type="button"
+                  className="dashboard-primary-btn"
+                  onClick={doRollbackPrevious}
+                  disabled={busy || !canRollback}
+                  title={canRollback ? undefined : 'Update to a new version first to build history'}
+                >
+                  Rollback to previous version
                 </button>
               </div>
             </div>

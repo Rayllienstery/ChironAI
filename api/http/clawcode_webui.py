@@ -1,5 +1,5 @@
 """
-WebUI JSON API for ClawCode: status, traces, vendor sync/rollback.
+WebUI JSON API for ClawCode: status, traces, vendor sync, rollback-previous.
 
 Safe to import when ClawCode is not on sys.path — routes return available=false.
 """
@@ -54,13 +54,18 @@ def clawcode_status():
             get_server_host,
         )
         from infrastructure.database import get_settings_repository
-        from clawcode.vendor_manager import migrate_strip_nested_git_all_versions, read_active
+        from clawcode.vendor_manager import (
+            migrate_inactive_versions_to_backups,
+            migrate_strip_nested_git_all_versions,
+            read_active,
+        )
 
         vc = get_clawcode_vendor_config()
         global _VENDOR_NESTED_GIT_MIGRATED
         if not _VENDOR_NESTED_GIT_MIGRATED:
             migrate_strip_nested_git_all_versions(_REPO_ROOT, vc["root_relative"])
             _VENDOR_NESTED_GIT_MIGRATED = True
+        migrate_inactive_versions_to_backups(_REPO_ROOT / vc["root_relative"])
         settings_repo = get_settings_repository()
         stored_default = (settings_repo.get_app_setting("clawcode_default_model") or "").strip()
         effective_default = stored_default or get_ollama_chat_model()
@@ -196,15 +201,23 @@ def clawcode_vendor_versions():
         return jsonify({"ok": False, "versions": []}), 400
     from config import get_clawcode_vendor_config
 
-    from clawcode.vendor_manager import list_version_shas, read_active, vendor_root
+    from clawcode.vendor_manager import (
+        can_rollback,
+        list_version_shas,
+        migrate_inactive_versions_to_backups,
+        read_active,
+        vendor_root,
+    )
 
     vc = get_clawcode_vendor_config()
     root = vendor_root(_REPO_ROOT, vc["root_relative"])
+    migrate_inactive_versions_to_backups(root)
     return jsonify(
         {
             "ok": True,
             "versions": list_version_shas(root),
             "active": read_active(root),
+            "can_rollback": can_rollback(root),
         }
     )
 
@@ -230,20 +243,16 @@ def clawcode_vendor_sync():
     return jsonify(out), code
 
 
-@clawcode_bp.post("/vendor/rollback")
-def clawcode_vendor_rollback():
+@clawcode_bp.post("/vendor/rollback-previous")
+def clawcode_vendor_rollback_previous():
     if not _ensure_clawcode_path():
         return jsonify({"ok": False, "error": "clawcode unavailable"}), 400
-    body = request.get_json(silent=True) or {}
-    sha = (body.get("sha") or "").strip().lower()
-    if len(sha) != 40 or any(c not in "0123456789abcdef" for c in sha):
-        return jsonify({"ok": False, "error": "full 40-char sha required"}), 400
     from config import get_clawcode_vendor_config
 
-    from clawcode.vendor_manager import rollback
+    from clawcode.vendor_manager import rollback_to_previous
 
     vc = get_clawcode_vendor_config()
-    out = rollback(_REPO_ROOT, sha, vc["root_relative"])
+    out = rollback_to_previous(_REPO_ROOT, vc["root_relative"])
     code = 200 if out.get("ok") else 400
     return jsonify(out), code
 
