@@ -211,7 +211,14 @@ def openclaw_get_settings():
     if not _ensure_openclaw_path():
         return jsonify({"ok": False, "error": "openclaw unavailable"}), 400
     try:
-        from config import get_ollama_base_url, get_ollama_chat_model, get_qdrant_collection_name
+        from config import (
+            get_ollama_base_url,
+            get_ollama_chat_model,
+            get_ollama_chat_options,
+            get_openclaw_max_agent_steps,
+            get_openclaw_max_agent_steps_config_yaml,
+            get_qdrant_collection_name,
+        )
         from infrastructure.database import get_settings_repository
         from infrastructure.ollama.cli_runner import invoke_tags
 
@@ -222,6 +229,11 @@ def openclaw_get_settings():
         stored_rag = (repo.get_app_setting("openclaw_rag_collection") or "").strip()
         config_rag = get_qdrant_collection_name()
         effective_rag = stored_rag or config_rag
+
+        stored_max_steps = (repo.get_app_setting("openclaw_max_agent_steps") or "").strip()
+        stored_temp = (repo.get_app_setting("openclaw_chat_temperature") or "").strip()
+        stored_top_p = (repo.get_app_setting("openclaw_chat_top_p") or "").strip()
+        global_opts = get_ollama_chat_options() or {}
 
         base_url = get_ollama_base_url()
         tags = invoke_tags(base_url=base_url, timeout=5.0)
@@ -246,10 +258,27 @@ def openclaw_get_settings():
                 "rag_collection": effective_rag,
                 "stored_rag_collection": stored_rag,
                 "config_default_rag_collection": config_rag,
+                "max_agent_steps": get_openclaw_max_agent_steps(),
+                "stored_max_agent_steps": stored_max_steps,
+                "config_max_agent_steps_yaml": get_openclaw_max_agent_steps_config_yaml(),
+                "stored_chat_temperature": stored_temp,
+                "stored_chat_top_p": stored_top_p,
+                "global_chat_temperature": global_opts.get("temperature"),
+                "global_chat_top_p": global_opts.get("top_p"),
             }
         )
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _clearable_str(body: dict[str, Any], key: str) -> str | None:
+    """If key missing, None. If null, ''. Else stringified strip."""
+    if key not in body:
+        return None
+    v = body.get(key)
+    if v is None:
+        return ""
+    return str(v).strip()
 
 
 @openclaw_bp.post("/settings")
@@ -257,16 +286,24 @@ def openclaw_update_settings():
     """
     Persist OpenClaw settings.
 
-    Body may include:
-    - default_model: Ollama model when client requests the logical agent id (required if rag_collection omitted).
-    - rag_collection: Qdrant collection name; empty string clears override (use config default).
-    At least one of default_model or rag_collection must be present in the JSON body.
+    Body may include any of:
+    - default_model, rag_collection, max_agent_steps, chat_temperature, chat_top_p
+    Use null or empty string where supported to clear stored override.
     """
     if not _ensure_openclaw_path():
         return jsonify({"ok": False, "error": "openclaw unavailable"}), 400
     body = request.get_json(silent=True) or {}
-    if "default_model" not in body and "rag_collection" not in body:
-        return jsonify({"ok": False, "error": "Provide default_model and/or rag_collection"}), 400
+    allowed = (
+        "default_model",
+        "rag_collection",
+        "max_agent_steps",
+        "chat_temperature",
+        "chat_top_p",
+    )
+    if not any(k in body for k in allowed):
+        return jsonify(
+            {"ok": False, "error": f"Provide one or more of: {', '.join(allowed)}"}
+        ), 400
     try:
         from infrastructure.database import get_settings_repository
 
@@ -283,6 +320,58 @@ def openclaw_update_settings():
             rag_coll = str(raw).strip() if raw is not None else ""
             repo.set_app_setting("openclaw_rag_collection", rag_coll)
             out["rag_collection"] = rag_coll
+
+        ms = _clearable_str(body, "max_agent_steps")
+        if ms is not None:
+            if ms == "":
+                repo.set_app_setting("openclaw_max_agent_steps", "")
+                from config import get_openclaw_max_agent_steps
+
+                out["max_agent_steps"] = get_openclaw_max_agent_steps()
+            else:
+                try:
+                    n = int(ms)
+                except (TypeError, ValueError):
+                    return jsonify({"ok": False, "error": "max_agent_steps must be an integer"}), 400
+                if n < 1 or n > 256:
+                    return jsonify(
+                        {"ok": False, "error": "max_agent_steps must be between 1 and 256"}
+                    ), 400
+                repo.set_app_setting("openclaw_max_agent_steps", str(n))
+                out["max_agent_steps"] = n
+
+        ct = _clearable_str(body, "chat_temperature")
+        if ct is not None:
+            if ct == "":
+                repo.set_app_setting("openclaw_chat_temperature", "")
+                out["chat_temperature"] = ""
+            else:
+                try:
+                    t = float(ct)
+                except (TypeError, ValueError):
+                    return jsonify({"ok": False, "error": "chat_temperature must be a number"}), 400
+                if t < 0 or t > 2:
+                    return jsonify(
+                        {"ok": False, "error": "chat_temperature must be between 0 and 2"}
+                    ), 400
+                repo.set_app_setting("openclaw_chat_temperature", ct)
+                out["chat_temperature"] = ct
+
+        tp = _clearable_str(body, "chat_top_p")
+        if tp is not None:
+            if tp == "":
+                repo.set_app_setting("openclaw_chat_top_p", "")
+                out["chat_top_p"] = ""
+            else:
+                try:
+                    p = float(tp)
+                except (TypeError, ValueError):
+                    return jsonify({"ok": False, "error": "chat_top_p must be a number"}), 400
+                if p <= 0 or p > 1:
+                    return jsonify({"ok": False, "error": "chat_top_p must be in (0, 1]"}), 400
+                repo.set_app_setting("openclaw_chat_top_p", tp)
+                out["chat_top_p"] = tp
+
         return jsonify(out)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500

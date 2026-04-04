@@ -27,5 +27,6 @@ ollama:
   chat_options:
     num_predict: 3072
     temperature: 0.0
-    top_p: 0.1
+    # Ollama (incl. cloud) requires top_p=1 when temperature is 0 (greedy); otherwise 400.
+    top_p: 1.0
 

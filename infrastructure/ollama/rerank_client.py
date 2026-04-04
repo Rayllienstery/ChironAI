@@ -22,6 +22,12 @@ from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_ge
 _rerank_log = logging.getLogger("trag.rerank")
 
 
+def _looks_like_http_404(exc: BaseException) -> bool:
+    """True when the failure is almost certainly a missing REST route (common for /api/rerank)."""
+    s = str(exc).lower()
+    return "404" in s and ("not found" in s or "client error" in s)
+
+
 class OllamaRerankClient:
     """Rerank client using Ollama /api/rerank with fallback to /api/generate via CLI."""
 
@@ -47,7 +53,14 @@ class OllamaRerankClient:
                 if order:
                     return json.dumps(order)
         except Exception as e:
-            _rerank_log.info("Native /api/rerank failed (%s): %s; falling back", type(e).__name__, e)
+            if _looks_like_http_404(e):
+                _rerank_log.debug(
+                    "Native /api/rerank not available (%s): %s; using generate fallback",
+                    type(e).__name__,
+                    e,
+                )
+            else:
+                _rerank_log.info("Native /api/rerank failed (%s): %s; falling back", type(e).__name__, e)
 
         try:
             stdin_obj: dict = {
@@ -63,7 +76,16 @@ class OllamaRerankClient:
             data = invoke_generate(stdin_obj, default_timeout=120)
             return (data.get("response") or "").strip()
         except OllamaInteractorCliError as e:
-            _rerank_log.warning("Rerank failed (%s): %s", type(e).__name__, e)
+            if _looks_like_http_404(e):
+                _rerank_log.warning(
+                    "Rerank generate fallback failed (%s): %s — check OLLAMA_URL / config "
+                    "ollama.generate_url (must be Ollama's full …/api/generate URL); "
+                    "OpenAI-compatible proxies use different paths.",
+                    type(e).__name__,
+                    e,
+                )
+            else:
+                _rerank_log.warning("Rerank failed (%s): %s", type(e).__name__, e)
             return None
         except Exception as e:
             _rerank_log.warning("Rerank failed (%s): %s", type(e).__name__, e)

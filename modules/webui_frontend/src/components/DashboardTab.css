@@ -118,17 +118,84 @@
   }
 }
 
-/* Shared: form fields and scroll regions inside dashboard-style cards (e.g. Claw OpenAI tab) */
+/* Claw Proxy: two columns of stacked cards (uniform vertical gap per column) */
+.dashboard-claw-two-col {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--md-sys-spacing-lg);
+  width: 100%;
+}
+
+@media (min-width: 900px) {
+  .dashboard-claw-two-col {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+.dashboard-claw-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-lg);
+  min-width: 0;
+}
+
+.claw-proxy-page-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-md);
+  margin-bottom: var(--md-sys-spacing-lg);
+}
+
+.claw-proxy-page-header h2 {
+  margin: 0;
+  font: var(--md-sys-typescale-headline-small-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+/* Shared: form fields and scroll regions inside dashboard-style cards (e.g. Claw Proxy tab) */
 .dashboard-card-field {
-  flex: 1 1 220px;
-  min-width: min(100%, 200px);
-  max-width: 100%;
   padding: var(--md-sys-spacing-sm);
   border: 1px solid var(--md-sys-color-outline);
   border-radius: var(--md-sys-shape-corner-small);
   background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface);
   font: var(--md-sys-typescale-body-medium-font);
+  box-sizing: border-box;
+}
+
+select.dashboard-card-field {
+  flex: 1 1 220px;
+  min-width: min(100%, 200px);
+  max-width: 100%;
+  min-height: 2.75rem;
+  max-height: 2.75rem;
+}
+
+.dashboard-card-actions label {
+  align-self: flex-start;
+}
+
+/* Single-line text inputs: fixed height (flex-basis on a column flex parent was stretching fields) */
+input.dashboard-card-field {
+  flex: 1 1 220px;
+  min-width: min(100%, 160px);
+  max-width: 100%;
+  min-height: 2.75rem;
+  height: 2.75rem;
+  max-height: 2.75rem;
+  line-height: 1.25;
+}
+
+.dashboard-card-actions > input.dashboard-card-field {
+  flex: 1 1 220px;
+}
+
+.dashboard-card-actions label input.dashboard-card-field {
+  flex: 0 0 auto;
+  width: 12rem;
+  max-width: 100%;
+  min-width: 7rem;
 }
 
 .dashboard-card-scroll {

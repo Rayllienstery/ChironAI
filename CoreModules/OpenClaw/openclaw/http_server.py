@@ -93,7 +93,7 @@ def create_openclaw_flask_app() -> Flask:
             max_steps = get_openclaw_max_agent_steps()
             logical_id = get_openclaw_logical_model_id()
         except Exception:
-            max_steps, logical_id = 12, "Claw-Agent"
+            max_steps, logical_id = 40, "Claw-Agent"
 
         body = request.get_json(silent=True)
         if not isinstance(body, dict):

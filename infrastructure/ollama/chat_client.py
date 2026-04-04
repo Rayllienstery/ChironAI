@@ -16,11 +16,35 @@ except ImportError:
     get_ollama_chat_url = lambda: "http://localhost:11434/api/chat"  # type: ignore
     # When config is not importable, treat model as unset; callers must validate.
     get_ollama_chat_model = lambda: ""  # type: ignore
-    get_ollama_chat_options = lambda: {"num_predict": 3072, "temperature": 0.0, "top_p": 0.1}  # type: ignore
+    get_ollama_chat_options = lambda: {"num_predict": 3072, "temperature": 0.0, "top_p": 1.0}  # type: ignore
 
 import requests
 
 from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_chat
+
+
+def normalize_ollama_chat_options(options: dict[str, Any] | None) -> dict[str, Any]:
+    """
+    Ollama (including cloud models) returns 400 for greedy sampling (temperature <= 0)
+    combined with top_p < 1: "top_p must be 1 when using greedy sampling."
+    """
+    if not options:
+        return {}
+    out = dict(options)
+    try:
+        t = float(out["temperature"])
+    except (KeyError, TypeError, ValueError):
+        return out
+    if t > 0.0:
+        return out
+    try:
+        tp = float(out.get("top_p", 1.0))
+    except (TypeError, ValueError):
+        out["top_p"] = 1.0
+        return out
+    if tp < 1.0:
+        out["top_p"] = 1.0
+    return out
 
 
 def _chat_runtime_error(use_model: str, url: str, exc: OllamaInteractorCliError) -> RuntimeError:
@@ -64,7 +88,9 @@ class OllamaChatClient:
     ) -> str:
         """Send messages and return the assistant reply. Non-stream only for string return."""
         use_model = model or self._model
-        opts = {**(self._default_options or {}), **(options or {})}
+        opts = normalize_ollama_chat_options(
+            {**(self._default_options or {}), **(options or {})}
+        )
         payload: dict[str, Any] = {
             "model": use_model,
             "messages": messages,
@@ -90,7 +116,11 @@ class OllamaChatClient:
         Returns the parsed top-level JSON object.
         """
         use_model = str(body.get("model") or self._model)
-        stdin_obj: dict[str, Any] = {"url": self._url, "json": body, "timeout": 600}
+        payload = {**body}
+        payload["options"] = normalize_ollama_chat_options(
+            dict(payload.get("options") or {})
+        )
+        stdin_obj: dict[str, Any] = {"url": self._url, "json": payload, "timeout": 600}
         try:
             return invoke_chat(stdin_obj, default_timeout=600)
         except OllamaInteractorCliError as e:
@@ -105,7 +135,9 @@ class OllamaChatClient:
         """
         use_model = str(body.get("model") or self._model)
         payload = {**body, "stream": True}
-        opts = {**(self._default_options or {}), **(payload.get("options") or {})}
+        opts = normalize_ollama_chat_options(
+            {**(self._default_options or {}), **(payload.get("options") or {})}
+        )
         payload["options"] = opts
         try:
             resp = requests.post(self._url, json=payload, timeout=600, stream=True)
@@ -126,7 +158,9 @@ class OllamaChatClient:
     ) -> Iterator[str]:
         """Stream chat: yield text chunks from Ollama (thinking and content merged into one stream)."""
         use_model = model or self._model
-        opts = {**(self._default_options or {}), **(options or {})}
+        opts = normalize_ollama_chat_options(
+            {**(self._default_options or {}), **(options or {})}
+        )
         payload: dict[str, Any] = {
             "model": use_model,
             "messages": messages,
@@ -149,7 +183,9 @@ class OllamaChatClient:
         """
         use_model = str(body.get("model") or self._model)
         payload = {**body, "stream": True}
-        opts = {**(self._default_options or {}), **(payload.get("options") or {})}
+        opts = normalize_ollama_chat_options(
+            {**(self._default_options or {}), **(payload.get("options") or {})}
+        )
         payload["options"] = opts
         try:
             resp = requests.post(self._url, json=payload, timeout=600, stream=True)

@@ -292,7 +292,8 @@ def get_ollama_chat_options() -> Dict[str, Any]:
     return OLLAMA_CONFIG.get("chat_options", {
         "num_predict": 3072,
         "temperature": 0.0,
-        "top_p": 0.1,
+        # Ollama rejects greedy sampling (temperature 0) with top_p < 1.
+        "top_p": 1.0,
     })
 
 
@@ -397,14 +398,34 @@ def get_openclaw_mcp_http_enabled() -> bool:
     return bool(OPENCLAW_CONFIG.get("mcp_http_enabled", True))
 
 
+def get_openclaw_max_agent_steps_config_yaml() -> int:
+    """Default from openclaw.yaml only (no env, no DB); for WebUI hints."""
+    try:
+        return max(1, int(OPENCLAW_CONFIG.get("max_agent_steps", 40)))
+    except (TypeError, ValueError):
+        return 40
+
+
 def get_openclaw_max_agent_steps() -> int:
+    """
+    Effective max agent steps: app_settings (WebUI) overrides env and YAML.
+    Clamped to [1, 256].
+    """
+    try:
+        from infrastructure.database import get_settings_repository
+
+        raw = get_settings_repository().get_app_setting("openclaw_max_agent_steps")
+        if raw is not None and str(raw).strip():
+            return max(1, min(256, int(str(raw).strip())))
+    except Exception:
+        pass
     try:
         v = os.getenv("OPENCLAW_MAX_AGENT_STEPS")
         if v:
-            return max(1, int(v))
+            return max(1, min(256, int(v)))
     except (TypeError, ValueError):
         pass
-    return max(1, int(OPENCLAW_CONFIG.get("max_agent_steps", 12)))
+    return max(1, min(256, get_openclaw_max_agent_steps_config_yaml()))
 
 
 def get_openclaw_logical_model_id() -> str:

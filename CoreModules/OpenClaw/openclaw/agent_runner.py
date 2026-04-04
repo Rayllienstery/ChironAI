@@ -13,6 +13,7 @@ from application.rag.params import RAGAnswerParams, RAGDependencies, get_rag_ans
 from application.rag.use_cases import build_rag_context
 from domain.entities.rag import RagQuestionRequest
 from infrastructure.database import get_settings_repository
+from infrastructure.ollama.chat_client import normalize_ollama_chat_options
 from infrastructure.ollama.openai_ollama_tool_bridge import (
     arguments_to_ollama_object,
     ollama_message_to_openai_assistant,
@@ -148,11 +149,25 @@ def run_openclaw_chat_completion(
     # OpenClaw-specific app_settings (collection + default Ollama model).
     configured = ""
     openclaw_collection: str | None = None
+    oc_temp_override: float | None = None
+    oc_top_p_override: float | None = None
     try:
         repo = get_settings_repository()
         configured = (repo.get_app_setting("openclaw_default_model") or "").strip()
         _oc = (repo.get_app_setting("openclaw_rag_collection") or "").strip()
         openclaw_collection = _oc if _oc else None
+        _ts = (repo.get_app_setting("openclaw_chat_temperature") or "").strip()
+        if _ts:
+            try:
+                oc_temp_override = float(_ts)
+            except (TypeError, ValueError):
+                oc_temp_override = None
+        _tp = (repo.get_app_setting("openclaw_chat_top_p") or "").strip()
+        if _tp:
+            try:
+                oc_top_p_override = float(_tp)
+            except (TypeError, ValueError):
+                oc_top_p_override = None
     except Exception:
         pass
 
@@ -166,7 +181,7 @@ def run_openclaw_chat_completion(
     ollama_model = configured or params.model_name
     if not str(ollama_model or "").strip():
         # Configuration error: no concrete Ollama model selected for OpenClaw.
-        err_msg = "No default Ollama model configured for OpenClaw. Select one in Claw OpenAI tab."
+        err_msg = "No default Ollama model configured for OpenClaw. Select one in WebUI → Claw Proxy."
         if trace_callback is not None:
             trace_callback(
                 {
@@ -216,7 +231,12 @@ def run_openclaw_chat_completion(
                     continue
                 tools_list.append(t)
 
-    _co = getattr(chat_client, "_default_options", None) or {}
+    _co: dict[str, Any] = dict(getattr(chat_client, "_default_options", None) or {})
+    if oc_temp_override is not None:
+        _co["temperature"] = oc_temp_override
+    if oc_top_p_override is not None:
+        _co["top_p"] = oc_top_p_override
+    _co = normalize_ollama_chat_options(_co)
 
     for step_idx in range(max_steps):
         ollama_messages = openai_messages_to_ollama(openai_messages)

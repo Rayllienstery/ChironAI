@@ -29,8 +29,7 @@ import CrawlerTab from "./components/CrawlerTab";
 import TestingTab from "./components/TestingTab";
 import TemplateEditorTab from "./components/TemplateEditorTab";
 import DebugLogPanel from "./components/DebugLogPanel";
-import ClawOpenAITab from "./components/ClawOpenAITab";
-import ClawMcpTab from "./components/ClawMcpTab";
+import ClawProxyTab from "./components/ClawProxyTab";
 import Card from "./components/Card";
 import {
   getSession,
@@ -317,8 +316,7 @@ function App() {
   const tabs = [
     { id: "dashboard", label: "Dashboard" },
     { id: "llm-proxy", label: "LLM Proxy" },
-    { id: "claw-openai", label: "Claw OpenAI" },
-    { id: "claw-mcp", label: "Claw MCP" },
+    { id: "claw-proxy", label: "Claw Proxy" },
     { id: "logs", label: "Logs" },
     { id: "rag", label: "RAG / Qdrant" },
     { id: "crawler", label: "Crawler / Indexer" },
@@ -335,16 +333,14 @@ function App() {
             onOpenLogs={() => setActiveTab("logs")}
           />
         );
-      case "claw-openai":
+      case "claw-proxy":
         return (
-          <ClawOpenAITab
+          <ClawProxyTab
             onModelStatusChange={(hasError) =>
-              setTabErrors((prev) => ({ ...prev, "claw-openai": hasError }))
+              setTabErrors((prev) => ({ ...prev, "claw-proxy": hasError }))
             }
           />
         );
-      case "claw-mcp":
-        return <ClawMcpTab />;
       case "logs":
         return <LogsTab sessionId={sessionId} />;
       case "testing":

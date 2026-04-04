@@ -22,7 +22,7 @@ function kvRow(label, value, key) {
   );
 }
 
-function ClawOpenAITab({ onModelStatusChange }) {
+function ClawProxyPanel({ onModelStatusChange }) {
   const onModelStatusChangeRef = useRef(onModelStatusChange);
   onModelStatusChangeRef.current = onModelStatusChange;
 
@@ -38,18 +38,30 @@ function ClawOpenAITab({ onModelStatusChange }) {
   const [collections, setCollections] = useState([]);
   const [ragCollection, setRagCollection] = useState('');
   const [configDefaultRag, setConfigDefaultRag] = useState('');
+  const [maxStepsInput, setMaxStepsInput] = useState('');
+  const [effectiveMaxSteps, setEffectiveMaxSteps] = useState(40);
+  const [configMaxStepsYaml, setConfigMaxStepsYaml] = useState(40);
+  const [tempInput, setTempInput] = useState('');
+  const [topPInput, setTopPInput] = useState('');
+  const [globalTemp, setGlobalTemp] = useState(null);
+  const [globalTopP, setGlobalTopP] = useState(null);
 
   const refresh = useCallback(async () => {
     setErr(null);
     try {
-      const [s, settings, colData] = await Promise.all([
+      const [s, colData] = await Promise.all([
         getOpenclawStatus(),
-        getOpenclawSettings(),
         getRagCollections().catch(() => ({ collections: [] })),
       ]);
       setStatus(s);
       setCollections(colData.collections || []);
+      let settings = null;
       if (s.available) {
+        try {
+          settings = await getOpenclawSettings();
+        } catch {
+          settings = null;
+        }
         const t = await getOpenclawTraces(50);
         setTraces(t.traces || []);
         const v = await getOpenclawVendorVersions();
@@ -63,6 +75,13 @@ function ClawOpenAITab({ onModelStatusChange }) {
         setDefaultModel(def);
         setRagCollection(settings.stored_rag_collection != null ? settings.stored_rag_collection : '');
         setConfigDefaultRag(settings.config_default_rag_collection || '');
+        setMaxStepsInput(settings.stored_max_agent_steps != null ? String(settings.stored_max_agent_steps) : '');
+        setEffectiveMaxSteps(Number(settings.max_agent_steps) || 40);
+        setConfigMaxStepsYaml(Number(settings.config_max_agent_steps_yaml) || 40);
+        setTempInput(settings.stored_chat_temperature != null ? String(settings.stored_chat_temperature) : '');
+        setTopPInput(settings.stored_chat_top_p != null ? String(settings.stored_chat_top_p) : '');
+        setGlobalTemp(settings.global_chat_temperature);
+        setGlobalTopP(settings.global_chat_top_p);
         if (typeof notify === 'function') {
           const inList = Boolean(def && models.some((m) => m.id === def || m.name === def));
           notify(!inList);
@@ -137,10 +156,8 @@ function ClawOpenAITab({ onModelStatusChange }) {
 
   if (!status) {
     return (
-      <div className="dashboard-tab">
-        <div className="dashboard-layout">
-          <p className="dashboard-card-muted">Loading OpenClaw…</p>
-        </div>
+      <div className="dashboard-layout">
+        <p className="dashboard-card-muted">Loading OpenClaw…</p>
       </div>
     );
   }
@@ -153,38 +170,62 @@ function ClawOpenAITab({ onModelStatusChange }) {
 
   if (!status.available) {
     return (
-      <div className="dashboard-tab">
-        <div className="dashboard-layout">
-          <section className="dashboard-card" aria-labelledby="claw-openai-unavailable-heading">
-            <div className="dashboard-card-header">
-              <h2 id="claw-openai-unavailable-heading">Claw OpenAI</h2>
-            </div>
-            <p className="dashboard-card-muted">
-              OpenClaw is not available ({status.reason || 'unknown'}). Install <code>CoreModules/OpenClaw</code> and
-              ensure the app was restarted.
-            </p>
-          </section>
-        </div>
+      <div className="dashboard-layout">
+        <section className="dashboard-card" aria-labelledby="claw-proxy-unavailable-heading">
+          <div className="dashboard-card-header">
+            <h2 id="claw-proxy-unavailable-heading">Claw Proxy</h2>
+          </div>
+          <p className="dashboard-card-muted">
+            OpenClaw is not available ({status.reason || 'unknown'}). Install <code>CoreModules/OpenClaw</code> and
+            ensure the app was restarted.
+          </p>
+        </section>
       </div>
     );
   }
 
-  return (
-    <div className="dashboard-tab">
-      <div className="dashboard-layout">
-        <section className="dashboard-card" aria-labelledby="claw-openai-heading">
-          <div className="dashboard-card-header">
-            <h2 id="claw-openai-heading">Claw OpenAI</h2>
-          </div>
-          <p className="dashboard-card-muted">
-            OpenAI-compatible <strong>agent</strong> endpoint with a <code>rag_query</code> tool (ChironAI RAG). Default
-            port <code>8082</code> (see <code>config/openclaw.yaml</code>). Full documentation: repo root{' '}
-            <code>Claw.md</code> and <code>docs/OPENCLAW_VSCODE.md</code>.
-          </p>
-          {err && <div className="dashboard-card-error">{err}</div>}
-        </section>
+  const saveAgentRuntime = async () => {
+    const payload = {};
+    if (maxStepsInput.trim() === '') {
+      payload.max_agent_steps = null;
+    } else {
+      const n = parseInt(maxStepsInput, 10);
+      if (Number.isNaN(n) || n < 1 || n > 256) {
+        setErr('Max agent steps must be an integer 1–256, or empty to use config default');
+        return;
+      }
+      payload.max_agent_steps = n;
+    }
+    payload.chat_temperature = tempInput.trim() === '' ? null : tempInput.trim();
+    payload.chat_top_p = topPInput.trim() === '' ? null : topPInput.trim();
+    setBusy(true);
+    setErr(null);
+    try {
+      await updateOpenclawSettings(payload);
+      await refresh();
+    } catch (e) {
+      setErr(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
-        <div className="dashboard-bottom-grid">
+  return (
+    <div className="dashboard-layout">
+      <section className="dashboard-card" aria-labelledby="claw-proxy-intro-heading">
+        <div className="dashboard-card-header">
+          <h2 id="claw-proxy-intro-heading">OpenClaw HTTP agent</h2>
+        </div>
+        <p className="dashboard-card-muted">
+          OpenAI-compatible <strong>agent</strong> endpoint with a <code>rag_query</code> tool (ChironAI RAG). Default port{' '}
+          <code>8082</code> (see <code>config/openclaw.yaml</code>). Documentation: <code>Claw.md</code>,{' '}
+          <code>docs/OPENCLAW_VSCODE.md</code>.
+        </p>
+        {err && <div className="dashboard-card-error">{err}</div>}
+      </section>
+
+      <div className="dashboard-claw-two-col">
+        <div className="dashboard-claw-col">
           <section className="dashboard-card" aria-labelledby="claw-status-heading">
             <div className="dashboard-card-header">
               <h2 id="claw-status-heading">Status</h2>
@@ -204,53 +245,6 @@ function ClawOpenAITab({ onModelStatusChange }) {
               'ragcoll',
             )}
             {kvRow('Health', <code>{status.openai_base_url}/health</code>, 'health')}
-          </section>
-
-          <section className="dashboard-card" aria-labelledby="claw-model-heading">
-            <div className="dashboard-card-header">
-              <h2 id="claw-model-heading">Agent default model</h2>
-            </div>
-            <div className="dashboard-proxy-sections">
-              <p className="dashboard-card-muted">
-                This is the <strong>Ollama model</strong> OpenClaw will use when clients request{' '}
-                <code>{status.logical_model_id}</code> without overriding <code>model</code>. The list comes from Ollama
-                <code> /api/tags</code>.
-              </p>
-              <div className="dashboard-card-actions">
-                <select
-                  className="dashboard-card-field"
-                  value={defaultModel}
-                  onChange={(e) => setDefaultModel(e.target.value)}
-                  aria-label="Ollama model"
-                >
-                  <option value="">Select Ollama model…</option>
-                  {availableModels.map((m) => (
-                    <option key={m.id || m.name} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className="dashboard-primary-btn"
-                  disabled={!defaultModel || busy}
-                  onClick={async () => {
-                    try {
-                      setBusy(true);
-                      setErr(null);
-                      await updateOpenclawSettings({ default_model: defaultModel });
-                      await refresh();
-                    } catch (e) {
-                      setErr(String(e.message || e));
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                >
-                  Save default model
-                </button>
-              </div>
-            </div>
           </section>
 
           <section className="dashboard-card" aria-labelledby="claw-rag-collection-heading">
@@ -319,6 +313,147 @@ function ClawOpenAITab({ onModelStatusChange }) {
             </div>
           </section>
 
+          <section className="dashboard-card" aria-labelledby="claw-traces-heading">
+            <div className="dashboard-card-header">
+              <h2 id="claw-traces-heading">Traces</h2>
+              <div className="dashboard-card-actions">
+                <button type="button" className="dashboard-primary-btn" onClick={doClearTraces}>
+                  Clear trace buffer
+                </button>
+              </div>
+            </div>
+            <p className="dashboard-card-muted">
+              Last agent runs: model, steps (model_call / rag_query), token estimates, RSS when psutil is installed.
+            </p>
+            <div className="dashboard-card-scroll">
+              {traces.length === 0 && <p className="dashboard-card-muted">No traces yet.</p>}
+              {traces.map((t) => (
+                <details key={t.trace_id} className="dashboard-trace-item">
+                  <summary>
+                    <code>{(t.trace_id || '').slice(0, 8)}</code> · {t.elapsed_ms}ms · {t.step_count} steps ·{' '}
+                    {t.resolved_model}
+                    {t.error ? ` · error: ${t.error}` : ''}
+                  </summary>
+                  <pre>{JSON.stringify(t, null, 2)}</pre>
+                </details>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <div className="dashboard-claw-col">
+          <section className="dashboard-card" aria-labelledby="claw-model-heading">
+            <div className="dashboard-card-header">
+              <h2 id="claw-model-heading">Agent default model</h2>
+            </div>
+            <div className="dashboard-proxy-sections">
+              <p className="dashboard-card-muted">
+                This is the <strong>Ollama model</strong> OpenClaw will use when clients request{' '}
+                <code>{status.logical_model_id}</code> without overriding <code>model</code>. The list comes from Ollama{' '}
+                <code>/api/tags</code>.
+              </p>
+              <div className="dashboard-card-actions">
+                <select
+                  className="dashboard-card-field"
+                  value={defaultModel}
+                  onChange={(e) => setDefaultModel(e.target.value)}
+                  aria-label="Ollama model"
+                >
+                  <option value="">Select Ollama model…</option>
+                  {availableModels.map((m) => (
+                    <option key={m.id || m.name} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="dashboard-primary-btn"
+                  disabled={!defaultModel || busy}
+                  onClick={async () => {
+                    try {
+                      setBusy(true);
+                      setErr(null);
+                      await updateOpenclawSettings({ default_model: defaultModel });
+                      await refresh();
+                    } catch (e) {
+                      setErr(String(e.message || e));
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  Save default model
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="dashboard-card" aria-labelledby="claw-agent-runtime-heading">
+            <div className="dashboard-card-header">
+              <h2 id="claw-agent-runtime-heading">Agent runtime</h2>
+            </div>
+            <div className="dashboard-proxy-sections">
+              <p className="dashboard-card-muted">
+                OpenClaw-only overrides. Empty fields fall back to <code>config/models.yaml</code> chat options
+                (temperature / top_p) or YAML/env max steps (effective now: <strong>{effectiveMaxSteps}</strong>; YAML
+                default: <strong>{configMaxStepsYaml}</strong>).
+                {globalTemp != null && globalTopP != null && (
+                  <>
+                    {' '}
+                    Global chat defaults: temperature <code>{String(globalTemp)}</code>, top_p{' '}
+                    <code>{String(globalTopP)}</code>.
+                  </>
+                )}
+              </p>
+              <div className="dashboard-card-actions" style={{ flexWrap: 'wrap' }}>
+                <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  Max agent steps (1–256, empty = config)
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="dashboard-card-field"
+                    value={maxStepsInput}
+                    onChange={(e) => setMaxStepsInput(e.target.value)}
+                    placeholder={`e.g. ${configMaxStepsYaml}`}
+                    aria-label="Max agent steps"
+                  />
+                </label>
+                <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  Temperature (empty = global)
+                  <input
+                    type="text"
+                    className="dashboard-card-field"
+                    value={tempInput}
+                    onChange={(e) => setTempInput(e.target.value)}
+                    placeholder={globalTemp != null ? String(globalTemp) : 'inherit'}
+                    aria-label="OpenClaw temperature override"
+                  />
+                </label>
+                <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  Top P (empty = global)
+                  <input
+                    type="text"
+                    className="dashboard-card-field"
+                    value={topPInput}
+                    onChange={(e) => setTopPInput(e.target.value)}
+                    placeholder={globalTopP != null ? String(globalTopP) : 'inherit'}
+                    aria-label="OpenClaw top_p override"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="dashboard-primary-btn"
+                  disabled={busy}
+                  onClick={saveAgentRuntime}
+                  style={{ alignSelf: 'flex-end' }}
+                >
+                  Save agent runtime
+                </button>
+              </div>
+            </div>
+          </section>
+
           <section className="dashboard-card" aria-labelledby="claw-vendor-heading">
             <div className="dashboard-card-header">
               <h2 id="claw-vendor-heading">Vendor (claw-code parity)</h2>
@@ -357,37 +492,10 @@ function ClawOpenAITab({ onModelStatusChange }) {
               </div>
             </div>
           </section>
-
-          <section className="dashboard-card" aria-labelledby="claw-traces-heading">
-            <div className="dashboard-card-header">
-              <h2 id="claw-traces-heading">Traces</h2>
-              <div className="dashboard-card-actions">
-                <button type="button" className="dashboard-primary-btn" onClick={doClearTraces}>
-                  Clear trace buffer
-                </button>
-              </div>
-            </div>
-            <p className="dashboard-card-muted">
-              Last agent runs: model, steps (model_call / rag_query), token estimates, RSS when psutil is installed.
-            </p>
-            <div className="dashboard-card-scroll">
-              {traces.length === 0 && <p className="dashboard-card-muted">No traces yet.</p>}
-              {traces.map((t) => (
-                <details key={t.trace_id} className="dashboard-trace-item">
-                  <summary>
-                    <code>{(t.trace_id || '').slice(0, 8)}</code> · {t.elapsed_ms}ms · {t.step_count} steps ·{' '}
-                    {t.resolved_model}
-                    {t.error ? ` · error: ${t.error}` : ''}
-                  </summary>
-                  <pre>{JSON.stringify(t, null, 2)}</pre>
-                </details>
-              ))}
-            </div>
-          </section>
         </div>
       </div>
     </div>
   );
 }
 
-export default ClawOpenAITab;
+export default ClawProxyPanel;

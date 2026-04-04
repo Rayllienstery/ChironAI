@@ -87,6 +87,16 @@ def _parse_stderr_json(stderr: str) -> dict[str, Any] | None:
     return None
 
 
+def _cli_error_message(detail: dict[str, Any], fallback: str) -> str:
+    msg = detail.get("error") or fallback
+    body = detail.get("body")
+    if isinstance(body, dict):
+        oerr = body.get("error")
+        if oerr is not None and str(oerr).strip():
+            return f"{msg} — Ollama: {oerr}" if msg else str(oerr)
+    return msg or fallback
+
+
 def invoke(
     argv_suffix: list[str],
     *,
@@ -112,7 +122,7 @@ def invoke(
         raise OllamaInteractorCliError(f"ollama_interactor timeout: {e}") from e
     if proc.returncode != 0:
         detail = _parse_stderr_json(proc.stderr) or {}
-        msg = detail.get("error") or proc.stderr.strip() or f"exit {proc.returncode}"
+        msg = _cli_error_message(detail, proc.stderr.strip() or f"exit {proc.returncode}")
         raise OllamaInteractorCliError(
             msg,
             stderr=proc.stderr,
@@ -258,7 +268,7 @@ def iter_chat_stream(stdin_obj: dict[str, Any], *, default_timeout: float = 600.
             err = proc.stderr.read() if proc.stderr else ""
             if code != 0:
                 detail = _parse_stderr_json(err) or {}
-                msg = detail.get("error") or err.strip() or f"exit {code}"
+                msg = _cli_error_message(detail, err.strip() or f"exit {code}")
                 raise OllamaInteractorCliError(msg, stderr=err, returncode=code)
 
     yield from _gen()

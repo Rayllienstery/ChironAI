@@ -34,7 +34,7 @@ function TestingTab({
   }, [isControlled, activeSubTab]);
 
   useEffect(() => {
-    if (isControlled && activeSubTab === 'claw-openai' && typeof onSubTabChange === 'function') {
+    if (isControlled && activeSubTab === 'claw-proxy' && typeof onSubTabChange === 'function') {
       onSubTabChange('rag-tests');
     }
   }, [isControlled, activeSubTab, onSubTabChange]);
