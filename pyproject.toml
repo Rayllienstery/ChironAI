@@ -61,7 +61,7 @@ include = [
 exclude = ["tests*", "tests"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "CoreModules/ProxyV2/tests"]
+testpaths = ["tests"]
 pythonpath = [
   ".",
   "modules/rag_service",
@@ -69,7 +69,6 @@ pythonpath = [
   "modules/crawler_service",
   "CoreModules/ServiceStarter",
   "CoreModules/LlmProxy",
-  "CoreModules/ProxyV2",
   "CoreModules/WebInteraction",
 ]
 python_files = ["test_*.py"]

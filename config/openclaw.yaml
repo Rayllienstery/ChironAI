@@ -5,6 +5,7 @@
 ##   OPENCLAW_OPENAI_PORT=8082
 ##   OPENCLAW_MCP_PORT=8083
 ##   OPENCLAW_MAX_AGENT_STEPS=16
+##   OPENCLAW_LOGICAL_MODEL_ID=Claw-Agent
 ##   OPENCLAW_GITHUB_OWNER=ultraworkers
 ##   OPENCLAW_GITHUB_REPO=claw-code-parity
 ##   CHIRONAI_WEBUI_DIR — WebUI folder for RAG wiring (default: <repo>/WebUI)
@@ -17,7 +18,7 @@ openclaw:
   mcp_http_enabled: true
   max_agent_steps: 12
   request_timeout_seconds: 300
-  logical_model_id: "OpenClaw-Agent"
+  logical_model_id: "Claw-Agent"
   trace_buffer_size: 80
   vendor:
     github_owner: "ultraworkers"

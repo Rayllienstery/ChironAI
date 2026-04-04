@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from application.rag_tests.validator import validate_concepts, validate_result
+from application.rag_tests.validator import concept_satisfied, validate_concepts, validate_result
 
 
 class TestValidateConcepts:
@@ -72,6 +72,12 @@ class TestValidateConcepts:
         assert hits == 0
         assert total == 0
         assert missing == []
+
+    def test_data_race_heuristic_matches_race_condition(self) -> None:
+        assert concept_satisfied("There is a race condition on the main thread.", "data race") is True
+
+    def test_weak_reference_heuristic_matches_weak_var(self) -> None:
+        assert concept_satisfied("Use weak var coordinator to avoid cycles.", "weak reference") is True
 
 
 class TestValidateResult:

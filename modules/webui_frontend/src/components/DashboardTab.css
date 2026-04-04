@@ -118,6 +118,45 @@
   }
 }
 
+/* Shared: form fields and scroll regions inside dashboard-style cards (e.g. Claw OpenAI tab) */
+.dashboard-card-field {
+  flex: 1 1 220px;
+  min-width: min(100%, 200px);
+  max-width: 100%;
+  padding: var(--md-sys-spacing-sm);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.dashboard-card-scroll {
+  max-height: min(420px, 55vh);
+  overflow: auto;
+  margin-top: var(--md-sys-spacing-md);
+  font: var(--md-sys-typescale-body-small-font);
+}
+
+.dashboard-trace-item {
+  margin-bottom: var(--md-sys-spacing-md);
+  padding-bottom: var(--md-sys-spacing-sm);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.dashboard-trace-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.dashboard-trace-item pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: var(--md-sys-typescale-body-small-font);
+  margin: var(--md-sys-spacing-sm) 0 0 0;
+  color: var(--md-sys-color-on-surface);
+}
+
 .dashboard-card {
   background: var(--md-sys-color-surface);
   border-radius: var(--md-sys-shape-corner-large);

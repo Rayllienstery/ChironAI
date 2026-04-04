@@ -300,7 +300,7 @@ def get_qdrant_collection_name() -> str:
     """Return Qdrant collection name, allowing env override."""
     return os.getenv(
         "QDRANT_COLLECTION_NAME",
-        QDRANT_CONFIG.get("collection_name", "dev_docs")
+        QDRANT_CONFIG.get("collection_name", "Apple_Documentation")
     )
 
 
@@ -334,17 +334,6 @@ def get_server_port() -> int:
     except (TypeError, ValueError):
         pass
     return int(SERVER_CONFIG.get("port", 8080))
-
-
-def get_pass_proxy_v2_port() -> int:
-    """TCP port for Proxy V2 (Ollama passthrough). Env ``PASS_PROXY_V2_PORT`` overrides ``server.pass_proxy_v2_port``."""
-    try:
-        port = os.getenv("PASS_PROXY_V2_PORT")
-        if port:
-            return int(port)
-    except (TypeError, ValueError):
-        pass
-    return int(SERVER_CONFIG.get("pass_proxy_v2_port", 8081))
 
 
 def get_webui_port() -> int:
@@ -421,8 +410,8 @@ def get_openclaw_max_agent_steps() -> int:
 def get_openclaw_logical_model_id() -> str:
     return os.getenv(
         "OPENCLAW_LOGICAL_MODEL_ID",
-        str(OPENCLAW_CONFIG.get("logical_model_id", "OpenClaw-Agent")),
-    ).strip() or "OpenClaw-Agent"
+        str(OPENCLAW_CONFIG.get("logical_model_id", "Claw-Agent")),
+    ).strip() or "Claw-Agent"
 
 
 def get_openclaw_trace_buffer_size() -> int:

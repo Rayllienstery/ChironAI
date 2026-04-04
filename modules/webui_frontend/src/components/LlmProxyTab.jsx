@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import ModelSettings from './ModelSettings';
 import LlmProxyAutocompletePanel from './LlmProxyAutocompletePanel';
 import LlmProxyWebInteractionPanel from './LlmProxyWebInteractionPanel';
+import ProxyTraceTab from './ProxyTraceTab';
 import './SettingsTab.css';
 import './LlmProxyTab.css';
 
 const SUB_TABS = [
   { id: 'overview', label: 'Overview' },
+  { id: 'proxy-trace', label: 'Proxy Trace' },
   { id: 'autocomplete', label: 'Autocomplete' },
   { id: 'web-interaction', label: 'Web Interaction' },
 ];
@@ -149,8 +151,8 @@ function LlmProxyTab({ onOpenRagModels, onOpenLogs, onModelStatusChange }) {
               </li>
               <li>
                 <strong>Response</strong>: JSON (or stream) with assistant content, model id, usage approximations, and
-                optional RAG trace when requested. The <strong>Proxy Trace</strong> tab shows per-request timings; this
-                section describes the static algorithm they reflect.
+                optional RAG trace when requested. The <strong>Proxy Trace</strong> sub-tab shows per-request timings;
+                this section describes the static algorithm they reflect.
               </li>
             </ol>
           </details>
@@ -164,6 +166,8 @@ function LlmProxyTab({ onOpenRagModels, onOpenLogs, onModelStatusChange }) {
           </div>
         </div>
       )}
+
+      {subTab === 'proxy-trace' && <ProxyTraceTab />}
 
       {subTab === 'autocomplete' && <LlmProxyAutocompletePanel />}
 

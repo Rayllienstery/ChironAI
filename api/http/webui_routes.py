@@ -90,12 +90,16 @@ from config import (
     get_framework_collection_ttl_days,
     get_ollama_chat_model,
     get_ollama_rerank_model,
+    get_openclaw_host,
+    get_openclaw_logical_model_id,
+    get_openclaw_openai_port,
     get_qdrant_url,
     get_rag_float,
     get_rag_int,
     get_rag_prompt_name,
     get_retrieval_bool,
     get_retrieval_int,
+    get_server_host,
 )
 from application.rag.hybrid_sparse import is_hybrid_sparse_enabled
 from infrastructure.rag.qdrant_point_builder import build_named_vectors
@@ -290,6 +294,107 @@ def _get_ollama_url() -> str:
         return (os.getenv("OLLAMA_BASE_URL") or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
 
 
+def _openclaw_openai_http_base() -> str:
+    """HTTP origin for OpenClaw OpenAI-compatible API (e.g. http://127.0.0.1:8082)."""
+    env = (os.getenv("OPENCLAW_OPENAI_BASE_URL") or "").strip().rstrip("/")
+    if env:
+        return env
+    host = get_openclaw_host()
+    port = get_openclaw_openai_port()
+    if host in ("0.0.0.0", "::", ""):
+        dh = get_server_host()
+        if dh in ("0.0.0.0", "::", ""):
+            dh = "127.0.0.1"
+        host = dh
+    return f"http://{host}:{port}".rstrip("/")
+
+
+def _is_openclaw_logical_model_requested(model_id: str) -> bool:
+    a = (model_id or "").strip().lower()
+    if not a:
+        return False
+    return a == get_openclaw_logical_model_id().strip().lower()
+
+
+def _webui_chat_forward_openclaw(body: dict[str, Any], start_time: float) -> Any:
+    """POST chat to OpenClaw /v1/chat/completions (full agent + RAG pipeline on OpenClaw port)."""
+    logical_id = get_openclaw_logical_model_id()
+    base = _openclaw_openai_http_base()
+    forward: dict[str, Any] = {
+        "model": logical_id,
+        "messages": body.get("messages") or [],
+    }
+    for key in ("temperature", "top_p"):
+        if key in body and body[key] is not None:
+            forward[key] = body[key]
+    try:
+        timeout_sec = float(os.getenv("OPENCLAW_CHAT_TIMEOUT_SEC", "600"))
+    except (TypeError, ValueError):
+        timeout_sec = 600.0
+    set_proxy_status(STATUS_RESPONSE)
+    try:
+        resp = requests.post(
+            f"{base}/v1/chat/completions",
+            json=forward,
+            timeout=(10.0, timeout_sec),
+        )
+    except requests.RequestException as e:
+        return jsonify({"error": f"OpenClaw unreachable at {base}: {e}"}), 502
+
+    try:
+        data = resp.json() if resp.content else {}
+    except ValueError:
+        data = {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "OpenClaw returned non-JSON response"}), 502
+
+    if resp.status_code >= 400:
+        err = data.get("error")
+        if isinstance(err, dict):
+            msg = str(err.get("message") or err)
+        else:
+            msg = str(err or resp.text or "OpenClaw error")
+        return jsonify({"error": msg}), 502
+
+    latency_ms = int((time.time() - start_time) * 1000)
+    if "latency_ms" not in data:
+        data["latency_ms"] = latency_ms
+
+    include_rag_metadata = body.get("include_rag_metadata", True)
+    if not include_rag_metadata:
+        data.pop("rag_metadata", None)
+
+    try:
+        choices = data.get("choices") or []
+        c0 = choices[0] if choices else {}
+        msg = (c0.get("message") or {}) if isinstance(c0, dict) else {}
+        _pt = " ".join(
+            (m.get("content") or "")
+            for m in forward.get("messages") or []
+            if isinstance(m, dict)
+        )
+        usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+
+        def _approx_tokens(text: str) -> int:
+            if not text:
+                return 0
+            return max(1, int(len(text) / 4))
+
+        if not usage.get("total_tokens"):
+            pt = _approx_tokens(_pt)
+            ct = _approx_tokens((msg.get("content") or "") if isinstance(msg, dict) else "")
+            data["usage"] = {
+                "prompt_tokens": usage.get("prompt_tokens", pt),
+                "completion_tokens": usage.get("completion_tokens", ct),
+                "total_tokens": usage.get("total_tokens", pt + ct),
+            }
+        set_latest_request_total_tokens(int(data["usage"].get("total_tokens") or 0))
+    except Exception:
+        pass
+
+    return jsonify(data)
+
+
 @webui_bp.route("/models", methods=["GET"])
 def get_models() -> Any:
     """Return list of available models from Ollama."""
@@ -327,7 +432,15 @@ def get_models() -> Any:
             "name": RAG_MODEL_ID,
             "description": "RAG-enabled Ollama model (proxy)",
         })
-        
+
+        oc_id = get_openclaw_logical_model_id()
+        oc_base = _openclaw_openai_http_base()
+        models_list.insert(1, {
+            "id": oc_id,
+            "name": oc_id,
+            "description": f"OpenClaw agent (full pipeline via {oc_base})",
+        })
+
         return jsonify({"models": models_list})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_models", exc_info=True)
@@ -764,54 +877,6 @@ def get_proxy_trace_current() -> Any:
         return jsonify({"error": str(e)}), 500
 
 
-def _ensure_proxy_v2_on_path() -> None:
-    candidate = os.path.join(_ROOT, "CoreModules", "ProxyV2")
-    if os.path.isdir(candidate) and candidate not in sys.path:
-        sys.path.insert(0, candidate)
-
-
-@webui_bp.route("/proxy-v2/settings", methods=["GET"])
-def get_proxy_v2_settings() -> Any:
-    try:
-        settings_repo = get_settings_repository()
-        model = (settings_repo.get_app_setting("proxy_v2_model") or "").strip()
-        return jsonify({"model": model})
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.get_proxy_v2_settings", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@webui_bp.route("/proxy-v2/settings", methods=["POST"])
-def update_proxy_v2_settings() -> Any:
-    try:
-        body = request.get_json(force=True, silent=True) or {}
-        model = str(body.get("model") or "").strip()
-        get_settings_repository().set_app_setting("proxy_v2_model", model)
-        return jsonify({"status": "ok", "model": model})
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.update_proxy_v2_settings", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@webui_bp.route("/proxy-v2/trace/current", methods=["GET"])
-def get_proxy_v2_trace_current() -> Any:
-    try:
-        _ensure_proxy_v2_on_path()
-        from proxy_v2.trace_store import get_current_trace as get_v2_trace
-        from proxy_v2.trace_store import get_current_trace_updated_at as get_v2_trace_updated_at
-
-        return jsonify(
-            {
-                "trace": get_v2_trace(),
-                "status": "live",
-                "updated_at": get_v2_trace_updated_at(),
-            }
-        )
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.get_proxy_v2_trace_current", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
 @webui_bp.route("/logs", methods=["POST"])
 def create_log() -> Any:
     """Create a log entry."""
@@ -871,6 +936,10 @@ def webui_chat() -> Any:
 
         if not messages:
             return jsonify({"error": "messages is required"}), 400
+
+        if _is_openclaw_logical_model_requested(requested_model):
+            return _webui_chat_forward_openclaw(body, start_time)
+
         set_proxy_status(STATUS_RAG_SEARCH)
 
         settings_repo = get_settings_repository()
@@ -988,6 +1057,7 @@ def webui_chat() -> Any:
         # Build RAG context to get chunks_info
         rag_keywords = _get_rag_required_keywords_from_module()
         trigger_threshold = _get_effective_rag_trigger_threshold()
+        force_rag = bool(body.get("force_rag"))
         ctx, rag_timings = build_rag_context(
             last_user,
             rag_repo,
@@ -997,6 +1067,7 @@ def webui_chat() -> Any:
             params.context_total_chars,
             rag_required_keywords=rag_keywords,
             trigger_threshold=trigger_threshold,
+            force_rag=force_rag,
         )
         if rag_timings:
             set_latest_request_rag_steps(rag_timings)
@@ -1106,6 +1177,7 @@ def webui_chat() -> Any:
                 "latency_ms": latency_ms,
                 "context_chars": sum(int(c.get("text_length") or 0) for c in (ctx.chunks_info or [])),
                 "system_prompt_preview": system_preview,
+                "rag_queries": [{"query": (last_user or "")[:2000], "step": 0}],
             }
         
         # Store in buffer for dev console
@@ -4965,6 +5037,7 @@ def _rag_tests_run_worker(
                         "found_concepts": [],
                         "full_response": None,
                         "chunks_info": [],
+                        "rag_queries": [],
                         "retrieved_chunks": None,
                         "question": question,
                         "prompt_tokens": None,
@@ -4999,6 +5072,7 @@ def _rag_tests_run_worker(
                     "found_concepts": validation.get("found_concepts") or [],
                     "full_response": content or None,
                     "chunks_info": rag_metadata.get("chunks_info") or [],
+                    "rag_queries": rag_metadata.get("rag_queries") or [],
                     "retrieved_chunks": validation.get("retrieved_chunks"),
                     "question": question,
                     "prompt_tokens": usage.get("prompt_tokens"),
@@ -5031,6 +5105,7 @@ def _rag_tests_run_worker(
                     "found_concepts": [],
                     "full_response": None,
                     "chunks_info": [],
+                    "rag_queries": [],
                     "retrieved_chunks": None,
                     "question": question,
                     "prompt_tokens": None,

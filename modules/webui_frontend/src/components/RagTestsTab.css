@@ -407,6 +407,116 @@
   margin-top: 8px;
 }
 
+.rag-tests-result-modal-content {
+  max-width: min(720px, 96vw);
+  width: 96%;
+  max-height: min(88vh, 900px);
+  overflow-y: auto;
+  padding: 20px 22px 24px;
+}
+
+.rag-tests-result-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.rag-tests-result-modal-header h3 {
+  margin: 0;
+  font: var(--md-sys-typescale-title-large-font);
+  color: var(--md-sys-color-on-surface);
+  flex: 1;
+  padding-right: 8px;
+}
+
+.rag-tests-result-modal-close {
+  flex-shrink: 0;
+  border: none;
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--md-sys-shape-corner-full, 999px);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.rag-tests-result-modal-close:hover {
+  background: var(--md-sys-color-surface-container-highest);
+}
+
+.rag-tests-result-modal-meta {
+  margin: 0 0 16px;
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.rag-tests-result-id {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+}
+
+.rag-tests-result-section {
+  margin-bottom: 18px;
+}
+
+.rag-tests-result-section h4 {
+  margin: 0 0 8px;
+  font: var(--md-sys-typescale-title-small-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.rag-tests-result-question {
+  margin: 0;
+  white-space: pre-wrap;
+  font: var(--md-sys-typescale-body-medium-font);
+  line-height: 1.45;
+}
+
+.rag-tests-result-empty {
+  margin: 0;
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+  font-style: italic;
+}
+
+.rag-tests-rag-query-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.rag-tests-rag-query-list li {
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-lowest);
+}
+
+.rag-tests-rag-query-meta {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--md-sys-color-on-surface-variant);
+  margin-bottom: 6px;
+}
+
+.rag-tests-pre-tight {
+  max-height: 140px;
+  font-size: 0.82em;
+}
+
+.rag-tests-pre-answer {
+  max-height: 320px;
+}
+
+.rag-tests-chunks-modal .rag-tests-pre.small {
+  max-height: 160px;
+}
+
 .required {
   color: var(--md-sys-color-error);
 }

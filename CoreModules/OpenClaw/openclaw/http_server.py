@@ -38,10 +38,10 @@ def create_openclaw_flask_app() -> Flask:
         """
         List models visible to OpenClaw.
 
-        - Always includes the logical OpenClaw agent id (e.g. \"OpenClaw-Agent\").
+        - Always includes the logical OpenClaw agent id (e.g. \"Claw-Agent\").
         - Dynamically lists Ollama models from /api/tags where possible.
         """
-        logical = "OpenClaw-Agent"
+        logical = "Claw-Agent"
         data = []
         try:
             from config import (
@@ -93,7 +93,7 @@ def create_openclaw_flask_app() -> Flask:
             max_steps = get_openclaw_max_agent_steps()
             logical_id = get_openclaw_logical_model_id()
         except Exception:
-            max_steps, logical_id = 12, "OpenClaw-Agent"
+            max_steps, logical_id = 12, "Claw-Agent"
 
         body = request.get_json(silent=True)
         if not isinstance(body, dict):

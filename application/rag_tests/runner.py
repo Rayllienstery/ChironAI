@@ -84,6 +84,7 @@ def run_one_test(
         rag_metadata: dict[str, Any] = {
             "chunks_info": ctx.chunks_info,
             "chunks_count": len(ctx.chunks_info),
+            "rag_queries": [{"query": retrieval_query[:2000], "step": 0}],
         }
         req = RagQuestionRequest(
             messages=[{"role": "user", "content": question}],
@@ -135,6 +136,7 @@ def run_one_test(
             "found_concepts": validation.get("found_concepts") or [],
             "full_response": content or None,
             "chunks_info": rag_metadata.get("chunks_info") or [],
+            "rag_queries": rag_metadata.get("rag_queries") or [],
             "retrieved_chunks": validation.get("retrieved_chunks"),
             "question": question,
             "prompt_tokens": prompt_tokens,
@@ -162,6 +164,7 @@ def run_one_test(
             "found_concepts": [],
             "full_response": None,
             "chunks_info": [],
+            "rag_queries": [],
             "retrieved_chunks": None,
             "question": question,
             "prompt_tokens": None,

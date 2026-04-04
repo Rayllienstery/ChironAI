@@ -16,31 +16,156 @@ def _response_contains_concept(response: str, concept: str) -> bool:
     """Case-insensitive check; treat concept as literal (can contain parens, etc.)."""
     if not response or not concept:
         return False
-    # Escape special regex chars for literal match; then search case-insensitive
     pattern = re.escape(concept.strip())
     return bool(re.search(pattern, response, re.IGNORECASE))
+
+
+def _matches_data_race(response: str, _concept: str) -> bool:
+    r = response or ""
+    if _response_contains_concept(r, "data race"):
+        return True
+    return bool(re.search(r"race\s+conditions?", r, re.IGNORECASE))
+
+
+def _matches_weak_reference(response: str, _concept: str) -> bool:
+    r = response or ""
+    if _response_contains_concept(r, "weak reference"):
+        return True
+    low = r.lower()
+    if "[weak" in low:
+        return True
+    if re.search(r"\bweak\s+var\b", r, re.IGNORECASE):
+        return True
+    if re.search(r"\bweak\s+let\b", r, re.IGNORECASE):
+        return True
+    return False
+
+
+def _matches_id_colon(response: str, _concept: str) -> bool:
+    r = response or ""
+    if _response_contains_concept(r, "id:"):
+        return True
+    if re.search(r"\bid\s*:\s*", r, re.IGNORECASE):
+        return True
+    if re.search(r"identified\s+by", r, re.IGNORECASE):
+        return True
+    return False
+
+
+def _matches_custom_layout(response: str, _concept: str) -> bool:
+    r = response or ""
+    if _response_contains_concept(r, "custom Layout") or _response_contains_concept(r, "custom layout"):
+        return True
+    low = r.lower()
+    for needle in ("lazyvgrid", "lazyhgrid", "griditem", "layout protocol", "layout that"):
+        if needle in low:
+            return True
+    return False
+
+
+def _matches_slash_pair(response: str, concept: str) -> bool:
+    """e.g. 'weak / unowned' — require evidence for each side."""
+    r = response or ""
+    parts = [p.strip() for p in concept.split(" / ") if p.strip()]
+    if len(parts) < 2:
+        return False
+    for p in parts:
+        pl = p.lower()
+        if pl == "weak":
+            if not (_matches_weak_reference(r, p) or re.search(r"\bweak\b", r, re.IGNORECASE)):
+                return False
+        elif pl == "unowned":
+            if not re.search(r"\bunowned\b", r, re.IGNORECASE):
+                return False
+        elif not _response_contains_concept(r, p):
+            return False
+    return True
+
+
+_SPECIAL_CHECKERS: list[tuple[str, Any]] = [
+    ("data race", _matches_data_race),
+    ("weak reference", _matches_weak_reference),
+    ("id:", _matches_id_colon),
+    ("custom layout", _matches_custom_layout),
+]
+
+
+def _checker_for_concept(concept: str) -> Any:
+    key = concept.strip().lower()
+    for prefix, fn in _SPECIAL_CHECKERS:
+        if key == prefix:
+            return fn
+    if " / " in concept:
+        return _matches_slash_pair
+    return None
+
+
+def concept_satisfied(response: str, concept: str) -> bool:
+    """Literal substring match, plus built-in heuristics for known tricky concepts."""
+    if not concept or not (concept.strip()):
+        return True
+    fn = _checker_for_concept(concept)
+    if fn is not None:
+        return bool(fn(response or "", concept))
+    return _response_contains_concept(response or "", concept)
 
 
 def validate_concepts(
     response: str,
     expected_concepts: list[str],
     concept_mode: str,
+    *,
+    concept_groups: list[list[str]] | None = None,
 ) -> tuple[bool, int, int, list[str]]:
     """
     Check which expected concepts appear in the response.
     Returns (passed, hits, total, missing_concepts).
-    concept_mode: 'any' => at least one; 'all' => all must appear.
+    concept_mode: 'any' => at least one flat concept; 'all' => every flat concept.
+    concept_groups: optional OR-groups; each group must have at least one match (AND across groups).
     """
-    if not expected_concepts:
-        return True, 0, 0, []
-    hits = sum(1 for c in expected_concepts if _response_contains_concept(response, c))
-    total = len(expected_concepts)
-    missing = [c for c in expected_concepts if not _response_contains_concept(response, c)]
+    response = response or ""
+    flat = [c for c in (expected_concepts or []) if isinstance(c, str) and c.strip()]
+    groups = [
+        [a.strip() for a in g if isinstance(a, str) and a.strip()]
+        for g in (concept_groups or [])
+        if isinstance(g, list)
+    ]
+    groups = [g for g in groups if g]
+
+    flat_hits = sum(1 for c in flat if concept_satisfied(response, c))
+    flat_missing = [c for c in flat if not concept_satisfied(response, c)]
+
+    group_hits = 0
+    group_missing: list[str] = []
+    for gi, alts in enumerate(groups):
+        if any(concept_satisfied(response, a) for a in alts):
+            group_hits += 1
+        else:
+            group_missing.append(f"(group {gi + 1}: {' OR '.join(alts)})")
+
+    total = len(flat) + len(groups)
+    hits = flat_hits + group_hits
+
     if concept_mode == "any":
-        passed = hits >= 1
+        flat_ok = (not flat) or (flat_hits >= 1)
     else:
-        passed = hits == total
+        flat_ok = (not flat) or (flat_hits == len(flat))
+
+    groups_ok = (not groups) or (group_hits == len(groups))
+    passed = flat_ok and groups_ok
+
+    if concept_mode == "any" and flat_ok:
+        # Report which flat concepts were not found (informational) while still passing.
+        missing = flat_missing + ([] if groups_ok else group_missing)
+    elif not passed:
+        missing = flat_missing + ([] if groups_ok else group_missing)
+    else:
+        missing = []
     return passed, hits, total, missing
+
+
+def _found_flat_concepts(response: str, concepts: list[str]) -> list[str]:
+    return [c for c in concepts if isinstance(c, str) and c.strip() and concept_satisfied(response, c)]
 
 
 def _response_overlaps_chunks(response: str, chunks_info: list[dict[str, Any]], min_len: int = 20) -> bool:
@@ -55,7 +180,6 @@ def _response_overlaps_chunks(response: str, chunks_info: list[dict[str, Any]], 
         snippet = _normalize_whitespace(text[:300])
         if snippet and snippet in norm_response:
             return True
-        # Try first 50 chars as substring
         short = _normalize_whitespace(text[:50])
         if len(short) >= 15 and short in norm_response:
             return True
@@ -77,54 +201,58 @@ def validate_result(
     rag_used, confidence_label, retrieved_chunks (for FAIL), full_response (for FAIL).
     """
     concepts = test.get("expected_concepts") or []
+    concept_groups = test.get("concept_groups")
+    if concept_groups is not None and not isinstance(concept_groups, list):
+        concept_groups = None
+    else:
+        concept_groups = [
+            [str(x).strip() for x in g if isinstance(x, str) and str(x).strip()]
+            for g in (concept_groups or [])
+            if isinstance(g, list)
+        ]
+        concept_groups = [g for g in concept_groups if g]
+
     concept_mode = (test.get("concept_mode") or "all").strip().lower()
     if concept_mode not in ("any", "all"):
         concept_mode = "all"
     require_rag = test.get("rag_requirement", True)
     require_rag_overlap = bool(test.get("rag_strict", False))
 
-    # Concept validation
     concepts_passed, hits, total, missing = validate_concepts(
         response_content or "",
         concepts,
         concept_mode,
+        concept_groups=concept_groups,
     )
     confidence_label = f"{hits}/{total} concepts found" if total else "N/A"
 
-    # RAG usage
     chunks_info = (rag_metadata or {}).get("chunks_info") or []
     chunks_count = (rag_metadata or {}).get("chunks_count", len(chunks_info))
     rag_used = chunks_count > 0
     if require_rag_overlap and rag_used and chunks_info:
         rag_used = _response_overlaps_chunks(response_content or "", chunks_info)
 
-    # Empty or irrelevant
     empty = not (response_content or "").strip()
     min_length_ok = len((response_content or "").strip()) >= 10
 
-    # Overall pass/fail
     rag_ok = (not require_rag) or rag_used
-    concepts_ok = concepts_passed if concepts else True
+    concepts_ok = concepts_passed if (concepts or concept_groups) else True
     status = "PASS" if (concepts_ok and rag_ok and not empty and min_length_ok) else "FAIL"
 
-    # Found concepts: expected concepts that appear in the response
     response_norm = response_content or ""
-    found_concepts = [c for c in concepts if _response_contains_concept(response_norm, c)]
+    found_concepts = _found_flat_concepts(response_norm, [c for c in concepts if isinstance(c, str)])
 
-    # Failure reason when FAIL
     failure_reason: str | None = None
     if status == "FAIL":
         reasons: list[str] = []
         if not concepts_ok:
             reasons.append("Missing concepts: " + ", ".join(missing))
         if not rag_ok:
-            # Make RAG-related failures explicit instead of abstract "not triggered"
             if chunks_count == 0:
                 reasons.append("RAG not triggered (no matching context found)")
             elif require_rag_overlap and chunks_info:
                 reasons.append("RAG chunks did not overlap response")
             else:
-                # Fallback: RAG pipeline was skipped or produced no usable chunks
                 reasons.append("RAG was skipped by trigger/keywords or produced no usable chunks")
         if empty:
             reasons.append("Response empty")

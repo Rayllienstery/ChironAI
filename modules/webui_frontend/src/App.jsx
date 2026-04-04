@@ -29,8 +29,6 @@ import CrawlerTab from "./components/CrawlerTab";
 import TestingTab from "./components/TestingTab";
 import TemplateEditorTab from "./components/TemplateEditorTab";
 import DebugLogPanel from "./components/DebugLogPanel";
-import ProxyTraceTab from "./components/ProxyTraceTab";
-import ProxyV2Tab from "./components/ProxyV2Tab";
 import ClawOpenAITab from "./components/ClawOpenAITab";
 import ClawMcpTab from "./components/ClawMcpTab";
 import Card from "./components/Card";
@@ -319,8 +317,6 @@ function App() {
   const tabs = [
     { id: "dashboard", label: "Dashboard" },
     { id: "llm-proxy", label: "LLM Proxy" },
-    { id: "proxy-trace", label: "Proxy Trace" },
-    { id: "proxy-v2", label: "Proxy V2" },
     { id: "claw-openai", label: "Claw OpenAI" },
     { id: "claw-mcp", label: "Claw MCP" },
     { id: "logs", label: "Logs" },
@@ -339,10 +335,6 @@ function App() {
             onOpenLogs={() => setActiveTab("logs")}
           />
         );
-      case "proxy-trace":
-        return <ProxyTraceTab />;
-      case "proxy-v2":
-        return <ProxyV2Tab />;
       case "claw-openai":
         return (
           <ClawOpenAITab
@@ -368,9 +360,6 @@ function App() {
             runError={ragTestRunError}
             onStartRun={handleRagTestRunStart}
             onCancelRun={handleRagTestRunCancel}
-            onClawOpenAiModelStatusChange={(hasError) =>
-              setTabErrors((prev) => ({ ...prev, "claw-openai": hasError }))
-            }
           />
         );
       case "rag":

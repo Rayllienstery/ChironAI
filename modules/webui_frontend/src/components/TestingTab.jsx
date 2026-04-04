@@ -2,14 +2,12 @@ import React, { useState, useEffect } from 'react';
 import ModelTester from './ModelTester';
 import RagTestsTab from './RagTestsTab';
 import IndexerTester from './IndexerTester';
-import ClawOpenAITab from './ClawOpenAITab';
 import './TestingTab.css';
 
 const SUB_TABS = [
   { id: 'model-tester', label: 'Model Tester' },
   { id: 'rag-tests', label: 'RAG Tests' },
   { id: 'indexer-tester', label: 'Indexer Tester' },
-  { id: 'claw-openai', label: 'Claw OpenAI' },
 ];
 
 function TestingTab({
@@ -23,7 +21,6 @@ function TestingTab({
   runError,
   onStartRun,
   onCancelRun,
-  onClawOpenAiModelStatusChange,
 }) {
   const [internalSubTab, setInternalSubTab] = useState('model-tester');
   const isControlled = activeSubTab != null && typeof onSubTabChange === 'function';
@@ -35,6 +32,12 @@ function TestingTab({
       setInternalSubTab(activeSubTab);
     }
   }, [isControlled, activeSubTab]);
+
+  useEffect(() => {
+    if (isControlled && activeSubTab === 'claw-openai' && typeof onSubTabChange === 'function') {
+      onSubTabChange('rag-tests');
+    }
+  }, [isControlled, activeSubTab, onSubTabChange]);
 
   const handleSubTabClick = (id) => setSubTab(id);
 
@@ -71,9 +74,6 @@ function TestingTab({
           />
         )}
         {currentSubTab === 'indexer-tester' && <IndexerTester />}
-        {currentSubTab === 'claw-openai' && (
-          <ClawOpenAITab onModelStatusChange={onClawOpenAiModelStatusChange} />
-        )}
       </div>
     </div>
   );

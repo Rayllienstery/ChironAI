@@ -47,9 +47,67 @@ RAG_QUERY_TOOL: dict[str, Any] = {
 
 DEFAULT_AGENT_SYSTEM = (
     "You are the ChironAI OpenClaw coding agent. "
-    "When you need grounded facts from the indexed project documentation, call rag_query with a precise query. "
-    "Then answer the user using retrieved context when relevant."
+    "For substantive technical questions (APIs, frameworks, iOS/Swift behavior, architecture), you must call "
+    "rag_query at least once with a short, focused query derived from the user's question before your final answer, "
+    "then ground your explanation in retrieved excerpts when they are relevant. "
+    "Only skip rag_query for pure meta requests (e.g. \"hello\", \"thanks\") with no technical content."
 )
+
+
+def _sanitize_chunks_for_metadata(chunks: list[dict[str, Any]], *, per_call_limit: int = 24) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for i, c in enumerate((chunks or [])[:per_call_limit]):
+        if not isinstance(c, dict):
+            continue
+        preview = (c.get("text_preview") or c.get("text") or "")[:900]
+        out.append(
+            {
+                "index": c.get("index", i + 1),
+                "score": c.get("score"),
+                "rerank_score": c.get("rerank_score"),
+                "url": c.get("url"),
+                "source": c.get("source") or c.get("doc_type"),
+                "text_preview": preview,
+            }
+        )
+    return out
+
+
+def _rag_metadata_from_agent_steps(steps: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize rag_query tool calls for WebUI / RAG test validation (chunks_count, etc.)."""
+    tool_rag = [s for s in steps if isinstance(s, dict) and s.get("kind") == "tool_rag"]
+    n_chunks = sum(int(s.get("chunks") or 0) for s in tool_rag)
+    max_score = 0.0
+    for s in tool_rag:
+        try:
+            max_score = max(max_score, float(s.get("max_score") or 0))
+        except (TypeError, ValueError):
+            pass
+    ctx_chars = sum(int(s.get("context_chars") or 0) for s in tool_rag)
+    merged_chunks: list[dict[str, Any]] = []
+    rag_queries: list[dict[str, Any]] = []
+    for s in tool_rag:
+        q = str(s.get("query") or "").strip()
+        if q:
+            rag_queries.append(
+                {
+                    "query": q,
+                    "step": s.get("step"),
+                    "chunks": int(s.get("chunks") or 0),
+                    "ok": s.get("ok"),
+                    "error": s.get("error"),
+                }
+            )
+        for ch in _sanitize_chunks_for_metadata(list(s.get("chunks_info") or [])):
+            merged_chunks.append(ch)
+    return {
+        "chunks_info": merged_chunks,
+        "chunks_count": n_chunks,
+        "max_score": max_score,
+        "context_chars": ctx_chars,
+        "rag_queries": rag_queries,
+        "openclaw_pipeline": True,
+    }
 
 
 def _estimate_tokens(obj: Any) -> int:
@@ -87,17 +145,24 @@ def run_openclaw_chat_completion(
     # OpenClaw currently returns a single non-streaming completion; ignore the flag for now.
     stream = bool(body.get("stream"))
 
-    params: RAGAnswerParams
-    deps: RAGDependencies
-    params, deps = get_rag_answer_params(webui_dir=webui_dir)
-    chat_client = deps.chat_client
-    # Default model comes from persisted settings (openclaw_default_model),
-    # falling back to RAG's configured chat model.
+    # OpenClaw-specific app_settings (collection + default Ollama model).
+    configured = ""
+    openclaw_collection: str | None = None
     try:
         repo = get_settings_repository()
         configured = (repo.get_app_setting("openclaw_default_model") or "").strip()
+        _oc = (repo.get_app_setting("openclaw_rag_collection") or "").strip()
+        openclaw_collection = _oc if _oc else None
     except Exception:
-        configured = ""
+        pass
+
+    params: RAGAnswerParams
+    deps: RAGDependencies
+    params, deps = get_rag_answer_params(
+        webui_dir=webui_dir,
+        collection_name=openclaw_collection,
+    )
+    chat_client = deps.chat_client
     ollama_model = configured or params.model_name
     if not str(ollama_model or "").strip():
         # Configuration error: no concrete Ollama model selected for OpenClaw.
@@ -256,6 +321,7 @@ def run_openclaw_chat_completion(
                 use_model,
                 finish,
                 trace_id,
+                rag_metadata=_rag_metadata_from_agent_steps(steps_out),
             )
             _emit_trace(
                 trace_callback,
@@ -286,6 +352,7 @@ def run_openclaw_chat_completion(
                 chunk_n = 0
                 score = 0.0
                 err_rag = None
+                chunks_meta: list[dict[str, Any]] = []
                 try:
                     if not q:
                         ctx_text = ""
@@ -301,10 +368,12 @@ def run_openclaw_chat_completion(
                         ctx_text = ctx.context_text
                         chunk_n = len(ctx.chunks_info)
                         score = float(ctx.max_score)
+                        chunks_meta = _sanitize_chunks_for_metadata(list(ctx.chunks_info or []))
                 except Exception as e:
                     _LOG.exception("rag_query failed: %s", e)
                     err_rag = str(e)
                     ctx_text = f"[rag_query error] {err_rag}"
+                    chunks_meta = []
                 steps_out.append(
                     {
                         "kind": "tool_rag",
@@ -316,6 +385,7 @@ def run_openclaw_chat_completion(
                         "ok": err_rag is None,
                         "error": err_rag,
                         "context_chars": len(ctx_text),
+                        "chunks_info": chunks_meta,
                     }
                 )
                 openai_messages.append(
@@ -369,8 +439,10 @@ def _openai_completion_response(
     model: str,
     finish_reason: str,
     trace_id: str,
+    *,
+    rag_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    out: dict[str, Any] = {
         "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
         "object": "chat.completion",
         "created": int(time.time()),
@@ -389,6 +461,9 @@ def _openai_completion_response(
             "total_tokens": 0,
         },
     }
+    if rag_metadata:
+        out["rag_metadata"] = rag_metadata
+    return out
 
 
 def _emit_trace(

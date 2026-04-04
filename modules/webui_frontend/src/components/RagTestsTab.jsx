@@ -45,7 +45,7 @@ function RagTestsTab({
   const [filters, setFilters] = useState({ platform: '', framework: '', difficulty: '' });
   const [filterOptions, setFilterOptions] = useState({ platform: [], framework: [], difficulty: [] });
   const [error, setError] = useState(null);
-  const [expandedResultId, setExpandedResultId] = useState(null);
+  const [resultDetailModal, setResultDetailModal] = useState(null);
   const [selectedTestIds, setSelectedTestIds] = useState(new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
@@ -234,13 +234,22 @@ function RagTestsTab({
     }
   }, [running, runJobId, loadRunHistory]);
 
+  useEffect(() => {
+    if (!resultDetailModal) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setResultDetailModal(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [resultDetailModal]);
+
   const handleSelectPastRun = async (runId) => {
     setError(null);
     try {
       const run = await getRagTestRun(runId);
       setSelectedRunId(runId);
       setSelectedRunDetail(run);
-      setExpandedResultId(null);
+      setResultDetailModal(null);
     } catch (e) {
       setError(e.message);
     }
@@ -249,7 +258,7 @@ function RagTestsTab({
   const handleBackToCurrent = () => {
     setSelectedRunId(null);
     setSelectedRunDetail(null);
-    setExpandedResultId(null);
+    setResultDetailModal(null);
   };
 
   const filteredTests = tests;
@@ -503,7 +512,7 @@ function RagTestsTab({
       if (selectedRunDetail?.results?.some((r) => r.test_id === testId)) {
         setSelectedRunId(null);
         setSelectedRunDetail(null);
-        setExpandedResultId(null);
+        setResultDetailModal(null);
       }
     } catch (e) {
       setError(e.message);
@@ -970,6 +979,7 @@ function RagTestsTab({
               <th>Time (ms)</th>
               <th>RAG</th>
               <th>Confidence</th>
+              <th>Details</th>
               {!isViewingPastRun && <th>Run</th>}
             </tr>
           </thead>
@@ -979,123 +989,85 @@ function RagTestsTab({
                 ? { id: row.test_id, name: row.test_name, platform: row.platform, framework: row.framework, difficulty: '', question: row.question || '' }
                 : row;
               const last = isViewingPastRun ? row : lastResultByTestId[row.id];
-              const isExpanded = expandedResultId === t.id;
-              const colSpan = isViewingPastRun ? 8 : 10;
+              const openDetails = () => setResultDetailModal({ test: t, last });
               return (
-                <React.Fragment key={t.id}>
-                  <tr
-                    className={`rag-tests-row ${last?.status === 'FAIL' ? 'fail' : ''} ${isExpanded ? 'expanded' : ''}`}
-                    onClick={() => setExpandedResultId(isExpanded ? null : t.id)}
-                  >
-                    {!isViewingPastRun && (
-                      <td onClick={(ev) => ev.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedTestIds.has(t.id)}
-                          onChange={() => toggleSelectTest(t.id)}
-                          aria-label={`Select ${t.name}`}
-                        />
-                      </td>
-                    )}
-                    <td>{t.name || t.id}</td>
-                    <td>{t.platform || '—'}</td>
-                    <td>{t.framework || '—'}</td>
-                    {!isViewingPastRun && <td>{t.difficulty || '—'}</td>}
-                    <td>
-                      {last ? (
-                        <span className={`rag-tests-status ${(last.status || '').toLowerCase()}`}>
-                          {last.status}
-                        </span>
-                      ) : (
-                        '—'
-                      )}
+                <tr
+                  key={t.id}
+                  className={`rag-tests-row ${last?.status === 'FAIL' ? 'fail' : ''}`}
+                  onClick={(ev) => {
+                    if (ev.target.closest('button, a, input, [role="checkbox"]')) return;
+                    openDetails();
+                  }}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {!isViewingPastRun && (
+                    <td onClick={(ev) => ev.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedTestIds.has(t.id)}
+                        onChange={() => toggleSelectTest(t.id)}
+                        aria-label={`Select ${t.name}`}
+                      />
                     </td>
-                    <td>{last?.response_time_ms != null ? last.response_time_ms : '—'}</td>
-                    <td>{last ? (last.rag_used ? 'Yes' : 'No') : '—'}</td>
-                    <td>{last?.confidence_label || '—'}</td>
-                    {!isViewingPastRun && (
-                      <td onClick={(ev) => ev.stopPropagation()} className="rag-tests-actions-cell">
-                        <button
-                          type="button"
-                          className="rag-tests-btn small rag-tests-run-one"
-                          disabled={running || !canRun}
-                          onClick={() => handleRunSingle(t.id)}
-                          aria-label={`Run test ${t.name || t.id}`}
-                        >
-                          Run
-                        </button>
-                        <button
-                          type="button"
-                          className="rag-tests-btn small"
-                          disabled={running}
-                          onClick={() => handleEditClick(t.id)}
-                          aria-label={`Edit ${t.name || t.id}`}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="rag-tests-btn small rag-tests-delete-btn"
-                          disabled={running}
-                          onClick={() => handleDeleteClick(t.id)}
-                          aria-label={`Delete ${t.name || t.id}`}
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                  {isExpanded && last && (
-                    <tr className="rag-tests-detail-row">
-                      <td colSpan={colSpan}>
-                        <div className="rag-tests-detail">
-                          {t.question && <p><strong>Question:</strong> {t.question}</p>}
-                          {(last.latency_ms != null || last.response_time_ms != null || last.prompt_tokens != null || last.completion_tokens != null) && (
-                            <p className="rag-tests-detail-metrics">
-                              <strong>Metrics:</strong>{' '}
-                              Latency: {last.latency_ms ?? last.response_time_ms ?? '—'} ms
-                              {last.prompt_tokens != null && ` · Prompt tokens: ${last.prompt_tokens}`}
-                              {last.completion_tokens != null && ` · Completion tokens: ${last.completion_tokens}`}
-                              {last.total_tokens != null && ` · Total tokens: ${last.total_tokens}`}
-                              {last.context_chars != null && last.context_chars > 0 && ` · Context chars: ${last.context_chars}`}
-                            </p>
-                          )}
-                          {last.failure_reason && (
-                            <p className="rag-tests-detail-reason"><strong>Failure reason:</strong> {last.failure_reason}</p>
-                          )}
-                          {Array.isArray(last.found_concepts) && (
-                            <p><strong>Found concepts:</strong> {last.found_concepts.length ? last.found_concepts.join(', ') : 'none'}</p>
-                          )}
-                          {(last.missing_concepts?.length > 0 || (Array.isArray(last.found_concepts) && last.found_concepts.length >= 0)) && (
-                            <p><strong>Missing concepts:</strong> {last.missing_concepts?.length ? last.missing_concepts.join(', ') : 'none'}</p>
-                          )}
-                          {last.error && <p className="rag-tests-detail-error">{last.error}</p>}
-                          {(last.full_response != null && last.full_response !== '') && (
-                            <div className="rag-tests-detail-block">
-                              <strong>Model answer:</strong>
-                              <pre className="rag-tests-pre">{last.full_response}</pre>
-                            </div>
-                          )}
-                          {((last.chunks_info && last.chunks_info.length > 0) || (last.retrieved_chunks && last.retrieved_chunks.length > 0)) && (
-                            <div className="rag-tests-detail-block">
-                              <strong>RAG chunks:</strong>
-                              <ul className="rag-tests-chunks">
-                                {(last.chunks_info || last.retrieved_chunks || []).map((ch, i) => (
-                                  <li key={i}>
-                                    <span className="rag-tests-chunk-meta">
-                                      #{ch.index != null ? ch.index : i + 1} score={ch.score ?? 'N/A'} {ch.url ? `url=${ch.url}` : ''} {ch.source ? `source=${ch.source}` : ''}
-                                    </span>
-                                    <pre className="rag-tests-pre small">{ch.text_preview || ch.text || ''}</pre>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
                   )}
-                </React.Fragment>
+                  <td>{t.name || t.id}</td>
+                  <td>{t.platform || '—'}</td>
+                  <td>{t.framework || '—'}</td>
+                  {!isViewingPastRun && <td>{t.difficulty || '—'}</td>}
+                  <td>
+                    {last ? (
+                      <span className={`rag-tests-status ${(last.status || '').toLowerCase()}`}>
+                        {last.status}
+                      </span>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td>{last?.response_time_ms != null ? last.response_time_ms : '—'}</td>
+                  <td>{last ? (last.rag_used ? 'Yes' : 'No') : '—'}</td>
+                  <td>{last?.confidence_label || '—'}</td>
+                  <td onClick={(ev) => ev.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="rag-tests-btn small"
+                      onClick={openDetails}
+                      aria-label={`Details for ${t.name || t.id}`}
+                    >
+                      Details
+                    </button>
+                  </td>
+                  {!isViewingPastRun && (
+                    <td onClick={(ev) => ev.stopPropagation()} className="rag-tests-actions-cell">
+                      <button
+                        type="button"
+                        className="rag-tests-btn small rag-tests-run-one"
+                        disabled={running || !canRun}
+                        onClick={() => handleRunSingle(t.id)}
+                        aria-label={`Run test ${t.name || t.id}`}
+                      >
+                        Run
+                      </button>
+                      <button
+                        type="button"
+                        className="rag-tests-btn small"
+                        disabled={running}
+                        onClick={() => handleEditClick(t.id)}
+                        aria-label={`Edit ${t.name || t.id}`}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="rag-tests-btn small rag-tests-delete-btn"
+                        disabled={running}
+                        onClick={() => handleDeleteClick(t.id)}
+                        aria-label={`Delete ${t.name || t.id}`}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  )}
+                </tr>
               );
             })}
           </tbody>
@@ -1215,6 +1187,139 @@ function RagTestsTab({
 
       {filteredTests.length === 0 && !error && !runError && (
         <p className="rag-tests-empty">No tests found. Create one or add .md files under rag_tests/.</p>
+      )}
+
+      {resultDetailModal && (
+        <div
+          className="rag-tests-modal rag-tests-result-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rag-result-modal-title"
+          onClick={() => setResultDetailModal(null)}
+        >
+          <div
+            className="rag-tests-modal-content rag-tests-result-modal-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {(() => {
+              const tm = resultDetailModal.test;
+              const lm = resultDetailModal.last;
+              const rawChunks = lm && (lm.chunks_info?.length ? lm.chunks_info : lm.retrieved_chunks);
+              const chunks = Array.isArray(rawChunks) ? rawChunks : [];
+              const ragQ = (lm && lm.rag_queries) || [];
+              return (
+                <>
+                  <div className="rag-tests-result-modal-header">
+                    <h3 id="rag-result-modal-title">{tm.name || tm.id}</h3>
+                    <button
+                      type="button"
+                      className="rag-tests-result-modal-close"
+                      onClick={() => setResultDetailModal(null)}
+                      aria-label="Close"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <p className="rag-tests-result-modal-meta">
+                    <span className="rag-tests-result-id">{tm.id}</span>
+                    {lm?.model && <span> · Model: {lm.model}</span>}
+                    {lm?.status && (
+                      <span className={`rag-tests-status ${(lm.status || '').toLowerCase()}`}> · {lm.status}</span>
+                    )}
+                  </p>
+                  {tm.question && (
+                    <section className="rag-tests-result-section">
+                      <h4>Question</h4>
+                      <p className="rag-tests-result-question">{tm.question}</p>
+                    </section>
+                  )}
+                  {lm && (lm.latency_ms != null || lm.response_time_ms != null || lm.prompt_tokens != null) && (
+                    <section className="rag-tests-result-section">
+                      <h4>Metrics</h4>
+                      <p className="rag-tests-detail-metrics">
+                        Latency: {lm.latency_ms ?? lm.response_time_ms ?? '—'} ms
+                        {lm.prompt_tokens != null && ` · Prompt tokens: ${lm.prompt_tokens}`}
+                        {lm.completion_tokens != null && ` · Completion tokens: ${lm.completion_tokens}`}
+                        {lm.total_tokens != null && ` · Total tokens: ${lm.total_tokens}`}
+                        {lm.context_chars != null && lm.context_chars > 0 && ` · Context chars: ${lm.context_chars}`}
+                      </p>
+                    </section>
+                  )}
+                  {lm?.failure_reason && (
+                    <section className="rag-tests-result-section">
+                      <h4>Failure reason</h4>
+                      <p className="rag-tests-detail-reason">{lm.failure_reason}</p>
+                    </section>
+                  )}
+                  {lm && Array.isArray(lm.found_concepts) && (
+                    <section className="rag-tests-result-section">
+                      <h4>Found concepts</h4>
+                      <p>{lm.found_concepts.length ? lm.found_concepts.join(', ') : 'none'}</p>
+                    </section>
+                  )}
+                  {lm && Array.isArray(lm.missing_concepts) && lm.missing_concepts.length > 0 && (
+                    <section className="rag-tests-result-section">
+                      <h4>Missing concepts</h4>
+                      <p>{lm.missing_concepts.join(', ')}</p>
+                    </section>
+                  )}
+                  {lm?.error && (
+                    <section className="rag-tests-result-section">
+                      <h4>Error</h4>
+                      <p className="rag-tests-detail-error">{lm.error}</p>
+                    </section>
+                  )}
+                  <section className="rag-tests-result-section">
+                    <h4>RAG requests</h4>
+                    {ragQ.length === 0 ? (
+                      <p className="rag-tests-result-empty">No rag_query calls recorded (or pipeline used implicit retrieval only).</p>
+                    ) : (
+                      <ul className="rag-tests-rag-query-list">
+                        {ragQ.map((q, i) => (
+                          <li key={i}>
+                            <span className="rag-tests-rag-query-meta">
+                              {q.step != null && <>Step {q.step} · </>}
+                              {q.chunks != null && <>chunks {q.chunks} · </>}
+                              {q.ok === false && <span className="rag-tests-detail-error">failed · </span>}
+                            </span>
+                            <pre className="rag-tests-pre rag-tests-pre-tight">{q.query || JSON.stringify(q)}</pre>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                  <section className="rag-tests-result-section">
+                    <h4>RAG chunks</h4>
+                    {chunks.length === 0 ? (
+                      <p className="rag-tests-result-empty">No chunks in metadata (empty retrieval or not recorded).</p>
+                    ) : (
+                      <ul className="rag-tests-chunks rag-tests-chunks-modal">
+                        {chunks.map((ch, i) => (
+                          <li key={i}>
+                            <span className="rag-tests-chunk-meta">
+                              #{ch.index != null ? ch.index : i + 1} score={ch.score ?? 'N/A'}{' '}
+                              {ch.url ? `url=${ch.url}` : ''} {ch.source ? `source=${ch.source}` : ''}
+                            </span>
+                            <pre className="rag-tests-pre small">{ch.text_preview || ch.text || ''}</pre>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                  {lm && String(lm.full_response || '').trim() !== '' && (
+                    <section className="rag-tests-result-section">
+                      <h4>Model answer</h4>
+                      <pre className="rag-tests-pre rag-tests-pre-answer">{lm.full_response}</pre>
+                    </section>
+                  )}
+                  {!lm && (
+                    <p className="rag-tests-result-empty">No run result for this test yet. Run the test to see the model answer and RAG data.</p>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        </div>
       )}
 
       {createOpen && (

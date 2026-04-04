@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from flask import Blueprint, jsonify, request
 
@@ -48,6 +49,7 @@ def openclaw_status():
             get_openclaw_mcp_port,
             get_openclaw_openai_port,
             get_openclaw_vendor_config,
+            get_qdrant_collection_name,
             get_server_host,
         )
         from infrastructure.database import get_settings_repository
@@ -57,6 +59,9 @@ def openclaw_status():
         settings_repo = get_settings_repository()
         stored_default = (settings_repo.get_app_setting("openclaw_default_model") or "").strip()
         effective_default = stored_default or get_ollama_chat_model()
+        stored_rag = (settings_repo.get_app_setting("openclaw_rag_collection") or "").strip()
+        config_rag = get_qdrant_collection_name()
+        effective_rag = stored_rag or config_rag
         root_rel = vc["root_relative"]
         active = read_active(_REPO_ROOT / root_rel)
         host = get_openclaw_host()
@@ -77,6 +82,9 @@ def openclaw_status():
                 "display_host": display_host,
                 "logical_model_id": get_openclaw_logical_model_id(),
                 "default_ollama_model": effective_default,
+                "rag_collection": effective_rag,
+                "stored_rag_collection": stored_rag,
+                "config_default_rag_collection": config_rag,
                 "openai_base_url": f"http://{display_host}:{get_openclaw_openai_port()}",
                 "mcp_info_url": f"http://{display_host}:{get_openclaw_mcp_port()}/info",
                 "vendor": {
@@ -203,7 +211,7 @@ def openclaw_get_settings():
     if not _ensure_openclaw_path():
         return jsonify({"ok": False, "error": "openclaw unavailable"}), 400
     try:
-        from config import get_ollama_base_url, get_ollama_chat_model
+        from config import get_ollama_base_url, get_ollama_chat_model, get_qdrant_collection_name
         from infrastructure.database import get_settings_repository
         from infrastructure.ollama.cli_runner import invoke_tags
 
@@ -211,6 +219,9 @@ def openclaw_get_settings():
         stored_default = (repo.get_app_setting("openclaw_default_model") or "").strip()
         fallback = get_ollama_chat_model()
         effective_default = stored_default or fallback
+        stored_rag = (repo.get_app_setting("openclaw_rag_collection") or "").strip()
+        config_rag = get_qdrant_collection_name()
+        effective_rag = stored_rag or config_rag
 
         base_url = get_ollama_base_url()
         tags = invoke_tags(base_url=base_url, timeout=5.0)
@@ -232,6 +243,9 @@ def openclaw_get_settings():
                 "default_model": effective_default,
                 "stored_default_model": stored_default,
                 "available_models": models,
+                "rag_collection": effective_rag,
+                "stored_rag_collection": stored_rag,
+                "config_default_rag_collection": config_rag,
             }
         )
     except Exception as e:
@@ -241,22 +255,35 @@ def openclaw_get_settings():
 @openclaw_bp.post("/settings")
 def openclaw_update_settings():
     """
-    Persist OpenClaw default model selection.
+    Persist OpenClaw settings.
 
-    Body: { \"default_model\": \"<ollama_model_name>\" }
+    Body may include:
+    - default_model: Ollama model when client requests the logical agent id (required if rag_collection omitted).
+    - rag_collection: Qdrant collection name; empty string clears override (use config default).
+    At least one of default_model or rag_collection must be present in the JSON body.
     """
     if not _ensure_openclaw_path():
         return jsonify({"ok": False, "error": "openclaw unavailable"}), 400
     body = request.get_json(silent=True) or {}
-    model = (body.get("default_model") or "").strip()
-    if not model:
-        return jsonify({"ok": False, "error": "default_model is required"}), 400
+    if "default_model" not in body and "rag_collection" not in body:
+        return jsonify({"ok": False, "error": "Provide default_model and/or rag_collection"}), 400
     try:
         from infrastructure.database import get_settings_repository
 
         repo = get_settings_repository()
-        repo.set_app_setting("openclaw_default_model", model)
-        return jsonify({"ok": True, "default_model": model})
+        out: dict[str, Any] = {"ok": True}
+        if "default_model" in body:
+            model = (body.get("default_model") or "").strip()
+            if not model:
+                return jsonify({"ok": False, "error": "default_model cannot be empty"}), 400
+            repo.set_app_setting("openclaw_default_model", model)
+            out["default_model"] = model
+        if "rag_collection" in body:
+            raw = body.get("rag_collection")
+            rag_coll = str(raw).strip() if raw is not None else ""
+            repo.set_app_setting("openclaw_rag_collection", rag_coll)
+            out["rag_collection"] = rag_coll
+        return jsonify(out)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 

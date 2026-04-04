@@ -34,6 +34,7 @@ def parse_test_md(content: str, source_path: str = "") -> dict[str, Any]:
         "name": "",
         "question": "",
         "expected_concepts": [],
+        "concept_groups": [],
         "platform": "",
         "framework": "",
         "min_os": "",
@@ -64,6 +65,8 @@ def parse_test_md(content: str, source_path: str = "") -> dict[str, Any]:
     if title_line:
         out["name"] = title_line
 
+    rag_required_override: bool | None = None
+
     # Parse key: value in first block
     for line in meta_lines:
         if ":" in line:
@@ -84,6 +87,8 @@ def parse_test_md(content: str, source_path: str = "") -> dict[str, Any]:
                     out["concept_mode"] = "all"
             elif key in ("rag_strict", "strict_rag"):
                 out["rag_strict"] = (value or "").strip().lower() in ("true", "yes", "1")
+            elif key in ("rag_required", "require_rag"):
+                rag_required_override = (value or "").strip().lower() not in ("no", "false", "0", "off")
             else:
                 pass  # ignore unknown
 
@@ -103,8 +108,27 @@ def parse_test_md(content: str, source_path: str = "") -> dict[str, Any]:
             if line.strip()
         ]
 
+    cg_text = section("Concept Groups")
+    concept_groups: list[list[str]] = []
+    if cg_text:
+        for raw in cg_text.split("\n"):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "||" in line:
+                parts = [p.strip() for p in line.split("||")]
+                parts = [p for p in parts if p]
+                if parts:
+                    concept_groups.append(parts)
+    if concept_groups:
+        out["concept_groups"] = concept_groups
+
     rag_text = section("RAG Requirement")
-    out["rag_requirement"] = bool(rag_text or out.get("rag_requirement", True))
+    if rag_required_override is not None:
+        out["rag_requirement"] = rag_required_override
+    else:
+        # Legacy: non-empty RAG section implied "require RAG narrative"; empty => default True
+        out["rag_requirement"] = bool(rag_text) if rag_text.strip() else True
 
     return out
 
