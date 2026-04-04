@@ -61,6 +61,15 @@
           "relationships"
         ]
       }
+    },
+    {
+      "id": "reject-low-signal",
+      "type": "reject_low_signal_body",
+      "params": {
+        "min_chars": 200,
+        "min_words": 5,
+        "min_alpha_ratio": 0.12
+      }
     }
   ]
 }

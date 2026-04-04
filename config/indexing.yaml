@@ -4,7 +4,6 @@
 ## and indexed into Qdrant. These parameters affect index quality and size.
 ##
 ## Keys:
-## - min_content_length: minimum body content length to index (chars).
 ## - exclude_content_head_chars: how many chars from start to check for exclusions.
 ## - exclude_content_substrings: content substrings that mark low-value pages.
 ## - exclude_filename_substrings: filename patterns to skip (noise/promo pages).
@@ -22,8 +21,7 @@
 ## - local_ingest: separate config for ingest_markdown_local.py script.
 
 indexing:
-  # Content filtering
-  min_content_length: 400
+  # Content filtering (minimum body length + “meaning” heuristics: use MD pipeline step reject_low_signal_body in config/md_pipelines/*.json)
   exclude_content_head_chars: 2000
   
   exclude_content_substrings:

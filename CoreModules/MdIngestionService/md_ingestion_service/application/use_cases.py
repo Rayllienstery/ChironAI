@@ -6,14 +6,13 @@ Orchestrate: source_store -> filter -> normalize -> chunk -> output_sink.
 
 from __future__ import annotations
 
-import uuid
 from typing import Any
 
 from md_ingestion_service.domain.entities import FilterRule
 from md_ingestion_service.domain.ports import OutputSink, SourceStore
 from md_ingestion_service.domain.services.chunking_policy import chunks_for_document
 from md_ingestion_service.domain.services.filtering import apply_filter, default_filter_rule
-from md_ingestion_service.domain.services.normalization import normalize
+from md_ingestion_service.domain.services.indexing_prepare import prepare_markdown_for_indexing
 
 
 def ingest_local_markdown(
@@ -25,7 +24,7 @@ def ingest_local_markdown(
     filter_rule: FilterRule | None = None,
 ) -> dict[str, Any]:
     """
-    Ingest markdown from a local path: list files -> filter -> normalize -> chunk -> write to sink.
+    Ingest markdown from a local path: list files -> filter -> prepare (indexing rules + md_indexer) -> chunk -> write to sink.
     Returns summary: files_processed, chunks_indexed, errors.
     """
     rule = filter_rule or default_filter_rule()
@@ -44,13 +43,15 @@ def ingest_local_markdown(
                 continue
             if not apply_filter(md, rule):
                 continue
-            norm = normalize(md)
-            path = norm.path or norm.filename
-            url = norm.url or ""
+            prep = prepare_markdown_for_indexing(md.filename, md.content)
+            if prep.skipped:
+                continue
+            path = md.path or md.filename
+            url = (prep.page_meta or {}).get("url") or ""
             chunks = chunks_for_document(
-                norm.content,
+                prep.body_md,
                 source_id=source_id,
-                filename=norm.filename,
+                filename=md.filename,
                 path=path,
                 url=url,
             )
@@ -89,13 +90,16 @@ def dry_run_ingest(
         md = source_store.read_file(source_id, base_path, rel)
         if md is None or not apply_filter(md, rule):
             continue
-        norm = normalize(md)
+        prep = prepare_markdown_for_indexing(md.filename, md.content)
+        if prep.skipped:
+            continue
+        url = (prep.page_meta or {}).get("url")
         chunks = chunks_for_document(
-            norm.content,
+            prep.body_md,
             source_id=source_id,
-            filename=norm.filename,
-            path=norm.path or norm.filename,
-            url=norm.url,
+            filename=md.filename,
+            path=md.path or md.filename,
+            url=url,
         )
         if chunks:
             files_processed += 1

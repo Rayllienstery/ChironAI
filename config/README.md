@@ -91,7 +91,7 @@ Controls web crawling behavior:
 
 ### indexing.yaml
 Controls content filtering and chunking:
-- `min_content_length`: Min body content to index (default: 400)
+- Minimum meaningful body: configure via MD pipeline step **`reject_low_signal_body`** in `config/md_pipelines/*.json` (`min_chars`, `min_words`, `min_alpha_ratio`), not this file.
 - `chunk_max_size`: Max chars per chunk (default: 1200)
 - `chunk_min_size`: Min chars per chunk (default: 300)
 - `min_chunk_words`: Min word count per chunk (default: 25)

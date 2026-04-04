@@ -104,6 +104,14 @@ const MD_STEP_TYPES_META = [
     example:
       'Param pattern: "\\s{3,}", replacement: "\\n\\n" — three or more spaces/newlines become two newlines.',
   },
+  {
+    type: "reject_low_signal_body",
+    title: "Reject low-signal body",
+    description:
+      "After cleanup, drops the entire body (outputs empty markdown) if the text is too weak for RAG: fewer than min_chars characters, fewer than min_words words, or alphabetic letters below min_alpha_ratio of non-space characters (filters link/nav soup). Short but dense prose can still pass.",
+    example:
+      "Params: min_chars 200, min_words 5, min_alpha_ratio 0.12 — place this step at the end of the pipeline (and tune thresholds in JSON).",
+  },
 ];
 
 const INDEXING_PHASE_LABELS = {
@@ -117,7 +125,8 @@ const INDEXING_PHASE_LABELS = {
 
 const SKIP_REASON_LABELS = {
   read_error: "Read error",
-  too_short: "Too short (<400 chars)",
+  too_short: "Too short / empty file",
+  empty_after_prepare: "Empty after prepare (incl. reject_low_signal pipeline step)",
   chunk_failed: "Chunking failed",
   no_valid_chunks: "No quality chunks",
   embed_failed: "Embedding failed",

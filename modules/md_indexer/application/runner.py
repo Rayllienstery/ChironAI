@@ -138,4 +138,6 @@ def _run_pipeline(pipeline: Pipeline, md: str) -> tuple[dict[str, Any], str]:
             body = step_impl.step_wrap_indented_code(body, params)
         elif stype == "replace_regex":
             body = step_impl.step_replace_regex(body, params)
+        elif stype == "reject_low_signal_body":
+            body = step_impl.step_reject_low_signal_body(body, params)
     return (meta, body)

@@ -65,11 +65,11 @@ testpaths = ["tests"]
 pythonpath = [
   ".",
   "modules/rag_service",
-  "modules/md_ingestion_service",
   "modules/crawler_service",
   "CoreModules/ServiceStarter",
   "CoreModules/LlmProxy",
   "CoreModules/WebInteraction",
+  "CoreModules/MdIngestionService",
 ]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
@@ -90,6 +90,7 @@ src = [
   "tests",
   "CoreModules/LlmProxy/llm_proxy",
   "CoreModules/WebInteraction/web_interaction",
+  "CoreModules/MdIngestionService/md_ingestion_service",
 ]
 exclude = [
   ".venv",

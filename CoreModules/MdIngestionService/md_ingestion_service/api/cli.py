@@ -13,14 +13,6 @@ from md_ingestion_service.application.use_cases import ingest_local_markdown
 from md_ingestion_service.infrastructure.fs_source_store import FsSourceStore
 from md_ingestion_service.infrastructure.rag_sink_http import RagSinkHttp
 
-try:
-    # Optional Swift-based md ingestion wrapper. If available and enabled via
-    # USE_SWIFT_MD_INGEST=1, the CLI will delegate to it instead of the Python
-    # implementation.
-    from modules.md_ingestion_swift.cli_wrapper import run_swift_md_ingest
-except ImportError:  # pragma: no cover - optional dependency
-    run_swift_md_ingest = None  # type: ignore[assignment]
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Ingest local markdown into RAG")
@@ -30,27 +22,6 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="Only count files/chunks, do not write")
     args = parser.parse_args()
 
-    use_swift = os.getenv("USE_SWIFT_MD_INGEST", "").strip() == "1" and run_swift_md_ingest is not None
-    if use_swift:
-        # Delegate to Swift CLI via wrapper for both dry-run and full ingest.
-        try:
-            result = run_swift_md_ingest(
-                args.source_path,
-                source_id=args.source_id,
-                collection=args.collection,
-                dry_run=args.dry_run,
-            )
-        except Exception as e:  # pragma: no cover - passthrough
-            print(f"Swift md ingest failed: {e}", file=sys.stderr)
-            return 1
-        print(f"files_processed={result['files_processed']}, chunks_indexed={result['chunks_indexed']}")
-        if result["errors"]:
-            for e in result["errors"]:
-                print(f"Error: {e}", file=sys.stderr)
-            return 1
-        return 0
-
-    # Fallback to existing Python implementation.
     source_store = FsSourceStore()
     if args.dry_run:
         from md_ingestion_service.application.use_cases import dry_run_ingest

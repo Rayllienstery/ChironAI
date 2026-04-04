@@ -20,6 +20,7 @@ STEP_TYPES = (
     "normalize_whitespace",
     "wrap_indented_code",
     "replace_regex",
+    "reject_low_signal_body",
 )
 
 

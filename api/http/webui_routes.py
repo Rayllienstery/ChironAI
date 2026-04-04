@@ -43,6 +43,10 @@ if _MODULES_EXT_RAG not in sys.path:
 _WEBINTERACTION = os.path.join(_ROOT, "CoreModules", "WebInteraction")
 if _WEBINTERACTION not in sys.path:
     sys.path.insert(0, _WEBINTERACTION)
+# CoreModules/MdIngestionService (md_ingestion_service package).
+_MD_INGESTION = os.path.join(_ROOT, "CoreModules", "MdIngestionService")
+if _MD_INGESTION not in sys.path:
+    sys.path.insert(0, _MD_INGESTION)
 
 from application.container import default_embed_provider, default_rerank_client
 from application.rag.collection_freshness import check_collection_freshness
@@ -217,7 +221,7 @@ from domain.services.chunking import (
     chunk_quality_ok,
     split_markdown_into_chunks,
 )
-from domain.services.markdown_meta import parse_and_strip_meta_block
+from md_ingestion_service.domain.services.indexing_prepare import prepare_markdown_for_indexing
 from domain.services.metadata_inference import (
     build_embed_prefix,
     estimate_token_count,
@@ -2883,15 +2887,6 @@ def _get_embeddings_simple(
         raise
 
 
-def _strip_markdown_simple(md: str) -> str:
-    """Simple markdown cleaning - remove excessive whitespace."""
-    if not md:
-        return ""
-    # Remove excessive newlines
-    md = re.sub(r"\n{3,}", "\n\n", md)
-    return md.strip()
-
-
 def _qdrant_collection_has_sparse_vectors(qclient: QdrantClient, collection_name: str) -> bool:
     """True if collection was created with sparse_vectors (hybrid indexing)."""
     try:
@@ -2994,6 +2989,9 @@ def _record_page_skip(st: dict[str, Any], reason: str, error_msg: str | None = N
         {
             "read_error": 0,
             "too_short": 0,
+            "filename_excluded": 0,
+            "content_excluded": 0,
+            "empty_after_prepare": 0,
             "chunk_failed": 0,
             "no_valid_chunks": 0,
             "embed_failed": 0,
@@ -3038,6 +3036,9 @@ def _create_collection_from_sources(
         "skip_reasons": {
             "read_error": 0,
             "too_short": 0,
+            "filename_excluded": 0,
+            "content_excluded": 0,
+            "empty_after_prepare": 0,
             "chunk_failed": 0,
             "no_valid_chunks": 0,
             "embed_failed": 0,
@@ -3109,17 +3110,20 @@ def _create_collection_from_sources(
                 on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
             continue
 
-        page_meta, md = parse_and_strip_meta_block(md)
-        # Simple validation - skip if too short
-        if len(md.strip()) < 400:
-            _record_page_skip(stats, "too_short")
+        prep = prepare_markdown_for_indexing(filename, md)
+        if prep.skipped:
+            _record_page_skip(
+                stats,
+                prep.skip_reason or "other",
+                prep.skip_detail,
+            )
             processed += 1
             if on_progress:
                 on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
             continue
 
-        # Clean markdown
-        md = _strip_markdown_simple(md)
+        page_meta = prep.page_meta
+        md = prep.body_md
 
         # Split into chunks
         stats["current_phase"] = "chunking"
@@ -3604,6 +3608,7 @@ INDEXER_EVALUATE_PIPELINE_STEPS_REF = """
 - **strip_sections_by_heading**: Remove whole sections whose heading equals or starts with one of the list (e.g. "conforming types", "inherited by"). Params: `headings` (list of strings, lower case).
 - **normalize_whitespace**: Trim trailing space per line, collapse multiple spaces. No params.
 - **replace_regex**: Replace each match of pattern with replacement. Params: `pattern`, `replacement`.
+- **reject_low_signal_body**: After other steps, clear the body if it is too weak for RAG. Params: `min_chars` (e.g. 200), `min_words` (e.g. 5; use 0 to disable), `min_alpha_ratio` (0–1, e.g. 0.12; use 0 to disable). Place near the end of the pipeline.
 """
 
 INDEXER_EVALUATE_SYSTEM_PROMPT_SUGGEST = """
@@ -4640,6 +4645,9 @@ def create_collection() -> Any:
                 "skip_reasons": {
                     "read_error": 0,
                     "too_short": 0,
+                    "filename_excluded": 0,
+                    "content_excluded": 0,
+                    "empty_after_prepare": 0,
                     "chunk_failed": 0,
                     "no_valid_chunks": 0,
                     "embed_failed": 0,

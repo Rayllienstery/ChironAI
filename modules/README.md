@@ -5,7 +5,7 @@ Business-domain projects (services and applications) live here. Each subdirector
 | Project | Responsibility |
 |---------|----------------|
 | [rag_service](rag_service/README.md) | RAG pipeline: retrieval, rerank, prompt building, LLM answers |
-| [md_ingestion_service](md_ingestion_service/README.md) | Markdown/document ingestion, filtering, normalization, chunking |
+| [md_ingestion_service](../CoreModules/MdIngestionService/README.md) | Markdown/document ingestion, filtering, `prepare_markdown_for_indexing`, chunking (package under **CoreModules**) |
 | [crawler_service](crawler_service/README.md) | Web/docs crawling, scheduling, feeding results to md_ingestion |
 | [webui_backend](webui_backend/README.md) | WebUI backend: dashboard, settings, logs, aggregation over other services |
 | [webui_frontend](webui_frontend/README.md) | React SPA; talks to webui_backend only via HTTP |

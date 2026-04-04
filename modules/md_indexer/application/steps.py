@@ -255,6 +255,60 @@ def step_replace_regex(md: str, params: dict[str, Any]) -> str:
     return rx.sub(replacement, md)
 
 
+# Defaults for pipeline JSON and for prepare fallback when md_indexer runner is unavailable.
+DEFAULT_REJECT_LOW_SIGNAL_PARAMS: dict[str, Any] = {
+    "min_chars": 200,
+    "min_words": 5,
+    "min_alpha_ratio": 0.12,
+}
+
+
+def step_reject_low_signal_body(md: str, params: dict[str, Any]) -> str:
+    """
+    Drop body (return empty string) if text looks too thin for RAG: short, too few words,
+    or mostly non-letters (e.g. link/nav soup). Keeps pages that are short but dense prose.
+
+    Params (all optional; merged over DEFAULT_REJECT_LOW_SIGNAL_PARAMS):
+      min_chars: minimum stripped character count (default 200).
+      min_words: minimum whitespace-separated words; 0 disables (default from DEFAULT).
+      min_alpha_ratio: min fraction of non-space chars that are letters; 0 disables (default from DEFAULT).
+    """
+    body = md or ""
+    stripped = body.strip()
+    if not stripped:
+        return ""
+
+    p = {**DEFAULT_REJECT_LOW_SIGNAL_PARAMS, **(params or {})}
+    try:
+        min_chars = max(0, int(p.get("min_chars", 200)))
+    except (TypeError, ValueError):
+        min_chars = 200
+    try:
+        min_words = int(p.get("min_words", 5))
+    except (TypeError, ValueError):
+        min_words = 5
+    try:
+        min_alpha_ratio = float(p.get("min_alpha_ratio", 0.12))
+    except (TypeError, ValueError):
+        min_alpha_ratio = 0.12
+
+    if len(stripped) < min_chars:
+        return ""
+
+    if min_words > 0:
+        words = stripped.split()
+        if len(words) < min_words:
+            return ""
+
+    if min_alpha_ratio > 0:
+        alpha = sum(1 for c in stripped if c.isalpha())
+        non_ws = sum(1 for c in stripped if not c.isspace())
+        if non_ws == 0 or alpha / non_ws < min_alpha_ratio:
+            return ""
+
+    return body
+
+
 def _collapse_blank_lines(text: str) -> str:
     """Replace 3+ newlines with 2 and strip."""
     return re.sub(r"\n{3,}", "\n\n", text).strip()
