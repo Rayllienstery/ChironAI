@@ -45,6 +45,14 @@ export async function getModelSettings() {
   return response.json();
 }
 
+export async function getLlmProxyStatus() {
+  const response = await fetch(`${API_BASE}/llm-proxy/status`);
+  if (!response.ok) {
+    throw new Error('Failed to get LLM Proxy status');
+  }
+  return response.json();
+}
+
 export async function updateModelSettings(settings) {
   const response = await fetch(`${API_BASE}/model-settings`, {
     method: 'POST',

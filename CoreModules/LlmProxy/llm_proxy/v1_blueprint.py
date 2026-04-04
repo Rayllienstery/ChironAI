@@ -4,9 +4,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 
 from llm_proxy.apply_edit import run_apply_file_edit
+from llm_proxy.anthropic_compat import (
+    anthropic_messages_request_to_openai_body,
+    anthropic_models_list_payload,
+    iter_anthropic_sse_from_openai_sse_lines,
+    openai_chat_completion_to_anthropic_message,
+    wants_anthropic_models_list,
+)
 from llm_proxy.chat_completions import run_chat_completions
 from llm_proxy.completions_generate import run_legacy_completions_via_ollama_generate
 from llm_proxy.config import RAG_MODEL_ID
@@ -54,6 +61,15 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
 
     @bp.route("/v1/models", methods=["GET"])
     def list_models():
+        if wants_anthropic_models_list(request.headers):
+            ids: list[str] = [str(wiring.runtime.rag_model_logical_id)]
+            try:
+                if wiring.get_autocomplete_ollama_model():
+                    ids.append(str(wiring.runtime.autocomplete_model_logical_id))
+            except Exception:
+                pass
+            return jsonify(anthropic_models_list_payload(ids))
+
         data: list[dict[str, object]] = [
             {
                 "id": wiring.runtime.rag_model_logical_id,
@@ -75,6 +91,61 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
         except Exception:
             pass
         return jsonify({"object": "list", "data": data})
+
+    def _sse_lines_from_openai_response(resp: Response):
+        buf = b""
+        for piece in resp.iter_encoded():
+            buf += piece
+            while b"\n" in buf:
+                idx = buf.index(b"\n")
+                line, buf = buf[: idx + 1], buf[idx + 1 :]
+                yield line.decode("utf-8", errors="replace")
+        if buf:
+            yield buf.decode("utf-8", errors="replace")
+
+    @bp.route("/v1/messages", methods=["POST"])
+    def anthropic_messages():
+        raw = request.get_json(force=True, silent=True) or {}
+        if not isinstance(raw, dict):
+            return (
+                jsonify(
+                    {
+                        "type": "error",
+                        "error": {
+                            "type": "invalid_request_error",
+                            "message": "JSON body required",
+                        },
+                    }
+                ),
+                400,
+            )
+        openai_body = anthropic_messages_request_to_openai_body(raw)
+        default_model = str(openai_body.get("model") or "")
+        result = run_chat_completions(wiring, body_override=openai_body)
+        if isinstance(result, tuple):
+            resp, code = result[0], result[1] if len(result) > 1 else 200
+        else:
+            resp, code = result, 200
+        if code != 200:
+            return result
+        if resp.mimetype == "text/event-stream":
+
+            def gen():
+                yield from iter_anthropic_sse_from_openai_sse_lines(
+                    _sse_lines_from_openai_response(resp),
+                    default_model=default_model,
+                )
+
+            return Response(
+                gen(),
+                mimetype="text/event-stream",
+                status=200,
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+        oa = resp.get_json(silent=True)
+        if not isinstance(oa, dict):
+            return resp
+        return jsonify(openai_chat_completion_to_anthropic_message(oa))
 
     @bp.route("/v1/chat/completions", methods=["POST"])
     def chat_completions():

@@ -1,6 +1,6 @@
 # OpenClaw (ChironAI Core Module)
 
-Agent layer: OpenAI-compatible `/v1/chat/completions` on a dedicated port, optional MCP info HTTP, RAG `rag_query` tool, in-memory traces.
+Agent layer: OpenAI `POST /v1/chat/completions` and Anthropic `POST /v1/messages` on a dedicated port (shared agent + `rag_query`), optional MCP info HTTP, in-memory traces. Requires `llm_proxy` on `PYTHONPATH` (monorepo adds `CoreModules/LlmProxy` automatically in `http_server`).
 
 Install editable (from repo root):
 

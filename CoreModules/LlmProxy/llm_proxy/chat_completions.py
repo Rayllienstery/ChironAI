@@ -214,7 +214,9 @@ def _normalize_request_messages(body: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
-def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
+def run_chat_completions(
+    w: LlmProxyWiring, *, body_override: dict[str, Any] | None = None
+) -> Response | tuple[Response, int]:
     b = w.base
     prefix = b.prefix
     suffix = b.suffix
@@ -252,7 +254,10 @@ def run_chat_completions(w: LlmProxyWiring) -> Response | tuple[Response, int]:
     w.set_current_trace(trace)
     
     try:
-        body = request.get_json(force=True, silent=True) or {}
+        if body_override is not None:
+            body = dict(body_override)
+        else:
+            body = request.get_json(force=True, silent=True) or {}
     except Exception as e:
         w.log_webui_error("rag_routes.chat_completions", e, {"stage": "parse_body"})
         _log_rag_error("parse_body", e)

@@ -220,9 +220,10 @@ function ClawProxyPanel({ onModelStatusChange }) {
           <h2 id="claw-proxy-intro-heading">OpenClaw HTTP agent</h2>
         </div>
         <p className="dashboard-card-muted">
-          OpenAI-compatible <strong>agent</strong> endpoint with a <code>rag_query</code> tool (ChironAI RAG). Default port{' '}
-          <code>8082</code> (see <code>config/openclaw.yaml</code>). Documentation: <code>Claw.md</code>,{' '}
-          <code>docs/OPENCLAW_VSCODE.md</code>.
+          <strong>OpenAI</strong> (<code>POST /v1/chat/completions</code>) and <strong>Anthropic</strong> (
+          <code>POST /v1/messages</code>) <strong>agent</strong> endpoints share the same loop and{' '}
+          <code>rag_query</code> tool (ChironAI RAG). Default port <code>8082</code> (see{' '}
+          <code>config/openclaw.yaml</code>). Documentation: <code>Claw.md</code>, <code>docs/OPENCLAW_VSCODE.md</code>.
         </p>
         {err && <div className="dashboard-card-error">{err}</div>}
       </section>

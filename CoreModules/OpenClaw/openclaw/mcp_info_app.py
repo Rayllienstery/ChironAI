@@ -25,8 +25,8 @@ def create_mcp_info_app() -> Flask:
                     "see docs/OPENCLAW_VSCODE.md and Claw.md in the ChironAI repo root."
                 ),
                 "openclaw_openai": (
-                    "For chat/agent with custom base URL, use the OpenClaw OpenAI-compatible "
-                    "port (default 8082), not this MCP info port."
+                    "For chat/agent with custom base URL, use the OpenClaw port (default 8082): "
+                    "OpenAI POST /v1/chat/completions or Anthropic POST /v1/messages — not this MCP info port."
                 ),
             }
         )

@@ -38,7 +38,11 @@ def main() -> None:
     oa = get_openclaw_openai_port()
     app = create_openclaw_flask_app()
     srv = make_server(host, oa, app, threaded=True)
-    logging.getLogger(__name__).info("OpenClaw OpenAI API http://%s:%s/v1/chat/completions", host, oa)
+    logging.getLogger(__name__).info(
+        "OpenClaw OpenAI + Anthropic API http://%s:%s/v1/chat/completions | /v1/messages",
+        host,
+        oa,
+    )
     if get_openclaw_mcp_http_enabled():
         mp = get_openclaw_mcp_port()
         mapp = create_mcp_info_app()

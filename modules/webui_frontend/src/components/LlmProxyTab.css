@@ -17,6 +17,10 @@
   box-sizing: border-box;
 }
 
+.llm-proxy-tab .llm-proxy-status-card {
+  margin-bottom: var(--md-sys-spacing-xl);
+}
+
 .llm-proxy-tab > .settings-tab > .llm-proxy-web-panel.settings-form {
   width: 100%;
   max-width: none;

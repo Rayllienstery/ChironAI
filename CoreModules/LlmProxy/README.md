@@ -1,11 +1,12 @@
 # LlmProxy (Core Module)
 
-Installable package **`llm-proxy`**: OpenAI-compatible HTTP surface for the ChironAI RAG proxy—**Flask blueprint** registering:
+Installable package **`llm-proxy`**: **OpenAI-** and **Anthropic Messages–** compatible HTTP surface for the ChironAI RAG proxy—**Flask blueprint** registering:
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/v1` | API metadata |
-| GET | `/v1/models` | Lists logical model ids: RAG chat (`ChironAI-Worker` by default) and, when configured, autocomplete (`ChironAI-Autocomplete` by default) |
+| GET | `/v1/models` | **OpenAI clients:** `object`/`data` list of logical models (RAG + optional autocomplete). **Anthropic clients:** send header `anthropic-version` (any non-empty value, e.g. `2023-06-01`) for Anthropic-shaped `data` / `first_id` / `has_more`. |
+| POST | `/v1/messages` | **Anthropic Messages API** — translated to the same pipeline as `POST /v1/chat/completions` (RAG, tools, streaming). Empty `x-api-key` is accepted for local use (e.g. Claude Code + Ollama-style env). |
 | POST | `/v1/chat/completions` | Chat with optional RAG, tools, streaming |
 | POST | `/v1/completions` | OpenAI legacy completions (`choices[].text`) — implemented as transparent **`POST …/api/generate`** upstream (same as raw Ollama). No RAG, no WebUI prompt template, no web supplement. Optional `LLM_PROXY_COMPLETIONS_RAW` (`true` by default: sets Ollama `raw`). Zed **edit prediction** (`open_ai_compatible_api`): use `http://<host>:<port>/v1/completions`. |
 | POST | `/v1/files/apply-edit` | Apply a line/column range edit in the workspace |
@@ -37,6 +38,21 @@ Pytest adds `CoreModules/LlmProxy` to `pythonpath` in the root [`pyproject.toml`
 | `LLM_PROXY_COMPLETIONS_RAW` | If not `0`/`false`/`no`, `/v1/completions` sets Ollama `raw: true` on `/api/generate` (default: on) |
 
 Autocomplete is **additive**: same `/v1/chat/completions` endpoint; requests with `model` set to the autocomplete logical id skip RAG (and web supplement) and use the small Ollama model from WebUI or env. System prompt comes from the same WebUI **Prompt template** (`prompt_name`) as chat. The second entry appears in `/v1/models` only after that backend model is configured.
+
+### Claude Code (Anthropic base URL)
+
+Point Claude Code at this host (same port as the main Flask app), e.g.:
+
+```bash
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8080
+export ANTHROPIC_AUTH_TOKEN=ollama
+export ANTHROPIC_API_KEY=""
+claude --model ChironAI-Worker
+```
+
+Use your configured logical RAG model id or a concrete Ollama tag as `--model`. Streaming uses Anthropic SSE synthesized from the internal OpenAI-shaped stream.
+
+**Known limitations:** exotic Anthropic content blocks (images, PDFs, etc.) may not round-trip; agent-style **text** and **tool_use** / **tool_result** are supported. See `llm_proxy/anthropic_compat.py`.
 
 ## Wiring contract
 

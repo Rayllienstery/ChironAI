@@ -97,6 +97,7 @@ from config import (
     get_openclaw_host,
     get_openclaw_logical_model_id,
     get_openclaw_openai_port,
+    get_qdrant_collection_name,
     get_qdrant_url,
     get_rag_float,
     get_rag_int,
@@ -104,6 +105,7 @@ from config import (
     get_retrieval_bool,
     get_retrieval_int,
     get_server_host,
+    get_server_port,
 )
 from application.rag.hybrid_sparse import is_hybrid_sparse_enabled
 from infrastructure.rag.qdrant_point_builder import build_named_vectors
@@ -169,7 +171,7 @@ from domain.services.prompt_builder import (
     last_user_content,
     build_system_content,
 )
-from llm_proxy.config import RAG_MODEL_ID, is_rag_logical_model
+from llm_proxy.config import LlmProxyRuntimeConfig, RAG_MODEL_ID, is_rag_logical_model
 
 from infrastructure.database import (
     get_session_manager,
@@ -1318,6 +1320,52 @@ def get_model_settings() -> Any:
         return jsonify(out)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_model_settings", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/llm-proxy/status", methods=["GET"])
+def llm_proxy_status() -> Any:
+    """Base URL and effective LLM Proxy settings for WebUI Status card (parity with OpenClaw /status)."""
+    try:
+        settings_repo = get_settings_repository()
+        stored_model = (settings_repo.get_app_setting("proxy_model") or "").strip()
+        stored_settings_json = settings_repo.get_app_setting("proxy_settings")
+        stored_rag_col = (settings_repo.get_app_setting("rag_collection") or "").strip()
+        merged: dict[str, Any] = {"model": stored_model, "rag_collection": stored_rag_col}
+        if stored_settings_json:
+            try:
+                blob = json.loads(stored_settings_json)
+                if isinstance(blob, dict):
+                    for key, val in blob.items():
+                        if key in merged:
+                            merged[key] = val
+                        elif key == "model" and not merged["model"]:
+                            merged["model"] = str(val or "").strip()
+            except json.JSONDecodeError:
+                pass
+        ollama_model = str(merged.get("model") or "").strip()
+        rag_merged = str(merged.get("rag_collection") or "").strip()
+        config_rag = get_qdrant_collection_name()
+        effective_rag = rag_merged or config_rag
+        rt = LlmProxyRuntimeConfig.from_env()
+        bind_host = get_server_host()
+        display_host = "127.0.0.1" if bind_host == "0.0.0.0" else bind_host
+        port = get_server_port()
+        base_url = f"http://{display_host}:{port}"
+        return jsonify(
+            {
+                "enabled": True,
+                "base_url": base_url,
+                "logical_model_id": rt.rag_model_logical_id,
+                "default_ollama_model": ollama_model or "unknown",
+                "rag_collection": effective_rag,
+                "stored_rag_collection": rag_merged,
+                "config_default_rag_collection": config_rag,
+                "health": f"{base_url}/health",
+            }
+        )
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.llm_proxy_status", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 

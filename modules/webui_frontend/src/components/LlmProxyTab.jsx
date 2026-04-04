@@ -1,10 +1,21 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import ModelSettings from './ModelSettings';
 import LlmProxyAutocompletePanel from './LlmProxyAutocompletePanel';
 import LlmProxyWebInteractionPanel from './LlmProxyWebInteractionPanel';
 import ProxyTraceTab from './ProxyTraceTab';
+import { getLlmProxyStatus } from '../services/api';
 import './SettingsTab.css';
+import './DashboardTab.css';
 import './LlmProxyTab.css';
+
+function kvRow(label, value, key) {
+  return (
+    <div className="dashboard-kv-row" key={key}>
+      <span className="dashboard-kv-label">{label}</span>
+      <span className="dashboard-kv-value">{value}</span>
+    </div>
+  );
+}
 
 const SUB_TABS = [
   { id: 'overview', label: 'Overview' },
@@ -15,6 +26,27 @@ const SUB_TABS = [
 
 function LlmProxyTab({ onOpenRagModels, onOpenLogs, onModelStatusChange }) {
   const [subTab, setSubTab] = useState('overview');
+  const [proxyStatus, setProxyStatus] = useState(null);
+  const [statusErr, setStatusErr] = useState(null);
+  const [statusBusy, setStatusBusy] = useState(false);
+
+  const refreshStatus = useCallback(async () => {
+    setStatusErr(null);
+    setStatusBusy(true);
+    try {
+      const s = await getLlmProxyStatus();
+      setProxyStatus(s);
+    } catch (e) {
+      setProxyStatus(null);
+      setStatusErr(String(e.message || e));
+    } finally {
+      setStatusBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshStatus();
+  }, [refreshStatus]);
 
   return (
     <div className="settings-tab llm-proxy-tab">
@@ -63,13 +95,48 @@ function LlmProxyTab({ onOpenRagModels, onOpenLogs, onModelStatusChange }) {
 
       {subTab === 'overview' && (
         <div className="settings-form">
+          <section className="dashboard-card llm-proxy-status-card" aria-labelledby="llm-proxy-status-heading">
+            <div className="dashboard-card-header">
+              <h2 id="llm-proxy-status-heading">Status</h2>
+              <div className="dashboard-card-actions">
+                <button type="button" className="dashboard-primary-btn" onClick={refreshStatus} disabled={statusBusy}>
+                  Refresh
+                </button>
+              </div>
+            </div>
+            {!proxyStatus && !statusErr && <p className="dashboard-card-muted">Loading…</p>}
+            {statusErr && <div className="dashboard-card-error">{statusErr}</div>}
+            {proxyStatus && (
+              <>
+                {kvRow('Enabled', String(proxyStatus.enabled), 'enabled')}
+                {kvRow('Base URL', <code>{proxyStatus.base_url}</code>, 'base')}
+                {kvRow('Logical model id', <code>{proxyStatus.logical_model_id}</code>, 'logical')}
+                {kvRow(
+                  'Default Ollama model',
+                  <code>{proxyStatus.default_ollama_model || 'unknown'}</code>,
+                  'ollama',
+                )}
+                {kvRow(
+                  'RAG collection',
+                  <code>
+                    {proxyStatus.rag_collection ||
+                      proxyStatus.config_default_rag_collection ||
+                      '—'}
+                  </code>,
+                  'ragcoll',
+                )}
+                {kvRow('Health', <code>{proxyStatus.health}</code>, 'health')}
+              </>
+            )}
+          </section>
+
           <div className="settings-section">
             <h3>How to use the proxy</h3>
             <p className="settings-intro">
-              This is an OpenAI-compatible RAG proxy backed by Ollama and Qdrant. Point your editor or tools to the
-              proxy base URL and use the <code>ChironAI-Worker</code> model for chat with context. Optional inline
-              completions use logical id <code>ChironAI-Autocomplete</code> — configure it on the{' '}
-              <strong>Autocomplete</strong> tab.
+              This RAG proxy speaks <strong>OpenAI</strong> (<code>POST /v1/chat/completions</code>) and{' '}
+              <strong>Anthropic Messages</strong> (<code>POST /v1/messages</code>) over the same base URL, backed by Ollama
+              and Qdrant. Use the <code>ChironAI-Worker</code> model for chat with context. Optional inline completions
+              use logical id <code>ChironAI-Autocomplete</code> — configure it on the <strong>Autocomplete</strong> tab.
             </p>
             <ul className="settings-instructions">
               <li>
@@ -88,6 +155,13 @@ function LlmProxyTab({ onOpenRagModels, onOpenLogs, onModelStatusChange }) {
                 proxy, and use the <code>ChironAI-Worker</code> model.
               </li>
               <li>
+                <strong>Claude Code (Anthropic)</strong>: set <code>ANTHROPIC_BASE_URL</code> to this proxy&apos;s base URL
+                (no path suffix), <code>ANTHROPIC_API_KEY</code> empty, <code>ANTHROPIC_AUTH_TOKEN=ollama</code> (or your
+                token policy). Run <code>claude --model ChironAI-Worker</code> (or your Ollama tag). List models with
+                header <code>anthropic-version: 2023-06-01</code> on <code>GET /v1/models</code>. See{' '}
+                <code>CoreModules/LlmProxy/README.md</code>.
+              </li>
+              <li>
                 The model and RAG behavior for the proxy are controlled by the settings below. Web and GitHub options
                 live under the <strong>Web Interaction</strong> tab.
               </li>
@@ -101,10 +175,11 @@ function LlmProxyTab({ onOpenRagModels, onOpenLogs, onModelStatusChange }) {
             </summary>
             <ol className="pipeline-steps">
               <li>
-                <strong>Parse request</strong>: <code>POST /v1/chat/completions</code> (OpenAI-compatible JSON). Read{' '}
-                <code>messages</code>, <code>model</code> (e.g. <code>ChironAI-Worker</code> maps to your configured Ollama
-                model), <code>stream</code>, optional <code>force_rag</code>, <code>include_rag_metadata</code>, tools,
-                reasoning hints. Entry: Flask blueprint from <code>llm_proxy</code> (<code>CoreModules/LlmProxy</code>).
+                <strong>Parse request</strong>: <code>POST /v1/chat/completions</code> (OpenAI) or{' '}
+                <code>POST /v1/messages</code> (Anthropic → same internal pipeline). Read <code>messages</code> /{' '}
+                <code>model</code> (e.g. <code>ChironAI-Worker</code> maps to your configured Ollama model),{' '}
+                <code>stream</code>, optional <code>force_rag</code>, <code>include_rag_metadata</code>, tools, reasoning
+                hints. Entry: Flask blueprint from <code>llm_proxy</code> (<code>CoreModules/LlmProxy</code>).
               </li>
               <li>
                 <strong>Resolve last user message</strong>: the last user turn is the question for RAG and for the final
