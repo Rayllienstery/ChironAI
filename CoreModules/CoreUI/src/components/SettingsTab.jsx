@@ -13,6 +13,7 @@ const ACCENT_COLORS = [
   { id: 'teal', name: 'Teal', light: '#009688', dark: '#4DB6AC' },
   { id: 'indigo', name: 'Indigo', light: '#3F51B5', dark: '#7986CB' },
   { id: 'amber', name: 'Amber', light: '#FFC107', dark: '#FFD54F' },
+  { id: 'slate', name: 'Slate', light: '#344767', dark: '#90A4AE' },
 ];
 
 function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange }) {

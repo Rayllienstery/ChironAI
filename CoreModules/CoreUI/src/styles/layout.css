@@ -253,42 +253,6 @@ html, body {
   opacity: 0.9;
 }
 
-.app-header-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--md-sys-spacing-sm);
-}
-
-.header-capsule-button {
-  display: inline-flex !important;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px !important;
-  --app-card-radius: 999px;
-  border-radius: 999px !important;
-  border: none;
-  background: transparent;
-  appearance: none;
-  color: var(--md-sys-color-on-surface);
-  font: var(--md-sys-typescale-label-medium-font);
-  cursor: pointer;
-}
-
-.header-capsule-button:hover {
-  opacity: 0.9;
-}
-
-.header-capsule-button .header-btn-icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-.header-capsule-button--active {
-  color: var(--md-sys-color-primary);
-  box-shadow: inset 0 0 0 2px var(--md-sys-color-primary);
-}
-
 .app-header h1 {
   font: var(--md-sys-typescale-headline-medium-font);
   color: var(--md-sys-color-on-surface);

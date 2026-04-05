@@ -5,6 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import Card from "./Card";
 
 const LS_WIDTH = "coreui.sidebar.width";
 const LS_COLLAPSED = "coreui.sidebar.collapsed";
@@ -30,79 +31,25 @@ function readStoredCollapsed() {
   }
 }
 
+/** Material Symbols ligature names (Google Fonts) */
+const TAB_MATERIAL_ICONS = {
+  dashboard: "dashboard",
+  "llm-proxy": "smart_toy",
+  "claw-proxy": "terminal",
+  logs: "article",
+  rag: "database",
+  crawler: "travel_explore",
+  "template-editor": "edit_note",
+  testing: "science",
+};
+
 function TabIcon({ tabId }) {
-  const c = "coreui-sidebar__icon";
-  const stroke = {
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.75,
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-  };
-  switch (tabId) {
-    case "dashboard":
-      return (
-        <svg className={c} viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
-          <path d="M4 4h7v9H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 15h7v5H4z" />
-        </svg>
-      );
-    case "llm-proxy":
-      return (
-        <svg className={c} viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
-          <path d="M12 3a7 7 0 0 0-7 7v4H4v6h16v-6h-1v-4a7 7 0 0 0-7-7z" />
-          <path d="M9 17v1M15 17v1" />
-        </svg>
-      );
-    case "claw-proxy":
-      return (
-        <svg className={c} viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
-          <path d="M4 17l2-12h12l2 12" />
-          <path d="M9 9h6M8 13h8" />
-        </svg>
-      );
-    case "logs":
-      return (
-        <svg className={c} viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
-          <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
-        </svg>
-      );
-    case "rag":
-      return (
-        <svg className={c} viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
-          <ellipse cx="12" cy="6" rx="8" ry="3" />
-          <path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6" />
-          <path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" />
-        </svg>
-      );
-    case "crawler":
-      return (
-        <svg className={c} viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
-          <circle cx="12" cy="12" r="9" />
-          <path d="M3 12h4M17 12h4M12 3v4M12 17v4" />
-          <path d="M5.6 5.6l2.9 2.9M15.5 15.5l2.9 2.9M18.4 5.6l-2.9 2.9M8.5 15.5l-2.9 2.9" />
-        </svg>
-      );
-    case "template-editor":
-      return (
-        <svg className={c} viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
-          <path d="M14 3l7 7-9 9H5v-7l9-9z" />
-          <path d="M12 7l2 2" />
-        </svg>
-      );
-    case "testing":
-      return (
-        <svg className={c} viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
-          <path d="M9 3h6v4H9zM6 8h12l-1 13H7L6 8z" />
-          <path d="M10 14h4" />
-        </svg>
-      );
-    default:
-      return (
-        <svg className={c} viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
-          <circle cx="12" cy="12" r="9" />
-        </svg>
-      );
-  }
+  const ligature = TAB_MATERIAL_ICONS[tabId] ?? "widgets";
+  return (
+    <span className="material-symbols-outlined coreui-sidebar__icon" aria-hidden="true">
+      {ligature}
+    </span>
+  );
 }
 
 function CollapseIcon({ expanded }) {
@@ -128,9 +75,25 @@ function CollapseIcon({ expanded }) {
 }
 
 /**
- * @param {{ tabs: { id: string, label: string }[], activeTab: string, onTabChange: (id: string) => void, tabErrors?: Record<string, boolean> }} props
+ * @param {{
+ *   tabs: { id: string, label: string }[],
+ *   activeTab: string,
+ *   onTabChange: (id: string) => void,
+ *   tabErrors?: Record<string, boolean>,
+ *   onSettings?: () => void,
+ *   onStopWebUi?: () => void,
+ *   settingsActive?: boolean,
+ * }} props
  */
-function SidebarNav({ tabs, activeTab, onTabChange, tabErrors }) {
+function SidebarNav({
+  tabs,
+  activeTab,
+  onTabChange,
+  tabErrors,
+  onSettings,
+  onStopWebUi,
+  settingsActive,
+}) {
   const asideRef = useRef(null);
   const [collapsed, setCollapsed] = useState(readStoredCollapsed);
   const [expandedWidth, setExpandedWidth] = useState(readStoredWidth);
@@ -260,6 +223,45 @@ function SidebarNav({ tabs, activeTab, onTabChange, tabErrors }) {
           );
         })}
       </nav>
+      {(onSettings || onStopWebUi) && (
+        <footer className="coreui-sidebar__footer">
+          {onSettings && (
+            <Card
+              as="button"
+              type="button"
+              className={`coreui-sidebar__footer-btn coreui-sidebar__footer-btn--settings${settingsActive ? " coreui-sidebar__footer-btn--active" : ""}`}
+              onClick={onSettings}
+              title="Settings"
+              aria-current={settingsActive ? "page" : undefined}
+            >
+              <span
+                className="material-symbols-outlined coreui-sidebar__footer-icon"
+                aria-hidden="true"
+              >
+                settings
+              </span>
+              <span className="coreui-sidebar__footer-label">Settings</span>
+            </Card>
+          )}
+          {onStopWebUi && (
+            <Card
+              as="button"
+              type="button"
+              className="coreui-sidebar__footer-btn coreui-sidebar__footer-btn--stop"
+              onClick={onStopWebUi}
+              title="Stop WebUI server"
+            >
+              <span
+                className="material-symbols-outlined coreui-sidebar__footer-icon"
+                aria-hidden="true"
+              >
+                power
+              </span>
+              <span className="coreui-sidebar__footer-label">Stop WebUI</span>
+            </Card>
+          )}
+        </footer>
+      )}
       <div
         className="coreui-sidebar__resize"
         role="separator"

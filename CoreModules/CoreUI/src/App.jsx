@@ -56,37 +56,6 @@ import "./styles/sidebar.css";
 
 const METRICS_HISTORY_LEN = 30;
 
-function HeaderIconPower() {
-  return (
-    <svg
-      className="header-btn-icon"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 2v10" />
-      <path d="M5.636 5.636a9 9 0 1 0 12.728 0" />
-    </svg>
-  );
-}
-
-function HeaderIconGear() {
-  return (
-    <svg
-      className="header-btn-icon"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.09.63-.09.94s.02.63.06.93l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
-    </svg>
-  );
-}
-
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [scrollToRagModelsSection, setScrollToRagModelsSection] =
@@ -498,6 +467,9 @@ function App() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         tabErrors={tabErrors}
+        onSettings={() => setActiveTab("settings")}
+        onStopWebUi={handleServerStop}
+        settingsActive={activeTab === "settings"}
       />
       <div className="app-main-column">
         <header className="app-header">
@@ -627,28 +599,6 @@ function App() {
                   </Card>
                 )}
             </Card>
-            <div className="app-header-actions">
-              <Card
-                as="button"
-                type="button"
-                className="header-capsule-button"
-                onClick={handleServerStop}
-                title="Stop WebUI server"
-              >
-                <HeaderIconPower />
-                Stop WebUI
-              </Card>
-              <Card
-                as="button"
-                type="button"
-                className={`header-capsule-button${activeTab === "settings" ? " header-capsule-button--active" : ""}`}
-                onClick={() => setActiveTab("settings")}
-                title="Settings"
-              >
-                <HeaderIconGear />
-                Settings
-              </Card>
-            </div>
           </div>
         </div>
         {sessionId && (

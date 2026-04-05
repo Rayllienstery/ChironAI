@@ -33,7 +33,11 @@
   --md-sys-color-outline: #79747E;
   --md-sys-color-outline-variant: #CAC4D0;
   
-  --md-sys-color-background: #FAFAFA;
+  --md-sys-color-background: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 6%,
+    #f0f2f5
+  );
   --md-sys-color-on-background: #1C1B1F;
   
   /* Elevation */
@@ -127,11 +131,18 @@
   --md-sys-color-primary-tint-15: color-mix(in srgb, var(--md-sys-color-primary) 15%, transparent);
   --md-sys-color-tertiary-tint-12: color-mix(in srgb, var(--md-sys-color-tertiary) 12%, transparent);
 
-  /* CoreUI sidebar (Material Dashboard–style active pill) */
-  --coreui-sidenav-active-bg: #344767;
-  --coreui-sidenav-active-fg: #ffffff;
-  --coreui-sidenav-collapsed-bg: #344767;
+  /* CoreUI sidebar: active pill + collapsed rail follow current accent */
+  --coreui-sidenav-active-bg: var(--md-sys-color-primary);
+  --coreui-sidenav-active-fg: var(--md-sys-color-on-primary);
+  --coreui-sidenav-collapsed-bg: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 72%,
+    #0f1115
+  );
   --coreui-sidenav-collapsed-active-bg: rgba(255, 255, 255, 0.2);
+  /* Collapsed rail is always dark-tinted; keep icons readable (not --on-primary). */
+  --coreui-sidenav-rail-fg: #ffffff;
+  --coreui-sidenav-rail-fg-muted: rgba(255, 255, 255, 0.82);
   --coreui-sidebar-width-expanded: 260px;
   --coreui-sidebar-width-collapsed: 72px;
 }
@@ -171,7 +182,11 @@
   --md-sys-color-outline: #938F99;
   --md-sys-color-outline-variant: #5E5966;
   
-  --md-sys-color-background: #121014;
+  --md-sys-color-background: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 12%,
+    #121014
+  );
   --md-sys-color-on-background: #E6E1E5;
   
   --md-sys-elevation-level1: 0px 1px 3px 0px rgba(0, 0, 0, 0.3), 0px 4px 8px 3px rgba(0, 0, 0, 0.15);
@@ -320,6 +335,20 @@
   --md-sys-color-on-primary: #F57F17;
   --md-sys-color-primary-container: #F9A825;
   --md-sys-color-on-primary-container: #FFF9C4;
+}
+
+[data-accent-color="slate"] {
+  --md-sys-color-primary: #344767;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #e2e8f0;
+  --md-sys-color-on-primary-container: #1e293b;
+}
+
+.theme-dark[data-accent-color="slate"] {
+  --md-sys-color-primary: #90a4ae;
+  --md-sys-color-on-primary: #1c2834;
+  --md-sys-color-primary-container: #455a64;
+  --md-sys-color-on-primary-container: #eceff1;
 }
 
 * {
