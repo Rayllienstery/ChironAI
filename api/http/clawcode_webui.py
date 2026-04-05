@@ -273,6 +273,8 @@ def clawcode_get_settings():
             get_ollama_chat_options,
             get_clawcode_max_agent_steps,
             get_clawcode_max_agent_steps_config_yaml,
+            get_clawcode_merge_client_tools,
+            get_clawcode_merge_client_tools_config_yaml,
             get_qdrant_collection_name,
         )
         from infrastructure.database import get_settings_repository
@@ -291,6 +293,7 @@ def clawcode_get_settings():
         stored_top_p = (repo.get_app_setting("clawcode_chat_top_p") or "").strip()
         stored_think = (repo.get_app_setting("clawcode_chat_think") or "").strip().lower()
         chat_think = stored_think in ("1", "true", "yes")
+        stored_merge_tools = (repo.get_app_setting("clawcode_merge_client_tools") or "").strip()
         global_opts = get_ollama_chat_options() or {}
 
         base_url = get_ollama_base_url()
@@ -325,6 +328,9 @@ def clawcode_get_settings():
                 "stored_chat_think": stored_think,
                 "global_chat_temperature": global_opts.get("temperature"),
                 "global_chat_top_p": global_opts.get("top_p"),
+                "merge_client_tools": get_clawcode_merge_client_tools(),
+                "stored_merge_client_tools": stored_merge_tools,
+                "config_merge_client_tools_yaml": get_clawcode_merge_client_tools_config_yaml(),
             }
         )
     except Exception as e:
@@ -347,7 +353,8 @@ def clawcode_update_settings():
     Persist ClawCode settings.
 
     Body may include any of:
-    - default_model, rag_collection, max_agent_steps, chat_temperature, chat_top_p, chat_think
+    - default_model, rag_collection, max_agent_steps, chat_temperature, chat_top_p, chat_think,
+      merge_client_tools — IDE mode (bool or null to clear stored override)
     Use null or empty string where supported to clear stored override.
     """
     if not _ensure_clawcode_path():
@@ -360,6 +367,7 @@ def clawcode_update_settings():
         "chat_temperature",
         "chat_top_p",
         "chat_think",
+        "merge_client_tools",
     )
     if not any(k in body for k in allowed):
         return jsonify(
@@ -442,6 +450,22 @@ def clawcode_update_settings():
                 truthy = raw is True or raw == 1 or str(raw).strip().lower() in ("1", "true", "yes")
                 repo.set_app_setting("clawcode_chat_think", "1" if truthy else "")
                 out["chat_think"] = truthy
+
+        if "merge_client_tools" in body:
+            raw_mt = body.get("merge_client_tools")
+            if raw_mt is None or raw_mt == "":
+                repo.set_app_setting("clawcode_merge_client_tools", "")
+                from config import get_clawcode_merge_client_tools
+
+                out["merge_client_tools"] = get_clawcode_merge_client_tools()
+            else:
+                truthy_mt = raw_mt is True or raw_mt == 1 or str(raw_mt).strip().lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                )
+                repo.set_app_setting("clawcode_merge_client_tools", "1" if truthy_mt else "0")
+                out["merge_client_tools"] = truthy_mt
 
         return jsonify(out)
     except Exception as e:

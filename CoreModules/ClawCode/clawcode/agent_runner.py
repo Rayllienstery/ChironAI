@@ -11,6 +11,10 @@ from typing import Any, Callable
 
 from application.rag.params import RAGAnswerParams, RAGDependencies, get_rag_answer_params
 from application.rag.use_cases import build_rag_context
+from config import (
+    get_clawcode_merge_client_tools as _get_clawcode_merge_client_tools,
+    get_clawcode_think_num_predict_floor,
+)
 from infrastructure.database import get_settings_repository
 from infrastructure.ollama.chat_client import normalize_ollama_chat_options
 from infrastructure.ollama.openai_ollama_tool_bridge import (
@@ -33,13 +37,17 @@ RAG_QUERY_TOOL: dict[str, Any] = {
     "function": {
         "name": "rag_query",
         "description": (
-            "Search ChironAI RAG index and return relevant documentation excerpts. "
-            "Use a short, focused natural-language query."
+            "Search the ChironAI **indexed knowledge base** (ingested documentation and similar material) and "
+            "return excerpts. This is **not** a search over the user's live workspace or repo files unless those "
+            "files were explicitly ingested into RAG. Use a short, focused natural-language query."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "What to look up in the knowledge base"},
+                "query": {
+                    "type": "string",
+                    "description": "Topic to look up in the indexed knowledge base (not a file path or repo scan)",
+                },
                 "top_k": {
                     "type": "integer",
                     "description": "Optional; number of chunks (server may cap)",
@@ -52,11 +60,66 @@ RAG_QUERY_TOOL: dict[str, Any] = {
 
 DEFAULT_AGENT_SYSTEM = (
     "You are the ChironAI ClawCode coding agent. "
-    "For substantive technical questions (APIs, frameworks, iOS/Swift behavior, architecture), you must call "
-    "rag_query at least once with a short, focused query derived from the user's question before your final answer, "
-    "then ground your explanation in retrieved excerpts when they are relevant. "
-    "Only skip rag_query for pure meta requests (e.g. \"hello\", \"thanks\") with no technical content."
+    "rag_query searches an indexed knowledge base (docs, ingested texts)—it does not read arbitrary files from "
+    "the user's open project unless that content was ingested. Do not treat RAG hits as the user's application "
+    "source code or assume the workspace is fully covered by RAG. "
+    "For substantive technical questions (APIs, frameworks, iOS/Swift behavior, architecture), call rag_query "
+    "at least once with a short, focused query when that knowledge could help, then ground your answer in excerpts "
+    "when relevant. Skip rag_query for pure meta requests (e.g. \"hello\", \"thanks\") or when the task is only "
+    "about locating or editing specific files in the workspace and RAG would not substitute for filesystem access."
 )
+
+# Injected after the first system/developer message so clients that already send a large system prompt (e.g. Copilot)
+# still see ClawCode runtime rules.
+RUNTIME_DEVELOPER_RAG_ONLY = (
+    "ClawCode runtime (server-side tools): Only rag_query runs here. It queries the **indexed knowledge base**, "
+    "not the user's live workspace tree—do not claim RAG returned or failed to return their project source files. "
+    "IDE tools (semantic_search, list_dir, read_file, grep_search, etc.) are unavailable in this session; you "
+    "cannot scan or open repo files from the server. If the user needs to find or edit UI/code in their project, "
+    "state honestly that this mode has no filesystem access and they should enable IDE mode (merge_client_tools) for "
+    "ClawCode (see docs) so the IDE can run tools, or work from files already shown in the chat context. "
+    "Use rag_query only when ingested documentation or similar reference material could help; it is not a "
+    "replacement for listing or searching their repository. "
+    "If you use tools in this session, call **only** the rag_query function—any other tool name is invalid and "
+    "will be rejected. When speaking to the user, do not recite internal tool identifiers; say things like "
+    "\"workspace search in the editor\" or \"enable IDE tool pass-through in ClawCode settings\" instead."
+)
+
+RUNTIME_DEVELOPER_MERGE_CLIENT_TOOLS = (
+    "ClawCode runtime: rag_query searches the indexed knowledge base, not the live workspace unless ingested; "
+    "use IDE tools when you need actual project files. rag_query runs on the server; IDE tools run in the client "
+    "when returned as tool_calls. Do not mix rag_query and other tools in the same assistant tool_calls batch—"
+    "use only rag_query in one turn, or only IDE tools in another so the client can execute them."
+)
+
+
+def _tool_call_names(tool_calls: list[Any]) -> list[str]:
+    names: list[str] = []
+    for tc in tool_calls:
+        if not isinstance(tc, dict):
+            continue
+        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+        names.append(str(fn.get("name") or "") if isinstance(fn, dict) else "")
+    return names
+
+
+def _inject_clawcode_runtime_context(
+    openai_messages: list[dict[str, Any]],
+    *,
+    merge_client_tools: bool,
+) -> None:
+    has_sd = any(
+        isinstance(m, dict) and m.get("role") in ("system", "developer") for m in openai_messages
+    )
+    if not has_sd:
+        openai_messages.insert(0, {"role": "system", "content": DEFAULT_AGENT_SYSTEM})
+    hint = RUNTIME_DEVELOPER_MERGE_CLIENT_TOOLS if merge_client_tools else RUNTIME_DEVELOPER_RAG_ONLY
+    insert_at = 0
+    for i, m in enumerate(openai_messages):
+        if isinstance(m, dict) and m.get("role") in ("system", "developer"):
+            insert_at = i + 1
+            break
+    openai_messages.insert(insert_at, {"role": "developer", "content": hint})
 
 
 def _sanitize_chunks_for_metadata(chunks: list[dict[str, Any]], *, per_call_limit: int = 24) -> list[dict[str, Any]]:
@@ -215,6 +278,65 @@ def _trace_request_summary(body: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _coerce_positive_int(v: object) -> int | None:
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
+def _coerce_nonneg_int(v: object) -> int | None:
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return None
+    return n if n >= 0 else None
+
+
+def _apply_clawcode_num_predict_budget(
+    opts: dict[str, Any],
+    body: dict[str, Any],
+    *,
+    think_requested: bool,
+) -> dict[str, Any]:
+    """
+    Merge OpenAI max_tokens / max_completion_tokens into Ollama num_predict, then apply think floor.
+    """
+    out = dict(opts)
+    cur = _coerce_positive_int(out.get("num_predict"))
+    cur_i = cur if cur is not None else 0
+
+    mt = body.get("max_tokens")
+    if mt is None:
+        mt = body.get("max_completion_tokens")
+    client_n = _coerce_positive_int(mt)
+    if client_n is not None:
+        out["num_predict"] = max(cur_i, client_n)
+        cur_i = out["num_predict"]
+
+    if think_requested:
+        floor = get_clawcode_think_num_predict_floor()
+        out["num_predict"] = max(cur_i, floor)
+
+    return out
+
+
+def _ollama_trace_counts(data: dict[str, Any]) -> tuple[str | None, int | None, int | None]:
+    """Root-level Ollama /api/chat fields for traces."""
+    dr_raw = data.get("done_reason")
+    if dr_raw is None:
+        ollama_dr: str | None = None
+    elif isinstance(dr_raw, str):
+        ollama_dr = dr_raw.strip() or None
+    else:
+        ollama_dr = str(dr_raw).strip() or None
+
+    pec = _coerce_nonneg_int(data.get("prompt_eval_count"))
+    ec = _coerce_nonneg_int(data.get("eval_count"))
+    return ollama_dr, pec, ec
+
+
 def run_clawcode_chat_completion(
     body: dict[str, Any],
     *,
@@ -230,8 +352,13 @@ def run_clawcode_chat_completion(
     if not isinstance(messages, list) or not messages:
         return {"error": {"message": "messages required", "type": "invalid_request_error"}}, 400
 
-    # Some clients (e.g. editors) always send stream=true for OpenAI-compatible APIs.
-    # ClawCode currently returns a single non-streaming completion; ignore the flag for now.
+    _body_mc = body.get("merge_client_tools")
+    merge_client_tools = (
+        bool(_body_mc) if isinstance(_body_mc, bool) else _get_clawcode_merge_client_tools()
+    )
+
+    # Some clients (e.g. VS Code Copilot) send stream=true. The HTTP layer turns the final
+    # completion into OpenAI SSE; the agent loop still produces one assembled message.
 
     # ClawCode-specific app_settings (collection + default Ollama model).
     configured = ""
@@ -280,7 +407,10 @@ def run_clawcode_chat_completion(
                     "logical_model_id": logical_model_id,
                     "resolved_model": "",
                     "elapsed_ms": 0,
-                    "request": _trace_request_summary(body),
+                    "request": {
+                        **_trace_request_summary(body),
+                        "merge_client_tools": merge_client_tools,
+                    },
                     "think_requested": oc_think_request,
                     "steps": [
                         {"kind": "config_error", "step": 0, "ok": False, "error": err_msg}
@@ -311,12 +441,11 @@ def run_clawcode_chat_completion(
     total_out = 0
 
     openai_messages: list[dict[str, Any]] = [dict(m) for m in messages if isinstance(m, dict)]
-    if not any(m.get("role") in ("system", "developer") for m in openai_messages):
-        openai_messages.insert(0, {"role": "system", "content": DEFAULT_AGENT_SYSTEM})
+    _inject_clawcode_runtime_context(openai_messages, merge_client_tools=merge_client_tools)
 
     client_tools = body.get("tools")
     tools_list: list[dict[str, Any]] = [RAG_QUERY_TOOL]
-    if isinstance(client_tools, list):
+    if merge_client_tools and isinstance(client_tools, list):
         for t in client_tools:
             if isinstance(t, dict) and t.get("type") == "function":
                 fn = t.get("function")
@@ -330,6 +459,7 @@ def run_clawcode_chat_completion(
     if oc_top_p_override is not None:
         _co["top_p"] = oc_top_p_override
     _co = normalize_ollama_chat_options(_co)
+    _co = _apply_clawcode_num_predict_budget(_co, body, think_requested=oc_think_request)
 
     for step_idx in range(max_steps):
         ollama_messages = openai_messages_to_ollama(openai_messages)
@@ -376,6 +506,7 @@ def run_clawcode_chat_completion(
                 total_out,
                 error=err,
                 think_requested=oc_think_request,
+                merge_client_tools=merge_client_tools,
             )
             return {"error": {"message": err, "type": "api_error"}}, 502
 
@@ -405,43 +536,49 @@ def run_clawcode_chat_completion(
                 total_out,
                 error=err,
                 think_requested=oc_think_request,
+                merge_client_tools=merge_client_tools,
             )
             return {"error": {"message": err, "type": "upstream_error"}}, 502
 
         oll_msg = data.get("message") if isinstance(data.get("message"), dict) else {}
+        ollama_dr, ollama_pec, ollama_ec = _ollama_trace_counts(data if isinstance(data, dict) else {})
         openai_assistant = ollama_message_to_openai_assistant(oll_msg)
         pt = _estimate_tokens(ollama_messages)
         ct = _estimate_tokens(openai_assistant.get("content") or oll_msg)
         total_in += pt
         total_out += ct
         tool_calls = openai_assistant.get("tool_calls") if isinstance(openai_assistant.get("tool_calls"), list) else []
-        finish = openai_finish_reason_from_ollama(oll_msg)
+        finish = openai_finish_reason_from_ollama(oll_msg, ollama_dr)
 
         th_raw, th_trunc = _cap_trace_text(oll_msg.get("thinking"), _TRACE_FIELD_CAP)
         co_raw, co_trunc = _cap_trace_text(oll_msg.get("content"), _TRACE_FIELD_CAP)
         vis, vis_trunc = _cap_trace_text(_openai_content_preview(openai_assistant), _TRACE_FIELD_CAP)
         tc_compact = _compact_tool_calls_for_trace(openai_assistant)
 
-        steps_out.append(
-            {
-                "kind": "model_call",
-                "step": step_idx,
-                "ok": True,
-                "duration_ms": dur_ms,
-                "model": use_model,
-                "finish_reason": finish,
-                "prompt_tokens_est": pt,
-                "completion_tokens_est": ct,
-                "tool_calls_count": len(tool_calls),
-                "thinking_raw": th_raw,
-                "thinking_truncated": th_trunc,
-                "assistant_content_raw": co_raw,
-                "assistant_content_raw_truncated": co_trunc,
-                "assistant_visible": vis,
-                "assistant_visible_truncated": vis_trunc,
-                "tool_calls": tc_compact,
-            }
-        )
+        step_rec: dict[str, Any] = {
+            "kind": "model_call",
+            "step": step_idx,
+            "ok": True,
+            "duration_ms": dur_ms,
+            "model": use_model,
+            "finish_reason": finish,
+            "ollama_done_reason": ollama_dr,
+            "prompt_tokens_est": pt,
+            "completion_tokens_est": ct,
+            "tool_calls_count": len(tool_calls),
+            "thinking_raw": th_raw,
+            "thinking_truncated": th_trunc,
+            "assistant_content_raw": co_raw,
+            "assistant_content_raw_truncated": co_trunc,
+            "assistant_visible": vis,
+            "assistant_visible_truncated": vis_trunc,
+            "tool_calls": tc_compact,
+        }
+        if ollama_pec is not None:
+            step_rec["ollama_prompt_eval_count"] = ollama_pec
+        if ollama_ec is not None:
+            step_rec["ollama_eval_count"] = ollama_ec
+        steps_out.append(step_rec)
 
         if not tool_calls:
             openai_messages.append(openai_assistant)
@@ -466,8 +603,52 @@ def run_clawcode_chat_completion(
                 final_assistant=openai_assistant,
                 finish_reason=finish,
                 think_requested=oc_think_request,
+                merge_client_tools=merge_client_tools,
             )
             return resp, 200
+
+        tc_names = _tool_call_names(tool_calls)
+        if merge_client_tools and tc_names and all(n != "rag_query" for n in tc_names):
+            steps_out.append(
+                {
+                    "kind": "tool_pass_through",
+                    "step": step_idx,
+                    "names": tc_names,
+                }
+            )
+            resp = _openai_completion_response(
+                openai_assistant,
+                use_model,
+                "tool_calls",
+                trace_id,
+                rag_metadata=_rag_metadata_from_agent_steps(steps_out),
+            )
+            _emit_trace(
+                trace_callback,
+                trace_id,
+                body,
+                steps_out,
+                started,
+                use_model,
+                logical_model_id,
+                total_in,
+                total_out,
+                final=True,
+                final_assistant=openai_assistant,
+                finish_reason="tool_calls",
+                think_requested=oc_think_request,
+                merge_client_tools=merge_client_tools,
+            )
+            return resp, 200
+
+        if merge_client_tools and tc_names and any(n == "rag_query" for n in tc_names) and any(
+            n != "rag_query" for n in tc_names
+        ):
+            _LOG.warning(
+                "clawcode: mixed rag_query and client tools in one assistant turn (step=%s); "
+                "server executes rag_query only; other tools get stub tool messages",
+                step_idx,
+            )
 
         openai_messages.append(openai_assistant)
         for tc in tool_calls:
@@ -534,15 +715,24 @@ def run_clawcode_chat_completion(
                         "kind": "tool_unhandled",
                         "name": name,
                         "step": step_idx,
-                        "note": "ClawCode only executes rag_query in-tree; pass-through not implemented",
+                        "note": (
+                            "ClawCode only executes rag_query in-tree; set merge_client_tools and use "
+                            "client-only tool batches for IDE pass-through"
+                        ),
                     }
                 )
+                stub = {"error": "tool not executed by ClawCode runtime"}
+                if not merge_client_tools:
+                    stub["hint"] = (
+                        "Only rag_query is registered in this mode. Call rag_query with a short query, or answer "
+                        "from the conversation without tools."
+                    )
                 openai_messages.append(
                     {
                         "role": "tool",
                         "tool_call_id": call_id,
                         "name": name or "unknown",
-                        "content": json.dumps({"error": "tool not executed by ClawCode runtime"}),
+                        "content": json.dumps(stub),
                     }
                 )
 
@@ -558,6 +748,7 @@ def run_clawcode_chat_completion(
         total_out,
         error="max_agent_steps exceeded",
         think_requested=oc_think_request,
+        merge_client_tools=merge_client_tools,
     )
     return {
         "error": {
@@ -615,17 +806,21 @@ def _emit_trace(
     final_assistant: dict[str, Any] | None = None,
     finish_reason: str | None = None,
     think_requested: bool = False,
+    merge_client_tools: bool | None = None,
 ) -> None:
     if cb is None:
         return
     elapsed_ms = int((time.perf_counter() - started) * 1000)
+    req_summary = _trace_request_summary(body)
+    if merge_client_tools is not None:
+        req_summary = {**req_summary, "merge_client_tools": merge_client_tools}
     rec: dict[str, Any] = {
         "trace_id": trace_id,
         "ts_ms": int(time.time() * 1000),
         "logical_model_id": logical_model_id,
         "resolved_model": resolved_model,
         "elapsed_ms": elapsed_ms,
-        "request": _trace_request_summary(body),
+        "request": req_summary,
         "think_requested": think_requested,
         "steps": steps,
         "step_count": len(steps),

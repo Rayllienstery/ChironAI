@@ -83,6 +83,13 @@ def test_ollama_message_to_openai_assistant_tool_calls() -> None:
     assert openai_finish_reason_from_ollama(ollama_msg) == "tool_calls"
 
 
+def test_openai_finish_reason_length_from_ollama_done_reason() -> None:
+    msg = {"role": "assistant", "content": "hi"}
+    assert openai_finish_reason_from_ollama(msg) == "stop"
+    assert openai_finish_reason_from_ollama(msg, "length") == "length"
+    assert openai_finish_reason_from_ollama(msg, "LENGTH") == "length"
+
+
 def test_ollama_tools_from_openai_filters_non_dict() -> None:
     assert ollama_tools_from_openai([{"type": "function", "function": {"name": "n"}}]) is not None
     assert ollama_tools_from_openai([]) is None

@@ -321,8 +321,8 @@ def _webui_chat_forward_clawcode(body: dict[str, Any], start_time: float) -> Any
         "model": logical_id,
         "messages": body.get("messages") or [],
     }
-    for key in ("temperature", "top_p"):
-        if key in body and body[key] is not None:
+    for key in ("temperature", "top_p", "tools", "tool_choice", "stream", "merge_client_tools"):
+        if key in body:
             forward[key] = body[key]
     try:
         timeout_sec = float(os.getenv("CLAWCODE_CHAT_TIMEOUT_SEC", "600"))

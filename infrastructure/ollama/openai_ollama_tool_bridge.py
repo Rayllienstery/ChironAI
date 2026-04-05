@@ -241,9 +241,19 @@ def ollama_message_to_openai_assistant(ollama_msg: dict[str, Any]) -> dict[str, 
     return msg
 
 
-def openai_finish_reason_from_ollama(ollama_msg: dict[str, Any]) -> str:
+def openai_finish_reason_from_ollama(
+    ollama_msg: dict[str, Any],
+    ollama_done_reason: str | None = None,
+) -> str:
     if isinstance(ollama_msg.get("tool_calls"), list) and ollama_msg.get("tool_calls"):
         return "tool_calls"
+    dr = (
+        (ollama_done_reason or "").strip().lower()
+        if isinstance(ollama_done_reason, str)
+        else ""
+    )
+    if dr == "length":
+        return "length"
     return "stop"
 
 

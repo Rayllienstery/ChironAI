@@ -398,6 +398,38 @@ def get_clawcode_mcp_http_enabled() -> bool:
     return bool(CLAWCODE_CONFIG.get("mcp_http_enabled", True))
 
 
+def get_clawcode_merge_client_tools_config_yaml() -> bool:
+    """Value from ``clawcode.yaml`` only (for WebUI hints). Defaults to True if the key is omitted."""
+    return bool(CLAWCODE_CONFIG.get("merge_client_tools", True))
+
+
+def get_clawcode_merge_client_tools() -> bool:
+    """
+    IDE mode: when True (default from YAML), ClawCode merges client ``tools`` (e.g. Copilot) with
+    ``rag_query`` for Ollama and can return client-only ``tool_calls`` to the IDE. When False, only
+    ``rag_query`` is advertised — for RAG-only or non-tool-loop clients.
+
+    Precedence: ``CLAWCODE_MERGE_CLIENT_TOOLS`` env, then SQLite ``clawcode_merge_client_tools``
+    app setting, then YAML.
+    """
+    env = os.getenv("CLAWCODE_MERGE_CLIENT_TOOLS", "").strip().lower()
+    if env in ("1", "true", "yes", "on"):
+        return True
+    if env in ("0", "false", "no", "off"):
+        return False
+    try:
+        from infrastructure.database import get_settings_repository
+
+        raw = (get_settings_repository().get_app_setting("clawcode_merge_client_tools") or "").strip().lower()
+        if raw in ("1", "true", "yes", "on"):
+            return True
+        if raw in ("0", "false", "no", "off"):
+            return False
+    except Exception:
+        pass
+    return get_clawcode_merge_client_tools_config_yaml()
+
+
 def get_clawcode_max_agent_steps_config_yaml() -> int:
     """Default from clawcode.yaml only (no env, no DB); for WebUI hints."""
     try:
@@ -440,6 +472,33 @@ def get_clawcode_trace_buffer_size() -> int:
         return max(10, int(CLAWCODE_CONFIG.get("trace_buffer_size", 80)))
     except (TypeError, ValueError):
         return 80
+
+
+def get_clawcode_think_num_predict_floor_config_yaml() -> int:
+    """Minimum ``num_predict`` when ClawCode uses Ollama ``think: true`` (YAML only)."""
+    try:
+        return max(256, int(CLAWCODE_CONFIG.get("think_num_predict_floor", 12288)))
+    except (TypeError, ValueError):
+        return 12288
+
+
+def get_clawcode_think_num_predict_floor() -> int:
+    """
+    Effective floor for Ollama ``num_predict`` when thinking is enabled.
+
+    Precedence: ``CLAWCODE_THINK_NUM_PREDICT_FLOOR`` env, then ``think_num_predict_floor`` in clawcode.yaml.
+    Clamped to [256, 262144].
+    """
+    try:
+        v = os.getenv("CLAWCODE_THINK_NUM_PREDICT_FLOOR")
+        if v is not None and str(v).strip():
+            return max(256, min(262_144, int(str(v).strip())))
+    except (TypeError, ValueError):
+        pass
+    try:
+        return max(256, min(262_144, int(get_clawcode_think_num_predict_floor_config_yaml())))
+    except (TypeError, ValueError):
+        return 12288
 
 
 def get_clawcode_vendor_config() -> Dict[str, Any]:

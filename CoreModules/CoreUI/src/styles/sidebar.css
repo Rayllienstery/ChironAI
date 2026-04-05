@@ -137,7 +137,7 @@
   cursor: pointer;
   text-align: left;
   padding: 10px 14px;
-  border-radius: var(--md-sys-shape-corner-full);
+  border-radius: var(--md-sys-shape-corner-medium);
   font: var(--md-sys-typescale-label-large-font);
   color: var(--md-sys-color-on-surface-variant);
   transition:
@@ -168,7 +168,7 @@
   justify-content: center;
   gap: 0;
   color: var(--coreui-sidenav-rail-fg-muted);
-  border-radius: var(--md-sys-shape-corner-full);
+  border-radius: var(--md-sys-shape-corner-medium);
 }
 
 .app.app--sidebar-collapsed .coreui-sidebar__link:hover {
@@ -246,10 +246,13 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: var(--md-sys-spacing-sm);
   padding: var(--md-sys-spacing-md) var(--md-sys-spacing-sm)
     var(--md-sys-spacing-lg);
   border-top: 1px solid var(--md-sys-color-outline-variant);
+  position: sticky;
+  bottom: 0;
 }
 
 .app.app--sidebar-collapsed .coreui-sidebar__footer {
@@ -263,9 +266,10 @@
   width: 100%;
   display: inline-flex !important;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 12px !important;
+  justify-content: flex-start;
+  gap: var(--md-sys-spacing-md);
+  padding: 10px 14px !important;
+  text-align: left;
   border-radius: var(--md-sys-shape-corner-medium) !important;
   cursor: pointer;
   font: var(--md-sys-typescale-label-large-font) !important;
@@ -321,6 +325,7 @@
   height: 44px;
   padding: 0 !important;
   border-radius: var(--md-sys-shape-corner-full) !important;
+  justify-content: center;
 }
 
 .app.app--sidebar-collapsed .coreui-sidebar__footer-label {

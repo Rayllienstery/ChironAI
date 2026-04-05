@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
+import uuid
+from collections.abc import Iterator
 from pathlib import Path
 
 # Monorepo: allow ``import llm_proxy`` without a separate ``pip install -e`` when this path exists.
@@ -29,6 +32,161 @@ from clawcode.trace_journal import persist_clawcode_trace_to_db
 from clawcode.trace_store import append as trace_append
 
 _LOG = logging.getLogger("clawcode.http")
+
+
+def _openai_message_content_to_str(content: object) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for p in content:
+            if isinstance(p, dict) and p.get("type") == "text":
+                t = p.get("text")
+                if isinstance(t, str):
+                    parts.append(t)
+        return "".join(parts)
+    return str(content)
+
+
+def _openai_sse_chunks_from_completion(resp: dict) -> Iterator[str]:
+    """
+    Emit OpenAI-compatible SSE chunks from a non-streaming chat.completion dict.
+    Used when clients (e.g. VS Code Copilot) send ``stream: true`` but the agent
+    returns one assembled completion.
+    """
+    oid = str(resp.get("id") or f"chatcmpl-{uuid.uuid4().hex[:24]}")
+    model = str(resp.get("model") or "")
+    choices = resp.get("choices")
+    if not isinstance(choices, list) or not choices:
+        yield f"data: {json.dumps({'error': {'message': 'invalid completion: no choices', 'type': 'api_error'}})}\n\n"
+        return
+    ch0 = choices[0]
+    if not isinstance(ch0, dict):
+        yield f"data: {json.dumps({'error': {'message': 'invalid completion', 'type': 'api_error'}})}\n\n"
+        return
+    msg = ch0.get("message")
+    if not isinstance(msg, dict):
+        msg = {}
+    finish = ch0.get("finish_reason") or "stop"
+    if not isinstance(finish, str):
+        finish = "stop"
+
+    yield (
+        "data: "
+        + json.dumps(
+            {
+                "id": oid,
+                "object": "chat.completion.chunk",
+                "model": model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"role": "assistant"},
+                        "finish_reason": None,
+                    }
+                ],
+            }
+        )
+        + "\n\n"
+    )
+
+    tool_calls = msg.get("tool_calls")
+    if isinstance(tool_calls, list) and tool_calls:
+        payload_calls: list[dict[str, object]] = []
+        for i, tc in enumerate(tool_calls):
+            if not isinstance(tc, dict):
+                continue
+            fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+            payload_calls.append(
+                {
+                    "index": i,
+                    "id": tc.get("id"),
+                    "type": "function",
+                    "function": {
+                        "name": fn.get("name") if isinstance(fn, dict) else None,
+                        "arguments": fn.get("arguments") if isinstance(fn, dict) else None,
+                    },
+                }
+            )
+        yield (
+            "data: "
+            + json.dumps(
+                {
+                    "id": oid,
+                    "object": "chat.completion.chunk",
+                    "model": model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"tool_calls": payload_calls},
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+            )
+            + "\n\n"
+        )
+        yield (
+            "data: "
+            + json.dumps(
+                {
+                    "id": oid,
+                    "object": "chat.completion.chunk",
+                    "model": model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {},
+                            "finish_reason": "tool_calls",
+                        }
+                    ],
+                }
+            )
+            + "\n\n"
+        )
+    else:
+        content_str = _openai_message_content_to_str(msg.get("content"))
+        if content_str:
+            yield (
+                "data: "
+                + json.dumps(
+                    {
+                        "id": oid,
+                        "object": "chat.completion.chunk",
+                        "model": model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": content_str},
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
+                )
+                + "\n\n"
+            )
+        yield (
+            "data: "
+            + json.dumps(
+                {
+                    "id": oid,
+                    "object": "chat.completion.chunk",
+                    "model": model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {},
+                            "finish_reason": finish,
+                        }
+                    ],
+                }
+            )
+            + "\n\n"
+        )
+
+    yield "data: [DONE]\n\n"
 
 
 def project_root() -> Path:
@@ -138,12 +296,33 @@ def create_clawcode_flask_app() -> Flask:
         if not isinstance(body, dict):
             return jsonify({"error": {"message": "JSON body required", "type": "invalid_request_error"}}), 400
 
+        want_stream = bool(body.get("stream"))
+
         try:
             resp, code = _run_agent(body)
-            return jsonify(resp), code
         except Exception as e:
             _LOG.exception("chat_completions failed: %s", e)
             return jsonify({"error": {"message": str(e), "type": "internal_error"}}), 500
+
+        if (
+            want_stream
+            and code == 200
+            and isinstance(resp, dict)
+            and isinstance(resp.get("choices"), list)
+            and len(resp["choices"]) > 0
+        ):
+
+            def gen():
+                yield from _openai_sse_chunks_from_completion(resp)
+
+            return Response(
+                gen(),
+                mimetype="text/event-stream",
+                status=200,
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+
+        return jsonify(resp), code
 
     @app.post("/v1/messages")
     def anthropic_messages():
