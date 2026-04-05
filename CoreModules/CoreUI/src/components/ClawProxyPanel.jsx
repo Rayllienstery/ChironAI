@@ -186,7 +186,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
   if (!status.available) {
     return (
       <div className="dashboard-layout">
-        <section className="dashboard-card" aria-labelledby="claw-proxy-unavailable-heading">
+        <section className="app-default-card" aria-labelledby="claw-proxy-unavailable-heading">
           <div className="dashboard-card-header">
             <h2 id="claw-proxy-unavailable-heading">Claw Proxy</h2>
           </div>
@@ -233,7 +233,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
 
   return (
     <div className="dashboard-layout">
-      <section className="dashboard-card" aria-labelledby="claw-proxy-intro-heading">
+      <section className="app-default-card" aria-labelledby="claw-proxy-intro-heading">
         <div className="dashboard-card-header">
           <h2 id="claw-proxy-intro-heading">ClawCode HTTP agent</h2>
         </div>
@@ -248,7 +248,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
 
       <div className="dashboard-claw-two-col">
         <div className="dashboard-claw-col">
-          <section className="dashboard-card" aria-labelledby="claw-status-heading">
+          <section className="app-default-card" aria-labelledby="claw-status-heading">
             <div className="dashboard-card-header">
               <h2 id="claw-status-heading">Status</h2>
               <div className="dashboard-card-actions">
@@ -269,7 +269,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
             {kvRow('Health', <code>{status.openai_base_url}/health</code>, 'health')}
           </section>
 
-          <section className="dashboard-card" aria-labelledby="claw-rag-collection-heading">
+          <section className="app-default-card" aria-labelledby="claw-rag-collection-heading">
             <div className="dashboard-card-header">
               <h2 id="claw-rag-collection-heading">RAG collection</h2>
             </div>
@@ -335,7 +335,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
             </div>
           </section>
 
-          <section className="dashboard-card" aria-labelledby="claw-traces-heading">
+          <section className="app-default-card" aria-labelledby="claw-traces-heading">
             <div className="dashboard-card-header">
               <h2 id="claw-traces-heading">Traces</h2>
               <div className="dashboard-card-actions">
@@ -364,7 +364,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
         </div>
 
         <div className="dashboard-claw-col">
-          <section className="dashboard-card" aria-labelledby="claw-model-heading">
+          <section className="app-default-card" aria-labelledby="claw-model-heading">
             <div className="dashboard-card-header">
               <h2 id="claw-model-heading">Agent default model</h2>
             </div>
@@ -411,7 +411,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
             </div>
           </section>
 
-          <section className="dashboard-card" aria-labelledby="claw-agent-runtime-heading">
+          <section className="app-default-card" aria-labelledby="claw-agent-runtime-heading">
             <div className="dashboard-card-header">
               <h2 id="claw-agent-runtime-heading">Agent runtime</h2>
             </div>
@@ -513,7 +513,7 @@ function ClawProxyPanel({ onModelStatusChange }) {
             </div>
           </section>
 
-          <section className="dashboard-card" aria-labelledby="claw-vendor-heading">
+          <section className="app-default-card" aria-labelledby="claw-vendor-heading">
             <div className="dashboard-card-header">
               <h2 id="claw-vendor-heading">Vendor (claw-code parity)</h2>
             </div>

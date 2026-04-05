@@ -494,7 +494,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
       <PipelineCiDiagram
         data={pipelineMerged}
         title="LLM proxy pipeline (RAG + supplements)"
-        subtitle="Green stages are enabled with current settings; gray are off. Unsaved hybrid/rerank toggles below update the bottom row live. Web and GitHub flags are edited under LLM Proxy → Web interaction."
+        subtitle="Green stages are enabled with current settings; gray are off. Unsaved hybrid/rerank toggles below update this row live. Web and GitHub flags are edited under LLM Proxy → Web interaction."
       />
 
       <Card

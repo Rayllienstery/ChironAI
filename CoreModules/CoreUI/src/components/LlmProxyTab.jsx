@@ -95,7 +95,7 @@ function LlmProxyTab({ onOpenRagModels, onOpenLogs, onModelStatusChange }) {
 
       {subTab === 'overview' && (
         <div className="settings-form">
-          <section className="dashboard-card llm-proxy-status-card" aria-labelledby="llm-proxy-status-heading">
+          <section className="app-default-card llm-proxy-status-card" aria-labelledby="llm-proxy-status-heading">
             <div className="dashboard-card-header">
               <h2 id="llm-proxy-status-heading">Status</h2>
               <div className="dashboard-card-actions">

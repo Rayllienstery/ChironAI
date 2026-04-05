@@ -2,15 +2,22 @@
   display: flex;
   flex-direction: column;
   gap: var(--md-sys-spacing-xl);
-  padding: var(--md-sys-spacing-lg);
+  /* Horizontal inset comes from .app-main only — avoids double padding and a huge left gap */
+  padding-block: 0;
+  padding-inline: 0;
   max-width: 1280px;
-  margin: 0 auto;
+  margin: 0;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .dashboard-layout {
   display: flex;
   flex-direction: column;
   gap: var(--md-sys-spacing-xl);
+  min-width: 0;
+  width: 100%;
 }
 
 .dashboard-info-card {
@@ -18,6 +25,8 @@
   border-radius: var(--md-sys-shape-corner-large);
   padding: var(--md-sys-spacing-lg);
   box-shadow: var(--md-sys-elevation-level1);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .dashboard-info-card-header {
@@ -29,12 +38,14 @@
   font: var(--md-sys-typescale-headline-large-font);
   color: var(--md-sys-color-on-surface);
   margin: 0 0 var(--md-sys-spacing-xs) 0;
+  text-align: left;
 }
 
 .dashboard-info-card-subtitle {
   font: var(--md-sys-typescale-title-medium-font);
   color: var(--md-sys-color-on-surface-variant);
   margin: 0;
+  text-align: left;
 }
 
 .dashboard-info-subtabs {
@@ -109,28 +120,15 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--md-sys-spacing-lg);
+  min-width: 0;
 }
 
-@media (min-width: 900px) {
-  .dashboard-bottom-grid {
-    grid-template-columns: 1fr 1fr;
-    align-items: start;
-  }
-}
-
-/* Claw Proxy: two columns of stacked cards (uniform vertical gap per column) */
+/* Claw Proxy: single column of card groups (left column block, then right column block) */
 .dashboard-claw-two-col {
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--md-sys-spacing-lg);
   width: 100%;
-}
-
-@media (min-width: 900px) {
-  .dashboard-claw-two-col {
-    grid-template-columns: 1fr 1fr;
-    align-items: start;
-  }
 }
 
 .dashboard-claw-col {
@@ -222,13 +220,6 @@ input.dashboard-card-field {
   font: var(--md-sys-typescale-body-small-font);
   margin: var(--md-sys-spacing-sm) 0 0 0;
   color: var(--md-sys-color-on-surface);
-}
-
-.dashboard-card {
-  background: var(--md-sys-color-surface);
-  border-radius: var(--md-sys-shape-corner-large);
-  padding: var(--md-sys-spacing-lg);
-  box-shadow: var(--md-sys-elevation-level1);
 }
 
 .dashboard-card-header {

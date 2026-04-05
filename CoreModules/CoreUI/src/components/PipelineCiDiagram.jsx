@@ -42,13 +42,10 @@ export function computePipelineActive(data) {
   };
 }
 
-function JobPill({ step, variant, isActive }) {
-  const className =
-    variant === 'catalog'
-      ? isActive
-        ? 'pipeline-ci__job pipeline-ci__job--catalog-active'
-        : 'pipeline-ci__job pipeline-ci__job--catalog-inactive'
-      : 'pipeline-ci__job pipeline-ci__job--on';
+function JobPill({ step, isActive }) {
+  const className = isActive
+    ? 'pipeline-ci__job pipeline-ci__job--catalog-active'
+    : 'pipeline-ci__job pipeline-ci__job--catalog-inactive';
 
   return (
     <div className={className} title={step.hint}>
@@ -68,11 +65,6 @@ function JobPill({ step, variant, isActive }) {
 function PipelineCiDiagram({ data, title = 'LLM proxy pipeline', subtitle, compact }) {
   const activeMap = useMemo(() => (data ? computePipelineActive(data) : null), [data]);
 
-  const activeStepsOnly = useMemo(() => {
-    if (!activeMap) return [];
-    return STEPS.filter((s) => activeMap[s.id]);
-  }, [activeMap]);
-
   const killSwitch =
     data &&
     Boolean(data.web_interaction_enabled) &&
@@ -90,39 +82,19 @@ function PipelineCiDiagram({ data, title = 'LLM proxy pipeline', subtitle, compa
       <h3 className="pipeline-ci__title">{title}</h3>
       {subtitle ? <p className="pipeline-ci__subtitle">{subtitle}</p> : null}
 
-      <div className="pipeline-ci__row-label">Supported stages (full chain)</div>
-      <div className="pipeline-ci__track">
-        {STEPS.map((step, i) => (
-          <div key={`cat-${step.id}`} className="pipeline-ci__segment">
-            {i > 0 ? <span className="pipeline-ci__connector" aria-hidden /> : null}
-            <JobPill
-              step={step}
-              variant="catalog"
-              isActive={Boolean(activeMap && activeMap[step.id])}
-            />
-          </div>
-        ))}
-      </div>
-
-      <div className="pipeline-ci__row-label">Current configuration</div>
-      <div className="pipeline-ci__track pipeline-ci__track--current">
-        {!data || !activeMap ? (
-          <span className="pipeline-ci__subtitle pipeline-ci__subtitle--inline">
-            Loading pipeline…
-          </span>
-        ) : activeStepsOnly.length === 0 ? (
-          <span className="pipeline-ci__subtitle pipeline-ci__subtitle--inline">
-            No stages active (unexpected).
-          </span>
-        ) : (
-          activeStepsOnly.map((step, i) => (
-            <div key={`cur-${step.id}`} className="pipeline-ci__segment">
+      <div className="pipeline-ci__row-label">Pipeline stages</div>
+      {!data || !activeMap ? (
+        <p className="pipeline-ci__subtitle pipeline-ci__subtitle--inline">Loading pipeline…</p>
+      ) : (
+        <div className="pipeline-ci__track">
+          {STEPS.map((step, i) => (
+            <div key={step.id} className="pipeline-ci__segment">
               {i > 0 ? <span className="pipeline-ci__connector" aria-hidden /> : null}
-              <JobPill step={step} variant="current" isActive />
+              <JobPill step={step} isActive={Boolean(activeMap[step.id])} />
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
       {killSwitch ? (
         <div className="pipeline-ci__warn" role="status">

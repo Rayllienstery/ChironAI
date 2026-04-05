@@ -120,7 +120,7 @@ function LlmProxyWebInteractionPanel() {
       <PipelineCiDiagram
         data={pipelineMerged}
         title="Proxy request pipeline"
-        subtitle="Top row: every stage the stack supports. Bottom row: what is armed now (green = on, gray = off). RAG hybrid/rerank follow the RAG tab unless you change them there."
+        subtitle="One row: each stage is on (solid highlight) or off (dashed) with current settings. RAG hybrid/rerank follow the RAG tab unless you change them there."
       />
       <div className="settings-section">
         <h3>GitHub and merged RAG</h3>

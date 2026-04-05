@@ -216,7 +216,7 @@ export default function ClawProxyJournalTab() {
 
   return (
     <div className="dashboard-layout">
-      <section className="dashboard-card" aria-labelledby="claw-journal-heading">
+      <section className="app-default-card" aria-labelledby="claw-journal-heading">
         <div className="dashboard-card-header">
           <h2 id="claw-journal-heading">Journal</h2>
           <div className="dashboard-card-actions">
@@ -238,7 +238,7 @@ export default function ClawProxyJournalTab() {
         {err && <div className="dashboard-card-error">{err}</div>}
       </section>
 
-      <section className="dashboard-card" aria-labelledby="claw-journal-live-heading">
+      <section className="app-default-card" aria-labelledby="claw-journal-live-heading">
         <h3 id="claw-journal-live-heading" className="dashboard-card-header" style={{ margin: 0 }}>
           Live buffer (RAM)
         </h3>
@@ -258,7 +258,7 @@ export default function ClawProxyJournalTab() {
 
       <div className="dashboard-claw-two-col" style={{ alignItems: 'flex-start' }}>
         <div className="dashboard-claw-col">
-          <section className="dashboard-card">
+          <section className="app-default-card">
             <div className="dashboard-card-actions" style={{ flexWrap: 'wrap', marginBottom: 12 }}>
               <label className="dashboard-card-muted">
                 Period{' '}
@@ -325,7 +325,7 @@ export default function ClawProxyJournalTab() {
         </div>
 
         <div className="dashboard-claw-col">
-          <section className="dashboard-card">
+          <section className="app-default-card">
             <div className="dashboard-card-header">
               <h3 style={{ margin: 0 }}>Detail</h3>
               <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

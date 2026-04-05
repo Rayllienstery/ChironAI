@@ -52,6 +52,7 @@ import {
 import Sparkline from "./components/Sparkline";
 import RagTestRunPanel from "./components/RagTestRunPanel";
 import "./styles/layout.css";
+import "./styles/default-card.css";
 import "./styles/sidebar.css";
 
 const METRICS_HISTORY_LEN = 30;
@@ -475,7 +476,6 @@ function App() {
         <header className="app-header">
           <div className="app-header-row">
             <div className="app-header-titleblock">
-              <span className="app-header-crumb">Pages</span>
               <span className="app-header-page" aria-current="page">
                 {headerPageLabel}
               </span>

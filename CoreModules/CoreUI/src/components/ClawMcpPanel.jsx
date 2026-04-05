@@ -24,7 +24,7 @@ function ClawMcpPanel() {
   if (!status) {
     return (
       <div className="dashboard-layout">
-        <section className="dashboard-card" aria-labelledby="claw-mcp-loading-heading">
+        <section className="app-default-card" aria-labelledby="claw-mcp-loading-heading">
           <div className="dashboard-card-header">
             <h2 id="claw-mcp-loading-heading">MCP</h2>
           </div>
@@ -37,7 +37,7 @@ function ClawMcpPanel() {
   if (!status.available) {
     return (
       <div className="dashboard-layout">
-        <section className="dashboard-card" aria-labelledby="claw-mcp-unavailable-heading">
+        <section className="app-default-card" aria-labelledby="claw-mcp-unavailable-heading">
           <div className="dashboard-card-header">
             <h2 id="claw-mcp-unavailable-heading">MCP</h2>
           </div>
@@ -54,7 +54,7 @@ function ClawMcpPanel() {
     <div className="dashboard-layout">
       <div className="dashboard-claw-two-col">
         <div className="dashboard-claw-col">
-          <section className="dashboard-card" aria-labelledby="claw-mcp-overview-heading">
+          <section className="app-default-card" aria-labelledby="claw-mcp-overview-heading">
             <div className="dashboard-card-header">
               <h2 id="claw-mcp-overview-heading">MCP overview</h2>
             </div>
@@ -70,7 +70,7 @@ function ClawMcpPanel() {
           </section>
         </div>
         <div className="dashboard-claw-col">
-          <section className="dashboard-card" aria-labelledby="claw-mcp-usage-heading">
+          <section className="app-default-card" aria-labelledby="claw-mcp-usage-heading">
             <div className="dashboard-card-header">
               <h2 id="claw-mcp-usage-heading">Usage and links</h2>
               <div className="dashboard-card-actions">

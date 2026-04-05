@@ -48,7 +48,7 @@ function DashboardLlmProxyCard({ onNavigate, onOpenLogs }) {
   );
 
   return (
-    <section className="dashboard-card dashboard-proxy-card" aria-labelledby="dashboard-proxy-heading">
+    <section className="app-default-card dashboard-proxy-card" aria-labelledby="dashboard-proxy-heading">
       <div className="dashboard-card-header">
         <h2 id="dashboard-proxy-heading">LLM Proxy</h2>
         <div className="dashboard-card-actions">
@@ -134,7 +134,7 @@ function DashboardRagCard({ onNavigate }) {
   };
 
   return (
-    <section className="dashboard-card dashboard-rag-card" aria-labelledby="dashboard-rag-heading">
+    <section className="app-default-card dashboard-rag-card" aria-labelledby="dashboard-rag-heading">
       <div className="dashboard-card-header">
         <h2 id="dashboard-rag-heading">RAG / Qdrant</h2>
         <div className="dashboard-card-actions">

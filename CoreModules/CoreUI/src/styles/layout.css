@@ -260,7 +260,11 @@ html, body {
 
 .app-main {
   flex: 1;
-  padding: var(--md-sys-spacing-lg);
+  min-width: 0;
+  padding-block: var(--md-sys-spacing-lg);
+  /* Tighter inset toward the sidebar; extra space on the right so cards clear the scrollbar edge */
+  padding-inline-start: var(--md-sys-spacing-md);
+  padding-inline-end: max(var(--md-sys-spacing-xl), env(safe-area-inset-right, 0px));
   overflow-y: auto;
   background: var(--md-sys-color-background);
 }

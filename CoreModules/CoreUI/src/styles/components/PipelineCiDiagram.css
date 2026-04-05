@@ -41,19 +41,20 @@
 
 .pipeline-ci__track {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  /* No horizontal gap: connector meets capsule; row-gap only when wrapping */
   column-gap: 0;
-  row-gap: 14px;
-  padding-bottom: 6px;
+  overflow-x: auto;
+  scrollbar-gutter: stable;
+  padding-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .pipeline-ci__segment {
   display: inline-flex;
   align-items: center;
   gap: 0;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
 }
 
 .pipeline-ci__connector {
@@ -66,10 +67,6 @@
   border-radius: 1px;
   /* Flush with capsule edges (no gap inside segment) */
   margin: 0;
-}
-
-.pipeline-ci__track--current .pipeline-ci__connector {
-  background: var(--md-sys-color-primary);
 }
 
 .pipeline-ci__job {
@@ -100,13 +97,6 @@
   border-style: dashed;
   background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface-variant);
-}
-
-.pipeline-ci__job--on {
-  border-color: var(--md-sys-color-primary);
-  border-style: solid;
-  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, var(--md-sys-color-surface));
-  color: var(--md-sys-color-on-surface);
 }
 
 .pipeline-ci__warn {
@@ -156,7 +146,6 @@
 
 .pipeline-ci--compact .pipeline-ci__track {
   column-gap: 0;
-  row-gap: 10px;
 }
 
 .pipeline-ci--compact .pipeline-ci__segment {
