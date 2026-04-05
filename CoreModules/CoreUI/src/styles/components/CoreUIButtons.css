@@ -1,0 +1,42 @@
+/* Outline toolbar buttons — baseline from Crawler / Indexer (.crawler-button). */
+
+.coreui-btn,
+.crawler-button {
+  padding: 6px 12px;
+  border-radius: var(--md-sys-shape-corner-small);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
+  color: var(--md-sys-color-on-surface);
+  cursor: pointer;
+  font: var(--md-sys-typescale-label-medium-font);
+}
+
+.coreui-btn-primary,
+.crawler-button.primary {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border-color: var(--md-sys-color-primary);
+}
+
+.coreui-btn-ghost,
+.crawler-button.ghost {
+  background: transparent;
+}
+
+.coreui-btn-small,
+.crawler-button.small {
+  padding: 4px 8px;
+  font-size: 0.875rem;
+}
+
+.coreui-btn:disabled,
+.crawler-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.coreui-btn:focus-visible,
+.crawler-button:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}

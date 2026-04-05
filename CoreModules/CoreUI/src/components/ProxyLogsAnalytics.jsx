@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 import { useThemeChartColors } from '../hooks/useThemeChartColors';
 import ProxyLogsPeriodCalendar from './ProxyLogsPeriodCalendar';
+import '../styles/components/CoreUIPillTabs.css';
 
 const PERIODS = [
   { id: 'day', label: 'Day' },
@@ -139,7 +140,7 @@ function ProxyLogsAnalytics({
       aria-label={isAc ? 'Autocomplete logs analytics' : 'Proxy logs analytics'}
     >
       <div className="proxy-logs-analytics-controls">
-        <div className="proxy-logs-period-tabs" role="tablist" aria-label="Time period">
+        <div className="coreui-pill-tablist" role="tablist" aria-label="Time period">
           {PERIODS.map((p) => (
             <button
               key={p.id}
@@ -147,7 +148,7 @@ function ProxyLogsAnalytics({
               role="tab"
               aria-selected={period === p.id}
               aria-label={`Show statistics for ${p.label.toLowerCase()}`}
-              className={period === p.id ? 'active' : ''}
+              className={`coreui-pill-tab ${period === p.id ? 'coreui-pill-tab-active' : ''}`}
               onClick={() => onPeriodChange(p.id)}
             >
               {p.label}

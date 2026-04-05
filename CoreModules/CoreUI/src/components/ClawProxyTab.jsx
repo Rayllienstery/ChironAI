@@ -3,7 +3,7 @@ import ClawProxyPanel from './ClawProxyPanel';
 import ClawMcpPanel from './ClawMcpPanel';
 import ClawProxyJournalTab from './ClawProxyJournalTab';
 import '../styles/components/DashboardTab.css';
-import '../styles/components/TestingTab.css';
+import '../styles/components/CoreUIPillTabs.css';
 
 function ClawProxyTab({ onNavigateToRag, onModelStatusChange }) {
   const [subTab, setSubTab] = useState('proxy');
@@ -12,10 +12,10 @@ function ClawProxyTab({ onNavigateToRag, onModelStatusChange }) {
     <div className="dashboard-tab">
       <div className="claw-proxy-page-header">
         <h2>Claw Proxy</h2>
-        <div className="testing-subtabs" role="tablist" aria-label="Claw Proxy sections">
+        <div className="coreui-pill-tablist" role="tablist" aria-label="Claw Proxy sections">
           <button
             type="button"
-            className={`testing-subtab ${subTab === 'proxy' ? 'testing-subtab-active' : ''}`}
+            className={`coreui-pill-tab ${subTab === 'proxy' ? 'coreui-pill-tab-active' : ''}`}
             role="tab"
             aria-selected={subTab === 'proxy'}
             onClick={() => setSubTab('proxy')}
@@ -24,7 +24,7 @@ function ClawProxyTab({ onNavigateToRag, onModelStatusChange }) {
           </button>
           <button
             type="button"
-            className={`testing-subtab ${subTab === 'mcp' ? 'testing-subtab-active' : ''}`}
+            className={`coreui-pill-tab ${subTab === 'mcp' ? 'coreui-pill-tab-active' : ''}`}
             role="tab"
             aria-selected={subTab === 'mcp'}
             onClick={() => setSubTab('mcp')}
@@ -33,7 +33,7 @@ function ClawProxyTab({ onNavigateToRag, onModelStatusChange }) {
           </button>
           <button
             type="button"
-            className={`testing-subtab ${subTab === 'journal' ? 'testing-subtab-active' : ''}`}
+            className={`coreui-pill-tab ${subTab === 'journal' ? 'coreui-pill-tab-active' : ''}`}
             role="tab"
             aria-selected={subTab === 'journal'}
             onClick={() => setSubTab('journal')}

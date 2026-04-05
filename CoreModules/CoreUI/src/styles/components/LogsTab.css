@@ -18,34 +18,6 @@
   gap: var(--md-sys-spacing-md);
 }
 
-.logs-view-toggle {
-  display: flex;
-  gap: var(--md-sys-spacing-xs);
-}
-
-.logs-view-toggle button {
-  padding: var(--md-sys-spacing-xs) var(--md-sys-spacing-md);
-  background: var(--md-sys-color-surface-tint-neutral);
-  color: var(--md-sys-color-on-surface-variant);
-  border: 1px solid var(--md-sys-color-outline);
-  border-radius: var(--md-sys-shape-corner-small);
-  font: var(--md-sys-typescale-label-medium-font);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.logs-view-toggle button:hover {
-  background: var(--md-sys-color-surface-tint-neutral);
-  border-color: var(--md-sys-color-primary);
-}
-
-.logs-view-toggle button.active {
-  background: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
-  border-color: var(--md-sys-color-primary);
-}
-
-
 .logs-controls {
   display: flex;
   gap: var(--md-sys-spacing-sm);
@@ -58,16 +30,6 @@
   background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface);
   font: var(--md-sys-typescale-body-medium-font);
-}
-
-.logs-controls button {
-  padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
-  background: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
-  border: none;
-  border-radius: var(--md-sys-shape-corner-small);
-  font: var(--md-sys-typescale-label-large-font);
-  cursor: pointer;
 }
 
 .logs-content {
@@ -412,33 +374,6 @@
   align-items: center;
   gap: var(--md-sys-spacing-md);
   margin-bottom: var(--md-sys-spacing-md);
-}
-
-.proxy-logs-period-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--md-sys-spacing-xs);
-}
-
-.proxy-logs-period-tabs button {
-  padding: var(--md-sys-spacing-xs) var(--md-sys-spacing-sm);
-  background: var(--md-sys-color-surface-tint-neutral);
-  color: var(--md-sys-color-on-surface-variant);
-  border: 1px solid var(--md-sys-color-outline);
-  border-radius: var(--md-sys-shape-corner-small);
-  font: var(--md-sys-typescale-label-medium-font);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.proxy-logs-period-tabs button:hover {
-  border-color: var(--md-sys-color-primary);
-}
-
-.proxy-logs-period-tabs button.active {
-  background: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
-  border-color: var(--md-sys-color-primary);
 }
 
 .proxy-logs-period-label {

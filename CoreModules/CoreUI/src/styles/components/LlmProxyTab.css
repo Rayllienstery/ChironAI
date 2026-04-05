@@ -107,36 +107,11 @@
   margin-right: 12px;
 }
 
-.llm-proxy-subtabs {
-  display: flex;
-  gap: 8px;
-}
-
-.llm-proxy-subtab {
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-tint-neutral);
-  color: var(--md-sys-color-on-surface);
-  padding: 6px 10px;
-  border-radius: 999px;
-  cursor: pointer;
-  font-size: 0.8rem;
-}
-
-.llm-proxy-subtab:hover {
-  background: var(--md-sys-color-surface-container-high);
-}
-
 /* Nested Proxy Trace: main tab already has header + sub-tabs; avoid fixed full-viewport height */
 .llm-proxy-tab .proxy-trace-tab {
   height: auto;
   min-height: 420px;
   max-height: calc(100vh - 200px);
-}
-
-.llm-proxy-subtab-active {
-  background: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
-  border-color: var(--md-sys-color-primary);
 }
 
 .llm-proxy-web-panel .form-actions {

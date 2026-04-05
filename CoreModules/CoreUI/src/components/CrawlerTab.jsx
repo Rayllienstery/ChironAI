@@ -21,7 +21,9 @@ import {
   deleteMdPipeline,
   previewMdPipeline,
 } from "../services/api";
+import "../styles/components/CoreUIButtons.css";
 import "../styles/components/CrawlerTab.css";
+import "../styles/components/CoreUIPillTabs.css";
 
 const MD_STEP_TYPES_META = [
   {
@@ -1131,13 +1133,13 @@ function CrawlerTab() {
         <h2>Crawler / Indexer</h2>
         <div className="crawler-header-tabs-and-actions">
           <div
-            className="crawler-subtabs"
+            className="coreui-pill-tablist"
             role="tablist"
             aria-label="Crawler and indexer tools"
           >
             <button
               type="button"
-              className={`crawler-subtab ${activeSection === "crawler" ? "crawler-subtab-active" : ""}`}
+              className={`coreui-pill-tab ${activeSection === "crawler" ? "coreui-pill-tab-active" : ""}`}
               role="tab"
               aria-selected={activeSection === "crawler"}
               onClick={() => setActiveSection("crawler")}
@@ -1146,7 +1148,7 @@ function CrawlerTab() {
             </button>
             <button
               type="button"
-              className={`crawler-subtab ${activeSection === "md-pipeline" ? "crawler-subtab-active" : ""}`}
+              className={`coreui-pill-tab ${activeSection === "md-pipeline" ? "coreui-pill-tab-active" : ""}`}
               role="tab"
               aria-selected={activeSection === "md-pipeline"}
               onClick={() => setActiveSection("md-pipeline")}
@@ -1157,7 +1159,7 @@ function CrawlerTab() {
           <div className="crawler-actions">
             <button
               type="button"
-              className="crawler-button primary"
+              className="coreui-btn coreui-btn-primary"
               onClick={() => handleCrawlSource(selectedSource)}
               disabled={
                 busy || !selectedSource || crawlingSources.has(selectedSource)
@@ -1168,7 +1170,7 @@ function CrawlerTab() {
             </button>
             <button
               type="button"
-              className="crawler-button primary"
+              className="coreui-btn coreui-btn-primary"
               onClick={handleCrawlAll}
               disabled={
                 busy || sources.length === 0 || crawlingSources.size > 0
@@ -1179,7 +1181,7 @@ function CrawlerTab() {
             </button>
             <button
               type="button"
-              className="crawler-button primary"
+              className="coreui-btn coreui-btn-primary"
               onClick={handleCrawlSelected}
               disabled={
                 busy || selectedSourceIds.size === 0 || crawlingSources.size > 0
@@ -1190,14 +1192,14 @@ function CrawlerTab() {
             </button>
             <button
               type="button"
-              className="crawler-button primary"
+              className="coreui-btn coreui-btn-primary"
               onClick={() => setShowAddSourceModal(true)}
             >
               Add Source
             </button>
             <button
               type="button"
-              className="crawler-button primary"
+              className="coreui-btn coreui-btn-primary"
               onClick={() => setShowCreateModal(true)}
               disabled={busy || sources.length === 0}
             >
@@ -1205,7 +1207,7 @@ function CrawlerTab() {
             </button>
             <button
               type="button"
-              className="crawler-button ghost"
+              className="coreui-btn coreui-btn-ghost"
               onClick={handleRefresh}
               disabled={busy}
             >

@@ -24,6 +24,7 @@ import {
 } from '../services/api';
 import { useMergedPipelinePreview } from '../hooks/useMergedPipelinePreview';
 import PipelineCiDiagram from './PipelineCiDiagram';
+import '../styles/components/CoreUIButtons.css';
 import '../styles/components/RagTab.css';
 
 function wordsInMultipleCollections(collections) {
@@ -511,7 +512,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
           </span>
           <button
             type="button"
-            className="rag-button primary"
+            className="coreui-btn coreui-btn-primary"
             onClick={handleStart}
             disabled={busy || isRunning}
           >
@@ -519,7 +520,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
           </button>
           <button
             type="button"
-            className="rag-button"
+            className="coreui-btn"
             onClick={handleStop}
             disabled={busy || !isRunning}
           >
@@ -527,7 +528,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
           </button>
           <button
             type="button"
-            className="rag-button ghost"
+            className="coreui-btn coreui-btn-ghost"
             onClick={() => {
               loadStatus();
               loadCollections();
@@ -543,7 +544,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
           </button>
           <button
             type="button"
-            className="rag-button ghost"
+            className="coreui-btn coreui-btn-ghost"
             onClick={handleOpenDashboard}
             disabled={!status?.url}
             title="Open Qdrant Dashboard in new tab"

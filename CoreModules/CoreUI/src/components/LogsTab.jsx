@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { getLogs, getProxyLogs, clearLogs, clearProxyLogs } from '../services/api';
 import { startLogPolling, stopLogPolling } from '../services/logs';
 import ProxyLogsAnalytics from './ProxyLogsAnalytics';
+import '../styles/components/CoreUIButtons.css';
 import '../styles/components/LogsTab.css';
+import '../styles/components/CoreUIPillTabs.css';
 
 const PROXY_LOGS_ANALYTICS_LIMIT = 5000;
 
@@ -380,21 +382,30 @@ function LogsTab({ sessionId }) {
       <div className="logs-header">
         <div className="logs-header-left">
           <h2>Logs</h2>
-          <div className="logs-view-toggle">
+          <div className="coreui-pill-tablist" role="tablist" aria-label="Log source">
             <button
-              className={viewMode === 'logs' ? 'active' : ''}
+              type="button"
+              role="tab"
+              aria-selected={viewMode === 'logs'}
+              className={`coreui-pill-tab ${viewMode === 'logs' ? 'coreui-pill-tab-active' : ''}`}
               onClick={() => setViewMode('logs')}
             >
               Logs
             </button>
             <button
-              className={viewMode === 'proxy' ? 'active' : ''}
+              type="button"
+              role="tab"
+              aria-selected={viewMode === 'proxy'}
+              className={`coreui-pill-tab ${viewMode === 'proxy' ? 'coreui-pill-tab-active' : ''}`}
               onClick={() => setViewMode('proxy')}
             >
               Proxy Logs
             </button>
             <button
-              className={viewMode === 'autocomplete' ? 'active' : ''}
+              type="button"
+              role="tab"
+              aria-selected={viewMode === 'autocomplete'}
+              className={`coreui-pill-tab ${viewMode === 'autocomplete' ? 'coreui-pill-tab-active' : ''}`}
               onClick={() => setViewMode('autocomplete')}
             >
               Autocomplete Logs
@@ -425,13 +436,16 @@ function LogsTab({ sessionId }) {
             </>
           )}
           <button
+            type="button"
+            className="coreui-btn"
             onClick={handleClearLogs}
             disabled={viewMode === 'logs' && !sessionId}
-            style={{ marginRight: '10px', cursor: 'pointer' }}
           >
             Clear
           </button>
-          <button onClick={loadLogs}>Refresh</button>
+          <button type="button" className="coreui-btn coreui-btn-ghost" onClick={loadLogs}>
+            Refresh
+          </button>
         </div>
       </div>
 

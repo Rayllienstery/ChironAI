@@ -6,7 +6,6 @@ import {
   clearClawCodeTraces,
 } from '../services/api';
 import '../styles/components/DashboardTab.css';
-import '../styles/components/TestingTab.css';
 
 const JOURNAL_LIMIT = 2000;
 const LIVE_POLL_MS = 3000;

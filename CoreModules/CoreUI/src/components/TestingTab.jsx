@@ -3,6 +3,7 @@ import ModelTester from './ModelTester';
 import RagTestsTab from './RagTestsTab';
 import IndexerTester from './IndexerTester';
 import '../styles/components/TestingTab.css';
+import '../styles/components/CoreUIPillTabs.css';
 
 const SUB_TABS = [
   { id: 'model-tester', label: 'Model Tester' },
@@ -45,12 +46,12 @@ function TestingTab({
     <div className="testing-tab">
       <div className="testing-tab-header">
         <h2>Testing</h2>
-        <div className="testing-subtabs" role="tablist" aria-label="Testing tools">
+        <div className="coreui-pill-tablist" role="tablist" aria-label="Testing tools">
           {SUB_TABS.map((tab) => (
             <button
               key={tab.id}
               type="button"
-              className={`testing-subtab ${currentSubTab === tab.id ? 'testing-subtab-active' : ''}`}
+              className={`coreui-pill-tab ${currentSubTab === tab.id ? 'coreui-pill-tab-active' : ''}`}
               role="tab"
               aria-selected={currentSubTab === tab.id}
               onClick={() => handleSubTabClick(tab.id)}

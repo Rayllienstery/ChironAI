@@ -6,6 +6,7 @@ import ProxyTraceTab from './ProxyTraceTab';
 import { getLlmProxyStatus } from '../services/api';
 import '../styles/components/SettingsTab.css';
 import '../styles/components/DashboardTab.css';
+import '../styles/components/CoreUIPillTabs.css';
 import '../styles/components/LlmProxyTab.css';
 
 function kvRow(label, value, key) {
@@ -86,12 +87,12 @@ function LlmProxyTab({ onOpenRagModels, onNavigateToRag, onOpenLogs, onModelStat
             </button>
           )}
         </div>
-        <div className="llm-proxy-subtabs" role="tablist" aria-label="LLM Proxy sections">
+        <div className="coreui-pill-tablist" role="tablist" aria-label="LLM Proxy sections">
           {SUB_TABS.map((tab) => (
             <button
               key={tab.id}
               type="button"
-              className={`llm-proxy-subtab ${subTab === tab.id ? 'llm-proxy-subtab-active' : ''}`}
+              className={`coreui-pill-tab ${subTab === tab.id ? 'coreui-pill-tab-active' : ''}`}
               role="tab"
               aria-selected={subTab === tab.id}
               onClick={() => setSubTab(tab.id)}
