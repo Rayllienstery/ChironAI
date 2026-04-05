@@ -18,6 +18,27 @@ _CLAWCODE_SRC = _REPO_ROOT / "CoreModules" / "ClawCode"
 _VENDOR_NESTED_GIT_MIGRATED = False
 
 
+def _ensure_chironai_rag_path() -> None:
+    p = _REPO_ROOT / "CoreModules" / "RagService"
+    if p.is_dir():
+        s = str(p)
+        if s not in sys.path:
+            sys.path.insert(0, s)
+
+
+_ensure_chironai_rag_path()
+try:
+    from chironai_rag.bindings import ConsumerRagBindings
+    from chironai_rag.consumers import CLAWCODE_RAG_COLLECTION_APP_SETTING, RagConsumer
+
+    _CHIRONAI_RAG_BINDINGS = True
+except ImportError:
+    ConsumerRagBindings = None  # type: ignore[misc, assignment]
+    RagConsumer = None  # type: ignore[misc, assignment]
+    CLAWCODE_RAG_COLLECTION_APP_SETTING = "clawcode_rag_collection"
+    _CHIRONAI_RAG_BINDINGS = False
+
+
 def _ensure_clawcode_path() -> bool:
     s = str(_CLAWCODE_SRC)
     if s not in sys.path:
@@ -69,7 +90,7 @@ def clawcode_status():
         settings_repo = get_settings_repository()
         stored_default = (settings_repo.get_app_setting("clawcode_default_model") or "").strip()
         effective_default = stored_default or get_ollama_chat_model()
-        stored_rag = (settings_repo.get_app_setting("clawcode_rag_collection") or "").strip()
+        stored_rag = (settings_repo.get_app_setting(CLAWCODE_RAG_COLLECTION_APP_SETTING) or "").strip()
         config_rag = get_qdrant_collection_name()
         effective_rag = stored_rag or config_rag
         root_rel = vc["root_relative"]
@@ -284,7 +305,7 @@ def clawcode_get_settings():
         stored_default = (repo.get_app_setting("clawcode_default_model") or "").strip()
         fallback = get_ollama_chat_model()
         effective_default = stored_default or fallback
-        stored_rag = (repo.get_app_setting("clawcode_rag_collection") or "").strip()
+        stored_rag = (repo.get_app_setting(CLAWCODE_RAG_COLLECTION_APP_SETTING) or "").strip()
         config_rag = get_qdrant_collection_name()
         effective_rag = stored_rag or config_rag
 
@@ -387,7 +408,10 @@ def clawcode_update_settings():
         if "rag_collection" in body:
             raw = body.get("rag_collection")
             rag_coll = str(raw).strip() if raw is not None else ""
-            repo.set_app_setting("clawcode_rag_collection", rag_coll)
+            if _CHIRONAI_RAG_BINDINGS and ConsumerRagBindings is not None and RagConsumer is not None:
+                ConsumerRagBindings(repo).set_stored_collection(RagConsumer.CLAWCODE, rag_coll)
+            else:
+                repo.set_app_setting(CLAWCODE_RAG_COLLECTION_APP_SETTING, rag_coll)
             out["rag_collection"] = rag_coll
 
         ms = _clearable_str(body, "max_agent_steps")

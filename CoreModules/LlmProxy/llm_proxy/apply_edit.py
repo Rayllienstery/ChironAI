@@ -6,7 +6,11 @@ from typing import TYPE_CHECKING
 
 from flask import Response, jsonify, request
 
-from llm_proxy.tool_helpers import _replace_text_range, _resolve_workspace_path
+from llm_proxy.tool_helpers import (
+    _normalize_new_text_line_endings_for_file,
+    _replace_text_range,
+    _resolve_workspace_path,
+)
 
 if TYPE_CHECKING:
     from llm_proxy.contracts import LlmProxyWiring
@@ -35,6 +39,7 @@ def run_apply_file_edit(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         if not resolved.exists():
             return jsonify({"ok": False, "error": "file does not exist"}), 404
         original = resolved.read_text(encoding="utf-8")
+        new_text = _normalize_new_text_line_endings_for_file(original, new_text)
 
         if "end_col" in range_data:
             lines = original.splitlines(keepends=True)

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ModelSettings from './ModelSettings';
 import LlmProxyAutocompletePanel from './LlmProxyAutocompletePanel';
 import LlmProxyWebInteractionPanel from './LlmProxyWebInteractionPanel';
@@ -24,7 +24,7 @@ const SUB_TABS = [
   { id: 'web-interaction', label: 'Web Interaction' },
 ];
 
-function LlmProxyTab({ onOpenRagModels, onOpenLogs, onModelStatusChange }) {
+function LlmProxyTab({ onOpenRagModels, onNavigateToRag, onOpenLogs, onModelStatusChange }) {
   const [subTab, setSubTab] = useState('overview');
   const [proxyStatus, setProxyStatus] = useState(null);
   const [statusErr, setStatusErr] = useState(null);
@@ -47,6 +47,15 @@ function LlmProxyTab({ onOpenRagModels, onOpenLogs, onModelStatusChange }) {
   useEffect(() => {
     refreshStatus();
   }, [refreshStatus]);
+
+  const proxyInfrastructure = useMemo(() => {
+    if (!proxyStatus) return null;
+    return {
+      docker: proxyStatus.docker,
+      qdrant: proxyStatus.qdrant,
+      infrastructure_error: proxyStatus.infrastructure_error,
+    };
+  }, [proxyStatus]);
 
   return (
     <div className="settings-tab llm-proxy-tab">
@@ -108,6 +117,11 @@ function LlmProxyTab({ onOpenRagModels, onOpenLogs, onModelStatusChange }) {
             {statusErr && <div className="dashboard-card-error">{statusErr}</div>}
             {proxyStatus && (
               <>
+                {proxyStatus.infrastructure_error && (
+                  <div className="dashboard-card-error" role="alert">
+                    Could not load Docker/Qdrant status: {proxyStatus.infrastructure_error}
+                  </div>
+                )}
                 {kvRow('Enabled', String(proxyStatus.enabled), 'enabled')}
                 {kvRow('Base URL', <code>{proxyStatus.base_url}</code>, 'base')}
                 {kvRow('Logical model id', <code>{proxyStatus.logical_model_id}</code>, 'logical')}
@@ -126,6 +140,34 @@ function LlmProxyTab({ onOpenRagModels, onOpenLogs, onModelStatusChange }) {
                   'ragcoll',
                 )}
                 {kvRow('Health', <code>{proxyStatus.health}</code>, 'health')}
+                {proxyStatus.docker && (
+                  <>
+                    {kvRow(
+                      'Docker CLI',
+                      proxyStatus.docker.cli_available ? 'available' : 'not found',
+                      'dock-cli',
+                    )}
+                    {kvRow(
+                      'Docker Engine',
+                      proxyStatus.docker.engine_available ? 'running' : 'not running',
+                      'dock-eng',
+                    )}
+                  </>
+                )}
+                {proxyStatus.qdrant && (
+                  <>
+                    {kvRow(
+                      'Qdrant HTTP',
+                      proxyStatus.qdrant.reachable ? 'reachable' : 'unreachable',
+                      'q-http',
+                    )}
+                    {kvRow(
+                      'Qdrant container',
+                      proxyStatus.qdrant.container_running ? 'running' : 'not running',
+                      'q-ct',
+                    )}
+                  </>
+                )}
               </>
             )}
           </section>
@@ -236,7 +278,9 @@ function LlmProxyTab({ onOpenRagModels, onOpenLogs, onModelStatusChange }) {
             <h3>Model Settings</h3>
             <ModelSettings
               onOpenRagModels={onOpenRagModels}
+              onNavigateToRag={onNavigateToRag}
               onModelStatusChange={onModelStatusChange}
+              proxyInfrastructure={proxyInfrastructure}
             />
           </div>
         </div>

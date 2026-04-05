@@ -4,7 +4,7 @@ Business-domain projects (services and applications) live here. Each subdirector
 
 | Project | Responsibility |
 |---------|----------------|
-| [rag_service](rag_service/README.md) | RAG pipeline: retrieval, rerank, prompt building, LLM answers |
+| [RagService / rag_service](../CoreModules/RagService/README.md) | RAG pipeline + `chironai_rag` contracts (package **CoreModules/RagService**, pip `chironai-rag-service`) |
 | [md_ingestion_service](../CoreModules/MdIngestionService/README.md) | Markdown/document ingestion, filtering, `prepare_markdown_for_indexing`, chunking (package under **CoreModules**) |
 | [crawler_service](crawler_service/README.md) | Web/docs crawling, scheduling, feeding results to md_ingestion |
 | [webui_backend](webui_backend/README.md) | WebUI backend: dashboard, settings, logs, aggregation over other services |

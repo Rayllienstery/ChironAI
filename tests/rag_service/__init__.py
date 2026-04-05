@@ -1,1 +1,1 @@
-# Tests for modules/rag_service. Run from repo root: pytest tests/rag_service/ -v
+# Tests for rag_service (CoreModules/RagService). Run: pytest tests/rag_service/ -v

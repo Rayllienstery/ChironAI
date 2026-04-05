@@ -30,7 +30,7 @@ This installs `chironai` from [`pyproject.toml`](pyproject.toml) (packages: `app
 - Architecture guard: `lint-imports` — ensures `domain` does not import `application`, `api`, or `infrastructure`.
 - Lint (optional): `ruff check` — default rules are minimal (`E9`); use `ruff check --extend-select F` for stricter checks when refactoring.
 
-Subprojects under `modules/` (e.g. `rag_service`) remain separate trees; tests add them via `pythonpath` in pytest config. Prefer giving each module its own `pyproject.toml` when you split or publish it.
+The hexagonal **`rag_service`** package ships with **`chironai_rag`** in **`CoreModules/RagService`** (pip `chironai-rag-service`; see `requirements-dev.txt`). Other subprojects under `modules/` stay on `pythonpath` for pytest as needed.
 
 ## Running
 1. Start Qdrant (and any optional services required by your setup).

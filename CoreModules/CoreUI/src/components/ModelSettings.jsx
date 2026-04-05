@@ -3,10 +3,17 @@ import { getModels, getPrompts, getModelSettings, updateModelSettings, getRagCol
 import { isLogicalRagModelId } from '../constants/llmProxyModels';
 import '../styles/components/ModelSettings.css';
 
-function ModelSettings({ sessionId, onOpenRagModels, onModelStatusChange }) {
+function ModelSettings({
+  sessionId,
+  onOpenRagModels,
+  onNavigateToRag,
+  onModelStatusChange,
+  proxyInfrastructure,
+}) {
   const [models, setModels] = useState([]);
   const [prompts, setPrompts] = useState([]);
   const [collections, setCollections] = useState([]);
+  const [collectionsFetchError, setCollectionsFetchError] = useState(null);
   const [settings, setSettings] = useState({
     model: '',
     prompt_name: '',
@@ -39,7 +46,7 @@ function ModelSettings({ sessionId, onOpenRagModels, onModelStatusChange }) {
         getModels(),
         getPrompts(),
         getModelSettings(),
-        getRagCollections().catch(() => ({ collections: [] })),
+        getRagCollections(),
       ]);
 
       setModels(modelsData);
@@ -48,6 +55,7 @@ function ModelSettings({ sessionId, onOpenRagModels, onModelStatusChange }) {
       );
       setPrompts(promptList);
       setCollections(collectionsData?.collections || []);
+      setCollectionsFetchError(collectionsData?.error || null);
 
       if (settingsData) {
         setSettings((prev) => {
@@ -72,6 +80,43 @@ function ModelSettings({ sessionId, onOpenRagModels, onModelStatusChange }) {
   const modelIds = useMemo(() => ollamaModels.map((m) => m.id), [ollamaModels]);
   const promptNames = useMemo(() => prompts.map((p) => p.name).filter(Boolean), [prompts]);
   const collectionNames = useMemo(() => collections.map((c) => c.name).filter(Boolean), [collections]);
+
+  const infrastructureIssues = useMemo(() => {
+    const list = [];
+    if (proxyInfrastructure?.infrastructure_error) {
+      list.push(`Service status unavailable: ${proxyInfrastructure.infrastructure_error}`);
+    }
+    const d = proxyInfrastructure?.docker;
+    if (d) {
+      if (!d.cli_available) {
+        list.push(
+          'Docker CLI is not available. Install Docker Desktop, or set DOCKER_EXE / PATH so the server can run docker.'
+        );
+      } else if (!d.engine_available) {
+        const tail = d.error ? ` Details: ${d.error}` : '';
+        list.push(`Docker Engine is not running. Start Docker Desktop and wait until it is ready.${tail}`);
+      }
+    }
+    const q = proxyInfrastructure?.qdrant;
+    let qUnreachableFromInfra = false;
+    if (q && !q.reachable) {
+      qUnreachableFromInfra = true;
+      const extra = [q.error, q.url].filter(Boolean).join(' — ');
+      list.push(
+        `Qdrant is not reachable${extra ? `: ${extra}` : ''}. Start Docker, then start Qdrant from the RAG / Qdrant tab.`
+      );
+    }
+    if (collectionsFetchError === 'qdrant_unreachable' && !qUnreachableFromInfra) {
+      list.push('Could not load Qdrant collections (service unreachable).');
+    } else if (collectionsFetchError && String(collectionsFetchError).startsWith('http_')) {
+      list.push(
+        `Could not load Qdrant collections (${String(collectionsFetchError).replace(/^http_/, 'HTTP ')}).`
+      );
+    } else if (collectionsFetchError === 'parse_error') {
+      list.push('Could not load Qdrant collections (invalid response).');
+    }
+    return list;
+  }, [proxyInfrastructure, collectionsFetchError]);
 
   const validationIssues = useMemo(() => {
     const issues = [];
@@ -105,20 +150,27 @@ function ModelSettings({ sessionId, onOpenRagModels, onModelStatusChange }) {
       }
     }
 
-    if (collectionNames.length === 0) {
-      issues.push('RAG collection: no Qdrant collections found — create one under RAG / Qdrant.');
-    } else {
-      if (!rc) {
-        issues.push('RAG collection: select a collection (required for LLM Proxy).');
-      } else if (!collectionNames.includes(rc)) {
-        issues.push(
-          `RAG collection: "${rc}" is missing or not in Qdrant — pick another collection.`
-        );
+    const qdrantReadyForCollectionRules =
+      !collectionsFetchError &&
+      !proxyInfrastructure?.infrastructure_error &&
+      (!proxyInfrastructure?.qdrant || proxyInfrastructure.qdrant.reachable !== false);
+
+    if (qdrantReadyForCollectionRules) {
+      if (collectionNames.length === 0) {
+        issues.push('RAG collection: no Qdrant collections found — create one under RAG / Qdrant.');
+      } else {
+        if (!rc) {
+          issues.push('RAG collection: select a collection (required for LLM Proxy).');
+        } else if (!collectionNames.includes(rc)) {
+          issues.push(
+            `RAG collection: "${rc}" is missing or not in Qdrant — pick another collection.`
+          );
+        }
       }
     }
 
     return issues;
-  }, [settings, modelIds, promptNames, collectionNames]);
+  }, [settings, modelIds, promptNames, collectionNames, collectionsFetchError, proxyInfrastructure]);
 
   useEffect(() => {
     if (typeof onModelStatusChange === 'function') {
@@ -147,8 +199,8 @@ function ModelSettings({ sessionId, onOpenRagModels, onModelStatusChange }) {
   };
 
   const handleSave = async () => {
-    if (validationIssues.length > 0) {
-      window.alert('Fix the configuration errors shown in red before saving.');
+    if (validationIssues.length > 0 || infrastructureIssues.length > 0) {
+      window.alert('Fix the infrastructure and configuration issues shown above before saving.');
       return;
     }
     setSaving(true);
@@ -168,17 +220,22 @@ function ModelSettings({ sessionId, onOpenRagModels, onModelStatusChange }) {
   const promptSelectValue = promptNames.includes((settings.prompt_name || '').trim())
     ? settings.prompt_name
     : '';
-  const collectionSelectValue =
-    collectionNames.length > 0 && collectionNames.includes((settings.rag_collection || '').trim())
-      ? settings.rag_collection
-      : '';
-
   if (loading) {
     return <div className="loading">Loading settings...</div>;
   }
 
   return (
     <div className="model-settings">
+      {infrastructureIssues.length > 0 && (
+        <div className="settings-infra-banner" role="alert">
+          <strong>Infrastructure / services</strong>
+          <ul>
+            {infrastructureIssues.map((msg) => (
+              <li key={msg}>{msg}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {validationIssues.length > 0 && (
         <div className="settings-error-banner" role="alert">
           <strong>Configuration errors</strong>
@@ -299,35 +356,34 @@ function ModelSettings({ sessionId, onOpenRagModels, onModelStatusChange }) {
         </div>
 
         <div className="form-group">
-          <label>RAG Collection</label>
-          <select
-            value={collectionSelectValue}
-            onChange={(e) => handleChange('rag_collection', e.target.value)}
-            disabled={collections.length === 0}
-          >
-            {collections.length === 0 ? (
-              <option value="">No collections — create one in RAG / Qdrant</option>
-            ) : (
-              <>
-                <option value="">Select RAG collection…</option>
-                {collections.map((col) => (
-                  <option key={col.name} value={col.name}>
-                    {col.name} ({col.points_count || 0} vectors)
-                  </option>
-                ))}
-              </>
-            )}
-          </select>
+          <label>RAG collection (LLM Proxy)</label>
           <p className="setting-hint">
-            Qdrant collection used for LLM Proxy RAG (required).
-          </p>
-          {(settings.rag_collection || '').trim() &&
-            collectionNames.length > 0 &&
-            !collectionNames.includes((settings.rag_collection || '').trim()) && (
-              <p className="settings-stale-value">
-                Saved in database: <code>{settings.rag_collection}</code> (not in current list)
-              </p>
+            {(settings.rag_collection || '').trim() ? (
+              <>
+                Current: <code>{settings.rag_collection}</code>
+                {collectionNames.length > 0 &&
+                  !collectionNames.includes((settings.rag_collection || '').trim()) && (
+                    <span className="settings-stale-value"> — not in current Qdrant list</span>
+                  )}
+              </>
+            ) : (
+              <>No collection stored (effective value may come from server config default).</>
             )}
+          </p>
+          {(typeof onNavigateToRag === 'function' || typeof onOpenRagModels === 'function') && (
+            <button
+              type="button"
+              className="navigate-rag-models-button"
+              onClick={() =>
+                typeof onNavigateToRag === 'function' ? onNavigateToRag() : onOpenRagModels()
+              }
+            >
+              Open RAG / Qdrant — service bindings
+            </button>
+          )}
+          <p className="setting-hint">
+            Choose the Qdrant collection on the <strong>RAG / Qdrant</strong> tab under &quot;Service bindings&quot;.
+          </p>
         </div>
 
         <div className="form-group checkbox-group">
@@ -383,7 +439,7 @@ function ModelSettings({ sessionId, onOpenRagModels, onModelStatusChange }) {
         <button
           className="save-button"
           onClick={handleSave}
-          disabled={saving || validationIssues.length > 0}
+          disabled={saving || validationIssues.length > 0 || infrastructureIssues.length > 0}
         >
           {saving ? 'Saving...' : 'Save Settings'}
         </button>

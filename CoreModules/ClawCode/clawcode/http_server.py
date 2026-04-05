@@ -16,6 +16,11 @@ if _llm_proxy_src.is_dir():
     _lp = str(_llm_proxy_src)
     if _lp not in sys.path:
         sys.path.insert(0, _lp)
+_rag_svc_src = Path(__file__).resolve().parents[3] / "CoreModules" / "RagService"
+if _rag_svc_src.is_dir():
+    _rs = str(_rag_svc_src)
+    if _rs not in sys.path:
+        sys.path.insert(0, _rs)
 
 from flask import Flask, Response, jsonify, request
 

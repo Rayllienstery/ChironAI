@@ -35,9 +35,9 @@ from api.http.proxy_trace import set_current_trace
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
-_MODULES_RAG = os.path.join(_ROOT, "modules", "rag_service")
-if _MODULES_RAG not in sys.path:
-    sys.path.insert(0, _MODULES_RAG)
+_RAG_SVC = os.path.join(_ROOT, "CoreModules", "RagService")
+if os.path.isdir(_RAG_SVC) and _RAG_SVC not in sys.path:
+    sys.path.insert(0, _RAG_SVC)
 _MODULES_EXT_RAG = os.path.join(_ROOT, "modules", "external_docs_rag")
 if _MODULES_EXT_RAG not in sys.path:
     sys.path.insert(0, _MODULES_EXT_RAG)

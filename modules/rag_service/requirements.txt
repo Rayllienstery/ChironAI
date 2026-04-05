@@ -1,6 +1,0 @@
-# RAG service dependencies. Install from repo root: pip install -r modules/rag_service/requirements.txt
-# Run with project root on PYTHONPATH so config and config.rag_prompts resolve.
-flask>=2.0
-requests>=2.28
-httpx>=0.24
-pyyaml>=6.0

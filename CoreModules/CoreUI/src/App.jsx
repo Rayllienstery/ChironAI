@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Component } from "react";
+import React, { useState, useEffect, useRef, Component } from "react";
 import SidebarNav from "./components/SidebarNav";
 
 class TabErrorBoundary extends Component {
@@ -28,7 +28,6 @@ import RagTab from "./components/RagTab";
 import CrawlerTab from "./components/CrawlerTab";
 import TestingTab from "./components/TestingTab";
 import TemplateEditorTab from "./components/TemplateEditorTab";
-import DebugLogPanel from "./components/DebugLogPanel";
 import ClawProxyTab from "./components/ClawProxyTab";
 import Card from "./components/Card";
 import {
@@ -57,13 +56,18 @@ import "./styles/sidebar.css";
 
 const METRICS_HISTORY_LEN = 30;
 
+function clampServiceStatusPollSec(raw) {
+  const n = parseInt(String(raw ?? ""), 10);
+  if (Number.isNaN(n)) return 5;
+  return Math.min(300, Math.max(2, n));
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [scrollToRagModelsSection, setScrollToRagModelsSection] =
     useState(false);
   const [testingSubTab, setTestingSubTab] = useState("model-tester");
   const [sessionId, setSessionId] = useState(null);
-  const [debugLogOpen, setDebugLogOpen] = useState(false);
   const [ragTestRunJobId, setRagTestRunJobId] = useState(null);
   const [ragTestRunning, setRagTestRunning] = useState(false);
   const [ragTestRunProgress, setRagTestRunProgress] = useState(null);
@@ -87,6 +91,8 @@ function App() {
   });
   const [statusBusy, setStatusBusy] = useState(false);
   const [statusLoading, setStatusLoading] = useState(true);
+  const [serviceStatusPollIntervalSec, setServiceStatusPollIntervalSec] = useState(5);
+  const serviceStatusPollGenRef = useRef(0);
   const [dashboardMetrics, setDashboardMetrics] = useState(null);
   const [metricsHistory, setMetricsHistory] = useState({
     gpu_util: [],
@@ -123,26 +129,34 @@ function App() {
   }, [themeMode, lightAccent, darkAccent]);
 
   useEffect(() => {
-    // Load backend statuses on mount
-    const loadStatuses = async () => {
-      setStatusLoading(true);
+    const gen = ++serviceStatusPollGenRef.current;
+    const loadStatuses = async (isInitial) => {
+      if (isInitial) setStatusLoading(true);
       try {
         const [ollama, rag, openWebUi] = await Promise.all([
           getOllamaStatus().catch(() => ({ running: false })),
           getRagStatus().catch(() => ({ running: false })),
           getOpenWebUiStatus().catch(() => ({ running: false })),
         ]);
+        if (serviceStatusPollGenRef.current !== gen) return;
         setOllamaStatus(ollama);
         setRagStatusInfo(rag);
         setOpenWebUiStatus(openWebUi);
       } catch {
         // ignore
       } finally {
-        setStatusLoading(false);
+        if (isInitial && serviceStatusPollGenRef.current === gen) {
+          setStatusLoading(false);
+        }
       }
     };
-    loadStatuses();
-  }, []);
+    loadStatuses(true);
+    const ms = serviceStatusPollIntervalSec * 1000;
+    const id = setInterval(() => loadStatuses(false), ms);
+    return () => {
+      clearInterval(id);
+    };
+  }, [serviceStatusPollIntervalSec]);
 
   useEffect(() => {
     const poll = async () => {
@@ -251,6 +265,9 @@ function App() {
       setLightAccent(light);
       setDarkAccent(dark);
       applyTheme(mode, light, dark);
+      setServiceStatusPollIntervalSec(
+        clampServiceStatusPollSec(settings.service_status_poll_interval_sec),
+      );
     } catch (error) {
       console.error("Failed to load theme settings:", error);
     }
@@ -307,6 +324,7 @@ function App() {
       case "claw-proxy":
         return (
           <ClawProxyTab
+            onNavigateToRag={() => setActiveTab("rag")}
             onModelStatusChange={(hasError) =>
               setTabErrors((prev) => ({ ...prev, "claw-proxy": hasError }))
             }
@@ -345,6 +363,7 @@ function App() {
               setActiveTab("rag");
               setScrollToRagModelsSection(true);
             }}
+            onNavigateToRag={() => setActiveTab("rag")}
             onOpenLogs={() => setActiveTab("logs")}
             onModelStatusChange={(hasError) =>
               setTabErrors((prev) => ({ ...prev, "llm-proxy": hasError }))
@@ -360,6 +379,11 @@ function App() {
             lightAccent={lightAccent}
             darkAccent={darkAccent}
             onThemeChange={handleThemeChange}
+            onAppSettingsSaved={(saved) =>
+              setServiceStatusPollIntervalSec(
+                clampServiceStatusPollSec(saved.service_status_poll_interval_sec),
+              )
+            }
           />
         );
       default:
@@ -704,14 +728,6 @@ function App() {
           )}
         </main>
       </div>
-
-      {sessionId && (
-        <DebugLogPanel
-          open={debugLogOpen}
-          onToggle={() => setDebugLogOpen(!debugLogOpen)}
-          sessionId={sessionId}
-        />
-      )}
 
       {sessionId && (ragTestRunning || ragTestRunJobId) && (
         <RagTestRunPanel

@@ -41,10 +41,10 @@
 
 .pipeline-ci__track {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
-  column-gap: 0;
-  overflow-x: auto;
+  gap: var(--md-sys-spacing-sm);
+  overflow-x: hidden;
   scrollbar-gutter: stable;
   padding-bottom: 8px;
   -webkit-overflow-scrolling: touch;

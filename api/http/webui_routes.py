@@ -30,10 +30,7 @@ from flask import Blueprint, Response, current_app, jsonify, request
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
-# So that "from rag_service ..." works (rag_service package lives in modules/rag_service).
-_MODULES_RAG = os.path.join(_ROOT, "modules", "rag_service")
-if _MODULES_RAG not in sys.path:
-    sys.path.insert(0, _MODULES_RAG)
+# rag_service + chironai_rag live under CoreModules/RagService (see chironai-rag-service pyproject).
 # External docs RAG (on-demand fetch, GitHub discovery).
 _MODULES_EXT_RAG = os.path.join(_ROOT, "modules", "external_docs_rag")
 if _MODULES_EXT_RAG not in sys.path:
@@ -46,6 +43,9 @@ if _WEBINTERACTION not in sys.path:
 _MD_INGESTION = os.path.join(_ROOT, "CoreModules", "MdIngestionService")
 if _MD_INGESTION not in sys.path:
     sys.path.insert(0, _MD_INGESTION)
+_RAG_SVC = os.path.join(_ROOT, "CoreModules", "RagService")
+if os.path.isdir(_RAG_SVC) and _RAG_SVC not in sys.path:
+    sys.path.insert(0, _RAG_SVC)
 
 from application.container import default_embed_provider, default_rerank_client
 from application.rag.collection_freshness import check_collection_freshness
@@ -169,6 +169,9 @@ from domain.services.prompt_builder import (
     build_system_content,
 )
 from llm_proxy.config import LlmProxyRuntimeConfig, RAG_MODEL_ID, is_rag_logical_model
+
+from chironai_rag.bindings import ConsumerRagBindings
+from chironai_rag.consumers import RAG_COLLECTION_APP_SETTING, RagConsumer
 
 from infrastructure.database import (
     get_session_manager,
@@ -1014,7 +1017,7 @@ def webui_chat() -> Any:
         # Get collection name from request or settings — explicit saved collection or error
         collection_name = (body.get("collection_name") or "").strip() or None
         if not collection_name:
-            collection_name = (settings_repo.get_app_setting("rag_collection") or "").strip() or None
+            collection_name = (settings_repo.get_app_setting(RAG_COLLECTION_APP_SETTING) or "").strip() or None
         if not collection_name:
             return jsonify(
                 {
@@ -1257,7 +1260,7 @@ def get_model_settings() -> Any:
 
         stored_model = (settings_repo.get_app_setting("proxy_model") or "").strip()
         stored_settings_json = settings_repo.get_app_setting("proxy_settings")
-        stored_rag_col = (settings_repo.get_app_setting("rag_collection") or "").strip()
+        stored_rag_col = (settings_repo.get_app_setting(RAG_COLLECTION_APP_SETTING) or "").strip()
         stored_autocomplete = (settings_repo.get_app_setting("proxy_autocomplete_model") or "").strip()
 
         out: dict[str, Any] = {
@@ -1320,7 +1323,7 @@ def llm_proxy_status() -> Any:
         settings_repo = get_settings_repository()
         stored_model = (settings_repo.get_app_setting("proxy_model") or "").strip()
         stored_settings_json = settings_repo.get_app_setting("proxy_settings")
-        stored_rag_col = (settings_repo.get_app_setting("rag_collection") or "").strip()
+        stored_rag_col = (settings_repo.get_app_setting(RAG_COLLECTION_APP_SETTING) or "").strip()
         merged: dict[str, Any] = {"model": stored_model, "rag_collection": stored_rag_col}
         if stored_settings_json:
             try:
@@ -1342,18 +1345,38 @@ def llm_proxy_status() -> Any:
         display_host = "127.0.0.1" if bind_host == "0.0.0.0" else bind_host
         port = get_server_port()
         base_url = f"http://{display_host}:{port}"
-        return jsonify(
-            {
-                "enabled": True,
-                "base_url": base_url,
-                "logical_model_id": rt.rag_model_logical_id,
-                "default_ollama_model": ollama_model or "unknown",
-                "rag_collection": effective_rag,
-                "stored_rag_collection": rag_merged,
-                "config_default_rag_collection": config_rag,
-                "health": f"{base_url}/health",
+        payload: dict[str, Any] = {
+            "enabled": True,
+            "base_url": base_url,
+            "logical_model_id": rt.rag_model_logical_id,
+            "default_ollama_model": ollama_model or "unknown",
+            "rag_collection": effective_rag,
+            "stored_rag_collection": rag_merged,
+            "config_default_rag_collection": config_rag,
+            "health": f"{base_url}/health",
+            "docker": None,
+            "qdrant": None,
+            "infrastructure_error": None,
+        }
+        try:
+            ss = _webui_service_starter()
+            st = ss.status()
+            d = st.get("docker") or {}
+            payload["docker"] = {
+                "cli_available": bool(d.get("cli_available")),
+                "engine_available": bool(d.get("engine_available")),
+                "error": d.get("error"),
             }
-        )
+            q = st.get("qdrant") or {}
+            payload["qdrant"] = {
+                "reachable": bool(q.get("running")),
+                "container_running": bool(q.get("container_running")),
+                "url": q.get("url"),
+                "error": q.get("error"),
+            }
+        except Exception as infra_e:
+            payload["infrastructure_error"] = str(infra_e)
+        return jsonify(payload)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.llm_proxy_status", exc_info=True)
         return jsonify({"error": str(e)}), 500
@@ -1370,7 +1393,9 @@ def update_model_settings() -> Any:
         if body.get("autocomplete_model") is not None:
             settings_repo.set_app_setting("proxy_autocomplete_model", str(body.get("autocomplete_model") or "").strip())
         if body.get("rag_collection") is not None:
-            settings_repo.set_app_setting("rag_collection", str(body.get("rag_collection") or "").strip())
+            ConsumerRagBindings(settings_repo).set_stored_collection(
+                RagConsumer.LLM_PROXY, str(body.get("rag_collection") or "").strip()
+            )
         existing_blob: dict[str, Any] = {}
         try:
             raw_ps = settings_repo.get_app_setting("proxy_settings")
@@ -1482,7 +1507,7 @@ def tester_chat() -> Any:
         if not collection_name and tester_settings:
             collection_name = (tester_settings.get("rag_collection") or "").strip() or None
         if not collection_name or collection_name == "":
-            collection_name = (settings_repo.get_app_setting("rag_collection") or "").strip() or None
+            collection_name = (settings_repo.get_app_setting(RAG_COLLECTION_APP_SETTING) or "").strip() or None
         if use_rag and not collection_name:
             names = _get_qdrant_collection_names()
             if not names:
@@ -2195,7 +2220,7 @@ def get_pipeline_preview() -> Any:
     """
     try:
         settings_repo = get_settings_repository()
-        rag_col = (settings_repo.get_app_setting("rag_collection") or "").strip()
+        rag_col = (settings_repo.get_app_setting(RAG_COLLECTION_APP_SETTING) or "").strip()
         rag_collection_configured = bool(rag_col)
 
         proxy_settings: dict[str, Any] = {}
@@ -2701,31 +2726,23 @@ def open_webui_stop() -> Any:
 
 @webui_bp.route("/ollama/status", methods=["GET"])
 def ollama_status() -> Any:
-    """Check if Ollama server is reachable (ServiceStarter / OLLAMA_BASE_URL default port 11343)."""
+    """Check if Ollama is reachable at the same base URL as RAG/chat (default http://localhost:11434).
+
+    Not ServiceStarter's OLLAMA_PORT (11343): the header reflects where models and proxy actually talk.
+    """
+    url = _get_ollama_url().rstrip("/")
+    status: dict[str, Any] = {"url": url, "running": False}
     try:
-        ss = _webui_service_starter()
-        o = ss.status()["ollama"]
-        url = o["url"]
-        status: dict[str, Any] = {"url": url, "running": bool(o.get("running"))}
-        if o.get("http_status") is not None:
-            status["http_status"] = int(o["http_status"] or 0)
-        if o.get("error"):
-            status["error"] = o["error"]
-        return jsonify(status)
+        ping_o = invoke_ping(base_url=url, timeout=3.0)
+        status["http_status"] = int(ping_o.get("status_code") or 0)
+        if ping_o.get("ok"):
+            status["running"] = True
+        err = ping_o.get("error")
+        if err:
+            status["error"] = str(err)
     except Exception as e:
-        # Fallback: direct ping via OllamaInteractor so UI still works if ServiceStarter is unavailable.
-        url = _get_ollama_url().rstrip("/")
-        status: dict[str, Any] = {"url": url, "running": False, "error": str(e)}
-        try:
-            ping_o = invoke_ping(base_url=url, timeout=3.0)
-            status["http_status"] = int(ping_o.get("status_code") or 0)
-            if ping_o.get("ok"):
-                status["running"] = True
-                status.pop("error", None)
-        except Exception:
-            pass
-        _WEBUI_LOG.warning("Failed to get Ollama status via ServiceStarter: %s", e)
-        return jsonify(status)
+        status["error"] = str(e)
+    return jsonify(status)
 
 
 @webui_bp.route("/ollama/start", methods=["POST"])
@@ -2753,10 +2770,16 @@ def ollama_start() -> Any:
 
 @webui_bp.route("/ollama/stop", methods=["POST"])
 def ollama_stop() -> Any:
-    """Try to stop Ollama server process."""
+    """Stop Ollama using the same port as WebUI/RAG (e.g. 11434), not only ServiceStarter defaults."""
     try:
-        ss = _webui_service_starter()
-        ok, output = ss.stop_ollama()
+        try:
+            from servicestarter.ollama_ops import ollama_port_from_base_url, stop_ollama_process
+        except ModuleNotFoundError:
+            _ensure_servicestarter_on_path()
+            from servicestarter.ollama_ops import ollama_port_from_base_url, stop_ollama_process
+
+        port = ollama_port_from_base_url(_get_ollama_url(), default_port=11434)
+        ok, output = stop_ollama_process(listen_port=port)
         status = 200 if ok else 500
         return jsonify({"ok": ok, "output": output}), status
     except Exception as e:

@@ -17,12 +17,12 @@ from flask import Flask, Response, jsonify
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
-_MODULES_RAG = os.path.join(_ROOT, "modules", "rag_service")
-if _MODULES_RAG not in sys.path:
-    sys.path.insert(0, _MODULES_RAG)
 _MODULES_EXT_RAG = os.path.join(_ROOT, "modules", "external_docs_rag")
 if _MODULES_EXT_RAG not in sys.path:
     sys.path.insert(0, _MODULES_EXT_RAG)
+_RAG_SVC = os.path.join(_ROOT, "CoreModules", "RagService")
+if os.path.isdir(_RAG_SVC) and _RAG_SVC not in sys.path:
+    sys.path.insert(0, _RAG_SVC)
 
 from application.rag.collection_freshness import check_collection_freshness
 from application.rag.params import get_rag_answer_params

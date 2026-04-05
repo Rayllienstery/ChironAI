@@ -16,7 +16,17 @@ const ACCENT_COLORS = [
   { id: 'slate', name: 'Slate', light: '#344767', dark: '#90A4AE' },
 ];
 
-function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange }) {
+const SERVICE_STATUS_POLL_DEFAULT = 5;
+const SERVICE_STATUS_POLL_MIN = 2;
+const SERVICE_STATUS_POLL_MAX = 300;
+
+function clampServiceStatusPollSec(raw) {
+  const n = parseInt(String(raw ?? ''), 10);
+  if (Number.isNaN(n)) return SERVICE_STATUS_POLL_DEFAULT;
+  return Math.min(SERVICE_STATUS_POLL_MAX, Math.max(SERVICE_STATUS_POLL_MIN, n));
+}
+
+function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppSettingsSaved }) {
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -85,8 +95,14 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateSettings(settings);
+      const pollSec = clampServiceStatusPollSec(settings.service_status_poll_interval_sec);
+      const payload = { ...settings, service_status_poll_interval_sec: pollSec };
+      await updateSettings(payload);
+      setSettings((prev) => ({ ...prev, service_status_poll_interval_sec: pollSec }));
       alert('Settings saved successfully');
+      if (typeof onAppSettingsSaved === 'function') {
+        onAppSettingsSaved(payload);
+      }
     } catch (error) {
       console.error('Failed to save settings:', error);
       alert('Failed to save settings');
@@ -203,6 +219,31 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange }) {
               onChange={(e) => handleChange('log_poll_interval', parseInt(e.target.value))}
               min="1000"
               step="1000"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Service status poll interval (seconds)</label>
+            <p style={{ margin: '0 0 4px 0', fontSize: '0.875rem', opacity: 0.85 }}>
+              How often the header refreshes Ollama, RAG/Qdrant, and Open WebUI status.
+            </p>
+            <input
+              type="number"
+              value={
+                settings.service_status_poll_interval_sec !== undefined &&
+                settings.service_status_poll_interval_sec !== ''
+                  ? settings.service_status_poll_interval_sec
+                  : SERVICE_STATUS_POLL_DEFAULT
+              }
+              onChange={(e) =>
+                handleChange(
+                  'service_status_poll_interval_sec',
+                  e.target.value === '' ? '' : parseInt(e.target.value, 10),
+                )
+              }
+              min={SERVICE_STATUS_POLL_MIN}
+              max={SERVICE_STATUS_POLL_MAX}
+              step={1}
             />
           </div>
 

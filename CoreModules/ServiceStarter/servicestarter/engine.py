@@ -28,8 +28,14 @@ class ServiceStarter:
         cfg = self._cfg
         ollama_ping = ollama_ops.ollama_ping(cfg.ollama_base_url, timeout=3.0)
 
-        docker_cli = docker_ops.docker_version_available()
-        docker_engine = docker_ops.docker_engine_ready() if docker_cli else False
+        docker_cli = False
+        docker_engine = False
+        docker_err: str | None = None
+        try:
+            docker_cli = docker_ops.docker_version_available()
+            docker_engine = docker_ops.docker_engine_ready() if docker_cli else False
+        except Exception as e:
+            docker_err = str(e)
 
         q_running_http = False
         q_err: str | None = None
@@ -41,9 +47,17 @@ class ServiceStarter:
             q_http_status = None
             q_err = str(e)
 
-        q_container = docker_ops.container_name_matches_running(cfg.qdrant_container_name)
+        q_container = False
+        try:
+            q_container = docker_ops.container_is_running(cfg.qdrant_container_name)
+        except Exception:
+            pass
 
-        ow_running_container = docker_ops.container_name_matches_running(cfg.open_webui_container_name)
+        ow_running_container = False
+        try:
+            ow_running_container = docker_ops.container_is_running(cfg.open_webui_container_name)
+        except Exception:
+            pass
         ow_http_status: int | None = None
         ow_http_err: str | None = None
         try:
@@ -63,6 +77,7 @@ class ServiceStarter:
             "docker": {
                 "cli_available": docker_cli,
                 "engine_available": docker_engine,
+                "error": docker_err,
             },
             "qdrant": {
                 "running": q_running_http,
@@ -114,7 +129,8 @@ class ServiceStarter:
         return ollama_ops.start_ollama_serve(self._cfg)
 
     def stop_ollama(self) -> tuple[bool, str]:
-        return ollama_ops.stop_ollama_process()
+        port = ollama_ops.ollama_port_from_base_url(self._cfg.ollama_base_url)
+        return ollama_ops.stop_ollama_process(listen_port=port)
 
     def start_qdrant(self) -> tuple[bool, str]:
         ok_d, msg_d = self.ensure_docker_running()
@@ -137,14 +153,17 @@ class ServiceStarter:
         if not ok_d:
             return False, f"docker: {msg_d}"
         ok, msg = docker_ops.ensure_open_webui_container(self._cfg)
-        if ok:
-            docker_ops.wait_for_http_json(
-                self._cfg.open_webui_host_url,
-                path="/",
-                ok_status=(200, 301, 302, 304),
-                timeout_sec=self._cfg.http_wait_timeout_sec,
-            )
-        return ok, msg
+        if not ok:
+            return ok, msg
+        http_ok, http_err = docker_ops.wait_for_http_json(
+            self._cfg.open_webui_host_url,
+            path="/",
+            ok_status=(200, 301, 302, 304),
+            timeout_sec=self._cfg.http_wait_timeout_sec,
+        )
+        if not http_ok:
+            return False, f"{msg}; HTTP not ready: {http_err or 'timeout'} ({self._cfg.open_webui_host_url})"
+        return True, msg
 
     def stop_open_webui(self) -> tuple[bool, str]:
         return docker_ops.docker_stop_container(self._cfg.open_webui_container_name)

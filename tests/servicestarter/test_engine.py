@@ -32,7 +32,7 @@ def test_status_shape() -> None:
         patch("servicestarter.engine.ollama_ops.ollama_ping", return_value=fake_ollama),
         patch("servicestarter.engine.docker_ops.docker_version_available", return_value=True),
         patch("servicestarter.engine.docker_ops.docker_engine_ready", return_value=True),
-        patch("servicestarter.engine.docker_ops.container_name_matches_running", return_value=False),
+        patch("servicestarter.engine.docker_ops.container_is_running", return_value=False),
         patch("servicestarter.engine.requests.get", side_effect=_fake_get),
     ):
         st = ss.status()

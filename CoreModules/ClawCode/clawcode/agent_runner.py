@@ -9,6 +9,11 @@ import time
 import uuid
 from typing import Any, Callable
 
+try:
+    from chironai_rag.consumers import CLAWCODE_RAG_COLLECTION_APP_SETTING
+except ImportError:
+    CLAWCODE_RAG_COLLECTION_APP_SETTING = "clawcode_rag_collection"
+
 from application.rag.params import RAGAnswerParams, RAGDependencies, get_rag_answer_params
 from application.rag.use_cases import build_rag_context
 from config import (
@@ -89,7 +94,14 @@ RUNTIME_DEVELOPER_MERGE_CLIENT_TOOLS = (
     "ClawCode runtime: rag_query searches the indexed knowledge base, not the live workspace unless ingested; "
     "use IDE tools when you need actual project files. rag_query runs on the server; IDE tools run in the client "
     "when returned as tool_calls. Do not mix rag_query and other tools in the same assistant tool_calls batch—"
-    "use only rag_query in one turn, or only IDE tools in another so the client can execute them."
+    "use only rag_query in one turn, or only IDE tools in another so the client can execute them. "
+    "VS Code / Copilot does not expose a tool named `search`; for text search in files call **grep_search** with "
+    "`query` (and optional `includePattern`, `isRegexp`, `maxResults`). "
+    "Use absolute paths from the workspace; in this monorepo UI code often lives under **CoreModules/** "
+    "(e.g. CoreModules/CoreUI/src/…)—avoid shortening to CoreUI/… if that path does not exist at the repo root. "
+    "When using replace_string_in_file, the old_string must match the file exactly, including Windows CRLF line "
+    "endings if that is what read_file returned; after a failed replace, re-read the file and copy the snippet verbatim "
+    "or use insert_edit_into_file with // ...existing code... anchors."
 )
 
 
@@ -101,6 +113,95 @@ def _tool_call_names(tool_calls: list[Any]) -> list[str]:
         fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
         names.append(str(fn.get("name") or "") if isinstance(fn, dict) else "")
     return names
+
+
+def _client_registered_tool_names_lower(body: dict[str, Any]) -> set[str]:
+    out: set[str] = set()
+    tools = body.get("tools")
+    if not isinstance(tools, list):
+        return out
+    for t in tools:
+        if not isinstance(t, dict) or t.get("type") != "function":
+            continue
+        fn = t.get("function")
+        if isinstance(fn, dict):
+            n = fn.get("name")
+            if isinstance(n, str) and n.strip():
+                out.add(n.strip().lower())
+    return out
+
+
+def _normalize_grep_search_arguments(raw_args: Any) -> dict[str, Any]:
+    """Map common mistaken `search` payloads into grep_search-shaped JSON."""
+    obj: dict[str, Any]
+    if isinstance(raw_args, dict):
+        obj = dict(raw_args)
+    elif isinstance(raw_args, str) and raw_args.strip():
+        try:
+            parsed = json.loads(raw_args)
+            obj = dict(parsed) if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, TypeError):
+            obj = {}
+    else:
+        obj = {}
+    query = (
+        obj.get("query")
+        or obj.get("pattern")
+        or obj.get("q")
+        or obj.get("text")
+        or obj.get("search")
+        or ""
+    )
+    query = str(query).strip()
+    inc = (
+        obj.get("includePattern")
+        or obj.get("path")
+        or obj.get("file")
+        or obj.get("file_path")
+        or obj.get("glob")
+        or ""
+    )
+    inc = str(inc).strip() if inc else ""
+    is_reg = obj.get("isRegexp", obj.get("regexp", False))
+    if not isinstance(is_reg, bool):
+        is_reg = str(is_reg).lower() in ("1", "true", "yes")
+    try:
+        max_res = int(obj.get("maxResults", 20))
+    except (TypeError, ValueError):
+        max_res = 20
+    max_res = max(1, min(max_res, 500))
+    out: dict[str, Any] = {"query": query, "isRegexp": is_reg, "maxResults": max_res}
+    if inc:
+        out["includePattern"] = inc
+    return out
+
+
+def _alias_search_tool_calls_to_grep_search(assistant_msg: dict[str, Any], body: dict[str, Any]) -> None:
+    """
+    Some models emit tool name `search`, which VS Code does not register (use grep_search).
+    Rewrite pass-through tool_calls so the IDE can execute them when grep_search is available.
+    """
+    reg = _client_registered_tool_names_lower(body)
+    if "grep_search" not in reg:
+        return
+    tcs = assistant_msg.get("tool_calls")
+    if not isinstance(tcs, list):
+        return
+    for tc in tcs:
+        if not isinstance(tc, dict):
+            continue
+        fn = tc.get("function")
+        if not isinstance(fn, dict):
+            continue
+        name = str(fn.get("name") or "").strip().lower()
+        if name != "search":
+            continue
+        fn["name"] = "grep_search"
+        normalized = _normalize_grep_search_arguments(fn.get("arguments"))
+        try:
+            fn["arguments"] = json.dumps(normalized, ensure_ascii=False)
+        except (TypeError, ValueError):
+            fn["arguments"] = "{}"
 
 
 def _inject_clawcode_runtime_context(
@@ -369,7 +470,7 @@ def run_clawcode_chat_completion(
     try:
         repo = get_settings_repository()
         configured = (repo.get_app_setting("clawcode_default_model") or "").strip()
-        _oc = (repo.get_app_setting("clawcode_rag_collection") or "").strip()
+        _oc = (repo.get_app_setting(CLAWCODE_RAG_COLLECTION_APP_SETTING) or "").strip()
         clawcode_collection = _oc if _oc else None
         _ts = (repo.get_app_setting("clawcode_chat_temperature") or "").strip()
         if _ts:
@@ -543,6 +644,8 @@ def run_clawcode_chat_completion(
         oll_msg = data.get("message") if isinstance(data.get("message"), dict) else {}
         ollama_dr, ollama_pec, ollama_ec = _ollama_trace_counts(data if isinstance(data, dict) else {})
         openai_assistant = ollama_message_to_openai_assistant(oll_msg)
+        if merge_client_tools:
+            _alias_search_tool_calls_to_grep_search(openai_assistant, body)
         pt = _estimate_tokens(ollama_messages)
         ct = _estimate_tokens(openai_assistant.get("content") or oll_msg)
         total_in += pt

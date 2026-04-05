@@ -17,8 +17,8 @@ config/              — Configuration (YAML + env)
 utils/               — Pure helpers
 tests/               — Pytest (domain, application, api, infrastructure)
 
-modules/             — Separate projects: rag_service, crawler_service, webui_backend  
-CoreModules/         — Shared core apps/libs (e.g. LlmProxy, CoreUI React SPA, MdIngestionService / `md_ingestion_service`)
+modules/             — Separate projects: crawler_service, webui_backend (RAG pipeline package lives under **CoreModules/RagService**)
+CoreModules/         — Shared core apps/libs (e.g. LlmProxy, RagService / `rag_service` + `chironai_rag`, CoreUI, MdIngestionService / `md_ingestion_service`)
 core/                — (Target) config, shared, contracts
 ```
 
@@ -44,7 +44,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-Configuration lives in **`pyproject.toml`** (`[tool.pytest.ini_options]`), including `pythonpath` entries for `modules/rag_service`, `CoreModules/MdIngestionService`, and `modules/crawler_service`.
+Configuration lives in **`pyproject.toml`** (`[tool.pytest.ini_options]`), including `pythonpath` entries for `CoreModules/RagService`, `CoreModules/MdIngestionService`, and `modules/crawler_service`.
 
 Coverage report for domain and application:
 

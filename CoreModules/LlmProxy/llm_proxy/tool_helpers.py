@@ -30,6 +30,21 @@ def _resolve_workspace_path(file_path: str) -> Path:
     return resolved
 
 
+def _normalize_new_text_line_endings_for_file(original: str, new_text: str) -> str:
+    """
+    If the file on disk primarily uses CRLF but the model sent LF-only new_text, convert new_text to CRLF
+    so range replacements do not mix line endings (reduces follow-up \"replace not found\" loops in clients).
+    """
+    if not original or not new_text or "\r\n" in new_text:
+        return new_text
+    sample = original[:8192]
+    crlf = sample.count("\r\n")
+    lf_only = sample.count("\n") - crlf
+    if crlf <= lf_only or "\n" not in new_text:
+        return new_text
+    return new_text.replace("\r\n", "\n").replace("\n", "\r\n")
+
+
 def _replace_text_range(original: str, range_data: dict[str, object], new_text: str) -> str:
     lines = original.splitlines(keepends=True)
     start_line = int(range_data.get("start_line") or 0)

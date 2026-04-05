@@ -64,13 +64,13 @@ exclude = ["tests*", "tests"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = [
-  ".",
-  "modules/rag_service",
-  "modules/crawler_service",
-  "CoreModules/ServiceStarter",
-  "CoreModules/LlmProxy",
-  "CoreModules/WebInteraction",
-  "CoreModules/MdIngestionService",
+    ".",
+    "modules/crawler_service",
+    "CoreModules/ServiceStarter",
+    "CoreModules/LlmProxy",
+    "CoreModules/RagService",
+    "CoreModules/WebInteraction",
+    "CoreModules/MdIngestionService",
 ]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
@@ -90,6 +90,8 @@ src = [
   "utils",
   "tests",
   "CoreModules/LlmProxy/llm_proxy",
+  "CoreModules/RagService/chironai_rag",
+  "CoreModules/RagService/rag_service",
   "CoreModules/WebInteraction/web_interaction",
   "CoreModules/MdIngestionService/md_ingestion_service",
 ]

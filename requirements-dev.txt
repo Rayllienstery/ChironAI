@@ -11,3 +11,4 @@
 -e CoreModules/OllamaInteractor
 -e CoreModules/ServiceStarter
 -e CoreModules/LlmProxy
+-e CoreModules/RagService

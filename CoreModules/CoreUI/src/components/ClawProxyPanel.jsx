@@ -9,7 +9,6 @@ import {
   getClawCodeVendorVersions,
   getClawCodeSettings,
   updateClawCodeSettings,
-  getRagCollections,
 } from '../services/api';
 import '../styles/components/DashboardTab.css';
 
@@ -22,7 +21,7 @@ function kvRow(label, value, key) {
   );
 }
 
-function ClawProxyPanel({ onModelStatusChange }) {
+function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
   const onModelStatusChangeRef = useRef(onModelStatusChange);
   onModelStatusChangeRef.current = onModelStatusChange;
 
@@ -35,9 +34,6 @@ function ClawProxyPanel({ onModelStatusChange }) {
   const [err, setErr] = useState(null);
   const [availableModels, setAvailableModels] = useState([]);
   const [defaultModel, setDefaultModel] = useState('');
-  const [collections, setCollections] = useState([]);
-  const [ragCollection, setRagCollection] = useState('');
-  const [configDefaultRag, setConfigDefaultRag] = useState('');
   const [maxStepsInput, setMaxStepsInput] = useState('');
   const [effectiveMaxSteps, setEffectiveMaxSteps] = useState(40);
   const [configMaxStepsYaml, setConfigMaxStepsYaml] = useState(40);
@@ -53,12 +49,8 @@ function ClawProxyPanel({ onModelStatusChange }) {
   const refresh = useCallback(async () => {
     setErr(null);
     try {
-      const [s, colData] = await Promise.all([
-        getClawCodeStatus(),
-        getRagCollections().catch(() => ({ collections: [] })),
-      ]);
+      const s = await getClawCodeStatus();
       setStatus(s);
-      setCollections(colData.collections || []);
       let settings = null;
       if (s.available) {
         try {
@@ -83,8 +75,6 @@ function ClawProxyPanel({ onModelStatusChange }) {
         const def = settings.default_model || '';
         setAvailableModels(models);
         setDefaultModel(def);
-        setRagCollection(settings.stored_rag_collection != null ? settings.stored_rag_collection : '');
-        setConfigDefaultRag(settings.config_default_rag_collection || '');
         setMaxStepsInput(settings.stored_max_agent_steps != null ? String(settings.stored_max_agent_steps) : '');
         setEffectiveMaxSteps(Number(settings.max_agent_steps) || 40);
         setConfigMaxStepsYaml(Number(settings.config_max_agent_steps_yaml) || 40);
@@ -177,12 +167,6 @@ function ClawProxyPanel({ onModelStatusChange }) {
     );
   }
 
-  const collectionNames = collections.map((c) => c.name).filter(Boolean);
-  const collectionSelectValue =
-    collectionNames.length > 0 && collectionNames.includes((ragCollection || '').trim())
-      ? ragCollection
-      : '';
-
   if (!status.available) {
     return (
       <div className="dashboard-layout">
@@ -269,70 +253,22 @@ function ClawProxyPanel({ onModelStatusChange }) {
             {kvRow('Health', <code>{status.openai_base_url}/health</code>, 'health')}
           </section>
 
-          <section className="app-default-card" aria-labelledby="claw-rag-collection-heading">
+          <section className="app-default-card" aria-labelledby="claw-rag-hint-heading">
             <div className="dashboard-card-header">
-              <h2 id="claw-rag-collection-heading">RAG collection</h2>
+              <h2 id="claw-rag-hint-heading">RAG collection</h2>
             </div>
-            <div className="dashboard-proxy-sections">
-              <p className="dashboard-card-muted">
-                Qdrant collection used for ClawCode <code>rag_query</code> (same idea as LLM Proxy). Leave as
-                &quot;Config default&quot; to use <code>config/server.yaml</code> <code>qdrant.collection_name</code>
-                {configDefaultRag ? (
-                  <>
-                    {' '}
-                    (<code>{configDefaultRag}</code>)
-                  </>
-                ) : null}
-                .
-              </p>
+            <p className="dashboard-card-muted">
+              The effective Qdrant collection is listed in <strong>Status</strong> above. To override it for ClawCode{' '}
+              <code>rag_query</code> (or clear the override to use the server config default), use{' '}
+              <strong>RAG / Qdrant</strong> → <strong>Service bindings</strong>.
+            </p>
+            {typeof onNavigateToRag === 'function' && (
               <div className="dashboard-card-actions">
-                <select
-                  className="dashboard-card-field"
-                  value={collectionSelectValue || ''}
-                  onChange={(e) => setRagCollection(e.target.value)}
-                  disabled={collections.length === 0}
-                  aria-label="RAG collection for ClawCode"
-                >
-                  <option value="">
-                    {collections.length === 0
-                      ? 'No collections — create one in RAG / Qdrant'
-                      : `Config default${configDefaultRag ? ` (${configDefaultRag})` : ''}`}
-                  </option>
-                  {collections.map((col) => (
-                    <option key={col.name} value={col.name}>
-                      {col.name}
-                      {col.points_count != null ? ` (${col.points_count} vectors)` : ''}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className="dashboard-primary-btn"
-                  disabled={busy}
-                  onClick={async () => {
-                    try {
-                      setBusy(true);
-                      setErr(null);
-                      await updateClawCodeSettings({ rag_collection: ragCollection });
-                      await refresh();
-                    } catch (e) {
-                      setErr(String(e.message || e));
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                >
-                  Save RAG collection
+                <button type="button" className="dashboard-primary-btn" onClick={onNavigateToRag}>
+                  Open RAG / Qdrant
                 </button>
               </div>
-              {(ragCollection || '').trim() &&
-                collectionNames.length > 0 &&
-                !collectionNames.includes((ragCollection || '').trim()) && (
-                  <p className="dashboard-card-muted">
-                    Saved: <code>{ragCollection}</code> (not in current Qdrant list)
-                  </p>
-                )}
-            </div>
+            )}
           </section>
 
           <section className="app-default-card" aria-labelledby="claw-traces-heading">

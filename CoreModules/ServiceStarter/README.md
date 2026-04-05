@@ -34,6 +34,8 @@ python -m servicestarter start-all --services docker,qdrant,open-webui,ollama
 
 See `servicestarter.config` for environment variables.
 
+**Open WebUI image:** default is `open-webui/open-webui:main` (CPU). For NVIDIA GPUs set `OPEN_WEBUI_IMAGE=open-webui/open-webui:cuda`. If a previous container was created with the wrong image, remove it: `docker rm -f open-webui` (or your `OPEN_WEBUI_CONTAINER_NAME`), then start again.
+
 After installing Ollama on Windows, restart the terminal (or sign out) if `ollama` is not yet on `PATH`.
 
 ChironAI `config/models.yaml` still defaults Ollama HTTP to port `11434`. Set `OLLAMA_EMBED_URL`, `OLLAMA_CHAT_URL`, etc., or `OLLAMA_BASE_URL` / `OLLAMA_PORT` so the app matches the ServiceStarter Ollama port (default `11343`).

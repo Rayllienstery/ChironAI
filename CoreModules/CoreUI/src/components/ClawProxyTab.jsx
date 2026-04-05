@@ -5,7 +5,7 @@ import ClawProxyJournalTab from './ClawProxyJournalTab';
 import '../styles/components/DashboardTab.css';
 import '../styles/components/TestingTab.css';
 
-function ClawProxyTab({ onModelStatusChange }) {
+function ClawProxyTab({ onNavigateToRag, onModelStatusChange }) {
   const [subTab, setSubTab] = useState('proxy');
 
   return (
@@ -42,7 +42,9 @@ function ClawProxyTab({ onModelStatusChange }) {
           </button>
         </div>
       </div>
-      {subTab === 'proxy' && <ClawProxyPanel onModelStatusChange={onModelStatusChange} />}
+      {subTab === 'proxy' && (
+        <ClawProxyPanel onNavigateToRag={onNavigateToRag} onModelStatusChange={onModelStatusChange} />
+      )}
       {subTab === 'mcp' && <ClawMcpPanel />}
       {subTab === 'journal' && <ClawProxyJournalTab />}
     </div>

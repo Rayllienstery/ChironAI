@@ -10,6 +10,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+try:
+    from chironai_rag.consumers import RAG_COLLECTION_APP_SETTING
+except ImportError:
+    RAG_COLLECTION_APP_SETTING = "rag_collection"
+
 from flask import Response, jsonify, request
 
 from llm_proxy.config import RAG_MODEL_ID, is_rag_logical_model_id
@@ -554,7 +559,7 @@ def run_chat_completions(
     if not request_collection:
         try:
             settings_repo = w.get_settings_repository()
-            request_collection = (settings_repo.get_app_setting("rag_collection") or "").strip() or None
+            request_collection = (settings_repo.get_app_setting(RAG_COLLECTION_APP_SETTING) or "").strip() or None
             collection_source = "app_settings.rag_collection"
             if not request_collection:
                 proxy_settings_json = settings_repo.get_app_setting("proxy_settings")

@@ -221,10 +221,19 @@ export async function getRagStatus() {
 
 export async function getRagCollections() {
   const response = await fetch(`${API_BASE}/rag/collections`);
-  if (!response.ok) {
-    throw new Error('Failed to get RAG collections');
+  let data = {};
+  try {
+    data = await response.json();
+  } catch {
+    data = { collections: [], error: 'parse_error' };
   }
-  return response.json();
+  if (!Array.isArray(data.collections)) {
+    data.collections = [];
+  }
+  if (!data.error && !response.ok) {
+    data.error = `http_${response.status}`;
+  }
+  return data;
 }
 
 export async function getRagTriggerSettings() {

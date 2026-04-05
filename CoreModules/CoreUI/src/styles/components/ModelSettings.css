@@ -3,6 +3,25 @@
   width: 100%;
 }
 
+.settings-infra-banner {
+  margin-bottom: var(--md-sys-spacing-md);
+  padding: var(--md-sys-spacing-md);
+  border: 2px solid #e65100;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: #fff3e0;
+  color: #4e342e;
+}
+
+.settings-infra-banner strong {
+  display: block;
+  margin-bottom: var(--md-sys-spacing-xs);
+}
+
+.settings-infra-banner ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
 .settings-error-banner {
   margin-bottom: var(--md-sys-spacing-md);
   padding: var(--md-sys-spacing-md);

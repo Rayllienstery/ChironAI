@@ -1,4 +1,9 @@
-"""Environment-driven configuration for ServiceStarter."""
+"""Environment-driven configuration for ServiceStarter.
+
+Docker CLI resolution (see docker_ops): optional ``DOCKER_EXE`` (full path to docker.exe),
+else ``PATH``, else typical Docker Desktop path on Windows
+(``ProgramFiles\\Docker\\Docker\\resources\\bin\\docker.exe``).
+"""
 
 from __future__ import annotations
 
@@ -87,7 +92,7 @@ class ServiceStarterConfig:
             open_webui_host_url=open_url,
             open_webui_image=os.getenv(
                 "OPEN_WEBUI_IMAGE",
-                "open-webui/open-webui:cuda",
+                "open-webui/open-webui:main",
             ),
             open_webui_host_port=ow_host_port,
             open_webui_container_port=ow_ct_port,
