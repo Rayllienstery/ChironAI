@@ -839,6 +839,22 @@ def run_clawcode_chat_completion(
                     }
                 )
 
+        # Live WebUI buffer: in-flight snapshot so clients can show final=False before the next step.
+        _emit_trace(
+            trace_callback,
+            trace_id,
+            body,
+            steps_out,
+            started,
+            use_model,
+            logical_model_id,
+            total_in,
+            total_out,
+            final=False,
+            think_requested=oc_think_request,
+            merge_client_tools=merge_client_tools,
+        )
+
     _emit_trace(
         trace_callback,
         trace_id,

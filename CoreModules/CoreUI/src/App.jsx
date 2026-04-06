@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, Component } from "react";
+import React, { useState, useEffect, useRef, useCallback, Component } from "react";
 import SidebarNav from "./components/SidebarNav";
 
 class TabErrorBoundary extends Component {
@@ -52,6 +52,8 @@ import Sparkline from "./components/Sparkline";
 import { NotificationCenterProvider } from "./components/NotificationCenterContext";
 import NotificationCenterShell from "./components/NotificationCenterShell";
 import RagTestRunNotificationBridge from "./components/RagTestRunNotificationBridge";
+import ProxiesLiveNotificationBridge from "./components/ProxiesLiveNotificationBridge";
+import InfrastructureAlertsBridge from "./components/InfrastructureAlertsBridge";
 import "./styles/layout.css";
 import "./styles/default-card.css";
 import "./styles/sidebar.css";
@@ -75,6 +77,8 @@ function App() {
   const [ragTestRunProgress, setRagTestRunProgress] = useState(null);
   const [ragTestRunResults, setRagTestRunResults] = useState([]);
   const [ragTestRunError, setRagTestRunError] = useState(null);
+  const [llmProxyFocusSubTab, setLlmProxyFocusSubTab] = useState(null);
+  const [clawProxyFocusSubTab, setClawProxyFocusSubTab] = useState(null);
   const [tabErrors, setTabErrors] = useState({});
   const [themeMode, setThemeMode] = useState("system");
   const [lightAccent, setLightAccent] = useState("purple");
@@ -257,6 +261,29 @@ function App() {
     }
   };
 
+  const handleOpenLlmProxyTrace = useCallback(() => {
+    setActiveTab("llm-proxy");
+    setLlmProxyFocusSubTab("proxy-trace");
+  }, []);
+
+  const handleOpenClawJournal = useCallback(() => {
+    setActiveTab("claw-proxy");
+    setClawProxyFocusSubTab("journal");
+  }, []);
+
+  const handleOpenClawTraces = useCallback(() => {
+    setActiveTab("claw-proxy");
+    setClawProxyFocusSubTab("proxy");
+  }, []);
+
+  const consumeLlmProxyFocusSubTab = useCallback(() => {
+    setLlmProxyFocusSubTab(null);
+  }, []);
+
+  const consumeClawProxyFocusSubTab = useCallback(() => {
+    setClawProxyFocusSubTab(null);
+  }, []);
+
   const loadThemeSettings = async () => {
     try {
       const settings = await getSettings();
@@ -330,6 +357,8 @@ function App() {
             onModelStatusChange={(hasError) =>
               setTabErrors((prev) => ({ ...prev, "claw-proxy": hasError }))
             }
+            focusSubTab={clawProxyFocusSubTab}
+            onFocusSubTabConsumed={consumeClawProxyFocusSubTab}
           />
         );
       case "logs":
@@ -370,6 +399,8 @@ function App() {
             onModelStatusChange={(hasError) =>
               setTabErrors((prev) => ({ ...prev, "llm-proxy": hasError }))
             }
+            focusSubTab={llmProxyFocusSubTab}
+            onFocusSubTabConsumed={consumeLlmProxyFocusSubTab}
           />
         );
       case "template-editor":
@@ -739,6 +770,16 @@ function App() {
             setTestingSubTab("rag-tests");
           }}
         />
+      )}
+      {sessionId && (
+        <ProxiesLiveNotificationBridge
+          onOpenLlmProxyTrace={handleOpenLlmProxyTrace}
+          onOpenClawJournal={handleOpenClawJournal}
+          onOpenClawTraces={handleOpenClawTraces}
+        />
+      )}
+      {sessionId && (
+        <InfrastructureAlertsBridge pollIntervalSec={serviceStatusPollIntervalSec} />
       )}
       {sessionId && <NotificationCenterShell />}
     </div>

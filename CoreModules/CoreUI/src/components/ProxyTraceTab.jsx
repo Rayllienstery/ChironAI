@@ -38,7 +38,7 @@ function toPct(n, d) {
   return Math.max(0, Math.min(999, v));
 }
 
-function traceModelFields(trace) {
+export function traceModelFields(trace) {
   if (!trace) {
     return { headerShort: 'N/A', ollama: null, requested: null, actual: null };
   }

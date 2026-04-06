@@ -1,12 +1,20 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ClawProxyPanel from './ClawProxyPanel';
 import ClawMcpPanel from './ClawMcpPanel';
 import ClawProxyJournalTab from './ClawProxyJournalTab';
 import '../styles/components/DashboardTab.css';
 import '../styles/components/CoreUIPillTabs.css';
 
-function ClawProxyTab({ onNavigateToRag, onModelStatusChange }) {
+function ClawProxyTab({ onNavigateToRag, onModelStatusChange, focusSubTab, onFocusSubTabConsumed }) {
   const [subTab, setSubTab] = useState('proxy');
+
+  useEffect(() => {
+    if (!focusSubTab) return;
+    setSubTab(focusSubTab);
+    if (typeof onFocusSubTabConsumed === 'function') {
+      onFocusSubTabConsumed();
+    }
+  }, [focusSubTab, onFocusSubTabConsumed]);
 
   return (
     <div className="dashboard-tab">

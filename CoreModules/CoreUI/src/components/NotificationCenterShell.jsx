@@ -35,6 +35,7 @@ function NotificationCenterShell() {
     liveActivities,
     dismissPersisted,
     clearPersisted,
+    suppressLiveActivity,
   } = useNotificationCenter();
   const [menuOpen, setMenuOpen] = useState(false);
   const rootRef = useRef(null);
@@ -52,7 +53,9 @@ function NotificationCenterShell() {
 
   if (!sessionId) return null;
 
-  const activePersisted = persisted.filter((n) => !n.dismissed_at);
+  const activePersisted = persisted.filter(
+    (n) => !n.dismissed_at && !n.metadata?.historyOnly,
+  );
   const history = [...persisted].sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
 
   const liveEntries = [...liveActivities.entries()];
@@ -109,22 +112,21 @@ function NotificationCenterShell() {
             elevation="var(--md-sys-elevation-level2)"
             role="status"
           >
+            <div className="notification-center-card-header">
+              <span className="notification-center-card-header-title">{n.title}</span>
+              <button
+                type="button"
+                className="notification-center-card-close"
+                aria-label="Dismiss notification"
+                onClick={() => dismissPersisted(n.id)}
+              >
+                ×
+              </button>
+            </div>
             <div className="notification-center-card-main">
-              <div className="notification-center-card-title">{n.title}</div>
               {n.message ? (
                 <div className="notification-center-card-message">{n.message}</div>
               ) : null}
-              {n.kind === 'error' && (
-                <div className="notification-center-card-actions">
-                  <button
-                    type="button"
-                    className="coreui-btn coreui-btn-small coreui-btn-primary"
-                    onClick={() => dismissPersisted(n.id)}
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              )}
             </div>
             <ModuleFooter source={n.source} />
           </Card>
@@ -137,6 +139,19 @@ function NotificationCenterShell() {
             elevation="var(--md-sys-elevation-level2)"
             role="status"
           >
+            <div className="notification-center-card-header">
+              <span className="notification-center-card-header-title">
+                {notificationModuleLabel(source)}
+              </span>
+              <button
+                type="button"
+                className="notification-center-card-close"
+                aria-label="Close notification"
+                onClick={() => suppressLiveActivity(id)}
+              >
+                ×
+              </button>
+            </div>
             <div className="notification-center-card-live-slot">{node}</div>
             <ModuleFooter source={source} />
           </Card>

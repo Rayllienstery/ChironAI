@@ -13,8 +13,13 @@ export default function RagTestRunNotificationBridge({
   onCancel,
   onGoToRagTests,
 }) {
-  const { setLiveActivity, clearLiveActivity, persistNotification, sessionId } =
-    useNotificationCenter();
+  const {
+    setLiveActivity,
+    clearLiveActivity,
+    clearLiveSuppression,
+    persistNotification,
+    sessionId,
+  } = useNotificationCenter();
   const lastProgressRef = useRef(null);
   const prevActiveRef = useRef(false);
 
@@ -27,6 +32,7 @@ export default function RagTestRunNotificationBridge({
   useEffect(() => {
     const active = !!(ragTestRunning || ragTestRunJobId);
     if (active) {
+      clearLiveSuppression('rag-tests-run');
       setLiveActivity(
         'rag-tests-run',
         'rag-tests',
@@ -53,6 +59,7 @@ export default function RagTestRunNotificationBridge({
     onGoToRagTests,
     setLiveActivity,
     clearLiveActivity,
+    clearLiveSuppression,
   ]);
 
   useEffect(() => {

@@ -576,6 +576,7 @@ function CrawlerTab() {
       nc?.clearLiveActivity?.("crawler-progress");
       return undefined;
     }
+    nc.clearLiveSuppression?.("crawler-progress");
     nc.setLiveActivity(
       "crawler-progress",
       "crawler",
@@ -1048,6 +1049,7 @@ function CrawlerTab() {
       nc?.clearLiveActivity?.("crawler-create-collection");
       return undefined;
     }
+    nc.clearLiveSuppression?.("crawler-create-collection");
     nc.setLiveActivity(
       "crawler-create-collection",
       "crawler",

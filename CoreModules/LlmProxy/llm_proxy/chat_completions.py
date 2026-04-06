@@ -269,6 +269,7 @@ def run_chat_completions(
     if not messages:
         return jsonify({"error": "messages is required"}), 400
     body["messages"] = messages
+    w.set_proxy_status(w.status_rag_search)
 
     proxy_settings: dict[str, object] = {}
     proxy_model_setting = ""
@@ -361,6 +362,7 @@ def run_chat_completions(
     if is_autocomplete:
         proxy_autocomplete_ollama = w.get_autocomplete_ollama_model()
         if not proxy_autocomplete_ollama:
+            w.set_proxy_status(w.status_idle)
             return jsonify(
                 {
                     "error": (
@@ -387,6 +389,7 @@ def run_chat_completions(
     if system_prefix is None:
         _pn = str(proxy_settings.get("prompt_name") or "").strip()
         if not _pn or not rag_prompt_file_exists(_pn):
+            w.set_proxy_status(w.status_idle)
             return jsonify(
                 {
                     "error": (
@@ -401,6 +404,7 @@ def run_chat_completions(
             if not proxy_model_setting or is_rag_logical_model_id(
                 proxy_model_setting.strip(), rt.rag_model_logical_id
             ):
+                w.set_proxy_status(w.status_idle)
                 return jsonify(
                     {
                         "error": (
@@ -411,7 +415,6 @@ def run_chat_completions(
                 ), 400
             proxy_ollama_for_logical_id = proxy_model_setting
 
-    w.set_proxy_status(w.status_rag_search)
     last_user = w.last_user_content(messages)
     user_query = last_user  # Store for logging
     selected_edit_tool_name = _select_edit_tool_name(tools, user_query)

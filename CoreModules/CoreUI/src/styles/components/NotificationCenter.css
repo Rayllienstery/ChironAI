@@ -1,14 +1,66 @@
+@keyframes notification-card-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(40px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes notification-popover-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(36px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
 .notification-center-root {
+  --notification-center-panel-width: min(340px, calc(100vw - 32px));
+
   position: fixed;
   right: var(--md-sys-spacing-md);
   bottom: var(--md-sys-spacing-md);
   z-index: 998;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: stretch;
   gap: var(--md-sys-spacing-sm);
-  max-width: min(360px, calc(100vw - 32px));
+  width: var(--notification-center-panel-width);
+  max-width: var(--notification-center-panel-width);
   pointer-events: none;
+}
+
+/* Shadows: same tokens as CoreUI (tokens.css --md-sys-elevation-level*). */
+.notification-center-root .notification-center-card.app-card {
+  --app-card-box-shadow: var(--md-sys-elevation-level2) !important;
+  box-shadow: var(--md-sys-elevation-level2) !important;
+  border-radius: var(--app-card-radius, var(--md-sys-shape-corner-medium)) !important;
+  overflow: hidden;
+  border: 1px solid var(--md-sys-color-outline-variant) !important;
+  animation: notification-card-enter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-center-root .notification-center-card.app-card,
+  .notification-center-popover {
+    animation: none;
+  }
+}
+
+.notification-center-root .notification-center-bell-capsule.app-card {
+  --app-card-box-shadow: var(--md-sys-elevation-level3) !important;
+  box-shadow: var(--md-sys-elevation-level3) !important;
+  align-self: flex-end;
 }
 
 .notification-center-root > * {
@@ -18,11 +70,19 @@
 .notification-center-stack {
   display: flex;
   flex-direction: column-reverse;
-  align-items: flex-end;
+  align-items: stretch;
   gap: var(--md-sys-spacing-sm);
   max-height: min(420px, calc(100vh - 140px));
   overflow-x: hidden;
   overflow-y: auto;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  /* Reserve gutter so card width matches the History popover when scrollbar appears */
+  scrollbar-gutter: stable;
+  /* Padding so box-shadow is not clipped by overflow */
+  padding: 8px 6px;
+  margin: -2px -6px;
 }
 
 .notification-center-bell-capsule {
@@ -49,13 +109,60 @@
 
 .notification-center-card {
   width: 100%;
-  max-width: 340px;
-  padding: 12px 14px 10px;
-  border: 1px solid var(--md-sys-color-outline-variant);
+  max-width: none;
+  padding: 10px 12px 10px;
+  border: none;
   display: flex;
   flex-direction: column;
   gap: 0;
   min-width: 0;
+  align-self: stretch;
+  background-clip: padding-box;
+}
+
+.notification-center-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+
+.notification-center-card-header-title {
+  font: var(--md-sys-typescale-title-small-font);
+  color: var(--md-sys-color-on-surface);
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.notification-center-card-close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: -6px -8px -6px 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--md-sys-shape-corner-full, 999px);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.notification-center-card-close:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+  color: var(--md-sys-color-on-surface);
+}
+
+.notification-center-card-close:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
 }
 
 .notification-center-card--error {
@@ -96,6 +203,162 @@
   background: transparent;
 }
 
+.notification-center-card--live {
+  border-left: 3px solid var(--md-sys-color-primary, var(--md-sys-color-secondary));
+}
+
+.notification-proxy-embed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.proxy-live-notification-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.proxy-live-notification-title {
+  font: var(--md-sys-typescale-title-small-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.proxy-live-notification-pulse {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--md-sys-color-primary, #6750a4);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--md-sys-color-primary, #6750a4) 45%, transparent);
+  animation: proxy-live-pulse 1.4s ease-out infinite;
+}
+
+@keyframes proxy-live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--md-sys-color-primary, #6750a4) 40%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--md-sys-color-primary, #6750a4) 0%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--md-sys-color-primary, #6750a4) 0%, transparent);
+  }
+}
+
+.proxy-live-notification-status,
+.proxy-live-notification-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  font: var(--md-sys-typescale-body-small-font);
+  min-width: 0;
+}
+
+.proxy-live-notification-row--inline {
+  flex-wrap: nowrap;
+}
+
+.proxy-live-notification-label {
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-small-font);
+  flex-shrink: 0;
+}
+
+.proxy-live-notification-value {
+  color: var(--md-sys-color-on-surface);
+  word-break: break-word;
+  min-width: 0;
+}
+
+.proxy-live-notification-mono {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+}
+
+.proxy-live-notification-sep {
+  color: var(--md-sys-color-outline);
+  user-select: none;
+}
+
+.proxy-live-notification-step .proxy-live-notification-value {
+  font: var(--md-sys-typescale-label-medium-font);
+}
+
+.proxy-live-notification-error {
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-error);
+  padding: 6px 8px;
+  border-radius: var(--md-sys-shape-corner-small, 6px);
+  background: color-mix(in srgb, var(--md-sys-color-error) 12%, transparent);
+  word-break: break-word;
+}
+
+.proxy-live-notification-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.notification-proxy-winddown {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  min-width: 0;
+}
+
+.notification-proxy-winddown-ring {
+  flex-shrink: 0;
+  color: var(--md-sys-color-primary);
+}
+
+.notification-proxy-winddown-ring-track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--md-sys-color-outline) 35%, transparent);
+  stroke-width: 3;
+}
+
+.notification-proxy-winddown-ring-progress {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+.notification-proxy-winddown-digit {
+  font: var(--md-sys-typescale-headline-small-font);
+  font-weight: 600;
+  fill: var(--md-sys-color-on-surface);
+}
+
+.notification-proxy-winddown-hint {
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-center-card-live-slot .proxy-live-notification-title {
+  display: none;
+}
+
+.notification-center-card-live-slot .proxy-live-notification-header {
+  justify-content: flex-end;
+  min-height: 0;
+}
+
+.notification-center-card-live-slot .proxy-live-notification-header--empty {
+  display: none;
+}
+
 .notification-center-module-footer {
   margin-top: auto;
   padding-top: 8px;
@@ -107,7 +370,10 @@
 }
 
 .notification-center-popover {
-  width: min(340px, calc(100vw - 32px));
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   max-height: min(70vh, 520px);
   display: flex;
   flex-direction: column;
@@ -116,8 +382,11 @@
   background: color-mix(in srgb, var(--md-sys-color-surface) 92%, transparent);
   backdrop-filter: blur(20px) saturate(1.2);
   -webkit-backdrop-filter: blur(20px) saturate(1.2);
-  box-shadow: var(--md-sys-elevation-level3);
+  box-shadow: var(--md-sys-elevation-level2);
   overflow: hidden;
+  align-self: stretch;
+  animation: notification-popover-enter 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+  scrollbar-gutter: stable;
 }
 
 .notification-center-popover-header {
@@ -125,8 +394,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 10px 6px 10px 12px;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.notification-center-popover-header button {
+  margin-left: auto;
+  margin-right: 0;
+  flex-shrink: 0;
 }
 
 .notification-center-popover-title {

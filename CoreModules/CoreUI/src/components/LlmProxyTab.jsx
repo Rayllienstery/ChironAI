@@ -25,7 +25,14 @@ const SUB_TABS = [
   { id: 'web-interaction', label: 'Web Interaction' },
 ];
 
-function LlmProxyTab({ onOpenRagModels, onNavigateToRag, onOpenLogs, onModelStatusChange }) {
+function LlmProxyTab({
+  onOpenRagModels,
+  onNavigateToRag,
+  onOpenLogs,
+  onModelStatusChange,
+  focusSubTab,
+  onFocusSubTabConsumed,
+}) {
   const [subTab, setSubTab] = useState('overview');
   const [proxyStatus, setProxyStatus] = useState(null);
   const [statusErr, setStatusErr] = useState(null);
@@ -48,6 +55,14 @@ function LlmProxyTab({ onOpenRagModels, onNavigateToRag, onOpenLogs, onModelStat
   useEffect(() => {
     refreshStatus();
   }, [refreshStatus]);
+
+  useEffect(() => {
+    if (!focusSubTab) return;
+    setSubTab(focusSubTab);
+    if (typeof onFocusSubTabConsumed === 'function') {
+      onFocusSubTabConsumed();
+    }
+  }, [focusSubTab, onFocusSubTabConsumed]);
 
   const proxyInfrastructure = useMemo(() => {
     if (!proxyStatus) return null;

@@ -131,4 +131,5 @@ def webui_assets(filename: str):
 
 if __name__ == "__main__":
     port = get_server_port()
-    app.run(host="0.0.0.0", port=port)
+    # Allow GET /proxy-trace/current (and other polls) while a long POST /v1/chat/completions runs.
+    app.run(host="0.0.0.0", port=port, threaded=True)

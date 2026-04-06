@@ -19,6 +19,7 @@ const NotificationCenterContext = createContext(undefined);
 export function NotificationCenterProvider({ sessionId, children }) {
   const [persisted, setPersisted] = useState([]);
   const [liveMap, setLiveMap] = useState(() => new Map());
+  const [liveSuppressedIds, setLiveSuppressedIds] = useState(() => []);
   const liveMapRef = useRef(liveMap);
   liveMapRef.current = liveMap;
 
@@ -55,6 +56,23 @@ export function NotificationCenterProvider({ sessionId, children }) {
       next.delete(String(id));
       return next;
     });
+  }, []);
+
+  const suppressLiveActivity = useCallback((id) => {
+    if (id == null || id === '') return;
+    const sid = String(id);
+    setLiveMap((prev) => {
+      const next = new Map(prev);
+      next.delete(sid);
+      return next;
+    });
+    setLiveSuppressedIds((prev) => (prev.includes(sid) ? prev : [...prev, sid]));
+  }, []);
+
+  const clearLiveSuppression = useCallback((id) => {
+    if (id == null || id === '') return;
+    const sid = String(id);
+    setLiveSuppressedIds((prev) => prev.filter((x) => x !== sid));
   }, []);
 
   const persistNotification = useCallback(
@@ -100,9 +118,12 @@ export function NotificationCenterProvider({ sessionId, children }) {
       sessionId,
       persisted,
       liveActivities: liveMap,
+      liveSuppressedIds,
       refreshPersisted,
       setLiveActivity,
       clearLiveActivity,
+      suppressLiveActivity,
+      clearLiveSuppression,
       persistNotification,
       dismissPersisted,
       clearPersisted,
@@ -111,9 +132,12 @@ export function NotificationCenterProvider({ sessionId, children }) {
       sessionId,
       persisted,
       liveMap,
+      liveSuppressedIds,
       refreshPersisted,
       setLiveActivity,
       clearLiveActivity,
+      suppressLiveActivity,
+      clearLiveSuppression,
       persistNotification,
       dismissPersisted,
       clearPersisted,

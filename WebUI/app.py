@@ -1633,7 +1633,7 @@ if __name__ == "__main__":
 
         logging.getLogger("werkzeug").setLevel(logging.WARNING)
         port = get_webui_port()
-        app.run(host="0.0.0.0", port=port)
+        app.run(host="0.0.0.0", port=port, threaded=True)
         sys.exit(0)
 
     # CLI mode: enable progress bars and disable SSE log accumulation
