@@ -38,15 +38,6 @@
   border: 1px solid var(--md-sys-color-outline-variant);
 }
 
-.crawler-progress-panel-fixed {
-  position: fixed;
-  right: 24px;
-  bottom: 96px;
-  z-index: 999;
-  min-width: 280px;
-  max-width: 420px;
-}
-
 .crawler-progress-header {
   display: flex;
   align-items: center;
@@ -692,6 +683,16 @@
 
 .create-collection-toast-failed {
   border-color: var(--md-sys-color-error);
+}
+
+.create-collection-toast--embed {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  z-index: auto;
+  min-width: 0;
+  max-width: 100%;
+  box-shadow: none;
 }
 
 /* Detailed create-collection / indexing progress */

@@ -2,20 +2,20 @@ import React from 'react';
 import Card from './Card';
 import '../styles/components/RagTestRunPanel.css';
 
-function RagTestRunPanel({ running, runProgress, runError, onCancel, onGoToRagTests }) {
+export function RagTestRunPanelBody({
+  running,
+  runProgress,
+  runError,
+  onCancel,
+  onGoToRagTests,
+}) {
   const progress = runProgress || {};
   const total = progress.total || 0;
   const current = progress.current_index || 0;
   const pct = total ? Math.round((current / total) * 100) : 0;
 
   return (
-    <Card
-      className="rag-test-run-panel"
-      role="status"
-      aria-live="polite"
-      aria-label="RAG tests run progress"
-      elevation="var(--md-sys-elevation-level3)"
-    >
+    <>
       <div className="rag-test-run-panel-header">
         <span className="rag-test-run-panel-title">
           {running ? (
@@ -80,6 +80,20 @@ function RagTestRunPanel({ running, runProgress, runError, onCancel, onGoToRagTe
           </p>
         )}
       </div>
+    </>
+  );
+}
+
+function RagTestRunPanel(props) {
+  return (
+    <Card
+      className="rag-test-run-panel rag-test-run-panel--docked"
+      role="status"
+      aria-live="polite"
+      aria-label="RAG tests run progress"
+      elevation="var(--md-sys-elevation-level3)"
+    >
+      <RagTestRunPanelBody {...props} />
     </Card>
   );
 }

@@ -74,3 +74,20 @@ CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
 CREATE INDEX IF NOT EXISTS idx_tester_settings_session_id ON model_tester_settings(session_id);
 CREATE INDEX IF NOT EXISTS idx_rag_test_runs_created_at ON rag_test_runs(created_at);
 
+-- CoreUI notification center (errors + history events; not mixed with logs)
+CREATE TABLE IF NOT EXISTS coreui_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    source TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL DEFAULT '',
+    metadata TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    dismissed_at TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_coreui_notifications_session ON coreui_notifications(session_id);
+CREATE INDEX IF NOT EXISTS idx_coreui_notifications_created ON coreui_notifications(created_at);
+

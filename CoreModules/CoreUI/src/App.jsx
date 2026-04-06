@@ -49,7 +49,9 @@ import {
   cancelRagTestRun,
 } from "./services/api";
 import Sparkline from "./components/Sparkline";
-import RagTestRunPanel from "./components/RagTestRunPanel";
+import { NotificationCenterProvider } from "./components/NotificationCenterContext";
+import NotificationCenterShell from "./components/NotificationCenterShell";
+import RagTestRunNotificationBridge from "./components/RagTestRunNotificationBridge";
 import "./styles/layout.css";
 import "./styles/default-card.css";
 import "./styles/sidebar.css";
@@ -486,6 +488,7 @@ function App() {
       : tabs.find((t) => t.id === activeTab)?.label ?? "";
 
   return (
+    <NotificationCenterProvider sessionId={sessionId}>
     <div className="app">
       <SidebarNav
         tabs={tabs}
@@ -499,11 +502,6 @@ function App() {
       <div className="app-main-column">
         <header className="app-header">
           <div className="app-header-row">
-            <div className="app-header-titleblock">
-              <span className="app-header-page" aria-current="page">
-                {headerPageLabel}
-              </span>
-            </div>
             <div className="app-header-status">
             <Card className="status-pill">
               <span
@@ -729,11 +727,12 @@ function App() {
         </main>
       </div>
 
-      {sessionId && (ragTestRunning || ragTestRunJobId) && (
-        <RagTestRunPanel
-          running={ragTestRunning}
-          runProgress={ragTestRunProgress}
-          runError={ragTestRunError}
+      {sessionId && (
+        <RagTestRunNotificationBridge
+          ragTestRunning={ragTestRunning}
+          ragTestRunJobId={ragTestRunJobId}
+          ragTestRunProgress={ragTestRunProgress}
+          ragTestRunError={ragTestRunError}
           onCancel={handleRagTestRunCancel}
           onGoToRagTests={() => {
             setActiveTab("testing");
@@ -741,7 +740,9 @@ function App() {
           }}
         />
       )}
+      {sessionId && <NotificationCenterShell />}
     </div>
+    </NotificationCenterProvider>
   );
 }
 

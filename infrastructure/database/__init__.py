@@ -9,6 +9,10 @@ from infrastructure.database.rag_test_runs_repository import (
     RagTestRunsRepository,
     get_rag_test_runs_repository,
 )
+from infrastructure.database.notifications_repository import (
+    NotificationsRepository,
+    get_notifications_repository,
+)
 
 __all__ = [
     "SessionManager",
@@ -19,5 +23,7 @@ __all__ = [
     "get_settings_repository",
     "RagTestRunsRepository",
     "get_rag_test_runs_repository",
+    "NotificationsRepository",
+    "get_notifications_repository",
 ]
 

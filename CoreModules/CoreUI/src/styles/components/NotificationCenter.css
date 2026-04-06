@@ -1,0 +1,186 @@
+.notification-center-root {
+  position: fixed;
+  right: var(--md-sys-spacing-md);
+  bottom: var(--md-sys-spacing-md);
+  z-index: 998;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--md-sys-spacing-sm);
+  max-width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.notification-center-root > * {
+  pointer-events: auto;
+}
+
+.notification-center-stack {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: var(--md-sys-spacing-sm);
+  max-height: min(420px, calc(100vh - 140px));
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.notification-center-bell-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 12px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 999px;
+  cursor: pointer;
+  font: var(--md-sys-typescale-label-medium-font);
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface) !important;
+}
+
+.notification-center-bell-capsule:hover {
+  filter: brightness(1.02);
+}
+
+.notification-center-bell-svg {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.notification-center-card {
+  width: 100%;
+  max-width: 340px;
+  padding: 12px 14px 10px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+
+.notification-center-card--error {
+  border-color: var(--md-sys-color-error-outline, var(--md-sys-color-error));
+}
+
+.notification-center-card-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-center-card-title {
+  font: var(--md-sys-typescale-title-small-font);
+  color: var(--md-sys-color-on-surface);
+  margin-bottom: 6px;
+}
+
+.notification-center-card-message {
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+  word-break: break-word;
+  margin-bottom: 8px;
+}
+
+.notification-center-card-actions {
+  margin-bottom: 8px;
+}
+
+.notification-center-card-live-slot {
+  min-width: 0;
+  margin-bottom: 8px;
+}
+
+.notification-center-card-live-slot .rag-test-run-panel-embed {
+  box-shadow: none;
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
+.notification-center-module-footer {
+  margin-top: auto;
+  padding-top: 8px;
+  font: var(--md-sys-typescale-label-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+  text-align: left;
+  align-self: stretch;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.notification-center-popover {
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(70vh, 520px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--md-sys-shape-corner-large);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: color-mix(in srgb, var(--md-sys-color-surface) 92%, transparent);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  box-shadow: var(--md-sys-elevation-level3);
+  overflow: hidden;
+}
+
+.notification-center-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.notification-center-popover-title {
+  font: var(--md-sys-typescale-title-small-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.notification-center-popover-list {
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+.notification-center-popover-empty {
+  margin: 16px 12px;
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.notification-center-popover-row {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.notification-center-popover-row:last-child {
+  border-bottom: none;
+}
+
+.notification-center-popover-row--error .notification-center-popover-row-title {
+  color: var(--md-sys-color-error);
+}
+
+.notification-center-popover-row-title {
+  font: var(--md-sys-typescale-label-large-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.notification-center-popover-row-msg {
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+  margin-top: 4px;
+  word-break: break-word;
+}
+
+.notification-center-popover-row-meta {
+  margin-top: 4px;
+  font: var(--md-sys-typescale-label-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.notification-center-popover-row .notification-center-module-footer {
+  border-top: none;
+  padding-top: 6px;
+  margin-top: 4px;
+}

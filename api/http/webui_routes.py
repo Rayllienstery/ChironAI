@@ -176,6 +176,7 @@ from chironai_rag.consumers import RAG_COLLECTION_APP_SETTING, RagConsumer
 from infrastructure.database import (
     get_session_manager,
     get_logs_repository,
+    get_notifications_repository,
     get_settings_repository,
     get_rag_test_runs_repository,
 )
@@ -827,6 +828,104 @@ def get_logs() -> Any:
         return jsonify({"logs": logs})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_logs", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/notifications", methods=["GET"])
+def get_coreui_notifications() -> Any:
+    """List CoreUI notification center entries for a session."""
+    try:
+        session_id = request.args.get("session_id")
+        if not session_id:
+            return jsonify({"error": "session_id is required"}), 400
+        limit = min(500, max(1, int(request.args.get("limit", 200))))
+        include_raw = (request.args.get("include_dismissed") or "true").strip().lower()
+        include_dismissed = include_raw in ("1", "true", "yes")
+        repo = get_notifications_repository()
+        items = repo.list_notifications(
+            session_id=session_id,
+            limit=limit,
+            include_dismissed=include_dismissed,
+        )
+        return jsonify({"notifications": items})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_coreui_notifications", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/notifications", methods=["POST"])
+def create_coreui_notification() -> Any:
+    """Create a persisted notification (error or event)."""
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        session_id = body.get("session_id")
+        kind = (body.get("kind") or "event").strip().lower()
+        source = (body.get("source") or "").strip()
+        title = (body.get("title") or "").strip()
+        message = body.get("message") or ""
+        metadata = body.get("metadata")
+
+        if not session_id:
+            return jsonify({"error": "session_id is required"}), 400
+        if kind not in ("error", "event", "info"):
+            return jsonify({"error": "kind must be error, event, or info"}), 400
+        if not source:
+            return jsonify({"error": "source is required"}), 400
+        if not title:
+            return jsonify({"error": "title is required"}), 400
+        if not isinstance(message, str):
+            message = str(message)
+        if len(message) > 8000:
+            message = message[:8000] + "…"
+        meta_dict: Optional[dict[str, Any]] = None
+        if metadata is not None:
+            if not isinstance(metadata, dict):
+                return jsonify({"error": "metadata must be an object"}), 400
+            meta_dict = metadata
+
+        nid = get_notifications_repository().add_notification(
+            session_id=session_id,
+            kind=kind,
+            source=source,
+            title=title,
+            message=message,
+            metadata=meta_dict,
+        )
+        return jsonify({"id": nid})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.create_coreui_notification", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/notifications/<int:nid>/dismiss", methods=["PATCH"])
+def dismiss_coreui_notification(nid: int) -> Any:
+    """Mark a notification as dismissed."""
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        session_id = body.get("session_id") or request.args.get("session_id")
+        if not session_id:
+            return jsonify({"error": "session_id is required"}), 400
+        ok = get_notifications_repository().dismiss(session_id, nid)
+        if not ok:
+            return jsonify({"error": "not found or already dismissed"}), 404
+        return jsonify({"ok": True})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.dismiss_coreui_notification", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/notifications/clear", methods=["POST"])
+def clear_coreui_notifications() -> Any:
+    """Remove all persisted notifications for the session (live activities unaffected)."""
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        session_id = body.get("session_id")
+        if not session_id:
+            return jsonify({"error": "session_id is required"}), 400
+        deleted = get_notifications_repository().clear_session(session_id)
+        return jsonify({"deleted": deleted})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.clear_coreui_notifications", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 

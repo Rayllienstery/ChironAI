@@ -43,30 +43,11 @@ html, body {
 .app-header-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: var(--md-sys-spacing-lg);
 }
 
-.app-header-titleblock {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
 
-.app-header-crumb {
-  font: var(--md-sys-typescale-label-small-font);
-  color: var(--md-sys-color-on-surface-variant);
-  text-transform: capitalize;
-}
-
-.app-header-page {
-  font: var(--md-sys-typescale-title-large-font);
-  color: var(--md-sys-color-on-surface);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 .app-header-metrics {
   display: flex;

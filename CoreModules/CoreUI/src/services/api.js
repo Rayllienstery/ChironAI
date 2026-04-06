@@ -135,6 +135,66 @@ export async function getLogs(sessionId, options = {}) {
   return response.json();
 }
 
+export async function getCoreuiNotifications(sessionId, options = {}) {
+  const params = new URLSearchParams({ session_id: sessionId });
+  if (options.limit != null) params.set('limit', String(options.limit));
+  if (options.includeDismissed === false) {
+    params.set('include_dismissed', 'false');
+  }
+  const response = await fetch(`${API_BASE}/notifications?${params}`);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to get notifications');
+  }
+  return response.json();
+}
+
+export async function createCoreuiNotification(sessionId, payload) {
+  const response = await fetch(`${API_BASE}/notifications`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: sessionId,
+      kind: payload.kind || 'event',
+      source: payload.source,
+      title: payload.title,
+      message: payload.message ?? '',
+      metadata: payload.metadata,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to create notification');
+  }
+  return data;
+}
+
+export async function dismissCoreuiNotification(sessionId, notificationId) {
+  const response = await fetch(`${API_BASE}/notifications/${notificationId}/dismiss`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to dismiss notification');
+  }
+  return data;
+}
+
+export async function clearCoreuiNotifications(sessionId) {
+  const response = await fetch(`${API_BASE}/notifications/clear`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to clear notifications');
+  }
+  return data;
+}
+
 export async function clearLogs(sessionId, options = {}) {
   const params = new URLSearchParams({ session_id: sessionId });
   if (options.includeSystem === false) {

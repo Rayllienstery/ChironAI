@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Card from "./Card";
 import {
   getCrawlerSources,
@@ -24,6 +24,7 @@ import {
 import "../styles/components/CoreUIButtons.css";
 import "../styles/components/CrawlerTab.css";
 import "../styles/components/CoreUIPillTabs.css";
+import { useOptionalNotificationCenter } from "./NotificationCenterContext";
 
 const MD_STEP_TYPES_META = [
   {
@@ -273,6 +274,7 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
 }
 
 function CrawlerTab() {
+  const nc = useOptionalNotificationCenter();
   const [loading, setLoading] = useState(true);
   const [sources, setSources] = useState([]);
   const [selectedSource, setSelectedSource] = useState(null);
@@ -323,6 +325,8 @@ function CrawlerTab() {
   });
   const [updatingSource, setUpdatingSource] = useState(false);
   const [crawlAllResults, setCrawlAllResults] = useState([]);
+  const crawlPersistedCountRef = useRef(0);
+  const createPersistedJobRef = useRef(null);
   const [selectedSourceIds, setSelectedSourceIds] = useState(new Set());
 
   const [activeSection, setActiveSection] = useState("crawler");
@@ -505,6 +509,88 @@ function CrawlerTab() {
       }
     };
   }, [createProgress, showCreateToast]);
+
+  useEffect(() => {
+    if (!createJobId) {
+      createPersistedJobRef.current = null;
+    }
+  }, [createJobId]);
+
+  useEffect(() => {
+    if (!nc?.persistNotification || !createJobId || !createProgress) return;
+    const st = createProgress.status;
+    if (st !== "success" && st !== "failed") return;
+    if (createPersistedJobRef.current === createJobId) return;
+    createPersistedJobRef.current = createJobId;
+    const name =
+      createCollectionName || createForm.collection_name || "Collection";
+    nc.persistNotification({
+      kind: st === "failed" ? "error" : "event",
+      source: "crawler",
+      title: st === "success" ? "Collection created" : "Collection failed",
+      message:
+        st === "failed"
+          ? String(createProgress.error || "").slice(0, 400)
+          : `Indexed ${createProgress.indexed_pages ?? 0} pages, ${createProgress.total_chunks ?? 0} chunks (${name})`,
+    });
+  }, [
+    nc,
+    createJobId,
+    createProgress,
+    createCollectionName,
+    createForm.collection_name,
+  ]);
+
+  useEffect(() => {
+    if (!nc?.persistNotification) return;
+    const len = crawlAllResults.length;
+    if (len === 0) {
+      crawlPersistedCountRef.current = 0;
+      return;
+    }
+    if (len <= crawlPersistedCountRef.current) return;
+    const newRows = crawlAllResults.slice(crawlPersistedCountRef.current);
+    crawlPersistedCountRef.current = len;
+    for (const r of newRows) {
+      const srcLabel =
+        sources.find((s) => s.id === r.sourceId)?.id || r.sourceId;
+      nc.persistNotification({
+        kind: r.success ? "event" : "error",
+        source: "crawler",
+        title: r.success ? "Crawl finished" : "Crawl failed",
+        message: r.success
+          ? `Source: ${srcLabel}`
+          : `${srcLabel}: ${String(
+              r.error || `exit ${r.returnCode ?? "?"}`,
+            ).slice(0, 400)}`,
+      });
+    }
+  }, [crawlAllResults, nc, sources]);
+
+  useEffect(() => {
+    if (
+      !nc ||
+      activeSection !== "crawler" ||
+      crawlingSources.size === 0
+    ) {
+      nc?.clearLiveActivity?.("crawler-progress");
+      return undefined;
+    }
+    nc.setLiveActivity(
+      "crawler-progress",
+      "crawler",
+      <Card className="crawler-progress-panel" role="status" aria-live="polite">
+        <div className="crawler-progress-header">
+          <span className="crawler-progress-spinner" aria-hidden="true" />
+          <span className="crawler-progress-title">Crawling…</span>
+          <span className="crawler-progress-sources">
+            {Array.from(crawlingSources).join(", ")}
+          </span>
+        </div>
+      </Card>,
+    );
+    return () => nc.clearLiveActivity("crawler-progress");
+  }, [nc, activeSection, crawlingSources]);
 
   // Poll crawl status for sources that are crawling
   useEffect(() => {
@@ -947,10 +1033,81 @@ function CrawlerTab() {
     }
   };
 
-  const handleCloseCreateToast = () => {
+  const handleCloseCreateToast = useCallback(() => {
     setShowCreateToast(false);
     setCreateProgress(null);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (
+      !nc ||
+      activeSection !== "crawler" ||
+      !createProgress ||
+      !showCreateToast
+    ) {
+      nc?.clearLiveActivity?.("crawler-create-collection");
+      return undefined;
+    }
+    nc.setLiveActivity(
+      "crawler-create-collection",
+      "crawler",
+      <div
+        className={`create-collection-toast create-collection-toast-${createProgress.status || "unknown"} create-collection-toast--embed`}
+        role="status"
+        aria-live="polite"
+      >
+        <div className="create-collection-toast-header">
+          <div className="create-collection-toast-title">
+            {createProgress.status === "success"
+              ? "Collection created"
+              : createProgress.status === "failed"
+                ? "Collection failed"
+                : "Creating collection…"}
+          </div>
+          <button
+            type="button"
+            className="create-collection-toast-close"
+            onClick={handleCloseCreateToast}
+            aria-label="Dismiss collection progress"
+          >
+            ×
+          </button>
+        </div>
+        <div className="create-collection-toast-body">
+          <div className="create-collection-toast-name">
+            {createCollectionName ||
+              createForm.collection_name ||
+              "Collection"}
+          </div>
+          {createProgress.status === "failed" && (
+            <div className="create-collection-toast-text create-collection-index-error-banner">
+              {(createProgress.error &&
+                String(createProgress.error).slice(0, 400)) ||
+                "Collection creation failed."}
+            </div>
+          )}
+          <CreateCollectionIndexProgress
+            progress={createProgress}
+            collectionName={
+              createCollectionName ||
+              createForm.collection_name ||
+              "Collection"
+            }
+            variant="toast"
+          />
+        </div>
+      </div>,
+    );
+    return () => nc.clearLiveActivity("crawler-create-collection");
+  }, [
+    nc,
+    activeSection,
+    createProgress,
+    showCreateToast,
+    createCollectionName,
+    createForm.collection_name,
+    handleCloseCreateToast,
+  ]);
 
   const toggleSourceSelected = (sourceId) => {
     setSelectedSourceIds((prev) => {
@@ -1216,71 +1373,6 @@ function CrawlerTab() {
           </div>
         </div>
       </div>
-
-      {activeSection === "crawler" && crawlingSources.size > 0 && (
-        <Card
-          className="crawler-progress-panel crawler-progress-panel-fixed"
-          role="status"
-          aria-live="polite"
-        >
-          <div className="crawler-progress-header">
-            <span className="crawler-progress-spinner" aria-hidden="true" />
-            <span className="crawler-progress-title">Crawling…</span>
-            <span className="crawler-progress-sources">
-              {Array.from(crawlingSources).join(", ")}
-            </span>
-          </div>
-        </Card>
-      )}
-
-      {activeSection === "crawler" && createProgress && showCreateToast && (
-        <div
-          className={`create-collection-toast create-collection-toast-${createProgress.status || "unknown"}`}
-          role="status"
-          aria-live="polite"
-        >
-          <div className="create-collection-toast-header">
-            <div className="create-collection-toast-title">
-              {createProgress.status === "success"
-                ? "Collection created"
-                : createProgress.status === "failed"
-                  ? "Collection failed"
-                  : "Creating collection…"}
-            </div>
-            <button
-              type="button"
-              className="create-collection-toast-close"
-              onClick={handleCloseCreateToast}
-              aria-label="Dismiss collection progress"
-            >
-              ×
-            </button>
-          </div>
-          <div className="create-collection-toast-body">
-            <div className="create-collection-toast-name">
-              {createCollectionName ||
-                createForm.collection_name ||
-                "Collection"}
-            </div>
-            {createProgress.status === "failed" && (
-              <div className="create-collection-toast-text create-collection-index-error-banner">
-                {(createProgress.error &&
-                  String(createProgress.error).slice(0, 400)) ||
-                  "Collection creation failed."}
-              </div>
-            )}
-            <CreateCollectionIndexProgress
-              progress={createProgress}
-              collectionName={
-                createCollectionName ||
-                createForm.collection_name ||
-                "Collection"
-              }
-              variant="toast"
-            />
-          </div>
-        </div>
-      )}
 
       {activeSection === "crawler" &&
         crawlAllResults.length > 0 &&

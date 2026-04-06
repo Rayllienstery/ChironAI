@@ -1,7 +1,4 @@
 .rag-test-run-panel {
-  position: fixed;
-  bottom: var(--md-sys-spacing-md);
-  right: var(--md-sys-spacing-md);
   width: 320px;
   max-width: calc(100vw - 24px);
   padding: 12px 14px;
@@ -9,9 +6,24 @@
   background: var(--md-sys-color-surface);
   border: 1px solid var(--md-sys-color-outline-variant);
   box-shadow: var(--md-sys-elevation-level3);
-  z-index: 998;
   font: var(--md-sys-typescale-body-small-font);
   color: var(--md-sys-color-on-surface);
+}
+
+.rag-test-run-panel--docked {
+  position: fixed;
+  bottom: var(--md-sys-spacing-md);
+  right: var(--md-sys-spacing-md);
+  z-index: 998;
+}
+
+.rag-test-run-panel-embed {
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
 }
 
 .rag-test-run-panel-header {
