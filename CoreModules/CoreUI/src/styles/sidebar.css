@@ -432,15 +432,32 @@ body.coreui-resizing * {
 }
 
 .coreui-sidebar__service-item {
-  display: flex;
+  --coreui-service-actions-inset: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--md-sys-spacing-sm);
-  padding: 6px 12px;
-  min-height: 40px;
+  column-gap: var(--md-sys-spacing-sm);
+  padding: var(--coreui-service-actions-inset) var(--coreui-service-actions-inset) var(--coreui-service-actions-inset) 12px;
+  min-height: 62px;
   box-sizing: border-box;
   border-radius: 9999px;
   border: 1px solid var(--md-sys-color-primary);
   background: transparent;
+}
+
+.coreui-sidebar__service-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-sm);
+}
+
+.coreui-sidebar__service-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  align-self: center;
+  align-items: center;
 }
 
 .coreui-sidebar__service-dot {
@@ -480,8 +497,8 @@ body.coreui-resizing * {
 
 .coreui-sidebar__service-btn {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: 25px;
+  height: 25px;
   padding: 0;
   border-radius: 50%;
   border: none;
@@ -504,9 +521,9 @@ body.coreui-resizing * {
 }
 
 .coreui-sidebar__service-btn-icon {
-  font-size: 22px;
-  width: 22px;
-  height: 22px;
+  font-size: 15px;
+  width: 15px;
+  height: 15px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -516,4 +533,15 @@ body.coreui-resizing * {
   font-style: normal;
   font-weight: normal;
   -webkit-font-smoothing: antialiased;
+}
+
+.coreui-sidebar__service-btn--open {
+  width: 18px;
+  height: 18px;
+}
+
+.coreui-sidebar__service-btn--open .coreui-sidebar__service-btn-icon {
+  font-size: 11px;
+  width: 11px;
+  height: 11px;
 }

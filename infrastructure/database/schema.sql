@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS coreui_notifications (
     title TEXT NOT NULL,
     message TEXT NOT NULL DEFAULT '',
     metadata TEXT,
+    is_console_error INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     dismissed_at TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES sessions(id)

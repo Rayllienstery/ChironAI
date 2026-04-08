@@ -57,7 +57,7 @@ function ServiceStartStopButton({ running, disabled, startLabel, stopLabel, onAc
   return (
     <button
       type="button"
-      className="coreui-sidebar__service-btn"
+      className="coreui-sidebar__service-btn coreui-sidebar__service-btn--startstop"
       disabled={disabled}
       title={label}
       aria-label={label}
@@ -77,7 +77,7 @@ function ServiceOpenResourceButton({ disabled, label, onOpen }) {
   return (
     <button
       type="button"
-      className="coreui-sidebar__service-btn"
+      className="coreui-sidebar__service-btn coreui-sidebar__service-btn--open"
       disabled={disabled}
       title={label}
       aria-label={label}
@@ -292,10 +292,12 @@ function SidebarNav({
           aria-label="Services status"
         >
           <div className="coreui-sidebar__service-item">
-            <span
-              className={`coreui-sidebar__service-dot ${statusLoading ? "updating" : ollamaStatus?.running ? "running" : "stopped"}`}
-            />
-            <span className="coreui-sidebar__service-label">Ollama</span>
+            <div className="coreui-sidebar__service-main">
+              <span
+                className={`coreui-sidebar__service-dot ${statusLoading ? "updating" : ollamaStatus?.running ? "running" : "stopped"}`}
+              />
+              <span className="coreui-sidebar__service-label">Ollama</span>
+            </div>
             <div className="coreui-sidebar__service-actions">
               <ServiceStartStopButton
                 running={Boolean(ollamaStatus?.running)}
@@ -318,10 +320,12 @@ function SidebarNav({
             </div>
           </div>
           <div className="coreui-sidebar__service-item">
-            <span
-              className={`coreui-sidebar__service-dot ${statusLoading ? "updating" : ragStatus?.running ? "running" : "stopped"}`}
-            />
-            <span className="coreui-sidebar__service-label">RAG / Qdrant</span>
+            <div className="coreui-sidebar__service-main">
+              <span
+                className={`coreui-sidebar__service-dot ${statusLoading ? "updating" : ragStatus?.running ? "running" : "stopped"}`}
+              />
+              <span className="coreui-sidebar__service-label">RAG / Qdrant</span>
+            </div>
             <div className="coreui-sidebar__service-actions">
               <ServiceStartStopButton
                 running={Boolean(ragStatus?.running)}
@@ -344,10 +348,12 @@ function SidebarNav({
             </div>
           </div>
           <div className="coreui-sidebar__service-item">
-            <span
-              className={`coreui-sidebar__service-dot ${statusLoading ? "updating" : openWebUiStatus?.running ? "running" : "stopped"}`}
-            />
-            <span className="coreui-sidebar__service-label">Open WebUI</span>
+            <div className="coreui-sidebar__service-main">
+              <span
+                className={`coreui-sidebar__service-dot ${statusLoading ? "updating" : openWebUiStatus?.running ? "running" : "stopped"}`}
+              />
+              <span className="coreui-sidebar__service-label">Open WebUI</span>
+            </div>
             <div className="coreui-sidebar__service-actions">
               <ServiceStartStopButton
                 running={Boolean(openWebUiStatus?.running)}

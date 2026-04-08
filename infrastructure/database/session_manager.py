@@ -27,7 +27,28 @@ class SessionManager:
         with sqlite3.connect(self.db_path) as conn:
             schema = _SCHEMA_PATH.read_text(encoding="utf-8")
             conn.executescript(schema)
+            self._migrate_schema(conn)
             conn.commit()
+
+    def _migrate_schema(self, conn: sqlite3.Connection) -> None:
+        """
+        Apply lightweight migrations for existing DBs.
+
+        We intentionally keep this minimal and additive only (ALTER TABLE ADD COLUMN),
+        since SQLite doesn't support many schema changes without table rebuilds.
+        """
+        try:
+            cols = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(coreui_notifications)").fetchall()
+            }
+            if "is_console_error" not in cols:
+                conn.execute(
+                    "ALTER TABLE coreui_notifications ADD COLUMN is_console_error INTEGER NOT NULL DEFAULT 0"
+                )
+        except sqlite3.OperationalError:
+            # Table might not exist yet (fresh DB) or PRAGMA failed; schema.sql covers creation.
+            pass
 
     def get_or_create_session(self, session_id: Optional[str] = None) -> dict[str, str]:
         """

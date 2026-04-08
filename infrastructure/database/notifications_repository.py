@@ -61,7 +61,7 @@ class NotificationsRepository:
             if include_dismissed:
                 rows = conn.execute(
                     """
-                    SELECT id, session_id, kind, source, title, message, metadata,
+                    SELECT id, session_id, kind, source, title, message, metadata, is_console_error,
                            created_at, dismissed_at
                     FROM coreui_notifications
                     WHERE session_id = ?
@@ -73,7 +73,7 @@ class NotificationsRepository:
             else:
                 rows = conn.execute(
                     """
-                    SELECT id, session_id, kind, source, title, message, metadata,
+                    SELECT id, session_id, kind, source, title, message, metadata, is_console_error,
                            created_at, dismissed_at
                     FROM coreui_notifications
                     WHERE session_id = ? AND dismissed_at IS NULL

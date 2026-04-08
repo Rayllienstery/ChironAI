@@ -266,6 +266,58 @@ _ERROR_LOG = get_webui_error_logger()
 
 webui_bp = Blueprint("webui", __name__, url_prefix="/api/webui")
 
+_SERVICE_STATUS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_SERVICE_STATUS_CACHE_LOCK = threading.Lock()
+
+
+def _get_cached_status(key: str, ttl_sec: float, compute: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+    now = time.time()
+    with _SERVICE_STATUS_CACHE_LOCK:
+        hit = _SERVICE_STATUS_CACHE.get(key)
+        if hit is not None:
+            ts, payload = hit
+            if now - ts <= ttl_sec:
+                return payload
+    payload = compute()
+    with _SERVICE_STATUS_CACHE_LOCK:
+        _SERVICE_STATUS_CACHE[key] = (now, payload)
+    return payload
+
+
+_LAST_QDRANT_WARN_AT: float = 0.0
+
+
+def _qdrant_status_snapshot(timeout_sec: float) -> dict[str, Any]:
+    url = get_qdrant_url().rstrip("/")
+    status: dict[str, Any] = {"url": url, "running": False}
+    try:
+        resp = requests.get(f"{url}/collections", timeout=timeout_sec)
+        status["http_status"] = resp.status_code
+        if resp.ok:
+            data = resp.json() or {}
+            collections = data.get("result", {}).get("collections", [])
+            status["running"] = True
+            status["collections_count"] = len(collections)
+            try:
+                version_resp = requests.get(f"{url}/cluster", timeout=timeout_sec)
+                if version_resp.ok:
+                    vdata = version_resp.json() or {}
+                    status["version"] = (
+                        vdata.get("result", {})
+                        .get("status", {})
+                        .get("version")
+                    )
+            except Exception:
+                pass
+    except Exception as e:
+        status["error"] = str(e)
+        global _LAST_QDRANT_WARN_AT
+        now = time.time()
+        if now - _LAST_QDRANT_WARN_AT >= 30:
+            _LAST_QDRANT_WARN_AT = now
+            _WEBUI_LOG.warning("Failed to get Qdrant status: %s", e)
+    return status
+
 
 def _ensure_servicestarter_on_path() -> None:
     """Best-effort: add CoreModules/ServiceStarter to sys.path for source checkout runs."""
@@ -2610,26 +2662,11 @@ def rag_trigger_test() -> Any:
 @webui_bp.route("/rag/status", methods=["GET"])
 def rag_status() -> Any:
     """Return Qdrant / RAG status (is running, version, collections count)."""
-    url = get_qdrant_url().rstrip("/")
-    status: dict[str, Any] = {"url": url, "running": False}
-    try:
-        resp = requests.get(f"{url}/collections", timeout=3)
-        status["http_status"] = resp.status_code
-        if resp.ok:
-            data = resp.json() or {}
-            collections = data.get("result", {}).get("collections", [])
-            status["running"] = True
-            status["collections_count"] = len(collections)
-        try:
-            version_resp = requests.get(f"{url}/cluster", timeout=3)
-            if version_resp.ok:
-                vdata = version_resp.json() or {}
-                status["version"] = vdata.get("result", {}).get("status", {}).get("version")
-        except Exception:
-            pass
-    except Exception as e:
-        status["error"] = str(e)
-        _WEBUI_LOG.warning(f"Failed to get Qdrant status: {e}")
+    status = _get_cached_status(
+        "qdrant_status",
+        ttl_sec=2.0,
+        compute=lambda: _qdrant_status_snapshot(timeout_sec=0.6),
+    )
     return jsonify(status)
 
 
@@ -2673,20 +2710,18 @@ def _get_gpu_metrics() -> dict[str, Any] | None:
 def dashboard_metrics() -> Any:
     """Return metrics for dashboard header: RAG (collections count), Ollama running, optional GPU."""
     payload: dict[str, Any] = {"rag": {}, "ollama": {}, "gpu": None}
-    url_q = get_qdrant_url().rstrip("/")
-    try:
-        resp = requests.get(f"{url_q}/collections", timeout=3)
-        if resp.ok:
-            data = resp.json() or {}
-            collections = data.get("result", {}).get("collections", [])
-            payload["rag"] = {"running": True, "collections_count": len(collections)}
-        else:
-            payload["rag"] = {"running": False, "collections_count": 0}
-    except Exception:
-        payload["rag"] = {"running": False, "collections_count": 0}
+    q = _get_cached_status(
+        "qdrant_status",
+        ttl_sec=2.0,
+        compute=lambda: _qdrant_status_snapshot(timeout_sec=0.6),
+    )
+    payload["rag"] = {
+        "running": bool(q.get("running")),
+        "collections_count": int(q.get("collections_count") or 0),
+    }
     url_o = _get_ollama_url().rstrip("/")
     try:
-        ping_o = invoke_ping(base_url=url_o, timeout=3.0)
+        ping_o = invoke_ping(base_url=url_o, timeout=1.0)
         payload["ollama"] = {"running": bool(ping_o.get("ok"))}
     except Exception:
         payload["ollama"] = {"running": False}
@@ -2903,21 +2938,26 @@ def rag_stop() -> Any:
 def open_webui_status() -> Any:
     """Return Open WebUI status from Docker: running if container matching OPEN_WEBUI_CONTAINER_NAME is up."""
     try:
-        ss = _webui_service_starter()
-        st = ss.status()["open_webui"]
-        url = st["url"]
-        status: dict[str, Any] = {"url": url, "running": bool(st.get("running"))}
-        if st.get("running"):
-            status["detected_by"] = "docker"
-        if st.get("http_status") is not None:
-            status["http_status"] = st["http_status"]
-        if st.get("http_error"):
-            status["http_error"] = st["http_error"]
-        try:
-            resp = requests.get(url, timeout=2)
-            status["http_status"] = resp.status_code
-        except Exception as e:
-            status["http_error"] = str(e)
+        def _compute() -> dict[str, Any]:
+            ss = _webui_service_starter()
+            st = ss.status()["open_webui"]
+            url = st["url"]
+            status: dict[str, Any] = {"url": url, "running": bool(st.get("running"))}
+            if st.get("running"):
+                status["detected_by"] = "docker"
+            if st.get("http_status") is not None:
+                status["http_status"] = st["http_status"]
+            if st.get("http_error"):
+                status["http_error"] = st["http_error"]
+            if status["running"]:
+                try:
+                    resp = requests.get(url, timeout=0.6)
+                    status["http_status"] = resp.status_code
+                except Exception as e:
+                    status["http_error"] = str(e)
+            return status
+
+        status = _get_cached_status("open_webui_status", ttl_sec=2.0, compute=_compute)
         return jsonify(status)
     except Exception as e:
         _WEBUI_LOG.warning("open_webui_status: %s", e)
