@@ -28,13 +28,14 @@ class NotificationsRepository:
         title: str,
         message: str = "",
         metadata: Optional[dict[str, Any]] = None,
+        is_console_error: bool = False,
     ) -> int:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 """
                 INSERT INTO coreui_notifications
-                    (session_id, kind, source, title, message, metadata)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (session_id, kind, source, title, message, metadata, is_console_error)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
@@ -43,6 +44,7 @@ class NotificationsRepository:
                     title,
                     message,
                     json.dumps(metadata) if metadata else None,
+                    1 if is_console_error else 0,
                 ),
             )
             conn.commit()

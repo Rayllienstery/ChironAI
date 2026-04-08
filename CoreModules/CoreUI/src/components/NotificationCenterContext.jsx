@@ -79,7 +79,10 @@ export function NotificationCenterProvider({ sessionId, children }) {
     async (payload) => {
       if (!sessionId) return null;
       try {
-        const data = await createCoreuiNotification(sessionId, payload);
+        const data = await createCoreuiNotification(sessionId, {
+          ...payload,
+          is_console_error: payload.is_console_error || false,
+        });
         await refreshPersisted();
         return data?.id ?? null;
       } catch (e) {

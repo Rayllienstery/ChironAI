@@ -160,6 +160,7 @@ export async function createCoreuiNotification(sessionId, payload) {
       title: payload.title,
       message: payload.message ?? '',
       metadata: payload.metadata,
+      is_console_error: payload.is_console_error || false,
     }),
   });
   const data = await response.json().catch(() => ({}));

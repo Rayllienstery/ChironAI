@@ -92,15 +92,18 @@ def log_webui_error(
     extra: Optional[Dict[str, Any]] = None,
     logger: Optional[logging.Logger] = None,
     use_json: Optional[bool] = None,
+    is_console_error: bool = False,
 ) -> None:
     """
-    Log an error at the WebUI boundary (HTTP/CLI).
+    Log an error at the WebUI boundary (HTTP/CLI) or console errors.
 
     - Writes to rotating file via `webui_errors` logger.
     - Additionally mirrors a simplified entry into the SQLite `logs` table
       with `session_id='system'` so that it is visible in WebUI logs.
+    - If `is_console_error` is True, the error is treated as a console error
+      and logged with high priority.
 
-    `source` is a short string like "rag_routes.chat_completions".
+    `source` is a short string like "rag_routes.chat_completions" or "console".
     """
     use_json_fmt = use_json if use_json is not None else (os.getenv("LOG_FORMAT", "").lower() == "json")
     log = logger or get_webui_error_logger(use_json=use_json_fmt)
@@ -128,6 +131,8 @@ def log_webui_error(
         metadata: Dict[str, Any] = dict(extra or {})
         if category and "category" not in metadata:
             metadata["category"] = category
+        if is_console_error:
+            metadata["console_error"] = True
 
         # Use a global/system session so logs are shared across WebUI sessions
         logs_repo.add_log(
