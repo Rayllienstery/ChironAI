@@ -17,6 +17,13 @@ except ImportError:
 
 from flask import Response, jsonify, request
 
+from infrastructure.ollama.model_capabilities import (
+    caps_supports_thinking,
+    caps_supports_tools,
+    chat_error_suggests_no_think,
+    chat_error_suggests_no_tools,
+    get_cached_ollama_capabilities,
+)
 from llm_proxy.config import RAG_MODEL_ID, is_rag_logical_model_id
 from llm_proxy.contracts import LlmProxyWiring
 from llm_proxy.tool_helpers import (
@@ -109,17 +116,25 @@ def _ollama_native_think_broken_for_model(model_name: str | None) -> bool:
     return "qwen3" in (model_name or "").lower()
 
 
-def effective_ollama_think_from_body(body: dict[str, Any], ollama_model: str | None) -> bool | str | None:
+def effective_ollama_think_from_body(
+    body: dict[str, Any],
+    ollama_model: str | None,
+    *,
+    capabilities: frozenset[str] | None = None,
+) -> bool | str | None:
     """
     Value actually sent to Ollama ``/api/chat``.
 
     For Qwen3, omitting ``think`` often leaves the model's template with thinking enabled by default,
     which yields placeholder-only output. Always send explicit ``think: false`` for those models.
     For other models, passthrough only when the client sent ``think`` (mediator).
+    When ``capabilities`` is known and excludes thinking, omit ``think`` so Ollama uses model defaults.
     """
     raw = passthrough_think_from_body(body)
     if _ollama_native_think_broken_for_model(ollama_model):
         return False
+    if capabilities is not None and raw is not None and not caps_supports_thinking(capabilities):
+        return None
     return raw
 
 
@@ -450,7 +465,6 @@ def run_chat_completions(
     reasoning_level = w.determine_reasoning_level(
         last_user, context_length, effective_ollama_model, explicit_reasoning
     )
-    ollama_think = effective_ollama_think_from_body(body, effective_ollama_model)
     reasoning_for_prompt = reasoning_level
 
     actual_model = (
@@ -488,7 +502,6 @@ def run_chat_completions(
         "fetch_web_knowledge": bool(fetch_web_knowledge),
         "reasoning_level": explicit_reasoning or reasoning_level,
         "reasoning_for_prompt": reasoning_for_prompt,
-        "ollama_think": ollama_think,
         "user_query_preview": (user_query or "")[:500],
         "is_autocomplete": bool(is_autocomplete),
     }
@@ -610,6 +623,24 @@ def run_chat_completions(
         else requested_model
     )
     trace["request"]["actual_model"] = actual_model
+
+    _ollama_caps: frozenset[str] | None = None
+    try:
+        _chat_u = getattr(chat_client, "_url", None)
+        if isinstance(_chat_u, str) and _chat_u.strip() and (effective_ollama_model or "").strip():
+            _ollama_caps = get_cached_ollama_capabilities(effective_ollama_model.strip(), _chat_u.strip())
+            if _ollama_caps is not None and use_native_tools and not caps_supports_tools(_ollama_caps):
+                use_native_tools = False
+    except Exception:
+        _ollama_caps = None
+
+    ollama_think = effective_ollama_think_from_body(
+        body, effective_ollama_model, capabilities=_ollama_caps
+    )
+    trace["request"]["ollama_think"] = ollama_think
+    if _ollama_caps is not None:
+        trace["request"]["ollama_capabilities"] = sorted(_ollama_caps)
+    trace["request"]["use_native_tools"] = use_native_tools
 
     # Proxy: do not read settings from DB; rerank is configurable via proxy_rerank_enabled.
     effective_rerank_client = (
@@ -991,7 +1022,28 @@ def run_chat_completions(
         try:
             chat_fn = getattr(chat_client, "chat_api", None)
             if callable(chat_fn):
-                data = chat_fn(body_ollama)
+                attempt: dict[str, object] = dict(body_ollama)
+                last_exc: Exception | None = None
+                data = {}
+                for _ in range(3):
+                    try:
+                        data = chat_fn(attempt)
+                        last_exc = None
+                        break
+                    except Exception as e:
+                        last_exc = e
+                        if chat_error_suggests_no_tools(e) and "tools" in attempt:
+                            attempt.pop("tools", None)
+                            attempt.pop("tool_choice", None)
+                            trace["request"]["native_tools_fallback"] = "stripped_tools_unsupported"
+                            continue
+                        if chat_error_suggests_no_think(e) and "think" in attempt:
+                            attempt.pop("think", None)
+                            trace["request"]["native_think_fallback"] = "stripped_unsupported"
+                            continue
+                        break
+                if last_exc is not None:
+                    raise last_exc
             else:
                 msg_only = chat_client.chat(
                     ollama_messages, use_model, stream=False, options=None, think=ollama_think

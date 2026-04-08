@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ModelTester from './ModelTester';
 import RagTestsTab from './RagTestsTab';
 import IndexerTester from './IndexerTester';
+import WebCallsTester from './WebCallsTester';
 import '../styles/components/TestingTab.css';
 import '../styles/components/CoreUIPillTabs.css';
 
@@ -9,6 +10,7 @@ const SUB_TABS = [
   { id: 'model-tester', label: 'Model Tester' },
   { id: 'rag-tests', label: 'RAG Tests' },
   { id: 'indexer-tester', label: 'Indexer Tester' },
+  { id: 'web-calls', label: 'Web Calls' },
 ];
 
 function TestingTab({
@@ -75,6 +77,7 @@ function TestingTab({
           />
         )}
         {currentSubTab === 'indexer-tester' && <IndexerTester />}
+        {currentSubTab === 'web-calls' && <WebCallsTester />}
       </div>
     </div>
   );

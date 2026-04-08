@@ -529,133 +529,27 @@ function App() {
         onSettings={() => setActiveTab("settings")}
         onStopWebUi={handleServerStop}
         settingsActive={activeTab === "settings"}
+        ollamaStatus={ollamaStatus}
+        ragStatus={ragStatusInfo}
+        openWebUiStatus={openWebUiStatus}
+        statusLoading={statusLoading}
+        statusBusy={statusBusy}
+        onOllamaStartStop={handleOllamaStartStop}
+        onRagStartStop={handleRagStartStop}
+        onOpenWebUiStartStop={handleOpenWebUiStartStop}
+        onOpenOllamaUI={openOllamaUI}
+        onOpenRagUI={openRagUI}
+        onOpenOpenWebUiUI={openOpenWebUiUI}
       />
       <div className="app-main-column">
         <header className="app-header">
           <div className="app-header-row">
-            <div className="app-header-status">
-            <Card className="status-pill">
-              <span
-                className={`status-dot ${statusLoading ? "updating" : ollamaStatus.running ? "running" : "stopped"}`}
-              />
-              <span className="status-label">Ollama</span>
-              {statusLoading ? (
-                <span className="status-text status-text-updating">
-                  Updating status
-                  <span className="status-spinner" />
-                </span>
-              ) : (
-                <span className="status-text">
-                  {ollamaStatus.running ? "Running" : "Stopped"}
-                </span>
-              )}
-              <Card
-                as="button"
-                type="button"
-                className="status-button"
-                disabled={statusBusy || statusLoading}
-                onClick={() =>
-                  handleOllamaStartStop(ollamaStatus.running ? "stop" : "start")
-                }
-              >
-                {ollamaStatus.running ? "Stop" : "Start"}
-              </Card>
-              {!statusLoading && ollamaStatus.running && ollamaStatus.url && (
-                <Card
-                  as="button"
-                  type="button"
-                  className="status-link-button"
-                  title="Open Ollama UI"
-                  onClick={openOllamaUI}
-                >
-                  🔗
-                </Card>
-              )}
-            </Card>
-            <Card className="status-pill">
-              <span
-                className={`status-dot ${statusLoading ? "updating" : ragStatusInfo.running ? "running" : "stopped"}`}
-              />
-              <span className="status-label">RAG / Qdrant</span>
-              {statusLoading ? (
-                <span className="status-text status-text-updating">
-                  Updating status
-                  <span className="status-spinner" />
-                </span>
-              ) : (
-                <span className="status-text">
-                  {ragStatusInfo.running ? "Running" : "Stopped"}
-                </span>
-              )}
-              <Card
-                as="button"
-                type="button"
-                className="status-button"
-                disabled={statusBusy || statusLoading}
-                onClick={() =>
-                  handleRagStartStop(ragStatusInfo.running ? "stop" : "start")
-                }
-              >
-                {ragStatusInfo.running ? "Stop" : "Start"}
-              </Card>
-              {!statusLoading && ragStatusInfo.running && ragStatusInfo.url && (
-                <Card
-                  as="button"
-                  type="button"
-                  className="status-link-button"
-                  title="Open RAG / Qdrant UI"
-                  onClick={openRagUI}
-                >
-                  🔗
-                </Card>
-              )}
-            </Card>
-            <Card className="status-pill">
-              <span
-                className={`status-dot ${statusLoading ? "updating" : openWebUiStatus.running ? "running" : "stopped"}`}
-              />
-              <span className="status-label">Open WebUI</span>
-              {statusLoading ? (
-                <span className="status-text status-text-updating">
-                  Updating status
-                  <span className="status-spinner" />
-                </span>
-              ) : (
-                <span className="status-text">
-                  {openWebUiStatus.running ? "Running" : "Stopped"}
-                </span>
-              )}
-              <Card
-                as="button"
-                type="button"
-                className="status-button"
-                disabled={statusBusy || statusLoading}
-                onClick={() =>
-                  handleOpenWebUiStartStop(
-                    openWebUiStatus.running ? "stop" : "start",
-                  )
-                }
-              >
-                {openWebUiStatus.running ? "Stop" : "Start"}
-              </Card>
-              {!statusLoading &&
-                openWebUiStatus.running &&
-                openWebUiStatus.url && (
-                  <Card
-                    as="button"
-                    type="button"
-                    className="status-link-button"
-                    title="Open Open WebUI"
-                    onClick={openOpenWebUiUI}
-                  >
-                    🔗
-                  </Card>
-                )}
-            </Card>
+            <div className="app-header-page-label">
+              <h1 className="app-header-title">{headerPageLabel}</h1>
+            </div>
           </div>
-        </div>
-        {sessionId && (
-          <div className="app-header-metrics">
+          {sessionId && (
+            <div className="app-header-metrics">
             {dashboardMetrics?.gpu != null && (
               <>
                 <Card className="metric-card">
@@ -746,8 +640,8 @@ function App() {
               </span>
             </Card>
           </div>
-        )}
-      </header>
+          )}
+        </header>
 
         <main className="app-main">
           {sessionId ? (
@@ -782,7 +676,7 @@ function App() {
         <InfrastructureAlertsBridge pollIntervalSec={serviceStatusPollIntervalSec} />
       )}
       {sessionId && <NotificationCenterShell />}
-    </div>
+      </div>
     </NotificationCenterProvider>
   );
 }

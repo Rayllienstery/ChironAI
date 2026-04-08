@@ -22,6 +22,14 @@ from config import (
 )
 from infrastructure.database import get_settings_repository
 from infrastructure.ollama.chat_client import normalize_ollama_chat_options
+from infrastructure.ollama.model_capabilities import (
+    chat_error_suggests_no_think,
+    chat_error_suggests_no_tools,
+    caps_supports_thinking,
+    caps_supports_tools,
+    get_cached_ollama_capabilities,
+    ollama_native_think_troublesome_model,
+)
 from infrastructure.ollama.openai_ollama_tool_bridge import (
     arguments_to_ollama_object,
     ollama_message_to_openai_assistant,
@@ -535,6 +543,22 @@ def run_clawcode_chat_completion(
     if isinstance(requested, str) and requested.strip() and requested.strip() != logical_model_id:
         use_model = requested.strip()
 
+    _ollama_caps: frozenset[str] | None = None
+    try:
+        _cu = getattr(chat_client, "_url", None)
+        if isinstance(_cu, str) and _cu.strip():
+            _ollama_caps = get_cached_ollama_capabilities(use_model.strip(), _cu.strip())
+    except Exception:
+        _ollama_caps = None
+
+    tools_to_ollama = True
+    if _ollama_caps is not None and not caps_supports_tools(_ollama_caps):
+        tools_to_ollama = False
+
+    send_think = bool(oc_think_request) and not ollama_native_think_troublesome_model(use_model)
+    if _ollama_caps is not None and not caps_supports_thinking(_ollama_caps):
+        send_think = False
+
     trace_id = str(uuid.uuid4())
     started = time.perf_counter()
     steps_out: list[dict[str, Any]] = []
@@ -560,11 +584,11 @@ def run_clawcode_chat_completion(
     if oc_top_p_override is not None:
         _co["top_p"] = oc_top_p_override
     _co = normalize_ollama_chat_options(_co)
-    _co = _apply_clawcode_num_predict_budget(_co, body, think_requested=oc_think_request)
+    _co = _apply_clawcode_num_predict_budget(_co, body, think_requested=bool(send_think and oc_think_request))
 
     for step_idx in range(max_steps):
         ollama_messages = openai_messages_to_ollama(openai_messages)
-        oll_tools = ollama_tools_from_openai(tools_list)
+        oll_tools = ollama_tools_from_openai(tools_list) if tools_to_ollama else None
         payload: dict[str, Any] = {
             "model": use_model,
             "messages": ollama_messages,
@@ -573,7 +597,7 @@ def run_clawcode_chat_completion(
         }
         if oll_tools:
             payload["tools"] = oll_tools
-        if oc_think_request:
+        if send_think:
             payload["think"] = True
 
         t0 = time.perf_counter()
@@ -581,7 +605,25 @@ def run_clawcode_chat_completion(
             chat_fn = getattr(chat_client, "chat_api", None)
             if not callable(chat_fn):
                 return {"error": {"message": "Chat client has no chat_api", "type": "api_error"}}, 500
-            data = chat_fn(payload)
+            attempt = dict(payload)
+            last_exc: Exception | None = None
+            data: dict[str, Any] = {}
+            for _ in range(3):
+                try:
+                    data = chat_fn(attempt)
+                    last_exc = None
+                    break
+                except Exception as e:
+                    last_exc = e
+                    if chat_error_suggests_no_tools(e) and attempt.pop("tools", None) is not None:
+                        tools_to_ollama = False
+                        continue
+                    if chat_error_suggests_no_think(e) and attempt.pop("think", None) is not None:
+                        send_think = False
+                        continue
+                    break
+            if last_exc is not None:
+                raise last_exc
         except Exception as e:
             _LOG.exception("clawcode ollama chat_api failed: %s", e)
             err = str(e)

@@ -130,3 +130,67 @@ def test_openai_unknown_role_preserved_as_user() -> None:
     assert ollama[0]["role"] == "user"
     assert "custom" in ollama[0]["content"]
     assert "payload" in ollama[0]["content"]
+
+
+def test_openai_messages_preserve_thought_signature_on_tool_calls() -> None:
+    """Gemini 3 via Ollama Cloud requires thought_signature on tool calls across turns."""
+    openai = [
+        {"role": "user", "content": "hi"},
+        {
+            "role": "assistant",
+            "content": "",
+            "signature": "msg-sig-1",
+            "tool_calls": [
+                {
+                    "id": "call_abc",
+                    "type": "function",
+                    "function": {
+                        "name": "get_temp",
+                        "arguments": '{"city":"NYC"}',
+                        "thought_signature": "Z2VtaW5pLXNpZw==",
+                    },
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_abc", "content": "22C"},
+    ]
+    ollama = openai_messages_to_ollama(openai)
+    assert ollama[1]["role"] == "assistant"
+    assert ollama[1]["signature"] == "msg-sig-1"
+    fn0 = ollama[1]["tool_calls"][0]["function"]
+    assert fn0["thought_signature"] == "Z2VtaW5pLXNpZw=="
+    assert fn0["name"] == "get_temp"
+    assert fn0["arguments"] == {"city": "NYC"}
+
+
+def test_ollama_message_to_openai_preserves_thought_signature_and_message_signature() -> None:
+    ollama_msg = {
+        "role": "assistant",
+        "content": "",
+        "signature": "roundtrip-msg",
+        "tool_calls": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "rag_query",
+                    "arguments": {"query": "x"},
+                    "thought_signature": "abc123",
+                },
+            }
+        ],
+    }
+    oa = ollama_message_to_openai_assistant(ollama_msg)
+    assert oa["signature"] == "roundtrip-msg"
+    assert oa["tool_calls"][0]["function"]["name"] == "rag_query"
+    assert oa["tool_calls"][0]["function"]["thought_signature"] == "abc123"
+    args = json.loads(oa["tool_calls"][0]["function"]["arguments"])
+    assert args == {"query": "x"}
+
+
+def test_assistant_signature_preserved_without_tool_calls() -> None:
+    openai = [{"role": "assistant", "content": "ok", "signature": "s-only"}]
+    ollama = openai_messages_to_ollama(openai)
+    assert ollama[0] == {"role": "assistant", "content": "ok", "signature": "s-only"}
+    oa = ollama_message_to_openai_assistant(ollama[0])
+    assert oa["signature"] == "s-only"
+    assert oa["content"] == "ok"

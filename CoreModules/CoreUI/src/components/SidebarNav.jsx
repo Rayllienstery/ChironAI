@@ -52,6 +52,47 @@ function TabIcon({ tabId }) {
   );
 }
 
+function ServiceStartStopButton({ running, disabled, startLabel, stopLabel, onAction }) {
+  const label = running ? stopLabel : startLabel;
+  return (
+    <button
+      type="button"
+      className="coreui-sidebar__service-btn"
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      onClick={onAction}
+    >
+      <span
+        className="material-symbols-outlined coreui-sidebar__service-btn-icon coreui-sidebar__service-btn-icon--filled"
+        aria-hidden="true"
+      >
+        {running ? "stop" : "play_arrow"}
+      </span>
+    </button>
+  );
+}
+
+function ServiceOpenResourceButton({ disabled, label, onOpen }) {
+  return (
+    <button
+      type="button"
+      className="coreui-sidebar__service-btn"
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      onClick={onOpen}
+    >
+      <span
+        className="material-symbols-outlined coreui-sidebar__service-btn-icon"
+        aria-hidden="true"
+      >
+        open_in_new
+      </span>
+    </button>
+  );
+}
+
 function CollapseIcon({ expanded }) {
   return (
     <svg
@@ -83,6 +124,17 @@ function CollapseIcon({ expanded }) {
  *   onSettings?: () => void,
  *   onStopWebUi?: () => void,
  *   settingsActive?: boolean,
+ *   ollamaStatus?: { running: boolean | null, url: string | null },
+ *   ragStatus?: { running: boolean | null, url: string | null },
+ *   openWebUiStatus?: { running: boolean | null, url: string | null },
+ *   statusLoading?: boolean,
+ *   statusBusy?: boolean,
+ *   onOllamaStartStop?: (action: "start" | "stop") => void,
+ *   onRagStartStop?: (action: "start" | "stop") => void,
+ *   onOpenWebUiStartStop?: (action: "start" | "stop") => void,
+ *   onOpenOllamaUI?: () => void,
+ *   onOpenRagUI?: () => void,
+ *   onOpenOpenWebUiUI?: () => void,
  * }} props
  */
 function SidebarNav({
@@ -93,6 +145,17 @@ function SidebarNav({
   onSettings,
   onStopWebUi,
   settingsActive,
+  ollamaStatus,
+  ragStatus,
+  openWebUiStatus,
+  statusLoading = false,
+  statusBusy = false,
+  onOllamaStartStop,
+  onRagStartStop,
+  onOpenWebUiStartStop,
+  onOpenOllamaUI,
+  onOpenRagUI,
+  onOpenOpenWebUiUI,
 }) {
   const asideRef = useRef(null);
   const [collapsed, setCollapsed] = useState(readStoredCollapsed);
@@ -199,69 +262,158 @@ function SidebarNav({
           <CollapseIcon expanded={!collapsed} />
         </button>
       </div>
-      <nav className="coreui-sidebar__nav">
-        {tabs.map((tab) => {
-          const active = activeTab === tab.id;
-          const hasError = Boolean(tabErrors && tabErrors[tab.id]);
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              className={`coreui-sidebar__link${active ? " coreui-sidebar__link--active" : ""}`}
-              onClick={() => onTabChange(tab.id)}
-              aria-current={active ? "page" : undefined}
-              title={collapsed ? tab.label : undefined}
-            >
-              <TabIcon tabId={tab.id} />
-              <span className="coreui-sidebar__link-label">{tab.label}</span>
-              {hasError && (
-                <span className="coreui-sidebar__badge" aria-label="Error">
-                  !
-                </span>
+      <div className="coreui-sidebar__content">
+        <nav className="coreui-sidebar__nav">
+          {tabs.map((tab) => {
+            const active = activeTab === tab.id;
+            const hasError = Boolean(tabErrors && tabErrors[tab.id]);
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                className={`coreui-sidebar__link${active ? " coreui-sidebar__link--active" : ""}`}
+                onClick={() => onTabChange(tab.id)}
+                aria-current={active ? "page" : undefined}
+                title={collapsed ? tab.label : undefined}
+              >
+                <TabIcon tabId={tab.id} />
+                <span className="coreui-sidebar__link-label">{tab.label}</span>
+                {hasError && (
+                  <span className="coreui-sidebar__badge" aria-label="Error">
+                    !
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+        <div
+          className="coreui-sidebar__services"
+          aria-label="Services status"
+        >
+          <div className="coreui-sidebar__service-item">
+            <span
+              className={`coreui-sidebar__service-dot ${statusLoading ? "updating" : ollamaStatus?.running ? "running" : "stopped"}`}
+            />
+            <span className="coreui-sidebar__service-label">Ollama</span>
+            <div className="coreui-sidebar__service-actions">
+              <ServiceStartStopButton
+                running={Boolean(ollamaStatus?.running)}
+                disabled={statusBusy || statusLoading}
+                startLabel="Start Ollama"
+                stopLabel="Stop Ollama"
+                onAction={() =>
+                  onOllamaStartStop?.(ollamaStatus?.running ? "stop" : "start")}
+              />
+              <ServiceOpenResourceButton
+                disabled={
+                  statusBusy ||
+                  statusLoading ||
+                  !ollamaStatus?.running ||
+                  !ollamaStatus?.url
+                }
+                label="Open Ollama UI"
+                onOpen={() => onOpenOllamaUI?.()}
+              />
+            </div>
+          </div>
+          <div className="coreui-sidebar__service-item">
+            <span
+              className={`coreui-sidebar__service-dot ${statusLoading ? "updating" : ragStatus?.running ? "running" : "stopped"}`}
+            />
+            <span className="coreui-sidebar__service-label">RAG / Qdrant</span>
+            <div className="coreui-sidebar__service-actions">
+              <ServiceStartStopButton
+                running={Boolean(ragStatus?.running)}
+                disabled={statusBusy || statusLoading}
+                startLabel="Start RAG / Qdrant"
+                stopLabel="Stop RAG / Qdrant"
+                onAction={() =>
+                  onRagStartStop?.(ragStatus?.running ? "stop" : "start")}
+              />
+              <ServiceOpenResourceButton
+                disabled={
+                  statusBusy ||
+                  statusLoading ||
+                  !ragStatus?.running ||
+                  !ragStatus?.url
+                }
+                label="Open RAG / Qdrant UI"
+                onOpen={() => onOpenRagUI?.()}
+              />
+            </div>
+          </div>
+          <div className="coreui-sidebar__service-item">
+            <span
+              className={`coreui-sidebar__service-dot ${statusLoading ? "updating" : openWebUiStatus?.running ? "running" : "stopped"}`}
+            />
+            <span className="coreui-sidebar__service-label">Open WebUI</span>
+            <div className="coreui-sidebar__service-actions">
+              <ServiceStartStopButton
+                running={Boolean(openWebUiStatus?.running)}
+                disabled={statusBusy || statusLoading}
+                startLabel="Start Open WebUI"
+                stopLabel="Stop Open WebUI"
+                onAction={() =>
+                  onOpenWebUiStartStop?.(
+                    openWebUiStatus?.running ? "stop" : "start",
+                  )}
+              />
+              <ServiceOpenResourceButton
+                disabled={
+                  statusBusy ||
+                  statusLoading ||
+                  !openWebUiStatus?.running ||
+                  !openWebUiStatus?.url
+                }
+                label="Open Open WebUI"
+                onOpen={() => onOpenOpenWebUiUI?.()}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="coreui-sidebar__dock">
+          {(onSettings || onStopWebUi) && (
+            <footer className="coreui-sidebar__footer">
+              {onSettings && (
+                <Card
+                  as="button"
+                  type="button"
+                  className={`coreui-sidebar__footer-btn coreui-sidebar__footer-btn--settings${settingsActive ? " coreui-sidebar__footer-btn--active" : ""}`}
+                  onClick={onSettings}
+                  title="Settings"
+                  aria-current={settingsActive ? "page" : undefined}
+                >
+                  <span
+                    className="material-symbols-outlined coreui-sidebar__footer-icon"
+                    aria-hidden="true"
+                  >
+                    settings
+                  </span>
+                  <span className="coreui-sidebar__footer-label">Settings</span>
+                </Card>
               )}
-            </button>
-          );
-        })}
-      </nav>
-      {(onSettings || onStopWebUi) && (
-        <footer className="coreui-sidebar__footer">
-          {onSettings && (
-            <Card
-              as="button"
-              type="button"
-              className={`coreui-sidebar__footer-btn coreui-sidebar__footer-btn--settings${settingsActive ? " coreui-sidebar__footer-btn--active" : ""}`}
-              onClick={onSettings}
-              title="Settings"
-              aria-current={settingsActive ? "page" : undefined}
-            >
-              <span
-                className="material-symbols-outlined coreui-sidebar__footer-icon"
-                aria-hidden="true"
-              >
-                settings
-              </span>
-              <span className="coreui-sidebar__footer-label">Settings</span>
-            </Card>
+              {onStopWebUi && (
+                <Card
+                  as="button"
+                  type="button"
+                  className="coreui-sidebar__footer-btn coreui-sidebar__footer-btn--stop"
+                  onClick={onStopWebUi}
+                  title="Stop WebUI server"
+                >
+                  <span
+                    className="material-symbols-outlined coreui-sidebar__footer-icon"
+                    aria-hidden="true"
+                  >
+                    power
+                  </span>
+                  <span className="coreui-sidebar__footer-label">Stop WebUI</span>
+                </Card>
+              )}
+            </footer>
           )}
-          {onStopWebUi && (
-            <Card
-              as="button"
-              type="button"
-              className="coreui-sidebar__footer-btn coreui-sidebar__footer-btn--stop"
-              onClick={onStopWebUi}
-              title="Stop WebUI server"
-            >
-              <span
-                className="material-symbols-outlined coreui-sidebar__footer-icon"
-                aria-hidden="true"
-              >
-                power
-              </span>
-              <span className="coreui-sidebar__footer-label">Stop WebUI</span>
-            </Card>
-          )}
-        </footer>
-      )}
+        </div>
+      </div>
       <div
         className="coreui-sidebar__resize"
         role="separator"

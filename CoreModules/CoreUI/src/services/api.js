@@ -568,6 +568,24 @@ export async function previewMdPipeline(pipelineName, sourceId, filename) {
   return response.json();
 }
 
+export async function previewExternalDocs({ library, pipelineName, maxFiles, maxCharsPerFile } = {}) {
+  const response = await fetch(`${API_BASE}/testing/external-docs/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      library: (library || '').trim(),
+      pipeline_name: pipelineName || undefined,
+      max_files: typeof maxFiles === 'number' ? maxFiles : undefined,
+      max_chars_per_file: typeof maxCharsPerFile === 'number' ? maxCharsPerFile : undefined,
+    }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to preview external docs');
+  }
+  return response.json();
+}
+
 export async function checkRagTrigger(message) {
   const response = await fetch(`${API_BASE}/rag-trigger-test`, {
     method: 'POST',

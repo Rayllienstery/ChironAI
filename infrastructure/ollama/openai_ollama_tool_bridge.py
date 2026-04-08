@@ -144,13 +144,20 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
                             ollama_fn["index"] = idx
                     else:
                         ollama_fn["index"] = idx
+                    if isinstance(fn, dict) and "thought_signature" in fn:
+                        ollama_fn["thought_signature"] = fn["thought_signature"]
                     ollama_calls.append({"type": "function", "function": ollama_fn})
                 out_msg: dict[str, Any] = {"role": "assistant", "content": text}
                 if ollama_calls:
                     out_msg["tool_calls"] = ollama_calls
+                if "signature" in m:
+                    out_msg["signature"] = m["signature"]
                 ollama.append(out_msg)
             else:
-                ollama.append({"role": "assistant", "content": text})
+                plain_assistant: dict[str, Any] = {"role": "assistant", "content": text}
+                if "signature" in m:
+                    plain_assistant["signature"] = m["signature"]
+                ollama.append(plain_assistant)
             continue
         if role == "tool":
             name = m.get("name")
@@ -214,11 +221,14 @@ def ollama_message_to_openai_assistant(ollama_msg: dict[str, Any]) -> dict[str, 
             name = str(fn.get("name") or "tool") if isinstance(fn, dict) else "tool"
             args_raw = fn.get("arguments") if isinstance(fn, dict) else None
             arg_str = arguments_to_openai_string(args_raw)
+            fn_out: dict[str, Any] = {"name": name, "arguments": arg_str}
+            if isinstance(fn, dict) and "thought_signature" in fn:
+                fn_out["thought_signature"] = fn["thought_signature"]
             openai_calls.append(
                 {
                     "id": _new_call_id(),
                     "type": "function",
-                    "function": {"name": name, "arguments": arg_str},
+                    "function": fn_out,
                 }
             )
     thinking = ollama_msg.get("thinking")
@@ -238,6 +248,8 @@ def ollama_message_to_openai_assistant(ollama_msg: dict[str, Any]) -> dict[str, 
         msg["content"] = None
     if openai_calls:
         msg["tool_calls"] = openai_calls
+    if "signature" in ollama_msg:
+        msg["signature"] = ollama_msg["signature"]
     return msg
 
 

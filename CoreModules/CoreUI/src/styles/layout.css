@@ -239,6 +239,18 @@ html, body {
   color: var(--md-sys-color-on-surface);
 }
 
+.app-header-page-label {
+  flex: 1;
+}
+
+.app-header-title {
+  margin: 0;
+  font: var(--md-sys-typescale-headline-large-font);
+  color: var(--md-sys-color-on-surface);
+  font-size: 24px;
+  font-weight: 600;
+}
+
 .app-main {
   flex: 1;
   min-width: 0;

@@ -113,9 +113,7 @@
 }
 
 .coreui-sidebar__nav {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  flex-shrink: 0;
   padding: var(--md-sys-spacing-md) var(--md-sys-spacing-sm);
   display: flex;
   flex-direction: column;
@@ -251,8 +249,6 @@
   padding: var(--md-sys-spacing-md) var(--md-sys-spacing-sm)
     var(--md-sys-spacing-lg);
   border-top: 1px solid var(--md-sys-color-outline-variant);
-  position: sticky;
-  bottom: 0;
 }
 
 .app.app--sidebar-collapsed .coreui-sidebar__footer {
@@ -284,7 +280,8 @@
 .coreui-sidebar__footer-btn--settings {
   --app-card-bg: transparent !important;
   color: var(--md-sys-color-on-surface) !important;
-  box-shadow: inset 0 0 0 1px var(--md-sys-color-outline) !important;
+  box-shadow: inset 0 0 0 1px var(--md-sys-color-primary) !important;
+  background: transparent !important;
 }
 
 .coreui-sidebar__footer-btn--settings:hover {
@@ -384,4 +381,139 @@ body.coreui-resizing {
 
 body.coreui-resizing * {
   cursor: ew-resize !important;
+}
+
+/* Service status controls in sidebar */
+.coreui-sidebar__content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.coreui-sidebar__dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  flex-shrink: 0;
+  margin-top: auto;
+  padding-top: var(--md-sys-spacing-sm);
+  background: var(--md-sys-color-surface);
+  box-shadow:
+    0 -1px 0 var(--md-sys-color-outline-variant),
+    0 -10px 24px -10px rgba(0, 0, 0, 0.1);
+}
+
+:root.theme-dark .coreui-sidebar__dock {
+  box-shadow:
+    0 -1px 0 rgba(255, 255, 255, 0.08),
+    0 -10px 24px -10px rgba(0, 0, 0, 0.45);
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__dock {
+  background: var(--coreui-sidenav-collapsed-bg);
+  box-shadow: none;
+}
+
+.coreui-sidebar__services {
+  flex-shrink: 0;
+  margin: 0 var(--md-sys-spacing-sm) var(--md-sys-spacing-sm);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-sm);
+  background: transparent;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__services {
+  display: none;
+}
+
+.coreui-sidebar__service-item {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-sm);
+  padding: 6px 12px;
+  min-height: 40px;
+  box-sizing: border-box;
+  border-radius: 9999px;
+  border: 1px solid var(--md-sys-color-primary);
+  background: transparent;
+}
+
+.coreui-sidebar__service-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--md-sys-color-error);
+}
+
+.coreui-sidebar__service-dot.running {
+  background: var(--md-sys-color-primary);
+}
+
+.coreui-sidebar__service-dot.stopped {
+  background: var(--md-sys-color-error);
+}
+
+.coreui-sidebar__service-dot.updating {
+  background: var(--md-sys-color-tertiary);
+  animation: coreui-service-dot-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes coreui-service-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.coreui-sidebar__service-label {
+  flex: 1;
+  font: var(--md-sys-typescale-label-large-font);
+  color: var(--md-sys-color-on-surface-variant);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.coreui-sidebar__service-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  border: none;
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.coreui-sidebar__service-btn:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.coreui-sidebar__service-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.coreui-sidebar__service-btn-icon {
+  font-size: 22px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  line-height: 1;
+  font-family: "Material Symbols Outlined", sans-serif;
+  font-style: normal;
+  font-weight: normal;
+  -webkit-font-smoothing: antialiased;
 }
