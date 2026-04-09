@@ -219,9 +219,11 @@ def _clawcode_openai_models_rows() -> tuple[str, list[dict[str, object]]]:
             get_clawcode_logical_model_id,
         )
         from infrastructure.ollama.cli_runner import invoke_tags
+        from infrastructure.ollama.ollama_model_visibility import get_hidden_ollama_model_ids
 
         logical = get_clawcode_logical_model_id()
         base_url = get_ollama_base_url()
+        hidden = get_hidden_ollama_model_ids()
         tags = invoke_tags(base_url=base_url, timeout=5.0)
         models = tags.get("models") or []
         seen: set[str] = set()
@@ -229,12 +231,12 @@ def _clawcode_openai_models_rows() -> tuple[str, list[dict[str, object]]]:
             if not isinstance(m, dict):
                 continue
             name = (m.get("name") or m.get("model") or "").strip()
-            if not name or name in seen:
+            if not name or name in seen or name in hidden:
                 continue
             seen.add(name)
             data.append({"id": name, "object": "model", "owned_by": "ollama"})
         cfg_model = get_ollama_chat_model()
-        if cfg_model and cfg_model not in seen:
+        if cfg_model and cfg_model not in seen and cfg_model not in hidden:
             data.insert(0, {"id": cfg_model, "object": "model", "owned_by": "ollama"})
     except Exception:
         try:

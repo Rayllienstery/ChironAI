@@ -852,13 +852,127 @@ export async function stopOllama() {
   return response.json();
 }
 
+export async function getOllamaLibrary() {
+  const response = await fetch(`${API_BASE}/ollama/library`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to load Ollama library');
+  }
+  return data;
+}
+
+export async function patchOllamaHidden({ add = [], remove = [] } = {}) {
+  const response = await fetch(`${API_BASE}/ollama/hidden`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ add, remove }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to update hidden models');
+  }
+  return data;
+}
+
+export async function showOllamaModel(model) {
+  const response = await fetch(`${API_BASE}/ollama/show`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to load model details');
+  }
+  return data;
+}
+
+export async function deleteOllamaModel(model) {
+  const response = await fetch(`${API_BASE}/ollama/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to delete model');
+  }
+  return data;
+}
+
+/**
+ * Stream NDJSON progress from POST /ollama/pull.
+ * @param {{ model: string, insecure?: boolean, onLine: (obj: object) => void, signal?: AbortSignal }} opts
+ */
+export async function pullOllamaModel({ model, insecure = false, onLine, signal }) {
+  const response = await fetch(`${API_BASE}/ollama/pull`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, insecure: Boolean(insecure) }),
+    signal,
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Pull request failed');
+  }
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error('No response body');
+  }
+  const dec = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 1);
+      if (!line) continue;
+      try {
+        onLine(JSON.parse(line));
+      } catch {
+        /* ignore malformed line */
+      }
+    }
+  }
+  const tail = buf.trim();
+  if (tail) {
+    try {
+      onLine(JSON.parse(tail));
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 export async function getOpenWebUiStatus() {
   const response = await fetch(`${API_BASE}/open-webui/status`);
   const data = await response.json().catch(() => ({}));
+  const base = {
+    running: Boolean(data.running),
+    url: data.url ?? null,
+    http_status: data.http_status,
+    http_error: data.http_error,
+    error: data.error,
+  };
   if (!response.ok) {
-    return { running: false, url: data.url ?? null };
+    return { ...base, running: false };
   }
-  return { running: Boolean(data.running), url: data.url ?? null };
+  return base;
+}
+
+export async function getOpenWebUiConfig() {
+  const response = await fetch(`${API_BASE}/open-webui/config`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to load Open WebUI configuration');
+  }
+  if (data.error) {
+    throw new Error(data.error);
+  }
+  return data;
 }
 
 export async function startOpenWebUi() {
@@ -867,7 +981,11 @@ export async function startOpenWebUi() {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to start Open WebUI');
+    const msg =
+      (typeof error.output === 'string' && error.output) ||
+      error.error ||
+      'Failed to start Open WebUI';
+    throw new Error(msg);
   }
   return response.json();
 }
@@ -878,7 +996,11 @@ export async function stopOpenWebUi() {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to stop Open WebUI');
+    const msg =
+      (typeof error.output === 'string' && error.output) ||
+      error.error ||
+      'Failed to stop Open WebUI';
+    throw new Error(msg);
   }
   return response.json();
 }

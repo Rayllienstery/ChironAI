@@ -24,7 +24,7 @@ from typing import Any, Callable
 import threading
 import uuid
 
-from flask import Blueprint, Response, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
 
 # Ensure project root on path when running from api or WebUI.
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -201,9 +201,18 @@ from api.http.proxy_trace import get_current_trace, get_current_trace_updated_at
 import requests
 
 from infrastructure.ollama.cli_runner import (
+    OllamaInteractorCliError,
+    invoke_delete,
     invoke_embed,
     invoke_ping,
+    invoke_show,
     invoke_tags,
+    iter_pull_objects,
+)
+from infrastructure.ollama.ollama_model_visibility import (
+    filter_ollama_tag_entries_for_editors,
+    get_hidden_ollama_model_ids,
+    patch_hidden_ollama_model_ids,
 )
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import (
@@ -458,7 +467,11 @@ def get_models() -> Any:
         # Ollama model list: OllamaInteractor ollama_http.get_tags (in-process), CLI fallback
         try:
             data = invoke_tags(base_url=ollama_url.rstrip("/"), timeout=5.0)
-            ollama_models = data.get("models", [])
+            raw_models = [m for m in (data.get("models") or []) if isinstance(m, dict)]
+            ollama_models = filter_ollama_tag_entries_for_editors(
+                raw_models,
+                get_hidden_ollama_model_ids(),
+            )
             for model in ollama_models:
                 model_name = (model.get("name") or model.get("model") or "").strip()
                 if model_name:
@@ -2995,6 +3008,26 @@ def open_webui_stop() -> Any:
         ), 500
 
 
+def open_webui_config() -> Any:
+    """Return effective Open WebUI Docker settings from ServiceStarter (env-driven)."""
+    try:
+        ss = _webui_service_starter()
+        cfg = ss.cfg
+        return jsonify(
+            {
+                "open_webui_host_url": cfg.open_webui_host_url,
+                "open_webui_container_name": cfg.open_webui_container_name,
+                "open_webui_image": cfg.open_webui_image,
+                "open_webui_host_port": cfg.open_webui_host_port,
+                "open_webui_container_port": cfg.open_webui_container_port,
+                "open_webui_ollama_url_for_container": cfg.open_webui_ollama_url_for_container,
+            }
+        )
+    except Exception as e:
+        _WEBUI_LOG.warning("open_webui_config: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
 @webui_bp.route("/ollama/status", methods=["GET"])
 def ollama_status() -> Any:
     """Check if Ollama is reachable at the same base URL as RAG/chat (default http://localhost:11434).
@@ -3056,6 +3089,122 @@ def ollama_stop() -> Any:
     except Exception as e:
         _WEBUI_LOG.error("ollama_stop: %s", e, exc_info=True)
         return jsonify({"ok": False, "output": str(e)}), 500
+
+
+@webui_bp.route("/ollama/library", methods=["GET"])
+def ollama_library() -> Any:
+    """Full Ollama tag list for the Ollama tab (includes hidden flags; not filtered like GET /models)."""
+    url = _get_ollama_url().rstrip("/")
+    hidden_set = get_hidden_ollama_model_ids()
+    hidden_ids = sorted(hidden_set)
+    try:
+        data = invoke_tags(base_url=url, timeout=30.0)
+        models: list[dict[str, Any]] = []
+        for m in data.get("models") or []:
+            if not isinstance(m, dict):
+                continue
+            name = (m.get("name") or m.get("model") or "").strip()
+            if not name:
+                continue
+            models.append(
+                {
+                    "name": name,
+                    "size": m.get("size", 0),
+                    "modified_at": m.get("modified_at", ""),
+                    "digest": m.get("digest"),
+                    "hidden": name in hidden_set,
+                }
+            )
+        return jsonify({"ok": True, "url": url, "models": models, "hidden_ids": hidden_ids})
+    except Exception as e:
+        _WEBUI_LOG.warning("ollama_library: %s", e)
+        return jsonify(
+            {
+                "ok": False,
+                "url": url,
+                "models": [],
+                "hidden_ids": hidden_ids,
+                "error": str(e),
+            }
+        )
+
+
+@webui_bp.route("/ollama/hidden", methods=["PATCH"])
+def ollama_hidden_patch() -> Any:
+    """Add/remove model names from the editor deny-list."""
+    body = request.get_json(silent=True) or {}
+    raw_add = body.get("add")
+    raw_remove = body.get("remove")
+    add = raw_add if isinstance(raw_add, list) else []
+    remove = raw_remove if isinstance(raw_remove, list) else []
+    try:
+        updated = patch_hidden_ollama_model_ids(add=add, remove=remove)
+        return jsonify({"ok": True, "hidden_ids": updated})
+    except Exception as e:
+        _WEBUI_LOG.error("ollama_hidden_patch: %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@webui_bp.route("/ollama/show", methods=["POST"])
+def ollama_show_model() -> Any:
+    body = request.get_json(silent=True) or {}
+    model = (body.get("model") or "").strip()
+    if not model:
+        return jsonify({"ok": False, "error": "model is required"}), 400
+    url = _get_ollama_url().rstrip("/")
+    try:
+        details = invoke_show(base_url=url, name=model, timeout=120.0)
+        return jsonify({"ok": True, "details": details})
+    except OllamaInteractorCliError as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+
+@webui_bp.route("/ollama/delete", methods=["POST"])
+def ollama_delete_model() -> Any:
+    body = request.get_json(silent=True) or {}
+    model = (body.get("model") or "").strip()
+    if not model:
+        return jsonify({"ok": False, "error": "model is required"}), 400
+    url = _get_ollama_url().rstrip("/")
+    try:
+        result = invoke_delete(base_url=url, name=model, timeout=120.0)
+        return jsonify({"ok": True, "result": result})
+    except OllamaInteractorCliError as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+
+@webui_bp.route("/ollama/pull", methods=["POST"])
+def ollama_pull_stream() -> Any:
+    """Stream Ollama pull progress as NDJSON."""
+    body = request.get_json(silent=True) or {}
+    model = (body.get("model") or "").strip()
+    if not model:
+        return jsonify({"error": "model is required"}), 400
+    insecure = bool(body.get("insecure"))
+    url = _get_ollama_url().rstrip("/")
+    read_timeout = float(body.get("timeout", 86400.0) or 86400.0)
+    read_timeout = max(60.0, min(read_timeout, 86400.0 * 2))
+
+    def generate():
+        try:
+            for obj in iter_pull_objects(
+                base_url=url,
+                name=model,
+                insecure=insecure,
+                read_timeout=read_timeout,
+            ):
+                yield json.dumps(obj, ensure_ascii=False) + "\n"
+        except OllamaInteractorCliError as e:
+            yield json.dumps({"error": str(e)}) + "\n"
+        except Exception as e:
+            _WEBUI_LOG.error("ollama_pull_stream: %s", e, exc_info=True)
+            yield json.dumps({"error": str(e)}) + "\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 def _shutdown_server() -> None:

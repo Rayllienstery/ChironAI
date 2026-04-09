@@ -1,10 +1,11 @@
 /* Left navigation (Material Dashboard–inspired) */
 
 .coreui-sidebar {
-  position: relative;
+  position: fixed;
+  left: 0;
   flex-shrink: 0;
   width: var(--coreui-sidebar-width);
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   background: var(--md-sys-color-surface);
@@ -184,6 +185,68 @@
   display: none;
 }
 
+.coreui-sidebar__link-label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.coreui-sidebar__link--ollama,
+.coreui-sidebar__link--openwebui,
+.coreui-sidebar__link--rag {
+  position: relative;
+}
+
+.coreui-sidebar__link-ollama-dot,
+.coreui-sidebar__link-openwebui-dot,
+.coreui-sidebar__link-rag-dot {
+  flex-shrink: 0;
+}
+
+/*
+ * Active nav pill (accent fill): status dot reads as a “hole” in the chip — neutral bg,
+ * not on-accent text color. Stopped stays error red.
+ */
+.theme-light .coreui-sidebar__link--active .coreui-sidebar__link-ollama-dot.running,
+.theme-light .coreui-sidebar__link--active .coreui-sidebar__link-ollama-dot.updating,
+.theme-light .coreui-sidebar__link--active .coreui-sidebar__link-openwebui-dot.running,
+.theme-light .coreui-sidebar__link--active .coreui-sidebar__link-openwebui-dot.updating,
+.theme-light .coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.running,
+.theme-light .coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.updating {
+  background: var(--md-sys-color-surface);
+}
+
+.theme-dark .coreui-sidebar__link--active .coreui-sidebar__link-ollama-dot.running,
+.theme-dark .coreui-sidebar__link--active .coreui-sidebar__link-ollama-dot.updating,
+.theme-dark .coreui-sidebar__link--active .coreui-sidebar__link-openwebui-dot.running,
+.theme-dark .coreui-sidebar__link--active .coreui-sidebar__link-openwebui-dot.updating,
+.theme-dark .coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.running,
+.theme-dark .coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.updating {
+  background: var(--md-sys-color-background);
+}
+
+.coreui-sidebar__link--active .coreui-sidebar__link-ollama-dot.stopped,
+.coreui-sidebar__link--active .coreui-sidebar__link-openwebui-dot.stopped,
+.coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.stopped {
+  background: var(--md-sys-color-error);
+}
+
+.coreui-sidebar__link--active .coreui-sidebar__link-ollama-dot.updating,
+.coreui-sidebar__link--active .coreui-sidebar__link-openwebui-dot.updating,
+.coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.updating {
+  animation: coreui-service-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__link-ollama-dot,
+.app.app--sidebar-collapsed .coreui-sidebar__link-openwebui-dot,
+.app.app--sidebar-collapsed .coreui-sidebar__link-rag-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+}
+
 .coreui-sidebar__icon {
   font-size: 22px;
   width: 22px;
@@ -208,6 +271,24 @@
 
 .coreui-sidebar__link--active .coreui-sidebar__icon {
   color: inherit;
+}
+
+.coreui-sidebar__icon--ollama {
+  font-family: inherit;
+  font-size: 0;
+}
+
+.coreui-sidebar__icon--ollama svg,
+.coreui-sidebar__icon--openwebui svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+  color: inherit;
+}
+
+.coreui-sidebar__icon--openwebui {
+  font-family: inherit;
+  font-size: 0;
 }
 
 .coreui-sidebar__badge {
@@ -248,14 +329,12 @@
   gap: var(--md-sys-spacing-sm);
   padding: var(--md-sys-spacing-md) var(--md-sys-spacing-sm)
     var(--md-sys-spacing-lg);
-  border-top: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .app.app--sidebar-collapsed .coreui-sidebar__footer {
   align-items: center;
   padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-xs)
     var(--md-sys-spacing-md);
-  border-top-color: rgba(255, 255, 255, 0.1);
 }
 
 .coreui-sidebar__footer-btn {
@@ -417,49 +496,6 @@ body.coreui-resizing * {
   box-shadow: none;
 }
 
-.coreui-sidebar__services {
-  flex-shrink: 0;
-  margin: 0 var(--md-sys-spacing-sm) var(--md-sys-spacing-sm);
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--md-sys-spacing-sm);
-  background: transparent;
-}
-
-.app.app--sidebar-collapsed .coreui-sidebar__services {
-  display: none;
-}
-
-.coreui-sidebar__service-item {
-  --coreui-service-actions-inset: 6px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  column-gap: var(--md-sys-spacing-sm);
-  padding: var(--coreui-service-actions-inset) var(--coreui-service-actions-inset) var(--coreui-service-actions-inset) 12px;
-  min-height: 62px;
-  box-sizing: border-box;
-  border-radius: 9999px;
-  border: 1px solid var(--md-sys-color-primary);
-  background: transparent;
-}
-
-.coreui-sidebar__service-main {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--md-sys-spacing-sm);
-}
-
-.coreui-sidebar__service-actions {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  align-self: center;
-  align-items: center;
-}
-
 .coreui-sidebar__service-dot {
   width: 8px;
   height: 8px;
@@ -484,64 +520,4 @@ body.coreui-resizing * {
 @keyframes coreui-service-dot-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
-}
-
-.coreui-sidebar__service-label {
-  flex: 1;
-  font: var(--md-sys-typescale-label-large-font);
-  color: var(--md-sys-color-on-surface-variant);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.coreui-sidebar__service-btn {
-  flex-shrink: 0;
-  width: 25px;
-  height: 25px;
-  padding: 0;
-  border-radius: 50%;
-  border: none;
-  background: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: opacity 0.15s ease;
-}
-
-.coreui-sidebar__service-btn:hover:not(:disabled) {
-  opacity: 0.92;
-}
-
-.coreui-sidebar__service-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.coreui-sidebar__service-btn-icon {
-  font-size: 15px;
-  width: 15px;
-  height: 15px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
-  line-height: 1;
-  font-family: "Material Symbols Outlined", sans-serif;
-  font-style: normal;
-  font-weight: normal;
-  -webkit-font-smoothing: antialiased;
-}
-
-.coreui-sidebar__service-btn--open {
-  width: 18px;
-  height: 18px;
-}
-
-.coreui-sidebar__service-btn--open .coreui-sidebar__service-btn-icon {
-  font-size: 11px;
-  width: 11px;
-  height: 11px;
 }

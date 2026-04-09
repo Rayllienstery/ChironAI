@@ -29,6 +29,8 @@ import CrawlerTab from "./components/CrawlerTab";
 import TestingTab from "./components/TestingTab";
 import TemplateEditorTab from "./components/TemplateEditorTab";
 import ClawProxyTab from "./components/ClawProxyTab";
+import OllamaTab from "./components/OllamaTab";
+import OpenWebUiTab from "./components/OpenWebUiTab";
 import Card from "./components/Card";
 import {
   getSession,
@@ -37,12 +39,6 @@ import {
   getOllamaStatus,
   getOpenWebUiStatus,
   getDashboardMetrics,
-  startRag,
-  stopRag,
-  startOllama,
-  stopOllama,
-  startOpenWebUi,
-  stopOpenWebUi,
   stopServer,
   runRagTests,
   getRagTestRunStatus,
@@ -95,7 +91,6 @@ function App() {
     running: null,
     url: null,
   });
-  const [statusBusy, setStatusBusy] = useState(false);
   const [statusLoading, setStatusLoading] = useState(true);
   const [serviceStatusPollIntervalSec, setServiceStatusPollIntervalSec] = useState(5);
   const serviceStatusPollGenRef = useRef(0);
@@ -335,6 +330,8 @@ function App() {
     { id: "llm-proxy", label: "LLM Proxy" },
     { id: "claw-proxy", label: "Claw Proxy" },
     { id: "logs", label: "Logs" },
+    { id: "ollama", label: "Ollama" },
+    { id: "open-webui", label: "Open WebUI" },
     { id: "rag", label: "RAG / Qdrant" },
     { id: "crawler", label: "Crawler / Indexer" },
     { id: "template-editor", label: "Template Editor" },
@@ -363,6 +360,22 @@ function App() {
         );
       case "logs":
         return <LogsTab sessionId={sessionId} />;
+      case "ollama":
+        return (
+          <OllamaTab
+            onErrorStateChange={(hasError) =>
+              setTabErrors((prev) => ({ ...prev, ollama: hasError }))
+            }
+          />
+        );
+      case "open-webui":
+        return (
+          <OpenWebUiTab
+            onErrorStateChange={(hasError) =>
+              setTabErrors((prev) => ({ ...prev, "open-webui": hasError }))
+            }
+          />
+        );
       case "testing":
         return (
           <TestingTab
@@ -424,40 +437,6 @@ function App() {
     }
   };
 
-  const handleOllamaStartStop = async (action) => {
-    setStatusBusy(true);
-    try {
-      if (action === "start") {
-        await startOllama();
-      } else {
-        await stopOllama();
-      }
-      const status = await getOllamaStatus().catch(() => ({ running: false }));
-      setOllamaStatus(status);
-    } catch (e) {
-      console.error("Failed to change Ollama status", e);
-    } finally {
-      setStatusBusy(false);
-    }
-  };
-
-  const handleRagStartStop = async (action) => {
-    setStatusBusy(true);
-    try {
-      if (action === "start") {
-        await startRag();
-      } else {
-        await stopRag();
-      }
-      const status = await getRagStatus().catch(() => ({ running: false }));
-      setRagStatusInfo(status);
-    } catch (e) {
-      console.error("Failed to change RAG status", e);
-    } finally {
-      setStatusBusy(false);
-    }
-  };
-
   const handleServerStop = async () => {
     if (!window.confirm("Stop WebUI server? Current session will be closed.")) {
       return;
@@ -471,45 +450,6 @@ function App() {
       }, 300);
     } catch (e) {
       console.error("Failed to stop WebUI server", e);
-    }
-  };
-
-  const openOllamaUI = () => {
-    if (ollamaStatus?.url) {
-      window.open(ollamaStatus.url, "_blank", "noopener,noreferrer");
-    }
-  };
-
-  const openRagUI = () => {
-    if (ragStatusInfo?.url) {
-      const base = ragStatusInfo.url.replace(/\/+$/, "");
-      const url = `${base}/dashboard#/collections`;
-      window.open(url, "_blank", "noopener,noreferrer");
-    }
-  };
-
-  const handleOpenWebUiStartStop = async (action) => {
-    setStatusBusy(true);
-    try {
-      if (action === "start") {
-        await startOpenWebUi();
-      } else {
-        await stopOpenWebUi();
-      }
-      const status = await getOpenWebUiStatus().catch(() => ({
-        running: false,
-      }));
-      setOpenWebUiStatus(status);
-    } catch (e) {
-      console.error("Failed to change Open WebUI status", e);
-    } finally {
-      setStatusBusy(false);
-    }
-  };
-
-  const openOpenWebUiUI = () => {
-    if (openWebUiStatus?.url) {
-      window.open(openWebUiStatus.url, "_blank", "noopener,noreferrer");
     }
   };
 
@@ -533,13 +473,6 @@ function App() {
         ragStatus={ragStatusInfo}
         openWebUiStatus={openWebUiStatus}
         statusLoading={statusLoading}
-        statusBusy={statusBusy}
-        onOllamaStartStop={handleOllamaStartStop}
-        onRagStartStop={handleRagStartStop}
-        onOpenWebUiStartStop={handleOpenWebUiStartStop}
-        onOpenOllamaUI={openOllamaUI}
-        onOpenRagUI={openRagUI}
-        onOpenOpenWebUiUI={openOpenWebUiUI}
       />
       <div className="app-main-column">
         <header className="app-header">

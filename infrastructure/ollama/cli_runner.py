@@ -228,6 +228,121 @@ def invoke_rerank(stdin_obj: dict[str, Any], *, default_timeout: float = 120.0) 
     )
 
 
+def invoke_delete(*, base_url: str, name: str, timeout: float = 120.0) -> dict[str, Any]:
+    """POST Ollama ``/api/delete`` via OllamaInteractor HTTP helpers, else CLI."""
+    oh = _ollama_interactor_http_module()
+    if oh is not None:
+        try:
+            return oh.post_delete(base_url.rstrip("/"), name, timeout=timeout)
+        except Exception:
+            pass
+    return invoke_json(
+        [
+            "delete",
+            "--base-url",
+            base_url.rstrip("/"),
+            "--name",
+            name,
+            "--timeout",
+            str(timeout),
+        ],
+        timeout=timeout + 30.0,
+    )
+
+
+def invoke_show(*, base_url: str, name: str, timeout: float = 120.0) -> dict[str, Any]:
+    """POST Ollama ``/api/show`` via OllamaInteractor HTTP helpers, else CLI."""
+    oh = _ollama_interactor_http_module()
+    if oh is not None:
+        try:
+            return oh.post_show(base_url.rstrip("/"), name, timeout=timeout)
+        except Exception:
+            pass
+    return invoke_json(
+        [
+            "show",
+            "--base-url",
+            base_url.rstrip("/"),
+            "--name",
+            name,
+            "--timeout",
+            str(timeout),
+        ],
+        timeout=timeout + 30.0,
+    )
+
+
+def iter_pull_objects(
+    *,
+    base_url: str,
+    name: str,
+    insecure: bool = False,
+    read_timeout: float = 86400.0,
+) -> Iterator[dict[str, Any]]:
+    """
+    Stream Ollama ``/api/pull`` progress as dicts (in-process HTTP when package is on disk, else CLI).
+    """
+    oh = _ollama_interactor_http_module()
+    pull_timeout = (30.0, max(float(read_timeout), 60.0))
+    if oh is not None:
+        yield from oh.stream_pull_objects(
+            base_url.rstrip("/"),
+            name,
+            insecure=insecure,
+            timeout=pull_timeout,
+        )
+        return
+
+    argv = [
+        "pull",
+        "--base-url",
+        base_url.rstrip("/"),
+        "--name",
+        name,
+        "--timeout",
+        str(max(read_timeout, 60.0)),
+    ]
+    if insecure:
+        argv.append("--insecure")
+    wait_timeout = max(float(read_timeout) + 120.0, 300.0)
+    cmd, env = _build_command(argv)
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    assert proc.stdout is not None
+
+    def _gen() -> Iterator[dict[str, Any]]:
+        try:
+            for line in proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(obj, dict):
+                    yield obj
+        finally:
+            try:
+                code = proc.wait(timeout=wait_timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                code = proc.wait(timeout=10)
+            err = proc.stderr.read() if proc.stderr else ""
+            if code != 0:
+                detail = _parse_stderr_json(err) or {}
+                msg = _cli_error_message(detail, err.strip() or f"exit {code}")
+                raise OllamaInteractorCliError(msg, stderr=err, returncode=code)
+
+    yield from _gen()
+
+
 def iter_chat_stream(stdin_obj: dict[str, Any], *, default_timeout: float = 600.0) -> Iterator[str]:
     """
     Run chat-stream; yield content fragments from each stdout NDJSON line.
@@ -278,11 +393,14 @@ __all__ = [
     "OllamaInteractorCliError",
     "invoke",
     "invoke_chat",
+    "invoke_delete",
     "invoke_embed",
     "invoke_generate",
     "invoke_json",
     "invoke_ping",
     "invoke_rerank",
+    "invoke_show",
     "invoke_tags",
     "iter_chat_stream",
+    "iter_pull_objects",
 ]

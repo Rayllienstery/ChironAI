@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Union
 
 import requests
+
+_Timeout = Union[float, tuple[float, float]]
 
 
 def get_tags(base_url: str, timeout: float = 30.0) -> dict[str, Any]:
@@ -30,25 +32,85 @@ def post_json(
     url: str,
     body: dict[str, Any],
     *,
-    timeout: float = 600.0,
+    timeout: _Timeout = 600.0,
     stream: bool = False,
 ) -> requests.Response:
     return requests.post(url, json=body, timeout=timeout, stream=stream)
 
 
-def post_json_return_dict(url: str, body: dict[str, Any], timeout: float = 600.0) -> dict[str, Any]:
+def post_json_return_dict(url: str, body: dict[str, Any], timeout: _Timeout = 600.0) -> dict[str, Any]:
     resp = post_json(url, body, timeout=timeout, stream=False)
     resp.raise_for_status()
     return resp.json()
 
 
-def stream_chat_lines(url: str, body: dict[str, Any], timeout: float = 600.0) -> Iterator[str]:
+def stream_chat_lines(url: str, body: dict[str, Any], timeout: _Timeout = 600.0) -> Iterator[str]:
     """POST /api/chat with stream=True; yield raw NDJSON lines (without trailing newline)."""
     resp = post_json(url, body, timeout=timeout, stream=True)
     resp.raise_for_status()
     for line in resp.iter_lines(decode_unicode=True):
         if line:
             yield line
+
+
+def post_delete(base_url: str, name: str, timeout: float = 120.0) -> dict[str, Any]:
+    """
+    Delete a model.
+
+    Ollama builds differ: some accept POST /api/delete, others require DELETE /api/delete.
+    We try POST first, then fall back to DELETE on 405.
+    """
+    base = base_url.rstrip("/")
+    url = f"{base}/api/delete"
+    payload = {"name": name}
+    resp = requests.post(url, json=payload, timeout=timeout)
+    if resp.status_code == 405:
+        resp = requests.delete(url, json=payload, timeout=timeout)
+    resp.raise_for_status()
+    if not resp.content or not resp.content.strip():
+        return {}
+    try:
+        return resp.json()
+    except (ValueError, json.JSONDecodeError):
+        return {}
+
+
+def post_show(base_url: str, name: str, timeout: float = 120.0) -> dict[str, Any]:
+    """POST /api/show with {\"name\": name}."""
+    base = base_url.rstrip("/")
+    url = f"{base}/api/show"
+    resp = requests.post(url, json={"name": name}, timeout=timeout)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def stream_pull_objects(
+    base_url: str,
+    name: str,
+    *,
+    insecure: bool = False,
+    timeout: _Timeout = (30.0, 86400.0),
+) -> Iterator[dict[str, Any]]:
+    """
+    POST /api/pull with stream=True; yield one dict per NDJSON line from Ollama.
+    ``timeout`` is passed to requests (connect, read) when given as a tuple for long downloads.
+    """
+    base = base_url.rstrip("/")
+    url = f"{base}/api/pull"
+    body: dict[str, Any] = {"name": name, "stream": True}
+    if insecure:
+        body["insecure"] = True
+    resp = post_json(url, body, timeout=timeout, stream=True)
+    resp.raise_for_status()
+    for line in resp.iter_lines(decode_unicode=True):
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            yield obj
 
 
 def format_http_error(exc: requests.exceptions.HTTPError) -> dict[str, Any]:

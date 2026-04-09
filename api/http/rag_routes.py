@@ -84,6 +84,7 @@ def create_app(
         return jsonify({"status": "ok"})
 
     from api.http.webui_routes import (
+        open_webui_config,
         open_webui_status,
         open_webui_start,
         open_webui_stop,
@@ -93,6 +94,11 @@ def create_app(
     app.add_url_rule(
         "/api/webui/open-webui/status",
         view_func=open_webui_status,
+        methods=["GET"],
+    )
+    app.add_url_rule(
+        "/api/webui/open-webui/config",
+        view_func=open_webui_config,
         methods=["GET"],
     )
     app.add_url_rule(

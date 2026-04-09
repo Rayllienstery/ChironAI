@@ -161,6 +161,67 @@ def cmd_generate(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_delete(args: argparse.Namespace) -> int:
+    try:
+        if not (args.name or "").strip():
+            raise ValueError("--name is required")
+        out = ollama_http.post_delete(args.base_url, args.name.strip(), timeout=args.timeout)
+        print(json.dumps(out))
+        return 0
+    except (ValueError, json.JSONDecodeError) as e:
+        _eprint({"error": str(e)})
+        return 1
+    except requests.exceptions.HTTPError as e:
+        _eprint(ollama_http.format_http_error(e))
+        return 1
+    except requests.exceptions.RequestException as e:
+        _eprint({"error": str(e)})
+        return 1
+
+
+def cmd_show(args: argparse.Namespace) -> int:
+    try:
+        if not (args.name or "").strip():
+            raise ValueError("--name is required")
+        out = ollama_http.post_show(args.base_url, args.name.strip(), timeout=args.timeout)
+        print(json.dumps(out))
+        return 0
+    except (ValueError, json.JSONDecodeError) as e:
+        _eprint({"error": str(e)})
+        return 1
+    except requests.exceptions.HTTPError as e:
+        _eprint(ollama_http.format_http_error(e))
+        return 1
+    except requests.exceptions.RequestException as e:
+        _eprint({"error": str(e)})
+        return 1
+
+
+def cmd_pull(args: argparse.Namespace) -> int:
+    try:
+        if not (args.name or "").strip():
+            raise ValueError("--name is required")
+        read_t = float(args.timeout)
+        pull_timeout: tuple[float, float] = (30.0, max(read_t, 60.0))
+        for obj in ollama_http.stream_pull_objects(
+            args.base_url,
+            args.name.strip(),
+            insecure=bool(args.insecure),
+            timeout=pull_timeout,
+        ):
+            print(json.dumps(obj), flush=True)
+        return 0
+    except (ValueError, json.JSONDecodeError) as e:
+        _eprint({"error": str(e)})
+        return 1
+    except requests.exceptions.HTTPError as e:
+        _eprint(ollama_http.format_http_error(e))
+        return 1
+    except requests.exceptions.RequestException as e:
+        _eprint({"error": str(e)})
+        return 1
+
+
 def cmd_rerank(args: argparse.Namespace) -> int:
     try:
         req = _read_stdin_json()
@@ -220,6 +281,29 @@ def build_parser() -> argparse.ArgumentParser:
     r = sub.add_parser("rerank", help="POST /api/rerank; stdin JSON {url, json|body, timeout?}")
     r.add_argument("--timeout", type=float, default=120.0)
     r.set_defaults(func=cmd_rerank)
+
+    d = sub.add_parser("delete", help="POST /api/delete")
+    d.add_argument("--base-url", default=_default_base_url())
+    d.add_argument("--name", required=True, help="Model name to delete")
+    d.add_argument("--timeout", type=float, default=120.0)
+    d.set_defaults(func=cmd_delete)
+
+    sh = sub.add_parser("show", help="POST /api/show")
+    sh.add_argument("--base-url", default=_default_base_url())
+    sh.add_argument("--name", required=True, help="Model name")
+    sh.add_argument("--timeout", type=float, default=120.0)
+    sh.set_defaults(func=cmd_show)
+
+    pl = sub.add_parser("pull", help="POST /api/pull stream=True; stdout NDJSON progress lines")
+    pl.add_argument("--base-url", default=_default_base_url())
+    pl.add_argument("--name", required=True, help="Model name to pull")
+    pl.add_argument(
+        "--insecure",
+        action="store_true",
+        help="Pass insecure=true to Ollama (e.g. self-signed registry)",
+    )
+    pl.add_argument("--timeout", type=float, default=86400.0, help="Read timeout (seconds)")
+    pl.set_defaults(func=cmd_pull)
 
     return p
 

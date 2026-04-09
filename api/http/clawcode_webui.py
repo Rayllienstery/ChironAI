@@ -300,6 +300,7 @@ def clawcode_get_settings():
         )
         from infrastructure.database import get_settings_repository
         from infrastructure.ollama.cli_runner import invoke_tags
+        from infrastructure.ollama.ollama_model_visibility import get_hidden_ollama_model_ids
 
         repo = get_settings_repository()
         stored_default = (repo.get_app_setting("clawcode_default_model") or "").strip()
@@ -319,16 +320,21 @@ def clawcode_get_settings():
 
         base_url = get_ollama_base_url()
         tags = invoke_tags(base_url=base_url, timeout=5.0)
+        hidden = get_hidden_ollama_model_ids()
         models = []
         for m in tags.get("models") or []:
             if not isinstance(m, dict):
                 continue
             name = (m.get("name") or m.get("model") or "").strip()
-            if not name:
+            if not name or name in hidden:
                 continue
             models.append({"id": name, "name": name})
 
-        if fallback and all(fallback != mm["id"] for mm in models):
+        if (
+            fallback
+            and fallback not in hidden
+            and all(fallback != mm["id"] for mm in models)
+        ):
             models.insert(0, {"id": fallback, "name": fallback})
 
         return jsonify(
