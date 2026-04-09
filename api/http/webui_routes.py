@@ -1443,8 +1443,6 @@ def get_model_settings() -> Any:
             "web_interaction_fetch_page": False,
             "web_interaction_wikipedia": False,
             "rag_collection": stored_rag_col,
-            "rerank_for_rag": False,
-            "rerank_model": "",
             "autocomplete_model": stored_autocomplete,
         }
 
@@ -1454,10 +1452,6 @@ def get_model_settings() -> Any:
                 for key, val in blob.items():
                     if key in out:
                         out[key] = val
-                    elif key == "rerank_for_rag":
-                        out["rerank_for_rag"] = bool(val)
-                    elif key == "rerank_model":
-                        out["rerank_model"] = str(val or "").strip()
                     elif key == "model" and not out["model"]:
                         out["model"] = str(val or "").strip()
             except json.JSONDecodeError:

@@ -9,12 +9,11 @@ import '../styles/components/DashboardTab.css';
 import '../styles/components/OpenWebUiTab.css';
 
 const CONFIG_LABELS = [
-  ['open_webui_host_url', 'Host URL', 'OPEN_WEBUI_URL'],
-  ['open_webui_container_name', 'Container name', 'OPEN_WEBUI_CONTAINER_NAME'],
-  ['open_webui_image', 'Docker image', 'OPEN_WEBUI_IMAGE'],
-  ['open_webui_host_port', 'Host port', 'OPEN_WEBUI_HOST_PORT'],
-  ['open_webui_container_port', 'Container port', 'OPEN_WEBUI_CONTAINER_PORT'],
-  ['open_webui_ollama_url_for_container', 'Ollama URL in container', 'OPEN_WEBUI_OLLAMA_BASE_URL'],
+  ['open_webui_host_url', 'Host URL'],
+  ['open_webui_container_name', 'Container name'],
+  ['open_webui_image', 'Docker image'],
+  ['open_webui_host_port', 'Host port'],
+  ['open_webui_container_port', 'Container port'],
 ];
 
 function OpenWebUiTab({ onErrorStateChange }) {
@@ -183,11 +182,8 @@ function OpenWebUiTab({ onErrorStateChange }) {
         </div>
 
         <p className="openwebui-tab__config-hint">
-          Effective values come from the WebUI server environment (ServiceStarter). Override with env vars
-          such as <code>OPEN_WEBUI_URL</code>, <code>OPEN_WEBUI_CONTAINER_NAME</code>,{' '}
-          <code>OPEN_WEBUI_IMAGE</code>, <code>OPEN_WEBUI_HOST_PORT</code>,{' '}
-          <code>OPEN_WEBUI_CONTAINER_PORT</code>, <code>OPEN_WEBUI_OLLAMA_BASE_URL</code>, then restart the
-          server.
+          Effective values come from the WebUI server environment (ServiceStarter). Restart the
+          server after changing environment variables.
         </p>
 
         {configErr ? <div className="dashboard-card-error">{configErr}</div> : null}
@@ -198,13 +194,10 @@ function OpenWebUiTab({ onErrorStateChange }) {
 
         {config ? (
           <dl className="openwebui-tab__config-list">
-            {CONFIG_LABELS.map(([key, label, envHint]) => (
+            {CONFIG_LABELS.map(([key, label]) => (
               <React.Fragment key={key}>
                 <dt className="openwebui-tab__config-term">
                   {label}
-                  <span className="dashboard-rag-status-label" style={{ display: 'block', marginTop: 2 }}>
-                    {envHint}
-                  </span>
                 </dt>
                 <dd className="openwebui-tab__config-desc">
                   {config[key] != null && config[key] !== '' ? String(config[key]) : '—'}

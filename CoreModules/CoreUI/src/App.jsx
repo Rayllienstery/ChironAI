@@ -453,11 +453,6 @@ function App() {
     }
   };
 
-  const headerPageLabel =
-    activeTab === "settings"
-      ? "Settings"
-      : tabs.find((t) => t.id === activeTab)?.label ?? "";
-
   return (
     <NotificationCenterProvider sessionId={sessionId}>
     <div className="app">
@@ -476,11 +471,6 @@ function App() {
       />
       <div className="app-main-column">
         <header className="app-header">
-          <div className="app-header-row">
-            <div className="app-header-page-label">
-              <h1 className="app-header-title">{headerPageLabel}</h1>
-            </div>
-          </div>
           {sessionId && (
             <div className="app-header-metrics">
             {dashboardMetrics?.gpu != null && (

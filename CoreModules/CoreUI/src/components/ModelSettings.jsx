@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { getModels, getPrompts, getModelSettings, updateModelSettings, getRagCollections } from '../services/api';
+import { getModels, getPrompts, getModelSettings, updateModelSettings } from '../services/api';
 import { isLogicalRagModelId } from '../constants/llmProxyModels';
 import '../styles/components/ModelSettings.css';
 
@@ -12,8 +12,6 @@ function ModelSettings({
 }) {
   const [models, setModels] = useState([]);
   const [prompts, setPrompts] = useState([]);
-  const [collections, setCollections] = useState([]);
-  const [collectionsFetchError, setCollectionsFetchError] = useState(null);
   const [settings, setSettings] = useState({
     model: '',
     prompt_name: '',
@@ -26,12 +24,8 @@ function ModelSettings({
     web_interaction_enabled: false,
     web_interaction_on_keywords: true,
     web_interaction_on_low_confidence_framework: true,
-    rag_collection: '',
-    rerank_for_rag: false,
-    rerank_model: '',
     model_missing: false,
     prompt_missing: false,
-    collection_missing: false,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -42,11 +36,10 @@ function ModelSettings({
 
   const loadData = async () => {
     try {
-      const [modelsData, promptsData, settingsData, collectionsData] = await Promise.all([
+      const [modelsData, promptsData, settingsData] = await Promise.all([
         getModels(),
         getPrompts(),
         getModelSettings(),
-        getRagCollections(),
       ]);
 
       setModels(modelsData);
@@ -54,8 +47,6 @@ function ModelSettings({
         (p) => p.name && p.name.toLowerCase() !== 'readme'
       );
       setPrompts(promptList);
-      setCollections(collectionsData?.collections || []);
-      setCollectionsFetchError(collectionsData?.error || null);
 
       if (settingsData) {
         setSettings((prev) => {
@@ -79,7 +70,6 @@ function ModelSettings({
   );
   const modelIds = useMemo(() => ollamaModels.map((m) => m.id), [ollamaModels]);
   const promptNames = useMemo(() => prompts.map((p) => p.name).filter(Boolean), [prompts]);
-  const collectionNames = useMemo(() => collections.map((c) => c.name).filter(Boolean), [collections]);
 
   const infrastructureIssues = useMemo(() => {
     const list = [];
@@ -106,23 +96,13 @@ function ModelSettings({
         `Qdrant is not reachable${extra ? `: ${extra}` : ''}. Start Docker, then start Qdrant from the RAG / Qdrant tab.`
       );
     }
-    if (collectionsFetchError === 'qdrant_unreachable' && !qUnreachableFromInfra) {
-      list.push('Could not load Qdrant collections (service unreachable).');
-    } else if (collectionsFetchError && String(collectionsFetchError).startsWith('http_')) {
-      list.push(
-        `Could not load Qdrant collections (${String(collectionsFetchError).replace(/^http_/, 'HTTP ')}).`
-      );
-    } else if (collectionsFetchError === 'parse_error') {
-      list.push('Could not load Qdrant collections (invalid response).');
-    }
     return list;
-  }, [proxyInfrastructure, collectionsFetchError]);
+  }, [proxyInfrastructure]);
 
   const validationIssues = useMemo(() => {
     const issues = [];
     const m = (settings.model || '').trim();
     const pn = (settings.prompt_name || '').trim();
-    const rc = (settings.rag_collection || '').trim();
 
     const modelInList = Boolean(m && modelIds.includes(m));
     const modelInvalid =
@@ -150,27 +130,8 @@ function ModelSettings({
       }
     }
 
-    const qdrantReadyForCollectionRules =
-      !collectionsFetchError &&
-      !proxyInfrastructure?.infrastructure_error &&
-      (!proxyInfrastructure?.qdrant || proxyInfrastructure.qdrant.reachable !== false);
-
-    if (qdrantReadyForCollectionRules) {
-      if (collectionNames.length === 0) {
-        issues.push('RAG collection: no Qdrant collections found — create one under RAG / Qdrant.');
-      } else {
-        if (!rc) {
-          issues.push('RAG collection: select a collection (required for LLM Proxy).');
-        } else if (!collectionNames.includes(rc)) {
-          issues.push(
-            `RAG collection: "${rc}" is missing or not in Qdrant — pick another collection.`
-          );
-        }
-      }
-    }
-
     return issues;
-  }, [settings, modelIds, promptNames, collectionNames, collectionsFetchError, proxyInfrastructure]);
+  }, [settings, modelIds, promptNames]);
 
   useEffect(() => {
     if (typeof onModelStatusChange === 'function') {
@@ -190,9 +151,6 @@ function ModelSettings({
       }
       if (field === 'model') {
         next.model_missing = false;
-      }
-      if (field === 'rag_collection') {
-        next.collection_missing = false;
       }
       return next;
     });
@@ -353,87 +311,6 @@ function ModelSettings({
             />
             Include RAG metadata
           </label>
-        </div>
-
-        <div className="form-group">
-          <label>RAG collection (LLM Proxy)</label>
-          <p className="setting-hint">
-            {(settings.rag_collection || '').trim() ? (
-              <>
-                Current: <code>{settings.rag_collection}</code>
-                {collectionNames.length > 0 &&
-                  !collectionNames.includes((settings.rag_collection || '').trim()) && (
-                    <span className="settings-stale-value"> — not in current Qdrant list</span>
-                  )}
-              </>
-            ) : (
-              <>No collection stored (effective value may come from server config default).</>
-            )}
-          </p>
-          {(typeof onNavigateToRag === 'function' || typeof onOpenRagModels === 'function') && (
-            <button
-              type="button"
-              className="navigate-rag-models-button"
-              onClick={() =>
-                typeof onNavigateToRag === 'function' ? onNavigateToRag() : onOpenRagModels()
-              }
-            >
-              Open RAG / Qdrant — service bindings
-            </button>
-          )}
-          <p className="setting-hint">
-            Choose the Qdrant collection on the <strong>RAG / Qdrant</strong> tab under &quot;Service bindings&quot;.
-          </p>
-        </div>
-
-        <div className="form-group checkbox-group">
-          <label>
-            <input
-              type="checkbox"
-              checked={settings.rerank_for_rag}
-              onChange={(e) => handleChange('rerank_for_rag', e.target.checked)}
-            />
-            Rerank for RAG
-          </label>
-          <p className="setting-warning">
-            Improves answer quality but slows down requests; ideally use a dedicated rerank model.
-          </p>
-        </div>
-
-        <div className="form-group">
-          <label>Rerank Model</label>
-          {typeof onOpenRagModels === 'function' ? (
-            <>
-              <button
-                type="button"
-                className="navigate-rag-models-button"
-                onClick={onOpenRagModels}
-              >
-                Open RAG / Qdrant — Models for RAG / Qdrant
-              </button>
-              <p className="setting-hint">
-                Embedding and rerank models are configured on the <strong>RAG / Qdrant</strong> tab under
-                &quot;Models for RAG / Qdrant&quot;.
-              </p>
-            </>
-          ) : (
-            <>
-              <select
-                value={settings.rerank_model ?? ''}
-                onChange={(e) => handleChange('rerank_model', e.target.value)}
-              >
-                <option value="">No rerank model override</option>
-                {ollamaModels.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-              <p className="setting-hint">
-                Model used for reranking when &quot;Rerank for RAG&quot; is on.
-              </p>
-            </>
-          )}
         </div>
 
         <button

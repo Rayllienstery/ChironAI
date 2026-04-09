@@ -449,25 +449,36 @@ function OllamaTab({ onErrorStateChange }) {
           <div className="dashboard-card-muted">No models found. Pull one above.</div>
         ) : (
           <div className="ollama-tab__models-list" role="list" aria-label="Ollama models">
-            {sortedModels.map((m) => {
-              const name = m.name || '';
-              const display = parseOllamaModelDisplayParts(name);
-              const cloudModel = isCloudModelName(name);
-              const familyHint = familyHintByName[name];
-              const brandKey =
-                getOllamaModelBrandKey(name) ||
-                (familyHint ? getOllamaModelBrandKeyFromFamily(familyHint) : null);
-              const brandIconUrl = brandKey ? OLLAMA_BRAND_ICON_URL[brandKey] : null;
-              const busy = rowBusy[name];
-              const hidden = Boolean(m.hidden);
-              const det = expanded[name];
-              const dLoading = detailsLoading[name];
+            {(() => {
+              const cloudModels = sortedModels.filter((m) => isCloudModelName(m.name));
+              const localModels = sortedModels.filter((m) => !isCloudModelName(m.name));
               return (
-                <div
-                  key={name}
-                  className={`ollama-tab__model-row${hidden ? ' ollama-tab__model-row--muted' : ''}`}
-                  role="listitem"
-                >
+                <>
+                  {cloudModels.length > 0 && (
+                    <div className="ollama-tab__models-section">
+                      <div className="ollama-tab__models-section-header">
+                        <span className="material-symbols-outlined" aria-hidden="true">cloud</span>
+                        <span>Cloud Models</span>
+                      </div>
+                      {cloudModels.map((m) => {
+                        const name = m.name || '';
+                        const display = parseOllamaModelDisplayParts(name);
+                        const cloudModel = true;
+                        const familyHint = familyHintByName[name];
+                        const brandKey =
+                          getOllamaModelBrandKey(name) ||
+                          (familyHint ? getOllamaModelBrandKeyFromFamily(familyHint) : null);
+                        const brandIconUrl = brandKey ? OLLAMA_BRAND_ICON_URL[brandKey] : null;
+                        const busy = rowBusy[name];
+                        const hidden = Boolean(m.hidden);
+                        const det = expanded[name];
+                        const dLoading = detailsLoading[name];
+                        return (
+                          <div
+                            key={name}
+                            className={`ollama-tab__model-row${hidden ? ' ollama-tab__model-row--muted' : ''}`}
+                            role="listitem"
+                          >
                   <div className="ollama-tab__model-row-header">
                     <div className="ollama-tab__model-main">
                       <div className="ollama-tab__model-title">
@@ -624,6 +635,195 @@ function OllamaTab({ onErrorStateChange }) {
                 </div>
               );
             })}
+                    </div>
+                  )}
+
+                  {localModels.length > 0 && (
+                    <div className="ollama-tab__models-section">
+                      <div className="ollama-tab__models-section-header">
+                        <span className="material-symbols-outlined" aria-hidden="true">cloud_off</span>
+                        <span>Local Models</span>
+                      </div>
+                      {localModels.map((m) => {
+                        const name = m.name || '';
+                        const display = parseOllamaModelDisplayParts(name);
+                        const cloudModel = false;
+                        const familyHint = familyHintByName[name];
+                        const brandKey =
+                          getOllamaModelBrandKey(name) ||
+                          (familyHint ? getOllamaModelBrandKeyFromFamily(familyHint) : null);
+                        const brandIconUrl = brandKey ? OLLAMA_BRAND_ICON_URL[brandKey] : null;
+                        const busy = rowBusy[name];
+                        const hidden = Boolean(m.hidden);
+                        const det = expanded[name];
+                        const dLoading = detailsLoading[name];
+                        return (
+                          <div
+                            key={name}
+                            className={`ollama-tab__model-row${hidden ? ' ollama-tab__model-row--muted' : ''}`}
+                            role="listitem"
+                          >
+                  <div className="ollama-tab__model-row-header">
+                    <div className="ollama-tab__model-main">
+                      <div className="ollama-tab__model-title">
+                        <span
+                          className={`ollama-tab__model-cloud-icon material-symbols-outlined${cloudModel ? ' ollama-tab__model-cloud-icon--on' : ''}`}
+                          aria-hidden="true"
+                          title={cloudModel ? 'Cloud model' : 'Local model'}
+                        >
+                          {cloudModel ? 'cloud' : 'cloud_off'}
+                        </span>
+                        {brandIconUrl ? (
+                          <img
+                            className="ollama-tab__model-brand-icon"
+                            src={brandIconUrl}
+                            alt=""
+                            width={20}
+                            height={20}
+                            loading="lazy"
+                            decoding="async"
+                            title={brandKey ? `Provider: ${brandKey}` : undefined}
+                          />
+                        ) : null}
+                        <code title={display.full}>{display.title}</code>
+                        {hidden ? (
+                          <span className="dashboard-card-muted">Hidden from editors</span>
+                        ) : null}
+                      </div>
+                      <div className="ollama-tab__model-meta">
+                        {display.quant && !cloudModel ? (
+                          <>
+                            <span className="ollama-tab__model-quant">{display.quant}</span>
+                            <span className="ollama-tab__dot" aria-hidden="true">
+                              ·
+                            </span>
+                          </>
+                        ) : null}
+                        {!cloudModel ? (
+                          <>
+                            <span>{formatBytes(m.size)}</span>
+                            <span className="ollama-tab__dot" aria-hidden="true">
+                              ·
+                            </span>
+                          </>
+                        ) : null}
+                        <span title={m.modified_at ? String(m.modified_at) : undefined}>
+                          {formatModifiedAt(m.modified_at)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div
+                      className="ollama-tab__model-menu-root"
+                      ref={openMenuModel === name ? modelMenuRootRef : null}
+                    >
+                      <button
+                        type="button"
+                        className="ollama-tab__model-menu-trigger"
+                        aria-haspopup="menu"
+                        aria-expanded={openMenuModel === name}
+                        aria-label={`Actions for ${name}`}
+                        disabled={busy}
+                        onClick={() =>
+                          setOpenMenuModel((cur) => (cur === name ? null : name))
+                        }
+                      >
+                        <span className="material-symbols-outlined" aria-hidden="true">
+                          more_vert
+                        </span>
+                      </button>
+                      {openMenuModel === name ? (
+                        <div className="ollama-tab__model-menu" role="menu">
+                          <button
+                            type="button"
+                            className="ollama-tab__model-menu-item"
+                            role="menuitem"
+                            disabled={busy}
+                            onClick={() => {
+                              setOpenMenuModel(null);
+                              toggleHidden(name, hidden);
+                            }}
+                          >
+                            <span className="material-symbols-outlined" aria-hidden="true">
+                              {hidden ? 'visibility' : 'visibility_off'}
+                            </span>
+                            <span>{hidden ? 'Show in editors' : 'Hide from editors'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="ollama-tab__model-menu-item"
+                            role="menuitem"
+                            disabled={busy || dLoading}
+                            onClick={() => {
+                              setOpenMenuModel(null);
+                              toggleDetails(name);
+                            }}
+                          >
+                            <span className="material-symbols-outlined" aria-hidden="true">
+                              {det ? 'expand_less' : 'description'}
+                            </span>
+                            <span>{det ? 'Hide details' : 'Show details'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="ollama-tab__model-menu-item ollama-tab__model-menu-item--danger"
+                            role="menuitem"
+                            disabled={busy || pulling}
+                            onClick={() => {
+                              setOpenMenuModel(null);
+                              handleDelete(name);
+                            }}
+                          >
+                            <span className="material-symbols-outlined" aria-hidden="true">
+                              delete_forever
+                            </span>
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {det || dLoading ? (
+                    <div className="ollama-tab__details">
+                      <div className="ollama-tab__details-header">
+                        <span className="ollama-tab__details-title" id={`ollama-details-title-${name}`}>
+                          Details
+                        </span>
+                        <button
+                          type="button"
+                          className="ollama-tab__details-close"
+                          onClick={() => closeDetails(name)}
+                          aria-label="Close details"
+                        >
+                          <span className="material-symbols-outlined" aria-hidden="true">
+                            close
+                          </span>
+                        </button>
+                      </div>
+                      <div
+                        className="ollama-tab__details-body"
+                        role="region"
+                        aria-labelledby={`ollama-details-title-${name}`}
+                      >
+                        {dLoading ? (
+                          <span className="dashboard-card-muted">Loading…</span>
+                        ) : det?.error ? (
+                          <span className="dashboard-card-error">{det.error}</span>
+                        ) : det ? (
+                          <pre>{JSON.stringify(det, null, 2)}</pre>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
       </section>

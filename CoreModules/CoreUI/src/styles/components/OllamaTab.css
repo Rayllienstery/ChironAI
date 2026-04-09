@@ -48,7 +48,31 @@
 .ollama-tab__models-list {
   display: flex;
   flex-direction: column;
+  gap: var(--md-sys-spacing-lg);
+}
+
+.ollama-tab__models-section {
+  display: flex;
+  flex-direction: column;
   gap: var(--md-sys-spacing-sm);
+  padding-top: var(--md-sys-spacing-sm);
+}
+
+.ollama-tab__models-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-sm);
+  padding: var(--md-sys-spacing-xs) 0;
+  font: var(--md-sys-typescale-label-large-font);
+  color: var(--md-sys-color-on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.ollama-tab__models-section-header .material-symbols-outlined {
+  font-size: 18px;
+  line-height: 1;
 }
 
 .ollama-tab__model-row {
