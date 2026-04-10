@@ -502,6 +502,180 @@ def clawcode_update_settings():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@clawcode_bp.get("/skills")
+def clawcode_skills_list():
+    if not _ensure_clawcode_path():
+        return jsonify({"ok": False, "error": "clawcode unavailable"}), 400
+    try:
+        from infrastructure.database import get_settings_repository
+        from clawcode.skills_registry import (
+            enabled_skill_ids_for_registry,
+            load_skill_policy,
+            load_skills_registry,
+        )
+
+        repo = get_settings_repository()
+        policy = load_skill_policy(repo)
+        registry = load_skills_registry(repo)
+        enabled_set = set(enabled_skill_ids_for_registry(registry, policy))
+        skills = []
+        for rec in sorted(registry.values(), key=lambda r: (r.invocation_name or "", r.id)):
+            sid = rec.id
+            skills.append(
+                {
+                    **rec.to_json(),
+                    "enabled": sid in enabled_set,
+                }
+            )
+        return jsonify({"ok": True, "skills": skills})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e), "skills": []}), 500
+
+
+@clawcode_bp.post("/skills/install")
+def clawcode_skills_install():
+    if not _ensure_clawcode_path():
+        return jsonify({"ok": False, "error": "clawcode unavailable"}), 400
+    body = request.get_json(silent=True) or {}
+    try:
+        from infrastructure.database import get_settings_repository
+        from clawcode.skills_manager import install_skills_from_git
+        from clawcode.skills_registry import load_skills_registry, store_skills_registry
+
+        repo = get_settings_repository()
+        url = (body.get("url") or "").strip()
+        ref = (body.get("ref") or "").strip() or None
+        subdir = (body.get("subdir") or "").strip() or None
+        if not url:
+            return jsonify({"ok": False, "error": "url is required"}), 400
+        installed = install_skills_from_git(url=url, ref=ref, subdir=subdir)
+        registry = load_skills_registry(repo)
+        for rec in installed:
+            registry[rec.id] = rec
+        store_skills_registry(repo, registry)
+        return jsonify(
+            {
+                "ok": True,
+                "installed_count": len(installed),
+                "installed": [r.to_json() for r in installed],
+            }
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@clawcode_bp.post("/skills/update")
+def clawcode_skills_update():
+    if not _ensure_clawcode_path():
+        return jsonify({"ok": False, "error": "clawcode unavailable"}), 400
+    body = request.get_json(silent=True) or {}
+    skill_id = (body.get("skill_id") or "").strip()
+    if not skill_id:
+        return jsonify({"ok": False, "error": "skill_id is required"}), 400
+    try:
+        from infrastructure.database import get_settings_repository
+        from clawcode.skills_manager import SkillRecord, update_skill_from_source
+        from clawcode.skills_registry import load_skills_registry, store_skills_registry
+
+        repo = get_settings_repository()
+        registry = load_skills_registry(repo)
+        rec = registry.get(skill_id)
+        if not rec:
+            return jsonify({"ok": False, "error": f"skill not found: {skill_id}"}), 404
+        if not isinstance(rec, SkillRecord):
+            return jsonify({"ok": False, "error": "invalid skill record"}), 400
+        updated = update_skill_from_source(rec)
+        registry[updated.id] = updated
+        store_skills_registry(repo, registry)
+        return jsonify({"ok": True, "skill": updated.to_json()})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@clawcode_bp.delete("/skills/<skill_id>")
+def clawcode_skills_delete(skill_id: str):
+    if not _ensure_clawcode_path():
+        return jsonify({"ok": False, "error": "clawcode unavailable"}), 400
+    skill_id = (skill_id or "").strip()
+    if not skill_id:
+        return jsonify({"ok": False, "error": "skill_id is required"}), 400
+    try:
+        import shutil
+        from pathlib import Path
+
+        from infrastructure.database import get_settings_repository
+        from clawcode.skills_registry import (
+            load_skills_registry,
+            remove_skill_from_policy_disabled,
+            store_skills_registry,
+        )
+
+        repo = get_settings_repository()
+        registry = load_skills_registry(repo)
+        rec = registry.pop(skill_id, None)
+        if rec is None:
+            return jsonify({"ok": False, "error": f"skill not found: {skill_id}"}), 404
+        try:
+            p = Path(str(rec.installed_path))
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+        except Exception:
+            pass
+        store_skills_registry(repo, registry)
+        remove_skill_from_policy_disabled(repo, skill_id)
+        return jsonify({"ok": True, "deleted": skill_id})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@clawcode_bp.post("/skills/<skill_id>/enable")
+def clawcode_skills_enable(skill_id: str):
+    if not _ensure_clawcode_path():
+        return jsonify({"ok": False, "error": "clawcode unavailable"}), 400
+    skill_id = (skill_id or "").strip()
+    if not skill_id:
+        return jsonify({"ok": False, "error": "skill_id is required"}), 400
+    try:
+        from infrastructure.database import get_settings_repository
+        from clawcode.skills_registry import SkillPolicy, load_skill_policy, load_skills_registry, store_skill_policy
+
+        repo = get_settings_repository()
+        registry = load_skills_registry(repo)
+        if skill_id not in registry:
+            return jsonify({"ok": False, "error": f"skill not found: {skill_id}"}), 404
+        policy = load_skill_policy(repo)
+        nxt = [x for x in policy.disabled_skill_ids if x != skill_id]
+        store_skill_policy(repo, SkillPolicy(disabled_skill_ids=nxt))
+        return jsonify({"ok": True, "skill_id": skill_id})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@clawcode_bp.post("/skills/<skill_id>/disable")
+def clawcode_skills_disable(skill_id: str):
+    if not _ensure_clawcode_path():
+        return jsonify({"ok": False, "error": "clawcode unavailable"}), 400
+    skill_id = (skill_id or "").strip()
+    if not skill_id:
+        return jsonify({"ok": False, "error": "skill_id is required"}), 400
+    try:
+        from infrastructure.database import get_settings_repository
+        from clawcode.skills_registry import SkillPolicy, load_skill_policy, load_skills_registry, store_skill_policy
+
+        repo = get_settings_repository()
+        registry = load_skills_registry(repo)
+        if skill_id not in registry:
+            return jsonify({"ok": False, "error": f"skill not found: {skill_id}"}), 404
+        policy = load_skill_policy(repo)
+        disabled = list(policy.disabled_skill_ids)
+        if skill_id not in disabled:
+            disabled.append(skill_id)
+        store_skill_policy(repo, SkillPolicy(disabled_skill_ids=disabled))
+        return jsonify({"ok": True, "skill_id": skill_id})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 def register_clawcode_webui(app) -> None:
     """Register blueprint; no-op if blueprint import fails."""
     try:

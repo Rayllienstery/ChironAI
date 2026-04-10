@@ -1373,3 +1373,75 @@ export async function updateClawCodeSettings(settings) {
   return data;
 }
 
+export async function getClawCodeSkills() {
+  const response = await fetch(`${CLAWCODE_BASE}/skills`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Failed to load ClawCode skills');
+  }
+  return data;
+}
+
+export async function installClawCodeSkills(payload) {
+  const response = await fetch(`${CLAWCODE_BASE}/skills/install`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Failed to install skills');
+  }
+  return data;
+}
+
+export async function updateClawCodeSkill(skillId) {
+  const response = await fetch(`${CLAWCODE_BASE}/skills/update`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ skill_id: skillId }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Failed to update skill');
+  }
+  return data;
+}
+
+export async function deleteClawCodeSkill(skillId) {
+  const response = await fetch(`${CLAWCODE_BASE}/skills/${encodeURIComponent(skillId)}`, {
+    method: 'DELETE',
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Failed to delete skill');
+  }
+  return data;
+}
+
+export async function enableClawCodeSkill(skillId) {
+  const response = await fetch(`${CLAWCODE_BASE}/skills/${encodeURIComponent(skillId)}/enable`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Failed to enable skill');
+  }
+  return data;
+}
+
+export async function disableClawCodeSkill(skillId) {
+  const response = await fetch(`${CLAWCODE_BASE}/skills/${encodeURIComponent(skillId)}/disable`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Failed to disable skill');
+  }
+  return data;
+}
+

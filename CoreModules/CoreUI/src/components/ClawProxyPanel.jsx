@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   getClawCodeStatus,
   getClawCodeTraces,
@@ -9,6 +9,12 @@ import {
   getClawCodeVendorVersions,
   getClawCodeSettings,
   updateClawCodeSettings,
+  getClawCodeSkills,
+  installClawCodeSkills,
+  updateClawCodeSkill,
+  deleteClawCodeSkill,
+  enableClawCodeSkill,
+  disableClawCodeSkill,
 } from '../services/api';
 import '../styles/components/DashboardTab.css';
 
@@ -42,6 +48,26 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
   const [globalTemp, setGlobalTemp] = useState(null);
   const [globalTopP, setGlobalTopP] = useState(null);
   const [chatThink, setChatThink] = useState(false);
+  const [skills, setSkills] = useState([]);
+  const [skillUrl, setSkillUrl] = useState('');
+  const [skillRef, setSkillRef] = useState('');
+  const [skillSubdir, setSkillSubdir] = useState('');
+  const [skillsModalOpen, setSkillsModalOpen] = useState(false);
+
+  const skillsStats = useMemo(() => {
+    const total = skills.length;
+    const enabled = skills.filter((s) => s.enabled).length;
+    return { total, enabled, disabled: total - enabled };
+  }, [skills]);
+
+  useEffect(() => {
+    if (!skillsModalOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setSkillsModalOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [skillsModalOpen]);
 
   const refresh = useCallback(async () => {
     setErr(null);
@@ -80,6 +106,12 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
         setGlobalTemp(settings.global_chat_temperature);
         setGlobalTopP(settings.global_chat_top_p);
         setChatThink(Boolean(settings.chat_think));
+        try {
+          const sr = await getClawCodeSkills();
+          setSkills(sr.skills || []);
+        } catch {
+          setSkills([]);
+        }
         if (typeof notify === 'function') {
           const inList = Boolean(def && models.some((m) => m.id === def || m.name === def));
           notify(!inList);
@@ -279,6 +311,260 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
                 </details>
               ))}
             </div>
+          </section>
+
+          <section className="app-default-card" aria-labelledby="claw-skills-heading">
+            <div className="dashboard-card-header">
+              <h2 id="claw-skills-heading">Skills</h2>
+              <div className="dashboard-card-actions">
+                <button type="button" className="dashboard-primary-btn" onClick={refresh} disabled={busy}>
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            <div className="dashboard-claw-skills-summary">
+              <h3 className="dashboard-claw-skills-summary-title">ClawCode skill packs</h3>
+              <p className="dashboard-claw-skills-summary-text">
+                Skills are instruction packs (folders with <code>SKILL.md</code>) installed from Git. ClawCode injects
+                enabled packs into the agent prompt for <strong>every</strong> Ollama model. Disabled packs stay on disk
+                but are skipped until you enable them again.
+              </p>
+              <ul className="dashboard-claw-skills-summary-stats" aria-live="polite">
+                <li>
+                  <strong>{skillsStats.total}</strong> installed
+                </li>
+                <li>
+                  <strong>{skillsStats.enabled}</strong> enabled
+                </li>
+                {skillsStats.disabled > 0 ? (
+                  <li className="dashboard-claw-skills-summary-stats--muted">
+                    <strong>{skillsStats.disabled}</strong> disabled
+                  </li>
+                ) : null}
+              </ul>
+              <div className="dashboard-claw-skills-summary-actions">
+                <button
+                  type="button"
+                  className="dashboard-primary-btn"
+                  onClick={() => setSkillsModalOpen(true)}
+                  disabled={busy || skills.length === 0}
+                  aria-haspopup="dialog"
+                  aria-expanded={skillsModalOpen}
+                  aria-controls="claw-skills-list-dialog"
+                >
+                  {skills.length === 0 ? 'No skills to manage' : `Manage installed skills (${skills.length})`}
+                </button>
+              </div>
+            </div>
+
+            <div className="dashboard-card-actions" style={{ gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
+              <input
+                className="dashboard-input"
+                style={{ minWidth: 320 }}
+                value={skillUrl}
+                onChange={(e) => setSkillUrl(e.target.value)}
+                placeholder="Git repo URL (e.g. https://github.com/anthropics/skills)"
+                aria-label="Skill repo URL"
+              />
+              <input
+                className="dashboard-input"
+                style={{ width: 160 }}
+                value={skillRef}
+                onChange={(e) => setSkillRef(e.target.value)}
+                placeholder="ref (optional)"
+                aria-label="Skill repo ref"
+              />
+              <input
+                className="dashboard-input"
+                style={{ width: 220 }}
+                value={skillSubdir}
+                onChange={(e) => setSkillSubdir(e.target.value)}
+                placeholder="subdir (optional)"
+                aria-label="Skill repo subdir"
+              />
+              <button
+                type="button"
+                className="dashboard-primary-btn"
+                disabled={busy || !skillUrl.trim()}
+                onClick={async () => {
+                  setBusy(true);
+                  setErr(null);
+                  try {
+                    await installClawCodeSkills({
+                      url: skillUrl.trim(),
+                      ref: skillRef.trim() || undefined,
+                      subdir: skillSubdir.trim() || undefined,
+                    });
+                    setSkillUrl('');
+                    setSkillRef('');
+                    setSkillSubdir('');
+                    await refresh();
+                  } catch (e) {
+                    setErr(String(e.message || e));
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Install
+              </button>
+            </div>
+
+            {!skills.length ? (
+              <p className="dashboard-card-muted" style={{ marginTop: 12 }}>
+                No skills installed yet. Add a Git URL above, then open <strong>Manage installed skills</strong> when the
+                list is non-empty.
+              </p>
+            ) : null}
+
+            {skillsModalOpen ? (
+              <div
+                className="dashboard-claw-skills-modal-overlay"
+                role="presentation"
+                onClick={() => setSkillsModalOpen(false)}
+              >
+                <div
+                  id="claw-skills-list-dialog"
+                  className="dashboard-claw-skills-modal"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="claw-skills-modal-title"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="dashboard-claw-skills-modal-header">
+                    <h3 id="claw-skills-modal-title">Installed skills</h3>
+                    <button
+                      type="button"
+                      className="dashboard-claw-skills-modal-close"
+                      onClick={() => setSkillsModalOpen(false)}
+                      aria-label="Close"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="dashboard-claw-skills-modal-body">
+                    <p className="dashboard-card-muted" style={{ marginTop: 0, marginBottom: 14 }}>
+                      Enable or disable globally, pull updates from Git, or remove a pack from this server.
+                    </p>
+                    <div className="dashboard-claw-skills-modal-list">
+                      {skills.map((sk) => {
+                        const sid = sk.id;
+                        const enabled = Boolean(sk.enabled);
+                        return (
+                          <div key={sid} className="dashboard-claw-skills-modal-item">
+                            <div className="dashboard-claw-skills-modal-item-head">
+                              <strong>{sk.invocation_name || sk.display_name || sid}</strong>
+                              {enabled ? (
+                                <span className="dashboard-claw-skills-modal-badge dashboard-claw-skills-modal-badge--on">
+                                  On
+                                </span>
+                              ) : (
+                                <span className="dashboard-claw-skills-modal-badge">Off</span>
+                              )}
+                            </div>
+                            <code className="dashboard-claw-skills-modal-id">{sid}</code>
+                            {sk.description ? (
+                              <p className="dashboard-claw-skills-modal-desc">{sk.description}</p>
+                            ) : (
+                              <p className="dashboard-card-muted dashboard-claw-skills-modal-desc">No description</p>
+                            )}
+                            <p className="dashboard-card-muted dashboard-claw-skills-modal-source">
+                              {sk.source?.type === 'git' && sk.source?.url ? (
+                                <>
+                                  Source: <code>{sk.source.url}</code>
+                                  {sk.source.ref ? (
+                                    <>
+                                      {' '}
+                                      @ <code>{sk.source.ref}</code>
+                                    </>
+                                  ) : null}
+                                  {sk.source.repo_rel_skill_dir ? (
+                                    <>
+                                      {' '}
+                                      · <code>{sk.source.repo_rel_skill_dir}</code>
+                                    </>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <>
+                                  Source: <code>{sk.source?.type || 'unknown'}</code>
+                                </>
+                              )}
+                            </p>
+                            <div className="dashboard-card-actions" style={{ gap: 8, flexWrap: 'wrap' }}>
+                              <button
+                                type="button"
+                                className="dashboard-primary-btn"
+                                disabled={busy}
+                                onClick={async () => {
+                                  setBusy(true);
+                                  setErr(null);
+                                  try {
+                                    if (enabled) {
+                                      await disableClawCodeSkill(sid);
+                                    } else {
+                                      await enableClawCodeSkill(sid);
+                                    }
+                                    await refresh();
+                                  } catch (e) {
+                                    setErr(String(e.message || e));
+                                  } finally {
+                                    setBusy(false);
+                                  }
+                                }}
+                              >
+                                {enabled ? 'Disable' : 'Enable'}
+                              </button>
+                              <button
+                                type="button"
+                                className="dashboard-secondary-btn"
+                                disabled={busy}
+                                onClick={async () => {
+                                  setBusy(true);
+                                  setErr(null);
+                                  try {
+                                    await updateClawCodeSkill(sid);
+                                    await refresh();
+                                  } catch (e) {
+                                    setErr(String(e.message || e));
+                                  } finally {
+                                    setBusy(false);
+                                  }
+                                }}
+                              >
+                                Update
+                              </button>
+                              <button
+                                type="button"
+                                className="dashboard-secondary-btn"
+                                disabled={busy}
+                                onClick={async () => {
+                                  if (!window.confirm(`Delete skill ${sk.invocation_name || sid}?`)) return;
+                                  setBusy(true);
+                                  setErr(null);
+                                  try {
+                                    await deleteClawCodeSkill(sid);
+                                    await refresh();
+                                    if (skills.length <= 1) setSkillsModalOpen(false);
+                                  } catch (e) {
+                                    setErr(String(e.message || e));
+                                  } finally {
+                                    setBusy(false);
+                                  }
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </section>
         </div>
 

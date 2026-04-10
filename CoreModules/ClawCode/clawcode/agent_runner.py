@@ -1,4 +1,4 @@
-"""Multi-step agent: Ollama native tools + rag_query -> build_rag_context."""
+"""Multi-step agent: Ollama native tools + rag_query + load_skill -> RAG and on-demand skill packs."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import logging
 import os
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Callable
 
 try:
@@ -45,6 +46,15 @@ _TRACE_FIELD_CAP = 48_000
 _TRACE_MSG_CAP = 12_000
 _TRACE_TOOL_ARGS_CAP = 4_000
 
+# Executed inside the ClawCode agent loop (not passed through to the IDE).
+CLAWCODE_SERVER_TOOL_NAMES: frozenset[str] = frozenset({"rag_query", "load_skill"})
+
+
+def _is_clawcode_server_tool(name: str) -> bool:
+    n = (name or "").strip()
+    return bool(n) and n in CLAWCODE_SERVER_TOOL_NAMES
+
+
 RAG_QUERY_TOOL: dict[str, Any] = {
     "type": "function",
     "function": {
@@ -71,11 +81,40 @@ RAG_QUERY_TOOL: dict[str, Any] = {
     },
 }
 
+LOAD_SKILL_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "load_skill",
+        "description": (
+            "Load the **full** ClawCode skill pack text (`SKILL.md` on the server) for an **enabled** pack. "
+            "Use the invocation name from the injected skill catalog. This is separate from rag_query: "
+            "skills are curated instruction packs; RAG is the ingested doc index."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "invocation": {
+                    "type": "string",
+                    "description": "Skill invocation id from the catalog (e.g. privacy-policy, alarmkit).",
+                },
+                "skill_id": {
+                    "type": "string",
+                    "description": "Optional stable skill_id if invocation alone might be ambiguous.",
+                },
+            },
+            "required": ["invocation"],
+        },
+    },
+}
+
 DEFAULT_AGENT_SYSTEM = (
     "You are the ChironAI ClawCode coding agent. "
     "rag_query searches an indexed knowledge base (docs, ingested texts)—it does not read arbitrary files from "
     "the user's open project unless that content was ingested. Do not treat RAG hits as the user's application "
     "source code or assume the workspace is fully covered by RAG. "
+    "load_skill loads a **ClawCode skill pack** (SKILL.md) from the server when you need its full instructions; "
+    "the chat includes a short **catalog** of enabled packs—call load_skill for the pack you need before claiming "
+    "no skill applies. "
     "For substantive technical questions (APIs, frameworks, iOS/Swift behavior, architecture), call rag_query "
     "at least once with a short, focused query when that knowledge could help, then ground your answer in excerpts "
     "when relevant. Skip rag_query for pure meta requests (e.g. \"hello\", \"thanks\") or when the task is only "
@@ -85,24 +124,27 @@ DEFAULT_AGENT_SYSTEM = (
 # Injected after the first system/developer message so clients that already send a large system prompt (e.g. Copilot)
 # still see ClawCode runtime rules.
 RUNTIME_DEVELOPER_RAG_ONLY = (
-    "ClawCode runtime (server-side tools): Only rag_query runs here. It queries the **indexed knowledge base**, "
-    "not the user's live workspace tree—do not claim RAG returned or failed to return their project source files. "
+    "ClawCode runtime (server-side tools): **rag_query** and **load_skill** run here. rag_query queries the "
+    "**indexed knowledge base**, not the user's live workspace tree—do not claim RAG returned or failed to return "
+    "their project source files. load_skill returns full **SKILL.md** for an enabled ClawCode skill pack listed in "
+    "the catalog above. "
     "IDE tools (semantic_search, list_dir, read_file, grep_search, etc.) are unavailable in this session; you "
     "cannot scan or open repo files from the server. If the user needs to find or edit UI/code in their project, "
     "state honestly that this mode has no filesystem access and they should enable IDE mode (merge_client_tools) for "
     "ClawCode (see docs) so the IDE can run tools, or work from files already shown in the chat context. "
-    "Use rag_query only when ingested documentation or similar reference material could help; it is not a "
-    "replacement for listing or searching their repository. "
-    "If you use tools in this session, call **only** the rag_query function—any other tool name is invalid and "
-    "will be rejected. When speaking to the user, do not recite internal tool identifiers; say things like "
+    "Use rag_query when ingested documentation could help; use load_skill when the user task matches a pack listed "
+    "in the ClawCode skill catalog message. "
+    "If you use server tools in this session, call **only** rag_query and/or load_skill—any other tool name is "
+    "invalid and will be rejected. When speaking to the user, do not recite internal tool identifiers; say things like "
     "\"workspace search in the editor\" or \"enable IDE tool pass-through in ClawCode settings\" instead."
 )
 
 RUNTIME_DEVELOPER_MERGE_CLIENT_TOOLS = (
     "ClawCode runtime: rag_query searches the indexed knowledge base, not the live workspace unless ingested; "
-    "use IDE tools when you need actual project files. rag_query runs on the server; IDE tools run in the client "
-    "when returned as tool_calls. Do not mix rag_query and other tools in the same assistant tool_calls batch—"
-    "use only rag_query in one turn, or only IDE tools in another so the client can execute them. "
+    "load_skill loads a ClawCode SKILL.md pack from the server (see catalog). Use IDE tools when you need actual "
+    "project files. rag_query and load_skill run on the server; IDE tools run in the client when returned as "
+    "tool_calls. Do not mix server tools (rag_query, load_skill) and IDE tools in the same assistant tool_calls "
+    "batch—use only server tools in one turn, or only IDE tools in another so the client can execute them. "
     "VS Code / Copilot does not expose a tool named `search`; for text search in files call **grep_search** with "
     "`query` (and optional `includePattern`, `isRegexp`, `maxResults`). "
     "Use absolute paths from the workspace; in this monorepo UI code often lives under **CoreModules/** "
@@ -229,6 +271,144 @@ def _inject_clawcode_runtime_context(
             insert_at = i + 1
             break
     openai_messages.insert(insert_at, {"role": "developer", "content": hint})
+
+
+def _strip_skill_frontmatter(text: str) -> str:
+    s = (text or "").lstrip("\ufeff")
+    if not s.startswith("---"):
+        return s
+    lines = s.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return s
+    for i in range(1, min(len(lines), 5000)):
+        if lines[i].strip() == "---":
+            return "\n".join(lines[i + 1 :]).lstrip()
+    return s
+
+
+def _skill_first_content_line(body: str) -> str:
+    """First non-empty, non-fence line — often the H1 topic line."""
+    for line in (body or "").splitlines():
+        s = line.strip()
+        if s and not s.startswith("```"):
+            return s[:240]
+    return ""
+
+
+def _skill_index_hint(rec: Any, sid: str) -> str:
+    d = str(getattr(rec, "description", None) or "").strip()
+    if d:
+        return d[:220] + ("…" if len(d) > 220 else "")
+    try:
+        p = Path(str(getattr(rec, "installed_path", "") or "")) / "SKILL.md"
+        if not p.is_file():
+            return ""
+        head = p.read_text(encoding="utf-8")[:8000]
+        body = _strip_skill_frontmatter(head).strip()
+        line = _skill_first_content_line(body)
+        return (line[:220] + ("…" if len(line) > 220 else "")) if line else ""
+    except Exception:
+        return ""
+
+
+def _load_clawcode_skills_bundle() -> tuple[dict[str, Any], list[str]] | None:
+    try:
+        from clawcode.skills_registry import (
+            enabled_skill_ids_for_registry,
+            load_skill_policy,
+            load_skills_registry,
+        )
+        from infrastructure.database import get_settings_repository
+
+        repo = get_settings_repository()
+        registry = load_skills_registry(repo)
+        policy = load_skill_policy(repo)
+        enabled_ids = enabled_skill_ids_for_registry(registry, policy)
+        return (registry, enabled_ids)
+    except Exception:
+        return None
+
+
+def _find_enabled_skill_record(
+    registry: dict[str, Any],
+    enabled_ids: list[str],
+    *,
+    invocation: str,
+    skill_id: str,
+) -> tuple[Any | None, str | None]:
+    inv_raw = (invocation or "").strip()
+    sid_raw = (skill_id or "").strip()
+    enabled_set = set(enabled_ids)
+    if sid_raw:
+        if sid_raw not in enabled_set:
+            return None, f"skill_id is not enabled or unknown: {sid_raw!r}"
+        rec = registry.get(sid_raw)
+        if rec is not None:
+            return rec, None
+        return None, f"skill_id not in registry: {sid_raw!r}"
+    inv_l = inv_raw.lower()
+    if not inv_l:
+        return None, "invocation is required"
+    for sid in enabled_ids:
+        rec = registry.get(sid)
+        if rec is None:
+            continue
+        if (rec.invocation_name or "").strip().lower() == inv_l:
+            return rec, None
+    return None, f"no enabled skill matches invocation {inv_raw!r}"
+
+
+def _inject_skill_catalog_hint(
+    openai_messages: list[dict[str, Any]],
+    registry: dict[str, Any],
+    enabled_ids: list[str],
+    *,
+    max_catalog_chars: int = 28_000,
+) -> None:
+    """
+    Inject a compact developer message: every enabled pack + short hint.
+    Full SKILL.md is loaded via the load_skill tool during the agent loop.
+    """
+    if not enabled_ids:
+        return
+
+    index_lines: list[str] = []
+    for sid in enabled_ids:
+        rec = registry.get(sid)
+        if rec is None:
+            continue
+        inv = (rec.invocation_name or sid).strip()
+        hint = _skill_index_hint(rec, sid)
+        index_lines.append(f"- `{inv}` (`skill_id`: `{sid}`)" + (f" — {hint}" if hint else ""))
+
+    def _index_block(lines: list[str]) -> str:
+        return "**ClawCode skill catalog** (enabled packs — use `load_skill` for full `SKILL.md`):\n" + "\n".join(lines)
+
+    index_block = _index_block(index_lines)
+    preamble = (
+        "ClawCode skill packs are **not** the host `<skills>` list (e.g. bundled VS Code Copilot skills).\n\n"
+        "**How to use:**\n"
+        "- When the user task matches a pack below, call **`load_skill`** with its **invocation** (and optional "
+        "**skill_id**) to load full instructions into the conversation.\n"
+        "- Do **not** reply `NO_SKILL` if the user names a pack that appears here—call `load_skill` first.\n"
+        "- `rag_query` is for the **ingested doc index**; `load_skill` is for these **curated packs**.\n\n"
+    )
+    text = preamble + index_block
+    if len(text) > max_catalog_chars:
+        short_lines = [ln.split(" — ")[0] if " — " in ln else ln for ln in index_lines]
+        text = preamble + _index_block(short_lines)
+    if len(text) > max_catalog_chars:
+        inv_only = []
+        for sid in enabled_ids:
+            r = registry.get(sid)
+            if r is not None:
+                inv = (r.invocation_name or sid).strip()
+                inv_only.append(f"- `{inv}` (`skill_id`: `{sid}`)")
+        text = preamble + _index_block(inv_only)
+    if len(text) > max_catalog_chars:
+        text = text[:max_catalog_chars] + "\n…[clawcode skill catalog truncated]"
+
+    openai_messages.insert(0, {"role": "developer", "content": text.strip()})
 
 
 def _sanitize_chunks_for_metadata(chunks: list[dict[str, Any]], *, per_call_limit: int = 24) -> list[dict[str, Any]]:
@@ -505,6 +685,15 @@ def run_clawcode_chat_completion(
     )
     chat_client = deps.chat_client
     ollama_model = configured or params.model_name
+    _req_early = body.get("model")
+    if (
+        not str(ollama_model or "").strip()
+        and isinstance(_req_early, str)
+        and _req_early.strip()
+        and _req_early.strip() != logical_model_id
+    ):
+        # LLM Proxy claw builds set ``model`` to the build's Ollama tag; honor it without WebUI default.
+        ollama_model = _req_early.strip()
     if not str(ollama_model or "").strip():
         # Configuration error: no concrete Ollama model selected for ClawCode.
         err_msg = "No default Ollama model configured for ClawCode. Select one in WebUI → Claw Proxy."
@@ -540,8 +729,10 @@ def run_clawcode_chat_completion(
         }, 400
     requested = body.get("model")
     use_model = ollama_model
-    if isinstance(requested, str) and requested.strip() and requested.strip() != logical_model_id:
-        use_model = requested.strip()
+    if isinstance(requested, str) and requested.strip():
+        req = requested.strip()
+        if req != logical_model_id:
+            use_model = req
 
     _ollama_caps: frozenset[str] | None = None
     try:
@@ -567,16 +758,45 @@ def run_clawcode_chat_completion(
 
     openai_messages: list[dict[str, Any]] = [dict(m) for m in messages if isinstance(m, dict)]
     _inject_clawcode_runtime_context(openai_messages, merge_client_tools=merge_client_tools)
+    effective_model_id = str(use_model or "").strip() or "default"
+
+    skills_bundle = _load_clawcode_skills_bundle()
+    skills_registry: dict[str, Any] = {}
+    skills_enabled_ids: list[str] = []
+    if skills_bundle is not None:
+        skills_registry, skills_enabled_ids = skills_bundle
+        _inject_skill_catalog_hint(openai_messages, skills_registry, skills_enabled_ids)
+
+    skills_loaded_invocations: list[str] = []
+    skills_trace: dict[str, Any] = {
+        "model_id": effective_model_id,
+        "enabled_ids": list(skills_enabled_ids),
+        "enabled_count": len(skills_enabled_ids),
+        "loaded_invocations": skills_loaded_invocations,
+        "loaded_count": 0,
+        "injected_ids": [],
+        "injected_count": 0,
+        "injected_invocations": [],
+    }
 
     client_tools = body.get("tools")
     _irq = body.get("include_rag_query_tool")
     include_rag_tool = True if _irq is None else bool(_irq)
-    tools_list: list[dict[str, Any]] = [RAG_QUERY_TOOL] if include_rag_tool else []
+    tools_list: list[dict[str, Any]] = []
+    if include_rag_tool:
+        tools_list.append(RAG_QUERY_TOOL)
+    if skills_enabled_ids:
+        tools_list.append(LOAD_SKILL_TOOL)
     if merge_client_tools and isinstance(client_tools, list):
         for t in client_tools:
             if isinstance(t, dict) and t.get("type") == "function":
                 fn = t.get("function")
-                if isinstance(fn, dict) and fn.get("name") == "rag_query":
+                if isinstance(fn, dict) and fn.get("name") in ("rag_query", "load_skill"):
+                    continue
+                if not isinstance(fn, dict):
+                    continue
+                name = str(fn.get("name") or "").strip()
+                if not name:
                     continue
                 tools_list.append(t)
 
@@ -652,6 +872,7 @@ def run_clawcode_chat_completion(
                 error=err,
                 think_requested=oc_think_request,
                 merge_client_tools=merge_client_tools,
+                skills=skills_trace,
             )
             return {"error": {"message": err, "type": "api_error"}}, 502
 
@@ -682,6 +903,7 @@ def run_clawcode_chat_completion(
                 error=err,
                 think_requested=oc_think_request,
                 merge_client_tools=merge_client_tools,
+                skills=skills_trace,
             )
             return {"error": {"message": err, "type": "upstream_error"}}, 502
 
@@ -751,11 +973,12 @@ def run_clawcode_chat_completion(
                 finish_reason=finish,
                 think_requested=oc_think_request,
                 merge_client_tools=merge_client_tools,
+                skills=skills_trace,
             )
             return resp, 200
 
         tc_names = _tool_call_names(tool_calls)
-        if merge_client_tools and tc_names and all(n != "rag_query" for n in tc_names):
+        if merge_client_tools and tc_names and all(not _is_clawcode_server_tool(n) for n in tc_names):
             steps_out.append(
                 {
                     "kind": "tool_pass_through",
@@ -785,15 +1008,16 @@ def run_clawcode_chat_completion(
                 finish_reason="tool_calls",
                 think_requested=oc_think_request,
                 merge_client_tools=merge_client_tools,
+                skills=skills_trace,
             )
             return resp, 200
 
-        if merge_client_tools and tc_names and any(n == "rag_query" for n in tc_names) and any(
-            n != "rag_query" for n in tc_names
+        if merge_client_tools and tc_names and any(_is_clawcode_server_tool(n) for n in tc_names) and any(
+            not _is_clawcode_server_tool(n) for n in tc_names if n
         ):
             _LOG.warning(
-                "clawcode: mixed rag_query and client tools in one assistant turn (step=%s); "
-                "server executes rag_query only; other tools get stub tool messages",
+                "clawcode: mixed server tools (rag_query/load_skill) and client tools in one assistant turn "
+                "(step=%s); server executes rag_query/load_skill only; other tools get stub tool messages",
                 step_idx,
             )
 
@@ -856,6 +1080,61 @@ def run_clawcode_chat_completion(
                         "content": ctx_text[: params.context_total_chars + 2000],
                     }
                 )
+            elif name == "load_skill":
+                tr_sk = time.perf_counter()
+                inv_arg = str(args.get("invocation") or "").strip()
+                sid_arg = str(args.get("skill_id") or "").strip()
+                rec_ls, err_ls = _find_enabled_skill_record(
+                    skills_registry,
+                    skills_enabled_ids,
+                    invocation=inv_arg,
+                    skill_id=sid_arg,
+                )
+                ctx_skill = ""
+                err_skill = err_ls
+                chars_cap = max(12_000, int(params.context_total_chars) + 2000)
+                if rec_ls is not None and err_ls is None:
+                    try:
+                        skill_md = Path(str(rec_ls.installed_path)) / "SKILL.md"
+                        contents = skill_md.read_text(encoding="utf-8")
+                        body_ls = _strip_skill_frontmatter(contents).strip()
+                        inv_disp = (rec_ls.invocation_name or rec_ls.id).strip()
+                        header_ls = f"# ClawCode skill `{inv_disp}` (skill_id: `{rec_ls.id}`)\n\n"
+                        blob_ls = header_ls + (body_ls or "(empty SKILL.md)")
+                        ctx_skill = blob_ls[:chars_cap]
+                        if len(blob_ls) > chars_cap:
+                            ctx_skill += "\n…[load_skill truncated]"
+                        skills_loaded_invocations.append(inv_disp)
+                        skills_trace["loaded_count"] = len(skills_loaded_invocations)
+                    except Exception as e:
+                        _LOG.exception("load_skill failed: %s", e)
+                        err_skill = str(e)
+                        ctx_skill = f"[load_skill error] {err_skill}"
+                elif err_skill:
+                    try:
+                        ctx_skill = json.dumps({"error": err_skill}, ensure_ascii=False)
+                    except (TypeError, ValueError):
+                        ctx_skill = str(err_skill)
+                steps_out.append(
+                    {
+                        "kind": "tool_skill",
+                        "step": step_idx,
+                        "invocation": inv_arg[:500],
+                        "skill_id": (sid_arg[:200] if sid_arg else None),
+                        "duration_ms": int((time.perf_counter() - tr_sk) * 1000),
+                        "ok": err_skill is None and bool(ctx_skill),
+                        "error": err_skill,
+                        "context_chars": len(ctx_skill),
+                    }
+                )
+                openai_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call_id,
+                        "name": "load_skill",
+                        "content": ctx_skill,
+                    }
+                )
             else:
                 steps_out.append(
                     {
@@ -863,7 +1142,7 @@ def run_clawcode_chat_completion(
                         "name": name,
                         "step": step_idx,
                         "note": (
-                            "ClawCode only executes rag_query in-tree; set merge_client_tools and use "
+                            "ClawCode only executes rag_query and load_skill in-tree; set merge_client_tools and use "
                             "client-only tool batches for IDE pass-through"
                         ),
                     }
@@ -871,7 +1150,7 @@ def run_clawcode_chat_completion(
                 stub = {"error": "tool not executed by ClawCode runtime"}
                 if not merge_client_tools:
                     stub["hint"] = (
-                        "Only rag_query is registered in this mode. Call rag_query with a short query, or answer "
+                        "Only rag_query and load_skill are registered in this mode. Call one of them, or answer "
                         "from the conversation without tools."
                     )
                 openai_messages.append(
@@ -897,6 +1176,7 @@ def run_clawcode_chat_completion(
             final=False,
             think_requested=oc_think_request,
             merge_client_tools=merge_client_tools,
+            skills=skills_trace,
         )
 
     _emit_trace(
@@ -912,6 +1192,7 @@ def run_clawcode_chat_completion(
         error="max_agent_steps exceeded",
         think_requested=oc_think_request,
         merge_client_tools=merge_client_tools,
+        skills=skills_trace,
     )
     return {
         "error": {
@@ -970,6 +1251,7 @@ def _emit_trace(
     finish_reason: str | None = None,
     think_requested: bool = False,
     merge_client_tools: bool | None = None,
+    skills: dict[str, Any] | None = None,
 ) -> None:
     if cb is None:
         return
@@ -994,6 +1276,8 @@ def _emit_trace(
         "error": error,
         "client_model": body.get("model"),
     }
+    if skills is not None:
+        rec["skills"] = skills
     if final and final_assistant is not None:
         fa = dict(final_assistant)
         raw_c = fa.get("content")

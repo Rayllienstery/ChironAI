@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -125,3 +125,6 @@ dmypy.json
 
 # ClawCode vendor archived parity snapshots (active checkout: vendor/claw-code/versions/)
 vendor/claw-code/backups/
+
+# ClawCode skills storage (installed skills + repo clones)
+CoreModules/ClawCode/.data/

@@ -664,3 +664,185 @@ input.dashboard-card-field {
   color: var(--md-sys-color-on-surface);
 }
 
+/* Claw Proxy — Skills summary + modal */
+.dashboard-claw-skills-summary {
+  margin-top: var(--md-sys-spacing-md);
+  padding: var(--md-sys-spacing-md);
+  background: var(--md-sys-color-surface-container-low);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+}
+
+.dashboard-claw-skills-summary-title {
+  margin: 0 0 var(--md-sys-spacing-xs) 0;
+  font: var(--md-sys-typescale-title-medium-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.dashboard-claw-skills-summary-text {
+  margin: 0 0 var(--md-sys-spacing-md) 0;
+  font: var(--md-sys-typescale-body-medium-font);
+  color: var(--md-sys-color-on-surface-variant);
+  line-height: 1.55;
+}
+
+.dashboard-claw-skills-summary-text code {
+  font-size: 0.92em;
+  padding: 1px 5px;
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+}
+
+.dashboard-claw-skills-summary-stats {
+  list-style: none;
+  margin: 0 0 var(--md-sys-spacing-md) 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-sys-spacing-md);
+  font: var(--md-sys-typescale-body-medium-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.dashboard-claw-skills-summary-stats strong {
+  color: var(--md-sys-color-primary);
+  font-weight: 700;
+}
+
+.dashboard-claw-skills-summary-stats--muted {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.dashboard-claw-skills-summary-stats--muted strong {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.dashboard-claw-skills-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-sys-spacing-sm);
+}
+
+.dashboard-claw-skills-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.48);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--md-sys-spacing-lg);
+  box-sizing: border-box;
+}
+
+.dashboard-claw-skills-modal {
+  width: min(720px, 100%);
+  max-height: min(85vh, 900px);
+  display: flex;
+  flex-direction: column;
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  border-radius: var(--md-sys-shape-corner-large);
+  box-shadow: var(--md-sys-elevation-level3);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  min-height: 0;
+}
+
+.dashboard-claw-skills-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-md);
+  padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  flex-shrink: 0;
+}
+
+.dashboard-claw-skills-modal-header h3 {
+  margin: 0;
+  font: var(--md-sys-typescale-title-large-font);
+}
+
+.dashboard-claw-skills-modal-close {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font: var(--md-sys-typescale-label-large-font);
+}
+
+.dashboard-claw-skills-modal-close:hover {
+  opacity: 0.92;
+}
+
+.dashboard-claw-skills-modal-body {
+  padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg) var(--md-sys-spacing-lg);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.dashboard-claw-skills-modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-md);
+}
+
+.dashboard-claw-skills-modal-item {
+  padding: var(--md-sys-spacing-md);
+  border-radius: var(--md-sys-shape-corner-medium);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-lowest);
+}
+
+.dashboard-claw-skills-modal-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-sm);
+  margin-bottom: var(--md-sys-spacing-xs);
+}
+
+.dashboard-claw-skills-modal-item-head strong {
+  font: var(--md-sys-typescale-title-small-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.dashboard-claw-skills-modal-badge {
+  flex-shrink: 0;
+  font: var(--md-sys-typescale-label-medium-font);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.dashboard-claw-skills-modal-badge--on {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.dashboard-claw-skills-modal-id {
+  display: block;
+  font-size: 0.8rem;
+  margin-bottom: var(--md-sys-spacing-sm);
+  word-break: break-all;
+}
+
+.dashboard-claw-skills-modal-desc {
+  margin: 0 0 var(--md-sys-spacing-sm) 0;
+  font: var(--md-sys-typescale-body-medium-font);
+  line-height: 1.5;
+}
+
+.dashboard-claw-skills-modal-source {
+  margin: 0 0 var(--md-sys-spacing-md) 0;
+  font-size: 0.85rem;
+}
+
+.dashboard-claw-skills-modal-source code {
+  font-size: 0.88em;
+}
+
