@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { getSettings, updateSettings, getClawCodeStatus, getClawCodeSettings, updateClawCodeSettings } from '../services/api';
+import React, { useState, useEffect } from 'react';
+import { getSettings, updateSettings } from '../services/api';
 import '../styles/components/SettingsTab.css';
 import '../styles/components/DashboardTab.css';
 
@@ -25,121 +25,6 @@ function clampServiceStatusPollSec(raw) {
   const n = parseInt(String(raw ?? ''), 10);
   if (Number.isNaN(n)) return SERVICE_STATUS_POLL_DEFAULT;
   return Math.min(SERVICE_STATUS_POLL_MAX, Math.max(SERVICE_STATUS_POLL_MIN, n));
-}
-
-function ClawIdeModeSection() {
-  const [loading, setLoading] = useState(true);
-  const [available, setAvailable] = useState(false);
-  const [mergeToolsMode, setMergeToolsMode] = useState('inherit');
-  const [effectiveMergeTools, setEffectiveMergeTools] = useState(false);
-  const [configMergeToolsYaml, setConfigMergeToolsYaml] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setErr(null);
-    try {
-      const s = await getClawCodeStatus();
-      if (!s.available) {
-        setAvailable(false);
-        return;
-      }
-      setAvailable(true);
-      const settings = await getClawCodeSettings();
-      if (settings?.ok) {
-        const sm = settings.stored_merge_client_tools;
-        if (sm != null && String(sm).trim() !== '') {
-          const t = String(sm).trim().toLowerCase();
-          setMergeToolsMode(['1', 'true', 'yes', 'on'].includes(t) ? 'on' : 'off');
-        } else {
-          setMergeToolsMode('inherit');
-        }
-        setEffectiveMergeTools(Boolean(settings.merge_client_tools));
-        setConfigMergeToolsYaml(Boolean(settings.config_merge_client_tools_yaml));
-      }
-    } catch (e) {
-      setErr(String(e.message || e));
-      setAvailable(false);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const saveIdeMode = async () => {
-    const payload = {};
-    if (mergeToolsMode === 'inherit') {
-      payload.merge_client_tools = null;
-    } else {
-      payload.merge_client_tools = mergeToolsMode === 'on';
-    }
-    setBusy(true);
-    setErr(null);
-    try {
-      await updateClawCodeSettings(payload);
-      await load();
-    } catch (e) {
-      setErr(String(e.message || e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="settings-section">
-        <h3>ClawCode · IDE mode</h3>
-        <p className="settings-intro">Loading…</p>
-      </div>
-    );
-  }
-
-  if (!available) {
-    return (
-      <div className="settings-section">
-        <h3>ClawCode · IDE mode</h3>
-        <p className="settings-intro">
-          ClawCode is not available. Install <code>CoreModules/ClawCode</code> and restart the app to configure IDE tool
-          merging.
-        </p>
-        {err && <p className="settings-intro" style={{ color: 'var(--error, #cf6679)' }}>{err}</p>}
-      </div>
-    );
-  }
-
-  return (
-    <div className="settings-section">
-      <h3>ClawCode · IDE mode</h3>
-      <p className="settings-intro">
-        Controls whether ClawCode registers your editor&apos;s tools (VS Code Copilot, etc.) alongside{' '}
-        <code>rag_query</code>. Effective now: <code>{String(effectiveMergeTools)}</code>. Precedence: env{' '}
-        <code>CLAWCODE_MERGE_CLIENT_TOOLS</code>, then this choice, then YAML <code>merge_client_tools</code> (
-        <code>{String(configMergeToolsYaml)}</code> in <code>config/clawcode.yaml</code>).
-      </p>
-      {err && <p className="settings-intro" style={{ color: 'var(--error, #cf6679)' }}>{err}</p>}
-      <div className="form-group">
-        <label htmlFor="settings-claw-ide-mode">IDE mode (merge client tools)</label>
-        <select
-          id="settings-claw-ide-mode"
-          className="dashboard-card-field"
-          style={{ maxWidth: 320 }}
-          value={mergeToolsMode}
-          onChange={(e) => setMergeToolsMode(e.target.value)}
-        >
-          <option value="inherit">Use YAML default</option>
-          <option value="on">On</option>
-          <option value="off">Off</option>
-        </select>
-      </div>
-      <button type="button" className="save-button" onClick={saveIdeMode} disabled={busy}>
-        {busy ? 'Saving…' : 'Save IDE mode'}
-      </button>
-    </div>
-  );
 }
 
 function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppSettingsSaved }) {
@@ -313,8 +198,6 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
             </div>
           )}
         </div>
-
-        <ClawIdeModeSection />
 
         <div className="settings-section">
           <h3>General</h3>

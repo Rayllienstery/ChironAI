@@ -1408,6 +1408,45 @@ export async function updateClawCodeSkill(skillId) {
   return data;
 }
 
+export async function fetchClawCodeSkillRemoteHeads() {
+  const response = await fetch(`${CLAWCODE_BASE}/skills/remote-heads`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Failed to resolve remote skill heads');
+  }
+  return data;
+}
+
+export async function updateClawCodeSkillsBySource(payload) {
+  const response = await fetch(`${CLAWCODE_BASE}/skills/update-by-source`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Failed to update skills by source');
+  }
+  return data;
+}
+
+export async function deleteClawCodeSkillsBySource(payload) {
+  const response = await fetch(`${CLAWCODE_BASE}/skills/delete-by-source`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Failed to delete skills by source');
+  }
+  return data;
+}
+
 export async function deleteClawCodeSkill(skillId) {
   const response = await fetch(`${CLAWCODE_BASE}/skills/${encodeURIComponent(skillId)}`, {
     method: 'DELETE',

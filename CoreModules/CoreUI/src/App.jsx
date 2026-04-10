@@ -269,7 +269,7 @@ function App() {
 
   const handleOpenClawTraces = useCallback(() => {
     setActiveTab("claw-proxy");
-    setClawProxyFocusSubTab("proxy");
+    setClawProxyFocusSubTab("traces");
   }, []);
 
   const consumeLlmProxyFocusSubTab = useCallback(() => {
@@ -352,10 +352,6 @@ function App() {
       case "claw-proxy":
         return (
           <ClawProxyTab
-            onNavigateToRag={() => setActiveTab("rag")}
-            onModelStatusChange={(hasError) =>
-              setTabErrors((prev) => ({ ...prev, "claw-proxy": hasError }))
-            }
             focusSubTab={clawProxyFocusSubTab}
             onFocusSubTabConsumed={consumeClawProxyFocusSubTab}
           />

@@ -130,13 +130,14 @@ RUNTIME_DEVELOPER_RAG_ONLY = (
     "the catalog above. "
     "IDE tools (semantic_search, list_dir, read_file, grep_search, etc.) are unavailable in this session; you "
     "cannot scan or open repo files from the server. If the user needs to find or edit UI/code in their project, "
-    "state honestly that this mode has no filesystem access and they should enable IDE mode (merge_client_tools) for "
-    "ClawCode (see docs) so the IDE can run tools, or work from files already shown in the chat context. "
+    "state honestly that this mode has no filesystem access and they should turn on merge_client_tools "
+    "(config/clawcode.yaml or CLAWCODE_MERGE_CLIENT_TOOLS) so the IDE can run tools, or work from files already "
+    "shown in the chat context. "
     "Use rag_query when ingested documentation could help; use load_skill when the user task matches a pack listed "
     "in the ClawCode skill catalog message. "
     "If you use server tools in this session, call **only** rag_query and/or load_skill—any other tool name is "
     "invalid and will be rejected. When speaking to the user, do not recite internal tool identifiers; say things like "
-    "\"workspace search in the editor\" or \"enable IDE tool pass-through in ClawCode settings\" instead."
+    "\"workspace search in the editor\" or \"enable merge_client_tools in ClawCode config\" instead."
 )
 
 RUNTIME_DEVELOPER_MERGE_CLIENT_TOOLS = (
@@ -626,12 +627,24 @@ def _ollama_trace_counts(data: dict[str, Any]) -> tuple[str | None, int | None, 
     return ollama_dr, pec, ec
 
 
+def _think_requested_from_openai_body(body: dict[str, Any]) -> bool:
+    if "think" not in body:
+        return False
+    raw = body.get("think")
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        return raw.strip().lower() in ("1", "true", "yes", "on")
+    if isinstance(raw, (int, float)):
+        return raw == 1
+    return False
+
+
 def run_clawcode_chat_completion(
     body: dict[str, Any],
     *,
     webui_dir: str | None,
     max_steps: int,
-    logical_model_id: str,
     trace_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> tuple[dict[str, Any], int]:
     """
@@ -649,31 +662,12 @@ def run_clawcode_chat_completion(
     # Some clients (e.g. VS Code Copilot) send stream=true. The HTTP layer turns the final
     # completion into OpenAI SSE; the agent loop still produces one assembled message.
 
-    # ClawCode-specific app_settings (collection + default Ollama model).
-    configured = ""
+    # ClawCode-specific app_settings: optional RAG collection override only.
     clawcode_collection: str | None = None
-    oc_temp_override: float | None = None
-    oc_top_p_override: float | None = None
-    oc_think_request = False
     try:
         repo = get_settings_repository()
-        configured = (repo.get_app_setting("clawcode_default_model") or "").strip()
         _oc = (repo.get_app_setting(CLAWCODE_RAG_COLLECTION_APP_SETTING) or "").strip()
         clawcode_collection = _oc if _oc else None
-        _ts = (repo.get_app_setting("clawcode_chat_temperature") or "").strip()
-        if _ts:
-            try:
-                oc_temp_override = float(_ts)
-            except (TypeError, ValueError):
-                oc_temp_override = None
-        _tp = (repo.get_app_setting("clawcode_chat_top_p") or "").strip()
-        if _tp:
-            try:
-                oc_top_p_override = float(_tp)
-            except (TypeError, ValueError):
-                oc_top_p_override = None
-        _th = (repo.get_app_setting("clawcode_chat_think") or "").strip().lower()
-        oc_think_request = _th in ("1", "true", "yes")
     except Exception:
         pass
 
@@ -684,25 +678,21 @@ def run_clawcode_chat_completion(
         collection_name=clawcode_collection,
     )
     chat_client = deps.chat_client
-    ollama_model = configured or params.model_name
-    _req_early = body.get("model")
-    if (
-        not str(ollama_model or "").strip()
-        and isinstance(_req_early, str)
-        and _req_early.strip()
-        and _req_early.strip() != logical_model_id
-    ):
-        # LLM Proxy claw builds set ``model`` to the build's Ollama tag; honor it without WebUI default.
-        ollama_model = _req_early.strip()
-    if not str(ollama_model or "").strip():
-        # Configuration error: no concrete Ollama model selected for ClawCode.
-        err_msg = "No default Ollama model configured for ClawCode. Select one in WebUI → Claw Proxy."
+    fallback_model = str(params.model_name or "").strip()
+    requested = body.get("model")
+    req_str = requested.strip() if isinstance(requested, str) else ""
+    use_model = req_str or fallback_model
+    oc_think_request = _think_requested_from_openai_body(body)
+    if not use_model:
+        err_msg = (
+            "No Ollama model for ClawCode: pass a non-empty ``model`` (Ollama tag) in the request, "
+            "or set a default chat model in RAG / models config."
+        )
         if trace_callback is not None:
             trace_callback(
                 {
                     "trace_id": str(uuid.uuid4()),
                     "ts_ms": int(time.time() * 1000),
-                    "logical_model_id": logical_model_id,
                     "resolved_model": "",
                     "elapsed_ms": 0,
                     "request": {
@@ -727,12 +717,6 @@ def run_clawcode_chat_completion(
                 "type": "model_not_configured",
             }
         }, 400
-    requested = body.get("model")
-    use_model = ollama_model
-    if isinstance(requested, str) and requested.strip():
-        req = requested.strip()
-        if req != logical_model_id:
-            use_model = req
 
     _ollama_caps: frozenset[str] | None = None
     try:
@@ -801,10 +785,16 @@ def run_clawcode_chat_completion(
                 tools_list.append(t)
 
     _co: dict[str, Any] = dict(getattr(chat_client, "_default_options", None) or {})
-    if oc_temp_override is not None:
-        _co["temperature"] = oc_temp_override
-    if oc_top_p_override is not None:
-        _co["top_p"] = oc_top_p_override
+    if body.get("temperature") is not None:
+        try:
+            _co["temperature"] = float(body["temperature"])
+        except (TypeError, ValueError):
+            pass
+    if body.get("top_p") is not None:
+        try:
+            _co["top_p"] = float(body["top_p"])
+        except (TypeError, ValueError):
+            pass
     _co = normalize_ollama_chat_options(_co)
     _co = _apply_clawcode_num_predict_budget(_co, body, think_requested=bool(send_think and oc_think_request))
 
@@ -866,7 +856,6 @@ def run_clawcode_chat_completion(
                 steps_out,
                 started,
                 use_model,
-                logical_model_id,
                 total_in,
                 total_out,
                 error=err,
@@ -897,7 +886,6 @@ def run_clawcode_chat_completion(
                 steps_out,
                 started,
                 use_model,
-                logical_model_id,
                 total_in,
                 total_out,
                 error=err,
@@ -965,7 +953,6 @@ def run_clawcode_chat_completion(
                 steps_out,
                 started,
                 use_model,
-                logical_model_id,
                 total_in,
                 total_out,
                 final=True,
@@ -1000,7 +987,6 @@ def run_clawcode_chat_completion(
                 steps_out,
                 started,
                 use_model,
-                logical_model_id,
                 total_in,
                 total_out,
                 final=True,
@@ -1170,7 +1156,6 @@ def run_clawcode_chat_completion(
             steps_out,
             started,
             use_model,
-            logical_model_id,
             total_in,
             total_out,
             final=False,
@@ -1186,7 +1171,6 @@ def run_clawcode_chat_completion(
         steps_out,
         started,
         use_model,
-        logical_model_id,
         total_in,
         total_out,
         error="max_agent_steps exceeded",
@@ -1241,7 +1225,6 @@ def _emit_trace(
     steps: list[dict[str, Any]],
     started: float,
     resolved_model: str,
-    logical_model_id: str,
     total_in: int,
     total_out: int,
     *,
@@ -1262,7 +1245,6 @@ def _emit_trace(
     rec: dict[str, Any] = {
         "trace_id": trace_id,
         "ts_ms": int(time.time() * 1000),
-        "logical_model_id": logical_model_id,
         "resolved_model": resolved_model,
         "elapsed_ms": elapsed_ms,
         "request": req_summary,

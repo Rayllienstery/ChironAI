@@ -1,6 +1,6 @@
 # ClawCode (ChironAI Core Module)
 
-Agent layer: OpenAI `POST /v1/chat/completions` and Anthropic `POST /v1/messages` on a dedicated port (shared agent + `rag_query`), optional MCP info HTTP, in-memory traces. Requires `llm_proxy` on `PYTHONPATH` (monorepo adds `CoreModules/LlmProxy` automatically in `http_server`).
+Agent layer: OpenAI `POST /v1/chat/completions` and Anthropic `POST /v1/messages` on a dedicated port (shared agent + `rag_query`), optional MCP info HTTP, in-memory traces. Clients set `model` to an Ollama tag (`GET /v1/models` lists tags); LLM Proxy uses **build** presets with `backend: claw` and `ollama_model`. Requires `llm_proxy` on `PYTHONPATH` (monorepo adds `CoreModules/LlmProxy` automatically in `http_server`).
 
 Install editable (from repo root):
 

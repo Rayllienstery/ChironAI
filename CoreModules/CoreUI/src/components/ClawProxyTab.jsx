@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import ClawProxyPanel from './ClawProxyPanel';
 import ClawMcpPanel from './ClawMcpPanel';
+import ClawProxyTracesTab from './ClawProxyTracesTab';
 import ClawProxyJournalTab from './ClawProxyJournalTab';
 import '../styles/components/DashboardTab.css';
 import '../styles/components/CoreUIPillTabs.css';
 
-function ClawProxyTab({ onNavigateToRag, onModelStatusChange, focusSubTab, onFocusSubTabConsumed }) {
+function ClawProxyTab({ focusSubTab, onFocusSubTabConsumed }) {
   const [subTab, setSubTab] = useState('proxy');
 
   useEffect(() => {
@@ -17,7 +18,7 @@ function ClawProxyTab({ onNavigateToRag, onModelStatusChange, focusSubTab, onFoc
   }, [focusSubTab, onFocusSubTabConsumed]);
 
   return (
-    <div className="dashboard-tab">
+    <div className="dashboard-tab claw-proxy-tab">
       <div className="claw-proxy-page-header">
         <h2>Claw Proxy</h2>
         <div className="coreui-pill-tablist" role="tablist" aria-label="Claw Proxy sections">
@@ -41,6 +42,15 @@ function ClawProxyTab({ onNavigateToRag, onModelStatusChange, focusSubTab, onFoc
           </button>
           <button
             type="button"
+            className={`coreui-pill-tab ${subTab === 'traces' ? 'coreui-pill-tab-active' : ''}`}
+            role="tab"
+            aria-selected={subTab === 'traces'}
+            onClick={() => setSubTab('traces')}
+          >
+            Traces
+          </button>
+          <button
+            type="button"
             className={`coreui-pill-tab ${subTab === 'journal' ? 'coreui-pill-tab-active' : ''}`}
             role="tab"
             aria-selected={subTab === 'journal'}
@@ -51,9 +61,10 @@ function ClawProxyTab({ onNavigateToRag, onModelStatusChange, focusSubTab, onFoc
         </div>
       </div>
       {subTab === 'proxy' && (
-        <ClawProxyPanel onNavigateToRag={onNavigateToRag} onModelStatusChange={onModelStatusChange} />
+        <ClawProxyPanel />
       )}
       {subTab === 'mcp' && <ClawMcpPanel />}
+      {subTab === 'traces' && <ClawProxyTracesTab />}
       {subTab === 'journal' && <ClawProxyJournalTab />}
     </div>
   );

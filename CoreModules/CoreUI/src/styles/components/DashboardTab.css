@@ -12,6 +12,11 @@
   box-sizing: border-box;
 }
 
+/* Claw Proxy (all subtabs: Proxy, MCP, Traces, Journal) — use full main column like LLM Proxy */
+.dashboard-tab.claw-proxy-tab {
+  max-width: none;
+}
+
 .dashboard-layout {
   display: flex;
   flex-direction: column;
@@ -784,6 +789,109 @@ input.dashboard-card-field {
   min-height: 0;
 }
 
+.dashboard-claw-skills-modal-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-sys-spacing-xs);
+  padding: 0 var(--md-sys-spacing-lg);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  flex-shrink: 0;
+}
+
+.dashboard-claw-skills-modal-tab {
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 10px 14px;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-large-font);
+  cursor: pointer;
+  border-radius: var(--md-sys-shape-corner-small) var(--md-sys-shape-corner-small) 0 0;
+}
+
+.dashboard-claw-skills-modal-tab:hover {
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.dashboard-claw-skills-modal-tab--active {
+  color: var(--md-sys-color-primary);
+  border-bottom-color: var(--md-sys-color-primary);
+  font-weight: 600;
+}
+
+.dashboard-claw-skills-modal-source-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-md);
+}
+
+.dashboard-claw-skills-modal-source-group {
+  padding: var(--md-sys-spacing-md);
+  border-radius: var(--md-sys-shape-corner-medium);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-lowest);
+}
+
+.dashboard-claw-skills-modal-source-group-head {
+  margin-bottom: var(--md-sys-spacing-sm);
+}
+
+.dashboard-claw-skills-modal-source-group-url {
+  font-size: 0.82rem;
+  word-break: break-all;
+}
+
+.dashboard-claw-skills-modal-source-group-meta {
+  margin: 6px 0 0 0;
+  font-size: 0.85rem;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.dashboard-claw-skills-modal-source-group-meta code {
+  font-size: 0.88em;
+}
+
+.dashboard-claw-skills-modal-sha-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
+  margin: 8px 0 0 0;
+  font-size: 0.85rem;
+  color: var(--md-sys-color-on-surface);
+}
+
+.dashboard-claw-skills-modal-sha-row code {
+  font-size: 0.9em;
+}
+
+.dashboard-claw-skills-modal-update-badge {
+  font: var(--md-sys-typescale-label-medium-font);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+}
+
+.dashboard-claw-skills-modal-source-group-names {
+  margin: 8px 0 0 0;
+  font-size: 0.85rem;
+  color: var(--md-sys-color-on-surface-variant);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.dashboard-claw-skills-modal-source-group-actions {
+  margin-top: var(--md-sys-spacing-sm);
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .dashboard-claw-skills-modal-list {
   display: flex;
   flex-direction: column;
@@ -915,5 +1023,168 @@ input.dashboard-card-field {
 .claw-trace-summary-table th {
   color: var(--md-sys-color-on-surface-variant);
   font-weight: 600;
+}
+
+/* ClawCode journal — list + detail modal */
+.claw-journal-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--md-sys-spacing-md);
+  margin-bottom: var(--md-sys-spacing-md);
+}
+
+.claw-journal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  overflow: hidden;
+  background: var(--md-sys-color-surface);
+  max-height: min(520px, 70vh);
+  overflow-y: auto;
+}
+
+.claw-journal-list > li {
+  margin: 0;
+  padding: 0;
+}
+
+.claw-journal-list-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  margin: 0;
+  padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+  text-align: left;
+  cursor: pointer;
+  border: none;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-medium-font);
+  box-sizing: border-box;
+  transition: background 0.12s ease;
+}
+
+.claw-journal-list > li:last-child .claw-journal-list-item {
+  border-bottom: none;
+}
+
+.claw-journal-list-item:hover {
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.claw-journal-list-item:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+.claw-journal-list-item--active {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.claw-journal-list-item--active:hover {
+  background: var(--md-sys-color-primary-container);
+  filter: brightness(0.97);
+}
+
+.claw-journal-list-item-time {
+  font: var(--md-sys-typescale-label-medium-font);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.claw-journal-list-item--active .claw-journal-list-item-time {
+  color: var(--md-sys-color-on-primary-container);
+  opacity: 0.9;
+}
+
+.claw-journal-list-item-msg {
+  width: 100%;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.claw-journal-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.48);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--md-sys-spacing-lg);
+  box-sizing: border-box;
+}
+
+.claw-journal-modal {
+  width: min(960px, 100%);
+  max-height: min(90vh, 920px);
+  display: flex;
+  flex-direction: column;
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  border-radius: var(--md-sys-shape-corner-large);
+  box-shadow: var(--md-sys-elevation-level3);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  min-height: 0;
+}
+
+.claw-journal-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-md);
+  padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  flex-shrink: 0;
+}
+
+.claw-journal-modal-title-block {
+  min-width: 0;
+}
+
+.claw-journal-modal-title-block h2 {
+  margin: 0 0 4px 0;
+  font: var(--md-sys-typescale-title-large-font);
+}
+
+.claw-journal-modal-meta {
+  margin: 0;
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+  word-break: break-all;
+}
+
+.claw-journal-modal-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--md-sys-spacing-sm);
+  flex-shrink: 0;
+}
+
+.claw-journal-modal-close {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font: var(--md-sys-typescale-label-large-font);
+}
+
+.claw-journal-modal-close:hover {
+  opacity: 0.92;
+}
+
+.claw-journal-modal-body {
+  padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg) var(--md-sys-spacing-lg);
+  overflow-y: auto;
+  min-height: 0;
 }
 

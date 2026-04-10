@@ -1,16 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  getClawCodeJournal,
-  clearClawCodeJournal,
-  getClawCodeTraces,
-  clearClawCodeTraces,
-} from '../services/api';
+import { getClawCodeJournal, clearClawCodeJournal } from '../services/api';
 import '../styles/components/DashboardTab.css';
 import { summarizeClawTraceMeta } from '../utils/clawTraceSummary';
 import ClawTraceSummaryCards from './ClawTraceSummaryCards';
 
 const JOURNAL_LIMIT = 2000;
-const LIVE_POLL_MS = 3000;
+const JOURNAL_POLL_MS = 3000;
 
 function getDateRangeForJournal(period, selectedDate) {
   const now = new Date();
@@ -185,7 +180,7 @@ export default function ClawProxyJournalTab() {
   const [err, setErr] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [showRaw, setShowRaw] = useState(false);
-  const [liveTraces, setLiveTraces] = useState([]);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
 
   const loadJournal = useCallback(async (opts = {}) => {
     const silent = opts.silent === true;
@@ -218,30 +213,12 @@ export default function ClawProxyJournalTab() {
 
   useEffect(() => {
     let cancelled = false;
-    const poll = async () => {
-      try {
-        const data = await getClawCodeTraces(25);
-        if (!cancelled) setLiveTraces(data.traces || []);
-      } catch {
-        if (!cancelled) setLiveTraces([]);
-      }
-    };
-    poll();
-    const t = setInterval(poll, LIVE_POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
     const poll = () => {
       if (cancelled || document.visibilityState !== 'visible') return;
       loadJournal({ silent: true });
     };
     poll();
-    const t = setInterval(poll, LIVE_POLL_MS);
+    const t = setInterval(poll, JOURNAL_POLL_MS);
     const onVis = () => {
       if (document.visibilityState === 'visible') poll();
     };
@@ -281,6 +258,25 @@ export default function ClawProxyJournalTab() {
     if (next) setSelectedId(next.id);
   }, [selectedId, logs, displayLogs]);
 
+  useEffect(() => {
+    if (!detailModalOpen || selectedId == null) return;
+    const still =
+      displayLogs.some((r) => r.id === selectedId) || logs.some((r) => r.id === selectedId);
+    if (!still) {
+      setDetailModalOpen(false);
+      setSelectedId(null);
+    }
+  }, [detailModalOpen, selectedId, displayLogs, logs]);
+
+  useEffect(() => {
+    if (!detailModalOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setDetailModalOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [detailModalOpen]);
+
   const selectedLog = useMemo(
     () => displayLogs.find((l) => l.id === selectedId) || logs.find((l) => l.id === selectedId) || null,
     [displayLogs, logs, selectedId],
@@ -293,20 +289,16 @@ export default function ClawProxyJournalTab() {
     try {
       await clearClawCodeJournal();
       setSelectedId(null);
+      setDetailModalOpen(false);
       await loadJournal();
     } catch (e) {
       setErr(String(e.message || e));
     }
   };
 
-  const clearRam = async () => {
-    try {
-      await clearClawCodeTraces();
-      const data = await getClawCodeTraces(25);
-      setLiveTraces(data.traces || []);
-    } catch (e) {
-      setErr(String(e.message || e));
-    }
+  const openEntry = (id) => {
+    setSelectedId(id);
+    setDetailModalOpen(true);
   };
 
   return (
@@ -318,9 +310,6 @@ export default function ClawProxyJournalTab() {
             <button type="button" className="dashboard-primary-btn" onClick={() => loadJournal()} disabled={loading}>
               Refresh
             </button>
-            <button type="button" className="dashboard-primary-btn" onClick={clearRam}>
-              Clear live buffer
-            </button>
             <button type="button" className="dashboard-primary-btn" onClick={clearDb}>
               Clear DB history
             </button>
@@ -328,162 +317,163 @@ export default function ClawProxyJournalTab() {
         </div>
         <p className="dashboard-card-muted">
           Persisted agent traces (one row per run, updated as the agent progresses). The list refreshes every few seconds
-          while this tab is open. Live buffer shows the last in-memory runs only until restart.
+          while this tab is open. Use the <strong>Traces</strong> subtab for the in-memory buffer and detailed trace list.
+          Click a row to open full detail.
         </p>
         {err && <div className="dashboard-card-error">{err}</div>}
-      </section>
 
-      <section className="app-default-card" aria-labelledby="claw-journal-live-heading">
-        <h3 id="claw-journal-live-heading" className="dashboard-card-header" style={{ margin: 0 }}>
-          Live buffer (RAM)
-        </h3>
-        <div className="dashboard-card-scroll" style={{ maxHeight: 200 }}>
-          {liveTraces.length === 0 && <p className="dashboard-card-muted">No in-memory traces.</p>}
-          {liveTraces.map((t) => (
-            <div key={t.trace_id} className="dashboard-kv-row">
-              <code>{(t.trace_id || '').slice(0, 8)}</code>
-              <span className="dashboard-card-muted">
-                {t.elapsed_ms}ms · {t.step_count} steps · {t.resolved_model}
-                {t.error ? ` · ${t.error}` : ''}
-              </span>
-            </div>
-          ))}
+        <div className="claw-journal-toolbar">
+          <label className="dashboard-card-muted">
+            Period{' '}
+            <select
+              className="dashboard-card-field"
+              value={period}
+              onChange={(e) => {
+                setPeriod(e.target.value);
+                setSelectedDate(null);
+              }}
+              aria-label="Journal period"
+            >
+              <option value="day">Today</option>
+              <option value="week">Last 7 days</option>
+              <option value="month">This month</option>
+              <option value="year">This year</option>
+              <option value="all">All time</option>
+            </select>
+          </label>
+          {period === 'all' ? null : (
+            <label className="dashboard-card-muted">
+              Day{' '}
+              <input
+                type="date"
+                className="dashboard-card-field"
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) setSelectedDate(null);
+                  else setSelectedDate(new Date(v + 'T12:00:00'));
+                }}
+                aria-label="Pick calendar day"
+              />
+            </label>
+          )}
         </div>
-      </section>
 
-      <div className="dashboard-claw-two-col" style={{ alignItems: 'flex-start' }}>
-        <div className="dashboard-claw-col">
-          <section className="app-default-card">
-            <div className="dashboard-card-actions" style={{ flexWrap: 'wrap', marginBottom: 12 }}>
-              <label className="dashboard-card-muted">
-                Period{' '}
-                <select
-                  className="dashboard-card-field"
-                  value={period}
-                  onChange={(e) => {
-                    setPeriod(e.target.value);
-                    setSelectedDate(null);
-                  }}
-                  aria-label="Journal period"
+        {loading && <p className="dashboard-card-muted">Loading…</p>}
+        {!loading && logs.length === 0 && <p className="dashboard-card-muted">No journal entries.</p>}
+        {!loading && displayLogs.length > 0 && (
+          <ul className="claw-journal-list" aria-busy={loading}>
+            {displayLogs.map((row) => (
+              <li key={row.id}>
+                <button
+                  type="button"
+                  onClick={() => openEntry(row.id)}
+                  className={`claw-journal-list-item${
+                    detailModalOpen && selectedId === row.id ? ' claw-journal-list-item--active' : ''
+                  }`}
                 >
-                  <option value="day">Today</option>
-                  <option value="week">Last 7 days</option>
-                  <option value="month">This month</option>
-                  <option value="year">This year</option>
-                  <option value="all">All time</option>
-                </select>
-              </label>
-              {period === 'all' ? null : (
-                <label className="dashboard-card-muted">
-                  Day{' '}
-                  <input
-                    type="date"
-                    className="dashboard-card-field"
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (!v) setSelectedDate(null);
-                      else setSelectedDate(new Date(v + 'T12:00:00'));
-                    }}
-                    aria-label="Pick calendar day"
-                  />
-                </label>
-              )}
-            </div>
-            <div className="dashboard-card-scroll" style={{ maxHeight: 420 }}>
-              {loading && <p className="dashboard-card-muted">Loading…</p>}
-              {!loading && logs.length === 0 && <p className="dashboard-card-muted">No journal entries.</p>}
-              {!loading &&
-                displayLogs.map((row) => (
-                  <button
-                    key={row.id}
-                    type="button"
-                    onClick={() => setSelectedId(row.id)}
-                    className="claw-journal-row"
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      border: row.id === selectedId ? '2px solid var(--accent, #6366f1)' : undefined,
-                      borderRadius: 6,
-                      marginBottom: 6,
-                      padding: '8px 10px',
-                      background: 'var(--card-bg, transparent)',
-                    }}
-                  >
-                    <span style={{ opacity: 0.85, fontSize: 12 }}>{row.timestamp}</span>
-                    <span style={{ display: 'block', marginTop: 4 }}>{row.message}</span>
-                  </button>
-                ))}
-            </div>
-          </section>
-        </div>
+                  <span className="claw-journal-list-item-time">{row.timestamp}</span>
+                  <span className="claw-journal-list-item-msg">{row.message}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-        <div className="dashboard-claw-col">
-          <section className="app-default-card">
-            <div className="dashboard-card-header">
-              <h3 style={{ margin: 0 }}>Detail</h3>
-              <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="checkbox" checked={showRaw} onChange={(e) => setShowRaw(e.target.checked)} />
-                Raw JSON
-              </label>
-            </div>
-            {!selectedLog && <p className="dashboard-card-muted">Select an entry from the list.</p>}
-            {selectedLog && showRaw && (
-              <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 560, overflow: 'auto', fontSize: 12 }}>
-                {JSON.stringify(meta || selectedLog, null, 2)}
-              </pre>
-            )}
-            {selectedLog && !showRaw && meta && (
-              <div className="dashboard-card-scroll" style={{ maxHeight: 560 }}>
-                <ClawTraceSummaryCards summary={traceSummary} />
-                {meta.request != null && (
-                  <details className="dashboard-trace-item">
-                    <summary>
-                      Request snapshot
-                      {Array.isArray(meta.request.messages) ? ` · ${meta.request.messages.length} messages` : ''}
-                      {' · '}
-                      {Array.isArray(meta.request.client_tool_names)
-                        ? `${meta.request.client_tool_names.length} client tools`
-                        : '0 client tools'}
-                      {meta.request.merge_client_tools != null
-                        ? ` · merge_client_tools: ${meta.request.merge_client_tools ? 'yes' : 'no'}`
-                        : ''}
-                    </summary>
-                    <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>
-                      {JSON.stringify(meta.request, null, 2)}
-                    </pre>
-                  </details>
-                )}
-                {Array.isArray(meta.steps) && meta.steps.length > 0 && (
-                  <div style={{ marginTop: 12 }}>
-                    <strong>Steps</strong>
-                    {meta.steps.map((s, i) => (
-                      <StepBlock key={i} step={s} index={i} />
-                    ))}
-                  </div>
-                )}
-                {meta.final_message != null && (
-                  <div style={{ marginTop: 16 }}>
-                    <strong>Final answer</strong>
-                    <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8, fontSize: 12 }}>
-                      {meta.final_message.content != null && meta.final_message.content !== ''
-                        ? meta.final_message.content
-                        : '(no text content)'}
-                    </pre>
-                    {meta.final_message.finish_reason != null && (
-                      <p className="dashboard-card-muted">finish_reason: {meta.final_message.finish_reason}</p>
-                    )}
-                  </div>
+      {detailModalOpen && selectedLog && (
+        <div
+          className="claw-journal-modal-overlay"
+          role="presentation"
+          onClick={() => setDetailModalOpen(false)}
+        >
+          <div
+            className="claw-journal-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="claw-journal-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="claw-journal-modal-header">
+              <div className="claw-journal-modal-title-block">
+                <h2 id="claw-journal-modal-title">Trace detail</h2>
+                <p className="claw-journal-modal-meta">{selectedLog.timestamp}</p>
+                {meta?.trace_id != null && String(meta.trace_id).trim() !== '' && (
+                  <p className="claw-journal-modal-meta">
+                    <code>{String(meta.trace_id)}</code>
+                  </p>
                 )}
               </div>
-            )}
-            {selectedLog && !showRaw && !meta && (
-              <p className="dashboard-card-muted">No metadata on this row (legacy or empty).</p>
-            )}
-          </section>
+              <div className="claw-journal-modal-header-actions">
+                <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input type="checkbox" checked={showRaw} onChange={(e) => setShowRaw(e.target.checked)} />
+                  Raw JSON
+                </label>
+                <button
+                  type="button"
+                  className="claw-journal-modal-close"
+                  onClick={() => setDetailModalOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="claw-journal-modal-body">
+              {showRaw && (
+                <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, margin: 0 }}>
+                  {JSON.stringify(meta || selectedLog, null, 2)}
+                </pre>
+              )}
+              {!showRaw && meta && (
+                <>
+                  <ClawTraceSummaryCards summary={traceSummary} />
+                  {meta.request != null && (
+                    <details className="dashboard-trace-item">
+                      <summary>
+                        Request snapshot
+                        {Array.isArray(meta.request.messages) ? ` · ${meta.request.messages.length} messages` : ''}
+                        {' · '}
+                        {Array.isArray(meta.request.client_tool_names)
+                          ? `${meta.request.client_tool_names.length} client tools`
+                          : '0 client tools'}
+                        {meta.request.merge_client_tools != null
+                          ? ` · merge_client_tools: ${meta.request.merge_client_tools ? 'yes' : 'no'}`
+                          : ''}
+                      </summary>
+                      <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>
+                        {JSON.stringify(meta.request, null, 2)}
+                      </pre>
+                    </details>
+                  )}
+                  {Array.isArray(meta.steps) && meta.steps.length > 0 && (
+                    <div style={{ marginTop: 12 }}>
+                      <strong>Steps</strong>
+                      {meta.steps.map((s, i) => (
+                        <StepBlock key={i} step={s} index={i} />
+                      ))}
+                    </div>
+                  )}
+                  {meta.final_message != null && (
+                    <div style={{ marginTop: 16 }}>
+                      <strong>Final answer</strong>
+                      <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8, fontSize: 12 }}>
+                        {meta.final_message.content != null && meta.final_message.content !== ''
+                          ? meta.final_message.content
+                          : '(no text content)'}
+                      </pre>
+                      {meta.final_message.finish_reason != null && (
+                        <p className="dashboard-card-muted">finish_reason: {meta.final_message.finish_reason}</p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+              {!showRaw && !meta && (
+                <p className="dashboard-card-muted">No metadata on this row (legacy or empty).</p>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

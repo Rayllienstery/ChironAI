@@ -441,34 +441,23 @@ def get_clawcode_mcp_http_enabled() -> bool:
 
 
 def get_clawcode_merge_client_tools_config_yaml() -> bool:
-    """Value from ``clawcode.yaml`` only (for WebUI hints). Defaults to True if the key is omitted."""
+    """Value from ``clawcode.yaml`` only. Defaults to True if the key is omitted."""
     return bool(CLAWCODE_CONFIG.get("merge_client_tools", True))
 
 
 def get_clawcode_merge_client_tools() -> bool:
     """
-    IDE mode: when True (default from YAML), ClawCode merges client ``tools`` (e.g. Copilot) with
+    When True (default from YAML), ClawCode merges client ``tools`` (e.g. Copilot) with
     ``rag_query`` for Ollama and can return client-only ``tool_calls`` to the IDE. When False, only
-    ``rag_query`` is advertised — for RAG-only or non-tool-loop clients.
+    ``rag_query`` is advertised.
 
-    Precedence: ``CLAWCODE_MERGE_CLIENT_TOOLS`` env, then SQLite ``clawcode_merge_client_tools``
-    app setting, then YAML.
+    Precedence: ``CLAWCODE_MERGE_CLIENT_TOOLS`` env, then YAML ``merge_client_tools``.
     """
     env = os.getenv("CLAWCODE_MERGE_CLIENT_TOOLS", "").strip().lower()
     if env in ("1", "true", "yes", "on"):
         return True
     if env in ("0", "false", "no", "off"):
         return False
-    try:
-        from infrastructure.database import get_settings_repository
-
-        raw = (get_settings_repository().get_app_setting("clawcode_merge_client_tools") or "").strip().lower()
-        if raw in ("1", "true", "yes", "on"):
-            return True
-        if raw in ("0", "false", "no", "off"):
-            return False
-    except Exception:
-        pass
     return get_clawcode_merge_client_tools_config_yaml()
 
 
@@ -482,17 +471,9 @@ def get_clawcode_max_agent_steps_config_yaml() -> int:
 
 def get_clawcode_max_agent_steps() -> int:
     """
-    Effective max agent steps: app_settings (WebUI) overrides env and YAML.
-    Clamped to [1, 256].
+    Effective max agent steps for direct ClawCode HTTP: env ``CLAWCODE_MAX_AGENT_STEPS``, then YAML.
+    Clamped to [1, 256]. LLM Proxy claw builds pass ``max_agent_steps`` per request.
     """
-    try:
-        from infrastructure.database import get_settings_repository
-
-        raw = get_settings_repository().get_app_setting("clawcode_max_agent_steps")
-        if raw is not None and str(raw).strip():
-            return max(1, min(256, int(str(raw).strip())))
-    except Exception:
-        pass
     try:
         v = os.getenv("CLAWCODE_MAX_AGENT_STEPS")
         if v:
@@ -500,13 +481,6 @@ def get_clawcode_max_agent_steps() -> int:
     except (TypeError, ValueError):
         pass
     return max(1, min(256, get_clawcode_max_agent_steps_config_yaml()))
-
-
-def get_clawcode_logical_model_id() -> str:
-    return os.getenv(
-        "CLAWCODE_LOGICAL_MODEL_ID",
-        str(CLAWCODE_CONFIG.get("logical_model_id", "Claw-Agent")),
-    ).strip() or "Claw-Agent"
 
 
 def get_clawcode_trace_buffer_size() -> int:

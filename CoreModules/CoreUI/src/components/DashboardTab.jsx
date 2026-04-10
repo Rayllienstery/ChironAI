@@ -175,21 +175,11 @@ function DashboardClawProxyCard({ onNavigate }) {
             <h3 className="dashboard-proxy-block-title">Status</h3>
             {row('Enabled', String(status.enabled))}
             {row('Base URL', status.openai_base_url)}
-            {row('Logical model id', status.logical_model_id)}
-            {row('Default Ollama model', status.default_ollama_model || 'unknown')}
-            {row(
-              'RAG collection',
-              status.rag_collection || status.config_default_rag_collection || '—',
-            )}
             {row('Health', `${status.openai_base_url}/health`)}
           </div>
           <div className="dashboard-proxy-block">
-            <h3 className="dashboard-proxy-block-title">Agent Settings</h3>
-            {row('Max agent steps', settings?.max_agent_steps ?? '—')}
-            {row('Temperature', settings?.chat_temperature ?? '—')}
-            {row('Top P', settings?.chat_top_p ?? '—')}
-            {row('Chat think', formatBool(settings?.chat_think))}
-            {row('Merge tools', settings?.merge_client_tools != null ? formatBool(settings.merge_client_tools) : 'Inherit')}
+            <h3 className="dashboard-proxy-block-title">ClawCode</h3>
+            {row('Max agent steps (YAML/env)', settings?.max_agent_steps ?? '—')}
           </div>
         </div>
       )}

@@ -71,8 +71,7 @@ export default function ClawTraceSummaryCards({ summary }) {
         <div className="dashboard-rag-status-grid">
           {pill('Steps', summary.stepCount)}
           {pill('Duration', `${summary.durationMs} ms`)}
-          {pill('Resolved model', summary.resolvedModel)}
-          {pill('Logical agent', summary.logicalModelId)}
+          {pill('Model', summary.resolvedModel)}
         </div>
         {summary.clientModel != null && summary.clientModel !== '' && kv('Client model', summary.clientModel, 'cm')}
         {summary.thinkRequested != null &&

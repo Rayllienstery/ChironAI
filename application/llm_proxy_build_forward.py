@@ -28,8 +28,8 @@ def _claw_openai_base() -> str:
 
 def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
     """
-    POST to ClawCode agent; use the build's concrete Ollama tag as ``model`` (same as dumb builds),
-    not ClawCode's logical model id — agent_runner resolves ``use_model`` from this request field.
+    POST to ClawCode; the forwarded JSON uses the build's concrete Ollama tag as ``model`` (required).
+    ClawCode resolves the upstream model from that field (or from RAG/chat config if ``model`` were empty).
     """
     ollama_tag = str(build.get("ollama_model") or "").strip()
     if not ollama_tag:

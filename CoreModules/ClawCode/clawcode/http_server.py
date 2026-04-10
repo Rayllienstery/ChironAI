@@ -205,23 +205,14 @@ def default_webui_dir() -> str:
     return str(project_root() / "WebUI")
 
 
-def _clawcode_openai_models_rows() -> tuple[str, list[dict[str, object]]]:
-    """
-    Return (logical_model_id, data_rows) matching the OpenAI /v1/models list shape
-    (without the outer wrapper).
-    """
-    logical = "Claw-Agent"
+def _clawcode_openai_models_rows() -> list[dict[str, object]]:
+    """Ollama model rows for OpenAI-shaped ``GET /v1/models`` ``data`` (no synthetic logical id)."""
     data: list[dict[str, object]] = []
     try:
-        from config import (
-            get_ollama_base_url,
-            get_ollama_chat_model,
-            get_clawcode_logical_model_id,
-        )
+        from config import get_ollama_base_url, get_ollama_chat_model
         from infrastructure.ollama.cli_runner import invoke_tags
         from infrastructure.ollama.ollama_model_visibility import get_hidden_ollama_model_ids
 
-        logical = get_clawcode_logical_model_id()
         base_url = get_ollama_base_url()
         hidden = get_hidden_ollama_model_ids()
         tags = invoke_tags(base_url=base_url, timeout=5.0)
@@ -246,7 +237,7 @@ def _clawcode_openai_models_rows() -> tuple[str, list[dict[str, object]]]:
         except Exception:
             cfg_model = "unknown"
         data = [{"id": cfg_model, "object": "model", "owned_by": "ollama"}]
-    return logical, data
+    return data
 
 
 def create_clawcode_flask_app() -> Flask:
@@ -265,25 +256,19 @@ def create_clawcode_flask_app() -> Flask:
         With header ``anthropic-version`` (any non-empty value): Anthropic-shaped JSON.
         Otherwise: OpenAI-shaped list.
         """
-        logical, rows = _clawcode_openai_models_rows()
+        rows = _clawcode_openai_models_rows()
         if wants_anthropic_models_list(request.headers):
-            ids = [logical] + [str(r.get("id")) for r in rows if isinstance(r, dict) and r.get("id")]
+            ids = [str(r.get("id")) for r in rows if isinstance(r, dict) and r.get("id")]
             return jsonify(anthropic_models_list_payload(ids))
-        return jsonify(
-            {
-                "object": "list",
-                "data": [{"id": logical, "object": "model", "owned_by": "clawcode"}] + rows,
-            }
-        )
+        return jsonify({"object": "list", "data": rows})
 
     def _run_agent(openai_body: dict) -> tuple[dict, int]:
         try:
-            from config import get_clawcode_logical_model_id, get_clawcode_max_agent_steps
+            from config import get_clawcode_max_agent_steps
 
             max_steps = get_clawcode_max_agent_steps()
-            logical_id = get_clawcode_logical_model_id()
         except Exception:
-            max_steps, logical_id = 40, "Claw-Agent"
+            max_steps = 40
 
         def _cb(rec: dict) -> None:
             trace_append(rec)
@@ -293,7 +278,6 @@ def create_clawcode_flask_app() -> Flask:
             openai_body,
             webui_dir=webui_dir,
             max_steps=max_steps,
-            logical_model_id=logical_id,
             trace_callback=_cb,
         )
 

@@ -1,24 +1,51 @@
-import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   getClawCodeStatus,
-  getClawCodeTraces,
-  clearClawCodeTraces,
   getClawCodeVendorMainSha,
   syncClawCodeVendor,
   rollbackClawCodeVendorPrevious,
   getClawCodeVendorVersions,
-  getClawCodeSettings,
-  updateClawCodeSettings,
   getClawCodeSkills,
   installClawCodeSkills,
-  updateClawCodeSkill,
+  fetchClawCodeSkillRemoteHeads,
+  updateClawCodeSkillsBySource,
+  deleteClawCodeSkillsBySource,
   deleteClawCodeSkill,
   enableClawCodeSkill,
   disableClawCodeSkill,
 } from '../services/api';
 import '../styles/components/DashboardTab.css';
-import { summarizeClawTraceMeta } from '../utils/clawTraceSummary';
-import ClawTraceSummaryCards from './ClawTraceSummaryCards';
+
+function normSourceRef(ref) {
+  if (ref == null || ref === '') return null;
+  const t = String(ref).trim();
+  return t || null;
+}
+
+function skillInstallMeta(sk) {
+  const s = sk.source || {};
+  if (s.type === 'git' && s.url) {
+    const refNorm = normSourceRef(s.ref);
+    const subNorm = normSourceRef(s.subdir);
+    const groupKey = `git:${s.url.trim()}|${refNorm ?? ''}|${subNorm ?? ''}`;
+    return {
+      kind: 'git',
+      groupKey,
+      url: s.url.trim(),
+      ref: refNorm,
+      subdir: subNorm,
+    };
+  }
+  return { kind: 'other', groupKey: 'other:local', url: null, ref: null, subdir: null };
+}
+
+function findRemoteHeadEntry(heads, url, ref) {
+  const wantR = normSourceRef(ref);
+  return (heads || []).find((h) => {
+    const hr = normSourceRef(h.ref);
+    return h.url && h.url.trim() === url.trim() && hr === wantR;
+  });
+}
 
 function kvRow(label, value, key) {
   return (
@@ -29,37 +56,42 @@ function kvRow(label, value, key) {
   );
 }
 
-function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
-  const onModelStatusChangeRef = useRef(onModelStatusChange);
-  onModelStatusChangeRef.current = onModelStatusChange;
-
+function ClawProxyPanel() {
   const [status, setStatus] = useState(null);
-  const [traces, setTraces] = useState([]);
   const [mainSha, setMainSha] = useState(null);
   const [versions, setVersions] = useState([]);
   const [canRollback, setCanRollback] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
-  const [availableModels, setAvailableModels] = useState([]);
-  const [defaultModel, setDefaultModel] = useState('');
-  const [maxStepsInput, setMaxStepsInput] = useState('');
-  const [effectiveMaxSteps, setEffectiveMaxSteps] = useState(40);
-  const [configMaxStepsYaml, setConfigMaxStepsYaml] = useState(40);
-  const [tempInput, setTempInput] = useState('');
-  const [topPInput, setTopPInput] = useState('');
-  const [globalTemp, setGlobalTemp] = useState(null);
-  const [globalTopP, setGlobalTopP] = useState(null);
-  const [chatThink, setChatThink] = useState(false);
   const [skills, setSkills] = useState([]);
   const [skillUrl, setSkillUrl] = useState('');
   const [skillRef, setSkillRef] = useState('');
   const [skillSubdir, setSkillSubdir] = useState('');
   const [skillsModalOpen, setSkillsModalOpen] = useState(false);
+  const [skillsModalTab, setSkillsModalTab] = useState('sources');
+  const [remoteHeads, setRemoteHeads] = useState([]);
+  const [remoteHeadsLoading, setRemoteHeadsLoading] = useState(false);
+  const [remoteHeadsError, setRemoteHeadsError] = useState(null);
 
   const skillsStats = useMemo(() => {
     const total = skills.length;
     const enabled = skills.filter((s) => s.enabled).length;
     return { total, enabled, disabled: total - enabled };
+  }, [skills]);
+
+  const skillSourceGroups = useMemo(() => {
+    const map = new Map();
+    for (const sk of skills) {
+      const meta = skillInstallMeta(sk);
+      if (!map.has(meta.groupKey)) {
+        map.set(meta.groupKey, { meta, skills: [] });
+      }
+      map.get(meta.groupKey).skills.push(sk);
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.meta.kind !== b.meta.kind) return a.meta.kind === 'git' ? -1 : 1;
+      return (a.meta.url || '').localeCompare(b.meta.url || '');
+    });
   }, [skills]);
 
   useEffect(() => {
@@ -71,20 +103,33 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [skillsModalOpen]);
 
+  useEffect(() => {
+    if (!skillsModalOpen) return undefined;
+    setSkillsModalTab('sources');
+    let cancelled = false;
+    setRemoteHeadsLoading(true);
+    setRemoteHeadsError(null);
+    (async () => {
+      try {
+        const data = await fetchClawCodeSkillRemoteHeads();
+        if (!cancelled) setRemoteHeads(data.heads || []);
+      } catch (e) {
+        if (!cancelled) setRemoteHeadsError(String(e.message || e));
+      } finally {
+        if (!cancelled) setRemoteHeadsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [skillsModalOpen]);
+
   const refresh = useCallback(async () => {
     setErr(null);
     try {
       const s = await getClawCodeStatus();
       setStatus(s);
-      let settings = null;
       if (s.available) {
-        try {
-          settings = await getClawCodeSettings();
-        } catch {
-          settings = null;
-        }
-        const t = await getClawCodeTraces(50);
-        setTraces(t.traces || []);
         const v = await getClawCodeVendorVersions();
         if (v.ok) {
           setVersions(v.versions || []);
@@ -93,33 +138,12 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
           setVersions([]);
           setCanRollback(false);
         }
-      }
-      const notify = onModelStatusChangeRef.current;
-      if (settings?.ok) {
-        const models = settings.available_models || [];
-        const def = settings.default_model || '';
-        setAvailableModels(models);
-        setDefaultModel(def);
-        setMaxStepsInput(settings.stored_max_agent_steps != null ? String(settings.stored_max_agent_steps) : '');
-        setEffectiveMaxSteps(Number(settings.max_agent_steps) || 40);
-        setConfigMaxStepsYaml(Number(settings.config_max_agent_steps_yaml) || 40);
-        setTempInput(settings.stored_chat_temperature != null ? String(settings.stored_chat_temperature) : '');
-        setTopPInput(settings.stored_chat_top_p != null ? String(settings.stored_chat_top_p) : '');
-        setGlobalTemp(settings.global_chat_temperature);
-        setGlobalTopP(settings.global_chat_top_p);
-        setChatThink(Boolean(settings.chat_think));
         try {
           const sr = await getClawCodeSkills();
           setSkills(sr.skills || []);
         } catch {
           setSkills([]);
         }
-        if (typeof notify === 'function') {
-          const inList = Boolean(def && models.some((m) => m.id === def || m.name === def));
-          notify(!inList);
-        }
-      } else if (typeof notify === 'function') {
-        notify(true);
       }
     } catch (e) {
       setErr(String(e.message || e));
@@ -172,15 +196,6 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
     }
   };
 
-  const doClearTraces = async () => {
-    try {
-      await clearClawCodeTraces();
-      await refresh();
-    } catch (e) {
-      setErr(String(e.message || e));
-    }
-  };
-
   if (!status) {
     return (
       <div className="dashboard-layout">
@@ -205,33 +220,6 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
     );
   }
 
-  const saveAgentRuntime = async () => {
-    const payload = {};
-    if (maxStepsInput.trim() === '') {
-      payload.max_agent_steps = null;
-    } else {
-      const n = parseInt(maxStepsInput, 10);
-      if (Number.isNaN(n) || n < 1 || n > 256) {
-        setErr('Max agent steps must be an integer 1–256, or empty to use config default');
-        return;
-      }
-      payload.max_agent_steps = n;
-    }
-    payload.chat_temperature = tempInput.trim() === '' ? null : tempInput.trim();
-    payload.chat_top_p = topPInput.trim() === '' ? null : topPInput.trim();
-    payload.chat_think = chatThink;
-    setBusy(true);
-    setErr(null);
-    try {
-      await updateClawCodeSettings(payload);
-      await refresh();
-    } catch (e) {
-      setErr(String(e.message || e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="dashboard-layout">
       <section className="app-default-card" aria-labelledby="claw-proxy-intro-heading">
@@ -241,8 +229,10 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
         <p className="dashboard-card-muted">
           <strong>OpenAI</strong> (<code>POST /v1/chat/completions</code>) and <strong>Anthropic</strong> (
           <code>POST /v1/messages</code>) <strong>agent</strong> endpoints share the same loop and{' '}
-          <code>rag_query</code> tool (ChironAI RAG). Default port <code>8082</code> (see{' '}
-          <code>config/clawcode.yaml</code>). Documentation: <code>Claw.md</code>, <code>docs/CLAWCODE_VSCODE.md</code>.
+          <code>rag_query</code> tool (ChironAI RAG). Pass an Ollama model tag in <code>model</code>, or rely on the
+          global chat model from RAG config. For LLM Proxy clients, use a build with <code>backend: claw</code>{' '}
+          (model/runtime on the build). Default port <code>8082</code> (<code>config/clawcode.yaml</code>). Docs:{' '}
+          <code>Claw.md</code>, <code>docs/CLAWCODE_VSCODE.md</code>.
         </p>
         {err && <div className="dashboard-card-error">{err}</div>}
       </section>
@@ -260,63 +250,7 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
             </div>
             {kvRow('Enabled', String(status.enabled), 'enabled')}
             {kvRow('Base URL', <code>{status.openai_base_url}</code>, 'base')}
-            {kvRow('Logical model id', <code>{status.logical_model_id}</code>, 'logical')}
-            {kvRow('Default Ollama model', <code>{status.default_ollama_model || 'unknown'}</code>, 'ollama')}
-            {kvRow(
-              'RAG collection',
-              <code>{status.rag_collection || status.config_default_rag_collection || '—'}</code>,
-              'ragcoll',
-            )}
             {kvRow('Health', <code>{status.openai_base_url}/health</code>, 'health')}
-          </section>
-
-          <section className="app-default-card" aria-labelledby="claw-rag-hint-heading">
-            <div className="dashboard-card-header">
-              <h2 id="claw-rag-hint-heading">RAG collection</h2>
-            </div>
-            <p className="dashboard-card-muted">
-              The effective Qdrant collection is listed in <strong>Status</strong> above. To override it for ClawCode{' '}
-              <code>rag_query</code> (or clear the override to use the server config default), use{' '}
-              <strong>RAG / Qdrant</strong> → <strong>Service bindings</strong>.
-            </p>
-            {typeof onNavigateToRag === 'function' && (
-              <div className="dashboard-card-actions">
-                <button type="button" className="dashboard-primary-btn" onClick={onNavigateToRag}>
-                  Open RAG / Qdrant
-                </button>
-              </div>
-            )}
-          </section>
-
-          <section className="app-default-card" aria-labelledby="claw-traces-heading">
-            <div className="dashboard-card-header">
-              <h2 id="claw-traces-heading">Traces</h2>
-              <div className="dashboard-card-actions">
-                <button type="button" className="dashboard-primary-btn" onClick={doClearTraces}>
-                  Clear trace buffer
-                </button>
-              </div>
-            </div>
-            <p className="dashboard-card-muted">
-              Last agent runs: model, steps (model_call / rag_query), token estimates, RSS when psutil is installed.
-            </p>
-            <div className="dashboard-card-scroll">
-              {traces.length === 0 && <p className="dashboard-card-muted">No traces yet.</p>}
-              {traces.map((t) => (
-                <details key={t.trace_id} className="dashboard-trace-item">
-                  <summary>
-                    <code>{(t.trace_id || '').slice(0, 8)}</code> · {t.elapsed_ms}ms · {t.step_count} steps ·{' '}
-                    {t.resolved_model}
-                    {t.error ? ` · error: ${t.error}` : ''}
-                  </summary>
-                  <ClawTraceSummaryCards summary={summarizeClawTraceMeta(t)} />
-                  <details className="dashboard-trace-item" style={{ marginTop: 12 }}>
-                    <summary>Full JSON</summary>
-                    <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(t, null, 2)}</pre>
-                  </details>
-                </details>
-              ))}
-            </div>
           </section>
 
           <section className="app-default-card" aria-labelledby="claw-skills-heading">
@@ -449,124 +383,424 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
                       Close
                     </button>
                   </div>
+                  <div
+                    className="dashboard-claw-skills-modal-tabs"
+                    role="tablist"
+                    aria-label="Skills manager sections"
+                  >
+                    <button
+                      type="button"
+                      role="tab"
+                      id="claw-skills-tab-sources"
+                      className={
+                        skillsModalTab === 'sources'
+                          ? 'dashboard-claw-skills-modal-tab dashboard-claw-skills-modal-tab--active'
+                          : 'dashboard-claw-skills-modal-tab'
+                      }
+                      aria-selected={skillsModalTab === 'sources'}
+                      aria-controls="claw-skills-panel-sources"
+                      onClick={() => setSkillsModalTab('sources')}
+                    >
+                      By source
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      id="claw-skills-tab-per-skill"
+                      className={
+                        skillsModalTab === 'skills'
+                          ? 'dashboard-claw-skills-modal-tab dashboard-claw-skills-modal-tab--active'
+                          : 'dashboard-claw-skills-modal-tab'
+                      }
+                      aria-selected={skillsModalTab === 'skills'}
+                      aria-controls="claw-skills-panel-skills"
+                      onClick={() => setSkillsModalTab('skills')}
+                    >
+                      Per skill
+                    </button>
+                  </div>
                   <div className="dashboard-claw-skills-modal-body">
-                    <p className="dashboard-card-muted" style={{ marginTop: 0, marginBottom: 14 }}>
-                      Enable or disable globally, pull updates from Git, or remove a pack from this server.
-                    </p>
-                    <div className="dashboard-claw-skills-modal-list">
-                      {skills.map((sk) => {
-                        const sid = sk.id;
-                        const enabled = Boolean(sk.enabled);
-                        return (
-                          <div key={sid} className="dashboard-claw-skills-modal-item">
-                            <div className="dashboard-claw-skills-modal-item-head">
-                              <strong>{sk.invocation_name || sk.display_name || sid}</strong>
-                              {enabled ? (
-                                <span className="dashboard-claw-skills-modal-badge dashboard-claw-skills-modal-badge--on">
-                                  On
-                                </span>
-                              ) : (
-                                <span className="dashboard-claw-skills-modal-badge">Off</span>
-                              )}
-                            </div>
-                            <code className="dashboard-claw-skills-modal-id">{sid}</code>
-                            {sk.description ? (
-                              <p className="dashboard-claw-skills-modal-desc">{sk.description}</p>
-                            ) : (
-                              <p className="dashboard-card-muted dashboard-claw-skills-modal-desc">No description</p>
-                            )}
-                            <p className="dashboard-card-muted dashboard-claw-skills-modal-source">
-                              {sk.source?.type === 'git' && sk.source?.url ? (
-                                <>
-                                  Source: <code>{sk.source.url}</code>
-                                  {sk.source.ref ? (
+                    {skillsModalTab === 'sources' ? (
+                      <div
+                        id="claw-skills-panel-sources"
+                        role="tabpanel"
+                        aria-labelledby="claw-skills-tab-sources"
+                      >
+                        <p className="dashboard-card-muted" style={{ marginTop: 0, marginBottom: 12 }}>
+                          Git sources are grouped here. Compare installed commit SHA with the latest remote ref (fetched
+                          when this dialog opens). Use bulk actions to update, enable, disable, or remove every pack from
+                          the same install.
+                        </p>
+                        {remoteHeadsLoading ? (
+                          <p className="dashboard-card-muted">Checking remote heads…</p>
+                        ) : null}
+                        {remoteHeadsError ? (
+                          <p className="dashboard-card-error" style={{ marginBottom: 12 }}>
+                            {remoteHeadsError}
+                          </p>
+                        ) : null}
+                        <div className="dashboard-claw-skills-modal-source-groups">
+                          {skillSourceGroups.map(({ meta, skills: groupSkills }) => {
+                            const shas = [
+                              ...new Set(groupSkills.map((s) => s.source_commit_sha).filter(Boolean)),
+                            ];
+                            const installedLabel =
+                              shas.length === 0 ? '—' : shas.length === 1 ? `${shas[0].slice(0, 7)}…` : 'Mixed';
+                            const remoteEntry =
+                              meta.kind === 'git'
+                                ? findRemoteHeadEntry(remoteHeads, meta.url, meta.ref)
+                                : null;
+                            const remoteSha = remoteEntry?.remote_sha;
+                            const remoteErr = remoteEntry?.error;
+                            const updateAvailable =
+                              meta.kind === 'git' &&
+                              Boolean(remoteSha) &&
+                              !remoteErr &&
+                              shas.length === 1 &&
+                              shas[0] !== remoteSha;
+                            const names = groupSkills
+                              .map((s) => s.invocation_name || s.display_name || s.id)
+                              .join(', ');
+                            const allEnabled = groupSkills.every((s) => s.enabled);
+                            const allDisabled = groupSkills.every((s) => !s.enabled);
+                            const payload = {
+                              url: meta.url,
+                              ref: meta.ref || undefined,
+                              subdir: meta.subdir || undefined,
+                            };
+                            return (
+                              <div key={meta.groupKey} className="dashboard-claw-skills-modal-source-group">
+                                <div className="dashboard-claw-skills-modal-source-group-head">
+                                  <div>
+                                    {meta.kind === 'git' ? (
+                                      <>
+                                        <code className="dashboard-claw-skills-modal-source-group-url">
+                                          {meta.url}
+                                        </code>
+                                        <p className="dashboard-claw-skills-modal-source-group-meta">
+                                          {meta.ref ? (
+                                            <>
+                                              ref <code>{meta.ref}</code>
+                                              {' · '}
+                                            </>
+                                          ) : (
+                                            <>default branch · </>
+                                          )}
+                                          {meta.subdir ? (
+                                            <>
+                                              subdir <code>{meta.subdir}</code>
+                                              {' · '}
+                                            </>
+                                          ) : null}
+                                          {groupSkills.length} pack{groupSkills.length === 1 ? '' : 's'}
+                                        </p>
+                                        <p className="dashboard-claw-skills-modal-sha-row">
+                                          <span>
+                                            Installed: <code>{installedLabel}</code>
+                                          </span>
+                                          {remoteSha ? (
+                                            <span>
+                                              Remote: <code>{remoteSha.slice(0, 7)}…</code>
+                                            </span>
+                                          ) : remoteErr ? (
+                                            <span className="dashboard-card-muted">Remote: error</span>
+                                          ) : (
+                                            <span className="dashboard-card-muted">Remote: —</span>
+                                          )}
+                                          {updateAvailable ? (
+                                            <span
+                                              className="dashboard-claw-skills-modal-update-badge"
+                                              title="Installed commit differs from fetched remote HEAD"
+                                            >
+                                              Update available
+                                            </span>
+                                          ) : null}
+                                        </p>
+                                        {remoteErr ? (
+                                          <p className="dashboard-card-muted" style={{ marginTop: 6, fontSize: '0.8rem' }}>
+                                            {remoteErr}
+                                          </p>
+                                        ) : null}
+                                      </>
+                                    ) : (
+                                      <>
+                                        <strong>Non-Git sources</strong>
+                                        <p className="dashboard-card-muted" style={{ marginTop: 6 }}>
+                                          No Git remote to compare or bulk-update. Enable or disable packs below; remove
+                                          all uninstalls every pack in this group.
+                                        </p>
+                                      </>
+                                    )}
+                                    <p className="dashboard-claw-skills-modal-source-group-names" title={names}>
+                                      {names}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="dashboard-card-actions dashboard-claw-skills-modal-source-group-actions">
+                                  {meta.kind === 'git' ? (
                                     <>
-                                      {' '}
-                                      @ <code>{sk.source.ref}</code>
+                                      <button
+                                        type="button"
+                                        className="dashboard-primary-btn"
+                                        disabled={busy}
+                                        onClick={async () => {
+                                          setBusy(true);
+                                          setErr(null);
+                                          try {
+                                            await updateClawCodeSkillsBySource(payload);
+                                            await refresh();
+                                            try {
+                                              const data = await fetchClawCodeSkillRemoteHeads();
+                                              setRemoteHeads(data.heads || []);
+                                            } catch {
+                                              /* ignore */
+                                            }
+                                          } catch (e) {
+                                            setErr(String(e.message || e));
+                                          } finally {
+                                            setBusy(false);
+                                          }
+                                        }}
+                                      >
+                                        Update all
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="dashboard-secondary-btn"
+                                        disabled={busy || allEnabled}
+                                        onClick={async () => {
+                                          setBusy(true);
+                                          setErr(null);
+                                          try {
+                                            for (const s of groupSkills) {
+                                              if (!s.enabled) await enableClawCodeSkill(s.id);
+                                            }
+                                            await refresh();
+                                          } catch (e) {
+                                            setErr(String(e.message || e));
+                                          } finally {
+                                            setBusy(false);
+                                          }
+                                        }}
+                                      >
+                                        Enable all
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="dashboard-secondary-btn"
+                                        disabled={busy || allDisabled}
+                                        onClick={async () => {
+                                          setBusy(true);
+                                          setErr(null);
+                                          try {
+                                            for (const s of groupSkills) {
+                                              if (s.enabled) await disableClawCodeSkill(s.id);
+                                            }
+                                            await refresh();
+                                          } catch (e) {
+                                            setErr(String(e.message || e));
+                                          } finally {
+                                            setBusy(false);
+                                          }
+                                        }}
+                                      >
+                                        Disable all
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="dashboard-secondary-btn"
+                                        disabled={busy}
+                                        onClick={async () => {
+                                          if (
+                                            !window.confirm(
+                                              `Remove all ${groupSkills.length} skill pack(s) from this Git source?`
+                                            )
+                                          )
+                                            return;
+                                          setBusy(true);
+                                          setErr(null);
+                                          try {
+                                            await deleteClawCodeSkillsBySource(payload);
+                                            await refresh();
+                                            const sr = await getClawCodeSkills().catch(() => ({ skills: [] }));
+                                            if (!(sr.skills || []).length) setSkillsModalOpen(false);
+                                          } catch (e) {
+                                            setErr(String(e.message || e));
+                                          } finally {
+                                            setBusy(false);
+                                          }
+                                        }}
+                                      >
+                                        Remove all
+                                      </button>
                                     </>
-                                  ) : null}
-                                  {sk.source.repo_rel_skill_dir ? (
+                                  ) : (
                                     <>
-                                      {' '}
-                                      · <code>{sk.source.repo_rel_skill_dir}</code>
+                                      <button
+                                        type="button"
+                                        className="dashboard-secondary-btn"
+                                        disabled={busy || allEnabled}
+                                        onClick={async () => {
+                                          setBusy(true);
+                                          setErr(null);
+                                          try {
+                                            for (const s of groupSkills) {
+                                              if (!s.enabled) await enableClawCodeSkill(s.id);
+                                            }
+                                            await refresh();
+                                          } catch (e) {
+                                            setErr(String(e.message || e));
+                                          } finally {
+                                            setBusy(false);
+                                          }
+                                        }}
+                                      >
+                                        Enable all
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="dashboard-secondary-btn"
+                                        disabled={busy || allDisabled}
+                                        onClick={async () => {
+                                          setBusy(true);
+                                          setErr(null);
+                                          try {
+                                            for (const s of groupSkills) {
+                                              if (s.enabled) await disableClawCodeSkill(s.id);
+                                            }
+                                            await refresh();
+                                          } catch (e) {
+                                            setErr(String(e.message || e));
+                                          } finally {
+                                            setBusy(false);
+                                          }
+                                        }}
+                                      >
+                                        Disable all
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="dashboard-secondary-btn"
+                                        disabled={busy}
+                                        onClick={async () => {
+                                          if (
+                                            !window.confirm(
+                                              `Remove all ${groupSkills.length} non-Git skill pack(s) from this server?`
+                                            )
+                                          )
+                                            return;
+                                          setBusy(true);
+                                          setErr(null);
+                                          try {
+                                            for (const s of groupSkills) {
+                                              await deleteClawCodeSkill(s.id);
+                                            }
+                                            await refresh();
+                                            const sr = await getClawCodeSkills().catch(() => ({ skills: [] }));
+                                            if (!(sr.skills || []).length) setSkillsModalOpen(false);
+                                          } catch (e) {
+                                            setErr(String(e.message || e));
+                                          } finally {
+                                            setBusy(false);
+                                          }
+                                        }}
+                                      >
+                                        Remove all
+                                      </button>
                                     </>
-                                  ) : null}
-                                </>
-                              ) : (
-                                <>
-                                  Source: <code>{sk.source?.type || 'unknown'}</code>
-                                </>
-                              )}
-                            </p>
-                            <div className="dashboard-card-actions" style={{ gap: 8, flexWrap: 'wrap' }}>
-                              <button
-                                type="button"
-                                className="dashboard-primary-btn"
-                                disabled={busy}
-                                onClick={async () => {
-                                  setBusy(true);
-                                  setErr(null);
-                                  try {
-                                    if (enabled) {
-                                      await disableClawCodeSkill(sid);
-                                    } else {
-                                      await enableClawCodeSkill(sid);
-                                    }
-                                    await refresh();
-                                  } catch (e) {
-                                    setErr(String(e.message || e));
-                                  } finally {
-                                    setBusy(false);
-                                  }
-                                }}
-                              >
-                                {enabled ? 'Disable' : 'Enable'}
-                              </button>
-                              <button
-                                type="button"
-                                className="dashboard-secondary-btn"
-                                disabled={busy}
-                                onClick={async () => {
-                                  setBusy(true);
-                                  setErr(null);
-                                  try {
-                                    await updateClawCodeSkill(sid);
-                                    await refresh();
-                                  } catch (e) {
-                                    setErr(String(e.message || e));
-                                  } finally {
-                                    setBusy(false);
-                                  }
-                                }}
-                              >
-                                Update
-                              </button>
-                              <button
-                                type="button"
-                                className="dashboard-secondary-btn"
-                                disabled={busy}
-                                onClick={async () => {
-                                  if (!window.confirm(`Delete skill ${sk.invocation_name || sid}?`)) return;
-                                  setBusy(true);
-                                  setErr(null);
-                                  try {
-                                    await deleteClawCodeSkill(sid);
-                                    await refresh();
-                                    if (skills.length <= 1) setSkillsModalOpen(false);
-                                  } catch (e) {
-                                    setErr(String(e.message || e));
-                                  } finally {
-                                    setBusy(false);
-                                  }
-                                }}
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        id="claw-skills-panel-skills"
+                        role="tabpanel"
+                        aria-labelledby="claw-skills-tab-per-skill"
+                      >
+                        <p className="dashboard-card-muted" style={{ marginTop: 0, marginBottom: 14 }}>
+                          Turn packs on or off for the agent. Updates and removal by Git source are on the{' '}
+                          <strong>By source</strong> tab.
+                        </p>
+                        <div className="dashboard-claw-skills-modal-list">
+                          {skills.map((sk) => {
+                            const sid = sk.id;
+                            const enabled = Boolean(sk.enabled);
+                            return (
+                              <div key={sid} className="dashboard-claw-skills-modal-item">
+                                <div className="dashboard-claw-skills-modal-item-head">
+                                  <strong>{sk.invocation_name || sk.display_name || sid}</strong>
+                                  {enabled ? (
+                                    <span className="dashboard-claw-skills-modal-badge dashboard-claw-skills-modal-badge--on">
+                                      On
+                                    </span>
+                                  ) : (
+                                    <span className="dashboard-claw-skills-modal-badge">Off</span>
+                                  )}
+                                </div>
+                                <code className="dashboard-claw-skills-modal-id">{sid}</code>
+                                {sk.description ? (
+                                  <p className="dashboard-claw-skills-modal-desc">{sk.description}</p>
+                                ) : (
+                                  <p className="dashboard-card-muted dashboard-claw-skills-modal-desc">No description</p>
+                                )}
+                                <p className="dashboard-card-muted dashboard-claw-skills-modal-source">
+                                  {sk.source?.type === 'git' && sk.source?.url ? (
+                                    <>
+                                      Source: <code>{sk.source.url}</code>
+                                      {sk.source.ref ? (
+                                        <>
+                                          {' '}
+                                          @ <code>{sk.source.ref}</code>
+                                        </>
+                                      ) : null}
+                                      {sk.source.repo_rel_skill_dir ? (
+                                        <>
+                                          {' '}
+                                          · <code>{sk.source.repo_rel_skill_dir}</code>
+                                        </>
+                                      ) : null}
+                                    </>
+                                  ) : (
+                                    <>
+                                      Source: <code>{sk.source?.type || 'unknown'}</code>
+                                    </>
+                                  )}
+                                </p>
+                                <div className="dashboard-card-actions" style={{ gap: 8, flexWrap: 'wrap' }}>
+                                  <button
+                                    type="button"
+                                    className="dashboard-primary-btn"
+                                    disabled={busy}
+                                    onClick={async () => {
+                                      setBusy(true);
+                                      setErr(null);
+                                      try {
+                                        if (enabled) {
+                                          await disableClawCodeSkill(sid);
+                                        } else {
+                                          await enableClawCodeSkill(sid);
+                                        }
+                                        await refresh();
+                                      } catch (e) {
+                                        setErr(String(e.message || e));
+                                      } finally {
+                                        setBusy(false);
+                                      }
+                                    }}
+                                  >
+                                    {enabled ? 'Disable' : 'Enable'}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -575,134 +809,6 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
         </div>
 
         <div className="dashboard-claw-col">
-          <section className="app-default-card" aria-labelledby="claw-model-heading">
-            <div className="dashboard-card-header">
-              <h2 id="claw-model-heading">Agent default model</h2>
-            </div>
-            <div className="dashboard-proxy-sections">
-              <p className="dashboard-card-muted">
-                This is the <strong>Ollama model</strong> ClawCode will use when clients request{' '}
-                <code>{status.logical_model_id}</code> without overriding <code>model</code>. The list comes from Ollama{' '}
-                <code>/api/tags</code>.
-              </p>
-              <div className="dashboard-card-actions">
-                <select
-                  className="dashboard-card-field"
-                  value={defaultModel}
-                  onChange={(e) => setDefaultModel(e.target.value)}
-                  aria-label="Ollama model"
-                >
-                  <option value="">Select Ollama model…</option>
-                  {availableModels.map((m) => (
-                    <option key={m.id || m.name} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className="dashboard-primary-btn"
-                  disabled={!defaultModel || busy}
-                  onClick={async () => {
-                    try {
-                      setBusy(true);
-                      setErr(null);
-                      await updateClawCodeSettings({ default_model: defaultModel });
-                      await refresh();
-                    } catch (e) {
-                      setErr(String(e.message || e));
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                >
-                  Save default model
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <section className="app-default-card" aria-labelledby="claw-agent-runtime-heading">
-            <div className="dashboard-card-header">
-              <h2 id="claw-agent-runtime-heading">Agent runtime</h2>
-            </div>
-            <div className="dashboard-proxy-sections">
-              <p className="dashboard-card-muted">
-                ClawCode-only overrides. Empty fields fall back to <code>config/models.yaml</code> chat options
-                (temperature / top_p) or YAML/env max steps (effective now: <strong>{effectiveMaxSteps}</strong>; YAML
-                default: <strong>{configMaxStepsYaml}</strong>).
-                {globalTemp != null && globalTopP != null && (
-                  <>
-                    {' '}
-                    Global chat defaults: temperature <code>{String(globalTemp)}</code>, top_p{' '}
-                    <code>{String(globalTopP)}</code>.
-                  </>
-                )}
-              </p>
-              <p className="dashboard-card-muted" style={{ marginBottom: 12 }}>
-                <strong>IDE mode</strong> (<code>merge_client_tools</code>) is configured under{' '}
-                <strong>Settings</strong> → ClawCode.
-              </p>
-              <div className="dashboard-card-actions" style={{ flexWrap: 'wrap' }}>
-                <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  Max agent steps (1–256, empty = config)
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    className="dashboard-card-field"
-                    value={maxStepsInput}
-                    onChange={(e) => setMaxStepsInput(e.target.value)}
-                    placeholder={`e.g. ${configMaxStepsYaml}`}
-                    aria-label="Max agent steps"
-                  />
-                </label>
-                <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  Temperature (empty = global)
-                  <input
-                    type="text"
-                    className="dashboard-card-field"
-                    value={tempInput}
-                    onChange={(e) => setTempInput(e.target.value)}
-                    placeholder={globalTemp != null ? String(globalTemp) : 'inherit'}
-                    aria-label="ClawCode temperature override"
-                  />
-                </label>
-                <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  Top P (empty = global)
-                  <input
-                    type="text"
-                    className="dashboard-card-field"
-                    value={topPInput}
-                    onChange={(e) => setTopPInput(e.target.value)}
-                    placeholder={globalTopP != null ? String(globalTopP) : 'inherit'}
-                    aria-label="ClawCode top_p override"
-                  />
-                </label>
-                <label
-                  className="dashboard-card-muted"
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'flex-end' }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={chatThink}
-                    onChange={(e) => setChatThink(e.target.checked)}
-                    aria-label="Request Ollama extended thinking when supported"
-                  />
-                  Ollama <code>think</code> (if model supports it)
-                </label>
-                <button
-                  type="button"
-                  className="dashboard-primary-btn"
-                  disabled={busy}
-                  onClick={saveAgentRuntime}
-                  style={{ alignSelf: 'flex-end' }}
-                >
-                  Save agent runtime
-                </button>
-              </div>
-            </div>
-          </section>
-
           <section className="app-default-card" aria-labelledby="claw-vendor-heading">
             <div className="dashboard-card-header">
               <h2 id="claw-vendor-heading">Vendor (claw-code parity)</h2>

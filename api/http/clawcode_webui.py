@@ -66,7 +66,6 @@ def clawcode_status():
             get_ollama_chat_model,
             get_clawcode_enabled,
             get_clawcode_host,
-            get_clawcode_logical_model_id,
             get_clawcode_mcp_http_enabled,
             get_clawcode_mcp_port,
             get_clawcode_openai_port,
@@ -88,8 +87,7 @@ def clawcode_status():
             _VENDOR_NESTED_GIT_MIGRATED = True
         migrate_inactive_versions_to_backups(_REPO_ROOT / vc["root_relative"])
         settings_repo = get_settings_repository()
-        stored_default = (settings_repo.get_app_setting("clawcode_default_model") or "").strip()
-        effective_default = stored_default or get_ollama_chat_model()
+        config_chat_model = get_ollama_chat_model()
         stored_rag = (settings_repo.get_app_setting(CLAWCODE_RAG_COLLECTION_APP_SETTING) or "").strip()
         config_rag = get_qdrant_collection_name()
         effective_rag = stored_rag or config_rag
@@ -111,8 +109,7 @@ def clawcode_status():
                 "mcp_http_enabled": get_clawcode_mcp_http_enabled(),
                 "host": host,
                 "display_host": display_host,
-                "logical_model_id": get_clawcode_logical_model_id(),
-                "default_ollama_model": effective_default,
+                "config_chat_model": config_chat_model,
                 "rag_collection": effective_rag,
                 "stored_rag_collection": stored_rag,
                 "config_default_rag_collection": config_rag,
@@ -281,97 +278,38 @@ def clawcode_vendor_rollback_previous():
 @clawcode_bp.get("/settings")
 def clawcode_get_settings():
     """
-    Return ClawCode-specific settings (default model) and available Ollama models.
+    Return ClawCode-specific settings: RAG collection binding.
 
-    This is separate from LlmProxy model-settings to keep concerns isolated.
+    Model and agent runtime for proxy traffic are configured via LLM Proxy builds (backend claw).
+    ``merge_client_tools`` is set in ``config/clawcode.yaml`` or env ``CLAWCODE_MERGE_CLIENT_TOOLS``.
     """
     if not _ensure_clawcode_path():
         return jsonify({"ok": False, "error": "clawcode unavailable"}), 400
     try:
         from config import (
-            get_ollama_base_url,
-            get_ollama_chat_model,
-            get_ollama_chat_options,
             get_clawcode_max_agent_steps,
             get_clawcode_max_agent_steps_config_yaml,
-            get_clawcode_merge_client_tools,
-            get_clawcode_merge_client_tools_config_yaml,
             get_qdrant_collection_name,
         )
         from infrastructure.database import get_settings_repository
-        from infrastructure.ollama.cli_runner import invoke_tags
-        from infrastructure.ollama.ollama_model_visibility import get_hidden_ollama_model_ids
 
         repo = get_settings_repository()
-        stored_default = (repo.get_app_setting("clawcode_default_model") or "").strip()
-        fallback = get_ollama_chat_model()
-        effective_default = stored_default or fallback
         stored_rag = (repo.get_app_setting(CLAWCODE_RAG_COLLECTION_APP_SETTING) or "").strip()
         config_rag = get_qdrant_collection_name()
         effective_rag = stored_rag or config_rag
 
-        stored_max_steps = (repo.get_app_setting("clawcode_max_agent_steps") or "").strip()
-        stored_temp = (repo.get_app_setting("clawcode_chat_temperature") or "").strip()
-        stored_top_p = (repo.get_app_setting("clawcode_chat_top_p") or "").strip()
-        stored_think = (repo.get_app_setting("clawcode_chat_think") or "").strip().lower()
-        chat_think = stored_think in ("1", "true", "yes")
-        stored_merge_tools = (repo.get_app_setting("clawcode_merge_client_tools") or "").strip()
-        global_opts = get_ollama_chat_options() or {}
-
-        base_url = get_ollama_base_url()
-        tags = invoke_tags(base_url=base_url, timeout=5.0)
-        hidden = get_hidden_ollama_model_ids()
-        models = []
-        for m in tags.get("models") or []:
-            if not isinstance(m, dict):
-                continue
-            name = (m.get("name") or m.get("model") or "").strip()
-            if not name or name in hidden:
-                continue
-            models.append({"id": name, "name": name})
-
-        if (
-            fallback
-            and fallback not in hidden
-            and all(fallback != mm["id"] for mm in models)
-        ):
-            models.insert(0, {"id": fallback, "name": fallback})
-
         return jsonify(
             {
                 "ok": True,
-                "default_model": effective_default,
-                "stored_default_model": stored_default,
-                "available_models": models,
                 "rag_collection": effective_rag,
                 "stored_rag_collection": stored_rag,
                 "config_default_rag_collection": config_rag,
                 "max_agent_steps": get_clawcode_max_agent_steps(),
-                "stored_max_agent_steps": stored_max_steps,
                 "config_max_agent_steps_yaml": get_clawcode_max_agent_steps_config_yaml(),
-                "stored_chat_temperature": stored_temp,
-                "stored_chat_top_p": stored_top_p,
-                "chat_think": chat_think,
-                "stored_chat_think": stored_think,
-                "global_chat_temperature": global_opts.get("temperature"),
-                "global_chat_top_p": global_opts.get("top_p"),
-                "merge_client_tools": get_clawcode_merge_client_tools(),
-                "stored_merge_client_tools": stored_merge_tools,
-                "config_merge_client_tools_yaml": get_clawcode_merge_client_tools_config_yaml(),
             }
         )
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
-
-
-def _clearable_str(body: dict[str, Any], key: str) -> str | None:
-    """If key missing, None. If null, ''. Else stringified strip."""
-    if key not in body:
-        return None
-    v = body.get(key)
-    if v is None:
-        return ""
-    return str(v).strip()
 
 
 @clawcode_bp.post("/settings")
@@ -379,23 +317,12 @@ def clawcode_update_settings():
     """
     Persist ClawCode settings.
 
-    Body may include any of:
-    - default_model, rag_collection, max_agent_steps, chat_temperature, chat_top_p, chat_think,
-      merge_client_tools — IDE mode (bool or null to clear stored override)
-    Use null or empty string where supported to clear stored override.
+    Body may include: rag_collection.
     """
     if not _ensure_clawcode_path():
         return jsonify({"ok": False, "error": "clawcode unavailable"}), 400
     body = request.get_json(silent=True) or {}
-    allowed = (
-        "default_model",
-        "rag_collection",
-        "max_agent_steps",
-        "chat_temperature",
-        "chat_top_p",
-        "chat_think",
-        "merge_client_tools",
-    )
+    allowed = ("rag_collection",)
     if not any(k in body for k in allowed):
         return jsonify(
             {"ok": False, "error": f"Provide one or more of: {', '.join(allowed)}"}
@@ -405,12 +332,6 @@ def clawcode_update_settings():
 
         repo = get_settings_repository()
         out: dict[str, Any] = {"ok": True}
-        if "default_model" in body:
-            model = (body.get("default_model") or "").strip()
-            if not model:
-                return jsonify({"ok": False, "error": "default_model cannot be empty"}), 400
-            repo.set_app_setting("clawcode_default_model", model)
-            out["default_model"] = model
         if "rag_collection" in body:
             raw = body.get("rag_collection")
             rag_coll = str(raw).strip() if raw is not None else ""
@@ -419,83 +340,6 @@ def clawcode_update_settings():
             else:
                 repo.set_app_setting(CLAWCODE_RAG_COLLECTION_APP_SETTING, rag_coll)
             out["rag_collection"] = rag_coll
-
-        ms = _clearable_str(body, "max_agent_steps")
-        if ms is not None:
-            if ms == "":
-                repo.set_app_setting("clawcode_max_agent_steps", "")
-                from config import get_clawcode_max_agent_steps
-
-                out["max_agent_steps"] = get_clawcode_max_agent_steps()
-            else:
-                try:
-                    n = int(ms)
-                except (TypeError, ValueError):
-                    return jsonify({"ok": False, "error": "max_agent_steps must be an integer"}), 400
-                if n < 1 or n > 256:
-                    return jsonify(
-                        {"ok": False, "error": "max_agent_steps must be between 1 and 256"}
-                    ), 400
-                repo.set_app_setting("clawcode_max_agent_steps", str(n))
-                out["max_agent_steps"] = n
-
-        ct = _clearable_str(body, "chat_temperature")
-        if ct is not None:
-            if ct == "":
-                repo.set_app_setting("clawcode_chat_temperature", "")
-                out["chat_temperature"] = ""
-            else:
-                try:
-                    t = float(ct)
-                except (TypeError, ValueError):
-                    return jsonify({"ok": False, "error": "chat_temperature must be a number"}), 400
-                if t < 0 or t > 2:
-                    return jsonify(
-                        {"ok": False, "error": "chat_temperature must be between 0 and 2"}
-                    ), 400
-                repo.set_app_setting("clawcode_chat_temperature", ct)
-                out["chat_temperature"] = ct
-
-        tp = _clearable_str(body, "chat_top_p")
-        if tp is not None:
-            if tp == "":
-                repo.set_app_setting("clawcode_chat_top_p", "")
-                out["chat_top_p"] = ""
-            else:
-                try:
-                    p = float(tp)
-                except (TypeError, ValueError):
-                    return jsonify({"ok": False, "error": "chat_top_p must be a number"}), 400
-                if p <= 0 or p > 1:
-                    return jsonify({"ok": False, "error": "chat_top_p must be in (0, 1]"}), 400
-                repo.set_app_setting("clawcode_chat_top_p", tp)
-                out["chat_top_p"] = tp
-
-        if "chat_think" in body:
-            raw = body.get("chat_think")
-            if raw is None or raw is False or raw == "":
-                repo.set_app_setting("clawcode_chat_think", "")
-                out["chat_think"] = False
-            else:
-                truthy = raw is True or raw == 1 or str(raw).strip().lower() in ("1", "true", "yes")
-                repo.set_app_setting("clawcode_chat_think", "1" if truthy else "")
-                out["chat_think"] = truthy
-
-        if "merge_client_tools" in body:
-            raw_mt = body.get("merge_client_tools")
-            if raw_mt is None or raw_mt == "":
-                repo.set_app_setting("clawcode_merge_client_tools", "")
-                from config import get_clawcode_merge_client_tools
-
-                out["merge_client_tools"] = get_clawcode_merge_client_tools()
-            else:
-                truthy_mt = raw_mt is True or raw_mt == 1 or str(raw_mt).strip().lower() in (
-                    "1",
-                    "true",
-                    "yes",
-                )
-                repo.set_app_setting("clawcode_merge_client_tools", "1" if truthy_mt else "0")
-                out["merge_client_tools"] = truthy_mt
 
         return jsonify(out)
     except Exception as e:
@@ -588,6 +432,110 @@ def clawcode_skills_update():
         registry[updated.id] = updated
         store_skills_registry(repo, registry)
         return jsonify({"ok": True, "skill": updated.to_json()})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@clawcode_bp.post("/skills/remote-heads")
+def clawcode_skills_remote_heads():
+    if not _ensure_clawcode_path():
+        return jsonify({"ok": False, "error": "clawcode unavailable", "heads": []}), 400
+    try:
+        from infrastructure.database import get_settings_repository
+        from clawcode.skills_manager import resolve_remote_head_sha
+        from clawcode.skills_registry import load_skills_registry
+
+        repo = get_settings_repository()
+        registry = load_skills_registry(repo)
+        seen: set[tuple[str, str | None]] = set()
+        pairs: list[tuple[str, str | None]] = []
+        for rec in registry.values():
+            src = rec.source
+            if src.type != "git" or not src.url:
+                continue
+            url = src.url.strip()
+            ref = src.ref.strip() if isinstance(src.ref, str) and src.ref.strip() else None
+            key = (url, ref)
+            if key in seen:
+                continue
+            seen.add(key)
+            pairs.append((url, ref))
+
+        heads: list[dict[str, Any]] = []
+        for url, ref in pairs:
+            entry: dict[str, Any] = {"url": url, "ref": ref, "remote_sha": None, "error": None}
+            try:
+                entry["remote_sha"] = resolve_remote_head_sha(url, ref)
+            except Exception as e:
+                entry["error"] = str(e)
+            heads.append(entry)
+        return jsonify({"ok": True, "heads": heads})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e), "heads": []}), 500
+
+
+@clawcode_bp.post("/skills/update-by-source")
+def clawcode_skills_update_by_source():
+    if not _ensure_clawcode_path():
+        return jsonify({"ok": False, "error": "clawcode unavailable"}), 400
+    body = request.get_json(silent=True) or {}
+    url = (body.get("url") or "").strip()
+    if not url:
+        return jsonify({"ok": False, "error": "url is required"}), 400
+    ref = (body.get("ref") or "").strip() or None
+    subdir = (body.get("subdir") or "").strip() or None
+    try:
+        from infrastructure.database import get_settings_repository
+        from clawcode.skills_manager import update_skills_by_source
+        from clawcode.skills_registry import load_skills_registry, store_skills_registry
+
+        settings_repo = get_settings_repository()
+        registry = load_skills_registry(settings_repo)
+        updated = update_skills_by_source(url=url, ref=ref, subdir=subdir, registry=registry)
+        if not updated:
+            return jsonify({"ok": False, "error": "no skills match this source"}), 404
+        for rec in updated:
+            registry[rec.id] = rec
+        store_skills_registry(settings_repo, registry)
+        return jsonify(
+            {
+                "ok": True,
+                "updated_count": len(updated),
+                "skills": [r.to_json() for r in updated],
+            }
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@clawcode_bp.post("/skills/delete-by-source")
+def clawcode_skills_delete_by_source():
+    if not _ensure_clawcode_path():
+        return jsonify({"ok": False, "error": "clawcode unavailable"}), 400
+    body = request.get_json(silent=True) or {}
+    url = (body.get("url") or "").strip()
+    if not url:
+        return jsonify({"ok": False, "error": "url is required"}), 400
+    ref = (body.get("ref") or "").strip() or None
+    subdir = (body.get("subdir") or "").strip() or None
+    try:
+        from infrastructure.database import get_settings_repository
+        from clawcode.skills_manager import delete_skills_by_source
+        from clawcode.skills_registry import (
+            load_skills_registry,
+            remove_skill_from_policy_disabled,
+            store_skills_registry,
+        )
+
+        settings_repo = get_settings_repository()
+        registry = load_skills_registry(settings_repo)
+        deleted_ids = delete_skills_by_source(url=url, ref=ref, subdir=subdir, registry=registry)
+        if not deleted_ids:
+            return jsonify({"ok": False, "error": "no skills match this source"}), 404
+        store_skills_registry(settings_repo, registry)
+        for sid in deleted_ids:
+            remove_skill_from_policy_disabled(settings_repo, sid)
+        return jsonify({"ok": True, "deleted_count": len(deleted_ids), "deleted": deleted_ids})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 

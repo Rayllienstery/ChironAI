@@ -105,7 +105,6 @@ from config import (
     get_framework_collection_ttl_days,
     get_ollama_chat_model,
     get_clawcode_host,
-    get_clawcode_logical_model_id,
     get_clawcode_openai_port,
     get_qdrant_collection_name,
     get_qdrant_url,
@@ -383,92 +382,6 @@ def _clawcode_openai_http_base() -> str:
     return f"http://{host}:{port}".rstrip("/")
 
 
-def _is_clawcode_logical_model_requested(model_id: str) -> bool:
-    a = (model_id or "").strip().lower()
-    if not a:
-        return False
-    return a == get_clawcode_logical_model_id().strip().lower()
-
-
-def _webui_chat_forward_clawcode(body: dict[str, Any], start_time: float) -> Any:
-    """POST chat to ClawCode /v1/chat/completions (full agent + RAG pipeline on ClawCode port)."""
-    logical_id = get_clawcode_logical_model_id()
-    base = _clawcode_openai_http_base()
-    forward: dict[str, Any] = {
-        "model": logical_id,
-        "messages": body.get("messages") or [],
-    }
-    for key in ("temperature", "top_p", "tools", "tool_choice", "stream", "merge_client_tools"):
-        if key in body:
-            forward[key] = body[key]
-    try:
-        timeout_sec = float(os.getenv("CLAWCODE_CHAT_TIMEOUT_SEC", "600"))
-    except (TypeError, ValueError):
-        timeout_sec = 600.0
-    set_proxy_status(STATUS_RESPONSE)
-    try:
-        resp = requests.post(
-            f"{base}/v1/chat/completions",
-            json=forward,
-            timeout=(10.0, timeout_sec),
-        )
-    except requests.RequestException as e:
-        return jsonify({"error": f"ClawCode unreachable at {base}: {e}"}), 502
-
-    try:
-        data = resp.json() if resp.content else {}
-    except ValueError:
-        data = {}
-    if not isinstance(data, dict):
-        return jsonify({"error": "ClawCode returned non-JSON response"}), 502
-
-    if resp.status_code >= 400:
-        err = data.get("error")
-        if isinstance(err, dict):
-            msg = str(err.get("message") or err)
-        else:
-            msg = str(err or resp.text or "ClawCode error")
-        return jsonify({"error": msg}), 502
-
-    latency_ms = int((time.time() - start_time) * 1000)
-    if "latency_ms" not in data:
-        data["latency_ms"] = latency_ms
-
-    include_rag_metadata = body.get("include_rag_metadata", True)
-    if not include_rag_metadata:
-        data.pop("rag_metadata", None)
-
-    try:
-        choices = data.get("choices") or []
-        c0 = choices[0] if choices else {}
-        msg = (c0.get("message") or {}) if isinstance(c0, dict) else {}
-        _pt = " ".join(
-            (m.get("content") or "")
-            for m in forward.get("messages") or []
-            if isinstance(m, dict)
-        )
-        usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-
-        def _approx_tokens(text: str) -> int:
-            if not text:
-                return 0
-            return max(1, int(len(text) / 4))
-
-        if not usage.get("total_tokens"):
-            pt = _approx_tokens(_pt)
-            ct = _approx_tokens((msg.get("content") or "") if isinstance(msg, dict) else "")
-            data["usage"] = {
-                "prompt_tokens": usage.get("prompt_tokens", pt),
-                "completion_tokens": usage.get("completion_tokens", ct),
-                "total_tokens": usage.get("total_tokens", pt + ct),
-            }
-        set_latest_request_total_tokens(int(data["usage"].get("total_tokens") or 0))
-    except Exception:
-        pass
-
-    return jsonify(data)
-
-
 @webui_bp.route("/models", methods=["GET"])
 def get_models() -> Any:
     """Return list of available models from Ollama."""
@@ -509,14 +422,6 @@ def get_models() -> Any:
             "id": RAG_MODEL_ID,
             "name": RAG_MODEL_ID,
             "description": "RAG-enabled Ollama model (proxy)",
-        })
-
-        cc_id = get_clawcode_logical_model_id()
-        cc_base = _clawcode_openai_http_base()
-        models_list.insert(1, {
-            "id": cc_id,
-            "name": cc_id,
-            "description": f"ClawCode agent (full pipeline via {cc_base})",
         })
 
         return jsonify({"models": models_list})
@@ -1147,9 +1052,6 @@ def webui_chat() -> Any:
 
         if not messages:
             return jsonify({"error": "messages is required"}), 400
-
-        if _is_clawcode_logical_model_requested(requested_model):
-            return _webui_chat_forward_clawcode(body, start_time)
 
         set_proxy_status(STATUS_RAG_SEARCH)
 

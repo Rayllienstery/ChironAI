@@ -61,9 +61,10 @@ class SkillRecord:
     installed_path: str
     installed_at: float
     updated_at: float
+    source_commit_sha: str | None = None
 
     def to_json(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "id": self.id,
             "invocation_name": self.invocation_name,
             "display_name": self.display_name,
@@ -73,12 +74,17 @@ class SkillRecord:
             "installed_at": self.installed_at,
             "updated_at": self.updated_at,
         }
+        if self.source_commit_sha is not None:
+            out["source_commit_sha"] = self.source_commit_sha
+        return out
 
     @staticmethod
     def from_json(obj: object) -> "SkillRecord | None":
         if not isinstance(obj, dict):
             return None
         try:
+            raw_sha = obj.get("source_commit_sha")
+            sha = str(raw_sha).strip() if raw_sha is not None and str(raw_sha).strip() else None
             return SkillRecord(
                 id=str(obj.get("id") or ""),
                 invocation_name=str(obj.get("invocation_name") or ""),
@@ -88,6 +94,7 @@ class SkillRecord:
                 installed_path=str(obj.get("installed_path") or ""),
                 installed_at=float(obj.get("installed_at") or 0),
                 updated_at=float(obj.get("updated_at") or 0),
+                source_commit_sha=sha,
             )
         except Exception:
             return None
@@ -182,6 +189,23 @@ def _run_git(args: list[str], *, cwd: Path, timeout_s: int = 600) -> None:
         raise RuntimeError(f"git {' '.join(args)} failed: {msg}")
 
 
+def _git_head_sha(repo_dir: Path, *, timeout_s: int = 60) -> str:
+    r = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(repo_dir),
+        capture_output=True,
+        text=True,
+        timeout=timeout_s,
+    )
+    if r.returncode != 0:
+        msg = (r.stderr or r.stdout or "git rev-parse failed").strip()
+        raise RuntimeError(f"git rev-parse HEAD failed: {msg}")
+    sha = (r.stdout or "").strip()
+    if len(sha) < 7:
+        raise RuntimeError("git rev-parse HEAD returned empty")
+    return sha
+
+
 def _ensure_repo_checkout(url: str, ref: str | None, *, repos_root: Path) -> tuple[Path, str | None]:
     repos_root.mkdir(parents=True, exist_ok=True)
     repo_id = _hash_id(url)
@@ -240,6 +264,7 @@ def install_skills_from_git(
     if not skill_dirs:
         raise RuntimeError(f"no SKILL.md found under {scan_root}")
 
+    head_sha = _git_head_sha(repo_dir)
     now = time.time()
     records: list[SkillRecord] = []
     for skill_dir in skill_dirs:
@@ -270,6 +295,7 @@ def install_skills_from_git(
                 installed_path=str(install_path),
                 installed_at=now,
                 updated_at=now,
+                source_commit_sha=head_sha,
             )
         )
     return records
@@ -282,6 +308,7 @@ def update_skill_from_source(record: SkillRecord, *, storage_root: Path | None =
         raise RuntimeError("only git-installed skills can be updated in v1")
     repos_root = storage_root / "repos"
     repo_dir, resolved_ref = _ensure_repo_checkout(src.url, src.ref, repos_root=repos_root)
+    head_sha = _git_head_sha(repo_dir)
     skill_dir = repo_dir / src.repo_rel_skill_dir
     if not (skill_dir / "SKILL.md").is_file():
         raise RuntimeError(f"missing SKILL.md in repo at {src.repo_rel_skill_dir}")
@@ -307,7 +334,122 @@ def update_skill_from_source(record: SkillRecord, *, storage_root: Path | None =
         installed_path=str(install_path),
         installed_at=record.installed_at or updated_at,
         updated_at=updated_at,
+        source_commit_sha=head_sha,
     )
+
+
+def resolve_remote_head_sha(
+    url: str,
+    ref: str | None = None,
+    *,
+    storage_root: Path | None = None,
+) -> str:
+    storage_root = storage_root or default_skills_storage_root()
+    repos_root = storage_root / "repos"
+    repo_dir, _resolved = _ensure_repo_checkout(url, ref, repos_root=repos_root)
+    return _git_head_sha(repo_dir)
+
+
+def _norm_ref_subdir(ref: str | None, subdir: str | None) -> tuple[str | None, str | None]:
+    r = ref.strip() if isinstance(ref, str) and ref.strip() else None
+    s = subdir.strip() if isinstance(subdir, str) and subdir.strip() else None
+    return r, s
+
+
+def source_matches_install_key(
+    src: SkillSource,
+    *,
+    url: str,
+    ref: str | None,
+    subdir: str | None,
+) -> bool:
+    if src.type != "git" or not src.url:
+        return False
+    if src.url.strip() != (url or "").strip():
+        return False
+    sr, ss = _norm_ref_subdir(src.ref, src.subdir)
+    rr, rs = _norm_ref_subdir(ref, subdir)
+    return sr == rr and ss == rs
+
+
+def update_skills_by_source(
+    *,
+    url: str,
+    ref: str | None = None,
+    subdir: str | None = None,
+    registry: dict[str, SkillRecord],
+    storage_root: Path | None = None,
+) -> list[SkillRecord]:
+    """Refresh every git skill whose source matches url/ref/subdir (one fetch + checkout)."""
+    storage_root = storage_root or default_skills_storage_root()
+    matching = [
+        rec
+        for rec in registry.values()
+        if source_matches_install_key(rec.source, url=url, ref=ref, subdir=subdir)
+    ]
+    if not matching:
+        return []
+    repos_root = storage_root / "repos"
+    repo_dir, resolved_ref = _ensure_repo_checkout(url, ref, repos_root=repos_root)
+    head_sha = _git_head_sha(repo_dir)
+    now = time.time()
+    updated: list[SkillRecord] = []
+    for record in matching:
+        src = record.source
+        if not src.repo_rel_skill_dir:
+            raise RuntimeError(f"skill {record.id} has no repo_rel_skill_dir")
+        skill_dir = repo_dir / src.repo_rel_skill_dir
+        if not (skill_dir / "SKILL.md").is_file():
+            raise RuntimeError(f"missing SKILL.md in repo at {src.repo_rel_skill_dir}")
+        install_path = Path(record.installed_path)
+        if install_path.exists():
+            shutil.rmtree(install_path, ignore_errors=True)
+        install_path.mkdir(parents=True, exist_ok=True)
+        _copy_dir(skill_dir, install_path)
+        name, desc, invocation = read_skill_metadata(skill_dir)
+        updated_rec = SkillRecord(
+            id=record.id,
+            invocation_name=invocation,
+            display_name=name,
+            description=desc,
+            source=SkillSource(
+                type="git",
+                url=src.url,
+                ref=resolved_ref or ref,
+                subdir=src.subdir,
+                repo_rel_skill_dir=src.repo_rel_skill_dir,
+            ),
+            installed_path=str(install_path),
+            installed_at=record.installed_at or now,
+            updated_at=now,
+            source_commit_sha=head_sha,
+        )
+        updated.append(updated_rec)
+    return updated
+
+
+def delete_skills_by_source(
+    *,
+    url: str,
+    ref: str | None = None,
+    subdir: str | None = None,
+    registry: dict[str, SkillRecord],
+) -> list[str]:
+    """Remove registry entries and installed dirs for matching git source key."""
+    deleted_ids: list[str] = []
+    for sid in list(registry.keys()):
+        rec = registry.get(sid)
+        if rec is None or not source_matches_install_key(rec.source, url=url, ref=ref, subdir=subdir):
+            continue
+        registry.pop(sid, None)
+        deleted_ids.append(sid)
+        try:
+            p = Path(str(rec.installed_path))
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+        except Exception:
+            pass
+    return deleted_ids
 
 
 def _copy_dir(src: Path, dst: Path) -> None:

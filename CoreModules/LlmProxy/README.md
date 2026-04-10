@@ -12,7 +12,7 @@ Installable package **`llm-proxy`**: **OpenAI-** and **Anthropic Messages–** c
 | POST | `/v1/files/apply-edit` | Apply a line/column range edit in the workspace |
 | POST | `/v1/external-docs/ingest` | Ingest an external-docs source (host-dependent) |
 
-**Build presets:** user-defined entries in app_settings (`llm_proxy_builds`) appear in **GET `/v1/models`** on the main server port and on the optional **build proxy** port (default **8087**, `config/server.yaml` → `build_proxy`). Use each build’s `id` as `model` in **POST `/v1/chat/completions`** (dumb = same RAG/Ollama pipeline as the worker path; claw = forwarded to ClawCode with that build’s **`ollama_model`** tag — not ClawCode’s logical model id). Legacy logical ids (`ChironAI-Worker`, autocomplete) can be hidden via `llm_proxy.v1_include_legacy_logical_models: false` or env `LLM_PROXY_V1_INCLUDE_LEGACY_MODELS=0`.
+**Build presets:** user-defined entries in app_settings (`llm_proxy_builds`) appear in **GET `/v1/models`** on the main server port and on the optional **build proxy** port (default **8087**, `config/server.yaml` → `build_proxy`). Use each build’s `id` as `model` in **POST `/v1/chat/completions`** (dumb = same RAG/Ollama pipeline as the worker path; claw = HTTP forward to ClawCode with that build’s **`ollama_model`** tag as the request `model`). Legacy logical ids (`ChironAI-Worker`, autocomplete) can be hidden via `llm_proxy.v1_include_legacy_logical_models: false` or env `LLM_PROXY_V1_INCLUDE_LEGACY_MODELS=0`.
 
 Implementation lives inside `llm_proxy/`; **host-specific** services (settings DB, RAG use cases, Ollama client, prompts) are injected via **`LlmProxyWiring`**—see [`api/http/llm_proxy_wiring.py`](../../api/http/llm_proxy_wiring.py) in the main repo.
 

@@ -98,13 +98,23 @@ export function summarizeClawTraceMeta(meta) {
 
   const skillsObj = meta.skills && typeof meta.skills === 'object' ? meta.skills : null;
 
+  const resolved =
+    meta.resolved_model != null && String(meta.resolved_model).trim()
+      ? String(meta.resolved_model)
+      : '';
+  const legacyLogical =
+    meta.logical_model_id != null && String(meta.logical_model_id).trim()
+      ? String(meta.logical_model_id)
+      : '';
+  const displayModel = resolved || legacyLogical || '—';
+
   return {
     empty: false,
     traceId: meta.trace_id != null ? String(meta.trace_id) : '',
     stepCount,
     durationMs,
-    resolvedModel: meta.resolved_model != null ? String(meta.resolved_model) : '—',
-    logicalModelId: meta.logical_model_id != null ? String(meta.logical_model_id) : '—',
+    resolvedModel: displayModel,
+    logicalModelId: legacyLogical || '—',
     clientModel: meta.client_model != null ? String(meta.client_model) : null,
     thinkRequested: meta.think_requested,
     error: meta.error != null ? String(meta.error) : null,
