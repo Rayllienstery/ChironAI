@@ -569,7 +569,9 @@ def run_clawcode_chat_completion(
     _inject_clawcode_runtime_context(openai_messages, merge_client_tools=merge_client_tools)
 
     client_tools = body.get("tools")
-    tools_list: list[dict[str, Any]] = [RAG_QUERY_TOOL]
+    _irq = body.get("include_rag_query_tool")
+    include_rag_tool = True if _irq is None else bool(_irq)
+    tools_list: list[dict[str, Any]] = [RAG_QUERY_TOOL] if include_rag_tool else []
     if merge_client_tools and isinstance(client_tools, list):
         for t in client_tools:
             if isinstance(t, dict) and t.get("type") == "function":

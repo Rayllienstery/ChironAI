@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import ModelSettings from './ModelSettings';
 import LlmProxyAutocompletePanel from './LlmProxyAutocompletePanel';
 import LlmProxyWebInteractionPanel from './LlmProxyWebInteractionPanel';
 import ProxyTraceTab from './ProxyTraceTab';
@@ -29,7 +28,6 @@ function LlmProxyTab({
   onOpenRagModels,
   onNavigateToRag,
   onOpenLogs,
-  onModelStatusChange,
   focusSubTab,
   onFocusSubTabConsumed,
 }) {
@@ -77,7 +75,7 @@ function LlmProxyTab({
     <div className="settings-tab llm-proxy-tab">
       <div className="llm-proxy-header">
         <div className="llm-proxy-header-row">
-          <h2>LLM Proxy</h2>
+          <h2>Dumb Proxy</h2>
           {typeof onOpenLogs === 'function' && (
             <button
               type="button"
@@ -102,7 +100,7 @@ function LlmProxyTab({
             </button>
           )}
         </div>
-        <div className="coreui-pill-tablist" role="tablist" aria-label="LLM Proxy sections">
+        <div className="coreui-pill-tablist" role="tablist" aria-label="Dumb Proxy sections">
           {SUB_TABS.map((tab) => (
             <button
               key={tab.id}
@@ -193,8 +191,9 @@ function LlmProxyTab({
             <p className="settings-intro">
               This RAG proxy speaks <strong>OpenAI</strong> (<code>POST /v1/chat/completions</code>) and{' '}
               <strong>Anthropic Messages</strong> (<code>POST /v1/messages</code>) over the same base URL, backed by Ollama
-              and Qdrant. Use the <code>ChironAI-Worker</code> model for chat with context. Optional inline completions
-              use logical id <code>ChironAI-Autocomplete</code> — configure it on the <strong>Autocomplete</strong> tab.
+              and Qdrant. Use a <strong>build id</strong> from <strong>LLM Proxy</strong> (or legacy{' '}
+              <code>ChironAI-Worker</code>) as <code>model</code>. Optional inline completions use logical id{' '}
+              <code>ChironAI-Autocomplete</code> — configure it on the <strong>Autocomplete</strong> tab.
             </p>
             <ul className="settings-instructions">
               <li>
@@ -204,13 +203,14 @@ function LlmProxyTab({
               </li>
               <li>
                 <strong>Zed</strong>: in AI settings choose <em>OpenAI API Compatible</em>, set the API URL to the base
-                URL above. Use <code>ChironAI-Worker</code> for assistant chat; for inline completions use{' '}
+                URL above (or <code>:8087</code> for the build-only listener). Use your <strong>build id</strong> or legacy{' '}
+                <code>ChironAI-Worker</code> for assistant chat; for inline completions use{' '}
                 <code>ChironAI-Autocomplete</code> after you configure it (see the <strong>Autocomplete</strong> tab).
                 API key can be left empty unless you add your own authentication.
               </li>
               <li>
                 <strong>VSCode + Continue.dev</strong>: configure an OpenAI-compatible provider, set the base URL to this
-                proxy, and use the <code>ChironAI-Worker</code> model.
+                proxy, and use a build id or <code>ChironAI-Worker</code> as the model.
               </li>
               <li>
                 <strong>Claude Code (Anthropic)</strong>: set <code>ANTHROPIC_BASE_URL</code> to this proxy&apos;s base URL
@@ -220,8 +220,9 @@ function LlmProxyTab({
                 <code>CoreModules/LlmProxy/README.md</code>.
               </li>
               <li>
-                The model and RAG behavior for the proxy are controlled by the settings below. Web and GitHub options
-                live under the <strong>Web Interaction</strong> tab.
+                Per-request behavior (Ollama model, prompts, RAG/web flags) is configured per <strong>build</strong> in the{' '}
+                <strong>LLM Proxy</strong> tab. Global defaults remain in app settings / RAG. Web and GitHub options for the
+                dumb pipeline live under the <strong>Web Interaction</strong> tab unless overridden by a build.
               </li>
             </ul>
           </div>
@@ -291,13 +292,34 @@ function LlmProxyTab({
           </details>
 
           <div className="settings-section">
-            <h3>Model Settings</h3>
-            <ModelSettings
-              onOpenRagModels={onOpenRagModels}
-              onNavigateToRag={onNavigateToRag}
-              onModelStatusChange={onModelStatusChange}
-              proxyInfrastructure={proxyInfrastructure}
-            />
+            <h3>Model configuration</h3>
+            <p className="settings-intro">
+              Ollama model, prompt template, and RAG-related defaults for API clients are defined in{' '}
+              <strong>LLM Proxy</strong> builds. Use <strong>RAG / Qdrant</strong> for collections and embeddings; use{' '}
+              <strong>Web Interaction</strong> for global web-supplement toggles.
+            </p>
+            {typeof onNavigateToRag === 'function' && (
+              <div className="dashboard-card-actions" style={{ marginTop: 8 }}>
+                <button type="button" className="dashboard-primary-btn" onClick={onNavigateToRag}>
+                  Open RAG / Qdrant
+                </button>
+                {typeof onOpenRagModels === 'function' && (
+                  <button
+                    type="button"
+                    className="dashboard-primary-btn"
+                    style={{ marginLeft: 8 }}
+                    onClick={onOpenRagModels}
+                  >
+                    Jump to RAG models
+                  </button>
+                )}
+              </div>
+            )}
+            {proxyInfrastructure?.infrastructure_error && (
+              <p className="dashboard-card-muted" style={{ marginTop: 8 }}>
+                Infrastructure: {proxyInfrastructure.infrastructure_error}
+              </p>
+            )}
           </div>
         </div>
       )}

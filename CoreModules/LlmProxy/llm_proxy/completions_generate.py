@@ -73,6 +73,26 @@ def _resolve_ollama_model(w: LlmProxyWiring, requested: str) -> tuple[str | None
         except Exception as e:
             _LOG.warning("completions_generate: resolve worker model: %s", e)
             return None, "Failed to read proxy model from settings"
+    try:
+        from application.llm_proxy_builds import (
+            LLM_PROXY_BUILDS_APP_KEY,
+            find_build_by_id,
+            load_builds_json,
+        )
+
+        repo = w.get_settings_repository()
+        raw_b = repo.get_app_setting(LLM_PROXY_BUILDS_APP_KEY)
+        builds = load_builds_json(raw_b)
+        bd = find_build_by_id(builds, req)
+        if bd:
+            backend = str(bd.get("backend") or "").strip().lower()
+            if backend in ("dumb", "claw"):
+                om = str(bd.get("ollama_model") or "").strip()
+                if om:
+                    return om, None
+                return None, "build has no ollama_model configured"
+    except Exception:
+        pass
     return req, None
 
 

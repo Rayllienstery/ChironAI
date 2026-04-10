@@ -4,6 +4,64 @@
   color: var(--md-sys-color-on-surface);
 }
 
+.settings-tab.settings-tab--fullwidth {
+  max-width: none;
+  width: 100%;
+}
+
+.coreui-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 9999;
+}
+
+.coreui-modal {
+  width: min(980px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  border-radius: var(--md-sys-shape-corner-large);
+  box-shadow: var(--md-sys-elevation-level3);
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.coreui-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.coreui-modal-header h3 {
+  margin: 0;
+  font: var(--md-sys-typescale-title-large-font);
+}
+
+.coreui-modal-body {
+  padding: 16px;
+}
+
+.coreui-modal-close-btn {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  border-radius: 999px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.coreui-modal-close-btn:hover {
+  opacity: 0.9;
+}
+
 .settings-tab-header {
   display: flex;
   flex-wrap: wrap;

@@ -53,6 +53,43 @@ export async function getLlmProxyStatus() {
   return response.json();
 }
 
+export async function getLlmProxyBuilds() {
+  const response = await fetch(`${API_BASE}/llm-proxy/builds`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to load LLM Proxy builds');
+  }
+  return data;
+}
+
+export async function putLlmProxyBuilds(builds) {
+  const response = await fetch(`${API_BASE}/llm-proxy/builds`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ builds }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detailMsg =
+      Array.isArray(data.details) && data.details.length ? data.details.join('; ') : null;
+    throw new Error(detailMsg || data.error || 'Failed to save builds');
+  }
+  return data;
+}
+
+export async function previewLlmProxyBuildModel(model) {
+  const response = await fetch(`${API_BASE}/llm-proxy/builds/preview-model`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Model preview failed');
+  }
+  return data;
+}
+
 export async function updateModelSettings(settings) {
   const response = await fetch(`${API_BASE}/model-settings`, {
     method: 'POST',

@@ -36,7 +36,8 @@ function readStoredCollapsed() {
 /** Material Symbols ligature names (Google Fonts) */
 const TAB_MATERIAL_ICONS = {
   dashboard: "dashboard",
-  "llm-proxy": "smart_toy",
+  "dumb-proxy": "psychology",
+  "llm-proxy": "hub",
   "claw-proxy": "terminal",
   logs: "article",
   rag: "database",

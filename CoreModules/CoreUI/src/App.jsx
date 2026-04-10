@@ -24,6 +24,7 @@ import DashboardTab from "./components/DashboardTab";
 import LogsTab from "./components/LogsTab";
 import SettingsTab from "./components/SettingsTab";
 import LlmProxyTab from "./components/LlmProxyTab";
+import LlmProxyBuildsTab from "./components/LlmProxyBuildsTab";
 import RagTab from "./components/RagTab";
 import CrawlerTab from "./components/CrawlerTab";
 import TestingTab from "./components/TestingTab";
@@ -257,7 +258,7 @@ function App() {
   };
 
   const handleOpenLlmProxyTrace = useCallback(() => {
-    setActiveTab("llm-proxy");
+    setActiveTab("dumb-proxy");
     setLlmProxyFocusSubTab("proxy-trace");
   }, []);
 
@@ -327,6 +328,7 @@ function App() {
 
   const tabs = [
     { id: "dashboard", label: "Dashboard" },
+    { id: "dumb-proxy", label: "Dumb Proxy" },
     { id: "llm-proxy", label: "LLM Proxy" },
     { id: "claw-proxy", label: "Claw Proxy" },
     { id: "logs", label: "Logs" },
@@ -400,7 +402,7 @@ function App() {
         );
       case "crawler":
         return <CrawlerTab />;
-      case "llm-proxy":
+      case "dumb-proxy":
         return (
           <LlmProxyTab
             onOpenRagModels={() => {
@@ -409,13 +411,12 @@ function App() {
             }}
             onNavigateToRag={() => setActiveTab("rag")}
             onOpenLogs={() => setActiveTab("logs")}
-            onModelStatusChange={(hasError) =>
-              setTabErrors((prev) => ({ ...prev, "llm-proxy": hasError }))
-            }
             focusSubTab={llmProxyFocusSubTab}
             onFocusSubTabConsumed={consumeLlmProxyFocusSubTab}
           />
         );
+      case "llm-proxy":
+        return <LlmProxyBuildsTab />;
       case "template-editor":
         return <TemplateEditorTab />;
       case "settings":

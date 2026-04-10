@@ -3,10 +3,13 @@ OpenAI-compatible RAG proxy for Zed (and other clients).
 Accepts POST /v1/chat/completions, runs RAG (embed -> Qdrant), calls Ollama /api/chat,
 returns OpenAI-format response. Listen on 0.0.0.0:8080 for remote access (e.g. Zed on Mac).
 
+Optional second listener (default 8087, ``config/server.yaml`` ``build_proxy``): same /v1 contract
+for clients that use **build ids** from GET /v1/models only. Builds are stored in app_settings
+(``llm_proxy_builds``); GET /v1/models on 8080 and 8087 lists the same builds.
+
 Usage:
   On PC: python rag_proxy.py  (after starting Ollama and Qdrant)
-  On Mac Zed: OpenAI API Compatible -> API URL: http://<PC_IP>:8080, model: ChironAI-Worker
-  Windows firewall: allow inbound on port 8080.
+  On Mac Zed: OpenAI API Compatible -> API URL: http://<PC_IP>:8080 (or :8087 for build-only endpoint)
 
 Uses api.http.rag_routes.create_app; prompt and model come from config via application.rag.params.
 """
@@ -83,6 +86,31 @@ def _start_clawcode_servers(_main_app) -> None:
 
 
 threading.Thread(target=_start_clawcode_servers, args=(app,), name="clawcode_boot", daemon=True).start()
+
+
+def _start_build_proxy_server(_main_app) -> None:
+    try:
+        from config import get_build_proxy_enabled, get_build_proxy_host, get_build_proxy_port
+    except Exception:
+        return
+    if not get_build_proxy_enabled():
+        return
+    try:
+        from werkzeug.serving import make_server
+
+        from api.http.build_proxy_app import create_build_proxy_app
+
+        host = get_build_proxy_host()
+        port = get_build_proxy_port()
+        bapp = create_build_proxy_app(webui_dir=BASE_DIR)
+        srv = make_server(host, port, bapp, threaded=True)
+        threading.Thread(target=srv.serve_forever, name="build_proxy_openai", daemon=True).start()
+        logging.getLogger(__name__).info("Build proxy (OpenAI /v1) listening on %s:%s", host, port)
+    except Exception:
+        logging.getLogger(__name__).exception("Build proxy failed to start; continuing without it")
+
+
+threading.Thread(target=_start_build_proxy_server, args=(app,), name="build_proxy_boot", daemon=True).start()
 
 # Serve static files from CoreModules/CoreUI
 # Check if React build exists, otherwise fall back to old HTML

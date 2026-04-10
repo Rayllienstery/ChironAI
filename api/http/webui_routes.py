@@ -48,6 +48,17 @@ if os.path.isdir(_RAG_SVC) and _RAG_SVC not in sys.path:
     sys.path.insert(0, _RAG_SVC)
 
 from application.container import default_embed_provider, default_rerank_client
+from application.llm_proxy_builds import (
+    LLM_PROXY_BUILDS_APP_KEY,
+    diagnose_build,
+    dump_builds_json,
+    extract_context_length_from_show,
+    find_build_by_id,
+    load_builds_json,
+    normalize_build,
+    openai_model_objects_for_builds,
+    validate_builds_list,
+)
 from application.rag.collection_freshness import check_collection_freshness
 from application.rag.params import get_rag_answer_params
 from application.rag.use_cases import build_rag_context, prepare_ollama_messages
@@ -89,6 +100,7 @@ except ImportError:
     _EXTERNAL_DOCS_RAG_AVAILABLE = False
 
 from config import (
+    get_build_proxy_port,
     get_default_rag_top_k,
     get_framework_collection_ttl_days,
     get_ollama_chat_model,
@@ -1569,6 +1581,153 @@ def update_model_settings() -> Any:
     except Exception as e:
         _ERROR_LOG.error("webui_routes.update_model_settings", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+
+def _ollama_tag_name_set_for_builds_diag() -> set[str]:
+    names: set[str] = set()
+    try:
+        url = _get_ollama_url().rstrip("/")
+        data = invoke_tags(base_url=url, timeout=5.0)
+        for m in data.get("models") or []:
+            if not isinstance(m, dict):
+                continue
+            n = (m.get("name") or m.get("model") or "").strip()
+            if n:
+                names.add(n)
+    except Exception:
+        pass
+    return names
+
+
+def _claw_openai_reachable() -> bool:
+    try:
+        base = _clawcode_openai_http_base().rstrip("/")
+        r = requests.get(f"{base}/health", timeout=2.0)
+        return r.status_code < 500
+    except Exception:
+        return False
+
+
+def _enrich_builds_with_diagnostics(builds: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    ollama_names = _ollama_tag_name_set_for_builds_diag()
+    qset: set[str] | None = None
+    try:
+        qset = set(_get_qdrant_collection_names() or [])
+    except Exception:
+        qset = set()
+    claw_ok: bool | None = None
+    if any(str(b.get("backend") or "").strip().lower() == "claw" for b in builds):
+        claw_ok = _claw_openai_reachable()
+    out: list[dict[str, Any]] = []
+    for b in builds:
+        row = dict(b)
+        issues, healthy = diagnose_build(
+            b,
+            ollama_tag_names=ollama_names,
+            prompt_exists=rag_prompt_file_exists(str(b.get("prompt_name") or "").strip()),
+            qdrant_collection_names=qset,
+            claw_reachable=claw_ok,
+        )
+        row["issues"] = issues
+        row["healthy"] = healthy
+        out.append(row)
+    return out
+
+
+@webui_bp.route("/llm-proxy/builds", methods=["GET"])
+def get_llm_proxy_builds() -> Any:
+    """List LLM Proxy builds with validation hints for WebUI."""
+    try:
+        settings_repo = get_settings_repository()
+        raw = settings_repo.get_app_setting(LLM_PROXY_BUILDS_APP_KEY)
+        builds = load_builds_json(raw)
+        enriched = _enrich_builds_with_diagnostics(builds)
+        sh = get_server_host()
+        dh = "127.0.0.1" if sh in ("0.0.0.0", "::", "") else sh
+        bp_port = get_build_proxy_port()
+        main_port = get_server_port()
+        return jsonify(
+            {
+                "builds": enriched,
+                "openai_models_urls": {
+                    "main": f"http://{dh}:{main_port}/v1/models",
+                    "build_proxy": f"http://{dh}:{bp_port}/v1/models",
+                },
+            }
+        )
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_llm_proxy_builds", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/llm-proxy/builds", methods=["PUT"])
+def put_llm_proxy_builds() -> Any:
+    """Replace full builds list (atomic validation)."""
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        raw_list = body.get("builds")
+        if not isinstance(raw_list, list):
+            return jsonify({"error": "builds must be a JSON array"}), 400
+        normalized, errs = validate_builds_list([x for x in raw_list if isinstance(x, dict)])
+        if normalized is None:
+            return jsonify({"error": "validation failed", "details": errs}), 400
+        settings_repo = get_settings_repository()
+        settings_repo.set_app_setting(LLM_PROXY_BUILDS_APP_KEY, dump_builds_json(normalized))
+        enriched = _enrich_builds_with_diagnostics(normalized)
+        return jsonify({"ok": True, "builds": enriched})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.put_llm_proxy_builds", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/llm-proxy/builds/<build_id>", methods=["GET"])
+def get_llm_proxy_build_one(build_id: str) -> Any:
+    """Single build by id with diagnostics."""
+    try:
+        if ".." in build_id or "/" in build_id or "\\" in build_id:
+            return jsonify({"error": "Invalid id"}), 400
+        settings_repo = get_settings_repository()
+        raw = settings_repo.get_app_setting(LLM_PROXY_BUILDS_APP_KEY)
+        builds = load_builds_json(raw)
+        b = find_build_by_id(builds, build_id)
+        if not b:
+            return jsonify({"error": "not found"}), 404
+        enriched = _enrich_builds_with_diagnostics([b])[0]
+        return jsonify({"build": enriched})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_llm_proxy_build_one", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/llm-proxy/builds/preview-model", methods=["POST"])
+def llm_proxy_build_preview_model() -> Any:
+    """Ollama show: context_length + thinking support for form helpers."""
+    body = request.get_json(force=True, silent=True) or {}
+    model = (body.get("model") or "").strip()
+    if not model:
+        return jsonify({"ok": False, "error": "model is required"}), 400
+    url = _get_ollama_url().rstrip("/")
+    try:
+        details = invoke_show(base_url=url, name=model, timeout=60.0)
+    except OllamaInteractorCliError as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+    ctx_len = extract_context_length_from_show(details if isinstance(details, dict) else None)
+    caps = None
+    if isinstance(details, dict):
+        c = details.get("capabilities")
+        if isinstance(c, list):
+            caps = [str(x).strip().lower() for x in c if isinstance(x, str)]
+    thinking = False
+    if caps:
+        thinking = "thinking" in caps or "think" in caps
+    return jsonify(
+        {
+            "ok": True,
+            "context_length": ctx_len,
+            "supports_thinking": thinking,
+            "capabilities": caps or [],
+        }
+    )
 
 
 @webui_bp.route("/tester-settings", methods=["GET"])

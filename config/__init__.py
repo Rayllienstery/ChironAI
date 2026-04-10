@@ -58,6 +58,8 @@ RETRIEVAL_CONFIG: Dict[str, Any] = _retrieval_cfg.get("retrieval", {})
 CRAWLER_CONFIG: Dict[str, Any] = _crawler_cfg.get("crawler", {})
 INDEXING_CONFIG: Dict[str, Any] = _indexing_cfg.get("indexing", {})
 CLAWCODE_CONFIG: Dict[str, Any] = _clawcode_cfg.get("clawcode", {})
+BUILD_PROXY_CONFIG: Dict[str, Any] = _server_cfg.get("build_proxy", {})
+LLM_PROXY_SERVER_CONFIG: Dict[str, Any] = _server_cfg.get("llm_proxy", {})
 
 
 def get_ollama_chat_url() -> str:
@@ -353,6 +355,46 @@ def get_log_level() -> int:
     """Return logging level (e.g. logging.INFO). Env LOG_LEVEL overrides config."""
     name = os.getenv("LOG_LEVEL", _server_cfg.get("logging", {}).get("level", "INFO"))
     return getattr(__import__("logging"), name.upper(), 20)  # 20 = INFO
+
+
+def get_build_proxy_enabled() -> bool:
+    """Second OpenAI /v1 listener for LLM Proxy builds. ``BUILD_PROXY_ENABLED=0`` disables."""
+    env = os.getenv("BUILD_PROXY_ENABLED", "").strip().lower()
+    if env in ("0", "false", "no", "off"):
+        return False
+    if env in ("1", "true", "yes", "on"):
+        return True
+    return bool(BUILD_PROXY_CONFIG.get("enabled", True))
+
+
+def get_build_proxy_host() -> str:
+    return os.getenv("BUILD_PROXY_HOST", str(BUILD_PROXY_CONFIG.get("host", "0.0.0.0")))
+
+
+def get_build_proxy_port() -> int:
+    try:
+        p = os.getenv("BUILD_PROXY_PORT")
+        if p:
+            return int(p)
+    except (TypeError, ValueError):
+        pass
+    try:
+        return int(BUILD_PROXY_CONFIG.get("port", 8087))
+    except (TypeError, ValueError):
+        return 8087
+
+
+def get_v1_include_legacy_logical_models() -> bool:
+    """
+    When True, GET /v1/models lists ChironAI-Worker (and autocomplete id when configured) plus builds.
+    When False, only user-defined build ids appear (build list may be empty).
+    """
+    env = os.getenv("LLM_PROXY_V1_INCLUDE_LEGACY_MODELS", "").strip().lower()
+    if env in ("0", "false", "no", "off"):
+        return False
+    if env in ("1", "true", "yes", "on"):
+        return True
+    return bool(LLM_PROXY_SERVER_CONFIG.get("v1_include_legacy_logical_models", False))
 
 
 def get_clawcode_enabled() -> bool:

@@ -173,9 +173,13 @@ def _proxy_ollama_chat_text(
     messages: list[dict[str, Any]],
     model: str,
     think: bool | str | None,
+    *,
+    options_overlay: dict[str, Any] | None = None,
 ) -> str:
     """Non-stream /api/chat; returns merged visible assistant text (thinking + content)."""
-    _co = getattr(chat_client, "_default_options", None) or {}
+    _co = dict(getattr(chat_client, "_default_options", None) or {})
+    if options_overlay:
+        _co.update(options_overlay)
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -192,7 +196,9 @@ def _proxy_ollama_chat_text(
         th = msg.get("thinking") if isinstance(msg, dict) else None
         thinking_out = th.strip() if isinstance(th, str) else None
         return _merge_ollama_visible_text(thinking_out, content)
-    text = chat_client.chat(messages, model, stream=False, options=None, think=think)
+    text = chat_client.chat(
+        messages, model, stream=False, options=options_overlay if options_overlay else None, think=think
+    )
     return (text or "").strip()
 
 
@@ -304,6 +310,58 @@ def run_chat_completions(
     stream = body.get("stream", False)
     requested_model = body.get("model") or RAG_MODEL_ID
     rt = w.runtime
+
+    build_extra_options: dict[str, Any] = {}
+    dumb_build_pipeline = False
+    active_build: dict[str, Any] | None = None
+    try:
+        from application.llm_proxy_builds import (
+            LLM_PROXY_BUILDS_APP_KEY,
+            build_ollama_options,
+            find_build_by_id,
+            load_builds_json,
+            merge_build_into_proxy_settings,
+        )
+
+        _repo_b = w.get_settings_repository()
+        _builds_raw = _repo_b.get_app_setting(LLM_PROXY_BUILDS_APP_KEY)
+        _all_builds = load_builds_json(_builds_raw)
+        active_build = find_build_by_id(_all_builds, str(requested_model or "").strip())
+    except Exception:
+        active_build = None
+
+    if active_build and str(active_build.get("backend") or "").strip().lower() == "claw":
+        from application.llm_proxy_build_forward import forward_claw_build_chat
+
+        w.set_proxy_status(w.status_idle)
+        return forward_claw_build_chat(body, active_build)
+
+    if active_build and str(active_build.get("backend") or "").strip().lower() == "dumb":
+        proxy_settings = merge_build_into_proxy_settings(proxy_settings, active_build)
+        _om_b = str(active_build.get("ollama_model") or "").strip()
+        if _om_b:
+            proxy_model_setting = _om_b
+        build_extra_options = build_ollama_options(active_build)
+        if active_build.get("temperature") is not None:
+            try:
+                build_extra_options["temperature"] = float(active_build["temperature"])
+            except (TypeError, ValueError):
+                pass
+        if active_build.get("top_p") is not None:
+            try:
+                build_extra_options["top_p"] = float(active_build["top_p"])
+            except (TypeError, ValueError):
+                pass
+        dumb_build_pipeline = True
+        if active_build.get("chat_think") and "think" not in body:
+            body["think"] = True
+        _rl_b = str(active_build.get("reasoning_level") or "").strip()
+        if _rl_b and not body.get("reasoning_level") and not body.get("reasoning"):
+            body["reasoning_level"] = _rl_b
+
+    def _worker_style_pipeline(rm: str) -> bool:
+        return _is_rag_logical_model_id(rm, rt.rag_model_logical_id) or dumb_build_pipeline
+
     autocomplete_id = rt.autocomplete_model_logical_id
     is_autocomplete = requested_model == autocomplete_id
     proxy_autocomplete_ollama: str | None = None
@@ -311,7 +369,10 @@ def run_chat_completions(
     tool_choice = body.get("tool_choice")
     tool_choice_effective = tool_choice if tool_choice not in (None, "") else "auto"
     explicit_reasoning = body.get("reasoning_level") or body.get("reasoning")
-    include_rag_metadata = body.get("include_rag_metadata", False)
+    if dumb_build_pipeline and "include_rag_metadata" not in body:
+        include_rag_metadata = bool(proxy_settings.get("include_rag_metadata", False))
+    else:
+        include_rag_metadata = bool(body.get("include_rag_metadata", False))
     force_rag = bool(body.get("force_rag"))
     if is_autocomplete:
         force_rag = False
@@ -415,7 +476,7 @@ def run_chat_completions(
                 }
             ), 400
         proxy_prompt_name_required = _pn
-        if _is_rag_logical_model_id(requested_model, rt.rag_model_logical_id):
+        if _worker_style_pipeline(requested_model):
             if not proxy_model_setting or is_rag_logical_model_id(
                 proxy_model_setting.strip(), rt.rag_model_logical_id
             ):
@@ -458,7 +519,7 @@ def run_chat_completions(
     effective_base_rerank_client = rerank_client
     if is_autocomplete:
         effective_ollama_model = proxy_autocomplete_ollama or ""
-    elif _is_rag_logical_model_id(requested_model, rt.rag_model_logical_id):
+    elif _worker_style_pipeline(requested_model):
         effective_ollama_model = proxy_ollama_for_logical_id or ollama_model
     else:
         effective_ollama_model = requested_model
@@ -469,7 +530,7 @@ def run_chat_completions(
 
     actual_model = (
         effective_ollama_model
-        if _is_rag_logical_model_id(requested_model, rt.rag_model_logical_id) or is_autocomplete
+        if _worker_style_pipeline(requested_model) or is_autocomplete
         else requested_model
     )
 
@@ -604,7 +665,7 @@ def run_chat_completions(
         effective_base_rerank_client = req_deps.rerank_client
         actual_model = (
             effective_ollama_model
-            if _is_rag_logical_model_id(requested_model, rt.rag_model_logical_id)
+            if _worker_style_pipeline(requested_model)
             else requested_model
         )
         trace["request"]["actual_model"] = actual_model
@@ -619,7 +680,7 @@ def run_chat_completions(
         effective_ollama_model = proxy_autocomplete_ollama or effective_ollama_model
     actual_model = (
         effective_ollama_model
-        if _is_rag_logical_model_id(requested_model, rt.rag_model_logical_id) or is_autocomplete
+        if _worker_style_pipeline(requested_model) or is_autocomplete
         else requested_model
     )
     trace["request"]["actual_model"] = actual_model
@@ -671,7 +732,13 @@ def run_chat_completions(
             )
         )
     )
-    skip_rag_retrieval = explicit_skip_rag or local_tool_edit_fast_path or is_autocomplete or doc_refactor_skip
+    skip_rag_retrieval = (
+        explicit_skip_rag
+        or local_tool_edit_fast_path
+        or is_autocomplete
+        or doc_refactor_skip
+        or (dumb_build_pipeline and not bool(proxy_settings.get("rag_enabled", True)))
+    )
     trace["request"]["skip_rag_retrieval"] = bool(skip_rag_retrieval)
 
     # Build RAG context: multi-collection (external_docs_rag) when triggered, else single collection
@@ -988,6 +1055,7 @@ def run_chat_completions(
         trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(ollama_messages)
         trace["ollama"]["think"] = ollama_think
         trace["ollama"]["chat_stream"] = False
+        client_visible_model = requested_model if dumb_build_pipeline else use_model
     except Exception as e:
         w.log_webui_error("rag_routes.chat_completions", e, {"stage": "prepare_rag"})
         _log_rag_error("prepare_rag", e)
@@ -1001,7 +1069,9 @@ def run_chat_completions(
         )
 
         trace["request"]["native_tools"] = True
-        _co = getattr(chat_client, "_default_options", None) or {}
+        _co = dict(getattr(chat_client, "_default_options", None) or {})
+        if build_extra_options:
+            _co.update(build_extra_options)
         oll_tools = ollama_tools_from_openai([t for t in tools if isinstance(t, dict)])
         body_ollama: dict[str, object] = {
             "model": use_model,
@@ -1046,7 +1116,11 @@ def run_chat_completions(
                     raise last_exc
             else:
                 msg_only = chat_client.chat(
-                    ollama_messages, use_model, stream=False, options=None, think=ollama_think
+                    ollama_messages,
+                    use_model,
+                    stream=False,
+                    options=build_extra_options if build_extra_options else None,
+                    think=ollama_think,
                 )
                 data = {"message": {"role": "assistant", "content": msg_only}}
         except Exception as e:
@@ -1115,7 +1189,7 @@ def run_chat_completions(
 
             def generate_sse_native():
                 oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
                 if tool_calls_out:
                     payload_calls: list[dict[str, object]] = []
                     for i, tc in enumerate(tool_calls_out):
@@ -1133,12 +1207,12 @@ def run_chat_completions(
                                 },
                             }
                         )
-                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'tool_calls': payload_calls}, 'finish_reason': None}]})}\n\n"
-                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls'}]})}\n\n"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'tool_calls': payload_calls}, 'finish_reason': None}]})}\n\n"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls'}]})}\n\n"
                 else:
                     if content_str:
-                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'content': content_str}, 'finish_reason': None}]})}\n\n"
-                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish}]})}\n\n"
+                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': content_str}, 'finish_reason': None}]})}\n\n"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish}]})}\n\n"
                 yield "data: [DONE]\n\n"
 
             return Response(
@@ -1157,7 +1231,7 @@ def run_chat_completions(
             "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
             "object": "chat.completion",
             "created": 0,
-            "model": use_model,
+            "model": client_visible_model,
             "choices": [
                 {
                     "index": 0,
@@ -1226,7 +1300,11 @@ def run_chat_completions(
         stream_tool_error: str | None = None
         try:
             streamed_content = chat_client.chat(
-                ollama_messages, use_model, stream=False, options=None, think=ollama_think
+                ollama_messages,
+                use_model,
+                stream=False,
+                options=build_extra_options if build_extra_options else None,
+                think=ollama_think,
             )
         except Exception:
             # Retry once with compact context; large prompts can trigger Ollama 500 on some models.
@@ -1243,7 +1321,7 @@ def run_chat_completions(
                     compact_messages or ollama_messages,
                     use_model,
                     stream=False,
-                    options=None,
+                    options=build_extra_options if build_extra_options else None,
                     think=ollama_think,
                 )
             except Exception as e2:
@@ -1303,9 +1381,9 @@ def run_chat_completions(
 
                 def generate_sse_tool_call():
                     oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
-                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
-                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'tool_calls': [{'index': 0, 'id': tool_call['id'], 'type': 'function', 'function': {'name': selected_edit_tool_name, 'arguments': tool_call['function']['arguments']}}]}, 'finish_reason': None}]})}\n\n"
-                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls'}]})}\n\n"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'tool_calls': [{'index': 0, 'id': tool_call['id'], 'type': 'function', 'function': {'name': selected_edit_tool_name, 'arguments': tool_call['function']['arguments']}}]}, 'finish_reason': None}]})}\n\n"
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls'}]})}\n\n"
                     yield "data: [DONE]\n\n"
 
                 return Response(
@@ -1329,9 +1407,9 @@ def run_chat_completions(
 
             def generate_sse_plain_text():
                 oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {'content': tool_plain_fallback}, 'finish_reason': None}]})}\n\n"
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': tool_plain_fallback}, 'finish_reason': None}]})}\n\n"
+                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
                 yield "data: [DONE]\n\n"
 
             return Response(
@@ -1351,7 +1429,11 @@ def run_chat_completions(
             try:
                 # Ollama /api/chat: always non-streaming; OpenAI SSE is synthesized from one full reply.
                 full_response = _proxy_ollama_chat_text(
-                    chat_client, ollama_messages, use_model, ollama_think
+                    chat_client,
+                    ollama_messages,
+                    use_model,
+                    ollama_think,
+                    options_overlay=build_extra_options if build_extra_options else None,
                 )
                 if not (full_response or "").strip():
                     full_response = (
@@ -1364,7 +1446,7 @@ def run_chat_completions(
                 chunk = {
                     "id": oid,
                     "object": "chat.completion.chunk",
-                    "model": use_model,
+                    "model": client_visible_model,
                     "choices": [
                         {
                             "index": 0,
@@ -1455,7 +1537,7 @@ def run_chat_completions(
                 w.set_proxy_status(w.status_idle)
                 w.set_latest_request_seconds(time.time() - start_time)
                 w.set_latest_request_total_tokens(total_tokens_holder[0] or None)
-            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': use_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
             yield "data: [DONE]\n\n"
         return Response(
             generate_sse(),
@@ -1465,7 +1547,11 @@ def run_chat_completions(
     try:
         w.set_proxy_status(w.status_response)
         content = _proxy_ollama_chat_text(
-            chat_client, ollama_messages, use_model, ollama_think
+            chat_client,
+            ollama_messages,
+            use_model,
+            ollama_think,
+            options_overlay=build_extra_options if build_extra_options else None,
         )
         if _degenerate_assistant_reply(content):
             content = _PLACEHOLDER_REPLY_FALLBACK_EN
@@ -1558,7 +1644,7 @@ def run_chat_completions(
         "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
         "object": "chat.completion",
         "created": 0,
-        "model": use_model,
+        "model": client_visible_model,
         "choices": [choice],
     }
     

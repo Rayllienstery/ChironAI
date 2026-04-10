@@ -4,6 +4,7 @@ const LABELS = {
   crawler: 'Crawler / Indexer',
   'rag-tests': 'RAG Tests',
   rag: 'RAG / Qdrant',
+  'dumb-proxy': 'Dumb Proxy',
   'llm-proxy': 'LLM Proxy',
   'claw-proxy': 'Claw Proxy',
   logs: 'Logs',

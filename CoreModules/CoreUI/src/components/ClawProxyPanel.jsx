@@ -42,9 +42,6 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
   const [globalTemp, setGlobalTemp] = useState(null);
   const [globalTopP, setGlobalTopP] = useState(null);
   const [chatThink, setChatThink] = useState(false);
-  const [mergeToolsMode, setMergeToolsMode] = useState('inherit');
-  const [effectiveMergeTools, setEffectiveMergeTools] = useState(false);
-  const [configMergeToolsYaml, setConfigMergeToolsYaml] = useState(false);
 
   const refresh = useCallback(async () => {
     setErr(null);
@@ -83,15 +80,6 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
         setGlobalTemp(settings.global_chat_temperature);
         setGlobalTopP(settings.global_chat_top_p);
         setChatThink(Boolean(settings.chat_think));
-        const sm = settings.stored_merge_client_tools;
-        if (sm != null && String(sm).trim() !== '') {
-          const t = String(sm).trim().toLowerCase();
-          setMergeToolsMode(['1', 'true', 'yes', 'on'].includes(t) ? 'on' : 'off');
-        } else {
-          setMergeToolsMode('inherit');
-        }
-        setEffectiveMergeTools(Boolean(settings.merge_client_tools));
-        setConfigMergeToolsYaml(Boolean(settings.config_merge_client_tools_yaml));
         if (typeof notify === 'function') {
           const inList = Boolean(def && models.some((m) => m.id === def || m.name === def));
           notify(!inList);
@@ -198,11 +186,6 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
     payload.chat_temperature = tempInput.trim() === '' ? null : tempInput.trim();
     payload.chat_top_p = topPInput.trim() === '' ? null : topPInput.trim();
     payload.chat_think = chatThink;
-    if (mergeToolsMode === 'inherit') {
-      payload.merge_client_tools = null;
-    } else {
-      payload.merge_client_tools = mergeToolsMode === 'on';
-    }
     setBusy(true);
     setErr(null);
     try {
@@ -364,31 +347,10 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
                   </>
                 )}
               </p>
-              <div className="dashboard-card-muted" style={{ marginBottom: 12 }}>
-                <strong>IDE mode</strong> controls whether ClawCode registers your editor&apos;s tools (VS Code Copilot,
-                etc.) alongside <code>rag_query</code>. <strong>On</strong> — the model can call IDE tools; the server
-                still runs only <code>rag_query</code> locally and returns other <code>tool_calls</code> to the IDE.{' '}
-                <strong>Off</strong> — only <code>rag_query</code> is sent to the model (RAG-only / simple API clients
-                without a tool loop). <code>rag_query</code> is always available; this does not disable RAG.
-                <br />
-                Effective now: <code>{String(effectiveMergeTools)}</code>. Precedence: env{' '}
-                <code>CLAWCODE_MERGE_CLIENT_TOOLS</code>, then this WebUI choice, then YAML{' '}
-                <code>merge_client_tools</code> (<code>{String(configMergeToolsYaml)}</code> in{' '}
-                <code>config/clawcode.yaml</code>).
-              </div>
-              <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                IDE mode
-                <select
-                  className="dashboard-card-field"
-                  value={mergeToolsMode}
-                  onChange={(e) => setMergeToolsMode(e.target.value)}
-                  aria-label="ClawCode IDE mode"
-                >
-                  <option value="inherit">Use YAML default</option>
-                  <option value="on">On</option>
-                  <option value="off">Off</option>
-                </select>
-              </label>
+              <p className="dashboard-card-muted" style={{ marginBottom: 12 }}>
+                <strong>IDE mode</strong> (<code>merge_client_tools</code>) is configured under{' '}
+                <strong>Settings</strong> → ClawCode.
+              </p>
               <div className="dashboard-card-actions" style={{ flexWrap: 'wrap' }}>
                 <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   Max agent steps (1–256, empty = config)

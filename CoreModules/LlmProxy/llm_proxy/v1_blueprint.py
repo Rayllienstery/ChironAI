@@ -21,8 +21,26 @@ from llm_proxy.external_ingest import run_external_docs_ingest
 from llm_proxy.ollama_upstream import forward_ollama_api
 from llm_proxy.workspace import set_workspace_root
 
+from config import get_v1_include_legacy_logical_models
+
 if TYPE_CHECKING:
     from llm_proxy.contracts import LlmProxyWiring
+
+
+def _openai_build_model_rows(wiring: LlmProxyWiring) -> list[dict[str, object]]:
+    try:
+        from application.llm_proxy_builds import (
+            LLM_PROXY_BUILDS_APP_KEY,
+            load_builds_json,
+            openai_model_objects_for_builds,
+        )
+
+        repo = wiring.get_settings_repository()
+        raw = repo.get_app_setting(LLM_PROXY_BUILDS_APP_KEY)
+        builds = load_builds_json(raw)
+        return openai_model_objects_for_builds(builds)
+    except Exception:
+        return []
 
 
 def _post_body_is_openai_completions_shape(body: object) -> bool:
@@ -61,35 +79,43 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
 
     @bp.route("/v1/models", methods=["GET"])
     def list_models():
+        build_rows = _openai_build_model_rows(wiring)
+        include_legacy = get_v1_include_legacy_logical_models()
         if wants_anthropic_models_list(request.headers):
-            ids: list[str] = [str(wiring.runtime.rag_model_logical_id)]
-            try:
-                if wiring.get_autocomplete_ollama_model():
-                    ids.append(str(wiring.runtime.autocomplete_model_logical_id))
-            except Exception:
-                pass
+            ids: list[str] = []
+            if include_legacy:
+                ids.append(str(wiring.runtime.rag_model_logical_id))
+                try:
+                    if wiring.get_autocomplete_ollama_model():
+                        ids.append(str(wiring.runtime.autocomplete_model_logical_id))
+                except Exception:
+                    pass
+            ids.extend(str(r["id"]) for r in build_rows if r.get("id"))
             return jsonify(anthropic_models_list_payload(ids))
 
-        data: list[dict[str, object]] = [
-            {
-                "id": wiring.runtime.rag_model_logical_id,
-                "object": "model",
-                "created": 0,
-                "owned_by": "local",
-            }
-        ]
-        try:
-            if wiring.get_autocomplete_ollama_model():
-                data.append(
-                    {
-                        "id": wiring.runtime.autocomplete_model_logical_id,
-                        "object": "model",
-                        "created": 0,
-                        "owned_by": "local",
-                    }
-                )
-        except Exception:
-            pass
+        data: list[dict[str, object]] = []
+        if include_legacy:
+            data.append(
+                {
+                    "id": wiring.runtime.rag_model_logical_id,
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "local",
+                }
+            )
+            try:
+                if wiring.get_autocomplete_ollama_model():
+                    data.append(
+                        {
+                            "id": wiring.runtime.autocomplete_model_logical_id,
+                            "object": "model",
+                            "created": 0,
+                            "owned_by": "local",
+                        }
+                    )
+            except Exception:
+                pass
+        data.extend(build_rows)
         return jsonify({"object": "list", "data": data})
 
     def _sse_lines_from_openai_response(resp: Response):

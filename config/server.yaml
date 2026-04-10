@@ -19,6 +19,18 @@ server:
 webui:
   port: 5000
 
+## OpenAI-compatible Build Proxy (user-defined builds on /v1/models + /v1/chat/completions)
+## Listens on a separate port (default 8087) in addition to the main server port.
+build_proxy:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8087
+
+## Main /v1/models: include legacy logical ids (ChironAI-Worker, ChironAI-Autocomplete when configured) alongside builds.
+## Set v1_include_legacy_logical_models to false to list only user-defined build ids.
+llm_proxy:
+  v1_include_legacy_logical_models: false
+
 ## Logging (rag_proxy, RAG routes)
 ## - logging.level: DEBUG | INFO | WARNING | ERROR (default INFO). Override with env LOG_LEVEL.
 ## - File errors: logs/webui_errors.log (clean one-line or JSON Lines if LOG_FORMAT=json).
