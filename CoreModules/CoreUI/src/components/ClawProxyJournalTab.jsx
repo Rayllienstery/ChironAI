@@ -6,6 +6,8 @@ import {
   clearClawCodeTraces,
 } from '../services/api';
 import '../styles/components/DashboardTab.css';
+import { summarizeClawTraceMeta } from '../utils/clawTraceSummary';
+import ClawTraceSummaryCards from './ClawTraceSummaryCards';
 
 const JOURNAL_LIMIT = 2000;
 const LIVE_POLL_MS = 3000;
@@ -61,6 +63,11 @@ function StepBlock({ step, index }) {
             {step.model != null && (
               <p>
                 <strong>Model:</strong> <code>{step.model}</code>
+              </p>
+            )}
+            {(step.prompt_tokens_est != null || step.completion_tokens_est != null) && (
+              <p className="dashboard-card-muted" style={{ fontSize: 12 }}>
+                Token est.: prompt {step.prompt_tokens_est ?? '—'} · completion {step.completion_tokens_est ?? '—'}
               </p>
             )}
             {step.finish_reason != null && (
@@ -122,16 +129,49 @@ function StepBlock({ step, index }) {
             )}
           </>
         )}
+        {kind === 'tool_skill' && (
+          <>
+            <p>
+              <strong>Invocation:</strong> {step.invocation || '—'}
+            </p>
+            {step.skill_id != null && String(step.skill_id).trim() !== '' && (
+              <p>
+                <strong>skill_id:</strong> <code>{step.skill_id}</code>
+              </p>
+            )}
+            <p>
+              context_chars: {step.context_chars ?? '—'} · duration_ms: {step.duration_ms ?? '—'}
+            </p>
+            {step.error != null && <p className="dashboard-card-error">{String(step.error)}</p>}
+          </>
+        )}
+        {kind === 'tool_pass_through' && (
+          <>
+            <p>
+              <strong>Tools returned to IDE:</strong>{' '}
+              {Array.isArray(step.names) && step.names.length > 0 ? step.names.join(', ') : '—'}
+            </p>
+            <details className="dashboard-trace-item" style={{ marginTop: 8 }}>
+              <summary>Raw step JSON</summary>
+              <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(step, null, 2)}</pre>
+            </details>
+          </>
+        )}
         {(kind === 'tool_unhandled' || kind === 'config_error') && (
           <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>
             {JSON.stringify(step, null, 2)}
           </pre>
         )}
-        {kind !== 'model_call' && kind !== 'tool_rag' && kind !== 'tool_unhandled' && kind !== 'config_error' && (
-          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>
-            {JSON.stringify(step, null, 2)}
-          </pre>
-        )}
+        {kind !== 'model_call' &&
+          kind !== 'tool_rag' &&
+          kind !== 'tool_skill' &&
+          kind !== 'tool_pass_through' &&
+          kind !== 'tool_unhandled' &&
+          kind !== 'config_error' && (
+            <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>
+              {JSON.stringify(step, null, 2)}
+            </pre>
+          )}
       </div>
     </details>
   );
@@ -147,9 +187,12 @@ export default function ClawProxyJournalTab() {
   const [showRaw, setShowRaw] = useState(false);
   const [liveTraces, setLiveTraces] = useState([]);
 
-  const loadJournal = useCallback(async () => {
-    setLoading(true);
-    setErr(null);
+  const loadJournal = useCallback(async (opts = {}) => {
+    const silent = opts.silent === true;
+    if (!silent) {
+      setLoading(true);
+      setErr(null);
+    }
     try {
       const { from, to } = getDateRangeForJournal(period, selectedDate);
       const data = await getClawCodeJournal({
@@ -160,10 +203,12 @@ export default function ClawProxyJournalTab() {
       const rows = data.logs || [];
       setLogs(rows.slice().reverse());
     } catch (e) {
-      setErr(String(e.message || e));
-      setLogs([]);
+      if (!silent) {
+        setErr(String(e.message || e));
+        setLogs([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [period, selectedDate]);
 
@@ -189,8 +234,59 @@ export default function ClawProxyJournalTab() {
     };
   }, []);
 
-  const selectedLog = useMemo(() => logs.find((l) => l.id === selectedId) || null, [logs, selectedId]);
+  useEffect(() => {
+    let cancelled = false;
+    const poll = () => {
+      if (cancelled || document.visibilityState !== 'visible') return;
+      loadJournal({ silent: true });
+    };
+    poll();
+    const t = setInterval(poll, LIVE_POLL_MS);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') poll();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [loadJournal]);
+
+  const displayLogs = useMemo(() => {
+    const byTrace = new Map();
+    const noTrace = [];
+    for (const row of logs) {
+      const tid = row?.metadata && typeof row.metadata === 'object' ? row.metadata.trace_id : null;
+      if (tid == null || tid === '') {
+        noTrace.push(row);
+        continue;
+      }
+      const key = String(tid);
+      const cur = byTrace.get(key);
+      if (!cur || row.id > cur.id) byTrace.set(key, row);
+    }
+    const merged = [...byTrace.values(), ...noTrace];
+    merged.sort((a, b) => b.id - a.id);
+    return merged;
+  }, [logs]);
+
+  useEffect(() => {
+    if (selectedId == null) return;
+    if (displayLogs.some((r) => r.id === selectedId)) return;
+    const row = logs.find((r) => r.id === selectedId);
+    const tid = row?.metadata?.trace_id;
+    if (tid == null || tid === '') return;
+    const next = displayLogs.find((r) => r.metadata?.trace_id === tid);
+    if (next) setSelectedId(next.id);
+  }, [selectedId, logs, displayLogs]);
+
+  const selectedLog = useMemo(
+    () => displayLogs.find((l) => l.id === selectedId) || logs.find((l) => l.id === selectedId) || null,
+    [displayLogs, logs, selectedId],
+  );
   const meta = selectedLog?.metadata && typeof selectedLog.metadata === 'object' ? selectedLog.metadata : null;
+  const traceSummary = useMemo(() => summarizeClawTraceMeta(meta), [meta]);
 
   const clearDb = async () => {
     if (!window.confirm('Delete all persisted ClawCode journal entries from the database?')) return;
@@ -219,7 +315,7 @@ export default function ClawProxyJournalTab() {
         <div className="dashboard-card-header">
           <h2 id="claw-journal-heading">Journal</h2>
           <div className="dashboard-card-actions">
-            <button type="button" className="dashboard-primary-btn" onClick={loadJournal} disabled={loading}>
+            <button type="button" className="dashboard-primary-btn" onClick={() => loadJournal()} disabled={loading}>
               Refresh
             </button>
             <button type="button" className="dashboard-primary-btn" onClick={clearRam}>
@@ -231,8 +327,8 @@ export default function ClawProxyJournalTab() {
           </div>
         </div>
         <p className="dashboard-card-muted">
-          Persisted agent traces (request, steps, thinking, RAG tool calls, final answer). Live buffer shows the last
-          in-memory runs only until restart.
+          Persisted agent traces (one row per run, updated as the agent progresses). The list refreshes every few seconds
+          while this tab is open. Live buffer shows the last in-memory runs only until restart.
         </p>
         {err && <div className="dashboard-card-error">{err}</div>}
       </section>
@@ -297,7 +393,7 @@ export default function ClawProxyJournalTab() {
               {loading && <p className="dashboard-card-muted">Loading…</p>}
               {!loading && logs.length === 0 && <p className="dashboard-card-muted">No journal entries.</p>}
               {!loading &&
-                logs.map((row) => (
+                displayLogs.map((row) => (
                   <button
                     key={row.id}
                     type="button"
@@ -340,22 +436,20 @@ export default function ClawProxyJournalTab() {
             )}
             {selectedLog && !showRaw && meta && (
               <div className="dashboard-card-scroll" style={{ maxHeight: 560 }}>
-                <p>
-                  <strong>trace_id</strong> <code>{meta.trace_id}</code>
-                </p>
-                <p className="dashboard-card-muted">
-                  {meta.elapsed_ms}ms · resolved: <code>{meta.resolved_model}</code> · logical:{' '}
-                  <code>{meta.logical_model_id}</code>
-                </p>
-                {meta.think_requested != null && (
-                  <p>
-                    <strong>Ollama think requested:</strong> {meta.think_requested ? 'yes' : 'no'}
-                  </p>
-                )}
-                {meta.error != null && <p className="dashboard-card-error">{String(meta.error)}</p>}
+                <ClawTraceSummaryCards summary={traceSummary} />
                 {meta.request != null && (
-                  <details className="dashboard-trace-item" open>
-                    <summary>Request snapshot</summary>
+                  <details className="dashboard-trace-item">
+                    <summary>
+                      Request snapshot
+                      {Array.isArray(meta.request.messages) ? ` · ${meta.request.messages.length} messages` : ''}
+                      {' · '}
+                      {Array.isArray(meta.request.client_tool_names)
+                        ? `${meta.request.client_tool_names.length} client tools`
+                        : '0 client tools'}
+                      {meta.request.merge_client_tools != null
+                        ? ` · merge_client_tools: ${meta.request.merge_client_tools ? 'yes' : 'no'}`
+                        : ''}
+                    </summary>
                     <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>
                       {JSON.stringify(meta.request, null, 2)}
                     </pre>

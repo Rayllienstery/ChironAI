@@ -90,12 +90,6 @@ def persist_clawcode_trace_to_db(rec: dict[str, Any]) -> None:
 
     try:
         repo = get_logs_repository()
-        repo.add_log(
-            session_id="clawcode",
-            level="INFO",
-            message=line[:500],
-            source="clawcode",
-            metadata=payload,
-        )
+        repo.upsert_clawcode_journal_trace(line[:500], payload)
     except Exception:
         _LOG.exception("persist_clawcode_trace_to_db failed")

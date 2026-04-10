@@ -53,6 +53,68 @@ class LogsRepository:
             conn.commit()
             return cursor.lastrowid
 
+    def upsert_clawcode_journal_trace(
+        self,
+        message: str,
+        metadata: dict[str, Any],
+    ) -> int:
+        """
+        Persist a ClawCode agent trace snapshot: one SQLite row per trace_id.
+
+        Updates the earliest row for that trace_id (stable id across partial snapshots)
+        and removes duplicate rows so the journal does not fragment one run into many cards.
+        """
+        trace_id = str(metadata.get("trace_id") or "").strip()
+        if not trace_id:
+            return self.add_log(
+                session_id="clawcode",
+                level="INFO",
+                message=message,
+                source="clawcode",
+                metadata=metadata,
+            )
+
+        meta_json = json.dumps(metadata, ensure_ascii=False)
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.execute(
+                """
+                SELECT id FROM logs
+                WHERE session_id = 'clawcode' AND source = 'clawcode' AND metadata IS NOT NULL
+                  AND json_extract(metadata, '$.trace_id') = ?
+                ORDER BY id ASC
+                """,
+                (trace_id,),
+            )
+            ids = [int(r[0]) for r in cur.fetchall()]
+
+            if not ids:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO logs (session_id, level, source, message, error_type, metadata)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    ("clawcode", "INFO", "clawcode", message[:500], None, meta_json),
+                )
+                conn.commit()
+                return int(cursor.lastrowid or 0)
+
+            keeper = ids[0]
+            extras = ids[1:]
+            if extras:
+                q_marks = ",".join("?" * len(extras))
+                conn.execute(f"DELETE FROM logs WHERE id IN ({q_marks})", extras)
+
+            conn.execute(
+                """
+                UPDATE logs
+                SET message = ?, metadata = ?, timestamp = CURRENT_TIMESTAMP, level = ?
+                WHERE id = ?
+                """,
+                (message[:500], meta_json, "INFO", keeper),
+            )
+            conn.commit()
+            return keeper
+
     def get_logs(
         self,
         session_id: str,

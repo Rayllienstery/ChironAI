@@ -846,3 +846,74 @@ input.dashboard-card-field {
   font-size: 0.88em;
 }
 
+/* ClawCode trace summary (journal / proxy traces) */
+.claw-trace-summary-root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-md);
+  margin-bottom: var(--md-sys-spacing-lg);
+}
+
+.claw-trace-summary-lead {
+  font-size: 0.85rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.claw-trace-summary-section {
+  min-width: 0;
+}
+
+.claw-trace-summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.claw-trace-summary-chip {
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.claw-trace-summary-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  font: var(--md-sys-typescale-body-medium-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.claw-trace-summary-list li {
+  margin-bottom: var(--md-sys-spacing-sm);
+}
+
+.claw-trace-summary-query {
+  font-size: 0.85rem;
+  margin-top: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.claw-trace-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin-top: 8px;
+}
+
+.claw-trace-summary-table th,
+.claw-trace-summary-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.claw-trace-summary-table th {
+  color: var(--md-sys-color-on-surface-variant);
+  font-weight: 600;
+}
+

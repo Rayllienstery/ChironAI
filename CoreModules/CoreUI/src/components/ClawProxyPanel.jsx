@@ -17,6 +17,8 @@ import {
   disableClawCodeSkill,
 } from '../services/api';
 import '../styles/components/DashboardTab.css';
+import { summarizeClawTraceMeta } from '../utils/clawTraceSummary';
+import ClawTraceSummaryCards from './ClawTraceSummaryCards';
 
 function kvRow(label, value, key) {
   return (
@@ -307,7 +309,11 @@ function ClawProxyPanel({ onNavigateToRag, onModelStatusChange }) {
                     {t.resolved_model}
                     {t.error ? ` · error: ${t.error}` : ''}
                   </summary>
-                  <pre>{JSON.stringify(t, null, 2)}</pre>
+                  <ClawTraceSummaryCards summary={summarizeClawTraceMeta(t)} />
+                  <details className="dashboard-trace-item" style={{ marginTop: 12 }}>
+                    <summary>Full JSON</summary>
+                    <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(t, null, 2)}</pre>
+                  </details>
                 </details>
               ))}
             </div>
