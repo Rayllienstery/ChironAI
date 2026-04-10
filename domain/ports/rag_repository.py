@@ -27,8 +27,8 @@ class RagRepository(Protocol):
         top_k: int,
         filter_dict: dict[str, Any] | None = None,
         *,
-        sparse_indices: list[int] | None = None,
-        sparse_values: list[float] | None = None,
+        sparse_indices: list[int] | None = None,  # noqa
+        sparse_values: list[float] | None = None,  # noqa
     ) -> list[dict[str, Any]]:
         """
         Search for similar points by dense vector; optionally fuse with sparse (hybrid).

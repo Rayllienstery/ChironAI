@@ -19,7 +19,7 @@ class ChatLLMClient(Protocol):
         messages: list[dict[str, Any]],
         model: str,
         stream: bool = False,
-        options: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,  # noqa
         think: bool | str | None = None,
     ) -> str:
         """
@@ -33,7 +33,7 @@ class ChatLLMClient(Protocol):
         self,
         messages: list[dict[str, Any]],
         model: str,
-        options: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,  # noqa
         think: bool | str | None = None,
     ) -> Iterator[str]:
         """Stream chat: yield content chunks. Optional; fallback to chat() if not implemented."""

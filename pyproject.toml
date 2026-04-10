@@ -66,6 +66,7 @@ testpaths = ["tests"]
 pythonpath = [
     ".",
     "modules/crawler_service",
+    "modules/html_md",
     "CoreModules/ServiceStarter",
     "CoreModules/LlmProxy",
     "CoreModules/RagService",
@@ -94,6 +95,8 @@ src = [
   "CoreModules/RagService/rag_service",
   "CoreModules/WebInteraction/web_interaction",
   "CoreModules/MdIngestionService/md_ingestion_service",
+  "modules/crawler_service/crawler_service",
+  "modules/html_md/html_md",
 ]
 exclude = [
   ".venv",
@@ -131,6 +134,7 @@ paths = [
   "CoreModules",
   "WebUI",
   "modules",
+  "modules/html_md",
   "scripts",
   "tests",
 ]

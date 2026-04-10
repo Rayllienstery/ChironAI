@@ -10,18 +10,26 @@ from external_docs_rag.domain.entities import FetchedDocument
 from external_docs_rag.infrastructure.http_fetch import normalize_raw_markdown
 
 try:
+    from html_md.convert import html_to_markdown as _html_to_markdown_full
+except ImportError:
+    _html_to_markdown_full = None  # type: ignore[assignment,misc]
+
+try:
     import html2text
+
     _HAS_HTML2TEXT = True
 except ImportError:
     _HAS_HTML2TEXT = False
-    html2text = None  # type: ignore
+    html2text = None  # type: ignore[assignment,misc]
 
 
-def html_to_markdown(html: str) -> str:
-    """Convert HTML to markdown using html2text if available, else regex fallback."""
+def html_to_markdown(html: str, *, prefer_code_preservation: bool = True) -> str:
+    """Convert HTML to markdown (shared ``chironai-html-md`` when installed, else html2text/regex)."""
     if not html or not html.strip():
         return ""
-    if _HAS_HTML2TEXT and html2text is not None:
+    if _html_to_markdown_full is not None:
+        return _html_to_markdown_full(html, prefer_code_preservation=prefer_code_preservation)
+    if _HAS_HTML2TEXT and html2text is not None and prefer_code_preservation:
         h = html2text.HTML2Text()
         h.ignore_links = False
         h.ignore_images = True

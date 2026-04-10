@@ -1,38 +1,70 @@
-"""CLI for crawler. Usage: python -m crawler_service.api.cli crawl --source-id ID (from project root with PYTHONPATH)."""
+"""CLI: crawl configured sources into WebUI/rag_sources (same semantics as WebUI/app.py crawl)."""
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+from pathlib import Path
 
-from crawler_service.domain.entities import crawl_source_from_dict
-from crawler_service.application.use_cases import run_crawl_source
-from crawler_service.infrastructure.md_ingestion_http_adapter import MdIngestionHttpAdapter
-from crawler_service.infrastructure.playwright_crawler import PlaywrightCrawler
+from crawler_service.application.crawl_runner import build_crawl_host, run_crawl_all_sources
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    sub = parser.add_subparsers(dest="cmd")
-    crawl_parser = sub.add_parser("crawl")
-    crawl_parser.add_argument("--source-id", required=True)
-    crawl_parser.add_argument("--url", default="")
-    crawl_parser.add_argument("--collection", default="webcrawl")
+    parser = argparse.ArgumentParser(
+        description="ChironAI crawl: update local markdown store under WebUI/rag_sources.",
+    )
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=["crawl"],
+        default="crawl",
+        help="crawl: update markdown store from configured sources",
+    )
+    parser.add_argument(
+        "--source",
+        action="append",
+        dest="sources",
+        metavar="SOURCE_ID",
+        help="Limit to source id (repeatable). Omit to crawl all.",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        dest="crawl_all",
+        help="Crawl all configured sources (same as omitting --source).",
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Crawl without writing md/meta.")
+    parser.add_argument(
+        "--project-root",
+        type=Path,
+        default=None,
+        help="Repository root (default: CHIRONAI_PROJECT_ROOT or cwd).",
+    )
+    parser.add_argument(
+        "--webui-dir",
+        type=Path,
+        default=None,
+        help="WebUI directory (default: CHIRONAI_WEBUI_DIR or <project-root>/WebUI).",
+    )
     args = parser.parse_args()
-    if args.cmd != "crawl":
-        parser.print_help()
-        return 0
-    source = crawl_source_from_dict({"id": args.source_id, "url": args.url or args.source_id})
-    runner = PlaywrightCrawler()
-    client = MdIngestionHttpAdapter()
-    try:
-        result = run_crawl_source(source, runner, client, args.collection)
-    except NotImplementedError as e:
-        print(f"Crawler not implemented: {e}", file=sys.stderr)
-        return 1
-    print(result)
+
+    project_root = (args.project_root or Path(os.environ.get("CHIRONAI_PROJECT_ROOT", "").strip() or ".")).resolve()
+    webui_dir = args.webui_dir
+    if webui_dir is not None:
+        webui_dir = webui_dir.resolve()
+
+    pr = str(project_root)
+    if pr not in sys.path:
+        sys.path.insert(0, pr)
+
+    host = build_crawl_host(project_root=project_root, webui_dir=webui_dir, log=print, is_cli=True)
+    source_list = None if getattr(args, "crawl_all", False) else (args.sources if args.sources else None)
+
+    if args.command == "crawl":
+        run_crawl_all_sources(host, source_filter=source_list, dry_run=args.dry_run)
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

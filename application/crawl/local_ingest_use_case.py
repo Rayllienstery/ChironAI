@@ -22,6 +22,7 @@ def ingest_markdown_folder(
     Read markdown files from markdown_dir, chunk, embed, and upsert to index.
     Returns summary: { "files_processed": int, "chunks_indexed": int, "errors": list }.
     """
+    _ = (markdown_dir, source_id, embed_provider, metadata_inference)
     # Stub: full implementation can delegate to WebUI/ingest_markdown_local.py
     # or use MarkdownStore.list_filenames + read_markdown, then chunk, embed, upsert.
     return {"files_processed": 0, "chunks_indexed": 0, "errors": []}

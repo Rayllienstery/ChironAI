@@ -21,9 +21,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-import threading
-import uuid
-
 from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
 
 # Ensure project root on path when running from api or WebUI.
@@ -55,8 +52,6 @@ from application.llm_proxy_builds import (
     extract_context_length_from_show,
     find_build_by_id,
     load_builds_json,
-    normalize_build,
-    openai_model_objects_for_builds,
     validate_builds_list,
 )
 from application.rag.collection_freshness import check_collection_freshness
@@ -250,10 +245,9 @@ from domain.services.metadata_inference import (
 
 # Import config for embeddings
 try:
-    from config import get_ollama_embed_url, get_indexing_int
+    from config import get_ollama_embed_url
 except ImportError:
     get_ollama_embed_url = lambda: "http://localhost:11434/api/embed"  # type: ignore
-    get_indexing_int = lambda k, d: d  # type: ignore
 
 # MD indexer pipeline (config-driven markdown cleanup for RAG)
 try:
@@ -275,7 +269,6 @@ except ImportError:
 
 import hashlib
 import re
-import threading
 import subprocess
 
 # In-memory buffer for dev console (last 50 requests)
@@ -859,7 +852,7 @@ def create_coreui_notification() -> Any:
             message = str(message)
         if len(message) > 8000:
             message = message[:8000] + "…"
-        meta_dict: Optional[dict[str, Any]] = None
+        meta_dict: dict[str, Any] | None = None
         if metadata is not None:
             if not isinstance(metadata, dict):
                 return jsonify({"error": "metadata must be an object"}), 400
@@ -4780,11 +4773,30 @@ def crawl_source_endpoint(source_id: str) -> Any:
             return jsonify({"error": "WebUI/app.py not found"}), 500
         
         # Run crawl in subprocess
+        env = os.environ.copy()
+        env["CHIRONAI_PROJECT_ROOT"] = _ROOT
+        env["CHIRONAI_WEBUI_DIR"] = os.path.join(_ROOT, "WebUI")
+        _extra_path = os.pathsep.join(
+            [
+                _ROOT,
+                os.path.join(_ROOT, "modules", "crawler_service"),
+                os.path.join(_ROOT, "modules", "html_md"),
+            ]
+        )
+        env["PYTHONPATH"] = _extra_path + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
         proc = subprocess.Popen(
-            [sys.executable, app_path, "crawl", "--source", source_id],
+            [
+                sys.executable,
+                "-m",
+                "crawler_service.api.cli",
+                "crawl",
+                "--source",
+                source_id,
+            ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            cwd=os.path.dirname(app_path),
+            cwd=_ROOT,
+            env=env,
         )
         _crawling_processes[source_id] = proc
         

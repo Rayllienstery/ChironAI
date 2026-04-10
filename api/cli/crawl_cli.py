@@ -1,9 +1,9 @@
 """
-CLI entrypoint for WebUI app.py commands.
+CLI entrypoint for crawl: delegates to crawler_service (same as WebUI/app.py crawl).
 
-Delegates to WebUI/app.py. Usage from project root:
-  python -m api.cli.crawl_cli start
+Usage from project root:
   python -m api.cli.crawl_cli crawl [--dry-run] [--source ID]
+  chironai-crawl   (after pip install -e modules/crawler_service)
 """
 
 from __future__ import annotations
@@ -15,12 +15,19 @@ import sys
 
 def main() -> None:
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    app_py = os.path.join(root, "WebUI", "app.py")
-    if not os.path.isfile(app_py):
-        print("WebUI/app.py not found.", file=sys.stderr)
-        sys.exit(1)
-    argv = [sys.executable, app_py] + (sys.argv[1:] or ["crawl"])
-    sys.exit(subprocess.run(argv, cwd=root).returncode)
+    env = os.environ.copy()
+    env["CHIRONAI_PROJECT_ROOT"] = root
+    env["CHIRONAI_WEBUI_DIR"] = os.path.join(root, "WebUI")
+    _p = os.pathsep.join(
+        [
+            root,
+            os.path.join(root, "modules", "crawler_service"),
+            os.path.join(root, "modules", "html_md"),
+        ]
+    )
+    env["PYTHONPATH"] = _p + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    argv = [sys.executable, "-m", "crawler_service.api.cli"] + (sys.argv[1:] or ["crawl"])
+    sys.exit(subprocess.run(argv, cwd=root, env=env).returncode)
 
 
 if __name__ == "__main__":

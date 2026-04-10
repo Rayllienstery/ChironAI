@@ -19,7 +19,7 @@ except ImportError:
     get_rag_int = lambda k, d: d  # type: ignore
     get_rag_float = lambda k, d: d  # type: ignore
     get_ollama_chat_model = lambda: "ChironAI-Worker"  # type: ignore
-    get_rag_system_prompt = lambda prompt_name=None: ("", "\n=================================\n")  # type: ignore
+    get_rag_system_prompt = lambda _prompt_name=None: ("", "\n=================================\n")  # type: ignore
 
 
 class RAGAnswerParams(NamedTuple):

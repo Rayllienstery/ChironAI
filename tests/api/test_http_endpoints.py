@@ -232,7 +232,7 @@ def test_chat_completions_chironai_autocomplete_uses_same_prompt_template_as_wor
     monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
 
     class FakeChatClient:
-        def chat(self, _messages, model, stream=False, options=None):
+        def chat(self, _messages, model, stream=False, options=None):  # noqa
             return "ok"
 
         def stream_chat(self, _messages, _model):
@@ -257,7 +257,7 @@ def test_chat_completions_chironai_autocomplete_uses_same_prompt_template_as_wor
     )
     ollama_captured: dict = {}
 
-    def _fake_ollama_generate_post(url, json=None, timeout=None, stream=False, **kwargs):
+    def _fake_ollama_generate_post(url, json=None, timeout=None, stream=False, **kwargs):  # noqa
         ollama_captured["url"] = url
         ollama_captured["body"] = json
 
@@ -411,7 +411,7 @@ def test_v1_completions_forwards_suffix_to_ollama_generate(monkeypatch: pytest.M
 
     ollama_captured: dict = {}
 
-    def _fake_post(url, json=None, timeout=None, stream=False, **kwargs):
+    def _fake_post(url, json=None, timeout=None, stream=False, **kwargs):  # noqa
         ollama_captured["body"] = json
 
         class _Resp:
@@ -456,7 +456,7 @@ def test_chat_completions_returns_tool_calls_when_edit_payload_detected(monkeypa
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return (
                 '{"file_path":"CoreModules/CoreUI/src/App.jsx",'
                 '"range":{"start_line":283,"start_col":1,"end_line":293,"end_col":1},'
@@ -690,7 +690,7 @@ def test_chat_completions_respects_none_tool_choice_for_swift_file_edit_intent(
     test_file.write_text("", encoding="utf-8")
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             tmp_path = str(test_file).replace("\\", "/")
             return (
                 '{"file_path":"'+tmp_path+'",'
@@ -790,7 +790,7 @@ def test_chat_completions_keeps_none_tool_choice_for_jsx(monkeypatch: pytest.Mon
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return "No tool call expected for jsx when tool_choice is none."
 
         def stream_chat(self, _messages, _model):
@@ -865,7 +865,7 @@ def test_chat_completions_preserves_mac_file_uri_in_tool_args(monkeypatch: pytes
     mac_uri = "file:///Users/alice/Projects/App/test.swift"
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             # Model may emit a relative path; proxy must prefer the user's file:/// URI.
             return '{"file_path":"test.swift","mode":"edit","new_text":"print(\\"hi\\")\\n"}'
 
@@ -951,7 +951,7 @@ def test_chat_completions_stream_returns_tool_calls_chunks(monkeypatch: pytest.M
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return (
                 '{"file_path":"CoreModules/CoreUI/src/App.jsx",'
                 '"range":{"start_line":283,"start_col":1,"end_line":293,"end_col":1},'
@@ -1030,7 +1030,7 @@ def test_chat_completions_uses_client_tool_name_for_edit(monkeypatch: pytest.Mon
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return (
                 '{"file_path":"CoreModules/CoreUI/src/App.jsx",'
                 '"range":{"start_line":283,"start_col":1,"end_line":293,"end_col":1},'
@@ -1108,7 +1108,7 @@ def test_chat_completions_adds_required_display_description(monkeypatch: pytest.
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return (
                 '{"file_path":"CoreModules/CoreUI/src/App.jsx",'
                 '"range":{"start_line":283,"start_col":1,"end_line":293,"end_col":1},'
@@ -1195,7 +1195,7 @@ def test_chat_completions_strict_mode_no_tool_call_without_json_payload(monkeypa
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return "Just plain explanation, no JSON payload."
 
         def stream_chat(self, _messages, _model):
@@ -1256,7 +1256,7 @@ def test_chat_completions_cline_style_schema_fields(monkeypatch: pytest.MonkeyPa
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return (
                 '{"file_path":"CoreModules/CoreUI/src/App.jsx",'
                 '"range":{"start_line":283,"start_col":1,"end_line":293,"end_col":1},'
@@ -1338,7 +1338,7 @@ def test_stream_tool_mode_returns_plain_text_when_no_tool_json(monkeypatch: pyte
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return "Normal assistant answer without JSON."
 
         def stream_chat(self, _messages, _model):
@@ -1404,7 +1404,7 @@ def test_chat_completions_after_tool_success_uses_plain_completion_not_second_to
     captured: list[list[dict[str, object]]] = []
 
     class FakeChatClient:
-        def chat(self, messages, _model, stream=False, options=None):
+        def chat(self, messages, _model, stream=False, options=None):  # noqa
             captured.append([m for m in messages if isinstance(m, dict)])
             return "Edit applied as requested."
 
@@ -1486,7 +1486,7 @@ def test_chat_completions_after_tool_success_still_emits_tool_call_for_new_file_
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return (
                 '{"file_path":"C:/Users/Raylee/Desktop/test.swift",'
                 '"mode":"overwrite",'
@@ -1599,7 +1599,7 @@ def test_stream_tool_mode_skips_tool_call_when_edit_body_is_only_whitespace(
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return (
                 '{"file_path":"CoreModules/CoreUI/src/App.jsx",'
                 '"mode":"edit",'
@@ -1694,7 +1694,7 @@ def test_chat_completions_builds_save_file_paths_when_required(monkeypatch: pyte
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return json.dumps(
                 {
                     "path": "build_and_run.bat",
@@ -1785,7 +1785,7 @@ def test_chat_completions_builds_save_file_paths_as_strings_when_schema_requires
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return json.dumps(
                 {
                     "path": "Desktop/test.swift",
@@ -1875,7 +1875,7 @@ def test_chat_completions_does_not_choose_save_file_without_content_schema(
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             # Model returns a relative-ish path; proxy should prefer user absolute path.
             return json.dumps(
                 {
@@ -1992,7 +1992,7 @@ def test_chat_completions_sanitizes_display_description(monkeypatch: pytest.Monk
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return json.dumps(
                 {
                     "file_path": "C:/Users/Raylee/AI/test.swift",
@@ -2092,7 +2092,7 @@ def test_trailing_noop_after_success_does_not_block_noop_counter(
     import api.http.rag_routes as rag_routes
 
     class FakeChatClient:
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return '{"file_path":"C:/Users/Raylee/AI/test.swift","mode":"edit","new_text":"noop\\n"}'
 
         def stream_chat(self, _messages, _model):
@@ -2234,7 +2234,7 @@ def test_chat_completions_text_tool_path_single_chat_no_full_file_retry(
         def __init__(self) -> None:
             self.chat_calls = 0
 
-        def chat(self, _messages, _model, stream=False, options=None):
+        def chat(self, _messages, _model, stream=False, options=None):  # noqa
             self.chat_calls += 1
             if self.chat_calls == 1:
                 return json.dumps(
@@ -2490,7 +2490,7 @@ def test_chat_completions_accepts_direct_ollama_model_without_proxy_model_settin
     monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
 
     class FakeChatClient:
-        def chat(self, _messages, model, stream=False, options=None):
+        def chat(self, _messages, model, stream=False, options=None):  # noqa
             return "ok"
 
         def stream_chat(self, _messages, _model):

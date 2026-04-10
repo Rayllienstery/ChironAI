@@ -24,7 +24,7 @@ def get_rag_tests_root() -> Path:
     return _get_rag_tests_root()
 
 
-def parse_test_md(content: str, source_path: str = "") -> dict[str, Any]:
+def parse_test_md(content: str, _source_path: str = "") -> dict[str, Any]:
     """
     Parse a single test Markdown string.
     Returns dict with: name, question, expected_concepts, platform, framework,

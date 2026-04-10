@@ -12,3 +12,5 @@
 -e CoreModules/ServiceStarter
 -e CoreModules/LlmProxy
 -e CoreModules/RagService
+-e modules/html_md
+-e modules/crawler_service

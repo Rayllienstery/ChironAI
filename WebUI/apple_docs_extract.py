@@ -1338,6 +1338,58 @@ def _extract_param_names_from_swift_signature(code_text: str) -> List[str]:
     return param_names
 
 
+def _find_availability_recursive(obj: Any, depth: int = 0) -> Optional[Dict[str, str]]:
+    """Recursively search for availability dict, max depth 5 to avoid infinite loops."""
+    if depth > 5:
+        return None
+
+    if isinstance(obj, dict):
+        # Check if this dict itself is availability (has platform-like keys)
+        if "availability" in obj:
+            candidate = obj["availability"]
+            if isinstance(candidate, dict):
+                result = {}
+                for k, v in candidate.items():
+                    if v:
+                        result[k] = str(v).strip()
+                if result:
+                    return result
+            elif isinstance(candidate, list):
+                # Handle list format: [{"platform": "iOS", "version": "17.0+"}, ...]
+                result = {}
+                for item in candidate:
+                    if isinstance(item, dict):
+                        platform = item.get("platform") or item.get("name")
+                        version = item.get("version") or item.get("introduced")
+                        if platform and version:
+                            result[str(platform)] = str(version).strip()
+                if result:
+                    return result
+
+        # Also check if this dict directly contains platform keys (iOS, macOS, etc.)
+        platform_keys = {"iOS", "iPadOS", "macOS", "watchOS", "tvOS", "visionOS", "Mac Catalyst", "Swift"}
+        if any(k in platform_keys for k in obj.keys()):
+            result = {}
+            for k, v in obj.items():
+                if k in platform_keys and v:
+                    result[k] = str(v).strip()
+            if result:
+                return result
+
+        # Recurse into nested dicts
+        for value in obj.values():
+            found = _find_availability_recursive(value, depth + 1)
+            if found:
+                return found
+    elif isinstance(obj, list):
+        for item in obj:
+            found = _find_availability_recursive(item, depth + 1)
+            if found:
+                return found
+
+    return None
+
+
 def _extract_availability_from_initial_state(initial_state: Optional[Dict[str, Any]]) -> Dict[str, str]:
     """
     Extract platform availability from Apple Docs __INITIAL_STATE__.
@@ -1379,59 +1431,8 @@ def _extract_availability_from_initial_state(initial_state: Optional[Dict[str, A
                     result[k] = str(v).strip()
             if result:
                 return result
-    
+
     # Fallback: recursive search for "availability" key anywhere in the structure
-    def _find_availability_recursive(obj: Any, depth: int = 0) -> Optional[Dict[str, str]]:
-        """Recursively search for availability dict, max depth 5 to avoid infinite loops."""
-        if depth > 5:
-            return None
-        
-        if isinstance(obj, dict):
-            # Check if this dict itself is availability (has platform-like keys)
-            if "availability" in obj:
-                candidate = obj["availability"]
-                if isinstance(candidate, dict):
-                    result = {}
-                    for k, v in candidate.items():
-                        if v:
-                            result[k] = str(v).strip()
-                    if result:
-                        return result
-                elif isinstance(candidate, list):
-                    # Handle list format: [{"platform": "iOS", "version": "17.0+"}, ...]
-                    result = {}
-                    for item in candidate:
-                        if isinstance(item, dict):
-                            platform = item.get("platform") or item.get("name")
-                            version = item.get("version") or item.get("introduced")
-                            if platform and version:
-                                result[str(platform)] = str(version).strip()
-                    if result:
-                        return result
-            
-            # Also check if this dict directly contains platform keys (iOS, macOS, etc.)
-            platform_keys = {"iOS", "iPadOS", "macOS", "watchOS", "tvOS", "visionOS", "Mac Catalyst", "Swift"}
-            if any(k in platform_keys for k in obj.keys()):
-                result = {}
-                for k, v in obj.items():
-                    if k in platform_keys and v:
-                        result[k] = str(v).strip()
-                if result:
-                    return result
-            
-            # Recurse into nested dicts
-            for value in obj.values():
-                found = _find_availability_recursive(value, depth + 1)
-                if found:
-                    return found
-        elif isinstance(obj, list):
-            for item in obj:
-                found = _find_availability_recursive(item, depth + 1)
-                if found:
-                    return found
-        
-        return None
-    
     found = _find_availability_recursive(initial_state)
     return found if found else {}
 
@@ -1897,7 +1898,7 @@ def build_apple_doc_page(raw: AppleDocRaw) -> AppleDocPage:
         if section.heading and section.heading.lower() == "parameters":
             # Try to find dt/dd structures in the DOM for this section.
             # We need to find the heading element and then look for dt/dd siblings.
-            heading_elements = root.xpath(f"//h2[normalize-space(text())='Parameters'] | //h3[normalize-space(text())='Parameters']")
+            heading_elements = root.xpath("//h2[normalize-space(text())='Parameters'] | //h3[normalize-space(text())='Parameters']")
             
             param_blocks: List[AppleDocBlock] = []
             

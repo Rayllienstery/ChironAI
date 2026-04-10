@@ -12,7 +12,7 @@ def test_tester_chat_resolves_logical_model_via_proxy_model_setting(monkeypatch)
     captured: dict[str, str | None] = {}
 
     class CaptureChat:
-        def chat(self, _messages, model, stream=False, options=None):
+        def chat(self, _messages, model, stream=False, options=None):  # noqa
             captured["model"] = model
             return "pong"
 

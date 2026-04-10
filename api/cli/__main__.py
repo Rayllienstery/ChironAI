@@ -42,16 +42,24 @@ def cmd_start(_: argparse.Namespace) -> int:
 
 
 def cmd_crawl(ns: argparse.Namespace) -> int:
-    app = _app_py()
-    if not os.path.isfile(app):
-        print("WebUI/app.py not found.", file=sys.stderr)
-        return 1
-    argv = [app, "crawl"]
+    root = _root()
+    env = os.environ.copy()
+    env["CHIRONAI_PROJECT_ROOT"] = root
+    env["CHIRONAI_WEBUI_DIR"] = os.path.join(root, "WebUI")
+    _p = os.pathsep.join(
+        [
+            root,
+            os.path.join(root, "modules", "crawler_service"),
+            os.path.join(root, "modules", "html_md"),
+        ]
+    )
+    env["PYTHONPATH"] = _p + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    argv = [sys.executable, "-m", "crawler_service.api.cli", "crawl"]
     if getattr(ns, "dry_run", False):
         argv.append("--dry-run")
     for s in getattr(ns, "sources", None) or []:
         argv.extend(["--source", s])
-    return _run(argv)
+    return subprocess.run(argv, cwd=root, env=env).returncode
 
 
 def cmd_ingest(ns: argparse.Namespace) -> int:

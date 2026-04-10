@@ -2,21 +2,43 @@
 
 ## Purpose
 
-Crawls web/docs sources and sends raw or structured content to md_ingestion_service via HTTP. No direct RAG or UI logic.
+- **Rag sources crawl** (default): Playwright BFS + WWDC transcript pipeline writing markdown under `WebUI/rag_sources` (same behavior as legacy `WebUI/app.py crawl`).
+- **Port `CrawlRunner`**: `PlaywrightCrawler.crawl()` returns fetched pages without writing to disk (for future md_ingestion HTTP push).
 
-## Initialization
+## Install
 
-- **Dependencies**: `pip install -r requirements.txt`. Playwright when fully implemented.
-- **Environment**: `MD_INGESTION_SERVICE_URL` (default `http://localhost:5002`) for pushing results.
-- **Run CLI**: From project root: `PYTHONPATH=. python -m crawler_service.api.cli crawl --source-id <id> [--url URL] [--collection NAME]`. (Crawler implementation is stub; migrate from WebUI/app.py to complete.)
+From repository root (after `chironai-html-md`):
 
-## API
+```bash
+pip install -e modules/html_md
+pip install -e modules/crawler_service
+```
 
-Uses `core/contracts/md_ingestion_api` to send crawled content to md_ingestion_service. Exposes API in `core/contracts/crawler_api`.
+Or use `requirements-dev.txt` (includes both).
+
+## CLI
+
+From repo root:
+
+```bash
+chironai-crawl crawl [--dry-run] [--source SOURCE_ID] [--all]
+```
+
+Environment (optional):
+
+- `CHIRONAI_PROJECT_ROOT` — repository root (default: cwd)
+- `CHIRONAI_WEBUI_DIR` — folder containing `rag_sources` and `apple_docs_*.py` (default: `<root>/WebUI`)
+
+## Dependencies
+
+Declared in `pyproject.toml`: `playwright`, `requests`, `html2text`, `lxml`, `PyYAML`, `chironai-html-md`.
 
 ## Structure
 
-- `crawler_service/domain/` — entities (CrawlSource, CrawlResult, CrawlStatus), ports (CrawlRunner, MdIngestionClient)
-- `crawler_service/application/` — use cases (run_crawl_source, run_crawl_all_sources)
-- `crawler_service/infrastructure/` — PlaywrightCrawler (stub), MdIngestionHttpAdapter
-- `crawler_service/api/` — CLI
+- `crawler_service/application/crawl_runner.py` — orchestration for `rag_sources` FS crawl
+- `crawler_service/domain/` — WWDC parsing, URL rules
+- `crawler_service/infrastructure/` — Playwright BFS, `PlaywrightCrawler` (port), Apple fetch thread helper
+- `crawler_service/api/cli.py` — `chironai-crawl` entrypoint
+- `crawler_service/sources_io.py` — `config/sources.yaml` load/save
+
+HTTP push to md_ingestion remains in `application/use_cases.py` for future wiring.

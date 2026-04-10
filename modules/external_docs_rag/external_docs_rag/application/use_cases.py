@@ -337,7 +337,7 @@ def ingest_github_repo_markdown(
 
 def resolve_rag_sources_for_request(
     question: str,
-    messages: list[dict[str, Any]],
+    _messages: list[dict[str, Any]],
     body_rag_sources: list[str] | None,
     config: list[RagSourceConfig],
 ) -> list[RagSourceConfig]:

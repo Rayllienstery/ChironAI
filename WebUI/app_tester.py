@@ -52,7 +52,7 @@ def download_and_convert_single_page(url: str = DOC_URL) -> str:
     paragraph_count = sum(
         1 for s in page.sections for b in s.blocks if b.kind == "paragraph"
     )
-    print(f"[*] Quality metrics:")
+    print("[*] Quality metrics:")
     print(f"   - Doc kind: {page.doc_kind or 'unknown'}")
     print(f"   - Framework: {page.framework or 'unknown'}")
     print(f"   - Sections: {section_count}")
