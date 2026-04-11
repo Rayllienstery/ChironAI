@@ -115,14 +115,15 @@ function LlmProxyAutocompletePanel() {
             — proxied to Ollama <code>/api/generate</code>; not <code>/v1/chat/completions</code>.
           </li>
           <li>
-            Assistant <strong>chat</strong>: proxy base URL without trailing <code>/v1</code> (see LLM Proxy
-            Overview).
+            Assistant <strong>chat</strong>: proxy base URL without trailing <code>/v1</code> (see{' '}
+            <strong>Dumb Proxy</strong> → <strong>Overview</strong>).
           </li>
           <li>
             Provider: <em>OpenAI-compatible</em>. API key empty unless you added auth on the proxy.
           </li>
           <li>
-            Assistant / chat: model <code>ChironAI-Worker</code> (after configuring main model in Overview → Model Settings).
+            Assistant / chat: use your <strong>build id</strong> from <strong>LLM Proxy</strong> → <strong>Builds</strong> as{' '}
+            <code>model</code> (same proxy base URL as in <strong>Dumb Proxy</strong> → <strong>Overview</strong>).
           </li>
           <li>
             Inline assistant / completions: model <code>{LOGICAL_AUTOCOMPLETE_ID}</code> after you save an Ollama model

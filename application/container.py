@@ -26,7 +26,7 @@ except ImportError:
     get_ollama_embed_url = lambda: "http://localhost:11434/api/embed"  # type: ignore
     get_ollama_generate_url = lambda: "http://localhost:11434/api/generate"  # type: ignore
     get_ollama_chat_url = lambda: "http://localhost:11434/api/chat"  # type: ignore
-    get_ollama_chat_model = lambda: "ChironAI-Worker"  # type: ignore
+    get_ollama_chat_model = lambda: ""  # type: ignore
     get_ollama_rerank_model = lambda: "devstral-ios"  # type: ignore
 
 from infrastructure.fs.markdown_store import FileMarkdownStore

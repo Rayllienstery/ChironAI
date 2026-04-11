@@ -75,6 +75,7 @@ function App() {
   const [ragTestRunResults, setRagTestRunResults] = useState([]);
   const [ragTestRunError, setRagTestRunError] = useState(null);
   const [llmProxyFocusSubTab, setLlmProxyFocusSubTab] = useState(null);
+  const [llmProxyBuildsFocusSubTab, setLlmProxyBuildsFocusSubTab] = useState(null);
   const [clawProxyFocusSubTab, setClawProxyFocusSubTab] = useState(null);
   const [tabErrors, setTabErrors] = useState({});
   const [themeMode, setThemeMode] = useState("system");
@@ -262,6 +263,11 @@ function App() {
     setLlmProxyFocusSubTab("proxy-trace");
   }, []);
 
+  const handleOpenLlmProxyAutocomplete = useCallback(() => {
+    setActiveTab("llm-proxy");
+    setLlmProxyBuildsFocusSubTab("autocomplete");
+  }, []);
+
   const handleOpenClawJournal = useCallback(() => {
     setActiveTab("claw-proxy");
     setClawProxyFocusSubTab("journal");
@@ -274,6 +280,10 @@ function App() {
 
   const consumeLlmProxyFocusSubTab = useCallback(() => {
     setLlmProxyFocusSubTab(null);
+  }, []);
+
+  const consumeLlmProxyBuildsFocusSubTab = useCallback(() => {
+    setLlmProxyBuildsFocusSubTab(null);
   }, []);
 
   const consumeClawProxyFocusSubTab = useCallback(() => {
@@ -328,8 +338,8 @@ function App() {
 
   const tabs = [
     { id: "dashboard", label: "Dashboard" },
-    { id: "dumb-proxy", label: "Dumb Proxy" },
     { id: "llm-proxy", label: "LLM Proxy" },
+    { id: "dumb-proxy", label: "Dumb Proxy" },
     { id: "claw-proxy", label: "Claw Proxy" },
     { id: "logs", label: "Logs" },
     { id: "ollama", label: "Ollama" },
@@ -347,6 +357,7 @@ function App() {
           <DashboardTab
             onNavigate={setActiveTab}
             onOpenLogs={() => setActiveTab("logs")}
+            onOpenLlmProxyAutocomplete={handleOpenLlmProxyAutocomplete}
           />
         );
       case "claw-proxy":
@@ -412,7 +423,12 @@ function App() {
           />
         );
       case "llm-proxy":
-        return <LlmProxyBuildsTab />;
+        return (
+          <LlmProxyBuildsTab
+            focusSubTab={llmProxyBuildsFocusSubTab}
+            onFocusSubTabConsumed={consumeLlmProxyBuildsFocusSubTab}
+          />
+        );
       case "template-editor":
         return <TemplateEditorTab />;
       case "settings":

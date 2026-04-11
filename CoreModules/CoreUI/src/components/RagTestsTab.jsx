@@ -14,6 +14,7 @@ import {
   deleteRagTest,
   exportRagTestRun,
 } from '../services/api';
+import { isLogicalRagModelId } from '../constants/llmProxyModels';
 import '../styles/components/RagTestsTab.css';
 
 /** Cloud/metered Ollama tags (e.g. qwen3.5:cloud, …:397b-cloud) may bill tokens. */
@@ -126,11 +127,8 @@ function RagTestsTab({
       const list = await getModels();
       setModels(list || []);
       if (!selectedModel && list?.length) {
-        const ragModel =
-          list.find((m) => m.id === 'ChironAI-Worker') ||
-          list.find((m) => m.id === 'rag-ollama') ||
-          list[0];
-        setSelectedModel(ragModel.id || '');
+        const pick = list.find((m) => m.id && !isLogicalRagModelId(m.id)) || list[0];
+        setSelectedModel(pick.id || '');
       }
     } catch (e) {
       setError(e.message);

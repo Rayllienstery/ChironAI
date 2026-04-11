@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import uuid
@@ -15,7 +14,6 @@ from llm_proxy.openai_text_completion_format import (
     legacy_completions_stream_line,
     non_stream_text_completion_response,
 )
-from llm_proxy.config import is_rag_logical_model_id
 from llm_proxy.contracts import LlmProxyWiring
 from llm_proxy.ollama_upstream import get_configured_ollama_chat_url, ollama_api_base_from_chat_url
 
@@ -55,24 +53,6 @@ def _resolve_ollama_model(w: LlmProxyWiring, requested: str) -> tuple[str | None
                 "in WebUI (LLM Proxy → Autocomplete), or set LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL."
             )
         return tag, None
-    if is_rag_logical_model_id(req, rt.rag_model_logical_id):
-        try:
-            repo = w.get_settings_repository()
-            pm = (repo.get_app_setting("proxy_model") or "").strip()
-            raw_ps = repo.get_app_setting("proxy_settings")
-            if raw_ps:
-                loaded = json.loads(raw_ps)
-                if isinstance(loaded, dict) and loaded.get("model"):
-                    pm = pm or str(loaded.get("model") or "").strip()
-            if not pm or is_rag_logical_model_id(pm, rt.rag_model_logical_id):
-                return None, (
-                    "LLM Proxy is not configured: choose a concrete Ollama model in WebUI "
-                    f"(LLM Proxy → Model Settings), not the logical id ({rt.rag_model_logical_id})."
-                )
-            return pm, None
-        except Exception as e:
-            _LOG.warning("completions_generate: resolve worker model: %s", e)
-            return None, "Failed to read proxy model from settings"
     try:
         from application.llm_proxy_builds import (
             LLM_PROXY_BUILDS_APP_KEY,

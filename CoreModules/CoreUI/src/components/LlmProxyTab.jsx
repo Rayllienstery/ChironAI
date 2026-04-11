@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import LlmProxyAutocompletePanel from './LlmProxyAutocompletePanel';
+import React, { useCallback, useEffect, useState } from 'react';
 import LlmProxyWebInteractionPanel from './LlmProxyWebInteractionPanel';
 import ProxyTraceTab from './ProxyTraceTab';
 import { getLlmProxyStatus } from '../services/api';
@@ -20,7 +19,6 @@ function kvRow(label, value, key) {
 const SUB_TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'proxy-trace', label: 'Proxy Trace' },
-  { id: 'autocomplete', label: 'Autocomplete' },
   { id: 'web-interaction', label: 'Web Interaction' },
 ];
 
@@ -61,15 +59,6 @@ function LlmProxyTab({
       onFocusSubTabConsumed();
     }
   }, [focusSubTab, onFocusSubTabConsumed]);
-
-  const proxyInfrastructure = useMemo(() => {
-    if (!proxyStatus) return null;
-    return {
-      docker: proxyStatus.docker,
-      qdrant: proxyStatus.qdrant,
-      infrastructure_error: proxyStatus.infrastructure_error,
-    };
-  }, [proxyStatus]);
 
   return (
     <div className="settings-tab llm-proxy-tab">
@@ -131,57 +120,9 @@ function LlmProxyTab({
             {statusErr && <div className="dashboard-card-error">{statusErr}</div>}
             {proxyStatus && (
               <>
-                {proxyStatus.infrastructure_error && (
-                  <div className="dashboard-card-error" role="alert">
-                    Could not load Docker/Qdrant status: {proxyStatus.infrastructure_error}
-                  </div>
-                )}
                 {kvRow('Enabled', String(proxyStatus.enabled), 'enabled')}
                 {kvRow('Base URL', <code>{proxyStatus.base_url}</code>, 'base')}
-                {kvRow('Logical model id', <code>{proxyStatus.logical_model_id}</code>, 'logical')}
-                {kvRow(
-                  'Default Ollama model',
-                  <code>{proxyStatus.default_ollama_model || 'unknown'}</code>,
-                  'ollama',
-                )}
-                {kvRow(
-                  'RAG collection',
-                  <code>
-                    {proxyStatus.rag_collection ||
-                      proxyStatus.config_default_rag_collection ||
-                      '—'}
-                  </code>,
-                  'ragcoll',
-                )}
                 {kvRow('Health', <code>{proxyStatus.health}</code>, 'health')}
-                {proxyStatus.docker && (
-                  <>
-                    {kvRow(
-                      'Docker CLI',
-                      proxyStatus.docker.cli_available ? 'available' : 'not found',
-                      'dock-cli',
-                    )}
-                    {kvRow(
-                      'Docker Engine',
-                      proxyStatus.docker.engine_available ? 'running' : 'not running',
-                      'dock-eng',
-                    )}
-                  </>
-                )}
-                {proxyStatus.qdrant && (
-                  <>
-                    {kvRow(
-                      'Qdrant HTTP',
-                      proxyStatus.qdrant.reachable ? 'reachable' : 'unreachable',
-                      'q-http',
-                    )}
-                    {kvRow(
-                      'Qdrant container',
-                      proxyStatus.qdrant.container_running ? 'running' : 'not running',
-                      'q-ct',
-                    )}
-                  </>
-                )}
               </>
             )}
           </section>
@@ -191,9 +132,9 @@ function LlmProxyTab({
             <p className="settings-intro">
               This RAG proxy speaks <strong>OpenAI</strong> (<code>POST /v1/chat/completions</code>) and{' '}
               <strong>Anthropic Messages</strong> (<code>POST /v1/messages</code>) over the same base URL, backed by Ollama
-              and Qdrant. Use a <strong>build id</strong> from <strong>LLM Proxy</strong> (or legacy{' '}
-              <code>ChironAI-Worker</code>) as <code>model</code>. Optional inline completions use logical id{' '}
-              <code>ChironAI-Autocomplete</code> — configure it on the <strong>Autocomplete</strong> tab.
+              and Qdrant. Set <code>model</code> to a <strong>build id</strong> from <strong>LLM Proxy</strong> (builds), or
+              a concrete Ollama tag for passthrough. Optional inline completions use logical id{' '}
+              <code>ChironAI-Autocomplete</code> — configure it under <strong>LLM Proxy</strong> → <strong>Autocomplete</strong>.
             </p>
             <ul className="settings-instructions">
               <li>
@@ -203,20 +144,19 @@ function LlmProxyTab({
               </li>
               <li>
                 <strong>Zed</strong>: in AI settings choose <em>OpenAI API Compatible</em>, set the API URL to the base
-                URL above (or <code>:8087</code> for the build-only listener). Use your <strong>build id</strong> or legacy{' '}
-                <code>ChironAI-Worker</code> for assistant chat; for inline completions use{' '}
-                <code>ChironAI-Autocomplete</code> after you configure it (see the <strong>Autocomplete</strong> tab).
-                API key can be left empty unless you add your own authentication.
+                URL above (or <code>:8087</code> for the build-only listener). Use your <strong>build id</strong> for
+                assistant chat; for inline completions use <code>ChironAI-Autocomplete</code> after you configure it under{' '}
+                <strong>LLM Proxy</strong> → <strong>Autocomplete</strong>. API key can be left empty unless you add your own authentication.
               </li>
               <li>
                 <strong>VSCode + Continue.dev</strong>: configure an OpenAI-compatible provider, set the base URL to this
-                proxy, and use a build id or <code>ChironAI-Worker</code> as the model.
+                proxy, and use your <strong>build id</strong> as the model.
               </li>
               <li>
                 <strong>Claude Code (Anthropic)</strong>: set <code>ANTHROPIC_BASE_URL</code> to this proxy&apos;s base URL
                 (no path suffix), <code>ANTHROPIC_API_KEY</code> empty, <code>ANTHROPIC_AUTH_TOKEN=ollama</code> (or your
-                token policy). Run <code>claude --model ChironAI-Worker</code> (or your Ollama tag). List models with
-                header <code>anthropic-version: 2023-06-01</code> on <code>GET /v1/models</code>. See{' '}
+                token policy). Run <code>claude --model &lt;your-build-id&gt;</code> (list ids with{' '}
+                <code>GET /v1/models</code> and header <code>anthropic-version: 2023-06-01</code>). See{' '}
                 <code>CoreModules/LlmProxy/README.md</code>.
               </li>
               <li>
@@ -236,7 +176,8 @@ function LlmProxyTab({
               <li>
                 <strong>Parse request</strong>: <code>POST /v1/chat/completions</code> (OpenAI) or{' '}
                 <code>POST /v1/messages</code> (Anthropic → same internal pipeline). Read <code>messages</code> /{' '}
-                <code>model</code> (e.g. <code>ChironAI-Worker</code> maps to your configured Ollama model),{' '}
+                <code>model</code> (your <strong>build id</strong>, e.g. <code>my-dev-build</code>, selects the dumb pipeline
+                and per-build Ollama tag),{' '}
                 <code>stream</code>, optional <code>force_rag</code>, <code>include_rag_metadata</code>, tools, reasoning
                 hints. Entry: Flask blueprint from <code>llm_proxy</code> (<code>CoreModules/LlmProxy</code>).
               </li>
@@ -315,18 +256,11 @@ function LlmProxyTab({
                 )}
               </div>
             )}
-            {proxyInfrastructure?.infrastructure_error && (
-              <p className="dashboard-card-muted" style={{ marginTop: 8 }}>
-                Infrastructure: {proxyInfrastructure.infrastructure_error}
-              </p>
-            )}
           </div>
         </div>
       )}
 
       {subTab === 'proxy-trace' && <ProxyTraceTab />}
-
-      {subTab === 'autocomplete' && <LlmProxyAutocompletePanel />}
 
       {subTab === 'web-interaction' && <LlmProxyWebInteractionPanel />}
     </div>

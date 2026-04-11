@@ -16,7 +16,7 @@ function formatBool(v) {
   return v ? 'On' : 'Off';
 }
 
-function DashboardLlmProxyCard({ onNavigate, onOpenLogs }) {
+function DashboardLlmProxyCard({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [settings, setSettings] = useState(null);
@@ -86,7 +86,14 @@ function DashboardLlmProxyCard({ onNavigate, onOpenLogs }) {
             {row('Rerank model', settings.rerank_model)}
           </div>
           <div className="dashboard-proxy-block">
-            <h3 className="dashboard-proxy-block-title">Autocomplete</h3>
+            <div className="dashboard-proxy-block-title-row">
+              <h3 className="dashboard-proxy-block-title">Autocomplete</h3>
+              {typeof onOpenLlmProxyAutocomplete === 'function' && (
+                <button type="button" className="dashboard-text-btn" onClick={() => onOpenLlmProxyAutocomplete()}>
+                  Configure in LLM Proxy
+                </button>
+              )}
+            </div>
             {row('Autocomplete model', settings.autocomplete_model)}
           </div>
           <div className="dashboard-proxy-block">
@@ -269,7 +276,7 @@ function DashboardRagCard({ onNavigate }) {
   );
 }
 
-function DashboardTab({ onNavigate, onOpenLogs }) {
+function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
   const [infoSubTab, setInfoSubTab] = useState('intro');
 
   const go = (tabId) => {
@@ -564,7 +571,11 @@ function DashboardTab({ onNavigate, onOpenLogs }) {
         </section>
 
         <div className="dashboard-bottom-grid">
-          <DashboardLlmProxyCard onNavigate={go} onOpenLogs={onOpenLogs} />
+          <DashboardLlmProxyCard
+            onNavigate={go}
+            onOpenLogs={onOpenLogs}
+            onOpenLlmProxyAutocomplete={onOpenLlmProxyAutocomplete}
+          />
           <DashboardClawProxyCard onNavigate={go} />
           <DashboardRagCard onNavigate={go} />
         </div>

@@ -384,17 +384,17 @@ def get_build_proxy_port() -> int:
         return 8087
 
 
-def get_v1_include_legacy_logical_models() -> bool:
+def get_v1_include_autocomplete_logical_model() -> bool:
     """
-    When True, GET /v1/models lists ChironAI-Worker (and autocomplete id when configured) plus builds.
-    When False, only user-defined build ids appear (build list may be empty).
+    When True, GET /v1/models lists ChironAI-Autocomplete when an Ollama autocomplete model is configured,
+    in addition to user-defined build ids.
     """
-    env = os.getenv("LLM_PROXY_V1_INCLUDE_LEGACY_MODELS", "").strip().lower()
+    env = os.getenv("LLM_PROXY_V1_INCLUDE_AUTOCOMPLETE_MODEL", "").strip().lower()
     if env in ("0", "false", "no", "off"):
         return False
     if env in ("1", "true", "yes", "on"):
         return True
-    return bool(LLM_PROXY_SERVER_CONFIG.get("v1_include_legacy_logical_models", False))
+    return bool(LLM_PROXY_SERVER_CONFIG.get("v1_include_autocomplete_logical_model", True))
 
 
 def get_clawcode_enabled() -> bool:

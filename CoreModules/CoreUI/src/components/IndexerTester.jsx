@@ -9,6 +9,7 @@ import {
   detectBatchEvalPatterns,
   getModels,
 } from '../services/api';
+import { isLogicalRagModelId } from '../constants/llmProxyModels';
 import '../styles/components/IndexerTester.css';
 
 function computeIndexerDiff(sourceText, processedText) {
@@ -222,9 +223,7 @@ function IndexerTester() {
         setLlmModels(models);
         if (models.length > 0 && !llmSelectedModel) {
           const preferred =
-            models.find((m) => m.id === 'ChironAI-Worker') ||
-            models.find((m) => m.id === 'rag-ollama') ||
-            models[0];
+            models.find((m) => m.id && !isLogicalRagModelId(m.id)) || models[0];
           setLlmSelectedModel(preferred.id || preferred.name || '');
         }
       })

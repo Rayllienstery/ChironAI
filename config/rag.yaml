@@ -10,7 +10,7 @@
 ## - top_k: number of candidates per vector search.
 ## - confidence_threshold: minimal score to treat RAG as “confirmed”.
 ## - log_preview_chars: how many characters of answer/context to log.
-## - model_id: OpenAI-compatible model id exposed by rag_proxy.
+## - model_id: Deprecated placeholder; use OLLAMA_CHAT_MODEL / ollama.chat_model for default chat tag.
 ## - reasoning_level_models: substrings of model names that support reasoning levels.
 
 rag:
@@ -22,7 +22,7 @@ rag:
   top_k: 4
   confidence_threshold: 0.75
   log_preview_chars: 800
-  model_id: "ChironAI-Worker"
+  model_id: ""
   reasoning_level_models:
     - "gpt-oss"
     - "gpt-oss-20b"

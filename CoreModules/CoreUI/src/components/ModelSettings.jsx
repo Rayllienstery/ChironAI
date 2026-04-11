@@ -114,7 +114,7 @@ function ModelSettings({
       if (m && modelIds.length > 0 && !modelInList) {
         issues.push(`Model: saved value "${m}" is not in the current Ollama list — pick an available model.`);
       } else {
-        issues.push('Model: select a concrete Ollama model (not ChironAI-Worker).');
+        issues.push('Model: select a concrete Ollama model (not a legacy logical id).');
       }
     }
 

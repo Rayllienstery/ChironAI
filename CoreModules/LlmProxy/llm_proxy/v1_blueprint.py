@@ -16,12 +16,11 @@ from llm_proxy.anthropic_compat import (
 )
 from llm_proxy.chat_completions import run_chat_completions
 from llm_proxy.completions_generate import run_legacy_completions_via_ollama_generate
-from llm_proxy.config import RAG_MODEL_ID
 from llm_proxy.external_ingest import run_external_docs_ingest
 from llm_proxy.ollama_upstream import forward_ollama_api
 from llm_proxy.workspace import set_workspace_root
 
-from config import get_v1_include_legacy_logical_models
+from config import get_v1_include_autocomplete_logical_model
 
 if TYPE_CHECKING:
     from llm_proxy.contracts import LlmProxyWiring
@@ -80,11 +79,10 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
     @bp.route("/v1/models", methods=["GET"])
     def list_models():
         build_rows = _openai_build_model_rows(wiring)
-        include_legacy = get_v1_include_legacy_logical_models()
+        include_ac = get_v1_include_autocomplete_logical_model()
         if wants_anthropic_models_list(request.headers):
             ids: list[str] = []
-            if include_legacy:
-                ids.append(str(wiring.runtime.rag_model_logical_id))
+            if include_ac:
                 try:
                     if wiring.get_autocomplete_ollama_model():
                         ids.append(str(wiring.runtime.autocomplete_model_logical_id))
@@ -94,15 +92,7 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
             return jsonify(anthropic_models_list_payload(ids))
 
         data: list[dict[str, object]] = []
-        if include_legacy:
-            data.append(
-                {
-                    "id": wiring.runtime.rag_model_logical_id,
-                    "object": "model",
-                    "created": 0,
-                    "owned_by": "local",
-                }
-            )
+        if include_ac:
             try:
                 if wiring.get_autocomplete_ollama_model():
                     data.append(
@@ -216,4 +206,4 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
     return bp
 
 
-__all__ = ["create_v1_blueprint", "RAG_MODEL_ID"]
+__all__ = ["create_v1_blueprint"]

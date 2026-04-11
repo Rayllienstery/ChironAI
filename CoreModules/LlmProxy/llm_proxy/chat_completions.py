@@ -24,7 +24,6 @@ from infrastructure.ollama.model_capabilities import (
     chat_error_suggests_no_tools,
     get_cached_ollama_capabilities,
 )
-from llm_proxy.config import RAG_MODEL_ID, is_rag_logical_model_id
 from llm_proxy.contracts import LlmProxyWiring
 from llm_proxy.tool_helpers import (
     _build_tool_arguments,
@@ -45,10 +44,6 @@ from llm_proxy.tool_helpers import (
 )
 
 _RAG_LOG = logging.getLogger("llm_proxy")
-
-
-def _is_rag_logical_model_id(requested: str, rag_logical_id: str) -> bool:
-    return is_rag_logical_model_id(requested, rag_logical_id)
 
 
 def _log_rag_error(stage: str, error: Exception) -> None:
@@ -308,7 +303,28 @@ def run_chat_completions(
         proxy_model_setting = str(proxy_settings.get("model") or "").strip()
 
     stream = body.get("stream", False)
-    requested_model = body.get("model") or RAG_MODEL_ID
+    raw_model = body.get("model")
+    if raw_model is None or not str(raw_model).strip():
+        w.set_proxy_status(w.status_idle)
+        return jsonify(
+            {
+                "error": (
+                    "model is required: use an LLM Proxy build id, a concrete Ollama model tag, "
+                    "or ChironAI-Autocomplete when autocomplete is configured."
+                ),
+            }
+        ), 400
+    requested_model = str(raw_model).strip()
+    _legacy_worker_ids = frozenset({"ChironAI-Worker", "rag-ollama"})
+    if requested_model in _legacy_worker_ids:
+        w.set_proxy_status(w.status_idle)
+        return jsonify(
+            {
+                "error": (
+                    "Legacy RAG model ids are removed; use an LLM Proxy build id or a concrete Ollama model tag."
+                ),
+            }
+        ), 400
     rt = w.runtime
 
     build_extra_options: dict[str, Any] = {}
@@ -358,9 +374,6 @@ def run_chat_completions(
         _rl_b = str(active_build.get("reasoning_level") or "").strip()
         if _rl_b and not body.get("reasoning_level") and not body.get("reasoning"):
             body["reasoning_level"] = _rl_b
-
-    def _worker_style_pipeline(rm: str) -> bool:
-        return _is_rag_logical_model_id(rm, rt.rag_model_logical_id) or dumb_build_pipeline
 
     autocomplete_id = rt.autocomplete_model_logical_id
     is_autocomplete = requested_model == autocomplete_id
@@ -461,7 +474,6 @@ def run_chat_completions(
     rag_prompt_file_exists = w.rag_prompt_file_exists
 
     proxy_prompt_name_required: str | None = None
-    proxy_ollama_for_logical_id: str | None = None
     if system_prefix is None:
         _pn = str(proxy_settings.get("prompt_name") or "").strip()
         if not _pn or not rag_prompt_file_exists(_pn):
@@ -470,26 +482,19 @@ def run_chat_completions(
                 {
                     "error": (
                         "LLM Proxy is not configured: choose a valid Prompt template in WebUI "
-                        "(LLM Proxy → Model Settings). The file prompts/<name>.md must exist."
+                        "(LLM Proxy → builds or saved proxy settings). The file prompts/<name>.md must exist."
                     ),
                     "detail": f"prompt_name={_pn!r}" if _pn else "prompt_name is empty",
                 }
             ), 400
         proxy_prompt_name_required = _pn
-        if _worker_style_pipeline(requested_model):
-            if not proxy_model_setting or is_rag_logical_model_id(
-                proxy_model_setting.strip(), rt.rag_model_logical_id
-            ):
-                w.set_proxy_status(w.status_idle)
-                return jsonify(
-                    {
-                        "error": (
-                            "LLM Proxy is not configured: choose a concrete Ollama model in WebUI "
-                            f"(LLM Proxy → Model Settings), not the logical id ({rt.rag_model_logical_id})."
-                        ),
-                    }
-                ), 400
-            proxy_ollama_for_logical_id = proxy_model_setting
+        if dumb_build_pipeline and not proxy_model_setting:
+            w.set_proxy_status(w.status_idle)
+            return jsonify(
+                {
+                    "error": "Dumb build is missing ollama_model; edit the build in LLM Proxy (builds).",
+                }
+            ), 400
 
     last_user = w.last_user_content(messages)
     user_query = last_user  # Store for logging
@@ -519,8 +524,8 @@ def run_chat_completions(
     effective_base_rerank_client = rerank_client
     if is_autocomplete:
         effective_ollama_model = proxy_autocomplete_ollama or ""
-    elif _worker_style_pipeline(requested_model):
-        effective_ollama_model = proxy_ollama_for_logical_id or ollama_model
+    elif dumb_build_pipeline:
+        effective_ollama_model = proxy_model_setting or ollama_model
     else:
         effective_ollama_model = requested_model
     reasoning_level = w.determine_reasoning_level(
@@ -529,9 +534,7 @@ def run_chat_completions(
     reasoning_for_prompt = reasoning_level
 
     actual_model = (
-        effective_ollama_model
-        if _worker_style_pipeline(requested_model) or is_autocomplete
-        else requested_model
+        effective_ollama_model if dumb_build_pipeline or is_autocomplete else requested_model
     )
 
     trace["request"] = {
@@ -663,10 +666,10 @@ def run_chat_completions(
         effective_rag_repo = req_deps.rag_repo
         effective_embed_provider = req_deps.embed_provider
         effective_base_rerank_client = req_deps.rerank_client
+        if dumb_build_pipeline and proxy_model_setting:
+            effective_ollama_model = proxy_model_setting
         actual_model = (
-            effective_ollama_model
-            if _worker_style_pipeline(requested_model)
-            else requested_model
+            effective_ollama_model if dumb_build_pipeline or is_autocomplete else requested_model
         )
         trace["request"]["actual_model"] = actual_model
         trace["request"]["collection_name"] = request_collection
@@ -674,14 +677,12 @@ def run_chat_completions(
     else:
         trace["request"]["collection_source"] = "default"
 
-    if proxy_ollama_for_logical_id and not is_autocomplete:
-        effective_ollama_model = proxy_ollama_for_logical_id
     if is_autocomplete:
         effective_ollama_model = proxy_autocomplete_ollama or effective_ollama_model
+    if dumb_build_pipeline and proxy_model_setting:
+        effective_ollama_model = proxy_model_setting
     actual_model = (
-        effective_ollama_model
-        if _worker_style_pipeline(requested_model) or is_autocomplete
-        else requested_model
+        effective_ollama_model if dumb_build_pipeline or is_autocomplete else requested_model
     )
     trace["request"]["actual_model"] = actual_model
 
@@ -1045,9 +1046,6 @@ def run_chat_completions(
             native_tools=use_native_tools,
             web_supplement=web_supplement_text,
         )
-        # Ensure use_model is not a logical id — use resolved Ollama tag
-        if is_rag_logical_model_id(use_model, rt.rag_model_logical_id):
-            use_model = effective_ollama_model
         if use_model == autocomplete_id:
             use_model = effective_ollama_model
 

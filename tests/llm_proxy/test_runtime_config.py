@@ -1,19 +1,18 @@
 """Unit tests for llm_proxy.config."""
 
-from __future__ import annotations
-
-from llm_proxy.config import LlmProxyRuntimeConfig, RAG_MODEL_ID, is_rag_logical_model_id
+from llm_proxy.config import AUTOCOMPLETE_MODEL_ID, LlmProxyRuntimeConfig
 
 
-def test_runtime_config_defaults() -> None:
+def test_llm_proxy_runtime_config_defaults() -> None:
     c = LlmProxyRuntimeConfig()
-    assert c.rag_model_logical_id == RAG_MODEL_ID
+    assert c.autocomplete_model_logical_id == AUTOCOMPLETE_MODEL_ID
 
 
-def test_rag_model_id_constant() -> None:
-    assert RAG_MODEL_ID == "ChironAI-Worker"
+def test_autocomplete_model_id_constant() -> None:
+    assert AUTOCOMPLETE_MODEL_ID == "ChironAI-Autocomplete"
 
 
-def test_legacy_rag_ollama_alias() -> None:
-    rt = LlmProxyRuntimeConfig()
-    assert is_rag_logical_model_id("rag-ollama", rt.rag_model_logical_id)
+def test_llm_proxy_runtime_config_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("LLM_PROXY_AUTOCOMPLETE_MODEL_ID", "my-ac-id")
+    rt = LlmProxyRuntimeConfig.from_env()
+    assert rt.autocomplete_model_logical_id == "my-ac-id"

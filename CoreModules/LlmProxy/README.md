@@ -5,14 +5,14 @@ Installable package **`llm-proxy`**: **OpenAI-** and **Anthropic Messages–** c
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/v1` | API metadata |
-| GET | `/v1/models` | **OpenAI clients:** `object`/`data` list of logical models (RAG + optional autocomplete). **Anthropic clients:** send header `anthropic-version` (any non-empty value, e.g. `2023-06-01`) for Anthropic-shaped `data` / `first_id` / `has_more`. |
+| GET | `/v1/models` | **OpenAI clients:** `object`/`data` list of **build ids** plus optional **ChironAI-Autocomplete** when configured. **Anthropic clients:** send header `anthropic-version` (any non-empty value, e.g. `2023-06-01`) for Anthropic-shaped `data` / `first_id` / `has_more`. |
 | POST | `/v1/messages` | **Anthropic Messages API** — translated to the same pipeline as `POST /v1/chat/completions` (RAG, tools, streaming). Empty `x-api-key` is accepted for local use (e.g. Claude Code + Ollama-style env). |
 | POST | `/v1/chat/completions` | Chat with optional RAG, tools, streaming |
 | POST | `/v1/completions` | OpenAI legacy completions (`choices[].text`) — implemented as transparent **`POST …/api/generate`** upstream (same as raw Ollama). No RAG, no WebUI prompt template, no web supplement. Optional `LLM_PROXY_COMPLETIONS_RAW` (`true` by default: sets Ollama `raw`). Zed **edit prediction** (`open_ai_compatible_api`): use `http://<host>:<port>/v1/completions`. |
 | POST | `/v1/files/apply-edit` | Apply a line/column range edit in the workspace |
 | POST | `/v1/external-docs/ingest` | Ingest an external-docs source (host-dependent) |
 
-**Build presets:** user-defined entries in app_settings (`llm_proxy_builds`) appear in **GET `/v1/models`** on the main server port and on the optional **build proxy** port (default **8087**, `config/server.yaml` → `build_proxy`). Use each build’s `id` as `model` in **POST `/v1/chat/completions`** (dumb = same RAG/Ollama pipeline as the worker path; claw = HTTP forward to ClawCode with that build’s **`ollama_model`** tag as the request `model`). Legacy logical ids (`ChironAI-Worker`, autocomplete) can be hidden via `llm_proxy.v1_include_legacy_logical_models: false` or env `LLM_PROXY_V1_INCLUDE_LEGACY_MODELS=0`.
+**Build presets:** user-defined entries in app_settings (`llm_proxy_builds`) appear in **GET `/v1/models`** on the main server port and on the optional **build proxy** port (default **8087**, `config/server.yaml` → `build_proxy`). Use each build’s `id` as `model` in **POST `/v1/chat/completions`** (dumb = RAG + Ollama pipeline; claw = HTTP forward to ClawCode). You may also pass a **concrete Ollama tag** as `model` for passthrough chat. **ChironAI-Worker** / **rag-ollama** are rejected. Optional **ChironAI-Autocomplete** in `/v1/models` is controlled by `llm_proxy.v1_include_autocomplete_logical_model` (default true) or env `LLM_PROXY_V1_INCLUDE_AUTOCOMPLETE_MODEL=0`.
 
 Implementation lives inside `llm_proxy/`; **host-specific** services (settings DB, RAG use cases, Ollama client, prompts) are injected via **`LlmProxyWiring`**—see [`api/http/llm_proxy_wiring.py`](../../api/http/llm_proxy_wiring.py) in the main repo.
 
@@ -30,11 +30,10 @@ Pytest adds `CoreModules/LlmProxy` to `pythonpath` in the root [`pyproject.toml`
 
 - **`create_v1_blueprint(wiring: LlmProxyWiring) -> flask.Blueprint`** — register on the Flask app with `url_prefix=""` so paths stay `/v1/...`.
 - **`LlmProxyWiring`** — frozen dataclass of callables and config (`contracts.py`).
-- **`LlmProxyRuntimeConfig`** — module-owned defaults (logical model ids); override via environment:
+- **`LlmProxyRuntimeConfig`** — module-owned defaults (autocomplete logical id); override via environment:
 
 | Variable | Purpose |
 |----------|---------|
-| `LLM_PROXY_RAG_MODEL_ID` | Logical model id for RAG chat in `/v1/models` (default `ChironAI-Worker`; legacy alias `rag-ollama` still accepted in requests) |
 | `LLM_PROXY_AUTOCOMPLETE_MODEL_ID` | Logical id for fast inline completion (default `ChironAI-Autocomplete`) |
 | `LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL` | Concrete Ollama tag for autocomplete (overrides WebUI `proxy_autocomplete_model` when set) |
 | `LLM_PROXY_COMPLETIONS_RAW` | If not `0`/`false`/`no`, `/v1/completions` sets Ollama `raw: true` on `/api/generate` (default: on) |
@@ -49,10 +48,10 @@ Point Claude Code at this host (same port as the main Flask app), e.g.:
 export ANTHROPIC_BASE_URL=http://127.0.0.1:8080
 export ANTHROPIC_AUTH_TOKEN=ollama
 export ANTHROPIC_API_KEY=""
-claude --model ChironAI-Worker
+claude --model your-build-id
 ```
 
-Use your configured logical RAG model id or a concrete Ollama tag as `--model`. Streaming uses Anthropic SSE synthesized from the internal OpenAI-shaped stream.
+Use a **build id** from `GET /v1/models` or a concrete Ollama tag as `--model`. Streaming uses Anthropic SSE synthesized from the internal OpenAI-shaped stream.
 
 **Known limitations:** exotic Anthropic content blocks (images, PDFs, etc.) may not round-trip; agent-style **text** and **tool_use** / **tool_result** are supported. See `llm_proxy/anthropic_compat.py`.
 

@@ -1,4 +1,4 @@
-"""Model Tester uses saved proxy_model when request sends logical RAG id (same as /api/webui/chat)."""
+"""Model Tester uses saved proxy_model when request sends a legacy worker id (not a concrete Ollama tag)."""
 
 from __future__ import annotations
 

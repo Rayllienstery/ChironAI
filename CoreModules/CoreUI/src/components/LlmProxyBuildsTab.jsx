@@ -7,8 +7,16 @@ import {
   previewLlmProxyBuildModel,
   getModelSettings,
 } from '../services/api';
+import LlmProxyAutocompletePanel from './LlmProxyAutocompletePanel';
 import '../styles/components/DashboardTab.css';
 import '../styles/components/SettingsTab.css';
+import '../styles/components/CoreUIPillTabs.css';
+import '../styles/components/LlmProxyTab.css';
+
+const SECTION_TABS = [
+  { id: 'builds', label: 'Builds' },
+  { id: 'autocomplete', label: 'Autocomplete' },
+];
 
 const DEFAULT_CLAW_STEPS = 40;
 
@@ -137,7 +145,8 @@ function draftToPayload(draft) {
   return o;
 }
 
-function LlmProxyBuildsTab() {
+function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
+  const [sectionTab, setSectionTab] = useState('builds');
   const [builds, setBuilds] = useState([]);
   const [urls, setUrls] = useState({ main: '', build_proxy: '' });
   const [loading, setLoading] = useState(true);
@@ -178,6 +187,14 @@ function LlmProxyBuildsTab() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (focusSubTab !== 'autocomplete') return;
+    setSectionTab('autocomplete');
+    if (typeof onFocusSubTabConsumed === 'function') {
+      onFocusSubTabConsumed();
+    }
+  }, [focusSubTab, onFocusSubTabConsumed]);
 
   const detailBuild = useMemo(
     () => builds.find((x) => x.id === detailId) || null,
@@ -316,15 +333,38 @@ function LlmProxyBuildsTab() {
 
   if (loading) {
     return (
-      <div className="settings-tab settings-tab--fullwidth">
+      <div className="settings-tab settings-tab--fullwidth llm-proxy-tab">
         <p className="settings-intro">Loading builds…</p>
       </div>
     );
   }
 
   return (
-    <div className="settings-tab settings-tab--fullwidth">
-      <h2>LLM Proxy (builds)</h2>
+    <div className="settings-tab settings-tab--fullwidth llm-proxy-tab">
+      <div className="llm-proxy-header">
+        <div className="llm-proxy-header-row">
+          <h2>LLM Proxy</h2>
+        </div>
+        <div className="coreui-pill-tablist" role="tablist" aria-label="LLM Proxy sections">
+          {SECTION_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`coreui-pill-tab ${sectionTab === tab.id ? 'coreui-pill-tab-active' : ''}`}
+              role="tab"
+              aria-selected={sectionTab === tab.id}
+              onClick={() => setSectionTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {sectionTab === 'autocomplete' && <LlmProxyAutocompletePanel />}
+
+      {sectionTab === 'builds' && (
+        <>
       <p className="settings-intro">
         Each build is a stable <code>model</code> id for <code>POST /v1/chat/completions</code>. The same builds appear
         on <code>GET /v1/models</code> on the main server and on the build proxy port (default 8087).
@@ -448,6 +488,11 @@ function LlmProxyBuildsTab() {
               ))}
             </div>
           )}
+          <p className="settings-intro" style={{ marginBottom: 12 }}>
+            Use the <code>id</code> field as <code>model</code> in <code>POST /v1/chat/completions</code> (or{' '}
+            <code>POST /v1/messages</code>) on the proxy <strong>base URL</strong> — the same host as <code>Main:</code> under
+            OpenAI list endpoints above (no separate worker service).
+          </p>
           <pre
             style={{
               fontSize: 12,
@@ -661,6 +706,8 @@ function LlmProxyBuildsTab() {
             </div>
           </div>
         </CoreUiModal>
+      )}
+        </>
       )}
     </div>
   );

@@ -174,7 +174,7 @@ from domain.services.prompt_builder import (
     last_user_content,
     build_system_content,
 )
-from llm_proxy.config import LlmProxyRuntimeConfig, RAG_MODEL_ID, is_rag_logical_model
+from llm_proxy.config import AUTOCOMPLETE_MODEL_ID
 
 from chironai_rag.bindings import ConsumerRagBindings
 from chironai_rag.consumers import RAG_COLLECTION_APP_SETTING, RagConsumer
@@ -278,6 +278,14 @@ _WEBUI_LOG = logging.getLogger("webui")
 _ERROR_LOG = get_webui_error_logger()
 
 webui_bp = Blueprint("webui", __name__, url_prefix="/api/webui")
+
+_LEGACY_WORKER_MODEL_IDS = frozenset({"ChironAI-Worker", "rag-ollama"})
+
+
+def _is_legacy_worker_model_id(s: object) -> bool:
+    t = (s if isinstance(s, str) else str(s or "")).strip()
+    return t in _LEGACY_WORKER_MODEL_IDS
+
 
 _SERVICE_STATUS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _SERVICE_STATUS_CACHE_LOCK = threading.Lock()
@@ -409,13 +417,17 @@ def get_models() -> Any:
                 "name": model_name,
                 "description": f"Ollama chat model: {model_name} (from config)",
             })
-        
-        # Always add RAG proxy model as first option
-        models_list.insert(0, {
-            "id": RAG_MODEL_ID,
-            "name": RAG_MODEL_ID,
-            "description": "RAG-enabled Ollama model (proxy)",
-        })
+
+        try:
+            settings_repo = get_settings_repository()
+            if (settings_repo.get_app_setting("proxy_autocomplete_model") or "").strip():
+                models_list.insert(0, {
+                    "id": AUTOCOMPLETE_MODEL_ID,
+                    "name": AUTOCOMPLETE_MODEL_ID,
+                    "description": "Autocomplete (maps to LLM Proxy → Autocomplete Ollama model)",
+                })
+        except Exception:
+            pass
 
         return jsonify({"models": models_list})
     except Exception as e:
@@ -1036,7 +1048,6 @@ def webui_chat() -> Any:
     try:
         body = request.get_json(force=True, silent=True) or {}
         messages = body.get("messages") or []
-        requested_model = body.get("model") or RAG_MODEL_ID
         temperature = body.get("temperature")
         top_p = body.get("top_p")
         reasoning_level = body.get("reasoning_level")
@@ -1057,6 +1068,35 @@ def webui_chat() -> Any:
         except Exception:
             pass
 
+        stored_model = (settings_repo.get_app_setting("proxy_model") or "").strip()
+        if not stored_model and proxy_settings.get("model"):
+            stored_model = str(proxy_settings.get("model") or "").strip()
+        raw_req_model = body.get("model")
+        if raw_req_model is not None and str(raw_req_model).strip():
+            requested_model = str(raw_req_model).strip()
+        elif stored_model:
+            requested_model = stored_model
+        else:
+            return jsonify(
+                {"error": "model is required: pass an Ollama tag or choose a default in app settings."}
+            ), 400
+        if _is_legacy_worker_model_id(requested_model):
+            return jsonify(
+                {
+                    "error": (
+                        "Legacy model id is no longer supported; use an LLM Proxy build id or a concrete Ollama model tag."
+                    ),
+                }
+            ), 400
+        if requested_model == AUTOCOMPLETE_MODEL_ID:
+            return jsonify(
+                {
+                    "error": (
+                        "ChironAI-Autocomplete is for /v1/completions only; use a chat model or build id here."
+                    ),
+                }
+            ), 400
+
         prompt_name = (body.get("prompt_name") or proxy_settings.get("prompt_name") or "")
         if isinstance(prompt_name, str):
             prompt_name = prompt_name.strip()
@@ -1069,21 +1109,6 @@ def webui_chat() -> Any:
                     "detail": f"prompt_name={prompt_name!r}" if prompt_name else "prompt_name is empty",
                 }
             ), 400
-
-        stored_model = (settings_repo.get_app_setting("proxy_model") or "").strip()
-        if not stored_model and proxy_settings.get("model"):
-            stored_model = str(proxy_settings.get("model") or "").strip()
-        if is_rag_logical_model(requested_model):
-            if not stored_model or is_rag_logical_model(stored_model):
-                return jsonify(
-                    {
-                        "error": (
-                            f"Choose a concrete Ollama model in LLM Proxy settings "
-                            f"(not the logical RAG id {RAG_MODEL_ID})."
-                        ),
-                    }
-                ), 400
-            requested_model = stored_model
 
         # Get collection name from request or settings — explicit saved collection or error
         collection_name = (body.get("collection_name") or "").strip() or None
@@ -1151,7 +1176,7 @@ def webui_chat() -> Any:
         
         last_user = last_user_content(messages)
         context_length = len(last_user.split())
-        ollama_model = requested_model if not is_rag_logical_model(requested_model) else params.model_name
+        ollama_model = requested_model
 
         # Determine reasoning level
         if not reasoning_level:
@@ -1217,9 +1242,6 @@ def webui_chat() -> Any:
             trigger_threshold=trigger_threshold,
             web_supplement=web_sup_text,
         )
-        # Ensure use_model is not a logical RAG id — use config model if needed
-        if is_rag_logical_model(use_model):
-            use_model = params.model_name
 
         # Add code_only instruction if requested
         if code_only:
@@ -1371,7 +1393,7 @@ def get_model_settings() -> Any:
             q_names = set()
         rc = str(out.get("rag_collection") or "").strip()
 
-        out["model_missing"] = (not out["model"]) or is_rag_logical_model(out["model"])
+        out["model_missing"] = (not out["model"]) or _is_legacy_worker_model_id(out["model"])
         out["prompt_missing"] = (not pn) or (not rag_prompt_file_exists(pn)) or is_readme_name(pn)
         out["collection_missing"] = bool(rc) and bool(q_names) and rc not in q_names
 
@@ -1383,29 +1405,8 @@ def get_model_settings() -> Any:
 
 @webui_bp.route("/llm-proxy/status", methods=["GET"])
 def llm_proxy_status() -> Any:
-    """Base URL and effective LLM Proxy settings for WebUI Status card (parity with ClawCode /status)."""
+    """Base URL for WebUI Dumb Proxy Status card (per-build Ollama tags live on builds, not here)."""
     try:
-        settings_repo = get_settings_repository()
-        stored_model = (settings_repo.get_app_setting("proxy_model") or "").strip()
-        stored_settings_json = settings_repo.get_app_setting("proxy_settings")
-        stored_rag_col = (settings_repo.get_app_setting(RAG_COLLECTION_APP_SETTING) or "").strip()
-        merged: dict[str, Any] = {"model": stored_model, "rag_collection": stored_rag_col}
-        if stored_settings_json:
-            try:
-                blob = json.loads(stored_settings_json)
-                if isinstance(blob, dict):
-                    for key, val in blob.items():
-                        if key in merged:
-                            merged[key] = val
-                        elif key == "model" and not merged["model"]:
-                            merged["model"] = str(val or "").strip()
-            except json.JSONDecodeError:
-                pass
-        ollama_model = str(merged.get("model") or "").strip()
-        rag_merged = str(merged.get("rag_collection") or "").strip()
-        config_rag = get_qdrant_collection_name()
-        effective_rag = rag_merged or config_rag
-        rt = LlmProxyRuntimeConfig.from_env()
         bind_host = get_server_host()
         display_host = "127.0.0.1" if bind_host == "0.0.0.0" else bind_host
         port = get_server_port()
@@ -1413,34 +1414,8 @@ def llm_proxy_status() -> Any:
         payload: dict[str, Any] = {
             "enabled": True,
             "base_url": base_url,
-            "logical_model_id": rt.rag_model_logical_id,
-            "default_ollama_model": ollama_model or "unknown",
-            "rag_collection": effective_rag,
-            "stored_rag_collection": rag_merged,
-            "config_default_rag_collection": config_rag,
             "health": f"{base_url}/health",
-            "docker": None,
-            "qdrant": None,
-            "infrastructure_error": None,
         }
-        try:
-            ss = _webui_service_starter()
-            st = ss.status()
-            d = st.get("docker") or {}
-            payload["docker"] = {
-                "cli_available": bool(d.get("cli_available")),
-                "engine_available": bool(d.get("engine_available")),
-                "error": d.get("error"),
-            }
-            q = st.get("qdrant") or {}
-            payload["qdrant"] = {
-                "reachable": bool(q.get("running")),
-                "container_running": bool(q.get("container_running")),
-                "url": q.get("url"),
-                "error": q.get("error"),
-            }
-        except Exception as infra_e:
-            payload["infrastructure_error"] = str(infra_e)
         return jsonify(payload)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.llm_proxy_status", exc_info=True)
@@ -1755,13 +1730,13 @@ def tester_chat() -> Any:
         chat_client = deps.chat_client
         # Same resolution as /api/webui/chat: concrete Ollama tag from LLM Proxy settings, not only env.
         model_req = (str(model).strip() if model is not None else "")
-        if model_req and not is_rag_logical_model(model_req):
+        if model_req and not _is_legacy_worker_model_id(model_req):
             ollama_model = model_req
-        elif stored_proxy_model and not is_rag_logical_model(stored_proxy_model):
+        elif stored_proxy_model and not _is_legacy_worker_model_id(stored_proxy_model):
             ollama_model = stored_proxy_model
         else:
             ollama_model = params.model_name
-        if is_rag_logical_model(ollama_model):
+        if _is_legacy_worker_model_id(ollama_model):
             ollama_model = params.model_name
         
         last_user = last_user_content(messages)
@@ -2049,14 +2024,12 @@ def tester_chat() -> Any:
                 trigger_threshold=trigger_threshold,
                 web_supplement=web_sup_text_tester,
             )
-            # Ensure use_model is not a logical RAG id — use config model if needed
-            if is_rag_logical_model(use_model):
+            if _is_legacy_worker_model_id(use_model):
                 use_model = params.model_name
         else:
             # Direct chat without RAG
             use_model = ollama_model
-            # Ensure use_model is not a logical RAG id — use config model if needed
-            if is_rag_logical_model(use_model):
+            if _is_legacy_worker_model_id(use_model):
                 use_model = params.model_name
             ollama_messages = messages.copy()
             
@@ -2285,7 +2258,7 @@ def tester_prompt_preview() -> Any:
         try:
             model_name = get_ollama_chat_model()
         except Exception:
-            model_name = RAG_MODEL_ID
+            model_name = ""
 
         if use_rag:
             context_block = (
@@ -4259,7 +4232,7 @@ def _run_one_indexer_evaluate(
             + "\n\n### REMOVED CONTENT\n\n"
             + removed_content
         )
-    use_model = model if model and not is_rag_logical_model(model) else params.model_name
+    use_model = model if model and not _is_legacy_worker_model_id(model) else params.model_name
     if not use_model:
         raise ValueError("No chat model configured")
     system_prompt = _get_indexer_evaluate_system_prompt()
@@ -4336,7 +4309,7 @@ def _batch_eval_worker(job_id: str, source_id: str, model: str | None, count: in
                 _batch_eval_jobs[job_id]["error"] = str(e)
         return
     chat_client = deps.chat_client
-    use_model = model if model and not is_rag_logical_model(model) else (params.model_name if params else None)
+    use_model = model if model and not _is_legacy_worker_model_id(model) else (params.model_name if params else None)
     if not use_model:
         with _batch_eval_lock:
             if job_id in _batch_eval_jobs:
