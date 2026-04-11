@@ -65,6 +65,10 @@ venv.bak/
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.example
+!.env.sample
+!.env.template
 *.key
 *.pem
 secrets.yaml
@@ -108,6 +112,25 @@ WebUI/last_collection.txt
 *.db
 *.sqlite
 *.sqlite3
+# SQLite sidecar files (WAL / shared memory / rollback journal)
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
+# DB dumps and local backups (tracked *.sql schemas/migrations stay visible)
+*.dump
+*.sql.dump
+*.sql.gz
+*.bak
+*.backup
+# DuckDB
+*.duckdb
+*.duckdb.wal
 
 # Test coverage
 .coverage

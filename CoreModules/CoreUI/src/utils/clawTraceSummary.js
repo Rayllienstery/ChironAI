@@ -148,3 +148,145 @@ export function summarizeClawTraceMeta(meta) {
     final: meta.final === true,
   };
 }
+
+/**
+ * @typedef {{ key: string, label: string, title?: string, variant: 'tool' | 'rag' | 'skill' | 'client' | 'warn' }} ClawUsageCapsule
+ */
+
+/**
+ * Pills for live UI: model tool choices, executed RAG, skills, IDE pass-through.
+ * @param {Record<string, unknown> | null | undefined} trace
+ * @returns {{ capsules: ClawUsageCapsule[] }}
+ */
+export function getClawTraceUsageCapsules(trace) {
+  if (!trace || typeof trace !== 'object') {
+    return { capsules: [] };
+  }
+  const steps = safeArr(trace.steps);
+  /** @type {ClawUsageCapsule[]} */
+  const capsules = [];
+
+  const ragSteps = steps.filter((s) => s && s.kind === 'tool_rag');
+  const skillSteps = steps.filter((s) => s && s.kind === 'tool_skill');
+  const passSteps = steps.filter((s) => s && s.kind === 'tool_pass_through');
+  const unhandledSteps = steps.filter((s) => s && s.kind === 'tool_unhandled');
+  const modelCalls = steps.filter((s) => s && s.kind === 'model_call');
+
+  const hasRagExec = ragSteps.length > 0;
+  const hasSkillExec = skillSteps.length > 0;
+
+  const toolCounts = new Map();
+  for (const s of modelCalls) {
+    for (const tc of safeArr(s.tool_calls)) {
+      const n = tc && typeof tc.name === 'string' ? tc.name.trim() : '';
+      if (!n) continue;
+      if (hasRagExec && n === 'rag_query') continue;
+      if (hasSkillExec && n === 'load_skill') continue;
+      toolCounts.set(n, (toolCounts.get(n) || 0) + 1);
+    }
+  }
+
+  const toolNamesSorted = [...toolCounts.keys()].sort((a, b) => a.localeCompare(b));
+  for (const name of toolNamesSorted) {
+    const cnt = toolCounts.get(name) || 1;
+    const v = name === 'rag_query' ? 'rag' : name === 'load_skill' ? 'skill' : 'tool';
+    capsules.push({
+      key: `m-${name}`,
+      label: cnt > 1 ? `${name} ×${cnt}` : name,
+      title: cnt > 1 ? `Model requested ${name} (${cnt}×)` : `Model requested: ${name}`,
+      variant: v,
+    });
+  }
+
+  if (hasRagExec) {
+    const chunks = ragSteps.reduce((a, s) => a + num(s.chunks, 0), 0);
+    const failed = ragSteps.some((s) => s.ok === false);
+    const qs = ragSteps.map((s) => (typeof s.query === 'string' ? s.query.trim() : '')).filter(Boolean);
+    const titleLines = qs.map((q) => (q.length > 220 ? `${q.slice(0, 219)}…` : q));
+    capsules.push({
+      key: 'rag-exec',
+      label: failed && chunks === 0 ? 'RAG · error' : chunks ? `RAG · ${chunks} chunks` : 'RAG · done',
+      title:
+        titleLines.length > 0
+          ? titleLines.join('\n\n')
+          : failed
+            ? 'RAG step reported an error'
+            : 'Context retrieved via rag_query',
+      variant: failed ? 'warn' : 'rag',
+    });
+  }
+
+  const invocationsFromSteps = new Set(
+    skillSteps
+      .map((s) => {
+        const inv = typeof s.invocation === 'string' ? s.invocation.trim().toLowerCase() : '';
+        const sid = s.skill_id != null ? String(s.skill_id).trim().toLowerCase() : '';
+        return inv || sid;
+      })
+      .filter(Boolean),
+  );
+
+  const skillStepDedup = new Set();
+  for (const s of skillSteps) {
+    const inv = typeof s.invocation === 'string' ? s.invocation.trim() : '';
+    const sid = s.skill_id != null ? String(s.skill_id).trim() : '';
+    const dedupe = (inv || sid).toLowerCase() || `step-${s.step}`;
+    if (skillStepDedup.has(dedupe)) continue;
+    skillStepDedup.add(dedupe);
+    const labelBase = inv || sid || 'skill';
+    const ok = s.ok !== false;
+    const key = `sk-${dedupe.replace(/\s+/g, '-')}`;
+    capsules.push({
+      key,
+      label: ok ? (labelBase.length > 26 ? `${labelBase.slice(0, 25)}…` : labelBase) : 'Skill · error',
+      title: ok
+        ? `Skill loaded: ${inv || sid || 'unknown'}`
+        : `Skill error: ${s.error != null ? String(s.error).slice(0, 320) : 'failed'}`,
+      variant: ok ? 'skill' : 'warn',
+    });
+  }
+
+  const skillsMeta = trace.skills && typeof trace.skills === 'object' ? trace.skills : null;
+  const loadedMeta = skillsMeta && Array.isArray(skillsMeta.loaded_invocations) ? skillsMeta.loaded_invocations.map(String) : [];
+  for (const raw of loadedMeta) {
+    const t = raw.trim();
+    if (!t) continue;
+    if (invocationsFromSteps.has(t.toLowerCase())) continue;
+    const key = `skmeta-${t}`;
+    if (capsules.some((c) => c.key === key)) continue;
+    capsules.push({
+      key,
+      label: t.length > 26 ? `${t.slice(0, 25)}…` : t,
+      title: `Skill pack loaded: ${t}`,
+      variant: 'skill',
+    });
+  }
+
+  const clientSeen = new Set();
+  for (const s of passSteps) {
+    for (const n of safeArr(s.names)) {
+      const name = String(n).trim();
+      if (!name || clientSeen.has(name)) continue;
+      clientSeen.add(name);
+      capsules.push({
+        key: `cli-${name}`,
+        label: `IDE · ${name.length > 22 ? `${name.slice(0, 21)}…` : name}`,
+        title: `Returned to IDE for execution: ${name}`,
+        variant: 'client',
+      });
+    }
+  }
+
+  for (const s of unhandledSteps) {
+    const n = s.name != null ? String(s.name).trim() : '';
+    const nm = n || 'unknown';
+    capsules.push({
+      key: `uh-${nm}-${s.step}`,
+      label: `Not run · ${nm.length > 14 ? `${nm.slice(0, 13)}…` : nm}`,
+      title: typeof s.note === 'string' && s.note.trim() ? s.note.trim().slice(0, 400) : 'Tool not executed in ClawCode runtime',
+      variant: 'warn',
+    });
+  }
+
+  return { capsules };
+}

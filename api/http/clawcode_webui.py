@@ -221,7 +221,7 @@ def clawcode_vendor_versions():
 
     from clawcode.vendor_manager import (
         can_rollback,
-        list_version_shas,
+        list_version_entries,
         migrate_inactive_versions_to_backups,
         read_active,
         vendor_root,
@@ -233,7 +233,7 @@ def clawcode_vendor_versions():
     return jsonify(
         {
             "ok": True,
-            "versions": list_version_shas(root),
+            "versions": list_version_entries(root),
             "active": read_active(root),
             "can_rollback": can_rollback(root),
         }
@@ -271,6 +271,25 @@ def clawcode_vendor_rollback_previous():
 
     vc = get_clawcode_vendor_config()
     out = rollback_to_previous(_REPO_ROOT, vc["root_relative"])
+    code = 200 if out.get("ok") else 400
+    return jsonify(out), code
+
+
+@clawcode_bp.post("/vendor/rollback")
+def clawcode_vendor_rollback_sha():
+    """Body: {\"sha\": \"40-char hex\"} — activate that installed vendor tree."""
+    if not _ensure_clawcode_path():
+        return jsonify({"ok": False, "error": "clawcode unavailable"}), 400
+    body = request.get_json(silent=True) or {}
+    sha = body.get("sha")
+    if not isinstance(sha, str) or not sha.strip():
+        return jsonify({"ok": False, "error": "missing sha"}), 400
+    from config import get_clawcode_vendor_config
+
+    from clawcode.vendor_manager import rollback_to_sha
+
+    vc = get_clawcode_vendor_config()
+    out = rollback_to_sha(_REPO_ROOT, vc["root_relative"], sha.strip())
     code = 200 if out.get("ok") else 400
     return jsonify(out), code
 

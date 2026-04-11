@@ -40,11 +40,12 @@ export function NotificationCenterProvider({ sessionId, children }) {
     refreshPersisted();
   }, [refreshPersisted]);
 
-  const setLiveActivity = useCallback((id, source, node) => {
+  const setLiveActivity = useCallback((id, source, node, options) => {
     if (id == null || id === '') return;
+    const headerLeading = options && options.headerLeading != null ? options.headerLeading : null;
     setLiveMap((prev) => {
       const next = new Map(prev);
-      next.set(String(id), { source, node });
+      next.set(String(id), { source, node, headerLeading });
       return next;
     });
   }, []);

@@ -6,7 +6,12 @@ import {
   getPrompts,
   previewLlmProxyBuildModel,
   getModelSettings,
+  getPipelinePreview,
+  getRagModelSettings,
+  getClawCodeSkills,
 } from '../services/api';
+import { mergePipelineSnapshot } from '../hooks/useMergedPipelinePreview';
+import PipelineCiDiagram from './PipelineCiDiagram';
 import LlmProxyAutocompletePanel from './LlmProxyAutocompletePanel';
 import '../styles/components/DashboardTab.css';
 import '../styles/components/SettingsTab.css';
@@ -19,6 +24,38 @@ const SECTION_TABS = [
 ];
 
 const DEFAULT_CLAW_STEPS = 40;
+
+function mergeBuildDraftIntoPipelinePreview(snapshot, hybridSparse, rerankForRag, draft, clawSkillsToolAvailable) {
+  if (!snapshot || !draft) return null;
+  const base = mergePipelineSnapshot(snapshot, hybridSparse, rerankForRag);
+  const webOff = draft.web_enabled === false;
+  const env = base.env && typeof base.env === 'object' ? { ...base.env } : {};
+  if (webOff) {
+    env.ddg_news = false;
+    env.fetch_page = false;
+    env.wikipedia = false;
+  } else {
+    env.ddg_news = Boolean(draft.web_interaction_ddg_news) || Boolean(env.ddg_news);
+    env.fetch_page = Boolean(draft.web_interaction_fetch_page) || Boolean(env.fetch_page);
+    env.wikipedia = Boolean(draft.web_interaction_wikipedia) || Boolean(env.wikipedia);
+  }
+  return {
+    ...base,
+    env,
+    claw_build_pipeline_preview: true,
+    backend: String(draft.backend || 'dumb').toLowerCase(),
+    skills_enabled: draft.skills_enabled !== false,
+    claw_skills_tool_available: clawSkillsToolAvailable,
+    rag_collection_configured:
+      Boolean(draft.rag_enabled) &&
+      (Boolean(String(draft.rag_collection || '').trim()) || Boolean(base.rag_collection_configured)),
+    fetch_web_knowledge: webOff ? false : Boolean(draft.fetch_web_knowledge),
+    web_interaction_enabled: webOff ? false : Boolean(draft.web_interaction_enabled),
+    web_interaction_on_keywords: draft.web_interaction_on_keywords !== false,
+    web_interaction_on_low_confidence_framework:
+      draft.web_interaction_on_low_confidence_framework !== false,
+  };
+}
 
 function CoreUiModal({ title, onClose, children }) {
   const panelRef = useRef(null);
@@ -81,6 +118,7 @@ function emptyDraft() {
     ollama_model: '',
     prompt_name: '',
     rag_enabled: true,
+    skills_enabled: true,
     web_enabled: true,
     fetch_web_knowledge: false,
     web_interaction_enabled: false,
@@ -122,6 +160,7 @@ function draftToPayload(draft) {
   o.ollama_model = String(draft.ollama_model || '').trim();
   o.prompt_name = String(draft.prompt_name || '').trim();
   o.rag_enabled = Boolean(draft.rag_enabled);
+  o.skills_enabled = Boolean(draft.skills_enabled);
   o.web_enabled = Boolean(draft.web_enabled);
   o.fetch_web_knowledge = Boolean(draft.fetch_web_knowledge);
   o.web_interaction_enabled = Boolean(draft.web_interaction_enabled);
@@ -160,6 +199,10 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
   const [detailId, setDetailId] = useState(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [previewMsg, setPreviewMsg] = useState(null);
+  const [buildModalPipelineSnap, setBuildModalPipelineSnap] = useState(null);
+  const [buildModalHybrid, setBuildModalHybrid] = useState(true);
+  const [buildModalRerank, setBuildModalRerank] = useState(false);
+  const [buildModalClawSkillsAvail, setBuildModalClawSkillsAvail] = useState(false);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -195,6 +238,58 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
       onFocusSubTabConsumed();
     }
   }, [focusSubTab, onFocusSubTabConsumed]);
+
+  const buildModalOpen = Boolean(draft);
+  const buildModalBackendKey = draft ? String(draft.backend || '').toLowerCase() : '';
+
+  useEffect(() => {
+    if (!draft) {
+      setBuildModalPipelineSnap(null);
+      setBuildModalClawSkillsAvail(false);
+      return undefined;
+    }
+    let cancelled = false;
+    const backendLower = String(draft.backend || '').toLowerCase();
+    (async () => {
+      try {
+        const [p, r] = await Promise.all([getPipelinePreview(), getRagModelSettings()]);
+        if (cancelled) return;
+        setBuildModalPipelineSnap(p);
+        setBuildModalHybrid(r?.hybrid_sparse_enabled !== false);
+        setBuildModalRerank(Boolean(r?.rerank_for_rag));
+        let clawOk = false;
+        if (backendLower === 'claw') {
+          try {
+            const sk = await getClawCodeSkills();
+            const list = sk?.skills || [];
+            clawOk = Array.isArray(list) && list.some((s) => s.enabled);
+          } catch {
+            clawOk = false;
+          }
+        }
+        if (!cancelled) setBuildModalClawSkillsAvail(clawOk);
+      } catch {
+        if (!cancelled) setBuildModalPipelineSnap(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Intentionally omit `draft` so typing other fields does not refetch; open + backend drive reload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- draft read from latest render when deps change
+  }, [buildModalOpen, buildModalBackendKey]);
+
+  const buildModalPipelineData = useMemo(
+    () =>
+      mergeBuildDraftIntoPipelinePreview(
+        buildModalPipelineSnap,
+        buildModalHybrid,
+        buildModalRerank,
+        draft,
+        buildModalClawSkillsAvail,
+      ),
+    [buildModalPipelineSnap, buildModalHybrid, buildModalRerank, draft, buildModalClawSkillsAvail],
+  );
 
   const detailBuild = useMemo(
     () => builds.find((x) => x.id === detailId) || null,
@@ -542,6 +637,21 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 <option value="claw">claw (ClawCode agent)</option>
               </select>
             </label>
+            {String(draft.backend || '').toLowerCase() === 'claw' && (
+              <>
+                <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={draft.skills_enabled !== false}
+                    onChange={(e) => setDraft({ ...draft, skills_enabled: e.target.checked })}
+                  />
+                  Enable skill packs (<code>load_skill</code>)
+                </label>
+                <p className="dashboard-card-muted" style={{ margin: 0 }}>
+                  Skill catalog and installs are under <strong>ClawCode Skills</strong> in the Web UI.
+                </p>
+              </>
+            )}
             <p className="dashboard-card-muted" style={{ margin: 0 }}>
               <strong>Ollama model</strong> is required for both backends: dumb uses it for the RAG chat pipeline; claw uses
               the same tag for the ClawCode agent (no separate logical model id).
@@ -695,6 +805,18 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   placeholder="1–256"
                 />
               </label>
+            </div>
+            <div className="app-default-card" style={{ marginTop: 4 }}>
+              <PipelineCiDiagram
+                data={buildModalPipelineData}
+                title="LLM proxy pipeline (RAG + supplements)"
+                subtitle={
+                  String(draft.backend || '').toLowerCase() === 'claw'
+                    ? 'Stages reflect this draft on current server settings. Web stages are indicative for claw; edit hybrid/rerank and collection on RAG / Qdrant; skills under ClawCode Skills.'
+                    : 'Stages reflect this draft overlaid on current server settings. Edit hybrid/rerank and collection on the RAG / Qdrant tab; Claw skills on ClawCode Skills.'
+                }
+                compact
+              />
             </div>
             <div className="dashboard-card-actions">
               <button type="button" className="dashboard-primary-btn" disabled={saving} onClick={saveForm}>

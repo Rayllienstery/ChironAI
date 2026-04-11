@@ -50,6 +50,8 @@ def persist_clawcode_trace_to_db(rec: dict[str, Any]) -> None:
     Write one trace row to logs (session_id=clawcode, source=clawcode).
     Safe no-op if infrastructure is unavailable (standalone ClawCode test).
     """
+    if rec.get("journal_skip"):
+        return
     try:
         from infrastructure.database import get_logs_repository
         from infrastructure.database.session_manager import get_session_manager

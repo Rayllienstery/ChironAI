@@ -278,6 +278,11 @@ function App() {
     setClawProxyFocusSubTab("traces");
   }, []);
 
+  const handleOpenClawProxyTools = useCallback(() => {
+    setActiveTab("claw-proxy");
+    setClawProxyFocusSubTab("proxy");
+  }, []);
+
   const consumeLlmProxyFocusSubTab = useCallback(() => {
     setLlmProxyFocusSubTab(null);
   }, []);
@@ -606,6 +611,7 @@ function App() {
           onOpenLlmProxyTrace={handleOpenLlmProxyTrace}
           onOpenClawJournal={handleOpenClawJournal}
           onOpenClawTraces={handleOpenClawTraces}
+          onOpenClawProxyTools={handleOpenClawProxyTools}
         />
       )}
       {sessionId && (

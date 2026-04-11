@@ -7,6 +7,11 @@ const STEPS = [
   { id: 'hybrid', label: 'Hybrid sparse', hint: 'Dense + sparse fusion when enabled in settings.' },
   { id: 'rerank', label: 'LLM rerank', hint: 'Rerank retrieved chunks when enabled.' },
   { id: 'context', label: 'Build context', hint: 'Assemble system context from RAG hits.' },
+  {
+    id: 'skills',
+    label: 'Agent skills',
+    hint: 'ClawCode load_skill tool when enabled packs exist (claw builds only).',
+  },
   { id: 'github', label: 'Merged docs', hint: 'GitHub / external_docs_rag merge (fetch web knowledge).' },
   { id: 'web', label: 'Web (DDG)', hint: 'DuckDuckGo snippet supplement.' },
   { id: 'kw_trigger', label: 'Freshness trig.', hint: 'Run web supplement on release / version style questions.' },
@@ -25,6 +30,12 @@ export function computePipelineActive(data) {
     env.web_interaction_globally_enabled === undefined ? true : Boolean(env.web_interaction_globally_enabled);
   const webMaster = Boolean(data.web_interaction_enabled) && globalWeb;
   const ragOn = Boolean(data.rag_collection_configured);
+  const skillsActive = Boolean(
+    data.claw_build_pipeline_preview &&
+      String(data.backend || '').toLowerCase() === 'claw' &&
+      data.skills_enabled !== false &&
+      data.claw_skills_tool_available,
+  );
 
   return {
     parse: true,
@@ -32,6 +43,7 @@ export function computePipelineActive(data) {
     hybrid: ragOn && Boolean(data.hybrid_sparse_enabled),
     rerank: ragOn && Boolean(data.rerank_for_rag),
     context: ragOn,
+    skills: skillsActive,
     github: Boolean(data.fetch_web_knowledge),
     web: webMaster,
     kw_trigger: webMaster && data.web_interaction_on_keywords !== false,
@@ -65,6 +77,11 @@ function JobPill({ step, isActive }) {
 function PipelineCiDiagram({ data, title = 'LLM proxy pipeline', subtitle, compact }) {
   const activeMap = useMemo(() => (data ? computePipelineActive(data) : null), [data]);
 
+  const visibleSteps = useMemo(() => {
+    if (data && data.claw_build_pipeline_preview) return STEPS;
+    return STEPS.filter((s) => s.id !== 'skills');
+  }, [data]);
+
   const killSwitch =
     data &&
     Boolean(data.web_interaction_enabled) &&
@@ -87,7 +104,7 @@ function PipelineCiDiagram({ data, title = 'LLM proxy pipeline', subtitle, compa
         <p className="pipeline-ci__subtitle pipeline-ci__subtitle--inline">Loading pipeline…</p>
       ) : (
         <div className="pipeline-ci__track">
-          {STEPS.map((step, i) => (
+          {visibleSteps.map((step, i) => (
             <div key={step.id} className="pipeline-ci__segment">
               {i > 0 ? <span className="pipeline-ci__connector" aria-hidden /> : null}
               <JobPill step={step} isActive={Boolean(activeMap[step.id])} />

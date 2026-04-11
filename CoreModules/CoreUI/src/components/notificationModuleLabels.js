@@ -8,7 +8,7 @@ const LABELS = {
   /** @deprecated persisted history may still use the old key */
   'dumb-proxy': 'RAG Fusion Proxy',
   'llm-proxy': 'LLM Proxy',
-  'claw-proxy': 'Claw Proxy',
+  'claw-proxy': 'Claw Code',
   logs: 'Logs',
   testing: 'Testing',
   dashboard: 'Dashboard',

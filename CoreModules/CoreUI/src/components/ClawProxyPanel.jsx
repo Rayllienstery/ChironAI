@@ -3,8 +3,8 @@ import {
   getClawCodeStatus,
   getClawCodeVendorMainSha,
   syncClawCodeVendor,
-  rollbackClawCodeVendorPrevious,
   getClawCodeVendorVersions,
+  rollbackClawCodeVendorSha,
   getClawCodeSkills,
   installClawCodeSkills,
   fetchClawCodeSkillRemoteHeads,
@@ -56,10 +56,42 @@ function kvRow(label, value, key) {
   );
 }
 
+function normalizeVendorVersions(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((v) => {
+      if (typeof v === 'string') {
+        const sha = v.toLowerCase();
+        return sha ? { sha, role: 'archived', mtime: 0 } : null;
+      }
+      const sha = String(v.sha || '').toLowerCase();
+      if (!sha) return null;
+      return {
+        sha,
+        role: v.role === 'active' ? 'active' : 'archived',
+        mtime: typeof v.mtime === 'number' ? v.mtime : 0,
+      };
+    })
+    .filter(Boolean);
+}
+
+function formatVendorMtime(ts) {
+  if (ts == null || ts === 0) return '—';
+  try {
+    return new Date(ts * 1000).toLocaleString(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+  } catch {
+    return '—';
+  }
+}
+
 function ClawProxyPanel() {
   const [status, setStatus] = useState(null);
   const [mainSha, setMainSha] = useState(null);
   const [versions, setVersions] = useState([]);
+  const [selectedVendorSha, setSelectedVendorSha] = useState(null);
   const [canRollback, setCanRollback] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
@@ -132,11 +164,13 @@ function ClawProxyPanel() {
       if (s.available) {
         const v = await getClawCodeVendorVersions();
         if (v.ok) {
-          setVersions(v.versions || []);
+          setVersions(normalizeVendorVersions(v.versions || []));
           setCanRollback(Boolean(v.can_rollback));
+          setSelectedVendorSha(null);
         } else {
           setVersions([]);
           setCanRollback(false);
+          setSelectedVendorSha(null);
         }
         try {
           const sr = await getClawCodeSkills();
@@ -153,6 +187,25 @@ function ClawProxyPanel() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  const activeVendorSha = status?.vendor?.active?.sha
+    ? String(status.vendor.active.sha).toLowerCase()
+    : null;
+
+  const doRollbackSelected = useCallback(async () => {
+    if (!selectedVendorSha || selectedVendorSha === activeVendorSha) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await rollbackClawCodeVendorSha(selectedVendorSha);
+      if (!r.ok) setErr(r.error || 'Rollback failed');
+      await refresh();
+    } catch (e) {
+      setErr(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  }, [selectedVendorSha, activeVendorSha, refresh]);
 
   const checkMain = async () => {
     setBusy(true);
@@ -174,20 +227,6 @@ function ClawProxyPanel() {
     try {
       const r = await syncClawCodeVendor();
       if (!r.ok) setErr(r.error || 'Sync failed');
-      await refresh();
-    } catch (e) {
-      setErr(String(e.message || e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const doRollbackPrevious = async () => {
-    setBusy(true);
-    setErr(null);
-    try {
-      const r = await rollbackClawCodeVendorPrevious();
-      if (!r.ok) setErr(r.error || 'Rollback failed');
       await refresh();
     } catch (e) {
       setErr(String(e.message || e));
@@ -829,20 +868,119 @@ function ClawProxyPanel() {
                   Update to latest main
                 </button>
               </div>
-              <p className="dashboard-card-muted">
-                Installed SHAs:{' '}
-                {versions.length ? versions.map((s) => <code key={s}>{s.slice(0, 7)}… </code>) : 'none'}
-              </p>
-              <div className="dashboard-card-actions">
-                <button
-                  type="button"
-                  className="dashboard-primary-btn"
-                  onClick={doRollbackPrevious}
-                  disabled={busy || !canRollback}
-                  title={canRollback ? undefined : 'Update to a new version first to build history'}
-                >
-                  Rollback to previous version
-                </button>
+              <div className="dashboard-vendor-versions">
+                <h3 className="dashboard-vendor-versions-title" id="claw-vendor-versions-heading">
+                  Installed versions
+                </h3>
+                <p className="dashboard-card-muted dashboard-vendor-versions-hint">
+                  History order first; other trees on disk follow. Time is the folder mtime on this machine (not the Git
+                  commit date).
+                </p>
+                {versions.length === 0 ? (
+                  <p className="dashboard-card-muted">None on disk yet. Use &quot;Update to latest main&quot; to install.</p>
+                ) : (
+                  <div
+                    className="dashboard-vendor-table-scroll"
+                    role="region"
+                    aria-labelledby="claw-vendor-versions-heading"
+                  >
+                    <table className="dashboard-vendor-versions-table">
+                      <thead>
+                        <tr>
+                          <th scope="col" className="dashboard-vendor-col-select">
+                            <span className="dashboard-vendor-sr-only">Rollback target</span>
+                          </th>
+                          <th scope="col">Commit SHA</th>
+                          <th scope="col">Folder mtime</th>
+                          <th scope="col">Status</th>
+                          <th scope="col" className="dashboard-vendor-col-copy">
+                            <span className="dashboard-vendor-sr-only">Copy</span>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {versions.map((row) => {
+                          const isActive = row.sha === activeVendorSha || row.role === 'active';
+                          return (
+                            <tr
+                              key={row.sha}
+                              className={isActive ? 'dashboard-vendor-row-active' : undefined}
+                            >
+                              <td className="dashboard-vendor-col-select">
+                                {isActive ? (
+                                  <span className="dashboard-vendor-radio-placeholder" aria-hidden>
+                                    —
+                                  </span>
+                                ) : (
+                                  <input
+                                    type="radio"
+                                    name="claw-vendor-rollback"
+                                    value={row.sha}
+                                    checked={selectedVendorSha === row.sha}
+                                    onChange={() => setSelectedVendorSha(row.sha)}
+                                    aria-label={`Select ${row.sha.slice(0, 7)} for rollback`}
+                                  />
+                                )}
+                              </td>
+                              <td>
+                                <code className="dashboard-vendor-sha-full" title={row.sha}>
+                                  {row.sha}
+                                </code>
+                              </td>
+                              <td className="dashboard-vendor-mtime">{formatVendorMtime(row.mtime)}</td>
+                              <td>
+                                <span
+                                  className={
+                                    isActive
+                                      ? 'dashboard-vendor-badge dashboard-vendor-badge-active'
+                                      : 'dashboard-vendor-badge dashboard-vendor-badge-archived'
+                                  }
+                                >
+                                  {isActive ? 'Active' : 'Archived'}
+                                </span>
+                              </td>
+                              <td className="dashboard-vendor-col-copy">
+                                <button
+                                  type="button"
+                                  className="dashboard-text-btn dashboard-vendor-copy-btn"
+                                  onClick={() => {
+                                    void navigator.clipboard?.writeText(row.sha).catch(() => {});
+                                  }}
+                                >
+                                  Copy
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <div className="dashboard-card-actions dashboard-vendor-rollback-actions">
+                  <button
+                    type="button"
+                    className="dashboard-primary-btn"
+                    onClick={doRollbackSelected}
+                    disabled={
+                      busy ||
+                      !canRollback ||
+                      !selectedVendorSha ||
+                      selectedVendorSha === activeVendorSha
+                    }
+                    title={
+                      !canRollback
+                        ? 'Install at least two versions to roll back (e.g. update to main twice)'
+                        : !selectedVendorSha
+                          ? 'Choose a version in the table'
+                          : selectedVendorSha === activeVendorSha
+                            ? 'Pick an archived version to roll back'
+                            : undefined
+                    }
+                  >
+                    Roll back to selected version
+                  </button>
+                </div>
               </div>
             </div>
           </section>

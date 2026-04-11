@@ -77,6 +77,7 @@ def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
 
     # Build profile always controls whether ClawCode registers rag_query (ignore client override on this hop).
     forward["include_rag_query_tool"] = bool(build.get("rag_enabled", True))
+    forward["include_skill_tools"] = bool(build.get("skills_enabled", True))
 
     try:
         timeout_sec = float(os.getenv("CLAWCODE_CHAT_TIMEOUT_SEC", "600"))

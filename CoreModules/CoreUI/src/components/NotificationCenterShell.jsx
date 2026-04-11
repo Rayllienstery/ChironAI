@@ -132,7 +132,7 @@ function NotificationCenterShell() {
           </Card>
         ))}
 
-        {liveEntries.map(([id, { source, node }]) => (
+        {liveEntries.map(([id, { source, node, headerLeading }]) => (
           <Card
             key={`l-${id}`}
             className="notification-center-card notification-center-card--live"
@@ -140,8 +140,15 @@ function NotificationCenterShell() {
             role="status"
           >
             <div className="notification-center-card-header">
-              <span className="notification-center-card-header-title">
-                {notificationModuleLabel(source)}
+              <span
+                className={`notification-center-card-header-title${
+                  headerLeading ? ' notification-center-card-header-title--with-leading' : ''
+                }`}
+              >
+                {headerLeading}
+                <span className="notification-center-card-header-title-text">
+                  {notificationModuleLabel(source)}
+                </span>
               </span>
               <button
                 type="button"

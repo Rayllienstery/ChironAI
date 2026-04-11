@@ -744,7 +744,10 @@ def run_clawcode_chat_completion(
     _inject_clawcode_runtime_context(openai_messages, merge_client_tools=merge_client_tools)
     effective_model_id = str(use_model or "").strip() or "default"
 
-    skills_bundle = _load_clawcode_skills_bundle()
+    _isk = body.get("include_skill_tools")
+    include_skill_tools = True if _isk is None else bool(_isk)
+
+    skills_bundle = _load_clawcode_skills_bundle() if include_skill_tools else None
     skills_registry: dict[str, Any] = {}
     skills_enabled_ids: list[str] = []
     if skills_bundle is not None:
@@ -797,6 +800,29 @@ def run_clawcode_chat_completion(
             pass
     _co = normalize_ollama_chat_options(_co)
     _co = _apply_clawcode_num_predict_budget(_co, body, think_requested=bool(send_think and oc_think_request))
+
+    # In-memory trace so WebUI / notification card shows activity before the first model round-trip.
+    _emit_trace(
+        trace_callback,
+        trace_id,
+        body,
+        [
+            {
+                "kind": "proxy_queued",
+                "step": 0,
+                "note": "Request received; waiting for model",
+            }
+        ],
+        started,
+        use_model,
+        0,
+        0,
+        final=False,
+        think_requested=oc_think_request,
+        merge_client_tools=merge_client_tools,
+        skills=skills_trace,
+        journal_skip=True,
+    )
 
     for step_idx in range(max_steps):
         ollama_messages = openai_messages_to_ollama(openai_messages)
@@ -1235,6 +1261,7 @@ def _emit_trace(
     think_requested: bool = False,
     merge_client_tools: bool | None = None,
     skills: dict[str, Any] | None = None,
+    journal_skip: bool = False,
 ) -> None:
     if cb is None:
         return
@@ -1258,6 +1285,8 @@ def _emit_trace(
         "error": error,
         "client_model": body.get("model"),
     }
+    if journal_skip:
+        rec["journal_skip"] = True
     if skills is not None:
         rec["skills"] = skills
     if final and final_assistant is not None:

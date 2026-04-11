@@ -1351,6 +1351,16 @@ export async function rollbackClawCodeVendorPrevious() {
   return data;
 }
 
+export async function rollbackClawCodeVendorSha(sha) {
+  const response = await fetch(`${CLAWCODE_BASE}/vendor/rollback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sha: String(sha || '').trim() }),
+  });
+  const data = await response.json().catch(() => ({}));
+  return data;
+}
+
 export async function getClawCodeSettings() {
   const response = await fetch(`${CLAWCODE_BASE}/settings`);
   if (!response.ok) {

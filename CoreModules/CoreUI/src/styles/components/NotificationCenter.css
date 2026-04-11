@@ -41,7 +41,8 @@
   --app-card-box-shadow: var(--md-sys-elevation-level2) !important;
   box-shadow: var(--md-sys-elevation-level2) !important;
   border-radius: var(--app-card-radius, var(--md-sys-shape-corner-medium)) !important;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: visible;
   border: 1px solid var(--md-sys-color-outline-variant) !important;
   animation: notification-card-enter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
   width: 100%;
@@ -72,15 +73,13 @@
   flex-direction: column-reverse;
   align-items: stretch;
   gap: var(--md-sys-spacing-sm);
-  max-height: min(420px, calc(100vh - 140px));
+  max-height: none;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: visible;
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  /* Reserve gutter so card width matches the History popover when scrollbar appears */
-  scrollbar-gutter: stable;
-  /* Padding so box-shadow is not clipped by overflow */
+  /* Padding so box-shadow is not clipped at stack edges */
   padding: 8px 6px;
   margin: -2px -6px;
 }
@@ -136,6 +135,60 @@
   min-width: 0;
   word-break: break-word;
 }
+
+.notification-center-card-header-title--with-leading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.notification-center-card-header-title-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+/* Claw Code header mark — fills follow Material dynamic color tokens (light / dark / accent). */
+.notification-center-claw-svg {
+  flex-shrink: 0;
+  display: block;
+  border-radius: var(--md-sys-shape-corner-small, 8px);
+}
+
+.notification-center-claw-svg .claw-svg-rail-end {
+  fill: var(--md-sys-color-outline-variant);
+}
+
+.notification-center-claw-svg .claw-svg-rail-accent {
+  fill: var(--md-sys-color-primary);
+}
+
+.notification-center-claw-svg .claw-svg-stem {
+  fill: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, var(--md-sys-color-outline-variant));
+}
+
+.notification-center-claw-svg .claw-svg-housing {
+  fill: var(--md-sys-color-surface-container-high);
+  stroke: var(--md-sys-color-outline);
+  stroke-width: 1;
+  paint-order: stroke fill;
+}
+
+.notification-center-claw-svg .claw-svg-pivot {
+  fill: var(--md-sys-color-primary);
+  stroke: color-mix(in srgb, var(--md-sys-color-on-primary) 55%, var(--md-sys-color-primary));
+  stroke-width: 0.9;
+  paint-order: stroke fill;
+}
+
+.notification-center-claw-svg .claw-svg-arm {
+  fill: var(--md-sys-color-tertiary);
+  stroke: color-mix(in srgb, var(--md-sys-color-on-surface) 22%, transparent);
+  stroke-width: 0.6;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
+}
+
 
 .notification-center-card-close {
   flex-shrink: 0;
@@ -212,6 +265,181 @@
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+}
+
+.notification-proxy-embed--winddown .notification-proxy-winddown-bar-bleed {
+  margin-left: -12px;
+  margin-right: -12px;
+  width: calc(100% + 24px);
+  max-width: none;
+  box-sizing: border-box;
+}
+
+/* Claw Code live: current agent activity */
+.claw-live-activity {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--md-sys-shape-corner-medium, 12px);
+  background: color-mix(in srgb, var(--md-sys-color-primary, #6750a4) 10%, var(--md-sys-color-surface));
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 28%, transparent);
+  min-width: 0;
+}
+
+.claw-live-activity[data-claw-activity-tone='model'] {
+  background: color-mix(in srgb, var(--md-sys-color-primary, #6750a4) 12%, var(--md-sys-color-surface));
+}
+
+.claw-live-activity[data-claw-activity-tone='tools'] {
+  background: color-mix(in srgb, var(--md-sys-color-tertiary, var(--md-sys-color-secondary)) 11%, var(--md-sys-color-surface));
+}
+
+.claw-live-activity[data-claw-activity-tone='rag'] {
+  background: color-mix(in srgb, var(--md-sys-color-secondary, #625b71) 12%, var(--md-sys-color-surface));
+}
+
+.claw-live-activity[data-claw-activity-tone='skill'] {
+  background: color-mix(in srgb, var(--md-sys-color-primary, #6750a4) 8%, var(--md-sys-color-surface));
+}
+
+.claw-live-activity[data-claw-activity-tone='idle'] {
+  background: color-mix(in srgb, var(--md-sys-color-outline) 10%, var(--md-sys-color-surface));
+}
+
+.claw-live-activity-pulse {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--md-sys-color-primary, #6750a4);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--md-sys-color-primary, #6750a4) 45%, transparent);
+  animation: proxy-live-pulse 1.4s ease-out infinite;
+}
+
+.claw-live-activity-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.claw-live-activity-headline {
+  font: var(--md-sys-typescale-label-large-font);
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+  letter-spacing: 0.01em;
+}
+
+.claw-live-activity-detail {
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+  word-break: break-word;
+}
+
+.claw-trace-task-step .claw-live-activity-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.claw-trace-task-step-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.claw-trace-task-step-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.claw-trace-task-step-label {
+  font: var(--md-sys-typescale-label-small-font);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.claw-trace-task-step-text {
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface);
+  word-break: break-word;
+}
+
+.claw-trace-task-step-primary {
+  font: var(--md-sys-typescale-label-large-font);
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+  word-break: break-word;
+}
+
+.claw-trace-task-step-secondary {
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+  word-break: break-word;
+}
+
+.claw-trace-usage-capsules {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.claw-trace-usage-capsule {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font: var(--md-sys-typescale-label-medium-font);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.claw-trace-usage-capsule--tool {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-highest) 88%, var(--md-sys-color-primary) 12%);
+  border-color: color-mix(in srgb, var(--md-sys-color-outline) 55%, var(--md-sys-color-primary) 45%);
+  color: var(--md-sys-color-on-surface);
+}
+
+.claw-trace-usage-capsule--rag {
+  background: color-mix(in srgb, var(--md-sys-color-secondary-container) 92%, transparent);
+  border-color: color-mix(in srgb, var(--md-sys-color-outline) 40%, var(--md-sys-color-secondary) 60%);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.claw-trace-usage-capsule--skill {
+  background: color-mix(in srgb, var(--md-sys-color-tertiary-container) 90%, transparent);
+  border-color: color-mix(in srgb, var(--md-sys-color-outline) 40%, var(--md-sys-color-tertiary) 60%);
+  color: var(--md-sys-color-on-tertiary-container);
+}
+
+.claw-trace-usage-capsule--client {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 85%, var(--md-sys-color-primary) 8%);
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--md-sys-color-outline) 50%, var(--md-sys-color-primary) 50%);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.claw-trace-usage-capsule--warn {
+  background: color-mix(in srgb, var(--md-sys-color-error-container) 88%, transparent);
+  border-color: color-mix(in srgb, var(--md-sys-color-error) 35%, var(--md-sys-color-outline-variant) 65%);
+  color: var(--md-sys-color-on-error-container);
 }
 
 .proxy-live-notification-header {
@@ -307,43 +535,37 @@
 
 .notification-proxy-winddown {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 4px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   min-width: 0;
 }
 
-.notification-proxy-winddown-ring {
+.notification-proxy-winddown-bar-bleed {
   flex-shrink: 0;
-  color: var(--md-sys-color-primary);
 }
 
-.notification-proxy-winddown-ring-track {
-  fill: none;
-  stroke: color-mix(in srgb, var(--md-sys-color-outline) 35%, transparent);
-  stroke-width: 3;
+.notification-proxy-winddown-bar-track {
+  height: 3px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--md-sys-color-outline) 32%, transparent);
 }
 
-.notification-proxy-winddown-ring-progress {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 3;
-  stroke-linecap: round;
-  transform: rotate(-90deg);
-  transform-origin: 50% 50%;
-}
-
-.notification-proxy-winddown-digit {
-  font: var(--md-sys-typescale-headline-small-font);
-  font-weight: 600;
-  fill: var(--md-sys-color-on-surface);
+.notification-proxy-winddown-bar-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--md-sys-color-primary, var(--md-sys-color-secondary));
+  transform-origin: left center;
+  will-change: transform;
 }
 
 .notification-proxy-winddown-hint {
   font: var(--md-sys-typescale-body-small-font);
   color: var(--md-sys-color-on-surface-variant);
-  flex: 1;
   min-width: 0;
+  padding: 0 2px;
 }
 
 .notification-center-card-live-slot .proxy-live-notification-title {

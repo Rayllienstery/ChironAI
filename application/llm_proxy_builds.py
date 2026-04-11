@@ -96,6 +96,7 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
         "ollama_model": ollama_model,
         "prompt_name": prompt_name,
         "rag_enabled": bool(build.get("rag_enabled", True)),
+        "skills_enabled": bool(build.get("skills_enabled", True)),
         "web_enabled": bool(build.get("web_enabled", True)),
         "fetch_web_knowledge": bool(build.get("fetch_web_knowledge", False)),
         "web_interaction_enabled": bool(build.get("web_interaction_enabled", False)),

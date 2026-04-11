@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "chironai"
 version = "0.2.0"
-description = "RAG assistant (Ollama + Qdrant) with WebUI and crawl/index pipelines"
+description = "Modular RAG platform (Ollama + Qdrant) with WebUI and crawl/index pipelines. Configured for Apple platforms, supports any domain."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Proprietary" }

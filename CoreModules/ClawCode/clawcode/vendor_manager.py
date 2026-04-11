@@ -121,7 +121,70 @@ def history_from_active(data: dict[str, Any] | None) -> list[str]:
 
 
 def can_rollback(root: Path) -> bool:
-    return len(history_from_active(read_active(root))) >= 2
+    """True if another installed tree exists (backups or second checkout) to switch to."""
+    return len(list_version_shas(root)) >= 2
+
+
+def _version_tree_path(root: Path, sha: str) -> Path | None:
+    sha = sha.lower()
+    for sub in ("versions", "backups"):
+        p = root / sub / sha
+        if p.is_dir():
+            return p
+    return None
+
+
+def list_version_entries(root: Path) -> list[dict[str, Any]]:
+    """
+    Rows for UI: activation history first (newest-first), then other installed SHAs by mtime desc.
+    Each entry: sha, role ('active' | 'archived'), mtime (seconds since epoch, float).
+    """
+    data = read_active(root)
+    hist = history_from_active(data)
+    active_sha = hist[0] if hist else None
+    seen: set[str] = set()
+    entries: list[dict[str, Any]] = []
+
+    def stat_entry(sha: str) -> dict[str, Any] | None:
+        sha = sha.lower()
+        path = _version_tree_path(root, sha)
+        if path is None:
+            return None
+        try:
+            mtime = float(path.stat().st_mtime)
+        except OSError:
+            mtime = 0.0
+        role = "active" if active_sha and sha == active_sha else "archived"
+        return {"sha": sha, "role": role, "mtime": mtime}
+
+    for h in hist:
+        hl = h.lower()
+        if hl in seen:
+            continue
+        row = stat_entry(hl)
+        if row:
+            seen.add(hl)
+            entries.append(row)
+
+    def mtime_key(s: str) -> float:
+        p = _version_tree_path(root, s)
+        if p is None:
+            return 0.0
+        try:
+            return float(p.stat().st_mtime)
+        except OSError:
+            return 0.0
+
+    rest = sorted(
+        (s for s in list_version_shas(root) if s not in seen),
+        key=mtime_key,
+        reverse=True,
+    )
+    for s in rest:
+        row = stat_entry(s)
+        if row:
+            entries.append(row)
+    return entries
 
 
 def write_active(root: Path, sha: str, history: list[str]) -> None:
@@ -335,4 +398,46 @@ def rollback_to_previous(project_root: Path, root_relative: str) -> dict[str, An
             return {"ok": False, "error": f"target version not found: {target}"}
 
     write_active(root, target, hist[1:])
+    return {"ok": True, "sha": target}
+
+
+def rollback_to_sha(project_root: Path, root_relative: str, target_sha: str) -> dict[str, Any]:
+    """Switch active checkout to an installed SHA (under versions/ or backups/)."""
+    root = vendor_root(project_root, root_relative)
+    migrate_inactive_versions_to_backups(root)
+    target = target_sha.strip().lower()
+    if not _is_sha_dir_name(target):
+        return {"ok": False, "error": "invalid sha"}
+    data = read_active(root)
+    hist = history_from_active(data)
+    if not hist:
+        return {"ok": False, "error": "no active version"}
+    current = hist[0]
+    if target == current:
+        return {"ok": False, "error": "already active"}
+
+    if _version_tree_path(root, target) is None:
+        return {"ok": False, "error": f"version not installed: {target}"}
+
+    v_cur = root / "versions" / current
+    if v_cur.is_dir():
+        try:
+            _move_into_backup_replace(root, v_cur, current)
+        except OSError as e:
+            return {"ok": False, "error": f"archive current version failed: {e}"}
+
+    v_tgt = root / "versions" / target
+    b_tgt = root / "backups" / target
+    if not v_tgt.is_dir():
+        if b_tgt.is_dir():
+            (root / "versions").mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.move(str(b_tgt), str(v_tgt))
+            except OSError as e:
+                return {"ok": False, "error": f"restore version failed: {e}"}
+        else:
+            return {"ok": False, "error": f"target version not found: {target}"}
+
+    new_hist = [target] + [h for h in hist if h != target]
+    write_active(root, target, new_hist)
     return {"ok": True, "sha": target}

@@ -1,6 +1,6 @@
 # ChironAI
 
-ChironAI is a Retrieval-Augmented Generation (RAG) assistant focused on Apple platforms (Swift, iOS, SwiftUI). It uses local LLMs via Ollama, a vector database via Qdrant, and an optional LLM-based reranker to improve retrieval quality.
+ChironAI is a modular RAG (Retrieval-Augmented Generation) platform for local LLMs. It uses Ollama for inference, Qdrant for vector storage, and an optional LLM-based reranker. Configured by default for Apple platforms (Swift, iOS, SwiftUI), but supports any domain through source and prompt configuration.
 
 ## What it does
 - Crawls and indexes documentation sources into a Qdrant collection.
