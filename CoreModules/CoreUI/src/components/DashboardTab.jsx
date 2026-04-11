@@ -50,15 +50,15 @@ function DashboardLlmProxyCard({ onNavigate, onOpenLogs, onOpenLlmProxyAutocompl
   return (
     <section className="app-default-card dashboard-proxy-card" aria-labelledby="dashboard-proxy-heading">
       <div className="dashboard-card-header">
-        <h2 id="dashboard-proxy-heading">Dumb Proxy</h2>
+        <h2 id="dashboard-proxy-heading">RAG Fusion Proxy</h2>
         <div className="dashboard-card-actions">
           {typeof onOpenLogs === 'function' && (
             <button type="button" className="dashboard-text-btn" onClick={() => onOpenLogs()}>
               View Logs
             </button>
           )}
-          <button type="button" className="dashboard-primary-btn" onClick={() => onNavigate('dumb-proxy')}>
-            Open Dumb Proxy
+          <button type="button" className="dashboard-primary-btn" onClick={() => onNavigate('rag-fusion-proxy')}>
+            Open RAG Fusion Proxy
           </button>
         </div>
       </div>

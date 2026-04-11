@@ -258,8 +258,8 @@ export default function ProxiesLiveNotificationBridge({
           if (traceId) parts.push(`Trace: ${traceId}`);
           await persistNotification({
             kind: 'event',
-            source: 'dumb-proxy',
-            title: 'Dumb Proxy finished',
+            source: 'rag-fusion-proxy',
+            title: 'RAG Fusion Proxy finished',
             message: parts.join(' · ').slice(0, 800),
             metadata: { historyOnly: true },
           });
@@ -554,7 +554,7 @@ export default function ProxiesLiveNotificationBridge({
       clearLiveActivity(LLM_LIVE_ID);
       return () => clearLiveActivity(LLM_LIVE_ID);
     }
-    setLiveActivity(LLM_LIVE_ID, 'dumb-proxy', llmNode);
+    setLiveActivity(LLM_LIVE_ID, 'rag-fusion-proxy', llmNode);
     return () => clearLiveActivity(LLM_LIVE_ID);
   }, [llmNode, llmSuppressed, setLiveActivity, clearLiveActivity]);
 

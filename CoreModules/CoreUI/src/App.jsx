@@ -259,7 +259,7 @@ function App() {
   };
 
   const handleOpenLlmProxyTrace = useCallback(() => {
-    setActiveTab("dumb-proxy");
+    setActiveTab("rag-fusion-proxy");
     setLlmProxyFocusSubTab("proxy-trace");
   }, []);
 
@@ -339,7 +339,7 @@ function App() {
   const tabs = [
     { id: "dashboard", label: "Dashboard" },
     { id: "llm-proxy", label: "LLM Proxy" },
-    { id: "dumb-proxy", label: "Dumb Proxy" },
+    { id: "rag-fusion-proxy", label: "RAG Fusion Proxy" },
     { id: "claw-proxy", label: "Claw Proxy" },
     { id: "logs", label: "Logs" },
     { id: "ollama", label: "Ollama" },
@@ -409,7 +409,7 @@ function App() {
         );
       case "crawler":
         return <CrawlerTab />;
-      case "dumb-proxy":
+      case "rag-fusion-proxy":
         return (
           <LlmProxyTab
             onOpenRagModels={() => {

@@ -64,7 +64,7 @@ function LlmProxyTab({
     <div className="settings-tab llm-proxy-tab">
       <div className="llm-proxy-header">
         <div className="llm-proxy-header-row">
-          <h2>Dumb Proxy</h2>
+          <h2>RAG Fusion Proxy</h2>
           {typeof onOpenLogs === 'function' && (
             <button
               type="button"
@@ -89,7 +89,7 @@ function LlmProxyTab({
             </button>
           )}
         </div>
-        <div className="coreui-pill-tablist" role="tablist" aria-label="Dumb Proxy sections">
+        <div className="coreui-pill-tablist" role="tablist" aria-label="RAG Fusion Proxy sections">
           {SUB_TABS.map((tab) => (
             <button
               key={tab.id}

@@ -1405,7 +1405,7 @@ def get_model_settings() -> Any:
 
 @webui_bp.route("/llm-proxy/status", methods=["GET"])
 def llm_proxy_status() -> Any:
-    """Base URL for WebUI Dumb Proxy Status card (per-build Ollama tags live on builds, not here)."""
+    """Base URL for WebUI RAG Fusion Proxy Status card (per-build Ollama tags live on builds, not here)."""
     try:
         bind_host = get_server_host()
         display_host = "127.0.0.1" if bind_host == "0.0.0.0" else bind_host

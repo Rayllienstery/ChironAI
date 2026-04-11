@@ -4,7 +4,9 @@ const LABELS = {
   crawler: 'Crawler / Indexer',
   'rag-tests': 'RAG Tests',
   rag: 'RAG / Qdrant',
-  'dumb-proxy': 'Dumb Proxy',
+  'rag-fusion-proxy': 'RAG Fusion Proxy',
+  /** @deprecated persisted history may still use the old key */
+  'dumb-proxy': 'RAG Fusion Proxy',
   'llm-proxy': 'LLM Proxy',
   'claw-proxy': 'Claw Proxy',
   logs: 'Logs',

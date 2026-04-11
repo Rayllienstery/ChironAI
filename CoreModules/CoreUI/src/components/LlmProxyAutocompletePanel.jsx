@@ -116,14 +116,14 @@ function LlmProxyAutocompletePanel() {
           </li>
           <li>
             Assistant <strong>chat</strong>: proxy base URL without trailing <code>/v1</code> (see{' '}
-            <strong>Dumb Proxy</strong> → <strong>Overview</strong>).
+            <strong>RAG Fusion Proxy</strong> → <strong>Overview</strong>).
           </li>
           <li>
             Provider: <em>OpenAI-compatible</em>. API key empty unless you added auth on the proxy.
           </li>
           <li>
             Assistant / chat: use your <strong>build id</strong> from <strong>LLM Proxy</strong> → <strong>Builds</strong> as{' '}
-            <code>model</code> (same proxy base URL as in <strong>Dumb Proxy</strong> → <strong>Overview</strong>).
+            <code>model</code> (same proxy base URL as in <strong>RAG Fusion Proxy</strong> → <strong>Overview</strong>).
           </li>
           <li>
             Inline assistant / completions: model <code>{LOGICAL_AUTOCOMPLETE_ID}</code> after you save an Ollama model
