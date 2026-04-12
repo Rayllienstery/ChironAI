@@ -32,7 +32,7 @@ from llm_proxy.anthropic_compat import (
     wants_anthropic_models_list,
 )
 
-from clawcode.agent_runner import run_clawcode_chat_completion
+from clawcode.agent_runner import iter_clawcode_agent_sse, run_clawcode_chat_completion
 from clawcode.trace_journal import persist_clawcode_trace_to_db
 from clawcode.trace_store import append as trace_append
 
@@ -289,22 +289,24 @@ def create_clawcode_flask_app() -> Flask:
 
         want_stream = bool(body.get("stream"))
 
-        try:
-            resp, code = _run_agent(body)
-        except Exception as e:
-            _LOG.exception("chat_completions failed: %s", e)
-            return jsonify({"error": {"message": str(e), "type": "internal_error"}}), 500
+        if want_stream:
+            try:
+                from config import get_clawcode_max_agent_steps
+                _max = get_clawcode_max_agent_steps()
+            except Exception:
+                _max = 40
 
-        if (
-            want_stream
-            and code == 200
-            and isinstance(resp, dict)
-            and isinstance(resp.get("choices"), list)
-            and len(resp["choices"]) > 0
-        ):
+            def _cb_stream(rec: dict) -> None:
+                trace_append(rec)
+                persist_clawcode_trace_to_db(rec)
 
             def gen():
-                yield from _openai_sse_chunks_from_completion(resp)
+                yield from iter_clawcode_agent_sse(
+                    body,
+                    webui_dir=webui_dir,
+                    max_steps=_max,
+                    trace_callback=_cb_stream,
+                )
 
             return Response(
                 gen(),
@@ -312,6 +314,12 @@ def create_clawcode_flask_app() -> Flask:
                 status=200,
                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
             )
+
+        try:
+            resp, code = _run_agent(body)
+        except Exception as e:
+            _LOG.exception("chat_completions failed: %s", e)
+            return jsonify({"error": {"message": str(e), "type": "internal_error"}}), 500
 
         return jsonify(resp), code
 

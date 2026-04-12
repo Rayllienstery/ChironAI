@@ -8,6 +8,7 @@ import os
 import time
 import uuid
 from pathlib import Path
+from collections.abc import Iterator
 from typing import Any, Callable
 
 try:
@@ -1239,6 +1240,526 @@ def run_clawcode_chat_completion(
             "type": "agent_limit",
         }
     }, 400
+
+
+def iter_clawcode_agent_sse(
+    body: dict[str, Any],
+    *,
+    webui_dir: str | None,
+    max_steps: int,
+    trace_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> Iterator[str]:
+    """Streaming agent loop; yields OpenAI-compatible SSE lines with live token streaming."""
+    messages = body.get("messages")
+    if not isinstance(messages, list) or not messages:
+        yield _sse_error_line("messages required")
+        return
+
+    _body_mc = body.get("merge_client_tools")
+    merge_client_tools = (
+        bool(_body_mc) if isinstance(_body_mc, bool) else _get_clawcode_merge_client_tools()
+    )
+
+    clawcode_collection: str | None = None
+    try:
+        repo = get_settings_repository()
+        _oc = (repo.get_app_setting(CLAWCODE_RAG_COLLECTION_APP_SETTING) or "").strip()
+        clawcode_collection = _oc if _oc else None
+    except Exception:
+        pass
+
+    params: RAGAnswerParams
+    deps: RAGDependencies
+    params, deps = get_rag_answer_params(
+        webui_dir=webui_dir,
+        collection_name=clawcode_collection,
+    )
+    chat_client = deps.chat_client
+    fallback_model = str(params.model_name or "").strip()
+    requested = body.get("model")
+    req_str = requested.strip() if isinstance(requested, str) else ""
+    use_model = req_str or fallback_model
+    oc_think_request = _think_requested_from_openai_body(body)
+    if not use_model:
+        yield _sse_error_line("No Ollama model for ClawCode")
+        return
+
+    _ollama_caps: frozenset[str] | None = None
+    try:
+        _cu = getattr(chat_client, "_url", None)
+        if isinstance(_cu, str) and _cu.strip():
+            _ollama_caps = get_cached_ollama_capabilities(use_model.strip(), _cu.strip())
+    except Exception:
+        _ollama_caps = None
+
+    tools_to_ollama = True
+    if _ollama_caps is not None and not caps_supports_tools(_ollama_caps):
+        tools_to_ollama = False
+
+    send_think = bool(oc_think_request) and not ollama_native_think_troublesome_model(use_model)
+    if _ollama_caps is not None and not caps_supports_thinking(_ollama_caps):
+        send_think = False
+
+    trace_id = str(uuid.uuid4())
+    started = time.perf_counter()
+    steps_out: list[dict[str, Any]] = []
+    total_in = 0
+    total_out = 0
+
+    openai_messages: list[dict[str, Any]] = [dict(m) for m in messages if isinstance(m, dict)]
+    _inject_clawcode_runtime_context(openai_messages, merge_client_tools=merge_client_tools)
+    effective_model_id = str(use_model or "").strip() or "default"
+
+    _isk = body.get("include_skill_tools")
+    include_skill_tools = True if _isk is None else bool(_isk)
+
+    skills_bundle = _load_clawcode_skills_bundle() if include_skill_tools else None
+    skills_registry: dict[str, Any] = {}
+    skills_enabled_ids: list[str] = []
+    if skills_bundle is not None:
+        skills_registry, skills_enabled_ids = skills_bundle
+        _inject_skill_catalog_hint(openai_messages, skills_registry, skills_enabled_ids)
+
+    skills_loaded_invocations: list[str] = []
+    skills_trace: dict[str, Any] = {
+        "model_id": effective_model_id,
+        "enabled_ids": list(skills_enabled_ids),
+        "enabled_count": len(skills_enabled_ids),
+        "loaded_invocations": skills_loaded_invocations,
+        "loaded_count": 0,
+        "injected_ids": [],
+        "injected_count": 0,
+        "injected_invocations": [],
+    }
+
+    client_tools = body.get("tools")
+    _irq = body.get("include_rag_query_tool")
+    include_rag_tool = True if _irq is None else bool(_irq)
+    clawcode_runtime: dict[str, Any] = {
+        "include_rag_query_tool": include_rag_tool,
+        "include_skill_tools": include_skill_tools,
+        "rag_collection_name": clawcode_collection,
+        "merge_client_tools": merge_client_tools,
+    }
+    try:
+        _coll_fn = getattr(deps.rag_repo, "get_collection_name", None)
+        if callable(_coll_fn):
+            clawcode_runtime["rag_effective_collection"] = str(_coll_fn())
+    except Exception:
+        pass
+    tools_list: list[dict[str, Any]] = []
+    if include_rag_tool:
+        tools_list.append(RAG_QUERY_TOOL)
+    if skills_enabled_ids:
+        tools_list.append(LOAD_SKILL_TOOL)
+    if merge_client_tools and isinstance(client_tools, list):
+        for t in client_tools:
+            if isinstance(t, dict) and t.get("type") == "function":
+                fn = t.get("function")
+                if isinstance(fn, dict) and fn.get("name") in ("rag_query", "load_skill"):
+                    continue
+                if not isinstance(fn, dict):
+                    continue
+                name = str(fn.get("name") or "").strip()
+                if not name:
+                    continue
+                tools_list.append(t)
+
+    _co: dict[str, Any] = dict(getattr(chat_client, "_default_options", None) or {})
+    if body.get("temperature") is not None:
+        try:
+            _co["temperature"] = float(body["temperature"])
+        except (TypeError, ValueError):
+            pass
+    if body.get("top_p") is not None:
+        try:
+            _co["top_p"] = float(body["top_p"])
+        except (TypeError, ValueError):
+            pass
+    _co = normalize_ollama_chat_options(_co)
+    _co = _apply_clawcode_num_predict_budget(_co, body, think_requested=bool(send_think and oc_think_request))
+
+    _emit_trace(
+        trace_callback,
+        trace_id,
+        body,
+        [{"kind": "proxy_queued", "step": 0, "note": "Request received; waiting for model (streaming)"}],
+        started,
+        use_model,
+        0,
+        0,
+        final=False,
+        think_requested=oc_think_request,
+        merge_client_tools=merge_client_tools,
+        skills=skills_trace,
+        clawcode_runtime=clawcode_runtime,
+        journal_skip=True,
+    )
+
+    oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+
+    def _sse_chunk(delta: dict[str, Any], finish: str | None = None) -> str:
+        return (
+            "data: "
+            + json.dumps({
+                "id": oid,
+                "object": "chat.completion.chunk",
+                "model": use_model,
+                "trace_id": trace_id,
+                "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+            })
+            + "\n\n"
+        )
+
+    yield _sse_chunk({"role": "assistant"})
+
+    stream_fn = getattr(chat_client, "iter_chat_api_stream_events", None)
+    has_streaming = callable(stream_fn)
+
+    for step_idx in range(max_steps):
+        ollama_messages = openai_messages_to_ollama(openai_messages)
+        oll_tools = ollama_tools_from_openai(tools_list) if tools_to_ollama else None
+        payload: dict[str, Any] = {
+            "model": use_model,
+            "messages": ollama_messages,
+            "stream": True,
+            "options": dict(_co),
+        }
+        if oll_tools:
+            payload["tools"] = oll_tools
+        if send_think:
+            payload["think"] = True
+
+        t0 = time.perf_counter()
+        accumulated_content: list[str] = []
+        tool_calls_raw: list[Any] = []
+        oll_msg: dict[str, Any] = {}
+        step_error: str | None = None
+
+        if has_streaming:
+            try:
+                first_is_error = False
+                for kind, ev_data in stream_fn(payload):
+                    if kind == "content_delta" and ev_data:
+                        accumulated_content.append(ev_data)
+                        yield _sse_chunk({"content": ev_data})
+                    elif kind == "tool_calls" and ev_data:
+                        tool_calls_raw = ev_data
+                    elif kind == "done":
+                        oll_msg = ev_data.get("_merged_message", {}) if isinstance(ev_data, dict) else {}
+                    elif kind == "error":
+                        first_is_error = True
+                        step_error = str(ev_data)
+                        break
+            except Exception as e:
+                _LOG.exception("clawcode streaming ollama call failed step=%s: %s", step_idx, e)
+                step_error = str(e)
+
+            if step_error and not accumulated_content:
+                chat_fn = getattr(chat_client, "chat_api", None)
+                if callable(chat_fn):
+                    attempt = {**payload, "stream": False}
+                    last_exc: Exception | None = None
+                    data: dict[str, Any] = {}
+                    for _ in range(3):
+                        try:
+                            data = chat_fn(attempt)
+                            last_exc = None
+                            step_error = None
+                            break
+                        except Exception as e2:
+                            last_exc = e2
+                            if chat_error_suggests_no_tools(e2) and attempt.pop("tools", None) is not None:
+                                tools_to_ollama = False
+                                continue
+                            if chat_error_suggests_no_think(e2) and attempt.pop("think", None) is not None:
+                                send_think = False
+                                continue
+                            break
+                    if last_exc is not None:
+                        step_error = str(last_exc)
+                    else:
+                        oll_msg = data.get("message") if isinstance(data.get("message"), dict) else {}
+                        tool_calls_raw = oll_msg.get("tool_calls") or []
+                        visible = _openai_content_preview(ollama_message_to_openai_assistant(oll_msg))
+                        if visible:
+                            accumulated_content.append(visible)
+                            yield _sse_chunk({"content": visible})
+        else:
+            chat_fn = getattr(chat_client, "chat_api", None)
+            if not callable(chat_fn):
+                yield _sse_chunk({"content": "[Error: chat client has no chat_api]"})
+                yield _sse_chunk({}, "stop")
+                yield "data: [DONE]\n\n"
+                return
+            attempt = dict(payload)
+            attempt["stream"] = False
+            last_exc = None
+            data = {}
+            for _ in range(3):
+                try:
+                    data = chat_fn(attempt)
+                    last_exc = None
+                    break
+                except Exception as e:
+                    last_exc = e
+                    if chat_error_suggests_no_tools(e) and attempt.pop("tools", None) is not None:
+                        tools_to_ollama = False
+                        continue
+                    if chat_error_suggests_no_think(e) and attempt.pop("think", None) is not None:
+                        send_think = False
+                        continue
+                    break
+            if last_exc is not None:
+                step_error = str(last_exc)
+            else:
+                oll_msg = data.get("message") if isinstance(data.get("message"), dict) else {}
+                tool_calls_raw = oll_msg.get("tool_calls") or []
+                visible = _openai_content_preview(ollama_message_to_openai_assistant(oll_msg))
+                if visible:
+                    accumulated_content.append(visible)
+                    yield _sse_chunk({"content": visible})
+
+        dur_ms = int((time.perf_counter() - t0) * 1000)
+
+        if step_error:
+            err_text = f"[Error: {step_error}]"
+            accumulated_content.append(err_text)
+            yield _sse_chunk({"content": err_text})
+            steps_out.append({
+                "kind": "model_call", "step": step_idx, "ok": False,
+                "error": step_error, "duration_ms": dur_ms, "model": use_model,
+            })
+            _emit_trace(
+                trace_callback, trace_id, body, steps_out, started, use_model,
+                total_in, total_out, error=step_error,
+                think_requested=oc_think_request, merge_client_tools=merge_client_tools,
+                skills=skills_trace, clawcode_runtime=clawcode_runtime,
+            )
+            yield _sse_chunk({}, "stop")
+            yield "data: [DONE]\n\n"
+            return
+
+        if not oll_msg:
+            oll_msg = {"role": "assistant", "content": "".join(accumulated_content)}
+            if tool_calls_raw:
+                oll_msg["tool_calls"] = tool_calls_raw
+
+        err_obj = oll_msg.get("error") if isinstance(oll_msg, dict) else None
+        if err_obj:
+            yield _sse_chunk({"content": f"[Ollama error: {err_obj}]"})
+            yield _sse_chunk({}, "stop")
+            yield "data: [DONE]\n\n"
+            return
+
+        openai_assistant = ollama_message_to_openai_assistant(oll_msg)
+        if merge_client_tools:
+            _alias_search_tool_calls_to_grep_search(openai_assistant, body)
+        pt = _estimate_tokens(ollama_messages)
+        ct = _estimate_tokens(openai_assistant.get("content") or oll_msg)
+        total_in += pt
+        total_out += ct
+        tool_calls = openai_assistant.get("tool_calls") if isinstance(openai_assistant.get("tool_calls"), list) else []
+        ollama_dr_raw = oll_msg.get("done_reason") if isinstance(oll_msg, dict) else None
+        finish = openai_finish_reason_from_ollama(oll_msg, ollama_dr_raw if isinstance(ollama_dr_raw, str) else None)
+
+        th_raw, th_trunc = _cap_trace_text(oll_msg.get("thinking"), _TRACE_FIELD_CAP)
+        co_raw, co_trunc = _cap_trace_text(oll_msg.get("content"), _TRACE_FIELD_CAP)
+        vis, vis_trunc = _cap_trace_text(_openai_content_preview(openai_assistant), _TRACE_FIELD_CAP)
+        tc_compact = _compact_tool_calls_for_trace(openai_assistant)
+
+        step_rec: dict[str, Any] = {
+            "kind": "model_call",
+            "step": step_idx,
+            "ok": True,
+            "duration_ms": dur_ms,
+            "model": use_model,
+            "finish_reason": finish,
+            "prompt_tokens_est": pt,
+            "completion_tokens_est": ct,
+            "tool_calls_count": len(tool_calls),
+            "thinking_raw": th_raw,
+            "thinking_truncated": th_trunc,
+            "assistant_content_raw": co_raw,
+            "assistant_content_raw_truncated": co_trunc,
+            "assistant_visible": vis,
+            "assistant_visible_truncated": vis_trunc,
+            "tool_calls": tc_compact,
+        }
+        steps_out.append(step_rec)
+
+        if not tool_calls:
+            openai_messages.append(openai_assistant)
+            _emit_trace(
+                trace_callback, trace_id, body, steps_out, started, use_model,
+                total_in, total_out, final=True, final_assistant=openai_assistant,
+                finish_reason=finish, think_requested=oc_think_request,
+                merge_client_tools=merge_client_tools, skills=skills_trace,
+                clawcode_runtime=clawcode_runtime,
+            )
+            yield _sse_chunk({}, finish or "stop")
+            yield "data: [DONE]\n\n"
+            return
+
+        tc_names = _tool_call_names(tool_calls)
+        if merge_client_tools and tc_names and all(not _is_clawcode_server_tool(n) for n in tc_names):
+            steps_out.append({"kind": "tool_pass_through", "step": step_idx, "names": tc_names})
+            _emit_trace(
+                trace_callback, trace_id, body, steps_out, started, use_model,
+                total_in, total_out, final=True, final_assistant=openai_assistant,
+                finish_reason="tool_calls", think_requested=oc_think_request,
+                merge_client_tools=merge_client_tools, skills=skills_trace,
+                clawcode_runtime=clawcode_runtime,
+            )
+            payload_calls: list[dict[str, object]] = []
+            for i, tc in enumerate(tool_calls):
+                if not isinstance(tc, dict):
+                    continue
+                fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+                payload_calls.append({
+                    "index": i,
+                    "id": tc.get("id"),
+                    "type": "function",
+                    "function": {
+                        "name": fn.get("name") if isinstance(fn, dict) else None,
+                        "arguments": fn.get("arguments") if isinstance(fn, dict) else None,
+                    },
+                })
+            yield _sse_chunk({"tool_calls": payload_calls})
+            yield _sse_chunk({}, "tool_calls")
+            yield "data: [DONE]\n\n"
+            return
+
+        openai_messages.append(openai_assistant)
+        for tc in tool_calls:
+            if not isinstance(tc, dict):
+                continue
+            fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+            name = str(fn.get("name") or "") if isinstance(fn, dict) else ""
+            call_id = str(tc.get("id") or f"call_{uuid.uuid4().hex[:24]}")
+            args = arguments_to_ollama_object(fn.get("arguments") if isinstance(fn, dict) else None)
+            if name == "rag_query":
+                q = str(args.get("query") or "").strip()
+                tr = time.perf_counter()
+                ctx_text = ""
+                chunk_n = 0
+                score = 0.0
+                err_rag = None
+                chunks_meta: list[dict[str, Any]] = []
+                try:
+                    if not q:
+                        ctx_text = ""
+                    else:
+                        ctx, _timings = build_rag_context(
+                            q, deps.rag_repo, deps.embed_provider, deps.rerank_client,
+                            params.context_chunk_chars, params.context_total_chars,
+                        )
+                        ctx_text = ctx.context_text
+                        chunk_n = len(ctx.chunks_info)
+                        score = float(ctx.max_score)
+                        chunks_meta = _sanitize_chunks_for_metadata(list(ctx.chunks_info or []))
+                except Exception as e:
+                    _LOG.exception("rag_query failed: %s", e)
+                    err_rag = str(e)
+                    ctx_text = f"[rag_query error] {err_rag}"
+                    chunks_meta = []
+                steps_out.append({
+                    "kind": "tool_rag", "step": step_idx, "query": q[:500],
+                    "duration_ms": int((time.perf_counter() - tr) * 1000),
+                    "chunks": chunk_n, "max_score": score,
+                    "ok": err_rag is None, "error": err_rag,
+                    "context_chars": len(ctx_text), "chunks_info": chunks_meta,
+                })
+                openai_messages.append({
+                    "role": "tool", "tool_call_id": call_id,
+                    "name": "rag_query",
+                    "content": ctx_text[: params.context_total_chars + 2000],
+                })
+            elif name == "load_skill":
+                tr_sk = time.perf_counter()
+                inv_arg = str(args.get("invocation") or "").strip()
+                sid_arg = str(args.get("skill_id") or "").strip()
+                rec_ls, err_ls = _find_enabled_skill_record(
+                    skills_registry, skills_enabled_ids,
+                    invocation=inv_arg, skill_id=sid_arg,
+                )
+                ctx_skill = ""
+                err_skill = err_ls
+                chars_cap = max(12_000, int(params.context_total_chars) + 2000)
+                if rec_ls is not None and err_ls is None:
+                    try:
+                        skill_md = Path(str(rec_ls.installed_path)) / "SKILL.md"
+                        contents = skill_md.read_text(encoding="utf-8")
+                        body_ls = _strip_skill_frontmatter(contents).strip()
+                        inv_disp = (rec_ls.invocation_name or rec_ls.id).strip()
+                        header_ls = f"# ClawCode skill `{inv_disp}` (skill_id: `{rec_ls.id}`)\n\n"
+                        blob_ls = header_ls + (body_ls or "(empty SKILL.md)")
+                        ctx_skill = blob_ls[:chars_cap]
+                        if len(blob_ls) > chars_cap:
+                            ctx_skill += "\n…[load_skill truncated]"
+                        skills_loaded_invocations.append(inv_disp)
+                        skills_trace["loaded_count"] = len(skills_loaded_invocations)
+                    except Exception as e:
+                        _LOG.exception("load_skill failed: %s", e)
+                        err_skill = str(e)
+                        ctx_skill = f"[load_skill error] {err_skill}"
+                elif err_skill:
+                    try:
+                        ctx_skill = json.dumps({"error": err_skill}, ensure_ascii=False)
+                    except (TypeError, ValueError):
+                        ctx_skill = str(err_skill)
+                steps_out.append({
+                    "kind": "tool_skill", "step": step_idx,
+                    "invocation": inv_arg[:500],
+                    "skill_id": (sid_arg[:200] if sid_arg else None),
+                    "duration_ms": int((time.perf_counter() - tr_sk) * 1000),
+                    "ok": err_skill is None and bool(ctx_skill),
+                    "error": err_skill, "context_chars": len(ctx_skill),
+                })
+                openai_messages.append({
+                    "role": "tool", "tool_call_id": call_id,
+                    "name": "load_skill", "content": ctx_skill,
+                })
+            else:
+                steps_out.append({
+                    "kind": "tool_unhandled", "name": name, "step": step_idx,
+                    "note": "ClawCode only executes rag_query and load_skill in-tree",
+                })
+                stub = {"error": "tool not executed by ClawCode runtime"}
+                if not merge_client_tools:
+                    stub["hint"] = (
+                        "Only rag_query and load_skill are registered in this mode."
+                    )
+                openai_messages.append({
+                    "role": "tool", "tool_call_id": call_id,
+                    "name": name or "unknown",
+                    "content": json.dumps(stub),
+                })
+
+        _emit_trace(
+            trace_callback, trace_id, body, steps_out, started, use_model,
+            total_in, total_out, final=False,
+            think_requested=oc_think_request, merge_client_tools=merge_client_tools,
+            skills=skills_trace, clawcode_runtime=clawcode_runtime,
+        )
+
+    _emit_trace(
+        trace_callback, trace_id, body, steps_out, started, use_model,
+        total_in, total_out, error="max_agent_steps exceeded",
+        think_requested=oc_think_request, merge_client_tools=merge_client_tools,
+        skills=skills_trace, clawcode_runtime=clawcode_runtime,
+    )
+    yield _sse_chunk({"content": f"[max agent steps ({max_steps}) exceeded]"})
+    yield _sse_chunk({}, "stop")
+    yield "data: [DONE]\n\n"
+
+
+def _sse_error_line(msg: str) -> str:
+    return (
+        "data: "
+        + json.dumps({"error": {"message": msg, "type": "api_error"}})
+        + "\n\n"
+    )
 
 
 def _skills_public_payload(skills_trace: dict[str, Any] | None) -> dict[str, Any] | None:

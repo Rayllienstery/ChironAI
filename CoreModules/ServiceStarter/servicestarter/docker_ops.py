@@ -243,8 +243,35 @@ def ensure_qdrant_container(cfg: ServiceStarterConfig) -> tuple[bool, str]:
     return True, out or "created"
 
 
+def _open_webui_container_ollama_base_url(name: str) -> str | None:
+    """Read OLLAMA_BASE_URL from an existing container's config, or None if missing/unreadable."""
+    code, out, _ = run_docker(
+        ["inspect", "-f", "{{range .Config.Env}}{{println .}}{{end}}", name],
+        timeout=15.0,
+    )
+    if code != 0:
+        return None
+    for line in (out or "").splitlines():
+        line = line.strip()
+        if line.startswith("OLLAMA_BASE_URL="):
+            return line.split("=", 1)[1].strip()
+    return None
+
+
 def ensure_open_webui_container(cfg: ServiceStarterConfig) -> tuple[bool, str]:
     name = cfg.open_webui_container_name
+    desired = (cfg.open_webui_ollama_url_for_container or "").strip().rstrip("/")
+
+    if container_exists(name):
+        current = _open_webui_container_ollama_base_url(name)
+        if current is not None:
+            cur_norm = current.strip().rstrip("/")
+            if cur_norm != desired:
+                code, out, err = run_docker(["rm", "-f", name], timeout=120.0)
+                if code != 0:
+                    detail = (err or out or f"docker rm -f failed ({code})").strip()
+                    return False, detail
+
     if container_is_running(name):
         return True, "already running"
 

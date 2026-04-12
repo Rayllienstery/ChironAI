@@ -1032,6 +1032,23 @@ export async function getOpenWebUiConfig() {
   return data;
 }
 
+/**
+ * Persist Open WebUI Docker OLLAMA_BASE_URL target (Ollama or LLM Proxy /api/*).
+ * Pass empty string to clear saved value and fall back to environment/default.
+ */
+export async function putOpenWebUiBackendUrl(openWebUiOllamaBaseUrl) {
+  const response = await fetch(`${API_BASE}/open-webui/config`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ open_webui_ollama_base_url: openWebUiOllamaBaseUrl }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error || 'Failed to save Open WebUI backend URL');
+  }
+  return data;
+}
+
 export async function startOpenWebUi() {
   const response = await fetch(`${API_BASE}/open-webui/start`, {
     method: 'POST',

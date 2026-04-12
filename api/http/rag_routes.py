@@ -128,7 +128,7 @@ def create_app(
     app.add_url_rule(
         "/api/webui/open-webui/config",
         view_func=open_webui_config,
-        methods=["GET"],
+        methods=["GET", "PUT"],
     )
     app.add_url_rule(
         "/api/webui/open-webui/start",
