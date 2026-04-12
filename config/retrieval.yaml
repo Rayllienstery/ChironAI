@@ -19,6 +19,8 @@
 ## - rerank_model: LLM model used for reranking (can differ from chat model).
 ## - hybrid_sparse_enabled: index/search dense+sparse in Qdrant (default true; override in RAG / Models UI).
 ## - query_expansion_enabled / max_variants / abbreviations: extra query strings merged with RRF.
+## - coverage_aware_selection: after rerank, pick chunks to cover extracted concepts (symbols + concept_aliases), not only top similarity.
+## - coverage_extra_terms: optional list of lowercase phrases; if a phrase appears as substring in the question, it becomes a coverage target.
 
 retrieval:
   # Embedding query preprocessing
@@ -32,6 +34,10 @@ retrieval:
   # Reranking parameters
   rerank_max_candidates: 12
   final_context_k: 4
+
+  # Prefer sets of chunks that cover distinct extracted concepts (API symbols + concept_aliases), then fill by rerank order
+  coverage_aware_selection: false
+  coverage_extra_terms: []
   
   # Doc type preferences for QA
   doc_type_preferred_for_qa:

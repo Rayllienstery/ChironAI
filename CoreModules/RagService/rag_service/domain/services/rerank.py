@@ -28,6 +28,7 @@ def build_rerank_prompt(
     numbered = "\n\n".join(lines)
     return f"""You have a question and several documentation excerpts.
 Your task is to sort the excerpts by relevance to the question.
+When two excerpts are similarly useful, prefer the one that adds a different angle or topic so that the top entries together cover more distinct aspects of the question (avoid redundant near-duplicates at the top).
 
 Question:
 {question}
@@ -77,6 +78,12 @@ def reorder_hits_by_indices(
     return new_order
 
 
+def assign_rerank_scores(hits: list[dict[str, Any]]) -> None:
+    """Set each hit's rerank_score to 1 / rank (1-based) over the full ordered list."""
+    for rank, hit in enumerate(hits, start=1):
+        hit["rerank_score"] = 1.0 / rank
+
+
 def apply_rerank_scores_and_cut(
     hits: list[dict[str, Any]],
     final_k: int,
@@ -84,12 +91,11 @@ def apply_rerank_scores_and_cut(
     """Annotate each hit with rerank_score = 1/rank, return first final_k."""
     if not hits:
         return []
-    for rank, hit in enumerate(hits, start=1):
-        hit["rerank_score"] = 1.0 / rank
+    assign_rerank_scores(hits)
     return hits[:final_k]
 
 
 __all__ = [
     "shorten_for_rerank", "build_rerank_prompt", "parse_rerank_order",
-    "reorder_hits_by_indices", "apply_rerank_scores_and_cut",
+    "reorder_hits_by_indices", "assign_rerank_scores", "apply_rerank_scores_and_cut",
 ]

@@ -36,8 +36,9 @@ Failed to get embeddings for wwdc_sessions_2019_plus/wwdc2023-10241-transcript-e
 - [x] **Порог уверенности** — сделать `RAG_CONFIDENCE_THRESHOLD` настраиваемым; при низком score явно добавлять в системный блок фразу «Мало подходящих фрагментов» (уже частично есть — проверить единообразие).
 
 ### 1.4 Concept Coverage (новый приоритетный слой)
-- [ ] **Сместить цель retrieval: similarity -> coverage**
+- [x] **Сместить цель retrieval: similarity -> coverage**
   - Трактовка: оптимизировать не только семантическую близость чанков, но и полноту ключевых концептов для ответа.
+  - Сделано: после rerank — опциональный отбор по покрытию концептов (`coverage_aware_selection` в `retrieval.yaml`, по умолчанию off): `extract_target_concepts_for_coverage` / `select_hits_for_concept_coverage` в `domain/services/retrieval.py`, `_finalize_reranked_hits` в `application/rag/use_cases.py`, усилен `build_rerank_prompt` (`domain/services/rerank.py`), описание в `config/README.md`.
 - [ ] **Добавить слой concept expansion после первого retrieval**
   - Трактовка: извлекать найденные концепты и расширять их связанными (например `actor -> Sendable, nonisolated, MainActor`), затем догружать вторичный контекст.
 - [ ] **Ввести двухпроходный retrieval**

@@ -93,6 +93,8 @@ Controls query processing and vector search:
 - `multi_chunk_keywords`: Keywords triggering multi-chunk retrieval
 - `retrieval_stop_words`: Words stripped from queries
 - `rerank_model`: LLM model for reranking
+- `coverage_aware_selection`: When true, final chunk list after rerank favors covering distinct target concepts (symbols + `concept_aliases` matches + optional `coverage_extra_terms`) instead of only the top‑K by relevance order
+- `coverage_extra_terms`: List of phrases (matched as substrings in the question) added as coverage targets when `coverage_aware_selection` is enabled
 
 ### crawler.yaml
 Controls web crawling behavior:

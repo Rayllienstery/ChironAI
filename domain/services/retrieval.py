@@ -502,6 +502,136 @@ def expand_query_variants(question: str) -> list[str]:
     return variants[:max_v]
 
 
+# --- Concept coverage (retrieval goal: complement similarity with set coverage) -----
+
+_MAX_COVERAGE_CONCEPTS: int = 32
+_COVERAGE_ALIAS_EXPANSION_TOKENS: int = 8
+
+
+def extract_target_concepts_for_coverage(question: str) -> list[str]:
+    """
+    Heuristic target concepts for coverage-aware chunk selection (no extra LLM call).
+
+    Uses API-like symbols from the question, keys from ``CONCEPT_ALIASES`` when the
+    question contains the alias phrase, a small token budget from each alias expansion,
+    and optional ``coverage_extra_terms`` from retrieval config (substring match).
+    """
+    q_raw = (question or "").strip()
+    if not q_raw:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+
+    def add(term: str) -> None:
+        t = term.strip().lower()
+        if len(t) < 3:
+            return
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+
+    for sym in _API_SYMBOL_RE.findall(q_raw):
+        if len(sym) >= 4:
+            add(sym)
+
+    q_compact = f" {q_raw.lower()} "
+    for alias, expansion in (CONCEPT_ALIASES or {}).items():
+        if len(out) >= _MAX_COVERAGE_CONCEPTS:
+            break
+        a = (alias or "").strip().lower()
+        if not a or len(a) < 3:
+            continue
+        if f" {a} " not in q_compact:
+            continue
+        add(a)
+        n_exp = 0
+        for tok in (expansion or "").split():
+            if len(out) >= _MAX_COVERAGE_CONCEPTS:
+                break
+            t = tok.strip().lower().strip(".,;:!?")
+            if len(t) >= 4:
+                add(t)
+                n_exp += 1
+            if n_exp >= _COVERAGE_ALIAS_EXPANSION_TOKENS:
+                break
+
+    q_lower = q_raw.lower()
+    for term in get_retrieval_list("coverage_extra_terms", []):
+        if len(out) >= _MAX_COVERAGE_CONCEPTS:
+            break
+        t = str(term).strip().lower()
+        if len(t) >= 3 and t in q_lower:
+            add(t)
+
+    return out
+
+
+def _hit_coverage_haystack(hit: dict[str, Any]) -> str:
+    """Lowercased text used to test whether a chunk covers a concept."""
+    payload = hit.get("payload") or {}
+    parts: list[str] = [
+        str(payload.get("text") or ""),
+        str(payload.get("url") or ""),
+        str(payload.get("section_path_joined") or ""),
+    ]
+    sp = payload.get("section_path")
+    if isinstance(sp, list):
+        parts.append(" ".join(str(x) for x in sp))
+    return " ".join(parts).lower()
+
+
+def _hit_identity(hit: dict[str, Any]) -> Any:
+    hid = hit.get("id")
+    return hid if hid is not None else id(hit)
+
+
+def select_hits_for_concept_coverage(
+    hits: list[dict[str, Any]],
+    concepts: list[str],
+    final_k: int,
+) -> list[dict[str, Any]]:
+    """
+    Greedy selection in rerank order: prefer hits that cover concepts not yet covered,
+    then fill to ``final_k`` with remaining hits in order.
+
+    Preserves each hit's existing ``rerank_score`` (assigned on the full reranked list).
+    """
+    if not hits or final_k <= 0:
+        return []
+    cset = {c.strip().lower() for c in concepts if c and len(c.strip()) >= 3}
+    if not cset:
+        return hits[:final_k]
+
+    selected: list[dict[str, Any]] = []
+    covered: set[str] = set()
+    picked: set[Any] = set()
+
+    for h in hits:
+        if len(selected) >= final_k:
+            break
+        hid = _hit_identity(h)
+        if hid in picked:
+            continue
+        hay = _hit_coverage_haystack(h)
+        new_c = {c for c in cset if c in hay} - covered
+        if not new_c:
+            continue
+        picked.add(hid)
+        covered |= new_c
+        selected.append(h)
+
+    for h in hits:
+        if len(selected) >= final_k:
+            break
+        hid = _hit_identity(h)
+        if hid in picked:
+            continue
+        picked.add(hid)
+        selected.append(h)
+
+    return selected[:final_k]
+
+
 def rrf_merge_hit_lists(
     ranked_lists: list[list[dict[str, Any]]],
     *,
@@ -560,6 +690,8 @@ __all__ = [
     "intent_match_priority",
     "infer_query_intent",
     "expand_query_variants",
+    "extract_target_concepts_for_coverage",
+    "select_hits_for_concept_coverage",
     "rrf_merge_hit_lists",
 ]
 

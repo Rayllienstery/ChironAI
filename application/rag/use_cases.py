@@ -24,7 +24,7 @@ from domain.services.prompt_builder import (
     last_user_content,
 )
 from domain.services.rerank import (
-    apply_rerank_scores_and_cut,
+    assign_rerank_scores,
     build_rerank_prompt,
     parse_rerank_order,
     reorder_hits_by_indices,
@@ -41,11 +41,13 @@ from domain.services.retrieval import (
     combined_doc_priority,
     intent_match_priority,
     expand_query_variants,
+    extract_target_concepts_for_coverage,
     is_version_question,
     need_more_chunks,
     parse_versions_from_question,
     query_for_retrieval,
     rrf_merge_hit_lists,
+    select_hits_for_concept_coverage,
     extra_filter_framework_equals,
     extra_filter_symbol_equals,
     infer_query_intent,
@@ -57,9 +59,10 @@ from infrastructure.rag.sparse_text import normalize_text_for_sparse, text_to_sp
 _rag_log = logging.getLogger("trag.rag")
 
 try:
-    from config import get_retrieval_int
+    from config import get_retrieval_bool, get_retrieval_int
 except ImportError:
     get_retrieval_int = lambda k, d: d  # type: ignore
+    get_retrieval_bool = lambda k, d=False: d  # type: ignore
 DEFAULT_TOP_K = 8
 
 
@@ -67,10 +70,9 @@ def _apply_rerank(
     question: str,
     hits: list[dict[str, Any]],
     rerank_client: RerankClient | None,
-    final_k: int,
     timings: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
-    """Apply LLM rerank and cut to final_k. Uses domain rerank logic + rerank_client."""
+    """Apply LLM rerank ordering and assign rerank_score to all hits; caller cuts to final_k."""
     if not hits:
         return []
     candidates = hits[:RERANK_MAX_CANDIDATES]
@@ -89,7 +91,24 @@ def _apply_rerank(
         hits = reorder_hits_by_indices(candidates, order, hits)
     else:
         hits = list(hits)
-    return apply_rerank_scores_and_cut(hits, final_k)
+    assign_rerank_scores(hits)
+    return hits
+
+
+def _finalize_reranked_hits(
+    question: str,
+    hits: list[dict[str, Any]],
+    final_k: int,
+) -> list[dict[str, Any]]:
+    """Take first final_k after rerank, or coverage-aware subset when enabled and concepts exist."""
+    if not hits:
+        return []
+    if not get_retrieval_bool("coverage_aware_selection", False):
+        return hits[:final_k]
+    concepts = extract_target_concepts_for_coverage(question)
+    if not concepts:
+        return hits[:final_k]
+    return select_hits_for_concept_coverage(hits, concepts, final_k)
 
 
 def _search_one(
@@ -201,7 +220,8 @@ def search_rag(
         else:
             results.sort(key=combined_doc_priority, reverse=True)
         t0 = time.perf_counter()
-        results = _apply_rerank(question, results, rerank_client, final_k, timings=timings)
+        results = _apply_rerank(question, results, rerank_client, timings=timings)
+        results = _finalize_reranked_hits(question, results, final_k)
         timings["rerank_s"] += time.perf_counter() - t0
         return results, timings
     search_query = query_for_retrieval(question)
@@ -285,7 +305,8 @@ def search_rag(
         else:
             results.sort(key=combined_doc_priority, reverse=True)
     t0 = time.perf_counter()
-    results = _apply_rerank(question, results, rerank_client, final_k, timings=timings)
+    results = _apply_rerank(question, results, rerank_client, timings=timings)
+    results = _finalize_reranked_hits(question, results, final_k)
     timings["rerank_s"] += time.perf_counter() - t0
     return results, timings
 
