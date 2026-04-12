@@ -3,6 +3,9 @@ RAG service HTTP/JSON contract.
 
 DTOs and endpoint descriptions for clients (e.g. webui_backend) calling rag_service (package under CoreModules/RagService).
 No implementation; used for typing and OpenAPI generation.
+
+For the **public OpenAI-compatible** surface (``/v1/chat/completions`` vs ``/v1/completions``), see
+[openai_proxy_api](openai_proxy_api.py).
 """
 
 from __future__ import annotations

@@ -31,7 +31,8 @@ Failed to get embeddings for wwdc_sessions_2019_plus/wwdc2023-10241-transcript-e
 
 ### 1.2 Чанкинг и контекст
 - [x] **Семантический чанкинг** — при индексации резать по границам секций/параграфов (заголовок + абзац), а не только по размеру; сохранять `section_path` в payload и при необходимости фильтровать по нему.
-- [ ] **Лимиты контекста** — уже снижены (≈7k и topK=4) в коде; вынести `RAG_CONTEXT_CHUNK_CHARS`, `RAG_CONTEXT_TOTAL_CHARS`, `RAG_TOP_K` в конфиг/env и провести A/B‑тесты для разных моделей/размеров.
+- [x] **Лимиты контекста (config/env)** — `RAG_CONTEXT_CHUNK_CHARS`, `RAG_CONTEXT_TOTAL_CHARS`, `RAG_TOP_K` вынесены в `config` / env (`config/__init__.py`, `config/README.md`, `rag.yaml` / `retrieval.yaml`).
+- [ ] **A/B‑тесты лимитов контекста** — сравнение качества для разных моделей и размеров контекста после фиксации базовых лимитов.
 - [x] **Порог уверенности** — сделать `RAG_CONFIDENCE_THRESHOLD` настраиваемым; при низком score явно добавлять в системный блок фразу «Мало подходящих фрагментов» (уже частично есть — проверить единообразие).
 
 ### 1.4 Concept Coverage (новый приоритетный слой)
@@ -80,7 +81,8 @@ Failed to get embeddings for wwdc_sessions_2019_plus/wwdc2023-10241-transcript-e
 ## 5. Тестирование и оценка качества
 
 ### 5.1 Регрессионные тесты
-- [ ] **Набор эталонных запросов** — файл (JSON/YAML) с парами (запрос, ожидаемые ключевые факты/API или «нет в RAG»); скрипт запускает RAG + прокси, парсит ответ и проверяет наличие ключевых фраз или отсутствие запрещённых (force unwrap, русские комментарии в коде).
+- [x] **Формализованные RAG-сценарии** — каталог `rag_tests/*.md` (вопрос, ожидаемые концепты, опции RAG Strict и т.д.), раннер `python -m api.cli rag-tests run` (см. `rag_tests/README.md`).
+- [ ] **Эталонный набор в JSON/YAML** — отдельный файл с парами (запрос, ожидаемые ключевые факты/API или «нет в RAG») и скрипт с парсингом ответа под те же проверки, что в пункте выше (дублирование формата с markdown-тестами по желанию).
 - [ ] **Интеграция с app_tester** — `app_tester.py` сейчас тестирует загрузку одной страницы; добавить сценарий: заданный URL → markdown → чанки → эмбеддинг → поиск по тестовому вопросу и проверка, что ожидаемый чанк в топ-N.
 
 ### 5.2 Бенчмарки
@@ -92,11 +94,13 @@ Failed to get embeddings for wwdc_sessions_2019_plus/wwdc2023-10241-transcript-e
 
 ## 6. Наблюдаемость и эксплуатация
 
-- [ ] **Метрики** — счётчики: число запросов, число запросов с пустым RAG, число с низким confidence; опционально экспорт в Prometheus/StatsD.
-- [ ] **Логирование** — структурированные логи (JSON) с полями: query_hash, num_chunks, max_score, model, latency_ms, stream; для отладки и анализа.
-- [ ] **Отдельный error‑логгер WebUI** — выделенный логгер для ошибок WebUI (например, `webui_errors.log`): HTTP‑ошибки, исключения при крауле/индексации, ошибки конфигов. Настроить ротацию логов и минимальный формат (timestamp, level, source, message, traceback_id).
-- [ ] **Health check** — endpoint `GET /health`: проверка доступности Ollama и Qdrant; возвращать 503 при недоступности одного из них.
-- [ ] **Конфиг** — единый конфиг (YAML/JSON или env): URL Ollama/Qdrant, имена моделей, лимиты RAG, порог confidence, включение веб-поиска.
+- [x] **Метрики (in-memory)** — счётчики и гистограммы в LLM Proxy: `rag_requests_total`, `rag_empty_results`, `rag_low_confidence`, latency/tokens и др. (`infrastructure/metrics`, запись из `CoreModules/LlmProxy/llm_proxy/chat_completions.py`).
+- [ ] **Экспорт метрик** — выгрузка в Prometheus/StatsD или отдельный `GET /metrics` (сейчас только in-memory collector).
+- [x] **Логирование (structured, proxy)** — JSON-строка `event: rag_request_completed` с `query_hash`, `chunks_count`, `max_score`, `model`, `latency_ms`, `stream`, шагами RAG (`rag_steps`); см. `_rag_request_completed_payload` в `chat_completions.py`.
+- [x] **Отдельный error‑логгер WebUI** — `infrastructure/logging/webui_error_logger.py`: файл `webui_errors.log`, ротация, опционально JSON Lines (`LOG_FORMAT=json`); вызовы `log_webui_error` из прокси/WebUI.
+- [x] **Health check** — `GET /health` в основном приложении (`api/http/rag_routes.py`), build proxy (`api/http/build_proxy_app.py`), standalone `rag_service` (`CoreModules/RagService/rag_service/api/http.py`); пробы Ollama `/api/tags` и Qdrant `/collections` через `infrastructure/stack_health.py`, при сбое — `503`.
+- [ ] **Health: probe `/api/embed`** — опционально добавить проверку эмбеддинга (см. чеклист в `Improvement.md` §6.1).
+- [x] **Конфиг** — YAML в `config/*.yaml` плюс env overrides (URL Ollama/Qdrant, модели, лимиты RAG, confidence, веб-поиск и т.д.; см. `config/__init__.py`, `config/README.md`).
 
 ---
 
@@ -106,7 +110,7 @@ Failed to get embeddings for wwdc_sessions_2019_plus/wwdc2023-10241-transcript-e
 - [ ] **CHANGELOG** — версии 0.1, 0.2, 0.3 с перечнем изменений (промпт, RAG, принципы самопроверки, Liquid Glass и т.д.).
 - [ ] **Описание промпта** — отдельный документ (например `docs/PROMPT.md`): структура ответа, блоки RAG/архитектура/самопроверка, принципы 1–10, когда применяются 2–5 и 10.
 - [x] **Дублирование app.py** — отдельного `app.py` в корне репозитория нет; краул и индексация идут через [`WebUI/app.py`](WebUI/app.py) (см. CLI/README).
-- [ ] **.gitignore: DB / logs / secrets** — добавить в `.gitignore` БД/локальные сторы (sqlite и т.п.), логи, дампы, кэши, `.env`/ключи и прочие чувствительные файлы (и проверить, что они нигде не коммитятся).
+- [x] **.gitignore: DB / logs / secrets** — в корневом `.gitignore` уже есть `.env*`, ключи, `*.db`/`*.sqlite*`, `logs/`, `*.log`, кэши, дампы и др.; периодически перепроверять, что новые артефакты не утекают в коммиты.
 
 ---
 
@@ -114,7 +118,9 @@ Failed to get embeddings for wwdc_sessions_2019_plus/wwdc2023-10241-transcript-e
 
 - [ ] **Типизация** — включить проверку типов (mypy или pyright) для `rag_proxy.py`, `rag_client.py`, ключевых функций в `app.py`; исправить замечания.
 - [ ] **Русские комментарии** — в `rag_client.py` и других файлах часть комментариев на русском; по желанию перевести на английский для единообразия с промптом «код и комментарии на английском».
-- [ ] **Тесты** — unit-тесты для `query_for_retrieval`, `_build_qdrant_filter`, `_framework_filter`, `_last_user_content` (все чистые функции); интеграционный тест: mock Ollama/Qdrant, POST /v1/chat/completions, проверка формата ответа и наличия RAG в системном сообщении.
+- [x] **Тесты (retrieval / prompt helpers)** — `query_for_retrieval`, `build_qdrant_filter` / `merge_qdrant_filters`, `framework_filter`, `last_user_content`: покрытие в `tests/domain/test_retrieval.py`, `tests/domain/test_prompt_builder.py` (и дубли в `tests/rag_service/` где применимо).
+- [ ] **Доп. unit-тесты** — расширить покрытие вспомогательных функций retrieval/прокси по мере рефакторинга.
+- [x] **Интеграция HTTP прокси** — `tests/api/test_http_endpoints.py`: mock/doubles, `POST /v1/chat/completions`, проверки формата и веток RAG (в т.ч. health `/health`).
 - [x] **Rerank model** — убрать хардкод `devstral-ios` в `rag_client.rerank()`; читать из env.
 
 ---
@@ -123,7 +129,7 @@ Failed to get embeddings for wwdc_sessions_2019_plus/wwdc2023-10241-transcript-e
 
 1. **RAG:** гибридный поиск (vector + keyword), опционально query expansion; настраиваемые лимиты контекста и порог confidence.
 2. **Веб-поиск:** выборочный вызов по запросу, отдельный блок в контексте, без смешивания с RAG-фактами.
-3. **Тесты и метрики:** эталонные запросы + автоматическая проверка ответов; метрики латентности и RAG hit rate; health check.
+3. **Тесты и метрики:** расширять `rag_tests` и JSON/YAML-эталоны при необходимости; метрики латентности/RAG уже пишутся in-memory — добавить экспорт и публичный scrape endpoint при необходимости; health check **сделан**, опционально — probe `/api/embed`.
 4. **Конфиг и env:** все URL и имена моделей (чат, embed, rerank) в env/конфиге; версионирование промпта в файле.
 5. **Документация:** README, CHANGELOG, описание промпта и принципов самопроверки.
 

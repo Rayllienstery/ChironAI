@@ -25,6 +25,8 @@ from urllib.parse import urlparse
 
 from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
 
+from core.contracts.webui_api import WEBUI_URL_PREFIX
+
 # Ensure project root on path when running from api or WebUI.
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _ROOT not in sys.path:
@@ -282,7 +284,7 @@ _REQUEST_BUFFER: deque[dict[str, Any]] = deque(maxlen=50)
 _WEBUI_LOG = logging.getLogger("webui")
 _ERROR_LOG = get_webui_error_logger()
 
-webui_bp = Blueprint("webui", __name__, url_prefix="/api/webui")
+webui_bp = Blueprint("webui", __name__, url_prefix=WEBUI_URL_PREFIX)
 
 # Persisted Open WebUI → backend (Ollama-compatible base URL, e.g. LLM Proxy).
 OPEN_WEBUI_OLLAMA_BASE_URL_APP_KEY = "open_webui_ollama_base_url"

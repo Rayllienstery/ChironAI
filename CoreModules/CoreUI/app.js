@@ -1,4 +1,4 @@
-// WebUI Frontend Application
+// WebUI Frontend Application — API_BASE must match core.contracts.webui_api.WEBUI_URL_PREFIX (Python).
 const API_BASE = '/api/webui';
 
 // State

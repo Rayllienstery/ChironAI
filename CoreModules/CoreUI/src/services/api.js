@@ -1,3 +1,4 @@
+/** Must match Python ``core.contracts.webui_api.WEBUI_URL_PREFIX``. */
 const API_BASE = '/api/webui';
 
 const COREUI_SESSION_STORAGE_KEY = 'chironai_coreui_session_id';
