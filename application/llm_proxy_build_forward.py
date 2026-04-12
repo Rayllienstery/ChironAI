@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import time
-from typing import Any
+from typing import Any, Iterator
 
 import requests
 from flask import Response, jsonify
@@ -14,6 +14,8 @@ from flask import Response, jsonify
 from config import get_clawcode_host, get_clawcode_openai_port, get_server_host
 
 _LOG = logging.getLogger(__name__)
+
+_claw_http_session = requests.Session()
 
 
 def _last_user_query_from_messages(messages: Any) -> str:
@@ -46,6 +48,235 @@ def _claw_openai_base() -> str:
             dh = "127.0.0.1"
         host = dh
     return f"http://{host}:{port}".rstrip("/")
+
+
+def _trace_id_from_claw_payload(data: dict[str, Any]) -> str | None:
+    tid = data.get("trace_id")
+    if isinstance(tid, str) and tid.strip():
+        return tid.strip()
+    return None
+
+
+def _persist_claw_proxy_log(
+    *,
+    body: dict[str, Any],
+    build: dict[str, Any],
+    data: dict[str, Any],
+    latency_ms: int,
+    stream: bool,
+) -> None:
+    from infrastructure.database import get_logs_repository
+    from infrastructure.database.session_manager import get_session_manager
+
+    bid = str(build.get("id") or "").strip()
+    ollama_tag = str(build.get("ollama_model") or "").strip()
+    user_q = _last_user_query_from_messages(body.get("messages"))
+    content_preview = ""
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices:
+        first = choices[0]
+        if isinstance(first, dict):
+            msg = first.get("message")
+            if isinstance(msg, dict):
+                c0 = msg.get("content")
+                if isinstance(c0, str):
+                    content_preview = c0[:500]
+
+    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+    pt = usage.get("prompt_tokens")
+    ct = usage.get("completion_tokens")
+    tt = usage.get("total_tokens")
+
+    rag_meta = data.get("rag_metadata")
+    rag_context_data = None
+    if isinstance(rag_meta, dict):
+        chunks = rag_meta.get("chunks_info") or []
+        cc = rag_meta.get("chunks_count")
+        if cc is None and isinstance(chunks, list):
+            cc = len(chunks)
+        rag_context_data = {
+            "chunks_info": chunks if isinstance(chunks, list) else [],
+            "max_score": rag_meta.get("max_score"),
+            "chunks_count": int(cc or 0),
+        }
+
+    log_model = bid if bid else str(data.get("model") or ollama_tag)
+    trace_id = _trace_id_from_claw_payload(data)
+
+    db_path = os.getenv("WEBUI_DB_PATH", "logs/webui.db")
+    get_session_manager(db_path).get_or_create_session("proxy")
+    logs_repo = get_logs_repository()
+    logs_repo.add_log(
+        session_id="proxy",
+        level="INFO",
+        message=f"Proxy request (claw): {user_q[:100]}...",
+        source="proxy",
+        metadata={
+            "user_query": user_q[:500],
+            "response_preview": content_preview,
+            "model": log_model,
+            "requested_model": (str(body.get("model") or "").strip() or log_model),
+            "latency_ms": int(data.get("latency_ms") or latency_ms),
+            "prompt_tokens": int(pt) if isinstance(pt, (int, float)) else 0,
+            "completion_tokens": int(ct) if isinstance(ct, (int, float)) else 0,
+            "total_tokens": int(tt) if isinstance(tt, (int, float)) else 0,
+            "rag_context": rag_context_data,
+            "proxy_backend": "claw",
+            "claw_build_id": bid or None,
+            "stream": stream,
+            "is_autocomplete": False,
+            **({"trace_id": trace_id} if trace_id else {}),
+        },
+    )
+
+
+def _persist_claw_proxy_log_stream_summary(
+    *,
+    body: dict[str, Any],
+    build: dict[str, Any],
+    start_time: float,
+    accumulated_text: str,
+    trace_id: str | None,
+    usage: dict[str, Any] | None,
+) -> None:
+    """One proxy row after SSE completes; synthesize minimal OpenAI-shaped dict for shared metadata."""
+    latency_ms = int((time.time() - start_time) * 1000)
+    bid = str(build.get("id") or "").strip()
+    ollama_tag = str(build.get("ollama_model") or "").strip()
+    log_model = bid if bid else ollama_tag
+    user_q = _last_user_query_from_messages(body.get("messages"))
+    pt = ct = tt = 0
+    if isinstance(usage, dict):
+        if isinstance(usage.get("prompt_tokens"), (int, float)):
+            pt = int(usage["prompt_tokens"])
+        if isinstance(usage.get("completion_tokens"), (int, float)):
+            ct = int(usage["completion_tokens"])
+        if isinstance(usage.get("total_tokens"), (int, float)):
+            tt = int(usage["total_tokens"])
+    if tt == 0 and (pt or ct):
+        tt = pt + ct
+
+    from infrastructure.database import get_logs_repository
+    from infrastructure.database.session_manager import get_session_manager
+
+    db_path = os.getenv("WEBUI_DB_PATH", "logs/webui.db")
+    get_session_manager(db_path).get_or_create_session("proxy")
+    logs_repo = get_logs_repository()
+    logs_repo.add_log(
+        session_id="proxy",
+        level="INFO",
+        message=f"Proxy request (claw stream): {user_q[:100]}...",
+        source="proxy",
+        metadata={
+            "user_query": user_q[:500],
+            "response_preview": accumulated_text[:500],
+            "model": log_model,
+            "requested_model": (str(body.get("model") or "").strip() or log_model),
+            "latency_ms": latency_ms,
+            "prompt_tokens": pt,
+            "completion_tokens": ct,
+            "total_tokens": tt,
+            "rag_context": None,
+            "proxy_backend": "claw",
+            "claw_build_id": bid or None,
+            "stream": True,
+            "is_autocomplete": False,
+            **({"trace_id": trace_id} if trace_id else {}),
+        },
+    )
+
+
+def _process_sse_line(
+    line: str,
+    *,
+    accumulated_content: list[str],
+    trace_id_holder: list[str | None],
+    usage_holder: list[dict[str, Any] | None],
+) -> None:
+    s = line.strip()
+    if not s.startswith("data:"):
+        return
+    payload = s[5:].strip()
+    if payload == "[DONE]":
+        return
+    try:
+        obj = json.loads(payload)
+    except json.JSONDecodeError:
+        return
+    if not isinstance(obj, dict):
+        return
+    tid = _trace_id_from_claw_payload(obj)
+    if tid:
+        trace_id_holder[0] = tid
+    choices = obj.get("choices")
+    if isinstance(choices, list) and choices:
+        c0 = choices[0]
+        if isinstance(c0, dict):
+            delta = c0.get("delta")
+            if isinstance(delta, dict):
+                c = delta.get("content")
+                if isinstance(c, str) and c:
+                    accumulated_content.append(c)
+            msg = c0.get("message")
+            if isinstance(msg, dict):
+                c2 = msg.get("content")
+                if isinstance(c2, str) and c2:
+                    accumulated_content.append(c2)
+    u = obj.get("usage")
+    if isinstance(u, dict):
+        usage_holder[0] = u
+
+
+def _wrap_sse_stream_with_logging(
+    byte_iter: Iterator[bytes],
+    *,
+    body: dict[str, Any],
+    build: dict[str, Any],
+    start_time: float,
+) -> Iterator[bytes]:
+    buf = b""
+    accumulated_content: list[str] = []
+    trace_id_holder: list[str | None] = [None]
+    usage_holder: list[dict[str, Any] | None] = [None]
+    try:
+        for piece in byte_iter:
+            if piece:
+                yield piece
+                buf += piece
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    try:
+                        _process_sse_line(
+                            line.decode("utf-8", errors="replace"),
+                            accumulated_content=accumulated_content,
+                            trace_id_holder=trace_id_holder,
+                            usage_holder=usage_holder,
+                        )
+                    except Exception:
+                        pass
+        if buf:
+            try:
+                _process_sse_line(
+                    buf.decode("utf-8", errors="replace"),
+                    accumulated_content=accumulated_content,
+                    trace_id_holder=trace_id_holder,
+                    usage_holder=usage_holder,
+                )
+            except Exception:
+                pass
+    finally:
+        try:
+            full_text = "".join(accumulated_content)
+            _persist_claw_proxy_log_stream_summary(
+                body=body,
+                build=build,
+                start_time=start_time,
+                accumulated_text=full_text,
+                trace_id=trace_id_holder[0],
+                usage=usage_holder[0],
+            )
+        except Exception as e:
+            _LOG.warning("forward_claw_build_chat: failed to persist proxy log (stream): %s", e)
 
 
 def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
@@ -108,21 +339,36 @@ def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
 
     start_time = time.time()
     try:
-        resp = requests.post(
+        resp = _claw_http_session.post(
             f"{base}/v1/chat/completions",
             json=forward,
             timeout=(10.0, timeout_sec),
+            stream=True,
         )
     except requests.RequestException as e:
         return jsonify({"error": f"ClawCode unreachable at {base}: {e}"}), 502
 
+    if resp.status_code >= 400:
+        try:
+            err_data = resp.json() if resp.content else {}
+        except ValueError:
+            err_data = {}
+        if isinstance(err_data, dict):
+            err = err_data.get("error")
+            if isinstance(err, dict):
+                msg = str(err.get("message") or err)
+            else:
+                msg = str(err or resp.text or "ClawCode error")
+        else:
+            msg = str(resp.text or "ClawCode error")
+        return jsonify({"error": msg}), 502
+
     content_type = (resp.headers.get("Content-Type") or "").lower()
     if "text/event-stream" in content_type:
-        # Pass through SSE
-        def gen():
-            for chunk in resp.iter_content(chunk_size=None):
-                if chunk:
-                    yield chunk
+        stream_iter = resp.iter_content(chunk_size=None)
+
+        def gen() -> Iterator[bytes]:
+            yield from _wrap_sse_stream_with_logging(stream_iter, body=body, build=build, start_time=start_time)
 
         return Response(
             gen(),
@@ -141,14 +387,6 @@ def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
     if not isinstance(data, dict):
         return jsonify({"error": "ClawCode returned non-JSON response"}), 502
 
-    if resp.status_code >= 400:
-        err = data.get("error")
-        if isinstance(err, dict):
-            msg = str(err.get("message") or err)
-        else:
-            msg = str(err or resp.text or "ClawCode error")
-        return jsonify({"error": msg}), 502
-
     latency_ms = int((time.time() - start_time) * 1000)
     if "latency_ms" not in data:
         data["latency_ms"] = latency_ms
@@ -163,63 +401,12 @@ def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
         data.pop("rag_metadata", None)
 
     try:
-        from infrastructure.database import get_logs_repository
-        from infrastructure.database.session_manager import get_session_manager
-
-        user_q = _last_user_query_from_messages(body.get("messages"))
-        content_preview = ""
-        choices = data.get("choices")
-        if isinstance(choices, list) and choices:
-            first = choices[0]
-            if isinstance(first, dict):
-                msg = first.get("message")
-                if isinstance(msg, dict):
-                    c0 = msg.get("content")
-                    if isinstance(c0, str):
-                        content_preview = c0[:500]
-
-        usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-        pt = usage.get("prompt_tokens")
-        ct = usage.get("completion_tokens")
-        tt = usage.get("total_tokens")
-
-        rag_meta = data.get("rag_metadata")
-        rag_context_data = None
-        if isinstance(rag_meta, dict):
-            chunks = rag_meta.get("chunks_info") or []
-            cc = rag_meta.get("chunks_count")
-            if cc is None and isinstance(chunks, list):
-                cc = len(chunks)
-            rag_context_data = {
-                "chunks_info": chunks if isinstance(chunks, list) else [],
-                "max_score": rag_meta.get("max_score"),
-                "chunks_count": int(cc or 0),
-            }
-
-        log_model = bid if bid else str(data.get("model") or ollama_tag)
-        db_path = os.getenv("WEBUI_DB_PATH", "logs/webui.db")
-        get_session_manager(db_path).get_or_create_session("proxy")
-        logs_repo = get_logs_repository()
-        logs_repo.add_log(
-            session_id="proxy",
-            level="INFO",
-            message=f"Proxy request (claw): {user_q[:100]}...",
-            source="proxy",
-            metadata={
-                "user_query": user_q[:500],
-                "response_preview": content_preview,
-                "model": log_model,
-                "requested_model": (str(body.get("model") or "").strip() or log_model),
-                "latency_ms": int(data.get("latency_ms") or latency_ms),
-                "prompt_tokens": int(pt) if isinstance(pt, (int, float)) else 0,
-                "completion_tokens": int(ct) if isinstance(ct, (int, float)) else 0,
-                "total_tokens": int(tt) if isinstance(tt, (int, float)) else 0,
-                "rag_context": rag_context_data,
-                "proxy_backend": "claw",
-                "claw_build_id": bid or None,
-                "stream": bool(body.get("stream")),
-                "is_autocomplete": False,
-            },
+        _persist_claw_proxy_log(
+            body=body,
+            build=build,
+            data=data,
+            latency_ms=latency_ms,
+            stream=bool(body.get("stream")),
         )
     except Exception as e:
         _LOG.warning("forward_claw_build_chat: failed to persist proxy log: %s", e)

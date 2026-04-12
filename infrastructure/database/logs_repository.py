@@ -245,6 +245,71 @@ class LogsRepository:
             logs.reverse()
             return logs
 
+    def get_proxy_and_clawcode_logs(
+        self,
+        *,
+        limit: int = 100,
+        since_id: Optional[int] = None,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Single-query merge of LLM proxy rows (session proxy) and ClawCode journal (clawcode).
+
+        SQLite ``logs.id`` is global, so ``since_id`` and ``limit`` apply to the combined
+        stream in insertion order — correct for incremental polling with ``max(id)`` from
+        the previous merged response.
+        """
+        if from_date is not None:
+            from_date = _normalize_log_timestamp_bound(from_date, end=False)
+        if to_date is not None:
+            to_date = _normalize_log_timestamp_bound(to_date, end=True)
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            query = (
+                "SELECT * FROM logs WHERE level = 'INFO' AND ("
+                "(session_id = 'proxy' AND source = 'proxy') OR "
+                "(session_id = 'clawcode' AND source = 'clawcode')"
+                ")"
+            )
+            params: list[Any] = []
+            if since_id is not None:
+                query += " AND id > ?"
+                params.append(since_id)
+            if from_date:
+                query += " AND timestamp >= ?"
+                params.append(from_date)
+            if to_date:
+                query += " AND timestamp <= ?"
+                params.append(to_date)
+            query += " ORDER BY id DESC LIMIT ?"
+            params.append(limit)
+
+            cursor = conn.execute(query, params)
+            rows = cursor.fetchall()
+
+            logs: list[dict[str, Any]] = []
+            for row in rows:
+                log: dict[str, Any] = {
+                    "id": row["id"],
+                    "session_id": row["session_id"],
+                    "timestamp": row["timestamp"],
+                    "level": row["level"],
+                    "source": row["source"],
+                    "message": row["message"],
+                    "error_type": row["error_type"],
+                }
+                if row["metadata"]:
+                    try:
+                        log["metadata"] = json.loads(row["metadata"])
+                    except json.JSONDecodeError:
+                        log["metadata"] = {}
+                logs.append(log)
+
+            logs.reverse()
+            return logs
+
     def get_all_logs(
         self,
         level: Optional[str] = None,

@@ -921,7 +921,12 @@ def clear_coreui_notifications() -> Any:
 
 @webui_bp.route("/proxy-logs", methods=["GET"])
 def get_proxy_logs() -> Any:
-    """Return proxy logs from database."""
+    """Return proxy logs from database.
+
+    When ``autocomplete_only`` is false, returns a single merged stream of ``session_id=proxy``
+    and ``session_id=clawcode`` rows ordered by global ``logs.id``, so ``since_id`` (max id from
+    the previous poll) and ``limit`` apply consistently across both sources.
+    """
     try:
         limit = int(request.args.get("limit", 100))
         since_id = request.args.get("since_id")
@@ -931,36 +936,25 @@ def get_proxy_logs() -> Any:
         autocomplete_only = ac_raw in ("1", "true", "yes")
 
         logs_repo = get_logs_repository()
-        logs = logs_repo.get_logs(
-            session_id="proxy",
-            level="INFO",
-            limit=limit,
-            since_id=int(since_id) if since_id else None,
-            source="proxy",
-            from_date=from_date or None,
-            to_date=to_date or None,
-            autocomplete_only=autocomplete_only if autocomplete_only else None,
-        )
-        # Direct ClawCode OpenAI (/v1/chat/completions on clawcode port) persists to session_id=clawcode;
-        # merge so "Proxy Logs" reflects IDE / Claw traffic alongside LLM-proxy rows.
-        if not autocomplete_only:
-            claw_logs = logs_repo.get_logs(
-                session_id="clawcode",
+        sid = int(since_id) if since_id else None
+        if autocomplete_only:
+            logs = logs_repo.get_logs(
+                session_id="proxy",
                 level="INFO",
                 limit=limit,
-                since_id=int(since_id) if since_id else None,
-                source="clawcode",
-                include_system=False,
+                since_id=sid,
+                source="proxy",
+                from_date=from_date or None,
+                to_date=to_date or None,
+                autocomplete_only=True,
+            )
+        else:
+            logs = logs_repo.get_proxy_and_clawcode_logs(
+                limit=limit,
+                since_id=sid,
                 from_date=from_date or None,
                 to_date=to_date or None,
             )
-            merged = list(logs) + list(claw_logs)
-            merged.sort(
-                key=lambda row: (str(row.get("timestamp") or ""), int(row.get("id") or 0)),
-            )
-            if len(merged) > limit:
-                merged = merged[-limit:]
-            logs = merged
 
         return jsonify({"logs": logs})
     except Exception as e:

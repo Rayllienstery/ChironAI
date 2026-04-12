@@ -1413,6 +1413,38 @@ def run_chat_completions(
                 }
                 w.set_current_trace(trace)
 
+                _stm_lat = int((time.time() - stream_start_time) * 1000)
+                try:
+                    session_manager = w.get_session_manager()
+                    session_manager.get_or_create_session("proxy")
+                    logs_repo = w.get_logs_repository()
+                    logs_repo.add_log(
+                        session_id="proxy",
+                        level="INFO",
+                        message=f"Proxy request (stream tool): {user_query[:100]}...",
+                        source="proxy",
+                        metadata={
+                            "user_query": user_query[:500],
+                            "response_preview": "",
+                            "trace_id": trace_id,
+                            "model": use_model,
+                            "latency_ms": _stm_lat,
+                            "prompt_tokens": 0,
+                            "completion_tokens": 0,
+                            "total_tokens": 0,
+                            "rag_context": rag_context_data,
+                            "rag_steps": rag_timings,
+                            "trace": trace,
+                            "stream": True,
+                            "is_autocomplete": bool(is_autocomplete),
+                            "requested_model": requested_model,
+                            "proxy_backend": proxy_backend_tag(),
+                            "stream_tool_mode": "tool_calls",
+                        },
+                    )
+                except Exception as e:
+                    _RAG_LOG.warning("Failed to log proxy stream_tool_mode (tool_calls): %s", e)
+
                 def generate_sse_tool_call():
                     oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
                     yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
@@ -1438,6 +1470,49 @@ def run_chat_completions(
                 "tool_calls_count": 0,
             }
             w.set_current_trace(trace)
+
+            _stm_lat_pt = int((time.time() - stream_start_time) * 1000)
+
+            def _approx_tokens_stm(text: str) -> int:
+                if not text:
+                    return 0
+                return max(1, int(len(text) / 4))
+
+            _pt_stm = _approx_tokens_stm(
+                " ".join((m.get("content") or "") for m in ollama_messages if isinstance(m, dict))
+            )
+            _ct_stm = _approx_tokens_stm(tool_plain_fallback)
+            _tt_stm = _pt_stm + _ct_stm
+            try:
+                session_manager = w.get_session_manager()
+                session_manager.get_or_create_session("proxy")
+                logs_repo = w.get_logs_repository()
+                logs_repo.add_log(
+                    session_id="proxy",
+                    level="INFO",
+                    message=f"Proxy request (stream tool plain): {user_query[:100]}...",
+                    source="proxy",
+                    metadata={
+                        "user_query": user_query[:500],
+                        "response_preview": tool_plain_fallback[:500],
+                        "trace_id": trace_id,
+                        "model": use_model,
+                        "latency_ms": _stm_lat_pt,
+                        "prompt_tokens": _pt_stm,
+                        "completion_tokens": _ct_stm,
+                        "total_tokens": _tt_stm,
+                        "rag_context": rag_context_data,
+                        "rag_steps": rag_timings,
+                        "trace": trace,
+                        "stream": True,
+                        "is_autocomplete": bool(is_autocomplete),
+                        "requested_model": requested_model,
+                        "proxy_backend": proxy_backend_tag(),
+                        "stream_tool_mode": "plain_text_fallback",
+                    },
+                )
+            except Exception as e:
+                _RAG_LOG.warning("Failed to log proxy stream_tool_mode (plain): %s", e)
 
             def generate_sse_plain_text():
                 oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"

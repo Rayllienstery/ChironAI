@@ -11,10 +11,27 @@ Installable package **`llm-proxy`**: **OpenAI-** and **Anthropic Messages–** c
 | POST | `/v1/completions` | OpenAI legacy completions (`choices[].text`) — implemented as transparent **`POST …/api/generate`** upstream (same as raw Ollama). No RAG, no WebUI prompt template, no web supplement. Optional `LLM_PROXY_COMPLETIONS_RAW` (`true` by default: sets Ollama `raw`). Zed **edit prediction** (`open_ai_compatible_api`): use `http://<host>:<port>/v1/completions`. |
 | POST | `/v1/files/apply-edit` | Apply a line/column range edit in the workspace |
 | POST | `/v1/external-docs/ingest` | Ingest an external-docs source (host-dependent) |
+| GET | `/api/tags` | Transparent proxy to upstream Ollama (model list) |
+| POST | `/api/show` | Transparent proxy to upstream Ollama (model details) |
+| POST | `/api/generate` | Transparent proxy to upstream Ollama `/api/generate` |
+| POST | `/api/chat` | Transparent proxy to upstream Ollama `/api/chat` |
 
 **Build presets:** user-defined entries in app_settings (`llm_proxy_builds`) appear in **GET `/v1/models`** on the main server port and on the optional **build proxy** port (default **8087**, `config/server.yaml` → `build_proxy`). Use each build’s `id` as `model` in **POST `/v1/chat/completions`** (dumb = RAG + Ollama pipeline; claw = HTTP forward to ClawCode). You may also pass a **concrete Ollama tag** as `model` for passthrough chat. **ChironAI-Worker** / **rag-ollama** are rejected. Optional **ChironAI-Autocomplete** in `/v1/models` is controlled by `llm_proxy.v1_include_autocomplete_logical_model` (default true) or env `LLM_PROXY_V1_INCLUDE_AUTOCOMPLETE_MODEL=0`.
 
 Implementation lives inside `llm_proxy/`; **host-specific** services (settings DB, RAG use cases, Ollama client, prompts) are injected via **`LlmProxyWiring`**—see [`api/http/llm_proxy_wiring.py`](../../api/http/llm_proxy_wiring.py) in the main repo.
+
+## Chat pipeline vs raw Ollama (`/v1/...` vs `/api/...`)
+
+Use **`POST /v1/chat/completions`** (or **`POST /v1/messages`** for Anthropic-shaped clients) when you want the full product behavior:
+
+- **LLM Proxy builds** from app settings (`llm_proxy_builds`): `dumb` (RAG + Ollama chat), `claw` (forward to ClawCode), or a **concrete Ollama model id** for the same RAG/template path as a plain tag.
+- **SQLite proxy history** (WebUI **Proxy Logs**, `session_id=proxy`) for completed requests, plus RAG timing metadata where applicable; **ClawCode** runs also appear in **`session_id=clawcode`** when using the Claw OpenAI port or claw builds (merged in `GET /api/webui/proxy-logs`).
+
+The **`/api/tags`**, **`/api/show`**, **`/api/generate`**, and **`/api/chat`** routes exist so clients can point at this host as an **Ollama base URL** (e.g. Zed). They **forward the JSON body to upstream Ollama** and do **not** apply RAG, WebUI prompt templates, build presets, or the same **proxy** logging as `/v1/chat/completions`. Prefer **`/v1/chat/completions`** for observability and RAG unless you intentionally want raw Ollama.
+
+**`POST /v1/completions`** is a separate legacy shape (OpenAI `prompt` / `input` → Ollama **`/api/generate`**); it is not merged into the same analytics semantics as chat completions.
+
+**Network note:** the server often binds `0.0.0.0` ([`config/server.yaml`](../../config/server.yaml)); there is **no API key** on the proxy by default—use only on a trusted network.
 
 ## Installation
 
