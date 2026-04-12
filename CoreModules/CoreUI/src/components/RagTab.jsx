@@ -84,9 +84,9 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
     rerank_model: '',
   });
   const [ragModelDefaults, setRagModelDefaults] = useState({
-    rag_embed_model: 'bge-large',
+    rag_embed_model: '',
     hybrid_sparse_enabled: true,
-    rerank_model: 'bbjson/bge-reranker-base',
+    rerank_model: '',
   });
   const [ragModelSaving, setRagModelSaving] = useState(false);
   const [ragModelSaveNotice, setRagModelSaveNotice] = useState(null);
@@ -155,9 +155,9 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
     try {
       const data = await getRagModelSettings();
       setRagModelDefaults({
-        rag_embed_model: (data?.defaults?.rag_embed_model || 'bge-large').trim() || 'bge-large',
+        rag_embed_model: (data?.defaults?.rag_embed_model || '').trim(),
         hybrid_sparse_enabled: data?.defaults?.hybrid_sparse_enabled !== false,
-        rerank_model: (data?.defaults?.rerank_model || 'bbjson/bge-reranker-base').trim() || 'bbjson/bge-reranker-base',
+        rerank_model: (data?.defaults?.rerank_model || '').trim(),
       });
       setRagModelSettings({
         rag_embed_model: data?.rag_embed_model || '',
@@ -918,7 +918,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
               disabled={!models.length}
             >
               <option value="">
-                Server default ({ragModelDefaults.rag_embed_model})
+                Server default ({ragModelDefaults.rag_embed_model || 'not configured'})
               </option>
               {ragModelSettings.rag_embed_model &&
                 !models.some((m) => m.id === ragModelSettings.rag_embed_model) && (
@@ -932,7 +932,8 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
             </select>
           </div>
           <p className="rag-trigger-hint" style={{ marginTop: 0 }}>
-            Empty selection uses the server default above (from env <code>RAG_EMBED_MODEL</code> or built-in fallback).
+            Empty selection uses the server default above (from env <code>RAG_EMBED_MODEL</code> or{' '}
+            <code>config/models.yaml</code>).
             If you change the embedding model, you typically need to re-create Qdrant collections (vector dimension may
             differ).
           </p>
@@ -984,7 +985,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
               disabled={!models.length}
             >
               <option value="">
-                Server default ({ragModelDefaults.rerank_model}) — used when rerank is enabled and no model is chosen
+                Server default ({ragModelDefaults.rerank_model || 'not configured'}) — used when rerank is enabled and no model is chosen
               </option>
               {ragModelSettings.rerank_model &&
                 !models.some((m) => m.id === ragModelSettings.rerank_model) && (

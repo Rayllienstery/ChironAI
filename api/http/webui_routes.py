@@ -54,6 +54,7 @@ from application.llm_proxy_builds import (
     load_builds_json,
     validate_builds_list,
 )
+from application.llm_proxy_build_forward import forward_claw_build_chat
 from application.rag.collection_freshness import check_collection_freshness
 from application.rag.params import get_rag_answer_params
 from application.rag.use_cases import build_rag_context, prepare_ollama_messages
@@ -99,6 +100,8 @@ from config import (
     get_default_rag_top_k,
     get_framework_collection_ttl_days,
     get_ollama_chat_model,
+    get_ollama_embed_model,
+    get_ollama_rerank_model,
     get_clawcode_host,
     get_clawcode_openai_port,
     get_qdrant_collection_name,
@@ -1152,7 +1155,7 @@ def webui_chat() -> Any:
         except Exception:
             selected_embed_model = ""
         if not selected_embed_model:
-            selected_embed_model = os.getenv("RAG_EMBED_MODEL", "bge-large")
+            selected_embed_model = get_ollama_embed_model()
         embed_provider = default_embed_provider(model=selected_embed_model)
         
         # Rerank on/off and model from model settings (default off)
@@ -1621,12 +1624,21 @@ def get_tester_settings() -> Any:
                 "use_rag": True,
                 "top_k": get_rag_int("top_k", 4),
                 "rag_collection": "",
+                "fetch_web_knowledge": False,
+                "tester_proxy_mode": "rag_fusion",
+                "claw_build_id": "",
             })
         
         # Ensure rag_collection field exists
         if "rag_collection" not in settings:
             settings["rag_collection"] = ""
-        
+        if "fetch_web_knowledge" not in settings:
+            settings["fetch_web_knowledge"] = False
+        if "tester_proxy_mode" not in settings:
+            settings["tester_proxy_mode"] = "rag_fusion"
+        if "claw_build_id" not in settings:
+            settings["claw_build_id"] = ""
+
         return jsonify(settings)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_tester_settings", exc_info=True)
@@ -1689,6 +1701,45 @@ def tester_chat() -> Any:
             if "fetch_web_knowledge" not in body:
                 fetch_web_knowledge = tester_settings.get("fetch_web_knowledge", False)
         
+        tester_proxy_mode = (body.get("tester_proxy_mode") or "").strip().lower() or None
+        if tester_proxy_mode is None and tester_settings:
+            tester_proxy_mode = str(tester_settings.get("tester_proxy_mode") or "rag_fusion").strip().lower()
+        if tester_proxy_mode not in ("rag_fusion", "claw"):
+            tester_proxy_mode = "rag_fusion"
+
+        if tester_proxy_mode == "claw":
+            claw_build_id = (body.get("claw_build_id") or "").strip()
+            if not claw_build_id and tester_settings:
+                claw_build_id = str(tester_settings.get("claw_build_id") or "").strip()
+            if not claw_build_id:
+                return jsonify(
+                    {
+                        "error": "claw_build_id is required when tester_proxy_mode is claw",
+                        "detail": "Configure a Claw build in LLM Proxy Builds and select it in Model Tester.",
+                    }
+                ), 400
+            raw_builds = settings_repo.get_app_setting(LLM_PROXY_BUILDS_APP_KEY)
+            builds_list = load_builds_json(raw_builds)
+            active_build = find_build_by_id(builds_list, claw_build_id)
+            if not active_build:
+                return jsonify(
+                    {
+                        "error": "Claw build not found",
+                        "detail": f"claw_build_id={claw_build_id!r}",
+                    }
+                ), 400
+            if str(active_build.get("backend") or "").strip().lower() != "claw":
+                return jsonify({"error": "Selected build is not a Claw backend"}), 400
+            forward_body: dict[str, Any] = {
+                "messages": messages,
+                "include_rag_metadata": True,
+            }
+            if temperature is not None:
+                forward_body["temperature"] = temperature
+            if top_p is not None:
+                forward_body["top_p"] = top_p
+            return forward_claw_build_chat(forward_body, active_build)
+
         # Get collection name from request, tester settings, or global settings; no config default
         collection_name = (body.get("collection_name") or "").strip() or None
         if not collection_name and tester_settings:
@@ -1752,7 +1803,7 @@ def tester_chat() -> Any:
             # Override embedding model per WebUI app_settings (rag_embed_model).
             selected_embed_model = (settings_repo.get_app_setting("rag_embed_model") or "").strip()
             if not selected_embed_model:
-                selected_embed_model = os.getenv("RAG_EMBED_MODEL", "bge-large")
+                selected_embed_model = get_ollama_embed_model()
             embed_provider = default_embed_provider(model=selected_embed_model)
 
             # Rerank on/off and model from model settings (default off)
@@ -2486,8 +2537,8 @@ def get_rag_model_settings() -> Any:
     try:
         settings_repo = get_settings_repository()
 
-        default_embed_model = os.getenv("RAG_EMBED_MODEL", "bge-large")
-        default_rerank_model = os.getenv("OLLAMA_RERANK_MODEL", "bbjson/bge-reranker-base")
+        default_embed_model = get_ollama_embed_model()
+        default_rerank_model = get_ollama_rerank_model()
 
         raw_embed_model = settings_repo.get_app_setting("rag_embed_model")
         rag_embed_model = (raw_embed_model or "").strip()
@@ -2618,7 +2669,7 @@ def update_rag_model_settings() -> Any:
         body = request.get_json(force=True, silent=True) or {}
         settings_repo = get_settings_repository()
 
-        default_rerank_model = os.getenv("OLLAMA_RERANK_MODEL", "bbjson/bge-reranker-base")
+        default_rerank_model = get_ollama_rerank_model()
 
         rag_embed_model = str(body.get("rag_embed_model") or "").strip()
         settings_repo.set_app_setting("rag_embed_model", rag_embed_model)
@@ -2649,7 +2700,7 @@ def update_rag_model_settings() -> Any:
 
         settings_repo.set_app_setting("proxy_settings", json.dumps(proxy_settings))
 
-        default_embed_model = os.getenv("RAG_EMBED_MODEL", "bge-large")
+        default_embed_model = get_ollama_embed_model()
         return jsonify(
             {
                 "status": "ok",
@@ -2778,7 +2829,10 @@ def _get_qdrant_collection_names() -> list[str]:
         raw = data.get("result", {}).get("collections", []) if isinstance(data, dict) else []
         names: list[str] = []
         for col in raw:
-            name = col.get("name") if isinstance(col, dict) else str(col)
+            if isinstance(col, dict):
+                name = col.get("name")
+            else:
+                name = str(col)
             if name:
                 names.append(name)
         return names
@@ -3366,9 +3420,8 @@ def _get_embeddings_simple(
 
         # Fallback order:
         # 1) app_settings.rag_embed_model (set from WebUI)
-        # 2) env RAG_EMBED_MODEL
-        # 3) hard default
-        embed_model = rag_embed_model or os.getenv("RAG_EMBED_MODEL", "bge-large")
+        # 2) get_ollama_embed_model() (env RAG_EMBED_MODEL + config/models.yaml)
+        embed_model = rag_embed_model or get_ollama_embed_model()
     
     try:
         data = invoke_embed(
@@ -5516,12 +5569,26 @@ def rag_tests_update(test_id: str) -> Any:
     notes = (body.get("notes") or "").strip()
     if not question:
         return jsonify({"error": "question is required"}), 400
-    path = Path(t["absolute_path"])
+    # Slug from name or first line of question
+    slug = re.sub(r"[^\w\s-]", "", name).strip()
+    slug = re.sub(r"[-\s]+", "_", slug).lower()[:80] or "test"
+    root = Path(get_root())
+    platform_dir = root / platform.lower().replace(" ", "_")
+    framework_dir = platform_dir / framework.lower().replace(" ", "_")
+    framework_dir.mkdir(parents=True, exist_ok=True)
+    path = framework_dir / f"{slug}.md"
+    if path.exists():
+        n = 1
+        while (framework_dir / f"{slug}_{n}.md").exists():
+            n += 1
+        path = framework_dir / f"{slug}_{n}.md"
+        slug = f"{slug}_{n}"
     content = _rag_tests_build_md(
         name, question, concepts, platform, framework, difficulty, concept_mode, rag_strict, min_os, notes
     )
     path.write_text(content, encoding="utf-8")
-    return jsonify({"id": test_id, "message": "Test updated"}), 200
+    test_id = str(path.relative_to(root)).replace(".md", "").replace("/", "_").replace("\\", "_")
+    return jsonify({"id": test_id, "file_path": str(path.relative_to(root)), "message": "Test created"}), 201
 
 
 @webui_bp.route("/rag-tests/<test_id>", methods=["DELETE"])
@@ -5822,23 +5889,6 @@ def rag_tests_create() -> Any:
     concept_mode = (body.get("concept_mode") or "all").strip().lower()
     if concept_mode not in ("any", "all"):
         concept_mode = "all"
-    rag_strict = bool(body.get("rag_strict"))
-    min_os = (body.get("min_os") or "").strip()
-    notes = (body.get("notes") or "").strip()
-    if not question:
-        return jsonify({"error": "question is required"}), 400
-    # Slug from name or first line of question
-    slug = re.sub(r"[^\w\s-]", "", name).strip()
-    slug = re.sub(r"[-\s]+", "_", slug).lower()[:80] or "test"
-    root = Path(get_root())
-    platform_dir = root / platform.lower().replace(" ", "_")
-    framework_dir = platform_dir / framework.lower().replace(" ", "_")
-    framework_dir.mkdir(parents=True, exist_ok=True)
-    path = framework_dir / f"{slug}.md"
-    if path.exists():
-        n = 1
-        while (framework_dir / f"{slug}_{n}.md").exists():
-            n += 1
         path = framework_dir / f"{slug}_{n}.md"
         slug = f"{slug}_{n}"
     content = _rag_tests_build_md(

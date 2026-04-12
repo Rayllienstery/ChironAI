@@ -53,11 +53,18 @@ class SettingsRepository:
             
             if row.get("rag_config"):
                 try:
-                    settings["rag_config"] = json.loads(row["rag_config"])
-                    settings["rag_collection"] = (settings["rag_config"] or {}).get("rag_collection", "")
+                    rc = json.loads(row["rag_config"])
+                    settings["rag_config"] = rc if isinstance(rc, dict) else {}
                 except json.JSONDecodeError:
                     settings["rag_config"] = {}
-                    settings["rag_collection"] = ""
+                rc_flat = settings["rag_config"] or {}
+                settings["rag_collection"] = str(rc_flat.get("rag_collection") or "")
+                if "fetch_web_knowledge" in rc_flat:
+                    settings["fetch_web_knowledge"] = bool(rc_flat.get("fetch_web_knowledge"))
+                if rc_flat.get("tester_proxy_mode") is not None:
+                    settings["tester_proxy_mode"] = str(rc_flat.get("tester_proxy_mode") or "").strip() or "rag_fusion"
+                if rc_flat.get("claw_build_id") is not None:
+                    settings["claw_build_id"] = str(rc_flat.get("claw_build_id") or "").strip()
             else:
                 settings["rag_collection"] = ""
 
@@ -67,6 +74,15 @@ class SettingsRepository:
         """Save Model Tester settings for a session."""
         rag_config = dict(settings.get("rag_config") or {})
         rag_config["rag_collection"] = settings.get("rag_collection", "")
+        if "fetch_web_knowledge" in settings:
+            rag_config["fetch_web_knowledge"] = bool(settings.get("fetch_web_knowledge"))
+        tpm = settings.get("tester_proxy_mode")
+        if tpm is not None:
+            s = str(tpm).strip().lower()
+            rag_config["tester_proxy_mode"] = s if s in ("rag_fusion", "claw") else "rag_fusion"
+        cb = settings.get("claw_build_id")
+        if cb is not None:
+            rag_config["claw_build_id"] = str(cb or "").strip()
         rag_config_json = json.dumps(rag_config)
 
         with sqlite3.connect(self.db_path) as conn:

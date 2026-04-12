@@ -28,7 +28,7 @@ except ImportError:
     get_ollama_generate_url = lambda: "http://localhost:11434/api/generate"  # type: ignore
     get_ollama_chat_url = lambda: "http://localhost:11434/api/chat"  # type: ignore
     get_ollama_chat_model = lambda: ""  # type: ignore
-    get_ollama_rerank_model = lambda: "devstral-ios"  # type: ignore
+    get_ollama_rerank_model = lambda: ""  # type: ignore  # no Ollama model id without project config
     QDRANT_CONFIG = {}  # type: ignore
 
 

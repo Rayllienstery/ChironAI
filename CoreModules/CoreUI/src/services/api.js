@@ -1,13 +1,33 @@
 const API_BASE = '/api/webui';
 
+const COREUI_SESSION_STORAGE_KEY = 'chironai_coreui_session_id';
+
 export async function getSession() {
-  const response = await fetch(`${API_BASE}/sessions`, {
+  let url = `${API_BASE}/sessions`;
+  try {
+    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(COREUI_SESSION_STORAGE_KEY) : null;
+    if (stored && String(stored).trim()) {
+      const params = new URLSearchParams({ session_id: String(stored).trim() });
+      url = `${API_BASE}/sessions?${params}`;
+    }
+  } catch {
+    // localStorage unavailable (e.g. private mode)
+  }
+  const response = await fetch(url, {
     method: 'GET',
   });
   if (!response.ok) {
     throw new Error('Failed to get session');
   }
-  return response.json();
+  const session = await response.json();
+  try {
+    if (session && session.id && typeof localStorage !== 'undefined') {
+      localStorage.setItem(COREUI_SESSION_STORAGE_KEY, String(session.id));
+    }
+  } catch {
+    // ignore
+  }
+  return session;
 }
 
 /** @returns {Promise<Array<{ id: string, name: string }>>} models array (not wrapped in { models }) */

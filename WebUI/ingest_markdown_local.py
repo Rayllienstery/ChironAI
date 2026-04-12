@@ -6,8 +6,8 @@ Uses domain.services.chunking (semantic sections/paragraphs, section_path) and c
 indexing limits — same policy as WebUI "Create collection from sources" and ingest_markdown.py.
 
 Embedding model and endpoint are shared with the main RAG pipeline:
-- Model name: taken from RAG_EMBED_MODEL (defaults to "mxbai-embed-large").
-- Embed URL: taken from OLLAMA_EMBED_URL (defaults to "http://localhost:11434/api/embed").
+- Model name: ``config.get_ollama_embed_model()`` or env ``RAG_EMBED_MODEL`` if ``config`` is unavailable.
+- Embed URL: ``config.get_ollama_embed_url()`` or ``OLLAMA_EMBED_URL``.
 
 Usage (PowerShell):
 
@@ -40,10 +40,17 @@ from qdrant_client.http.models import VectorParams, Distance, PointStruct
 
 from ingest_markdown_common import chunks_for_local_ingest, qdrant_payload_local
 
+try:
+    from config import get_ollama_embed_model, get_ollama_embed_url
+except ImportError:
+    get_ollama_embed_model = lambda: (os.getenv("RAG_EMBED_MODEL") or "").strip()  # type: ignore[assignment]
+    get_ollama_embed_url = lambda: os.getenv(  # type: ignore[assignment]
+        "OLLAMA_EMBED_URL", "http://localhost:11434/api/embed"
+    )
 
 # Shared embedding configuration with app.py / rag_client.py
-OLLAMA_EMBED_URL = os.getenv("OLLAMA_EMBED_URL", "http://localhost:11434/api/embed")
-EMBED_MODEL_NAME = os.getenv("RAG_EMBED_MODEL", "mxbai-embed-large")
+OLLAMA_EMBED_URL = get_ollama_embed_url()
+EMBED_MODEL_NAME = get_ollama_embed_model()
 EMBED_BATCH_SIZE = 32
 QDRANT_URL = "http://localhost:6333"
 COLLECTION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_collection.txt")

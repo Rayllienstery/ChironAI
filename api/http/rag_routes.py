@@ -81,7 +81,36 @@ def create_app(
 
     @app.route("/health", methods=["GET"])
     def health() -> Response:
-        return jsonify({"status": "ok"})
+        """Health check endpoint for Ollama and Qdrant availability."""
+        import requests
+        from datetime import datetime, timezone
+        
+        from config import get_ollama_base_url, get_qdrant_url
+        
+        status = {"ollama": "unknown", "qdrant": "unknown"}
+        overall = "healthy"
+        
+        # Check Ollama
+        try:
+            resp = requests.get(f"{get_ollama_base_url()}/api/tags", timeout=3)
+            status["ollama"] = "healthy" if resp.ok else "unhealthy"
+        except Exception:
+            status["ollama"] = "unhealthy"
+            overall = "unhealthy"
+        
+        # Check Qdrant
+        try:
+            resp = requests.get(f"{get_qdrant_url()}/collections", timeout=3)
+            status["qdrant"] = "healthy" if resp.ok else "unhealthy"
+        except Exception:
+            status["qdrant"] = "unhealthy"
+            overall = "unhealthy"
+        
+        return jsonify({
+            "status": overall,
+            "components": status,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }), 200 if overall == "healthy" else 503
 
     from api.http.webui_routes import (
         open_webui_config,

@@ -971,6 +971,7 @@ def run_clawcode_chat_completion(
                 finish,
                 trace_id,
                 rag_metadata=_rag_metadata_from_agent_steps(steps_out),
+                skills=skills_trace,
             )
             _emit_trace(
                 trace_callback,
@@ -1005,6 +1006,7 @@ def run_clawcode_chat_completion(
                 "tool_calls",
                 trace_id,
                 rag_metadata=_rag_metadata_from_agent_steps(steps_out),
+                skills=skills_trace,
             )
             _emit_trace(
                 trace_callback,
@@ -1212,6 +1214,19 @@ def run_clawcode_chat_completion(
     }, 400
 
 
+def _skills_public_payload(skills_trace: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not skills_trace or not isinstance(skills_trace, dict):
+        return None
+    if int(skills_trace.get("loaded_count") or 0) <= 0:
+        return None
+    return {
+        "loaded_invocations": list(skills_trace.get("loaded_invocations") or []),
+        "loaded_count": int(skills_trace.get("loaded_count") or 0),
+        "enabled_count": int(skills_trace.get("enabled_count") or 0),
+        "enabled_ids": list(skills_trace.get("enabled_ids") or []),
+    }
+
+
 def _openai_completion_response(
     assistant_msg: dict[str, Any],
     model: str,
@@ -1219,6 +1234,7 @@ def _openai_completion_response(
     trace_id: str,
     *,
     rag_metadata: dict[str, Any] | None = None,
+    skills: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {
         "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
@@ -1241,6 +1257,9 @@ def _openai_completion_response(
     }
     if rag_metadata:
         out["rag_metadata"] = rag_metadata
+    skills_pub = _skills_public_payload(skills)
+    if skills_pub:
+        out["skills"] = skills_pub
     return out
 
 

@@ -147,11 +147,23 @@ def get_ollama_chat_model() -> str:
 
 
 def get_ollama_embed_model() -> str:
-    """Return embed model name, allowing env override."""
-    return os.getenv(
-        "RAG_EMBED_MODEL",
-        OLLAMA_CONFIG.get("embed_model", "mxbai-embed-large"),
-    )
+    """Return embed model name (Ollama /api/embed).
+
+    Resolution order (first non-empty wins):
+    1. ``RAG_EMBED_MODEL``
+    2. ``config/models.yaml`` → ``ollama.embed_model``
+    3. ``ollama.embed_model_last_resort`` (YAML only; no Python literal defaults)
+    """
+    env_v = os.getenv("RAG_EMBED_MODEL")
+    if env_v is not None and str(env_v).strip() != "":
+        return str(env_v).strip()
+    yaml_v = OLLAMA_CONFIG.get("embed_model")
+    if yaml_v is not None and str(yaml_v).strip() != "":
+        return str(yaml_v).strip()
+    fb = OLLAMA_CONFIG.get("embed_model_last_resort")
+    if fb is not None and str(fb).strip() != "":
+        return str(fb).strip()
+    return ""
 
 
 def get_ollama_embed_timeout_seconds() -> float:
@@ -173,11 +185,30 @@ def get_ollama_embed_timeout_seconds() -> float:
 
 
 def get_ollama_rerank_model() -> str:
-    """Return rerank model name (Ollama generate), allowing env override."""
-    return os.getenv(
-        "OLLAMA_RERANK_MODEL",
-        OLLAMA_CONFIG.get("rerank_model", "devstral-ios"),
-    )
+    """Return rerank model name (Ollama generate), allowing env override.
+
+    Resolution order (first non-empty wins):
+    1. ``OLLAMA_RERANK_MODEL``
+    2. ``config/models.yaml`` → ``ollama.rerank_model``
+    3. ``config/retrieval.yaml`` → ``retrieval.rerank_model``
+    4. ``config/models.yaml`` → ``ollama.rerank_model_last_resort`` (no Python literals)
+
+    Empty strings are skipped so ``ollama.rerank_model: ""`` does not yield
+    ``model: ""`` (404).
+    """
+    env_v = os.getenv("OLLAMA_RERANK_MODEL")
+    if env_v is not None and str(env_v).strip() != "":
+        return str(env_v).strip()
+    ollama_v = OLLAMA_CONFIG.get("rerank_model")
+    if ollama_v is not None and str(ollama_v).strip() != "":
+        return str(ollama_v).strip()
+    ret_v = RETRIEVAL_CONFIG.get("rerank_model")
+    if ret_v is not None and str(ret_v).strip() != "":
+        return str(ret_v).strip()
+    fb = OLLAMA_CONFIG.get("rerank_model_last_resort")
+    if fb is not None and str(fb).strip() != "":
+        return str(fb).strip()
+    return ""
 
 
 def get_qdrant_url() -> str:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import threading
@@ -16,6 +17,8 @@ except ImportError:
     RAG_COLLECTION_APP_SETTING = "rag_collection"
 
 from flask import Response, jsonify, request
+
+from infrastructure.metrics import increment, histogram, gauge
 
 from infrastructure.ollama.model_capabilities import (
     caps_supports_thinking,
@@ -1159,11 +1162,35 @@ def run_chat_completions(
         _pt = max(1, int(len(json.dumps(ollama_messages, ensure_ascii=False)) / 4))
         _ct = max(1, int(len(content_str or "") / 4))
         w.set_latest_request_total_tokens(_pt + _ct)
-        trace["ollama"]["tokens_estimates"] = {
-            "prompt_tokens_estimated": _pt,
-            "completion_tokens_estimated": _ct,
-            "total_tokens_estimated": _pt + _ct,
-        }
+        
+        # Record metrics for observability
+        query_hash = hashlib.sha256((user_query or "").encode()).hexdigest()[:16]
+        increment("rag_requests_total", tags={"model": use_model, "is_autocomplete": str(is_autocomplete)})
+        histogram("rag_latency_ms", latency_ms, tags={"model": use_model})
+        histogram("rag_prompt_tokens", _pt, tags={"model": use_model})
+        histogram("rag_completion_tokens", _ct, tags={"model": use_model})
+        if rag_ctx:
+            gauge("rag_chunks_count", len(rag_ctx.chunks_info), tags={"model": use_model})
+            gauge("rag_max_score", rag_ctx.max_score, tags={"model": use_model})
+            if rag_ctx.max_score < 0.5:
+                increment("rag_low_confidence", tags={"model": use_model})
+        if not rag_ctx or not rag_ctx.chunks_info:
+            increment("rag_empty_results", tags={"model": use_model})
+        
+        _RAG_LOG.info(json.dumps({
+            "event": "rag_request_completed",
+            "query_hash": query_hash,
+            "trace_id": trace_id,
+            "model": use_model,
+            "requested_model": requested_model,
+            "latency_ms": latency_ms,
+            "prompt_tokens": _pt,
+            "completion_tokens": _ct,
+            "chunks_count": len(rag_ctx.chunks_info) if rag_ctx else 0,
+            "max_score": rag_ctx.max_score if rag_ctx else 0,
+            "is_autocomplete": is_autocomplete,
+            "native_tools": True,
+        }))
         trace["response"] = {
             "content_preview": (content_str or "")[:log_preview],
             "content_length_chars": len(content_str or ""),
@@ -1566,6 +1593,36 @@ def run_chat_completions(
     completion_tokens_approx = max(1, int(len(content or "") / 4))
     _total_tokens_approx = prompt_tokens_approx + completion_tokens_approx
     w.set_latest_request_total_tokens(_total_tokens_approx)
+    
+    # Record metrics for observability (non-streaming path)
+    query_hash = hashlib.sha256((user_query or "").encode()).hexdigest()[:16]
+    increment("rag_requests_total", tags={"model": use_model, "is_autocomplete": str(is_autocomplete)})
+    histogram("rag_latency_ms", latency_ms, tags={"model": use_model})
+    histogram("rag_prompt_tokens", prompt_tokens_approx, tags={"model": use_model})
+    histogram("rag_completion_tokens", completion_tokens_approx, tags={"model": use_model})
+    if rag_ctx:
+        gauge("rag_chunks_count", len(rag_ctx.chunks_info), tags={"model": use_model})
+        gauge("rag_max_score", rag_ctx.max_score, tags={"model": use_model})
+        if rag_ctx.max_score < 0.5:
+            increment("rag_low_confidence", tags={"model": use_model})
+    if not rag_ctx or not rag_ctx.chunks_info:
+        increment("rag_empty_results", tags={"model": use_model})
+    
+    _RAG_LOG.info(json.dumps({
+        "event": "rag_request_completed",
+        "query_hash": query_hash,
+        "trace_id": trace_id,
+        "model": use_model,
+        "requested_model": requested_model,
+        "latency_ms": latency_ms,
+        "prompt_tokens": prompt_tokens_approx,
+        "completion_tokens": completion_tokens_approx,
+        "chunks_count": len(rag_ctx.chunks_info) if rag_ctx else 0,
+        "max_score": rag_ctx.max_score if rag_ctx else 0,
+        "is_autocomplete": is_autocomplete,
+        "stream": False,
+    }))
+    
     content_len = len(content or "")
     content_preview = (content or "")[:log_preview]
     if content_len > log_preview:

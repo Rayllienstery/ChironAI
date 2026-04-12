@@ -17,8 +17,14 @@ if str(_ROOT) not in sys.path:
 
 from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_embed
 
-DEFAULT_EMBED_URL = "http://localhost:11434/api/embed"
-DEFAULT_EMBED_MODEL = "mxbai-embed-large"
+try:
+    from config import get_ollama_embed_model, get_ollama_embed_url
+except ImportError:
+    get_ollama_embed_model = lambda: (os.getenv("RAG_EMBED_MODEL") or "").strip()  # type: ignore[assignment]
+    get_ollama_embed_url = lambda: os.getenv(  # type: ignore[assignment]
+        "OLLAMA_EMBED_URL", "http://localhost:11434/api/embed"
+    )
+
 MAX_EMBED_TEXT_LENGTH = 8192
 
 
@@ -26,8 +32,8 @@ class OllamaEmbedAdapter:
     """EmbeddingPort implementation via Ollama /api/embed (CLI)."""
 
     def __init__(self, base_url: str | None = None, model: str | None = None) -> None:
-        self._url = (base_url or os.getenv("OLLAMA_EMBED_URL", DEFAULT_EMBED_URL)).rstrip("/")
-        self._model = model or os.getenv("RAG_EMBED_MODEL") or os.getenv("OLLAMA_EMBED_MODEL", DEFAULT_EMBED_MODEL)
+        self._url = (base_url or get_ollama_embed_url()).rstrip("/")
+        self._model = (model or "").strip() or get_ollama_embed_model() or (os.getenv("RAG_EMBED_MODEL") or "").strip()
 
     def embed(self, text: str) -> list[float]:
         t = text[:MAX_EMBED_TEXT_LENGTH] if len(text) > MAX_EMBED_TEXT_LENGTH else text

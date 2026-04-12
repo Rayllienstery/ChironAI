@@ -12,7 +12,7 @@ try:
     from config import get_ollama_embed_model, get_ollama_embed_timeout_seconds, get_ollama_embed_url
 except ImportError:
     get_ollama_embed_url = lambda: "http://localhost:11434/api/embed"  # type: ignore
-    get_ollama_embed_model = lambda: "mxbai-embed-large"  # type: ignore
+    get_ollama_embed_model = lambda: ""  # type: ignore  # set RAG_EMBED_MODEL if config package missing
     get_ollama_embed_timeout_seconds = lambda: 180.0  # type: ignore
 
 from domain.services.retrieval import MAX_EMBED_TEXT_LENGTH

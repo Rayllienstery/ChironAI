@@ -1,5 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { getModels, getPrompts, getTesterSettings, updateTesterSettings, testerChat, testerPromptPreview, getRagCollections } from '../services/api';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import {
+  getModels,
+  getPrompts,
+  getTesterSettings,
+  updateTesterSettings,
+  testerChat,
+  testerPromptPreview,
+  getRagCollections,
+  getLlmProxyBuilds,
+} from '../services/api';
 import { marked } from 'marked';
 import '../styles/components/ModelTester.css';
 
@@ -7,7 +16,7 @@ function ModelTester({ sessionId }) {
   const [models, setModels] = useState([]);
   const [prompts, setPrompts] = useState([]);
   const [collections, setCollections] = useState([]);
-  const [dataLoaded, setDataLoaded] = useState(false);
+  const [llmBuilds, setLlmBuilds] = useState([]);
   const [settings, setSettings] = useState({
     model: '',
     prompt_name: '',
@@ -18,6 +27,8 @@ function ModelTester({ sessionId }) {
     top_k: 4,
     rag_collection: '',
     fetch_web_knowledge: false,
+    tester_proxy_mode: 'rag_fusion',
+    claw_build_id: '',
   });
   const [query, setQuery] = useState('');
   const [response, setResponse] = useState('');
@@ -25,10 +36,18 @@ function ModelTester({ sessionId }) {
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [stats, setStats] = useState(null);
   const [promptPreview, setPromptPreview] = useState('');
+  const [promptPreviewOpen, setPromptPreviewOpen] = useState(false);
   const [promptLoading, setPromptLoading] = useState(false);
   const [ragChunks, setRagChunks] = useState(null);
   const [ragCollapsed, setRagCollapsed] = useState(false);
+  const [skillsUsed, setSkillsUsed] = useState(null);
   const responseRef = useRef(null);
+
+  const clawBuilds = useMemo(
+    () =>
+      (llmBuilds || []).filter((b) => String(b.backend || '').toLowerCase() === 'claw'),
+    [llmBuilds]
+  );
 
   useEffect(() => {
     if (sessionId) {
@@ -37,23 +56,30 @@ function ModelTester({ sessionId }) {
     }
   }, [sessionId]);
 
+  useEffect(() => {
+    if (!promptPreviewOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setPromptPreviewOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [promptPreviewOpen]);
+
   const loadData = async () => {
-    setDataLoaded(false);
     try {
-      const [modelsData, promptsData, collectionsData] = await Promise.all([
+      const [modelsData, promptsData, collectionsData, buildsData] = await Promise.all([
         getModels(),
         getPrompts(),
         getRagCollections().catch(() => ({ collections: [] })),
+        getLlmProxyBuilds().catch(() => ({ builds: [] })),
       ]);
       setModels(modelsData);
       const promptsList = promptsData?.prompts || [];
-      console.log('Loaded prompts:', promptsList);
       setPrompts(promptsList);
       setCollections(collectionsData?.collections || []);
+      setLlmBuilds(buildsData?.builds || []);
     } catch (error) {
       console.error('Failed to load data:', error);
-    } finally {
-      setDataLoaded(true);
     }
   };
 
@@ -63,7 +89,7 @@ function ModelTester({ sessionId }) {
     try {
       const data = await getTesterSettings(sessionId);
       if (data) {
-        setSettings(prev => ({ ...prev, ...data }));
+        setSettings((prev) => ({ ...prev, ...data }));
       }
     } catch (error) {
       console.error('Failed to load tester settings:', error);
@@ -73,12 +99,12 @@ function ModelTester({ sessionId }) {
   };
 
   const handleSettingChange = (field, value) => {
-    setSettings(prev => ({ ...prev, [field]: value }));
+    setSettings((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSaveSettings = async () => {
     if (!sessionId) return;
-    
+
     try {
       await updateTesterSettings(sessionId, settings);
       alert('Settings saved');
@@ -88,42 +114,58 @@ function ModelTester({ sessionId }) {
     }
   };
 
+  const isClawMode = settings.tester_proxy_mode === 'claw';
+
   const handleSend = async () => {
     if (!query.trim() || !sessionId) return;
-    if (settings.use_rag && !(settings.prompt_name || '').trim()) {
-      window.alert('Select a prompt template when RAG is enabled.');
-      return;
-    }
-    if (
-      settings.use_rag &&
-      collections.length > 0 &&
-      !(settings.rag_collection || '').trim()
-    ) {
-      window.alert('Select a RAG collection when RAG is enabled.');
-      return;
+
+    if (isClawMode) {
+      if (!(settings.claw_build_id || '').trim()) {
+        window.alert('Select a Claw build (configure one under LLM Proxy → Builds if the list is empty).');
+        return;
+      }
+    } else {
+      if (settings.use_rag && !(settings.prompt_name || '').trim()) {
+        window.alert('Select a prompt template when RAG is enabled.');
+        return;
+      }
+      if (
+        settings.use_rag &&
+        collections.length > 0 &&
+        !(settings.rag_collection || '').trim()
+      ) {
+        window.alert('Select a RAG collection when RAG is enabled.');
+        return;
+      }
     }
 
     setLoading(true);
     setResponse('');
     setStats(null);
     setPromptPreview('');
+    setPromptPreviewOpen(false);
     setRagChunks(null);
-    
+    setSkillsUsed(null);
+
     try {
-      const result = await testerChat(sessionId, [
-        { role: 'user', content: query }
-      ], {
-        model: settings.model || undefined,
-        prompt_name: settings.prompt_name || undefined,
-        temperature: settings.temperature > 0 ? settings.temperature : undefined,
-        top_p: settings.top_p > 0 ? settings.top_p : undefined,
-        reasoning_level: settings.reasoning_level || undefined,
-        use_rag: settings.use_rag,
-        top_k: settings.use_rag ? settings.top_k : undefined,
-        collection_name: settings.use_rag && settings.rag_collection ? settings.rag_collection : undefined,
-        fetch_web_knowledge: settings.use_rag && settings.fetch_web_knowledge,
-      });
-      
+      const result = await testerChat(
+        sessionId,
+        [{ role: 'user', content: query }],
+        {
+          model: settings.model || undefined,
+          prompt_name: settings.prompt_name || undefined,
+          temperature: settings.temperature > 0 ? settings.temperature : undefined,
+          top_p: settings.top_p > 0 ? settings.top_p : undefined,
+          reasoning_level: settings.reasoning_level || undefined,
+          use_rag: settings.use_rag,
+          top_k: settings.use_rag ? settings.top_k : undefined,
+          collection_name: settings.use_rag && settings.rag_collection ? settings.rag_collection : undefined,
+          fetch_web_knowledge: settings.use_rag && settings.fetch_web_knowledge,
+          tester_proxy_mode: settings.tester_proxy_mode,
+          claw_build_id: isClawMode ? settings.claw_build_id : undefined,
+        }
+      );
+
       if (result.choices && result.choices[0]) {
         const content = result.choices[0].message.content;
         setResponse(marked.parse(content));
@@ -139,10 +181,21 @@ function ModelTester({ sessionId }) {
         });
       }
 
-      if (settings.use_rag && result.rag_metadata) {
-        setRagChunks(result.rag_metadata.chunks_info || []);
+      if (result.rag_metadata && Array.isArray(result.rag_metadata.chunks_info)) {
+        setRagChunks(result.rag_metadata.chunks_info);
       } else {
         setRagChunks(null);
+      }
+
+      const sk = result.skills;
+      if (
+        sk &&
+        typeof sk === 'object' &&
+        (Number(sk.loaded_count) > 0 || (Array.isArray(sk.loaded_invocations) && sk.loaded_invocations.length > 0))
+      ) {
+        setSkillsUsed(sk);
+      } else {
+        setSkillsUsed(null);
       }
     } catch (error) {
       setResponse(`Error: ${error.message}`);
@@ -155,6 +208,7 @@ function ModelTester({ sessionId }) {
   };
 
   const handlePreviewPrompt = async () => {
+    if (isClawMode) return;
     setPromptLoading(true);
     try {
       const result = await testerPromptPreview({
@@ -184,8 +238,10 @@ function ModelTester({ sessionId }) {
         formattedPreview = result.system_prompt || '';
       }
       setPromptPreview(formattedPreview);
+      setPromptPreviewOpen(true);
     } catch (error) {
       setPromptPreview(`Error: ${error.message}`);
+      setPromptPreviewOpen(true);
     } finally {
       setPromptLoading(false);
     }
@@ -224,12 +280,60 @@ function ModelTester({ sessionId }) {
       <div className="tester-layout">
         <div className="tester-settings-panel">
           <h3>Test Settings</h3>
-          
+
           <div className="form-group">
-            <label>Model</label>
+            <label htmlFor="tester-proxy-mode">Proxy pipeline</label>
+            <select
+              id="tester-proxy-mode"
+              value={settings.tester_proxy_mode === 'claw' ? 'claw' : 'rag_fusion'}
+              onChange={(e) => handleSettingChange('tester_proxy_mode', e.target.value)}
+            >
+              <option value="rag_fusion">RAG Fusion (in-process RAG + Ollama)</option>
+              <option value="claw">Claw (ClawCode OpenAI agent)</option>
+            </select>
+            <div className="form-hint">
+              Claw uses the prompt, RAG, and model from the selected build in LLM Proxy Builds.
+            </div>
+          </div>
+
+          {isClawMode && (
+            <div className="form-group">
+              <label htmlFor="tester-claw-build">Claw build</label>
+              <select
+                id="tester-claw-build"
+                value={
+                  clawBuilds.some((b) => b.id === settings.claw_build_id) ? settings.claw_build_id : ''
+                }
+                onChange={(e) => handleSettingChange('claw_build_id', e.target.value)}
+                disabled={clawBuilds.length === 0}
+              >
+                {clawBuilds.length === 0 ? (
+                  <option value="">— No Claw builds —</option>
+                ) : (
+                  <>
+                    <option value="">Select Claw build…</option>
+                    {clawBuilds.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.display_name || b.id}
+                      </option>
+                    ))}
+                  </>
+                )}
+              </select>
+              <div className="form-hint">
+                {clawBuilds.length === 0
+                  ? 'Add a build with backend “claw” under Proxies → LLM Proxy → Builds.'
+                  : 'Must match a build with backend claw.'}
+              </div>
+            </div>
+          )}
+
+          <div className="form-group">
+            <label>Model {isClawMode && <span className="form-hint-inline">(RAG Fusion only)</span>}</label>
             <select
               value={models.some((m) => (m.id || m.name) === settings.model) ? settings.model : ''}
               onChange={(e) => handleSettingChange('model', e.target.value)}
+              disabled={isClawMode}
             >
               <option value="">Select model…</option>
               {models.map((model) => (
@@ -241,13 +345,14 @@ function ModelTester({ sessionId }) {
           </div>
 
           <div className="form-group">
-            <label>Prompt Template</label>
+            <label>Prompt Template {isClawMode && <span className="form-hint-inline">(RAG Fusion)</span>}</label>
             <select
               value={
                 prompts.some((p) => p.name === settings.prompt_name) ? settings.prompt_name : ''
               }
               onChange={(e) => handleSettingChange('prompt_name', e.target.value)}
               className="prompt-template-select"
+              disabled={isClawMode}
             >
               <option value="">Select prompt template…</option>
               {prompts
@@ -258,7 +363,7 @@ function ModelTester({ sessionId }) {
                   </option>
                 ))}
             </select>
-            {settings.prompt_name && (
+            {settings.prompt_name && !isClawMode && (
               <div className="prompt-template-info">
                 Selected: <strong>{settings.prompt_name}</strong>
               </div>
@@ -317,11 +422,9 @@ function ModelTester({ sessionId }) {
               step="1"
               value={settings.top_k}
               onChange={(e) => handleSettingChange('top_k', parseInt(e.target.value, 10))}
-              disabled={!settings.use_rag}
+              disabled={!settings.use_rag || isClawMode}
             />
-            <div className="form-hint">
-              Number of RAG chunks to retrieve (1-20)
-            </div>
+            <div className="form-hint">Number of RAG chunks to retrieve (1-20), RAG Fusion only</div>
           </div>
 
           <div className="form-group checkbox-group">
@@ -330,12 +433,13 @@ function ModelTester({ sessionId }) {
                 type="checkbox"
                 checked={settings.use_rag}
                 onChange={(e) => handleSettingChange('use_rag', e.target.checked)}
+                disabled={isClawMode}
               />
               Use RAG
             </label>
           </div>
 
-          {settings.use_rag && (
+          {settings.use_rag && !isClawMode && (
             <div className="form-group checkbox-group">
               <label>
                 <input
@@ -351,7 +455,7 @@ function ModelTester({ sessionId }) {
             </div>
           )}
 
-          {settings.use_rag && (
+          {settings.use_rag && !isClawMode && (
             <div className="form-group">
               <label>RAG Collection</label>
               <select
@@ -385,7 +489,7 @@ function ModelTester({ sessionId }) {
             </div>
           )}
 
-          <button onClick={handleSaveSettings} className="save-button">
+          <button type="button" onClick={handleSaveSettings} className="save-button">
             Save Settings
           </button>
         </div>
@@ -397,13 +501,13 @@ function ModelTester({ sessionId }) {
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
-                setPromptPreview('');
               }}
               placeholder="Enter your test query..."
               rows="4"
             />
             <div className="chat-input-actions">
               <button
+                type="button"
                 onClick={handleSend}
                 disabled={loading || !query.trim()}
                 className="send-button"
@@ -413,15 +517,14 @@ function ModelTester({ sessionId }) {
               <button
                 type="button"
                 className="preview-button"
-                disabled={promptLoading}
+                disabled={promptLoading || isClawMode}
                 onClick={handlePreviewPrompt}
+                title={isClawMode ? 'Prompt preview applies to RAG Fusion only' : undefined}
               >
                 {promptLoading ? 'Previewing...' : 'Preview Prompt'}
               </button>
               <div className="tester-stats">
-                {loading && (
-                  <span className="tester-spinner" aria-label="Running model" />
-                )}
+                {loading && <span className="tester-spinner" aria-label="Running model" />}
                 {!loading && stats && (
                   <span className="tester-stats-text">
                     {stats.latencyMs != null && (
@@ -443,25 +546,9 @@ function ModelTester({ sessionId }) {
                 )}
               </div>
             </div>
-            {promptPreview && (
-              <div className="prompt-preview">
-                <div className="prompt-preview-header">
-                  <span>System Prompt Preview</span>
-                  <button
-                    type="button"
-                    className="prompt-preview-close"
-                    aria-label="Close prompt preview"
-                    onClick={() => setPromptPreview('')}
-                  >
-                    ✕
-                  </button>
-                </div>
-                <pre>{promptPreview}</pre>
-              </div>
-            )}
           </div>
 
-          {settings.use_rag && ragChunks && (
+          {ragChunks != null && (
             <div className="rag-chunks-section">
               <div className="rag-chunks-header">
                 <h3>RAG Chunks</h3>
@@ -501,11 +588,7 @@ function ModelTester({ sessionId }) {
                           {chunk.url && chunk.url !== 'N/A' && (
                             <div className="rag-chunk-url">{chunk.url}</div>
                           )}
-                          {textToShow && (
-                            <div className="rag-chunk-text">
-                              {textToShow}
-                            </div>
-                          )}
+                          {textToShow && <div className="rag-chunk-text">{textToShow}</div>}
                         </div>
                       );
                     })
@@ -526,12 +609,60 @@ function ModelTester({ sessionId }) {
                 <div className="empty-state">No response yet</div>
               )}
             </div>
+            {skillsUsed && (
+              <div className="model-tester-skills-used" aria-label="Skills used in this response">
+                <h4 className="model-tester-skills-used-title">Skills</h4>
+                <p className="model-tester-skills-used-meta">
+                  Loaded: {skillsUsed.loaded_count ?? (skillsUsed.loaded_invocations || []).length}
+                  {typeof skillsUsed.enabled_count === 'number' ? ` · Enabled in run: ${skillsUsed.enabled_count}` : ''}
+                </p>
+                {(skillsUsed.loaded_invocations || []).length > 0 && (
+                  <ul className="model-tester-skills-used-list">
+                    {(skillsUsed.loaded_invocations || []).map((inv) => (
+                      <li key={inv}>
+                        <code>{inv}</code>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      {promptPreviewOpen && (
+        <div
+          className="model-tester-modal-overlay"
+          role="presentation"
+          onClick={() => setPromptPreviewOpen(false)}
+        >
+          <div
+            className="model-tester-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="model-tester-prompt-preview-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="model-tester-modal-header">
+              <h2 id="model-tester-prompt-preview-title" className="model-tester-modal-title">
+                Prompt preview
+              </h2>
+              <button
+                type="button"
+                className="model-tester-modal-close"
+                aria-label="Close"
+                onClick={() => setPromptPreviewOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <pre className="model-tester-modal-body">{promptPreview}</pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default ModelTester;
-

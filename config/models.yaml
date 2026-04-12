@@ -11,6 +11,8 @@
 ## - ollama.chat_model: model name used by rag_proxy and rag_client for final answers.
 ## - ollama.rerank_model: model name used for LLM rerank (Ollama generate).
 ## - ollama.embed_model: model name used for embeddings (RAG index + queries).
+## - ollama.embed_model_last_resort: used when RAG_EMBED_MODEL and embed_model are empty.
+## - ollama.rerank_model_last_resort: used when env, ollama.rerank_model, and retrieval.rerank_model are empty.
 ## - ollama.timeout_seconds: default HTTP timeout for chat/generate calls.
 ## - ollama.embed_timeout_seconds: HTTP read timeout for /api/embed (single request; slow CPU/GPU may need 180–300).
 ## - ollama.chat_options: default generation options for /api/chat.
@@ -22,6 +24,8 @@ ollama:
   chat_model: ""
   rerank_model: ""
   embed_model: "mxbai-embed-large"
+  embed_model_last_resort: "mxbai-embed-large"
+  rerank_model_last_resort: "bbjson/bge-reranker-base"
   timeout_seconds: 300
   embed_timeout_seconds: 180
   chat_options:

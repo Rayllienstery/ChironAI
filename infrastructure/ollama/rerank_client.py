@@ -13,7 +13,7 @@ try:
     from config import get_ollama_generate_url, get_ollama_rerank_model
 except ImportError:
     get_ollama_generate_url = lambda: "http://localhost:11434/api/generate"  # type: ignore
-    get_ollama_rerank_model = lambda: "devstral-ios"  # type: ignore
+    get_ollama_rerank_model = lambda: ""  # type: ignore  # no Ollama model id without project config
 
 from domain.services.rerank import extract_candidates_from_rerank_prompt, native_rerank_response_to_order
 
@@ -33,7 +33,7 @@ class OllamaRerankClient:
 
     def __init__(self, base_url: str | None = None, model: str | None = None) -> None:
         self._url = base_url or get_ollama_generate_url()
-        self._model = model or get_ollama_rerank_model()
+        self._model = (model or "").strip() or get_ollama_rerank_model()
 
     def rerank(self, question: str, prompt_text: str) -> str | None:
         """Return JSON array string (e.g. "[3,1,2]") or None on failure."""

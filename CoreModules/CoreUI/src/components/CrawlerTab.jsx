@@ -294,7 +294,7 @@ function CrawlerTab() {
   });
   const [createEmbedModels, setCreateEmbedModels] = useState([]);
   const [createEmbedDefaults, setCreateEmbedDefaults] = useState({
-    rag_embed_model: "bge-large",
+    rag_embed_model: "",
   });
   const [creating, setCreating] = useState(false);
   const [createJobId, setCreateJobId] = useState(null);
@@ -406,9 +406,7 @@ function CrawlerTab() {
         ]);
         if (cancelled) return;
         setCreateEmbedModels(Array.isArray(list) ? list : []);
-        const def =
-          (settings?.defaults?.rag_embed_model || "bge-large").trim() ||
-          "bge-large";
+        const def = (settings?.defaults?.rag_embed_model || "").trim();
         const saved = (settings?.rag_embed_model || "").trim();
         setCreateEmbedDefaults({ rag_embed_model: def });
         setCreateForm((prev) => ({
@@ -2400,7 +2398,7 @@ function CrawlerTab() {
                   disabled={!createEmbedModels.length}
                 >
                   <option value="">
-                    Server default ({createEmbedDefaults.rag_embed_model})
+                    Server default ({createEmbedDefaults.rag_embed_model || 'not configured'})
                   </option>
                   {createForm.rag_embed_model &&
                     !createEmbedModels.some(
