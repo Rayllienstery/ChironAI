@@ -1,0 +1,358 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { summarizeClawTraceMeta } from '../utils/clawTraceSummary';
+import ClawTraceSummaryCards from './ClawTraceSummaryCards';
+import '../styles/components/DashboardTab.css';
+
+function readMetadata(log) {
+  if (!log || !log.metadata) return {};
+  if (typeof log.metadata === 'string') {
+    try {
+      return JSON.parse(log.metadata);
+    } catch {
+      return {};
+    }
+  }
+  return log.metadata;
+}
+
+function isClawTraceStyleLog(log, meta) {
+  if (!log) return false;
+  if (log.session_id === 'clawcode') return true;
+  if (meta.trace_id != null && String(meta.trace_id).trim() !== '') {
+    if (meta.request != null && typeof meta.request === 'object') return true;
+    if (Array.isArray(meta.steps)) return true;
+  }
+  return false;
+}
+
+export function ClawTraceStepBlock({ step, index }) {
+  if (!step || typeof step !== 'object') return null;
+  const kind = step.kind || 'unknown';
+  return (
+    <details className="dashboard-trace-item" style={{ marginBottom: 8 }}>
+      <summary>
+        Step {index + 1}: <code>{kind}</code>
+        {step.step != null ? ` (agent step ${step.step})` : ''}
+        {step.ok === false ? ' · failed' : ''}
+      </summary>
+      <div className="dashboard-card-muted" style={{ marginTop: 8 }}>
+        {kind === 'model_call' && (
+          <>
+            {step.model != null && (
+              <p>
+                <strong>Model:</strong> <code>{step.model}</code>
+              </p>
+            )}
+            {(step.prompt_tokens_est != null || step.completion_tokens_est != null) && (
+              <p className="dashboard-card-muted" style={{ fontSize: 12 }}>
+                Token est.: prompt {step.prompt_tokens_est ?? '—'} · completion {step.completion_tokens_est ?? '—'}
+              </p>
+            )}
+            {step.finish_reason != null && (
+              <p>
+                <strong>Finish:</strong> <code>{step.finish_reason}</code>
+              </p>
+            )}
+            {step.thinking_raw != null && String(step.thinking_raw).trim() !== '' && (
+              <div style={{ marginTop: 8 }}>
+                <strong>Thinking (raw)</strong>
+                <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 280, overflow: 'auto', fontSize: 12 }}>
+                  {step.thinking_raw}
+                </pre>
+              </div>
+            )}
+            {step.assistant_content_raw != null && String(step.assistant_content_raw).trim() !== '' && (
+              <div style={{ marginTop: 8 }}>
+                <strong>Assistant content (raw)</strong>
+                <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto', fontSize: 12 }}>
+                  {step.assistant_content_raw}
+                </pre>
+              </div>
+            )}
+            {step.assistant_visible != null && String(step.assistant_visible).trim() !== '' && (
+              <div style={{ marginTop: 8 }}>
+                <strong>Assistant (merged visible)</strong>
+                <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto', fontSize: 12 }}>
+                  {step.assistant_visible}
+                </pre>
+              </div>
+            )}
+            {Array.isArray(step.tool_calls) && step.tool_calls.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <strong>Tool calls</strong>
+                <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto', fontSize: 12 }}>
+                  {JSON.stringify(step.tool_calls, null, 2)}
+                </pre>
+              </div>
+            )}
+            {step.error != null && <p className="dashboard-card-error">{String(step.error)}</p>}
+          </>
+        )}
+        {kind === 'tool_rag' && (
+          <>
+            <p>
+              <strong>Query:</strong> {step.query || '—'}
+            </p>
+            <p>
+              Chunks: {step.chunks ?? '—'} · max_score: {step.max_score ?? '—'} · context_chars: {step.context_chars ?? '—'}
+            </p>
+            {step.error != null && <p className="dashboard-card-error">{String(step.error)}</p>}
+            {Array.isArray(step.chunks_info) && step.chunks_info.length > 0 && (
+              <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 240, overflow: 'auto', fontSize: 12 }}>
+                {JSON.stringify(step.chunks_info, null, 2)}
+              </pre>
+            )}
+          </>
+        )}
+        {kind === 'tool_skill' && (
+          <>
+            <p>
+              <strong>Invocation:</strong> {step.invocation || '—'}
+            </p>
+            {step.skill_id != null && String(step.skill_id).trim() !== '' && (
+              <p>
+                <strong>skill_id:</strong> <code>{step.skill_id}</code>
+              </p>
+            )}
+            <p>
+              context_chars: {step.context_chars ?? '—'} · duration_ms: {step.duration_ms ?? '—'}
+            </p>
+            {step.error != null && <p className="dashboard-card-error">{String(step.error)}</p>}
+          </>
+        )}
+        {kind === 'tool_pass_through' && (
+          <>
+            <p>
+              <strong>Tools returned to IDE:</strong>{' '}
+              {Array.isArray(step.names) && step.names.length > 0 ? step.names.join(', ') : '—'}
+            </p>
+            <details className="dashboard-trace-item" style={{ marginTop: 8 }}>
+              <summary>Raw step JSON</summary>
+              <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(step, null, 2)}</pre>
+            </details>
+          </>
+        )}
+        {(kind === 'tool_unhandled' || kind === 'config_error') && (
+          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(step, null, 2)}</pre>
+        )}
+        {kind !== 'model_call' &&
+          kind !== 'tool_rag' &&
+          kind !== 'tool_skill' &&
+          kind !== 'tool_pass_through' &&
+          kind !== 'tool_unhandled' &&
+          kind !== 'config_error' && (
+            <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(step, null, 2)}</pre>
+          )}
+      </div>
+    </details>
+  );
+}
+
+function ProxyRequestStructuredBody({ log, meta }) {
+  const isAc = Boolean(meta.is_autocomplete);
+  const backend = meta.proxy_backend;
+  const ragContext = meta.rag_context || {};
+  const chunksCount = ragContext.chunks_count || 0;
+  const maxScore = ragContext.max_score;
+  const chunksInfo = Array.isArray(ragContext.chunks_info) ? ragContext.chunks_info : [];
+
+  const pipelineLabel =
+    backend === 'claw' ? 'Claw' : backend === 'rag_fusion' ? 'RAG Fusion' : backend ? String(backend) : '—';
+
+  return (
+    <div className="claw-proxy-trace-proxy-body">
+      <p className="dashboard-card-muted" style={{ marginBottom: 12, fontSize: 13 }}>
+        <strong>Pipeline:</strong> {pipelineLabel}
+        {isAc ? ' · Autocomplete' : ''}
+      </p>
+      <div style={{ marginBottom: 12 }}>
+        <strong>User query</strong>
+        <div className="dashboard-card-muted" style={{ marginTop: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {meta.user_query || '—'}
+        </div>
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <strong>Response preview</strong>
+        <div className="dashboard-card-muted" style={{ marginTop: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {meta.response_preview || '—'}
+        </div>
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 12,
+          marginBottom: 12,
+          fontSize: 13,
+        }}
+      >
+        <span>
+          <strong>Model:</strong> {meta.model || 'N/A'}
+        </span>
+        <span>
+          <strong>Latency:</strong> {meta.latency_ms != null ? `${meta.latency_ms} ms` : '—'}
+        </span>
+        <span>
+          <strong>Prompt tok.:</strong> {meta.prompt_tokens ?? '—'}
+        </span>
+        <span>
+          <strong>Completion tok.:</strong> {meta.completion_tokens ?? '—'}
+        </span>
+        <span>
+          <strong>Total tok.:</strong> {meta.total_tokens ?? '—'}
+        </span>
+      </div>
+      {meta.rag_steps && (
+        <div style={{ marginBottom: 12 }}>
+          <strong>RAG steps (time)</strong>
+          <p className="dashboard-card-muted" style={{ marginTop: 6, fontSize: 12 }}>
+            embed {Number(meta.rag_steps.embed_s ?? 0).toFixed(2)}s · search {Number(meta.rag_steps.search_s ?? 0).toFixed(2)}s ·
+            rerank {Number(meta.rag_steps.rerank_s ?? 0).toFixed(2)}s
+            {meta.rag_steps.total_rag_s != null && <> (total RAG {Number(meta.rag_steps.total_rag_s).toFixed(2)}s)</>}
+          </p>
+        </div>
+      )}
+      {chunksCount > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <strong>RAG context</strong>
+          <p className="dashboard-card-muted" style={{ marginTop: 6, fontSize: 12 }}>
+            Chunks: {chunksCount} · Max score: {typeof maxScore === 'number' ? maxScore.toFixed(3) : maxScore || 'N/A'} · Context
+            length: {ragContext.context_length || 0} chars
+          </p>
+          {chunksInfo.length > 0 && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 12 }} className="dashboard-card-muted">
+              {chunksInfo.slice(0, 12).map((chunk, idx) => (
+                <li key={idx} style={{ marginBottom: 6 }}>
+                  <strong>#{idx + 1}</strong> {chunk?.doc_type || 'N/A'}
+                  {typeof chunk?.score === 'number' ? ` · score ${chunk.score.toFixed(4)}` : ''}
+                  {chunk?.url ? (
+                    <div style={{ wordBreak: 'break-all', opacity: 0.9 }}>{chunk.url}</div>
+                  ) : null}
+                </li>
+              ))}
+              {chunksInfo.length > 12 ? <li>… +{chunksInfo.length - 12} more</li> : null}
+            </ul>
+          )}
+        </div>
+      )}
+      {log?.timestamp && (
+        <p className="dashboard-card-muted" style={{ fontSize: 12, marginTop: 16 }}>
+          Log time: {log.timestamp}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Full-screen trace / request detail (same structured view as Claw Proxy → Journal → row).
+ */
+export default function ClawProxyTraceDetailModal({ log, isOpen, onClose }) {
+  const [showRaw, setShowRaw] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) setShowRaw(false);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
+  const meta = useMemo(() => (log ? readMetadata(log) : null), [log]);
+  const traceSummary = useMemo(() => summarizeClawTraceMeta(meta), [meta]);
+  const clawStyle = log && meta ? isClawTraceStyleLog(log, meta) : false;
+  const titleId = 'claw-proxy-trace-detail-modal-title';
+
+  if (!isOpen || !log) return null;
+
+  return (
+    <div className="claw-journal-modal-overlay" role="presentation" onClick={onClose}>
+      <div
+        className="claw-journal-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="claw-journal-modal-header">
+          <div className="claw-journal-modal-title-block">
+            <h2 id={titleId}>{clawStyle ? 'Trace detail' : 'Request detail'}</h2>
+            <p className="claw-journal-modal-meta">{log.timestamp}</p>
+            {meta?.trace_id != null && String(meta.trace_id).trim() !== '' && (
+              <p className="claw-journal-modal-meta">
+                <code>{String(meta.trace_id)}</code>
+              </p>
+            )}
+          </div>
+          <div className="claw-journal-modal-header-actions">
+            <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={showRaw} onChange={(e) => setShowRaw(e.target.checked)} />
+              Raw JSON
+            </label>
+            <button type="button" className="claw-journal-modal-close" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </div>
+        <div className="claw-journal-modal-body">
+          {showRaw && (
+            <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, margin: 0 }}>
+              {JSON.stringify(meta || log, null, 2)}
+            </pre>
+          )}
+          {!showRaw && clawStyle && meta && (
+            <>
+              <ClawTraceSummaryCards summary={traceSummary} />
+              {meta.request != null && (
+                <details className="dashboard-trace-item">
+                  <summary>
+                    Request snapshot
+                    {Array.isArray(meta.request.messages) ? ` · ${meta.request.messages.length} messages` : ''}
+                    {' · '}
+                    {Array.isArray(meta.request.client_tool_names)
+                      ? `${meta.request.client_tool_names.length} client tools`
+                      : '0 client tools'}
+                    {meta.request.merge_client_tools != null
+                      ? ` · merge_client_tools: ${meta.request.merge_client_tools ? 'yes' : 'no'}`
+                      : ''}
+                  </summary>
+                  <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(meta.request, null, 2)}</pre>
+                </details>
+              )}
+              {Array.isArray(meta.steps) && meta.steps.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <strong>Steps</strong>
+                  {meta.steps.map((s, i) => (
+                    <ClawTraceStepBlock key={i} step={s} index={i} />
+                  ))}
+                </div>
+              )}
+              {meta.final_message != null && (
+                <div style={{ marginTop: 16 }}>
+                  <strong>Final answer</strong>
+                  <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8, fontSize: 12 }}>
+                    {meta.final_message.content != null && meta.final_message.content !== ''
+                      ? meta.final_message.content
+                      : '(no text content)'}
+                  </pre>
+                  {meta.final_message.finish_reason != null && (
+                    <p className="dashboard-card-muted">finish_reason: {meta.final_message.finish_reason}</p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+          {!showRaw && !clawStyle && meta && <ProxyRequestStructuredBody log={log} meta={meta} />}
+          {!showRaw && !meta && (
+            <p className="dashboard-card-muted">No metadata on this row (legacy or empty).</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

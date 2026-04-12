@@ -389,6 +389,14 @@ def run_chat_completions(
         include_rag_metadata = bool(proxy_settings.get("include_rag_metadata", False))
     else:
         include_rag_metadata = bool(body.get("include_rag_metadata", False))
+
+    def proxy_backend_tag() -> str:
+        if is_autocomplete:
+            return "autocomplete"
+        if dumb_build_pipeline:
+            return "rag_fusion"
+        return "direct"
+
     force_rag = bool(body.get("force_rag"))
     if is_autocomplete:
         force_rag = False
@@ -1290,6 +1298,7 @@ def run_chat_completions(
                     "stream": False,
                     "is_autocomplete": bool(is_autocomplete),
                     "requested_model": requested_model,
+                    "proxy_backend": proxy_backend_tag(),
                 },
             )
         except Exception as e:
@@ -1537,6 +1546,7 @@ def run_chat_completions(
                         "ollama_chat_stream": False,
                         "is_autocomplete": bool(is_autocomplete),
                         "requested_model": requested_model,
+                        "proxy_backend": proxy_backend_tag(),
                     }
                     logs_repo.add_log(
                         session_id="proxy",
@@ -1731,6 +1741,7 @@ def run_chat_completions(
             "stream": False,
             "is_autocomplete": bool(is_autocomplete),
             "requested_model": requested_model,
+            "proxy_backend": proxy_backend_tag(),
         }
         logs_repo.add_log(
             session_id="proxy",

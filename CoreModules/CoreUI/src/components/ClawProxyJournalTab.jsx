@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { getClawCodeJournal, clearClawCodeJournal } from '../services/api';
 import '../styles/components/DashboardTab.css';
-import { summarizeClawTraceMeta } from '../utils/clawTraceSummary';
-import ClawTraceSummaryCards from './ClawTraceSummaryCards';
+import ClawProxyTraceDetailModal from './ClawProxyTraceDetailModal';
 
 const JOURNAL_LIMIT = 2000;
 const JOURNAL_POLL_MS = 3000;
@@ -42,136 +41,6 @@ function getDateRangeForJournal(period, selectedDate) {
   }
 }
 
-function StepBlock({ step, index }) {
-  if (!step || typeof step !== 'object') return null;
-  const kind = step.kind || 'unknown';
-  return (
-    <details className="dashboard-trace-item" style={{ marginBottom: 8 }}>
-      <summary>
-        Step {index + 1}: <code>{kind}</code>
-        {step.step != null ? ` (agent step ${step.step})` : ''}
-        {step.ok === false ? ' · failed' : ''}
-      </summary>
-      <div className="dashboard-card-muted" style={{ marginTop: 8 }}>
-        {kind === 'model_call' && (
-          <>
-            {step.model != null && (
-              <p>
-                <strong>Model:</strong> <code>{step.model}</code>
-              </p>
-            )}
-            {(step.prompt_tokens_est != null || step.completion_tokens_est != null) && (
-              <p className="dashboard-card-muted" style={{ fontSize: 12 }}>
-                Token est.: prompt {step.prompt_tokens_est ?? '—'} · completion {step.completion_tokens_est ?? '—'}
-              </p>
-            )}
-            {step.finish_reason != null && (
-              <p>
-                <strong>Finish:</strong> <code>{step.finish_reason}</code>
-              </p>
-            )}
-            {step.thinking_raw != null && String(step.thinking_raw).trim() !== '' && (
-              <div style={{ marginTop: 8 }}>
-                <strong>Thinking (raw)</strong>
-                <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 280, overflow: 'auto', fontSize: 12 }}>
-                  {step.thinking_raw}
-                </pre>
-              </div>
-            )}
-            {step.assistant_content_raw != null && String(step.assistant_content_raw).trim() !== '' && (
-              <div style={{ marginTop: 8 }}>
-                <strong>Assistant content (raw)</strong>
-                <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto', fontSize: 12 }}>
-                  {step.assistant_content_raw}
-                </pre>
-              </div>
-            )}
-            {step.assistant_visible != null && String(step.assistant_visible).trim() !== '' && (
-              <div style={{ marginTop: 8 }}>
-                <strong>Assistant (merged visible)</strong>
-                <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto', fontSize: 12 }}>
-                  {step.assistant_visible}
-                </pre>
-              </div>
-            )}
-            {Array.isArray(step.tool_calls) && step.tool_calls.length > 0 && (
-              <div style={{ marginTop: 8 }}>
-                <strong>Tool calls</strong>
-                <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto', fontSize: 12 }}>
-                  {JSON.stringify(step.tool_calls, null, 2)}
-                </pre>
-              </div>
-            )}
-            {step.error != null && (
-              <p className="dashboard-card-error">{String(step.error)}</p>
-            )}
-          </>
-        )}
-        {kind === 'tool_rag' && (
-          <>
-            <p>
-              <strong>Query:</strong> {step.query || '—'}
-            </p>
-            <p>
-              Chunks: {step.chunks ?? '—'} · max_score: {step.max_score ?? '—'} · context_chars:{' '}
-              {step.context_chars ?? '—'}
-            </p>
-            {step.error != null && <p className="dashboard-card-error">{String(step.error)}</p>}
-            {Array.isArray(step.chunks_info) && step.chunks_info.length > 0 && (
-              <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 240, overflow: 'auto', fontSize: 12 }}>
-                {JSON.stringify(step.chunks_info, null, 2)}
-              </pre>
-            )}
-          </>
-        )}
-        {kind === 'tool_skill' && (
-          <>
-            <p>
-              <strong>Invocation:</strong> {step.invocation || '—'}
-            </p>
-            {step.skill_id != null && String(step.skill_id).trim() !== '' && (
-              <p>
-                <strong>skill_id:</strong> <code>{step.skill_id}</code>
-              </p>
-            )}
-            <p>
-              context_chars: {step.context_chars ?? '—'} · duration_ms: {step.duration_ms ?? '—'}
-            </p>
-            {step.error != null && <p className="dashboard-card-error">{String(step.error)}</p>}
-          </>
-        )}
-        {kind === 'tool_pass_through' && (
-          <>
-            <p>
-              <strong>Tools returned to IDE:</strong>{' '}
-              {Array.isArray(step.names) && step.names.length > 0 ? step.names.join(', ') : '—'}
-            </p>
-            <details className="dashboard-trace-item" style={{ marginTop: 8 }}>
-              <summary>Raw step JSON</summary>
-              <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(step, null, 2)}</pre>
-            </details>
-          </>
-        )}
-        {(kind === 'tool_unhandled' || kind === 'config_error') && (
-          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>
-            {JSON.stringify(step, null, 2)}
-          </pre>
-        )}
-        {kind !== 'model_call' &&
-          kind !== 'tool_rag' &&
-          kind !== 'tool_skill' &&
-          kind !== 'tool_pass_through' &&
-          kind !== 'tool_unhandled' &&
-          kind !== 'config_error' && (
-            <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>
-              {JSON.stringify(step, null, 2)}
-            </pre>
-          )}
-      </div>
-    </details>
-  );
-}
-
 export default function ClawProxyJournalTab() {
   const [period, setPeriod] = useState('week');
   const [selectedDate, setSelectedDate] = useState(null);
@@ -179,7 +48,6 @@ export default function ClawProxyJournalTab() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
-  const [showRaw, setShowRaw] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
 
   const loadJournal = useCallback(async (opts = {}) => {
@@ -268,21 +136,10 @@ export default function ClawProxyJournalTab() {
     }
   }, [detailModalOpen, selectedId, displayLogs, logs]);
 
-  useEffect(() => {
-    if (!detailModalOpen) return undefined;
-    const onKey = (e) => {
-      if (e.key === 'Escape') setDetailModalOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [detailModalOpen]);
-
   const selectedLog = useMemo(
     () => displayLogs.find((l) => l.id === selectedId) || logs.find((l) => l.id === selectedId) || null,
     [displayLogs, logs, selectedId],
   );
-  const meta = selectedLog?.metadata && typeof selectedLog.metadata === 'object' ? selectedLog.metadata : null;
-  const traceSummary = useMemo(() => summarizeClawTraceMeta(meta), [meta]);
 
   const clearDb = async () => {
     if (!window.confirm('Delete all persisted ClawCode journal entries from the database?')) return;
@@ -380,100 +237,11 @@ export default function ClawProxyJournalTab() {
         )}
       </section>
 
-      {detailModalOpen && selectedLog && (
-        <div
-          className="claw-journal-modal-overlay"
-          role="presentation"
-          onClick={() => setDetailModalOpen(false)}
-        >
-          <div
-            className="claw-journal-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="claw-journal-modal-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="claw-journal-modal-header">
-              <div className="claw-journal-modal-title-block">
-                <h2 id="claw-journal-modal-title">Trace detail</h2>
-                <p className="claw-journal-modal-meta">{selectedLog.timestamp}</p>
-                {meta?.trace_id != null && String(meta.trace_id).trim() !== '' && (
-                  <p className="claw-journal-modal-meta">
-                    <code>{String(meta.trace_id)}</code>
-                  </p>
-                )}
-              </div>
-              <div className="claw-journal-modal-header-actions">
-                <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input type="checkbox" checked={showRaw} onChange={(e) => setShowRaw(e.target.checked)} />
-                  Raw JSON
-                </label>
-                <button
-                  type="button"
-                  className="claw-journal-modal-close"
-                  onClick={() => setDetailModalOpen(false)}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-            <div className="claw-journal-modal-body">
-              {showRaw && (
-                <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, margin: 0 }}>
-                  {JSON.stringify(meta || selectedLog, null, 2)}
-                </pre>
-              )}
-              {!showRaw && meta && (
-                <>
-                  <ClawTraceSummaryCards summary={traceSummary} />
-                  {meta.request != null && (
-                    <details className="dashboard-trace-item">
-                      <summary>
-                        Request snapshot
-                        {Array.isArray(meta.request.messages) ? ` · ${meta.request.messages.length} messages` : ''}
-                        {' · '}
-                        {Array.isArray(meta.request.client_tool_names)
-                          ? `${meta.request.client_tool_names.length} client tools`
-                          : '0 client tools'}
-                        {meta.request.merge_client_tools != null
-                          ? ` · merge_client_tools: ${meta.request.merge_client_tools ? 'yes' : 'no'}`
-                          : ''}
-                      </summary>
-                      <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>
-                        {JSON.stringify(meta.request, null, 2)}
-                      </pre>
-                    </details>
-                  )}
-                  {Array.isArray(meta.steps) && meta.steps.length > 0 && (
-                    <div style={{ marginTop: 12 }}>
-                      <strong>Steps</strong>
-                      {meta.steps.map((s, i) => (
-                        <StepBlock key={i} step={s} index={i} />
-                      ))}
-                    </div>
-                  )}
-                  {meta.final_message != null && (
-                    <div style={{ marginTop: 16 }}>
-                      <strong>Final answer</strong>
-                      <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8, fontSize: 12 }}>
-                        {meta.final_message.content != null && meta.final_message.content !== ''
-                          ? meta.final_message.content
-                          : '(no text content)'}
-                      </pre>
-                      {meta.final_message.finish_reason != null && (
-                        <p className="dashboard-card-muted">finish_reason: {meta.final_message.finish_reason}</p>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-              {!showRaw && !meta && (
-                <p className="dashboard-card-muted">No metadata on this row (legacy or empty).</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <ClawProxyTraceDetailModal
+        log={selectedLog}
+        isOpen={Boolean(detailModalOpen && selectedLog)}
+        onClose={() => setDetailModalOpen(false)}
+      />
     </div>
   );
 }

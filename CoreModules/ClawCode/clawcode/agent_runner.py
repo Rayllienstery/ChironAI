@@ -689,6 +689,8 @@ def run_clawcode_chat_completion(
             "or set a default chat model in RAG / models config."
         )
         if trace_callback is not None:
+            _irq0 = body.get("include_rag_query_tool")
+            _isk0 = body.get("include_skill_tools")
             trace_callback(
                 {
                     "trace_id": str(uuid.uuid4()),
@@ -700,6 +702,12 @@ def run_clawcode_chat_completion(
                         "merge_client_tools": merge_client_tools,
                     },
                     "think_requested": oc_think_request,
+                    "clawcode_runtime": {
+                        "include_rag_query_tool": True if _irq0 is None else bool(_irq0),
+                        "include_skill_tools": True if _isk0 is None else bool(_isk0),
+                        "rag_collection_name": clawcode_collection,
+                        "merge_client_tools": merge_client_tools,
+                    },
                     "steps": [
                         {"kind": "config_error", "step": 0, "ok": False, "error": err_msg}
                     ],
@@ -769,6 +777,18 @@ def run_clawcode_chat_completion(
     client_tools = body.get("tools")
     _irq = body.get("include_rag_query_tool")
     include_rag_tool = True if _irq is None else bool(_irq)
+    clawcode_runtime: dict[str, Any] = {
+        "include_rag_query_tool": include_rag_tool,
+        "include_skill_tools": include_skill_tools,
+        "rag_collection_name": clawcode_collection,
+        "merge_client_tools": merge_client_tools,
+    }
+    try:
+        _coll_fn = getattr(deps.rag_repo, "get_collection_name", None)
+        if callable(_coll_fn):
+            clawcode_runtime["rag_effective_collection"] = str(_coll_fn())
+    except Exception:
+        pass
     tools_list: list[dict[str, Any]] = []
     if include_rag_tool:
         tools_list.append(RAG_QUERY_TOOL)
@@ -821,6 +841,7 @@ def run_clawcode_chat_completion(
         think_requested=oc_think_request,
         merge_client_tools=merge_client_tools,
         skills=skills_trace,
+        clawcode_runtime=clawcode_runtime,
         journal_skip=True,
     )
 
@@ -888,6 +909,7 @@ def run_clawcode_chat_completion(
                 think_requested=oc_think_request,
                 merge_client_tools=merge_client_tools,
                 skills=skills_trace,
+                clawcode_runtime=clawcode_runtime,
             )
             return {"error": {"message": err, "type": "api_error"}}, 502
 
@@ -918,6 +940,7 @@ def run_clawcode_chat_completion(
                 think_requested=oc_think_request,
                 merge_client_tools=merge_client_tools,
                 skills=skills_trace,
+                clawcode_runtime=clawcode_runtime,
             )
             return {"error": {"message": err, "type": "upstream_error"}}, 502
 
@@ -988,6 +1011,7 @@ def run_clawcode_chat_completion(
                 think_requested=oc_think_request,
                 merge_client_tools=merge_client_tools,
                 skills=skills_trace,
+                clawcode_runtime=clawcode_runtime,
             )
             return resp, 200
 
@@ -1023,6 +1047,7 @@ def run_clawcode_chat_completion(
                 think_requested=oc_think_request,
                 merge_client_tools=merge_client_tools,
                 skills=skills_trace,
+                clawcode_runtime=clawcode_runtime,
             )
             return resp, 200
 
@@ -1190,6 +1215,7 @@ def run_clawcode_chat_completion(
             think_requested=oc_think_request,
             merge_client_tools=merge_client_tools,
             skills=skills_trace,
+            clawcode_runtime=clawcode_runtime,
         )
 
     _emit_trace(
@@ -1205,6 +1231,7 @@ def run_clawcode_chat_completion(
         think_requested=oc_think_request,
         merge_client_tools=merge_client_tools,
         skills=skills_trace,
+        clawcode_runtime=clawcode_runtime,
     )
     return {
         "error": {
@@ -1280,6 +1307,7 @@ def _emit_trace(
     think_requested: bool = False,
     merge_client_tools: bool | None = None,
     skills: dict[str, Any] | None = None,
+    clawcode_runtime: dict[str, Any] | None = None,
     journal_skip: bool = False,
 ) -> None:
     if cb is None:
@@ -1308,6 +1336,8 @@ def _emit_trace(
         rec["journal_skip"] = True
     if skills is not None:
         rec["skills"] = skills
+    if clawcode_runtime:
+        rec["clawcode_runtime"] = dict(clawcode_runtime)
     if final and final_assistant is not None:
         fa = dict(final_assistant)
         raw_c = fa.get("content")

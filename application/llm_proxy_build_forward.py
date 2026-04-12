@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 import time
 from typing import Any
@@ -10,6 +12,26 @@ import requests
 from flask import Response, jsonify
 
 from config import get_clawcode_host, get_clawcode_openai_port, get_server_host
+
+_LOG = logging.getLogger(__name__)
+
+
+def _last_user_query_from_messages(messages: Any) -> str:
+    if not isinstance(messages, list):
+        return ""
+    for m in reversed(messages):
+        if not isinstance(m, dict) or m.get("role") != "user":
+            continue
+        c = m.get("content")
+        if isinstance(c, str):
+            return c
+        if c is None:
+            return ""
+        try:
+            return json.dumps(c, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return str(c)
+    return ""
 
 
 def _claw_openai_base() -> str:
@@ -139,5 +161,67 @@ def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
     include_rag_metadata = body.get("include_rag_metadata", True)
     if not include_rag_metadata:
         data.pop("rag_metadata", None)
+
+    try:
+        from infrastructure.database import get_logs_repository
+        from infrastructure.database.session_manager import get_session_manager
+
+        user_q = _last_user_query_from_messages(body.get("messages"))
+        content_preview = ""
+        choices = data.get("choices")
+        if isinstance(choices, list) and choices:
+            first = choices[0]
+            if isinstance(first, dict):
+                msg = first.get("message")
+                if isinstance(msg, dict):
+                    c0 = msg.get("content")
+                    if isinstance(c0, str):
+                        content_preview = c0[:500]
+
+        usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+        pt = usage.get("prompt_tokens")
+        ct = usage.get("completion_tokens")
+        tt = usage.get("total_tokens")
+
+        rag_meta = data.get("rag_metadata")
+        rag_context_data = None
+        if isinstance(rag_meta, dict):
+            chunks = rag_meta.get("chunks_info") or []
+            cc = rag_meta.get("chunks_count")
+            if cc is None and isinstance(chunks, list):
+                cc = len(chunks)
+            rag_context_data = {
+                "chunks_info": chunks if isinstance(chunks, list) else [],
+                "max_score": rag_meta.get("max_score"),
+                "chunks_count": int(cc or 0),
+            }
+
+        log_model = bid if bid else str(data.get("model") or ollama_tag)
+        db_path = os.getenv("WEBUI_DB_PATH", "logs/webui.db")
+        get_session_manager(db_path).get_or_create_session("proxy")
+        logs_repo = get_logs_repository()
+        logs_repo.add_log(
+            session_id="proxy",
+            level="INFO",
+            message=f"Proxy request (claw): {user_q[:100]}...",
+            source="proxy",
+            metadata={
+                "user_query": user_q[:500],
+                "response_preview": content_preview,
+                "model": log_model,
+                "requested_model": (str(body.get("model") or "").strip() or log_model),
+                "latency_ms": int(data.get("latency_ms") or latency_ms),
+                "prompt_tokens": int(pt) if isinstance(pt, (int, float)) else 0,
+                "completion_tokens": int(ct) if isinstance(ct, (int, float)) else 0,
+                "total_tokens": int(tt) if isinstance(tt, (int, float)) else 0,
+                "rag_context": rag_context_data,
+                "proxy_backend": "claw",
+                "claw_build_id": bid or None,
+                "stream": bool(body.get("stream")),
+                "is_autocomplete": False,
+            },
+        )
+    except Exception as e:
+        _LOG.warning("forward_claw_build_chat: failed to persist proxy log: %s", e)
 
     return jsonify(data), 200

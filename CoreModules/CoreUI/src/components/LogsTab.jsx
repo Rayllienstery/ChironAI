@@ -1,10 +1,17 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { getLogs, getProxyLogs, clearLogs, clearProxyLogs } from '../services/api';
 import { startLogPolling, stopLogPolling } from '../services/logs';
-import ProxyLogsAnalytics from './ProxyLogsAnalytics';
+import ProxyLogsAnalytics, {
+  getMetadata,
+  isClawPipelineLog,
+  clawJournalUserPreview,
+} from './ProxyLogsAnalytics';
+import ClawCodeMarkIcon from './ClawCodeMarkIcon';
+import ClawProxyTraceDetailModal from './ClawProxyTraceDetailModal';
 import '../styles/components/CoreUIButtons.css';
 import '../styles/components/LogsTab.css';
 import '../styles/components/CoreUIPillTabs.css';
+import '../styles/components/NotificationCenter.css';
 
 const PROXY_LOGS_ANALYTICS_LIMIT = 5000;
 
@@ -74,7 +81,31 @@ function LogsTab({ sessionId }) {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('day');
   const [selectedDate, setSelectedDate] = useState(null);
+  const [pipelineFilter, setPipelineFilter] = useState('mixed');
+  const [clawResponseModal, setClawResponseModal] = useState(null);
+  const [clawTraceDetailLog, setClawTraceDetailLog] = useState(null);
   const logsEndRef = useRef(null);
+
+  useEffect(() => {
+    if (!clawResponseModal) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setClawResponseModal(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [clawResponseModal]);
+
+  const displayProxyLogs = useMemo(() => {
+    if (viewMode !== 'proxy') return logs;
+    if (pipelineFilter === 'mixed') return logs;
+    if (pipelineFilter === 'claw') {
+      return logs.filter((log) => isClawPipelineLog(log));
+    }
+    if (pipelineFilter === 'rag_fusion') {
+      return logs.filter((log) => getMetadata(log).proxy_backend === 'rag_fusion');
+    }
+    return logs;
+  }, [logs, viewMode, pipelineFilter]);
 
   const scrollToBottom = () => {
     const container = document.querySelector('.logs-content');
@@ -226,6 +257,274 @@ function LogsTab({ sessionId }) {
     }
   };
 
+  const renderClawJournalLog = (log) => {
+    const meta = getMetadata(log);
+    const tid = String(meta.trace_id || '').slice(0, 12) || '—';
+    const model = meta.resolved_model || meta.client_model || meta.request?.model || 'N/A';
+    const steps = Array.isArray(meta.steps) ? meta.steps : [];
+    const rtc = meta.clawcode_runtime && typeof meta.clawcode_runtime === 'object' ? meta.clawcode_runtime : null;
+    const sks = meta.skills && typeof meta.skills === 'object' ? meta.skills : null;
+    const req = meta.request && typeof meta.request === 'object' ? meta.request : {};
+    const clientToolNames = Array.isArray(req.client_tool_names) ? req.client_tool_names : [];
+
+    const ragSteps = steps.filter((s) => s?.kind === 'tool_rag');
+    const skillSteps = steps.filter((s) => s?.kind === 'tool_skill');
+
+    const chunksInfo = [];
+    for (const st of ragSteps) {
+      if (Array.isArray(st.chunks_info)) {
+        chunksInfo.push(...st.chunks_info);
+      }
+    }
+    const chunksCount =
+      chunksInfo.length ||
+      ragSteps.reduce((acc, s) => acc + (Number(s.chunks) > 0 ? Number(s.chunks) : 0), 0);
+
+    const tri = (v) => (v === true ? 'Yes' : v === false ? 'No' : '—');
+    const enabledIds = Array.isArray(sks?.enabled_ids) ? sks.enabled_ids.map(String) : [];
+    const showSkillIds = enabledIds.slice(0, 8);
+    const skillIdsRest = enabledIds.length - showSkillIds.length;
+    const loadedInv = Array.isArray(sks?.loaded_invocations) ? sks.loaded_invocations.map(String) : [];
+
+    const ragUsed = ragSteps.length > 0;
+    const skillsUsed = skillSteps.some((s) => s?.ok) || loadedInv.length > 0;
+    const skillsToolsOff = rtc?.include_skill_tools === false;
+    const showSkillsCatalog =
+      !skillsToolsOff &&
+      (enabledIds.length > 0 ||
+        (sks?.enabled_count ?? 0) > 0 ||
+        rtc?.include_skill_tools === true ||
+        (!rtc && clientToolNames.includes('load_skill')));
+
+    const fm =
+      meta.final_message && typeof meta.final_message === 'object' ? meta.final_message : null;
+    const resp =
+      fm && typeof fm.content === 'string'
+        ? fm.content
+        : '';
+    const contentTruncated = Boolean(fm?.content_truncated);
+    const userLine = clawJournalUserPreview(meta);
+
+    const openClawResponseModal = () => {
+      if (resp) setClawResponseModal({ text: resp, traceShort: tid, contentTruncated });
+    };
+
+    return (
+      <div
+        key={log.id}
+        className="log-entry log-info proxy-log-entry proxy-log-entry--claw-journal proxy-log-entry--claw-journal-open-detail"
+        onClick={() => setClawTraceDetailLog(log)}
+        title="Click to open trace detail"
+        role="presentation"
+      >
+        <div className="log-header">
+          <div className="log-title">
+            <span className="log-icon log-icon--claw-mark" aria-hidden>
+              <ClawCodeMarkIcon title="ClawCode" width={22} height={22} />
+            </span>
+            <span className="log-summary">ClawCode (direct)</span>
+            <span className="proxy-log-pipeline-badge proxy-log-pipeline-badge--claw" title="ClawCode OpenAI port">
+              Claw
+            </span>
+          </div>
+          <span className="log-timestamp">{formatTimestamp(log.timestamp)}</span>
+        </div>
+        <div className="proxy-log-content">
+          <div className="proxy-log-section">
+            <strong>Trace:</strong> <code>{tid}</code>
+            {meta.error && (
+              <div className="proxy-log-text proxy-log-claw-error">{String(meta.error)}</div>
+            )}
+          </div>
+          <div className="proxy-log-section claw-journal-runtime">
+            <strong>RAG</strong>
+            <div className="proxy-log-rag-info claw-journal-runtime-inner">
+              <div className="claw-journal-kv">
+                <span className="claw-journal-k">Tool registered</span>
+                <span className="claw-journal-v">{tri(rtc?.include_rag_query_tool)}</span>
+              </div>
+              {rtc?.rag_collection_name ? (
+                <div className="claw-journal-kv">
+                  <span className="claw-journal-k">Collection override</span>
+                  <span className="claw-journal-v">
+                    <code>{String(rtc.rag_collection_name)}</code>
+                  </span>
+                </div>
+              ) : null}
+              {rtc?.rag_effective_collection ? (
+                <div className="claw-journal-kv">
+                  <span className="claw-journal-k">Qdrant collection</span>
+                  <span className="claw-journal-v">
+                    <code>{String(rtc.rag_effective_collection)}</code>
+                  </span>
+                </div>
+              ) : null}
+              {!rtc && clientToolNames.includes('rag_query') ? (
+                <div className="claw-journal-kv claw-journal-kv--hint">
+                  <span className="claw-journal-k">Request tools</span>
+                  <span className="claw-journal-v">includes <code>rag_query</code> (runtime flags not stored)</span>
+                </div>
+              ) : null}
+              <div className="claw-journal-kv">
+                <span className="claw-journal-k">Used in trace</span>
+                <span className={`claw-journal-v claw-journal-flag ${ragUsed ? 'claw-journal-flag--yes' : 'claw-journal-flag--no'}`}>
+                  {ragUsed ? `Yes (${ragSteps.length} call${ragSteps.length === 1 ? '' : 's'})` : 'No'}
+                </span>
+              </div>
+              {chunksCount > 0 ? (
+                <div className="claw-journal-kv">
+                  <span className="claw-journal-k">Chunk refs (total)</span>
+                  <span className="claw-journal-v">{chunksInfo.length || chunksCount}</span>
+                </div>
+              ) : null}
+              {ragSteps.length > 0 ? (
+                <ul className="claw-journal-step-list">
+                  {ragSteps.map((rs, i) => (
+                    <li key={`rag-${i}-${rs.step ?? i}`} className="claw-journal-step-item">
+                      <span className={rs.ok === false ? 'claw-journal-err' : ''}>
+                        {rs.ok === false ? '✗' : '✓'} {String(rs.query || '(empty query)').slice(0, 120)}
+                        {String(rs.query || '').length > 120 ? '…' : ''}
+                      </span>
+                      <span className="claw-journal-step-meta">
+                        chunks {rs.chunks ?? 0}
+                        {rs.max_score != null ? ` · max ${Number(rs.max_score).toFixed(3)}` : ''}
+                        {rs.duration_ms != null ? ` · ${rs.duration_ms}ms` : ''}
+                      </span>
+                      {rs.error ? (
+                        <div className="claw-journal-err claw-journal-step-err">{String(rs.error)}</div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          </div>
+          <div className="proxy-log-section claw-journal-runtime">
+            <strong>Skills</strong>
+            <div className="proxy-log-rag-info claw-journal-runtime-inner">
+              <div className="claw-journal-kv">
+                <span className="claw-journal-k">Tool registered</span>
+                <span className="claw-journal-v">{tri(rtc?.include_skill_tools)}</span>
+              </div>
+              {!rtc && clientToolNames.includes('load_skill') ? (
+                <div className="claw-journal-kv claw-journal-kv--hint">
+                  <span className="claw-journal-k">Request tools</span>
+                  <span className="claw-journal-v">includes <code>load_skill</code> (runtime flags not stored)</span>
+                </div>
+              ) : null}
+              {showSkillsCatalog ? (
+                <div className="claw-journal-kv">
+                  <span className="claw-journal-k">Enabled packs</span>
+                  <span className="claw-journal-v">
+                    {sks?.enabled_count != null ? sks.enabled_count : enabledIds.length}
+                    {showSkillIds.length > 0 ? (
+                      <>
+                        {' '}
+                        <span className="claw-journal-id-list">
+                          ({showSkillIds.map((id) => (
+                            <code key={id}>{id}</code>
+                          ))}
+                          {skillIdsRest > 0 ? ` +${skillIdsRest} more` : ''})
+                        </span>
+                      </>
+                    ) : null}
+                  </span>
+                </div>
+              ) : null}
+              <div className="claw-journal-kv">
+                <span className="claw-journal-k">Loaded (SKILL.md)</span>
+                <span className={`claw-journal-v claw-journal-flag ${skillsUsed ? 'claw-journal-flag--yes' : 'claw-journal-flag--no'}`}>
+                  {loadedInv.length > 0
+                    ? loadedInv.join(', ')
+                    : skillSteps.length > 0
+                      ? 'No successful load'
+                      : 'None'}
+                </span>
+              </div>
+              {skillSteps.length > 0 ? (
+                <ul className="claw-journal-step-list">
+                  {skillSteps.map((ss, i) => (
+                    <li key={`sk-${i}-${ss.step ?? i}`} className="claw-journal-step-item">
+                      <span className={ss.ok === false ? 'claw-journal-err' : ''}>
+                        {ss.ok === false ? '✗' : '✓'} {String(ss.invocation || ss.skill_id || 'load_skill').slice(0, 120)}
+                      </span>
+                      {ss.skill_id ? (
+                        <span className="claw-journal-step-meta">
+                          id <code>{String(ss.skill_id)}</code>
+                          {ss.duration_ms != null ? ` · ${ss.duration_ms}ms` : ''}
+                        </span>
+                      ) : ss.duration_ms != null ? (
+                        <span className="claw-journal-step-meta">{ss.duration_ms}ms</span>
+                      ) : null}
+                      {ss.error ? (
+                        <div className="claw-journal-err claw-journal-step-err">{String(ss.error)}</div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          </div>
+          <div className="proxy-log-section">
+            <strong>Request preview:</strong>
+            <div className="proxy-log-text">{userLine}</div>
+          </div>
+          <div
+            className={`proxy-log-section${resp ? ' proxy-log-section--claw-response-clickable' : ''}`}
+            role={resp ? 'button' : undefined}
+            tabIndex={resp ? 0 : undefined}
+            onClick={(e) => {
+              e.stopPropagation();
+              openClawResponseModal();
+            }}
+            onKeyDown={(e) => {
+              if (!resp) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.stopPropagation();
+                openClawResponseModal();
+              }
+            }}
+          >
+            <strong>Response preview:</strong>
+            {resp ? (
+              <div
+                className="proxy-log-text proxy-log-text--claw-response-preview"
+                title="Click to open full response"
+              >
+                {`${resp.slice(0, 500)}${resp.length > 500 ? '…' : ''}`}
+              </div>
+            ) : (
+              <div className="proxy-log-text">N/A</div>
+            )}
+          </div>
+          <div className="proxy-log-metrics">
+            <div className="proxy-log-metric">
+              <span className="metric-label">Model:</span>
+              <span className="metric-value">{model}</span>
+            </div>
+            <div className="proxy-log-metric">
+              <span className="metric-label">Latency:</span>
+              <span className="metric-value">{meta.elapsed_ms != null ? `${meta.elapsed_ms}ms` : 'N/A'}</span>
+            </div>
+            <div className="proxy-log-metric">
+              <span className="metric-label">Steps:</span>
+              <span className="metric-value">{meta.step_count ?? steps.length}</span>
+            </div>
+            <div className="proxy-log-metric">
+              <span className="metric-label">Tokens (est.):</span>
+              <span className="metric-value">
+                {meta.total_prompt_tokens_est != null || meta.total_completion_tokens_est != null
+                  ? `${meta.total_prompt_tokens_est ?? '—'} / ${meta.total_completion_tokens_est ?? '—'}`
+                  : 'N/A'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderProxyLog = (log) => {
     // Safely parse metadata
     let metadata = {};
@@ -243,6 +542,7 @@ function LogsTab({ sessionId }) {
     }
     
     const isAc = Boolean(metadata.is_autocomplete);
+    const backend = metadata.proxy_backend;
     const ragContext = metadata.rag_context || {};
     const chunksCount = ragContext.chunks_count || 0;
     const maxScore = ragContext.max_score;
@@ -257,6 +557,16 @@ function LogsTab({ sessionId }) {
             {isAc && (
               <span className="proxy-log-ac-badge" title="ChironAI-Autocomplete logical model">
                 Autocomplete
+              </span>
+            )}
+            {backend === 'claw' && (
+              <span className="proxy-log-pipeline-badge proxy-log-pipeline-badge--claw" title="Claw build forward">
+                Claw
+              </span>
+            )}
+            {backend === 'rag_fusion' && (
+              <span className="proxy-log-pipeline-badge proxy-log-pipeline-badge--rag" title="RAG Fusion (dumb) build">
+                RAG Fusion
               </span>
             )}
           </div>
@@ -451,7 +761,7 @@ function LogsTab({ sessionId }) {
 
       {(viewMode === 'proxy' || viewMode === 'autocomplete') && (
         <ProxyLogsAnalytics
-          logs={logs}
+          logs={displayProxyLogs}
           period={period}
           onPeriodChange={setPeriod}
           selectedDate={selectedDate}
@@ -459,27 +769,33 @@ function LogsTab({ sessionId }) {
           onDateReset={() => setSelectedDate(null)}
           periodLabel={getPeriodLabel(period, selectedDate)}
           variant={viewMode === 'autocomplete' ? 'autocomplete' : 'proxy'}
+          pipelineFilter={pipelineFilter}
+          onPipelineFilterChange={setPipelineFilter}
+          showPipelineFilter={viewMode === 'proxy'}
         />
       )}
 
       <div className="logs-content">
         {viewMode === 'logs' && !sessionId ? (
           <div className="loading">No session available. Session is loading or could not be created.</div>
-        ) : loading && logs.length === 0 ? (
+        ) : loading &&
+          (viewMode === 'proxy' || viewMode === 'autocomplete' ? displayProxyLogs : logs).length === 0 ? (
           <div className="loading">
             Loading{' '}
             {viewMode === 'proxy' ? 'proxy ' : viewMode === 'autocomplete' ? 'autocomplete ' : ''}
             logs...
           </div>
-        ) : logs.length === 0 ? (
+        ) : (viewMode === 'proxy' || viewMode === 'autocomplete' ? displayProxyLogs : logs).length === 0 ? (
           <div className="empty-state">
             No{' '}
             {viewMode === 'proxy' ? 'proxy ' : viewMode === 'autocomplete' ? 'autocomplete ' : ''}
             logs found
           </div>
         ) : (
-          logs.map((log) => 
-            viewMode === 'proxy' || viewMode === 'autocomplete' ? renderProxyLog(log) : (
+          (viewMode === 'proxy' || viewMode === 'autocomplete' ? displayProxyLogs : logs).map((log) => 
+            viewMode === 'proxy' || viewMode === 'autocomplete' ? (
+              log.session_id === 'clawcode' ? renderClawJournalLog(log) : renderProxyLog(log)
+            ) : (
               <div key={log.id} className={getLevelClass(log.level)}>
                 <div className="log-header">
                   <div className="log-title">
@@ -495,6 +811,53 @@ function LogsTab({ sessionId }) {
         )}
         <div ref={logsEndRef} />
       </div>
+
+      <ClawProxyTraceDetailModal
+        log={clawTraceDetailLog}
+        isOpen={Boolean(clawTraceDetailLog)}
+        onClose={() => setClawTraceDetailLog(null)}
+      />
+
+      {clawResponseModal ? (
+        <div
+          className="logs-tab-modal-overlay"
+          onClick={() => setClawResponseModal(null)}
+          role="presentation"
+        >
+          <div
+            className="logs-tab-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logs-tab-claw-response-title"
+          >
+            <div className="logs-tab-modal-header">
+              <div className="logs-tab-modal-heading">
+                <h3 id="logs-tab-claw-response-title">ClawCode response</h3>
+                {clawResponseModal.traceShort ? (
+                  <span className="logs-tab-modal-trace">Trace: {clawResponseModal.traceShort}</span>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                className="logs-tab-modal-close"
+                onClick={() => setClawResponseModal(null)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="logs-tab-modal-body">
+              {clawResponseModal.contentTruncated ? (
+                <p className="logs-tab-modal-note">
+                  This trace stored a shortened assistant message; the text below is everything saved for this log.
+                </p>
+              ) : null}
+              <pre className="logs-tab-modal-pre">{clawResponseModal.text}</pre>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

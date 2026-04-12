@@ -7,10 +7,40 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 from infrastructure.database.session_manager import get_session_manager
+
+
+def _normalize_log_timestamp_bound(value: str, *, end: bool) -> str:
+    """
+    Convert ISO-8601 (e.g. from JS toISOString) to SQLite TIMESTAMP lexicographic form.
+
+    SQLite stores CURRENT_TIMESTAMP as 'YYYY-MM-DD HH:MM:SS'. Comparing that to
+    strings containing 'T' or 'Z' breaks lexicographic lower bounds.
+    """
+    s = (value or "").strip()
+    if not s:
+        return s
+    dt: Optional[datetime] = None
+    try:
+        if s.endswith("Z"):
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        elif "T" in s:
+            dt = datetime.fromisoformat(s)
+        else:
+            dt = datetime.strptime(s[:10], "%Y-%m-%d")
+            if end:
+                dt = dt.replace(hour=23, minute=59, second=59)
+            else:
+                dt = dt.replace(hour=0, minute=0, second=0)
+    except ValueError:
+        return s
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 class LogsRepository:
@@ -144,6 +174,11 @@ class LogsRepository:
         Returns:
             List of log dicts
         """
+        if from_date is not None:
+            from_date = _normalize_log_timestamp_bound(from_date, end=False)
+        if to_date is not None:
+            to_date = _normalize_log_timestamp_bound(to_date, end=True)
+
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
 

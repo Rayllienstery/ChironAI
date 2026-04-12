@@ -941,6 +941,26 @@ def get_proxy_logs() -> Any:
             to_date=to_date or None,
             autocomplete_only=autocomplete_only if autocomplete_only else None,
         )
+        # Direct ClawCode OpenAI (/v1/chat/completions on clawcode port) persists to session_id=clawcode;
+        # merge so "Proxy Logs" reflects IDE / Claw traffic alongside LLM-proxy rows.
+        if not autocomplete_only:
+            claw_logs = logs_repo.get_logs(
+                session_id="clawcode",
+                level="INFO",
+                limit=limit,
+                since_id=int(since_id) if since_id else None,
+                source="clawcode",
+                include_system=False,
+                from_date=from_date or None,
+                to_date=to_date or None,
+            )
+            merged = list(logs) + list(claw_logs)
+            merged.sort(
+                key=lambda row: (str(row.get("timestamp") or ""), int(row.get("id") or 0)),
+            )
+            if len(merged) > limit:
+                merged = merged[-limit:]
+            logs = merged
 
         return jsonify({"logs": logs})
     except Exception as e:
