@@ -647,6 +647,7 @@ def run_clawcode_chat_completion(
     webui_dir: str | None,
     max_steps: int,
     trace_callback: Callable[[dict[str, Any]], None] | None = None,
+    private_mode: bool = False,
 ) -> tuple[dict[str, Any], int]:
     """
     Run agent loop; return (openai_chat_completion_dict, http_status).
@@ -718,6 +719,7 @@ def run_clawcode_chat_completion(
                     "final": True,
                     "error": err_msg,
                     "client_model": body.get("model"),
+                    **({"chiron_private": True} if private_mode else {}),
                 }
             )
         return {
@@ -844,6 +846,7 @@ def run_clawcode_chat_completion(
         skills=skills_trace,
         clawcode_runtime=clawcode_runtime,
         journal_skip=True,
+        chiron_private=private_mode,
     )
 
     for step_idx in range(max_steps):
@@ -911,6 +914,7 @@ def run_clawcode_chat_completion(
                 merge_client_tools=merge_client_tools,
                 skills=skills_trace,
                 clawcode_runtime=clawcode_runtime,
+                chiron_private=private_mode,
             )
             return {"error": {"message": err, "type": "api_error"}}, 502
 
@@ -942,6 +946,7 @@ def run_clawcode_chat_completion(
                 merge_client_tools=merge_client_tools,
                 skills=skills_trace,
                 clawcode_runtime=clawcode_runtime,
+                chiron_private=private_mode,
             )
             return {"error": {"message": err, "type": "upstream_error"}}, 502
 
@@ -996,6 +1001,7 @@ def run_clawcode_chat_completion(
                 trace_id,
                 rag_metadata=_rag_metadata_from_agent_steps(steps_out),
                 skills=skills_trace,
+                include_trace_id=not private_mode,
             )
             _emit_trace(
                 trace_callback,
@@ -1013,6 +1019,7 @@ def run_clawcode_chat_completion(
                 merge_client_tools=merge_client_tools,
                 skills=skills_trace,
                 clawcode_runtime=clawcode_runtime,
+                chiron_private=private_mode,
             )
             return resp, 200
 
@@ -1032,6 +1039,7 @@ def run_clawcode_chat_completion(
                 trace_id,
                 rag_metadata=_rag_metadata_from_agent_steps(steps_out),
                 skills=skills_trace,
+                include_trace_id=not private_mode,
             )
             _emit_trace(
                 trace_callback,
@@ -1049,6 +1057,7 @@ def run_clawcode_chat_completion(
                 merge_client_tools=merge_client_tools,
                 skills=skills_trace,
                 clawcode_runtime=clawcode_runtime,
+                chiron_private=private_mode,
             )
             return resp, 200
 
@@ -1217,6 +1226,7 @@ def run_clawcode_chat_completion(
             merge_client_tools=merge_client_tools,
             skills=skills_trace,
             clawcode_runtime=clawcode_runtime,
+            chiron_private=private_mode,
         )
 
     _emit_trace(
@@ -1233,6 +1243,7 @@ def run_clawcode_chat_completion(
         merge_client_tools=merge_client_tools,
         skills=skills_trace,
         clawcode_runtime=clawcode_runtime,
+        chiron_private=private_mode,
     )
     return {
         "error": {
@@ -1248,6 +1259,7 @@ def iter_clawcode_agent_sse(
     webui_dir: str | None,
     max_steps: int,
     trace_callback: Callable[[dict[str, Any]], None] | None = None,
+    private_mode: bool = False,
 ) -> Iterator[str]:
     """Streaming agent loop; yields OpenAI-compatible SSE lines with live token streaming."""
     messages = body.get("messages")
@@ -1394,22 +1406,21 @@ def iter_clawcode_agent_sse(
         skills=skills_trace,
         clawcode_runtime=clawcode_runtime,
         journal_skip=True,
+        chiron_private=private_mode,
     )
 
     oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
 
     def _sse_chunk(delta: dict[str, Any], finish: str | None = None) -> str:
-        return (
-            "data: "
-            + json.dumps({
-                "id": oid,
-                "object": "chat.completion.chunk",
-                "model": use_model,
-                "trace_id": trace_id,
-                "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
-            })
-            + "\n\n"
-        )
+        chunk: dict[str, Any] = {
+            "id": oid,
+            "object": "chat.completion.chunk",
+            "model": use_model,
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+        }
+        if not private_mode:
+            chunk["trace_id"] = trace_id
+        return "data: " + json.dumps(chunk) + "\n\n"
 
     yield _sse_chunk({"role": "assistant"})
 
@@ -1535,6 +1546,7 @@ def iter_clawcode_agent_sse(
                 total_in, total_out, error=step_error,
                 think_requested=oc_think_request, merge_client_tools=merge_client_tools,
                 skills=skills_trace, clawcode_runtime=clawcode_runtime,
+                chiron_private=private_mode,
             )
             yield _sse_chunk({}, "stop")
             yield "data: [DONE]\n\n"
@@ -1596,6 +1608,7 @@ def iter_clawcode_agent_sse(
                 finish_reason=finish, think_requested=oc_think_request,
                 merge_client_tools=merge_client_tools, skills=skills_trace,
                 clawcode_runtime=clawcode_runtime,
+                chiron_private=private_mode,
             )
             yield _sse_chunk({}, finish or "stop")
             yield "data: [DONE]\n\n"
@@ -1610,6 +1623,7 @@ def iter_clawcode_agent_sse(
                 finish_reason="tool_calls", think_requested=oc_think_request,
                 merge_client_tools=merge_client_tools, skills=skills_trace,
                 clawcode_runtime=clawcode_runtime,
+                chiron_private=private_mode,
             )
             payload_calls: list[dict[str, object]] = []
             for i, tc in enumerate(tool_calls):
@@ -1741,6 +1755,7 @@ def iter_clawcode_agent_sse(
             total_in, total_out, final=False,
             think_requested=oc_think_request, merge_client_tools=merge_client_tools,
             skills=skills_trace, clawcode_runtime=clawcode_runtime,
+            chiron_private=private_mode,
         )
 
     _emit_trace(
@@ -1748,6 +1763,7 @@ def iter_clawcode_agent_sse(
         total_in, total_out, error="max_agent_steps exceeded",
         think_requested=oc_think_request, merge_client_tools=merge_client_tools,
         skills=skills_trace, clawcode_runtime=clawcode_runtime,
+        chiron_private=private_mode,
     )
     yield _sse_chunk({"content": f"[max agent steps ({max_steps}) exceeded]"})
     yield _sse_chunk({}, "stop")
@@ -1783,13 +1799,13 @@ def _openai_completion_response(
     *,
     rag_metadata: dict[str, Any] | None = None,
     skills: dict[str, Any] | None = None,
+    include_trace_id: bool = True,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {
         "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
         "object": "chat.completion",
         "created": int(time.time()),
         "model": model,
-        "trace_id": trace_id,
         "choices": [
             {
                 "index": 0,
@@ -1803,6 +1819,8 @@ def _openai_completion_response(
             "total_tokens": 0,
         },
     }
+    if include_trace_id:
+        out["trace_id"] = trace_id
     if rag_metadata:
         out["rag_metadata"] = rag_metadata
     skills_pub = _skills_public_payload(skills)
@@ -1830,6 +1848,7 @@ def _emit_trace(
     skills: dict[str, Any] | None = None,
     clawcode_runtime: dict[str, Any] | None = None,
     journal_skip: bool = False,
+    chiron_private: bool = False,
 ) -> None:
     if cb is None:
         return
@@ -1853,6 +1872,8 @@ def _emit_trace(
         "error": error,
         "client_model": body.get("model"),
     }
+    if chiron_private:
+        rec["chiron_private"] = True
     if journal_skip:
         rec["journal_skip"] = True
     if skills is not None:

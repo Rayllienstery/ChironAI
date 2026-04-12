@@ -155,19 +155,67 @@ def test_proxy_logs_default_no_autocomplete_filter(monkeypatch: pytest.MonkeyPat
     assert last_kwargs.get("autocomplete_only") is None
 
 
-def test_health_endpoint() -> None:
+def test_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     import os
     import sys
+    from unittest.mock import MagicMock
+
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     if root not in sys.path:
         sys.path.insert(0, root)
+
+    ok = MagicMock()
+    ok.ok = True
+
+    def fake_get(url: str, timeout: float = 0) -> MagicMock:
+        return ok
+
+    monkeypatch.setattr("infrastructure.stack_health.requests.get", fake_get)
+
     from api.http.rag_routes import create_app
+
     app = create_app()
     client = app.test_client()
     r = client.get("/health")
     assert r.status_code == 200
-    data = r.get_json()
-    assert data.get("status") == "ok"
+    data = r.get_json() or {}
+    assert data.get("status") == "healthy"
+    assert data.get("service") == "rag_proxy"
+    comps = data.get("components") or {}
+    assert comps.get("ollama") == "healthy"
+    assert comps.get("qdrant") == "healthy"
+    assert data.get("timestamp")
+
+
+def test_health_endpoint_503_when_qdrant_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+    import sys
+    from unittest.mock import MagicMock
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    ollama_ok = MagicMock()
+    ollama_ok.ok = True
+    qdrant_bad = MagicMock()
+    qdrant_bad.ok = False
+
+    def fake_get(url: str, timeout: float = 0) -> MagicMock:
+        if "qdrant" in url or "/collections" in url:
+            return qdrant_bad
+        return ollama_ok
+
+    monkeypatch.setattr("infrastructure.stack_health.requests.get", fake_get)
+
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    r = app.test_client().get("/health")
+    assert r.status_code == 503
+    data = r.get_json() or {}
+    assert data.get("status") == "unhealthy"
+    assert (data.get("components") or {}).get("qdrant") == "unhealthy"
 
 
 def test_models_endpoint() -> None:

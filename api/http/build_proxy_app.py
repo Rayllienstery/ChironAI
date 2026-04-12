@@ -23,6 +23,7 @@ if os.path.isdir(_RAG_SVC) and _RAG_SVC not in sys.path:
 from flask import Flask, jsonify
 
 from application.rag.params import get_rag_answer_params
+from infrastructure.stack_health import check_stack_health
 from api.http.llm_proxy_wiring import build_llm_proxy_wiring
 from llm_proxy import create_v1_blueprint
 
@@ -42,6 +43,7 @@ def create_build_proxy_app(webui_dir: str | None = None) -> Flask:
 
     @app.route("/health", methods=["GET"])
     def health():
-        return jsonify({"status": "ok", "service": "build_proxy"})
+        result = check_stack_health()
+        return jsonify(result.to_json_dict(service="build_proxy")), result.http_status
 
     return app

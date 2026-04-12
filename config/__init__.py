@@ -221,8 +221,22 @@ def get_rag_prompt_name() -> str:
     return os.getenv("RAG_PROMPT", RAG_CONFIG.get("prompt", "system_rag_v1"))
 
 
+_RAG_INT_ENV_KEYS: dict[str, str] = {
+    "context_chunk_chars": "RAG_CONTEXT_CHUNK_CHARS",
+    "context_total_chars": "RAG_CONTEXT_TOTAL_CHARS",
+}
+
+
 def get_rag_int(key: str, default: int) -> int:
-    """Helper to get integer RAG config with default."""
+    """Helper to get integer RAG config with default. Env overrides YAML for selected keys."""
+    env_name = _RAG_INT_ENV_KEYS.get(key)
+    if env_name:
+        env_v = os.getenv(env_name)
+        if env_v is not None and str(env_v).strip() != "":
+            try:
+                return int(env_v)
+            except (TypeError, ValueError):
+                pass
     try:
         value = RAG_CONFIG.get(key, default)
         return int(value)
@@ -245,7 +259,14 @@ def get_proxy_rerank_enabled() -> bool:
 
 
 def get_retrieval_int(key: str, default: int) -> int:
-    """Helper to get integer retrieval config with default."""
+    """Helper to get integer retrieval config with default. ``RAG_TOP_K`` overrides ``top_k``."""
+    if key == "top_k":
+        env_v = os.getenv("RAG_TOP_K")
+        if env_v is not None and str(env_v).strip() != "":
+            try:
+                return int(env_v)
+            except (TypeError, ValueError):
+                pass
     try:
         value = RETRIEVAL_CONFIG.get(key, default)
         return int(value)

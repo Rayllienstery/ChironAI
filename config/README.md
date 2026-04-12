@@ -52,9 +52,25 @@ export QDRANT_URL="http://remote-host:6333"
 
 # Override server port
 export SERVER_PORT=9000
+
+# RAG context limits (override rag.yaml; used by WebUI defaults and param loaders)
+export RAG_CONTEXT_CHUNK_CHARS=1200
+export RAG_CONTEXT_TOTAL_CHARS=8000
+
+# Retrieval vector search breadth (override retrieval.yaml `top_k`; `get_retrieval_int("top_k", ...)`)
+export RAG_TOP_K=12
 ```
 
 ## Configuration Files
+
+### RAG limits: global defaults vs LLM Proxy Builds
+
+| Knob | YAML | Env (read in code) | Per-request (dumb build id) |
+|------|------|--------------------|-----------------------------|
+| Chunk / total context chars | `rag.yaml` (`context_chunk_chars`, `context_total_chars`) | `RAG_CONTEXT_CHUNK_CHARS`, `RAG_CONTEXT_TOTAL_CHARS` (`get_rag_int`) | Optional build fields `context_chunk_chars`, `context_total_chars`; merged via `merge_build_into_proxy_settings` into `proxy_settings` and applied in LLM Proxy after build selection. |
+| Retrieval `top_k` | `retrieval.yaml` (`top_k`, etc.) | `RAG_TOP_K` overrides `get_retrieval_int("top_k", …)` | Optional build field `rag_top_k` (same merge path). |
+
+Passthrough requests (concrete Ollama tag, no build id) still use YAML/env and collection-specific params from `get_rag_answer_params`; they do not read build fields.
 
 ### rag.yaml
 Controls RAG context size and model behavior:

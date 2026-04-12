@@ -13,16 +13,14 @@ import uuid
 
 from flask import Flask, Response, jsonify, request
 
+from domain.entities.rag import RagQuestionRequest
+from domain.services.prompt_builder import determine_reasoning_level, last_user_content
+from infrastructure.stack_health import check_stack_health
 from rag_service.application.params import get_rag_answer_params
 from rag_service.application.use_cases import (
     answer_question,
     build_rag_context,
     prepare_ollama_messages,
-)
-from rag_service.domain.entities import RagQuestionRequest
-from rag_service.domain.services.prompt_builder import (
-    determine_reasoning_level,
-    last_user_content,
 )
 
 _LOG = logging.getLogger("rag_service.api")
@@ -49,7 +47,8 @@ def create_app(
 
     @app.route("/health", methods=["GET"])
     def health() -> Response:
-        return jsonify({"status": "ok"})
+        result = check_stack_health()
+        return jsonify(result.to_json_dict(service="rag_service")), result.http_status
 
     @app.route("/v1/models", methods=["GET"])
     def list_models() -> Response:
@@ -101,6 +100,7 @@ def create_app(
                 req, rag_repo, embed_provider, rerank_client,
                 prefix, suffix, context_chunk_chars, context_total_chars,
                 confidence_threshold, ollama_model, reasoning_level=reasoning_level,
+                rag_context=rag_ctx_for_log,
             )
         except Exception as e:
             _LOG.error("prepare_rag: %s", e)
@@ -133,6 +133,7 @@ def create_app(
                 req, rag_repo, embed_provider, rerank_client, chat_client,
                 prefix, suffix, context_chunk_chars, context_total_chars,
                 confidence_threshold, ollama_model, reasoning_level=reasoning_level,
+                rag_context=rag_ctx_for_log,
             )
         except Exception as e:
             _LOG.error("chat: %s", e)

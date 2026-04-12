@@ -131,7 +131,11 @@ function emptyDraft() {
     include_rag_metadata: true,
     reasoning_level: '',
     chat_think: false,
+    private: false,
     rag_collection: '',
+    context_chunk_chars: '',
+    context_total_chars: '',
+    rag_top_k: '',
     temperature: '',
     top_p: '',
     max_agent_steps: '',
@@ -173,12 +177,28 @@ function draftToPayload(draft) {
   o.code_only = Boolean(draft.code_only);
   o.include_rag_metadata = Boolean(draft.include_rag_metadata);
   o.chat_think = Boolean(draft.chat_think);
+  o.private = Boolean(draft.private);
   o.reasoning_level = String(draft.reasoning_level || '').trim();
   o.rag_collection = String(draft.rag_collection || '').trim();
-  ['temperature', 'top_p', 'max_agent_steps', 'num_ctx'].forEach((k) => {
+  [
+    'temperature',
+    'top_p',
+    'max_agent_steps',
+    'num_ctx',
+    'context_chunk_chars',
+    'context_total_chars',
+    'rag_top_k',
+  ].forEach((k) => {
     const s = String(draft[k] ?? '').trim();
     if (s === '') delete o[k];
-    else if (k === 'max_agent_steps' || k === 'num_ctx') o[k] = parseInt(s, 10);
+    else if (
+      k === 'max_agent_steps' ||
+      k === 'num_ctx' ||
+      k === 'context_chunk_chars' ||
+      k === 'context_total_chars' ||
+      k === 'rag_top_k'
+    )
+      o[k] = parseInt(s, 10);
     else o[k] = parseFloat(s);
   });
   return o;
@@ -749,6 +769,45 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
               />
               Ollama think (when supported)
             </label>
+            <div
+              className="dashboard-card-muted"
+              style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}
+            >
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={!!draft.private}
+                  onChange={(e) => setDraft({ ...draft, private: e.target.checked })}
+                />
+                Private
+              </label>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: '0.8125rem',
+                  lineHeight: 1.45,
+                  opacity: 0.88,
+                  maxWidth: '42rem',
+                }}
+              >
+                No proxy rows in the logs database, no Proxy Trace snapshot for this request, and no live or history
+                entries in Notifications. Claw builds also skip the in-memory trace buffer and Claw journal rows.
+                Does not affect Ollama or OS-level logging.
+              </p>
+              <p
+                style={{
+                  margin: '8px 0 0',
+                  fontSize: '0.8125rem',
+                  lineHeight: 1.45,
+                  opacity: 0.88,
+                  maxWidth: '42rem',
+                }}
+              >
+                <strong>Cloud models:</strong> if your client or pipeline sends traffic to hosted or third-party model
+                APIs, read those providers&apos; privacy policies and terms — they govern how your data is stored and
+                processed; Private here only limits traces and logs inside this app.
+              </p>
+            </div>
             <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               RAG collection override (optional)
               <input
@@ -758,6 +817,38 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 placeholder="empty = server default"
               />
             </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                Context chunk chars
+                <input
+                  className="dashboard-card-field"
+                  inputMode="numeric"
+                  value={draft.context_chunk_chars}
+                  onChange={(e) => setDraft({ ...draft, context_chunk_chars: e.target.value })}
+                  placeholder="YAML / env default"
+                />
+              </label>
+              <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                Context total chars
+                <input
+                  className="dashboard-card-field"
+                  inputMode="numeric"
+                  value={draft.context_total_chars}
+                  onChange={(e) => setDraft({ ...draft, context_total_chars: e.target.value })}
+                  placeholder="YAML / env default"
+                />
+              </label>
+              <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                RAG top_k
+                <input
+                  className="dashboard-card-field"
+                  inputMode="numeric"
+                  value={draft.rag_top_k}
+                  onChange={(e) => setDraft({ ...draft, rag_top_k: e.target.value })}
+                  placeholder="retrieval default"
+                />
+              </label>
+            </div>
             <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               Reasoning level hint (optional)
               <input

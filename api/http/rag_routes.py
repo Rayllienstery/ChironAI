@@ -32,6 +32,7 @@ from domain.entities.rag import RagContext, RagQuestionRequest
 from domain.services.prompt_builder import determine_reasoning_level, last_user_content
 from infrastructure.database import get_logs_repository, get_session_manager, get_settings_repository
 from infrastructure.logging import log_webui_error
+from infrastructure.stack_health import check_stack_health
 from llm_proxy import create_v1_blueprint
 
 try:
@@ -82,35 +83,8 @@ def create_app(
     @app.route("/health", methods=["GET"])
     def health() -> Response:
         """Health check endpoint for Ollama and Qdrant availability."""
-        import requests
-        from datetime import datetime, timezone
-        
-        from config import get_ollama_base_url, get_qdrant_url
-        
-        status = {"ollama": "unknown", "qdrant": "unknown"}
-        overall = "healthy"
-        
-        # Check Ollama
-        try:
-            resp = requests.get(f"{get_ollama_base_url()}/api/tags", timeout=3)
-            status["ollama"] = "healthy" if resp.ok else "unhealthy"
-        except Exception:
-            status["ollama"] = "unhealthy"
-            overall = "unhealthy"
-        
-        # Check Qdrant
-        try:
-            resp = requests.get(f"{get_qdrant_url()}/collections", timeout=3)
-            status["qdrant"] = "healthy" if resp.ok else "unhealthy"
-        except Exception:
-            status["qdrant"] = "unhealthy"
-            overall = "unhealthy"
-        
-        return jsonify({
-            "status": overall,
-            "components": status,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }), 200 if overall == "healthy" else 503
+        result = check_stack_health()
+        return jsonify(result.to_json_dict(service="rag_proxy")), result.http_status
 
     from api.http.webui_routes import (
         open_webui_config,

@@ -39,6 +39,11 @@ from clawcode.trace_store import append as trace_append
 _LOG = logging.getLogger("clawcode.http")
 
 
+def _chiron_private_mode_from_request() -> bool:
+    v = (request.headers.get("X-Chiron-Private") or "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
 def _openai_message_content_to_str(content: object) -> str:
     if content is None:
         return ""
@@ -262,7 +267,7 @@ def create_clawcode_flask_app() -> Flask:
             return jsonify(anthropic_models_list_payload(ids))
         return jsonify({"object": "list", "data": rows})
 
-    def _run_agent(openai_body: dict) -> tuple[dict, int]:
+    def _run_agent(openai_body: dict, *, private_mode: bool) -> tuple[dict, int]:
         try:
             from config import get_clawcode_max_agent_steps
 
@@ -271,6 +276,8 @@ def create_clawcode_flask_app() -> Flask:
             max_steps = 40
 
         def _cb(rec: dict) -> None:
+            if rec.get("chiron_private"):
+                return
             trace_append(rec)
             persist_clawcode_trace_to_db(rec)
 
@@ -279,6 +286,7 @@ def create_clawcode_flask_app() -> Flask:
             webui_dir=webui_dir,
             max_steps=max_steps,
             trace_callback=_cb,
+            private_mode=private_mode,
         )
 
     @app.post("/v1/chat/completions")
@@ -287,6 +295,7 @@ def create_clawcode_flask_app() -> Flask:
         if not isinstance(body, dict):
             return jsonify({"error": {"message": "JSON body required", "type": "invalid_request_error"}}), 400
 
+        private_mode = _chiron_private_mode_from_request()
         want_stream = bool(body.get("stream"))
 
         if want_stream:
@@ -297,6 +306,8 @@ def create_clawcode_flask_app() -> Flask:
                 _max = 40
 
             def _cb_stream(rec: dict) -> None:
+                if rec.get("chiron_private"):
+                    return
                 trace_append(rec)
                 persist_clawcode_trace_to_db(rec)
 
@@ -306,6 +317,7 @@ def create_clawcode_flask_app() -> Flask:
                     webui_dir=webui_dir,
                     max_steps=_max,
                     trace_callback=_cb_stream,
+                    private_mode=private_mode,
                 )
 
             return Response(
@@ -316,7 +328,7 @@ def create_clawcode_flask_app() -> Flask:
             )
 
         try:
-            resp, code = _run_agent(body)
+            resp, code = _run_agent(body, private_mode=private_mode)
         except Exception as e:
             _LOG.exception("chat_completions failed: %s", e)
             return jsonify({"error": {"message": str(e), "type": "internal_error"}}), 500

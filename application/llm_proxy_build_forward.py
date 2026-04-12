@@ -233,6 +233,7 @@ def _wrap_sse_stream_with_logging(
     body: dict[str, Any],
     build: dict[str, Any],
     start_time: float,
+    persist_log: bool = True,
 ) -> Iterator[bytes]:
     buf = b""
     accumulated_content: list[str] = []
@@ -265,18 +266,19 @@ def _wrap_sse_stream_with_logging(
             except Exception:
                 pass
     finally:
-        try:
-            full_text = "".join(accumulated_content)
-            _persist_claw_proxy_log_stream_summary(
-                body=body,
-                build=build,
-                start_time=start_time,
-                accumulated_text=full_text,
-                trace_id=trace_id_holder[0],
-                usage=usage_holder[0],
-            )
-        except Exception as e:
-            _LOG.warning("forward_claw_build_chat: failed to persist proxy log (stream): %s", e)
+        if persist_log:
+            try:
+                full_text = "".join(accumulated_content)
+                _persist_claw_proxy_log_stream_summary(
+                    body=body,
+                    build=build,
+                    start_time=start_time,
+                    accumulated_text=full_text,
+                    trace_id=trace_id_holder[0],
+                    usage=usage_holder[0],
+                )
+            except Exception as e:
+                _LOG.warning("forward_claw_build_chat: failed to persist proxy log (stream): %s", e)
 
 
 def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
@@ -287,6 +289,9 @@ def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
     ollama_tag = str(build.get("ollama_model") or "").strip()
     if not ollama_tag:
         return jsonify({"error": "claw build is missing ollama_model"}), 400
+
+    private_build = bool(build.get("private"))
+    claw_headers = {"X-Chiron-Private": "1"} if private_build else None
 
     base = _claw_openai_base()
     forward: dict[str, Any] = {
@@ -342,6 +347,7 @@ def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
         resp = _claw_http_session.post(
             f"{base}/v1/chat/completions",
             json=forward,
+            headers=claw_headers or {},
             timeout=(10.0, timeout_sec),
             stream=True,
         )
@@ -368,7 +374,13 @@ def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
         stream_iter = resp.iter_content(chunk_size=None)
 
         def gen() -> Iterator[bytes]:
-            yield from _wrap_sse_stream_with_logging(stream_iter, body=body, build=build, start_time=start_time)
+            yield from _wrap_sse_stream_with_logging(
+                stream_iter,
+                body=body,
+                build=build,
+                start_time=start_time,
+                persist_log=not private_build,
+            )
 
         return Response(
             gen(),
@@ -400,15 +412,19 @@ def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
     if not include_rag_metadata:
         data.pop("rag_metadata", None)
 
-    try:
-        _persist_claw_proxy_log(
-            body=body,
-            build=build,
-            data=data,
-            latency_ms=latency_ms,
-            stream=bool(body.get("stream")),
-        )
-    except Exception as e:
-        _LOG.warning("forward_claw_build_chat: failed to persist proxy log: %s", e)
+    if private_build:
+        data.pop("trace_id", None)
+
+    if not private_build:
+        try:
+            _persist_claw_proxy_log(
+                body=body,
+                build=build,
+                data=data,
+                latency_ms=latency_ms,
+                stream=bool(body.get("stream")),
+            )
+        except Exception as e:
+            _LOG.warning("forward_claw_build_chat: failed to persist proxy log: %s", e)
 
     return jsonify(data), 200

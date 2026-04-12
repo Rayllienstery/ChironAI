@@ -46,3 +46,23 @@ def test_invoke_embed_delegates() -> None:
     assert "--timeout" in args[0]
     assert args[0][args[0].index("--timeout") + 1] == "30"
     assert json.loads(kwargs["input"])["url"] == "http://h/api/embed"
+
+
+def test_invoke_embed_retries_on_transient_500(monkeypatch: pytest.MonkeyPatch) -> None:
+    bad = MagicMock()
+    bad.returncode = 1
+    bad.stdout = ""
+    bad.stderr = '{"error":"upstream","body":{"status_code":500}}'
+    good = MagicMock()
+    good.returncode = 0
+    good.stdout = '{"embeddings": [[0.1]]}'
+    good.stderr = ""
+    with patch("infrastructure.ollama.cli_runner.subprocess.run", side_effect=[bad, good]) as m:
+        monkeypatch.setattr("infrastructure.ollama.cli_runner.time.sleep", lambda s: None)
+        out = invoke_embed(
+            {"url": "http://h/api/embed", "json": {"model": "m", "input": "z"}, "timeout": 30},
+            max_retries=2,
+            retry_base_delay_sec=0.01,
+        )
+    assert out["embeddings"] == [[0.1]]
+    assert m.call_count == 2

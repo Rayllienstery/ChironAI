@@ -19,6 +19,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from collections.abc import Iterator
 from typing import Any
 
@@ -176,6 +177,54 @@ def invoke_tags(*, base_url: str, timeout: float = 30.0) -> dict[str, Any]:
     )
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _ollama_embed_error_is_transient(err: OllamaInteractorCliError) -> bool:
+    """Heuristic: retry embed on timeouts, connection issues, and HTTP 5xx from Ollama."""
+    stderr = err.stderr or ""
+    blob = f"{stderr}\n{err!s}".lower()
+    if "timeout" in blob:
+        return True
+    if any(
+        x in blob
+        for x in (
+            "connection refused",
+            "connection reset",
+            "temporarily unavailable",
+            "econnrefused",
+        )
+    ):
+        return True
+    if any(code in stderr for code in ("500", "502", "503", "504")):
+        return True
+    detail = _parse_stderr_json(stderr)
+    if isinstance(detail, dict):
+        body = detail.get("body")
+        if isinstance(body, dict):
+            sc = body.get("status_code")
+            if sc is not None and str(sc) in ("500", "502", "503", "504"):
+                return True
+    return False
+
+
 def invoke_ping(*, base_url: str, timeout: float = 5.0) -> dict[str, Any]:
     """Ping Ollama via OllamaInteractor HTTP helpers, else CLI."""
     oh = _ollama_interactor_http_module()
@@ -190,15 +239,41 @@ def invoke_ping(*, base_url: str, timeout: float = 5.0) -> dict[str, Any]:
     )
 
 
-def invoke_embed(stdin_obj: dict[str, Any], *, default_timeout: float = 120.0) -> dict[str, Any]:
+def invoke_embed(
+    stdin_obj: dict[str, Any],
+    *,
+    default_timeout: float = 120.0,
+    max_retries: int | None = None,
+    retry_base_delay_sec: float | None = None,
+) -> dict[str, Any]:
+    """
+    Call Ollama embed via ollama_interactor.
+
+    Retries (transient errors only): set ``RAG_EMBED_MAX_RETRIES`` (default 0) and optionally
+    ``RAG_EMBED_RETRY_BASE_SEC`` (default 1.0), or pass ``max_retries`` / ``retry_base_delay_sec``.
+    """
     t = float(stdin_obj.get("timeout", default_timeout))
     # CLI and stdin_obj must use the same HTTP timeout; subprocess budget must exceed it.
     cli_t = max(1, int(t))
-    return invoke_json(
-        ["embed", "--timeout", str(cli_t)],
-        stdin_obj=stdin_obj,
-        timeout=t + max(90.0, t * 0.25),
+    timeout_budget = t + max(90.0, t * 0.25)
+    retries = max_retries if max_retries is not None else _env_int("RAG_EMBED_MAX_RETRIES", 0)
+    base_delay = (
+        retry_base_delay_sec
+        if retry_base_delay_sec is not None
+        else _env_float("RAG_EMBED_RETRY_BASE_SEC", 1.0)
     )
+    attempts = max(1, int(retries) + 1)
+    for attempt in range(attempts):
+        try:
+            return invoke_json(
+                ["embed", "--timeout", str(cli_t)],
+                stdin_obj=stdin_obj,
+                timeout=timeout_budget,
+            )
+        except OllamaInteractorCliError as e:
+            if attempt >= attempts - 1 or not _ollama_embed_error_is_transient(e):
+                raise
+            time.sleep(max(0.1, float(base_delay)) * (2**attempt))
 
 
 def invoke_chat(stdin_obj: dict[str, Any], *, default_timeout: float = 600.0) -> dict[str, Any]:

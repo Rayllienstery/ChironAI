@@ -86,6 +86,20 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
         except (TypeError, ValueError):
             errors.append("num_ctx must be a positive integer or empty")
 
+    def _optional_bounded_int(field: str, raw: Any, lo: int, hi: int) -> None:
+        if raw is None or (isinstance(raw, str) and not str(raw).strip()):
+            return
+        try:
+            n = int(raw)
+            if n < lo or n > hi:
+                errors.append(f"{field} must be between {lo} and {hi} or empty")
+        except (TypeError, ValueError):
+            errors.append(f"{field} must be an integer or empty")
+
+    _optional_bounded_int("context_chunk_chars", build.get("context_chunk_chars"), 64, 500_000)
+    _optional_bounded_int("context_total_chars", build.get("context_total_chars"), 256, 2_000_000)
+    _optional_bounded_int("rag_top_k", build.get("rag_top_k"), 1, 256)
+
     if errors:
         return None, errors
 
@@ -112,6 +126,7 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
         "include_rag_metadata": bool(build.get("include_rag_metadata", True)),
         "reasoning_level": str(build.get("reasoning_level") or "").strip(),
         "chat_think": bool(build.get("chat_think", False)),
+        "private": bool(build.get("private", False)),
         "rag_collection": str(build.get("rag_collection") or "").strip(),
     }
 
@@ -141,6 +156,20 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
             out["num_ctx"] = int(nc)
         except (TypeError, ValueError):
             pass
+
+    for lim_key, lo, hi in (
+        ("context_chunk_chars", 64, 500_000),
+        ("context_total_chars", 256, 2_000_000),
+        ("rag_top_k", 1, 256),
+    ):
+        lv = build.get(lim_key)
+        if lv is not None and str(lv).strip() != "":
+            try:
+                n = int(lv)
+                if lo <= n <= hi:
+                    out[lim_key] = n
+            except (TypeError, ValueError):
+                pass
 
     if not out["web_enabled"]:
         out["fetch_web_knowledge"] = False
@@ -210,6 +239,9 @@ def merge_build_into_proxy_settings(
         "code_only",
         "include_rag_metadata",
         "rag_collection",
+        "context_chunk_chars",
+        "context_total_chars",
+        "rag_top_k",
     )
     for k in keys_copy:
         if k in build:

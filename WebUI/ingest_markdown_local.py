@@ -38,7 +38,11 @@ from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_em
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import VectorParams, Distance, PointStruct
 
-from ingest_markdown_common import chunks_for_local_ingest, qdrant_payload_local
+from ingest_markdown_common import (
+    chunks_for_local_ingest,
+    print_local_ingest_summary,
+    qdrant_payload_local,
+)
 
 try:
     from config import get_ollama_embed_model, get_ollama_embed_url
@@ -156,21 +160,35 @@ def main() -> None:
     point_id = 1
     created = False
     total_chunks = 0
+    files_total = len(md_files)
+    files_indexed_ok = 0
+    files_skipped_read_error = 0
+    files_skipped_no_chunks = 0
+    files_skipped_embed_error = 0
+    files_skipped_embed_mismatch = 0
 
     for idx, md_path in enumerate(md_files, 1):
         try:
             content = md_path.read_text(encoding="utf-8", errors="replace")
         except Exception as e:
+            files_skipped_read_error += 1
             print(f"  Skip {md_path}: {e}")
             continue
 
         pairs = chunks_for_local_ingest(content)
         if not pairs:
+            files_skipped_no_chunks += 1
             continue
 
         texts = [t for t, _ in pairs]
-        embeddings = get_embeddings(texts)
+        try:
+            embeddings = get_embeddings(texts)
+        except Exception as e:
+            files_skipped_embed_error += 1
+            print(f"  Embed error {md_path}: {e}")
+            continue
         if len(embeddings) != len(texts):
+            files_skipped_embed_mismatch += 1
             print(f"  Embedding count mismatch for {md_path}, skip")
             continue
 
@@ -195,6 +213,7 @@ def main() -> None:
         total_chunks += len(points)
 
         qclient.upsert(collection_name=collection, points=points)
+        files_indexed_ok += 1
         if idx % 50 == 0 or idx == len(md_files):
             print(f"  [{idx}/{len(md_files)}] {rel_path} -> {len(points)} chunks (total {total_chunks})")
 
@@ -206,6 +225,16 @@ def main() -> None:
         print(f"  Warning: could not write last_collection.txt: {e}")
 
     print(f"Done. {total_chunks} chunks in collection '{collection}'.")
+    print_local_ingest_summary(
+        collection=collection,
+        total_chunks=total_chunks,
+        files_total=files_total,
+        files_indexed_ok=files_indexed_ok,
+        files_skipped_read_error=files_skipped_read_error,
+        files_skipped_no_chunks=files_skipped_no_chunks,
+        files_skipped_embed_error=files_skipped_embed_error,
+        files_skipped_embed_mismatch=files_skipped_embed_mismatch,
+    )
 
 
 if __name__ == "__main__":
