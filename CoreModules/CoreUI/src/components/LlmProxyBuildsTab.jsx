@@ -218,6 +218,9 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
   const [buildModalPipelineSnap, setBuildModalPipelineSnap] = useState(null);
   const [buildModalHybrid, setBuildModalHybrid] = useState(true);
   const [buildModalRerank, setBuildModalRerank] = useState(false);
+  const [openMenuModel, setOpenMenuModel] = useState(null);
+  const modelMenuRootRef = useRef(null);
+  const [rowBusy, setRowBusy] = useState({});
 
   const load = useCallback(async () => {
     setErr(null);
@@ -245,6 +248,23 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!openMenuModel) return undefined;
+    const onPointerDown = (e) => {
+      if (modelMenuRootRef.current?.contains(e.target)) return;
+      setOpenMenuModel(null);
+    };
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') setOpenMenuModel(null);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [openMenuModel]);
 
   useEffect(() => {
     if (focusSubTab !== 'autocomplete') return;
@@ -501,105 +521,162 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
         </div>
         {builds.length === 0 && <p className="dashboard-card-muted">No builds yet. Create one to use as API model id.</p>}
         {builds.length > 0 && (
-          <div className="dashboard-card-scroll" style={{ maxHeight: 360 }}>
-            <table className="llm-proxy-builds-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border, #3334)' }}>
-                  <th style={{ padding: '6px 8px' }}>Id</th>
-                  <th style={{ padding: '6px 8px' }}>Name</th>
-                  <th style={{ padding: '6px 8px' }}>Backend</th>
-                  <th style={{ padding: '6px 8px' }} />
-                  <th style={{ padding: '6px 8px' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {builds.map((b) => (
-                  <tr key={b.id} style={{ borderBottom: '1px solid var(--border, #2223)' }}>
-                    <td style={{ padding: '6px 8px' }}>
-                      <code>{b.id}</code>
-                    </td>
-                    <td style={{ padding: '6px 8px' }}>{b.display_name || b.id}</td>
-                    <td style={{ padding: '6px 8px' }}>{b.backend}</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'center' }}>
-                      {Array.isArray(b.issues) && b.issues.length > 0 ? (
+          <div className="llm-proxy-builds-list" role="list" aria-label="LLM Proxy builds">
+            {builds.map((b) => {
+              const name = b.id || '';
+              const busy = rowBusy[name];
+              const hasIssues = Array.isArray(b.issues) && b.issues.length > 0;
+              const det = detailId === name;
+              return (
+                <div
+                  key={name}
+                  className={`llm-proxy-build-row${hasIssues ? ' llm-proxy-build-row--has-issues' : ''}`}
+                  role="listitem"
+                >
+                  <div className="llm-proxy-build-row-header">
+                    <div className="llm-proxy-build-main">
+                      <div className="llm-proxy-build-title">
                         <span
-                          className="material-symbols-outlined"
-                          style={{ color: 'var(--error, #cf6679)', cursor: 'help' }}
-                          title={b.issues.join('\n')}
-                          aria-label={`Issues: ${b.issues.join('; ')}`}
+                          className={`llm-proxy-build-issue-icon material-symbols-outlined${hasIssues ? ' llm-proxy-build-issue-icon--on' : ''}`}
+                          aria-hidden="true"
+                          title={hasIssues ? b.issues.join('\n') : 'No issues'}
                         >
-                          error
+                          {hasIssues ? 'error' : 'check_circle'}
                         </span>
-                      ) : (
-                        <span className="dashboard-card-muted">—</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '6px 8px' }}>
+                        <code title={name}>{name}</code>
+                        {b.display_name && b.display_name !== b.id ? (
+                          <span className="llm-proxy-build-display-name">{b.display_name}</span>
+                        ) : null}
+                      </div>
+                      <div className="llm-proxy-build-meta">
+                        <span className="llm-proxy-build-backend">
+                          Backend: <code>{b.backend || 'dumb'}</code>
+                        </span>
+                        {b.ollama_model ? (
+                          <>
+                            <span className="llm-proxy-dot" aria-hidden="true">·</span>
+                            <span>Ollama: <code>{b.ollama_model}</code></span>
+                          </>
+                        ) : null}
+                        {b.rag_enabled ? (
+                          <>
+                            <span className="llm-proxy-dot" aria-hidden="true">·</span>
+                            <span>RAG enabled</span>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div
+                      className="llm-proxy-build-menu-root"
+                      ref={openMenuModel === name ? modelMenuRootRef : null}
+                    >
                       <button
                         type="button"
-                        className="dashboard-primary-btn"
-                        style={{ marginRight: 6, fontSize: 12 }}
-                        onClick={() => (detailId === b.id ? closeDetails() : openDetails(b.id))}
+                        className="llm-proxy-build-menu-trigger"
+                        aria-haspopup="menu"
+                        aria-expanded={openMenuModel === name}
+                        aria-label={`Actions for ${name}`}
+                        disabled={busy}
+                        onClick={() =>
+                          setOpenMenuModel((cur) => (cur === name ? null : name))
+                        }
                       >
-                        {detailId === b.id ? 'Hide' : 'Details'}
+                        <span className="material-symbols-outlined" aria-hidden="true">
+                          more_vert
+                        </span>
                       </button>
-                      <button
-                        type="button"
-                        className="dashboard-primary-btn"
-                        style={{ marginRight: 6, fontSize: 12 }}
-                        onClick={() => openEdit(b)}
-                        disabled={!!draft}
+                      {openMenuModel === name ? (
+                        <div className="llm-proxy-build-menu" role="menu">
+                          <button
+                            type="button"
+                            className="llm-proxy-build-menu-item"
+                            role="menuitem"
+                            disabled={busy}
+                            onClick={() => {
+                              setOpenMenuModel(null);
+                              det ? closeDetails() : openDetails(name);
+                            }}
+                          >
+                            <span className="material-symbols-outlined" aria-hidden="true">
+                              {det ? 'expand_less' : 'description'}
+                            </span>
+                            <span>{det ? 'Hide details' : 'Show details'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="llm-proxy-build-menu-item"
+                            role="menuitem"
+                            disabled={busy || !!draft}
+                            onClick={() => {
+                              setOpenMenuModel(null);
+                              openEdit(b);
+                            }}
+                          >
+                            <span className="material-symbols-outlined" aria-hidden="true">
+                              edit
+                            </span>
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="llm-proxy-build-menu-item llm-proxy-build-menu-item--danger"
+                            role="menuitem"
+                            disabled={busy || saving}
+                            onClick={() => {
+                              setOpenMenuModel(null);
+                              deleteBuild(name);
+                            }}
+                          >
+                            <span className="material-symbols-outlined" aria-hidden="true">
+                              delete_forever
+                            </span>
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {det ? (
+                    <div className="llm-proxy-build-details">
+                      <div className="llm-proxy-build-details-header">
+                        <span className="llm-proxy-build-details-title" id={`llm-proxy-details-title-${name}`}>
+                          Details
+                        </span>
+                        <button
+                          type="button"
+                          className="llm-proxy-build-details-close"
+                          onClick={() => closeDetails()}
+                          aria-label="Close details"
+                        >
+                          <span className="material-symbols-outlined" aria-hidden="true">
+                            close
+                          </span>
+                        </button>
+                      </div>
+                      <div
+                        className="llm-proxy-build-details-body"
+                        role="region"
+                        aria-labelledby={`llm-proxy-details-title-${name}`}
                       >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="dashboard-primary-btn"
-                        style={{ fontSize: 12 }}
-                        onClick={() => deleteBuild(b.id)}
-                        disabled={saving}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        {hasIssues && (
+                          <div className="dashboard-card-error" style={{ marginBottom: 12 }}>
+                            {b.issues.map((i) => (
+                              <div key={i}>{i}</div>
+                            ))}
+                          </div>
+                        )}
+                        <pre>{JSON.stringify(b, null, 2)}</pre>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
-
-      {detailBuild && (
-        <CoreUiModal title={`Details: ${detailBuild.id}`} onClose={closeDetails}>
-          {detailBuild.issues?.length > 0 && (
-            <div className="dashboard-card-error" style={{ marginBottom: 12 }}>
-              {detailBuild.issues.map((i) => (
-                <div key={i}>{i}</div>
-              ))}
-            </div>
-          )}
-          <p className="settings-intro" style={{ marginBottom: 12 }}>
-            Use the <code>id</code> field as <code>model</code> in <code>POST /v1/chat/completions</code> (or{' '}
-            <code>POST /v1/messages</code>) on the proxy <strong>base URL</strong> — the same host as <code>Main:</code> under
-            OpenAI list endpoints above (no separate worker service).
-          </p>
-          <pre
-            style={{
-              fontSize: 12,
-              overflow: 'auto',
-              maxHeight: 520,
-              margin: 0,
-              padding: 10,
-              background: 'var(--md-sys-color-surface-container-highest)',
-              color: 'var(--md-sys-color-on-surface)',
-              borderRadius: 6,
-            }}
-          >
-            {JSON.stringify(detailBuild, null, 2)}
-          </pre>
-        </CoreUiModal>
-      )}
 
       {draft && (
         <CoreUiModal title={editingId ? `Edit build: ${editingId}` : 'New build'} onClose={closeForm}>

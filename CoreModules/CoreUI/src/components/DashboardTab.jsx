@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import PipelineCiDiagram from './PipelineCiDiagram';
 import { useMergedPipelinePreview } from '../hooks/useMergedPipelinePreview';
-import { getModelSettings, getRagStatus } from '../services/api';
+import { getLlmProxyBuilds, getModelSettings, getRagStatus } from '../services/api';
 import '../styles/components/DashboardTab.css';
 
 const INFO_TABS = [
@@ -10,6 +10,41 @@ const INFO_TABS = [
   { id: 'architecture', label: 'Architecture' },
   { id: 'quick-start', label: 'Quick Start' },
   { id: 'credits', label: 'Credits' },
+];
+
+const PROXY_GUIDE_TABS = [
+  { id: 'why', label: 'Why' },
+  { id: 'claude', label: 'Claude Code' },
+  { id: 'codex', label: 'Codex' },
+  { id: 'configured', label: 'Configured' },
+  { id: 'checks', label: 'Checks' },
+];
+
+const PROXY_CUSTOM_PRESETS = [
+  {
+    id: 'local-default',
+    label: 'Local default (8080)',
+    baseUrl: 'http://127.0.0.1:8080',
+    buildId: 'your-build-id',
+    authToken: 'ollama',
+    openAiApiKey: 'ollama',
+  },
+  {
+    id: 'lan-machine',
+    label: 'Remote LAN machine',
+    baseUrl: 'http://192.168.1.10:8080',
+    buildId: 'team-shared-build',
+    authToken: 'ollama',
+    openAiApiKey: 'ollama',
+  },
+  {
+    id: 'custom-token',
+    label: 'Custom auth token',
+    baseUrl: 'http://127.0.0.1:8080',
+    buildId: 'secure-build-id',
+    authToken: 'your-token',
+    openAiApiKey: 'your-token',
+  },
 ];
 
 function formatBool(v) {
@@ -196,10 +231,44 @@ function DashboardRagCard({ onNavigate }) {
 
 function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
   const [infoSubTab, setInfoSubTab] = useState('intro');
+  const [proxyGuideTab, setProxyGuideTab] = useState('why');
+  const [proxyPresetId, setProxyPresetId] = useState(PROXY_CUSTOM_PRESETS[0].id);
+  const [configuredBaseUrl, setConfiguredBaseUrl] = useState(PROXY_CUSTOM_PRESETS[0].baseUrl);
+  const [configuredBuildId, setConfiguredBuildId] = useState(PROXY_CUSTOM_PRESETS[0].buildId);
+  const [configuredAuthToken, setConfiguredAuthToken] = useState(PROXY_CUSTOM_PRESETS[0].authToken);
+  const [configuredOpenAiApiKey, setConfiguredOpenAiApiKey] = useState(PROXY_CUSTOM_PRESETS[0].openAiApiKey);
+  const [availableBuildIds, setAvailableBuildIds] = useState([]);
 
   const go = (tabId) => {
     if (typeof onNavigate === 'function') onNavigate(tabId);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await getLlmProxyBuilds();
+        if (cancelled) return;
+        const ids = Array.isArray(data?.builds)
+          ? data.builds
+              .map((x) => String(x?.id || '').trim())
+              .filter((x) => x.length > 0)
+          : [];
+        setAvailableBuildIds(ids);
+        if (ids.length > 0) {
+          setConfiguredBuildId((prev) => {
+            const normalizedPrev = String(prev || '').trim();
+            return ids.includes(normalizedPrev) ? prev : ids[0];
+          });
+        }
+      } catch {
+        if (!cancelled) setAvailableBuildIds([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="dashboard-tab">
@@ -616,6 +685,192 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                     The architecture is designed for flexibility—swap knowledge domains without core code changes.
                   </p>
                 </div>
+              </div>
+            )}
+          </div>
+        </section>
+        <section className="dashboard-info-card dashboard-proxy-guide-card" aria-label="CLI proxy onboarding">
+          <div className="dashboard-info-card-header">
+            <h2 className="dashboard-info-card-title">CLI via RAG Fusion Proxy</h2>
+            <p className="dashboard-info-card-subtitle">
+              Run Claude Code and Codex through ChironAI for shared builds, RAG context, and proxy traces.
+            </p>
+          </div>
+          <div className="dashboard-info-subtabs" role="tablist" aria-label="Proxy onboarding sections">
+            {PROXY_GUIDE_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className={`dashboard-info-subtab ${proxyGuideTab === tab.id ? 'dashboard-info-subtab-active' : ''}`}
+                role="tab"
+                aria-selected={proxyGuideTab === tab.id}
+                onClick={() => setProxyGuideTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div className="dashboard-info-panel dashboard-proxy-guide-panel" role="tabpanel">
+            {proxyGuideTab === 'why' && (
+              <div className="dashboard-section-inner">
+                <h3>Why route CLI traffic through this proxy</h3>
+                <ul className="dashboard-proxy-guide-list">
+                  <li>
+                    <strong>Single build id contract:</strong> your CLI uses the same model ids configured in{' '}
+                    <strong>LLM Proxy</strong> builds.
+                  </li>
+                  <li>
+                    <strong>RAG + prompt policy:</strong> requests go through the same retrieval and prompt assembly as WebUI.
+                  </li>
+                  <li>
+                    <strong>Observability:</strong> requests appear in Logs, Traces, and Journal for faster debugging.
+                  </li>
+                  <li>
+                    <strong>One local endpoint:</strong> both OpenAI and Anthropic-style clients can point to the same proxy base URL.
+                  </li>
+                </ul>
+              </div>
+            )}
+            {proxyGuideTab === 'claude' && (
+              <div className="dashboard-section-inner">
+                <h3>Claude Code launch (Windows)</h3>
+                <p>From repository root, start Claude with proxy env preconfigured:</p>
+                <code className="dashboard-proxy-guide-code">.\start_claude_proxy.bat --model your-build-id</code>
+                <p>PowerShell variant:</p>
+                <code className="dashboard-proxy-guide-code">.\start_claude_proxy.ps1 --model your-build-id</code>
+                <p className="dashboard-proxy-guide-hint">
+                  Default proxy base URL: <code>http://127.0.0.1:8080</code>. Override with{' '}
+                  <code>CHIRON_PROXY_BASE_URL</code> before launch.
+                </p>
+              </div>
+            )}
+            {proxyGuideTab === 'codex' && (
+              <div className="dashboard-section-inner">
+                <h3>Codex launch (Windows)</h3>
+                <p>Start Codex with OpenAI-compatible proxy variables:</p>
+                <code className="dashboard-proxy-guide-code">.\start_codex_proxy.bat --model your-build-id</code>
+                <p>PowerShell variant:</p>
+                <code className="dashboard-proxy-guide-code">.\start_codex_proxy.ps1 --model your-build-id</code>
+                <p className="dashboard-proxy-guide-hint">
+                  The scripts set <code>OPENAI_BASE_URL</code> / <code>OPENAI_API_BASE</code> to the proxy host for the current run.
+                </p>
+              </div>
+            )}
+            {proxyGuideTab === 'configured' && (
+              <div className="dashboard-section-inner">
+                <h3>Configured launch (no required arguments)</h3>
+                <p>
+                  Edit <code>start_claude_proxy_configured.ps1</code> and <code>start_codex_proxy_configured.ps1</code>{' '}
+                  once, then launch with:
+                </p>
+                <code className="dashboard-proxy-guide-code">.\start_claude_proxy_configured.bat</code>
+                <code className="dashboard-proxy-guide-code">.\start_codex_proxy_configured.bat</code>
+
+                <div className="dashboard-proxy-customizer">
+                  <label className="dashboard-proxy-customizer-field">
+                    Preset
+                    <select
+                      className="dashboard-card-field"
+                      value={proxyPresetId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        const preset = PROXY_CUSTOM_PRESETS.find((x) => x.id === id);
+                        setProxyPresetId(id);
+                        if (!preset) return;
+                        setConfiguredBaseUrl(preset.baseUrl);
+                        setConfiguredBuildId(preset.buildId);
+                        setConfiguredAuthToken(preset.authToken);
+                        setConfiguredOpenAiApiKey(preset.openAiApiKey);
+                      }}
+                    >
+                      {PROXY_CUSTOM_PRESETS.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {preset.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="dashboard-proxy-customizer-field">
+                    Proxy base URL
+                    <input
+                      className="dashboard-card-field"
+                      value={configuredBaseUrl}
+                      onChange={(e) => setConfiguredBaseUrl(e.target.value)}
+                    />
+                  </label>
+                  <label className="dashboard-proxy-customizer-field">
+                    Build id
+                    {availableBuildIds.length > 0 ? (
+                      <select
+                        className="dashboard-card-field"
+                        value={configuredBuildId}
+                        onChange={(e) => setConfiguredBuildId(e.target.value)}
+                      >
+                        {availableBuildIds.map((buildId) => (
+                          <option key={buildId} value={buildId}>
+                            {buildId}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        className="dashboard-card-field"
+                        value={configuredBuildId}
+                        onChange={(e) => setConfiguredBuildId(e.target.value)}
+                        placeholder="No builds found yet"
+                      />
+                    )}
+                  </label>
+                  <label className="dashboard-proxy-customizer-field">
+                    Claude auth token
+                    <input
+                      className="dashboard-card-field"
+                      value={configuredAuthToken}
+                      onChange={(e) => setConfiguredAuthToken(e.target.value)}
+                    />
+                  </label>
+                  <label className="dashboard-proxy-customizer-field">
+                    Codex API key
+                    <input
+                      className="dashboard-card-field"
+                      value={configuredOpenAiApiKey}
+                      onChange={(e) => setConfiguredOpenAiApiKey(e.target.value)}
+                    />
+                  </label>
+                </div>
+
+                <p className="dashboard-proxy-guide-hint">Use these values in *_configured.ps1 files:</p>
+                <pre className="dashboard-proxy-guide-pre">
+{`# start_claude_proxy_configured.ps1
+$ConfiguredBaseUrl = "${configuredBaseUrl}"
+$ConfiguredModel = "${configuredBuildId}"
+$ConfiguredAuthToken = "${configuredAuthToken}"
+
+# start_codex_proxy_configured.ps1
+$ConfiguredBaseUrl = "${configuredBaseUrl}"
+$ConfiguredModel = "${configuredBuildId}"
+$ConfiguredOpenAiApiKey = "${configuredOpenAiApiKey}"`}
+                </pre>
+              </div>
+            )}
+            {proxyGuideTab === 'checks' && (
+              <div className="dashboard-section-inner">
+                <h3>Quick verification checklist</h3>
+                <ul className="dashboard-proxy-guide-list">
+                  <li>
+                    Ensure your target build exists in <strong>LLM Proxy</strong> tab and use its <code>id</code> in{' '}
+                    <code>--model</code>.
+                  </li>
+                  <li>
+                    Open <strong>RAG Fusion Proxy</strong> and verify status base URL points to your current host/port.
+                  </li>
+                  <li>
+                    Run <code>GET /v1/models</code> against proxy and confirm your build id is listed.
+                  </li>
+                  <li>
+                    Send one CLI request and confirm new entries appear in <strong>Logs</strong> and <strong>Traces</strong>.
+                  </li>
+                </ul>
               </div>
             )}
           </div>

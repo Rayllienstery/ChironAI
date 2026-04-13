@@ -131,3 +131,231 @@
   font: var(--md-sys-typescale-title-small-font);
   color: var(--md-sys-color-on-surface);
 }
+/* LLM Proxy Builds list - OllamaTab-inspired card design */
+.llm-proxy-builds-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-lg);
+}
+
+.llm-proxy-build-row {
+  border: none;
+  border-radius: var(--md-sys-shape-corner-large);
+  padding: var(--md-sys-spacing-lg);
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-sm);
+}
+
+.llm-proxy-build-row--has-issues {
+  border-left: 3px solid var(--md-sys-color-error);
+}
+
+.llm-proxy-build-row-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-md);
+}
+
+.llm-proxy-build-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-xs);
+}
+
+.llm-proxy-build-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--md-sys-spacing-sm);
+}
+
+.llm-proxy-build-issue-icon {
+  flex-shrink: 0;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--md-sys-color-on-surface-variant);
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.llm-proxy-build-issue-icon--on {
+  color: var(--md-sys-color-error);
+}
+
+.llm-proxy-build-title code {
+  font: var(--md-sys-typescale-title-medium-font);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  color: var(--md-sys-color-on-surface);
+  word-break: break-all;
+}
+
+.llm-proxy-build-display-name {
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+  opacity: 0.85;
+}
+
+.llm-proxy-build-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--md-sys-spacing-xs);
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.llm-proxy-build-backend code,
+.llm-proxy-build-meta code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.85em;
+}
+
+.llm-proxy-dot {
+  opacity: 0.6;
+}
+
+.llm-proxy-build-menu-root {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.llm-proxy-build-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin: -8px -8px -8px 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+}
+
+.llm-proxy-build-menu-trigger:hover:not(:disabled) {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+}
+
+.llm-proxy-build-menu-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.llm-proxy-build-menu-trigger .material-symbols-outlined {
+  font-size: 22px;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.llm-proxy-build-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% - 4px);
+  min-width: 220px;
+  padding: var(--md-sys-spacing-xs) 0;
+  margin: 0;
+  list-style: none;
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  box-shadow: var(--md-sys-elevation-level2);
+  z-index: 20;
+}
+
+.llm-proxy-build-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-sm);
+  width: 100%;
+  padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
+  border: none;
+  background: transparent;
+  font: var(--md-sys-typescale-label-large-font);
+  color: var(--md-sys-color-on-surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.llm-proxy-build-menu-item:hover:not(:disabled) {
+  background: var(
+    --md-sys-color-surface-container-highest,
+    color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent)
+  );
+}
+
+.llm-proxy-build-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.llm-proxy-build-menu-item .material-symbols-outlined {
+  font-size: 20px;
+  flex-shrink: 0;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.llm-proxy-build-menu-item--danger {
+  color: var(--md-sys-color-error);
+}
+
+.llm-proxy-build-details {
+  margin-top: var(--md-sys-spacing-sm);
+  padding-top: var(--md-sys-spacing-sm);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.llm-proxy-build-details-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--md-sys-spacing-sm);
+}
+
+.llm-proxy-build-details-title {
+  font: var(--md-sys-typescale-title-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.llm-proxy-build-details-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  border-radius: var(--md-sys-shape-corner-full);
+}
+
+.llm-proxy-build-details-close:hover {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+}
+
+.llm-proxy-build-details-close .material-symbols-outlined {
+  font-size: 20px;
+}
+
+.llm-proxy-build-details-body pre {
+  font-size: 0.8125rem;
+  overflow: auto;
+  max-height: 520px;
+  margin: 0;
+  padding: var(--md-sys-spacing-sm);
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+  border-radius: var(--md-sys-shape-corner-medium);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+}
