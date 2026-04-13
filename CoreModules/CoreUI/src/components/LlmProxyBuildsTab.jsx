@@ -111,6 +111,7 @@ function emptyDraft() {
     backend: 'dumb',
     ollama_model: '',
     prompt_name: '',
+    use_prompt_template: true,
     rag_enabled: true,
     skills_enabled: true,
     web_enabled: true,
@@ -157,6 +158,7 @@ function draftToPayload(draft) {
   o.backend = String(draft.backend || 'dumb').toLowerCase();
   o.ollama_model = String(draft.ollama_model || '').trim();
   o.prompt_name = String(draft.prompt_name || '').trim();
+  o.use_prompt_template = draft.use_prompt_template !== false;
   o.rag_enabled = Boolean(draft.rag_enabled);
   o.skills_enabled = Boolean(draft.skills_enabled);
   o.web_enabled = Boolean(draft.web_enabled);
@@ -653,21 +655,31 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
               </button>
               {previewMsg && <span className="dashboard-card-muted">{previewMsg}</span>}
             </div>
-            <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              Prompt template
-              <select
-                className="dashboard-card-field"
-                value={draft.prompt_name}
-                onChange={(e) => setDraft({ ...draft, prompt_name: e.target.value })}
-              >
-                <option value="">Select…</option>
-                {prompts.map((p) => (
-                  <option key={p.id || p.name} value={p.name || p.id}>
-                    {p.name || p.id}
-                  </option>
-                ))}
-              </select>
+            <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={draft.use_prompt_template !== false}
+                onChange={(e) => setDraft({ ...draft, use_prompt_template: e.target.checked })}
+              />
+              Use Prompt Template
             </label>
+            {draft.use_prompt_template !== false && (
+              <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                Prompt template
+                <select
+                  className="dashboard-card-field"
+                  value={draft.prompt_name}
+                  onChange={(e) => setDraft({ ...draft, prompt_name: e.target.value })}
+                >
+                  <option value="">Select…</option>
+                  {prompts.map((p) => (
+                    <option key={p.id || p.name} value={p.name || p.id}>
+                      {p.name || p.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input
                 type="checkbox"

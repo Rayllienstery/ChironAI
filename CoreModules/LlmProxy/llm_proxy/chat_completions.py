@@ -620,21 +620,23 @@ def run_chat_completions(
     _get_rag_prompt = w.get_rag_prompt_prefix_suffix
     rag_prompt_file_exists = w.rag_prompt_file_exists
 
+    use_prompt_template_enabled = proxy_settings.get("use_prompt_template", True) is not False
     proxy_prompt_name_required: str | None = None
     if system_prefix is None:
-        _pn = str(proxy_settings.get("prompt_name") or "").strip()
-        if not _pn or not rag_prompt_file_exists(_pn):
-            w.set_proxy_status(w.status_idle)
-            return jsonify(
-                {
-                    "error": (
-                        "LLM Proxy is not configured: choose a valid Prompt template in WebUI "
-                        "(LLM Proxy → builds or saved proxy settings). The file prompts/<name>.md must exist."
-                    ),
-                    "detail": f"prompt_name={_pn!r}" if _pn else "prompt_name is empty",
-                }
-            ), 400
-        proxy_prompt_name_required = _pn
+        if use_prompt_template_enabled:
+            _pn = str(proxy_settings.get("prompt_name") or "").strip()
+            if not _pn or not rag_prompt_file_exists(_pn):
+                w.set_proxy_status(w.status_idle)
+                return jsonify(
+                    {
+                        "error": (
+                            "LLM Proxy is not configured: choose a valid Prompt template in WebUI "
+                            "(LLM Proxy → builds or saved proxy settings). The file prompts/<name>.md must exist."
+                        ),
+                        "detail": f"prompt_name={_pn!r}" if _pn else "prompt_name is empty",
+                    }
+                ), 400
+            proxy_prompt_name_required = _pn
         if dumb_build_pipeline and not proxy_model_setting:
             w.set_proxy_status(w.status_idle)
             return jsonify(
@@ -661,8 +663,10 @@ def run_chat_completions(
     if system_prefix is not None:
         effective_prefix = prefix
         effective_suffix = suffix
-    else:
+    elif use_prompt_template_enabled:
         effective_prefix, effective_suffix = _get_rag_prompt(proxy_prompt_name_required)
+    else:
+        effective_prefix, effective_suffix = "", ""
     effective_context_chunk_chars = context_chunk_chars
     effective_context_total_chars = context_total_chars
     effective_confidence_threshold = confidence_threshold
@@ -804,8 +808,15 @@ def run_chat_completions(
             collection_name=request_collection,
             prompt_name=proxy_prompt_name_required if system_prefix is None else None,
         )
-        effective_prefix = system_prefix if system_prefix is not None else req_params.system_prefix
-        effective_suffix = system_suffix if system_suffix is not None else req_params.system_suffix
+        if system_prefix is not None:
+            effective_prefix = system_prefix
+            effective_suffix = system_suffix if system_suffix is not None else req_params.system_suffix
+        elif use_prompt_template_enabled:
+            effective_prefix = req_params.system_prefix
+            effective_suffix = req_params.system_suffix
+        else:
+            effective_prefix = ""
+            effective_suffix = ""
         effective_context_chunk_chars = req_params.context_chunk_chars
         effective_context_total_chars = req_params.context_total_chars
         effective_confidence_threshold = req_params.confidence_threshold

@@ -123,6 +123,7 @@ class LlmProxyBuildRow(TypedDict, total=False):
     backend: str
     model: str
     prompt_name: str
+    use_prompt_template: bool
     issues: list[str]
     healthy: bool
 

@@ -1575,6 +1575,7 @@ def _enrich_builds_with_diagnostics(builds: list[dict[str, Any]]) -> list[dict[s
     out: list[dict[str, Any]] = []
     for b in builds:
         row = dict(b)
+        row["use_prompt_template"] = b.get("use_prompt_template", True) is not False
         issues, healthy = diagnose_build(
             b,
             ollama_tag_names=ollama_names,

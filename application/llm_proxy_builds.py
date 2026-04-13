@@ -55,9 +55,10 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
     if backend == "dumb" and not ollama_model:
         errors.append("dumb builds require ollama_model")
 
+    use_prompt_template = build.get("use_prompt_template", True) is not False
     prompt_name = str(build.get("prompt_name") or "").strip()
-    if not prompt_name:
-        errors.append("prompt_name is required")
+    if use_prompt_template and not prompt_name:
+        errors.append("prompt_name is required when use_prompt_template is enabled")
 
     max_steps = build.get("max_agent_steps")
     if max_steps is not None and str(max_steps).strip() != "":
@@ -109,6 +110,7 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
         "backend": backend,
         "ollama_model": ollama_model,
         "prompt_name": prompt_name,
+        "use_prompt_template": use_prompt_template,
         "rag_enabled": bool(build.get("rag_enabled", True)),
         "skills_enabled": bool(build.get("skills_enabled", True)),
         "web_enabled": bool(build.get("web_enabled", True)),
@@ -229,6 +231,7 @@ def merge_build_into_proxy_settings(
     out = dict(base)
     keys_copy = (
         "prompt_name",
+        "use_prompt_template",
         "fetch_web_knowledge",
         "web_interaction_enabled",
         "web_interaction_on_keywords",
@@ -281,8 +284,9 @@ def diagnose_build(
     om = str(build.get("ollama_model") or "").strip()
     if om and ollama_tag_names and om not in ollama_tag_names:
         issues.append(f'Ollama model "{om}" is not in the current tag list (removed or renamed?)')
+    use_prompt_template = build.get("use_prompt_template", True) is not False
     pn = str(build.get("prompt_name") or "").strip()
-    if pn and not prompt_exists:
+    if use_prompt_template and pn and not prompt_exists:
         issues.append(f'Prompt template "{pn}" not found under prompts/')
     rc = str(build.get("rag_collection") or "").strip()
     if rc and qdrant_collection_names is not None and rc not in qdrant_collection_names:
