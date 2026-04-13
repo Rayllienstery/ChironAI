@@ -312,14 +312,6 @@ def _normalize_open_webui_ollama_base_url(raw: str) -> str:
     port = f":{parsed.port}" if parsed.port else ""
     return f"{parsed.scheme}://{host}{port}".rstrip("/")
 
-_LEGACY_WORKER_MODEL_IDS = frozenset({"ChironAI-Worker", "rag-ollama"})
-
-
-def _is_legacy_worker_model_id(s: object) -> bool:
-    t = (s if isinstance(s, str) else str(s or "")).strip()
-    return t in _LEGACY_WORKER_MODEL_IDS
-
-
 _SERVICE_STATUS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _SERVICE_STATUS_CACHE_LOCK = threading.Lock()
 
@@ -1197,14 +1189,6 @@ def webui_chat() -> Any:
             return jsonify(
                 {"error": "model is required: pass an Ollama tag or choose a default in app settings."}
             ), 400
-        if _is_legacy_worker_model_id(requested_model):
-            return jsonify(
-                {
-                    "error": (
-                        "Legacy model id is no longer supported; use an LLM Proxy build id or a concrete Ollama model tag."
-                    ),
-                }
-            ), 400
         if requested_model == AUTOCOMPLETE_MODEL_ID:
             return jsonify(
                 {
@@ -1520,7 +1504,7 @@ def get_model_settings() -> Any:
             q_names = set()
         rc = str(out.get("rag_collection") or "").strip()
 
-        out["model_missing"] = (not out["model"]) or _is_legacy_worker_model_id(out["model"])
+        out["model_missing"] = not out["model"]
         out["prompt_missing"] = (not pn) or (not rag_prompt_file_exists(pn)) or is_readme_name(pn)
         out["collection_missing"] = bool(rc) and bool(q_names) and rc not in q_names
 
@@ -1934,13 +1918,11 @@ def tester_chat() -> Any:
         chat_client = deps.chat_client
         # Same resolution as /api/webui/chat: concrete Ollama tag from LLM Proxy settings, not only env.
         model_req = (str(model).strip() if model is not None else "")
-        if model_req and not _is_legacy_worker_model_id(model_req):
+        if model_req:
             ollama_model = model_req
-        elif stored_proxy_model and not _is_legacy_worker_model_id(stored_proxy_model):
+        elif stored_proxy_model:
             ollama_model = stored_proxy_model
         else:
-            ollama_model = params.model_name
-        if _is_legacy_worker_model_id(ollama_model):
             ollama_model = params.model_name
         
         last_user = last_user_content(messages)
@@ -2229,13 +2211,9 @@ def tester_chat() -> Any:
                 trigger_threshold=trigger_threshold,
                 web_supplement=web_sup_text_tester,
             )
-            if _is_legacy_worker_model_id(use_model):
-                use_model = params.model_name
         else:
             # Direct chat without RAG
             use_model = ollama_model
-            if _is_legacy_worker_model_id(use_model):
-                use_model = params.model_name
             ollama_messages = messages.copy()
             
             # Add system prompt if needed
@@ -4550,7 +4528,7 @@ def _run_one_indexer_evaluate(
             + "\n\n### REMOVED CONTENT\n\n"
             + removed_content
         )
-    use_model = model if model and not _is_legacy_worker_model_id(model) else params.model_name
+    use_model = model if model else params.model_name
     if not use_model:
         raise ValueError("No chat model configured")
     system_prompt = _get_indexer_evaluate_system_prompt()
@@ -4627,7 +4605,7 @@ def _batch_eval_worker(job_id: str, source_id: str, model: str | None, count: in
                 _batch_eval_jobs[job_id]["error"] = str(e)
         return
     chat_client = deps.chat_client
-    use_model = model if model and not _is_legacy_worker_model_id(model) else (params.model_name if params else None)
+    use_model = model if model else (params.model_name if params else None)
     if not use_model:
         with _batch_eval_lock:
             if job_id in _batch_eval_jobs:

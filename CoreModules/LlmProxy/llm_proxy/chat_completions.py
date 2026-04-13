@@ -460,16 +460,6 @@ def run_chat_completions(
             }
         ), 400
     requested_model = str(raw_model).strip()
-    _legacy_worker_ids = frozenset({"ChironAI-Worker", "rag-ollama"})
-    if requested_model in _legacy_worker_ids:
-        w.set_proxy_status(w.status_idle)
-        return jsonify(
-            {
-                "error": (
-                    "Legacy RAG model ids are removed; use an LLM Proxy build id or a concrete Ollama model tag."
-                ),
-            }
-        ), 400
     rt = w.runtime
 
     build_extra_options: dict[str, Any] = {}

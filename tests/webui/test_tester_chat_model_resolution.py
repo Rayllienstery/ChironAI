@@ -1,11 +1,11 @@
-"""Model Tester uses saved proxy_model when request sends a legacy worker id (not a concrete Ollama tag)."""
+"""Model Tester uses saved proxy_model when request sends no explicit model."""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 
 
-def test_tester_chat_resolves_logical_model_via_proxy_model_setting(monkeypatch) -> None:
+def test_tester_chat_resolves_model_via_proxy_model_setting(monkeypatch) -> None:
     import api.http.rag_routes as rag_routes
     from api.http import webui_routes as wr
 
@@ -60,7 +60,7 @@ def test_tester_chat_resolves_logical_model_via_proxy_model_setting(monkeypatch)
             "session_id": "test-session",
             "messages": [{"role": "user", "content": "hi"}],
             "use_rag": False,
-            "model": "ChironAI-Worker",
+            "model": "",
         },
     )
     assert r.status_code == 200, r.get_data(as_text=True)

@@ -233,7 +233,6 @@ def test_models_endpoint() -> None:
     assert "data" in data
     assert isinstance(data["data"], list)
     ids = [m.get("id") for m in data["data"]]
-    assert "ChironAI-Worker" not in ids
 
 
 def test_models_endpoint_includes_chironai_autocomplete_when_backend_configured(
@@ -255,7 +254,6 @@ def test_models_endpoint_includes_chironai_autocomplete_when_backend_configured(
     assert r.status_code == 200
     data = r.get_json() or {}
     ids = [m.get("id") for m in data.get("data") or []]
-    assert "ChironAI-Worker" not in ids
     assert "ChironAI-Autocomplete" in ids
 
 
@@ -2468,30 +2466,6 @@ def test_build_tool_arguments_drops_empty_body_strings_then_syncs() -> None:
     for k in ("content", "new_text", "replacement"):
         if k in args:
             assert str(args[k]).strip() != ""
-
-
-def test_chat_completions_400_when_legacy_worker_model_id(monkeypatch: pytest.MonkeyPatch) -> None:
-    import json
-
-    import api.http.rag_routes as rag_routes
-
-    class Repo:
-        def get_app_setting(self, key: str):
-            if key == "proxy_settings":
-                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
-            if key == "proxy_model":
-                return ""
-            return None
-
-    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
-    app = rag_routes.create_app()
-    client = app.test_client()
-    r = client.post(
-        "/v1/chat/completions",
-        json={"model": "ChironAI-Worker", "messages": [{"role": "user", "content": "hi"}]},
-    )
-    assert r.status_code == 400
-    assert "legacy" in (r.get_json() or {}).get("error", "").lower()
 
 
 def test_chat_completions_400_when_prompt_template_missing(monkeypatch: pytest.MonkeyPatch) -> None:
