@@ -176,3 +176,54 @@ export function getClawTraceNotificationFields(trace) {
     tone,
   };
 }
+
+/**
+ * Fingerprint of the last step (kind, agent step index, tool names / ids) — stable across polls
+ * except when the trace advances.
+ * @param {Record<string, unknown>} step
+ */
+function lastStepFingerprint(step) {
+  const k = step.kind != null ? String(step.kind) : '';
+  const si = step.step != null ? String(step.step) : '';
+  const tcs = Array.isArray(step.tool_calls) ? step.tool_calls : [];
+  if (tcs.length > 0) {
+    const names = tcs
+      .map((t) => (t && typeof t === 'object' && t.name != null ? String(t.name).trim() : ''))
+      .filter(Boolean)
+      .join(',');
+    return `${k}:${si}:tc=${names}`;
+  }
+  const inv = step.invocation != null ? String(step.invocation).slice(0, 120) : '';
+  const q = step.query != null ? String(step.query).slice(0, 120) : '';
+  const nm = step.name != null ? String(step.name).slice(0, 80) : '';
+  return `${k}:${si}:i=${inv}:q=${q}:n=${nm}`;
+}
+
+/**
+ * Stable key for the current phase of an in-flight Claw trace (ignores elapsed_ms / ts_ms).
+ * Client step timer resets when this value changes.
+ * @param {Record<string, unknown> | null | undefined} trace
+ */
+export function clawTracePhaseKey(trace) {
+  if (!trace || typeof trace !== 'object') return '';
+  const tid = trace.trace_id != null ? String(trace.trace_id) : '';
+  const sc = trace.step_count != null ? String(trace.step_count) : '0';
+  const steps = Array.isArray(trace.steps) ? trace.steps : [];
+  const last = steps.length > 0 ? steps[steps.length - 1] : null;
+  const lk = last && typeof last === 'object' ? lastStepFingerprint(last) : '';
+  return `${tid}|${sc}|${lk}`;
+}
+
+/**
+ * @param {number} ms
+ */
+export function formatClawStepDuration(ms) {
+  if (ms == null || Number.isNaN(ms)) return '—';
+  const n = Math.max(0, Math.floor(Number(ms)));
+  if (n < 1000) return `${n} ms`;
+  const s = n / 1000;
+  if (s < 60) return `${s.toFixed(s < 10 ? 1 : 0)} s`;
+  const m = Math.floor(s / 60);
+  const rs = Math.floor(s % 60);
+  return `${m}m ${rs}s`;
+}

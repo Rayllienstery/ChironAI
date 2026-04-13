@@ -502,6 +502,76 @@ def expand_query_variants(question: str) -> list[str]:
     return variants[:max_v]
 
 
+# --- Concept expansion (optional pass-2 retrieval) ------------------------------------
+
+_DEFAULT_CONCEPT_EXPANSION_MAP: dict[str, str] = {
+    "actor": "Sendable nonisolated MainActor isolated global actor",
+    "task": "async await cancellation TaskGroup Task",
+    "sendable": "isolated concurrency actor unchecked",
+    "mainactor": "MainActor UI thread dispatchQueue",
+}
+
+
+def extract_symbols_from_pass1_hits(hits: list[dict[str, Any]], max_hits: int) -> list[str]:
+    """API-like symbols from the first ``max_hits`` chunk texts (lowercased, deduped)."""
+    out: list[str] = []
+    seen: set[str] = set()
+    n = max(0, int(max_hits))
+    for h in hits[:n]:
+        text = str((h.get("payload") or {}).get("text") or "")
+        for sym in _API_SYMBOL_RE.findall(text):
+            if len(sym) < 4:
+                continue
+            sl = sym.lower()
+            if sl not in seen:
+                seen.add(sl)
+                out.append(sl)
+    return out
+
+
+def expand_concepts_with_map(seeds: list[str]) -> list[str]:
+    """
+    Map each seed (lowercase) through ``concept_expansion_map``; collect extra terms up to
+    ``concept_expansion_max_terms`` from config.
+    """
+    mmap = get_retrieval_dict("concept_expansion_map", _DEFAULT_CONCEPT_EXPANSION_MAP)
+    max_terms = max(1, get_retrieval_int("concept_expansion_max_terms", 16))
+    seen: set[str] = set()
+    out: list[str] = []
+    for seed in seeds:
+        if len(out) >= max_terms:
+            break
+        k = (seed or "").strip().lower()
+        if not k:
+            continue
+        raw = mmap.get(k) if isinstance(mmap, dict) else None
+        if raw is None:
+            continue
+        v = str(raw).strip()
+        if not v:
+            continue
+        for tok in v.split():
+            t = tok.strip().lower().strip(".,;:!?@")
+            if len(t) < 3:
+                continue
+            if t not in seen:
+                seen.add(t)
+                out.append(t)
+            if len(out) >= max_terms:
+                break
+    return out
+
+
+def build_secondary_retrieval_query(question: str, expanded_terms: list[str]) -> str:
+    """Pass-2 embed text: normalized question query plus unique expanded terms, length-capped."""
+    base = query_for_retrieval(question)
+    extra = " ".join(dict.fromkeys(expanded_terms))
+    combined = f"{base} {extra}".strip()
+    if len(combined) > MAX_EMBED_TEXT_LENGTH:
+        combined = combined[:MAX_EMBED_TEXT_LENGTH]
+    return combined
+
+
 # --- Concept coverage (retrieval goal: complement similarity with set coverage) -----
 
 _MAX_COVERAGE_CONCEPTS: int = 32
@@ -632,6 +702,45 @@ def select_hits_for_concept_coverage(
     return selected[:final_k]
 
 
+def compute_concept_coverage_report(
+    question: str,
+    hits: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """
+    For extracted target concepts, compute which appear in the union of hit payloads
+    (same haystack rules as ``select_hits_for_concept_coverage``).
+
+    Returns JSON-serializable dict: target_concepts, covered_concepts, missing_concepts,
+    coverage_ratio (float in [0,1] or None when there are no targets).
+    """
+    targets = extract_target_concepts_for_coverage(question)
+    if not targets:
+        return {
+            "target_concepts": [],
+            "covered_concepts": [],
+            "missing_concepts": [],
+            "coverage_ratio": None,
+        }
+    cset = {t.strip().lower() for t in targets if t and len(t.strip()) >= 3}
+    if not cset:
+        return {
+            "target_concepts": [],
+            "covered_concepts": [],
+            "missing_concepts": [],
+            "coverage_ratio": None,
+        }
+    union = " ".join(_hit_coverage_haystack(h) for h in hits)
+    covered = sorted(c for c in cset if c in union)
+    miss = sorted(cset - set(covered))
+    ratio = len(covered) / len(cset) if cset else None
+    return {
+        "target_concepts": sorted(cset),
+        "covered_concepts": covered,
+        "missing_concepts": miss,
+        "coverage_ratio": round(float(ratio), 4) if ratio is not None else None,
+    }
+
+
 def rrf_merge_hit_lists(
     ranked_lists: list[list[dict[str, Any]]],
     *,
@@ -690,8 +799,12 @@ __all__ = [
     "intent_match_priority",
     "infer_query_intent",
     "expand_query_variants",
+    "extract_symbols_from_pass1_hits",
+    "expand_concepts_with_map",
+    "build_secondary_retrieval_query",
     "extract_target_concepts_for_coverage",
     "select_hits_for_concept_coverage",
+    "compute_concept_coverage_report",
     "rrf_merge_hit_lists",
 ]
 

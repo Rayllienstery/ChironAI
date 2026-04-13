@@ -31,16 +31,21 @@ from domain.services.rerank import (
 )
 from domain.services.rag_trigger import compute_rag_trigger_score
 from infrastructure.ollama.openai_ollama_tool_bridge import openai_messages_to_ollama
+from domain.services.rag_trace import build_rag_trace_from_timings
 from domain.services.retrieval import (
     FINAL_CONTEXT_K,
     MULTI_CHUNK_FINAL_K,
     MULTI_CHUNK_TOP_K,
     RERANK_MAX_CANDIDATES,
     build_qdrant_filter,
+    build_secondary_retrieval_query,
     merge_qdrant_filters,
     combined_doc_priority,
     intent_match_priority,
+    compute_concept_coverage_report,
+    expand_concepts_with_map,
     expand_query_variants,
+    extract_symbols_from_pass1_hits,
     extract_target_concepts_for_coverage,
     is_version_question,
     need_more_chunks,
@@ -54,6 +59,7 @@ from domain.services.retrieval import (
     should_skip_rag_search,
 )
 from application.rag.hybrid_sparse import is_hybrid_sparse_enabled
+from application.rag.retrieval_ui_overrides import retrieval_bool_with_ui_override
 from infrastructure.rag.sparse_text import normalize_text_for_sparse, text_to_sparse_vector
 
 _rag_log = logging.getLogger("trag.rag")
@@ -103,7 +109,7 @@ def _finalize_reranked_hits(
     """Take first final_k after rerank, or coverage-aware subset when enabled and concepts exist."""
     if not hits:
         return []
-    if not get_retrieval_bool("coverage_aware_selection", False):
+    if not retrieval_bool_with_ui_override("coverage_aware_selection"):
         return hits[:final_k]
     concepts = extract_target_concepts_for_coverage(question)
     if not concepts:
@@ -120,10 +126,12 @@ def _search_one(
     *,
     hybrid_on: bool,
     timings: dict[str, float],
+    embed_key: str = "embed_s",
+    search_key: str = "search_s",
 ) -> list[dict[str, Any]]:
     t0 = time.perf_counter()
     vec = embed_provider.embed(search_query)
-    timings["embed_s"] += time.perf_counter() - t0
+    timings[embed_key] = timings.get(embed_key, 0.0) + time.perf_counter() - t0
     timings["embed_tokens_in"] += 0 if not search_query else max(1, int(len(search_query) / 4))
     si: list[int] | None = None
     sv: list[float] | None = None
@@ -153,7 +161,7 @@ def _search_one(
             )
         else:
             results = rag_repo.search(vec, top_k=top_k, filter_dict=None)
-    timings["search_s"] += time.perf_counter() - t0
+    timings[search_key] = timings.get(search_key, 0.0) + time.perf_counter() - t0
     return results
 
 
@@ -165,10 +173,11 @@ def search_rag(
     top_k: int | None = None,
     extra_filter: dict[str, Any] | None = None,
     intent: QueryIntent | None = None,
-) -> tuple[list[dict[str, Any]], dict[str, float]]:
+) -> tuple[list[dict[str, Any]], dict[str, float], list[dict[str, Any]]]:
     """
     Run RAG retrieval for a question: query_for_retrieval -> embed -> search -> rerank.
-    Returns (list of hits with id, score, payload, rerank_score, timings dict with embed_s, search_s, rerank_s).
+    Returns (final hits, timings, rerank_pool) where ``rerank_pool`` is the full reranked list
+    before cutting to ``final_k`` (for coverage gate / widen without re-embedding).
 
     ``extra_filter`` is merged with ``build_qdrant_filter(question)`` via ``merge_qdrant_filters``
     (e.g. ``extra_filter_section_path_joined_equals`` for section-scoped search).
@@ -178,9 +187,20 @@ def search_rag(
         "search_s": 0.0,
         "rerank_s": 0.0,
         "expand_variants_s": 0.0,
+        "pass2_embed_s": 0.0,
+        "pass2_search_s": 0.0,
+        "concept_expansion_prep_s": 0.0,
+        "concept_expansion_pass2_ran": 0.0,
+        "concept_expansion_pass2_new_hits": 0.0,
+        "retrieval_candidates_n": 0.0,
+        "query_variants_count": 1.0,
+        "context_assembly_s": 0.0,
         # Token estimates for UI trace; true tokenization isn't available here.
         "embed_tokens_in": 0.0,
         "rerank_prompt_tokens_in": 0.0,
+        "final_context_k_used": 0.0,
+        "coverage_gate_applied": 0.0,
+        "coverage_retry_search_s": 0.0,
     }
     if top_k is None:
         top_k = MULTI_CHUNK_TOP_K if need_more_chunks(question) else get_retrieval_int("top_k", DEFAULT_TOP_K)
@@ -219,11 +239,64 @@ def search_rag(
             )
         else:
             results.sort(key=combined_doc_priority, reverse=True)
+
+        timings["query_variants_count"] = float(len(variants))
+        if retrieval_bool_with_ui_override("concept_expansion_enabled"):
+            t_prep = time.perf_counter()
+            seed_n = get_retrieval_int("concept_expansion_seed_hits", 4)
+            seeds: list[str] = []
+            seen_seed: set[str] = set()
+            for x in extract_target_concepts_for_coverage(question):
+                xl = (x or "").strip().lower()
+                if xl and xl not in seen_seed:
+                    seen_seed.add(xl)
+                    seeds.append(xl)
+            for x in extract_symbols_from_pass1_hits(results, seed_n):
+                if x not in seen_seed:
+                    seen_seed.add(x)
+                    seeds.append(x)
+            expanded = expand_concepts_with_map(seeds)
+            timings["concept_expansion_prep_s"] = time.perf_counter() - t_prep
+            if expanded:
+                sq2 = build_secondary_retrieval_query(question, expanded)
+                pass2_k = get_retrieval_int("concept_expansion_pass2_top_k", 8)
+                p2 = _search_one(
+                    rag_repo,
+                    embed_provider,
+                    sq2,
+                    pass2_k,
+                    filter_dict,
+                    hybrid_on=hybrid_on,
+                    timings=timings,
+                    embed_key="pass2_embed_s",
+                    search_key="pass2_search_s",
+                )
+                seen_ids = {h.get("id") for h in results}
+                added = 0
+                for h in p2:
+                    hid = h.get("id")
+                    if hid is not None and hid not in seen_ids:
+                        seen_ids.add(hid)
+                        results.append(h)
+                        added += 1
+                timings["concept_expansion_pass2_ran"] = 1.0
+                timings["concept_expansion_pass2_new_hits"] = float(added)
+                if intent is not None:
+                    results.sort(
+                        key=lambda h: combined_doc_priority(h) + intent_match_priority(h, intent),
+                        reverse=True,
+                    )
+                else:
+                    results.sort(key=combined_doc_priority, reverse=True)
+
+        timings["retrieval_candidates_n"] = float(len(results))
         t0 = time.perf_counter()
         results = _apply_rerank(question, results, rerank_client, timings=timings)
-        results = _finalize_reranked_hits(question, results, final_k)
+        rerank_pool = list(results)
+        results = _finalize_reranked_hits(question, rerank_pool, final_k)
+        timings["final_context_k_used"] = float(final_k)
         timings["rerank_s"] += time.perf_counter() - t0
-        return results, timings
+        return results, timings, rerank_pool
     search_query = query_for_retrieval(question)
     results = _search_one(
         rag_repo,
@@ -304,11 +377,49 @@ def search_rag(
             )
         else:
             results.sort(key=combined_doc_priority, reverse=True)
+    timings["query_variants_count"] = 1.0
+    timings["retrieval_candidates_n"] = float(len(results))
     t0 = time.perf_counter()
     results = _apply_rerank(question, results, rerank_client, timings=timings)
-    results = _finalize_reranked_hits(question, results, final_k)
+    rerank_pool = list(results)
+    results = _finalize_reranked_hits(question, rerank_pool, final_k)
+    timings["final_context_k_used"] = float(final_k)
     timings["rerank_s"] += time.perf_counter() - t0
-    return results, timings
+    return results, timings, rerank_pool
+
+
+def _build_rag_quality_from_report(report: dict[str, Any]) -> dict[str, Any] | None:
+    targets = report.get("target_concepts") or []
+    if not targets:
+        return None
+    missing = report.get("missing_concepts") or []
+    if missing:
+        return {
+            "failure_class": "retrieval_gap",
+            "missing_concepts": missing[:24],
+            "coverage_ratio": report.get("coverage_ratio"),
+        }
+    return {"failure_class": "ok", "coverage_ratio": report.get("coverage_ratio")}
+
+
+def _coverage_trace_extra(
+    report: dict[str, Any],
+    *,
+    gate: bool,
+    retry_search: bool,
+) -> str | None:
+    parts: list[str] = []
+    r = report.get("coverage_ratio")
+    if r is not None:
+        parts.append(f"coverage={r:.2f}")
+    m = report.get("missing_concepts") or []
+    if m:
+        parts.append(f"missing={len(m)}")
+    if gate:
+        parts.append("gate_widen")
+    if retry_search:
+        parts.append("retry_search")
+    return "; ".join(parts) if parts else None
 
 
 def build_rag_context(
@@ -336,7 +447,18 @@ def build_rag_context(
         "search_s": 0.0,
         "rerank_s": 0.0,
         "expand_variants_s": 0.0,
+        "pass2_embed_s": 0.0,
+        "pass2_search_s": 0.0,
+        "concept_expansion_prep_s": 0.0,
+        "concept_expansion_pass2_ran": 0.0,
+        "concept_expansion_pass2_new_hits": 0.0,
+        "retrieval_candidates_n": 0.0,
+        "query_variants_count": 1.0,
+        "context_assembly_s": 0.0,
         "total_rag_s": 0.0,
+        "final_context_k_used": 0.0,
+        "coverage_gate_applied": 0.0,
+        "coverage_retry_search_s": 0.0,
     }
     if not question or not question.strip():
         return RagContext("", [], 0.0), empty_timings
@@ -348,7 +470,10 @@ def build_rag_context(
         question, rag_required_keywords=rag_required_keywords, trigger_threshold=trigger_threshold
     ):
         _rag_log.debug("RAG skipped for query (greeting or score below threshold)")
-        return RagContext("", [], 0.0), empty_timings
+        _rt_skip = build_rag_trace_from_timings(
+            empty_timings, chunks_count=0, variants_count=0, retrieval_skipped=True
+        )
+        return RagContext("", [], 0.0, rag_trace=_rt_skip), empty_timings
     # Infer high-level intent (symbol/framework/section) for metadata-aware retrieval.
     intent = infer_query_intent(question)
 
@@ -360,7 +485,7 @@ def build_rag_context(
     combined_extra_filter = merge_qdrant_filters(extra_filter, intent_filter)
 
     try:
-        results, timings = search_rag(
+        results, timings, rerank_pool = search_rag(
             question,
             rag_repo,
             embed_provider,
@@ -369,17 +494,126 @@ def build_rag_context(
             extra_filter=combined_extra_filter,
             intent=intent,
         )
+        variants_n = int(timings.get("query_variants_count", 1) or 1)
+        if not results:
+            timings["total_rag_s"] = (
+                timings["embed_s"]
+                + timings["search_s"]
+                + timings.get("pass2_embed_s", 0.0)
+                + timings.get("pass2_search_s", 0.0)
+                + timings["rerank_s"]
+                + timings.get("expand_variants_s", 0.0)
+                + timings.get("concept_expansion_prep_s", 0.0)
+            )
+            _rt0 = build_rag_trace_from_timings(
+                timings, chunks_count=0, variants_count=variants_n
+            )
+            return RagContext("", [], 0.0, rag_trace=_rt0), timings
+        results = framework_filter(question, results)
+        pool = framework_filter(question, list(rerank_pool))
+        fk = int(timings.get("final_context_k_used", 0) or 0)
+        if fk <= 0:
+            fk = MULTI_CHUNK_FINAL_K if need_more_chunks(question) else FINAL_CONTEXT_K
+        report = compute_concept_coverage_report(question, results)
+        gate_applied = False
+        retry_search = False
+        max_fk = get_retrieval_int("coverage_gate_max_final_k", 12)
+
+        if retrieval_bool_with_ui_override("coverage_gate_enabled"):
+            targets = report.get("target_concepts") or []
+            ratio = report.get("coverage_ratio")
+            min_ratio = get_retrieval_int("coverage_gate_min_percent", 75) / 100.0
+            boost = max(0, get_retrieval_int("coverage_gate_boost_final_k", 2))
+            if targets and ratio is not None and ratio < min_ratio and boost > 0:
+                new_fk = min(fk + boost, max_fk, len(pool))
+                if new_fk > fk:
+                    results = _finalize_reranked_hits(question, pool, new_fk)
+                    fk = new_fk
+                    timings["final_context_k_used"] = float(fk)
+                    timings["coverage_gate_applied"] = 1.0
+                    gate_applied = True
+                    report = compute_concept_coverage_report(question, results)
+
+        if retrieval_bool_with_ui_override("coverage_retry_supplemental_search_enabled"):
+            targets = report.get("target_concepts") or []
+            ratio = report.get("coverage_ratio")
+            missing = list(report.get("missing_concepts") or [])
+            min_ratio = get_retrieval_int("coverage_gate_min_percent", 75) / 100.0
+            if targets and ratio is not None and ratio < min_ratio and missing:
+                t_rs = time.perf_counter()
+                retry_k = max(1, get_retrieval_int("coverage_retry_top_k", 6))
+                max_m = max(1, get_retrieval_int("coverage_retry_max_missing_terms", 8))
+                aug = " ".join(missing[:max_m])
+                sq = query_for_retrieval(f"{question}\n{aug}")
+                hybrid_on = is_hybrid_sparse_enabled() and rag_repo.supports_hybrid()
+                filter_dict = merge_qdrant_filters(build_qdrant_filter(question), combined_extra_filter)
+                extra_hits = _search_one(
+                    rag_repo,
+                    embed_provider,
+                    sq,
+                    retry_k,
+                    filter_dict,
+                    hybrid_on=hybrid_on,
+                    timings=timings,
+                )
+                seen_ids = {h.get("id") for h in pool if h.get("id") is not None}
+                for h in extra_hits:
+                    hid = h.get("id")
+                    if hid is not None and hid not in seen_ids:
+                        seen_ids.add(hid)
+                        pool.append(h)
+                    elif hid is None:
+                        pool.append(h)
+                if intent is not None:
+                    pool.sort(
+                        key=lambda h: combined_doc_priority(h) + intent_match_priority(h, intent),
+                        reverse=True,
+                    )
+                else:
+                    pool.sort(key=combined_doc_priority, reverse=True)
+                t_rr = time.perf_counter()
+                pool = _apply_rerank(question, pool, rerank_client, timings=timings)
+                timings["rerank_s"] += time.perf_counter() - t_rr
+                retry_fk = get_retrieval_int("coverage_retry_final_k", 0)
+                cap_fk = retry_fk if retry_fk > 0 else max_fk
+                new_fk = min(max(fk, cap_fk), len(pool))
+                results = _finalize_reranked_hits(question, pool, new_fk)
+                fk = new_fk
+                timings["final_context_k_used"] = float(fk)
+                timings["coverage_retry_search_s"] = time.perf_counter() - t_rs
+                retry_search = True
+                report = compute_concept_coverage_report(question, results)
+
         timings["total_rag_s"] = (
             timings["embed_s"]
             + timings["search_s"]
+            + timings.get("pass2_embed_s", 0.0)
+            + timings.get("pass2_search_s", 0.0)
             + timings["rerank_s"]
             + timings.get("expand_variants_s", 0.0)
+            + timings.get("concept_expansion_prep_s", 0.0)
         )
-        if not results:
-            return RagContext("", [], 0.0), timings
-        results = framework_filter(question, results)
+
+        rag_quality = _build_rag_quality_from_report(report)
+        structured = retrieval_bool_with_ui_override("structured_rag_context_enabled")
+        t_ca = time.perf_counter()
         context_text, chunks_info, max_score = build_context_block(
-            results, context_chunk_chars, context_total_chars
+            results,
+            context_chunk_chars,
+            context_total_chars,
+            structured=structured,
+            question=question,
+        )
+        timings["context_assembly_s"] = time.perf_counter() - t_ca
+        timings["total_rag_s"] += timings["context_assembly_s"]
+        trace_extra = _coverage_trace_extra(
+            report, gate=gate_applied, retry_search=retry_search
+        )
+        _rag_trace = build_rag_trace_from_timings(
+            timings,
+            chunks_count=len(chunks_info),
+            variants_count=variants_n,
+            context_assembly_extra=trace_extra,
         )
         count = len(chunks_info)
         if count:
@@ -403,7 +637,14 @@ def build_rag_context(
                     (c.get("url") or "N/A")[:60],
                     c.get("doc_type") or "N/A",
                 )
-        return RagContext(context_text=context_text, chunks_info=chunks_info, max_score=max_score), timings
+        return RagContext(
+            context_text=context_text,
+            chunks_info=chunks_info,
+            max_score=max_score,
+            rag_trace=_rag_trace,
+            coverage_report=report,
+            rag_quality=rag_quality,
+        ), timings
     except Exception as e:
         _rag_log.exception("RAG build_rag_context failed: %s", e)
         return RagContext("", [], 0.0), empty_timings
@@ -449,6 +690,8 @@ def answer_question(
             force_rag=force_rag,
             extra_filter=extra_filter,
         )
+    _miss = (ctx.coverage_report or {}).get("missing_concepts") if ctx.coverage_report else None
+    _miss_list = _miss if isinstance(_miss, list) else None
     system_content = build_system_content(
         system_prefix,
         system_suffix,
@@ -458,6 +701,7 @@ def answer_question(
         reasoning_level,
         model_name,
         retrieval_skipped=ctx.retrieval_skipped,
+        coverage_missing_concepts=_miss_list,
     )
     ollama_messages = [{"role": "system", "content": system_content}]
     for m in request.messages:
@@ -521,6 +765,8 @@ def prepare_ollama_messages(
             force_rag=force_rag,
             extra_filter=extra_filter,
         )
+    _miss2 = (ctx.coverage_report or {}).get("missing_concepts") if ctx.coverage_report else None
+    _miss_list2 = _miss2 if isinstance(_miss2, list) else None
     system_content = build_system_content(
         system_prefix,
         system_suffix,
@@ -531,6 +777,7 @@ def prepare_ollama_messages(
         model_name,
         web_supplement=web_supplement,
         retrieval_skipped=ctx.retrieval_skipped,
+        coverage_missing_concepts=_miss_list2,
     )
     ollama_messages = [{"role": "system", "content": system_content}]
     if native_tools:

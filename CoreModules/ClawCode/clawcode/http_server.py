@@ -267,13 +267,25 @@ def create_clawcode_flask_app() -> Flask:
             return jsonify(anthropic_models_list_payload(ids))
         return jsonify({"object": "list", "data": rows})
 
-    def _run_agent(openai_body: dict, *, private_mode: bool) -> tuple[dict, int]:
+    def _max_steps_for_request(openai_body: dict) -> int:
         try:
             from config import get_clawcode_max_agent_steps
 
-            max_steps = get_clawcode_max_agent_steps()
+            default_cap = get_clawcode_max_agent_steps()
         except Exception:
-            max_steps = 40
+            default_cap = 40
+        ms = openai_body.get("max_agent_steps")
+        if ms is not None and str(ms).strip() != "":
+            try:
+                n = int(ms)
+                if 1 <= n <= 256:
+                    return n
+            except (TypeError, ValueError):
+                pass
+        return default_cap
+
+    def _run_agent(openai_body: dict, *, private_mode: bool) -> tuple[dict, int]:
+        max_steps = _max_steps_for_request(openai_body)
 
         def _cb(rec: dict) -> None:
             if rec.get("chiron_private"):
@@ -299,11 +311,7 @@ def create_clawcode_flask_app() -> Flask:
         want_stream = bool(body.get("stream"))
 
         if want_stream:
-            try:
-                from config import get_clawcode_max_agent_steps
-                _max = get_clawcode_max_agent_steps()
-            except Exception:
-                _max = 40
+            _max = _max_steps_for_request(body)
 
             def _cb_stream(rec: dict) -> None:
                 if rec.get("chiron_private"):

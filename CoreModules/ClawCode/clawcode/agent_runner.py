@@ -63,7 +63,10 @@ RAG_QUERY_TOOL: dict[str, Any] = {
         "description": (
             "Search the ChironAI **indexed knowledge base** (ingested documentation and similar material) and "
             "return excerpts. This is **not** a search over the user's live workspace or repo files unless those "
-            "files were explicitly ingested into RAG. Use a short, focused natural-language query."
+            "files were explicitly ingested into RAG. Use a short, focused natural-language query. "
+            "For API, framework, and platform questions (e.g. iOS, Swift, UIKit, SwiftUI, Apple SDK behavior), "
+            "call this **in addition to** `load_skill` when applicable: skills are workflow packs; RAG returns "
+            "ingested doc chunks (often Apple Developer Documentation-style material) that should ground factual answers."
         ),
         "parameters": {
             "type": "object",
@@ -147,6 +150,13 @@ RUNTIME_DEVELOPER_MERGE_CLIENT_TOOLS = (
     "project files. rag_query and load_skill run on the server; IDE tools run in the client when returned as "
     "tool_calls. Do not mix server tools (rag_query, load_skill) and IDE tools in the same assistant tool_calls "
     "batch—use only server tools in one turn, or only IDE tools in another so the client can execute them. "
+    "**RAG vs skills:** `load_skill` does **not** replace `rag_query`. For substantive technical questions "
+    "(APIs, frameworks, iOS/Swift/UIKit/SwiftUI, language semantics, architecture, anything where ingested "
+    "documentation could add facts), call **rag_query** at least once with a short query **before** finishing "
+    "the answer—even if you also call `load_skill`. Copilot's generic rule to answer code samples without tools "
+    "does **not** override this when `rag_query` is available: use it to ground doc-backed answers. "
+    "Skip `rag_query` only for pure chit-chat or when the task is exclusively reading/editing specific workspace "
+    "files via IDE tools. "
     "VS Code / Copilot does not expose a tool named `search`; for text search in files call **grep_search** with "
     "`query` (and optional `includePattern`, `isRegexp`, `maxResults`). "
     "Use absolute paths from the workspace; in this monorepo UI code often lives under **CoreModules/** "
@@ -641,6 +651,36 @@ def _think_requested_from_openai_body(body: dict[str, Any]) -> bool:
     return False
 
 
+def _clawcode_resolve_rag_collection(body: dict[str, Any], app_setting_collection: str | None) -> str | None:
+    """Prefer non-empty ``rag_collection`` on the OpenAI request body, else app setting."""
+    raw = body.get("rag_collection")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return app_setting_collection if app_setting_collection else None
+
+
+def _rag_query_effective_top_k(args: dict[str, Any], body: dict[str, Any]) -> int | None:
+    """Tool arg ``top_k`` wins; else ``rag_query_default_top_k`` on the request body (1..256)."""
+    tk = args.get("top_k")
+    if tk is not None:
+        try:
+            n = int(tk)
+            if 1 <= n <= 256:
+                return n
+        except (TypeError, ValueError):
+            pass
+    v = body.get("rag_query_default_top_k")
+    if v is None:
+        return None
+    try:
+        n = int(v)
+        if 1 <= n <= 256:
+            return n
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
 def run_clawcode_chat_completion(
     body: dict[str, Any],
     *,
@@ -664,20 +704,21 @@ def run_clawcode_chat_completion(
     # Some clients (e.g. VS Code Copilot) send stream=true. The HTTP layer turns the final
     # completion into OpenAI SSE; the agent loop still produces one assembled message.
 
-    # ClawCode-specific app_settings: optional RAG collection override only.
-    clawcode_collection: str | None = None
+    clawcode_collection_app: str | None = None
     try:
         repo = get_settings_repository()
         _oc = (repo.get_app_setting(CLAWCODE_RAG_COLLECTION_APP_SETTING) or "").strip()
-        clawcode_collection = _oc if _oc else None
+        clawcode_collection_app = _oc if _oc else None
     except Exception:
         pass
+
+    clawcode_collection_resolved = _clawcode_resolve_rag_collection(body, clawcode_collection_app)
 
     params: RAGAnswerParams
     deps: RAGDependencies
     params, deps = get_rag_answer_params(
         webui_dir=webui_dir,
-        collection_name=clawcode_collection,
+        collection_name=clawcode_collection_resolved,
     )
     chat_client = deps.chat_client
     fallback_model = str(params.model_name or "").strip()
@@ -707,7 +748,9 @@ def run_clawcode_chat_completion(
                     "clawcode_runtime": {
                         "include_rag_query_tool": True if _irq0 is None else bool(_irq0),
                         "include_skill_tools": True if _isk0 is None else bool(_isk0),
-                        "rag_collection_name": clawcode_collection,
+                        "rag_collection_name": clawcode_collection_resolved,
+                        "rag_collection_app_setting": clawcode_collection_app,
+                        "rag_collection_resolved": clawcode_collection_resolved,
                         "merge_client_tools": merge_client_tools,
                     },
                     "steps": [
@@ -783,7 +826,10 @@ def run_clawcode_chat_completion(
     clawcode_runtime: dict[str, Any] = {
         "include_rag_query_tool": include_rag_tool,
         "include_skill_tools": include_skill_tools,
-        "rag_collection_name": clawcode_collection,
+        "rag_collection_name": clawcode_collection_resolved,
+        "rag_collection_app_setting": clawcode_collection_app,
+        "rag_collection_resolved": clawcode_collection_resolved,
+        "rag_query_default_top_k": body.get("rag_query_default_top_k"),
         "merge_client_tools": merge_client_tools,
     }
     try:
@@ -1090,6 +1136,7 @@ def run_clawcode_chat_completion(
                     if not q:
                         ctx_text = ""
                     else:
+                        _eff_k = _rag_query_effective_top_k(args, body)
                         ctx, _timings = build_rag_context(
                             q,
                             deps.rag_repo,
@@ -1097,6 +1144,7 @@ def run_clawcode_chat_completion(
                             deps.rerank_client,
                             params.context_chunk_chars,
                             params.context_total_chars,
+                            top_k=_eff_k,
                         )
                         ctx_text = ctx.context_text
                         chunk_n = len(ctx.chunks_info)
@@ -1272,19 +1320,21 @@ def iter_clawcode_agent_sse(
         bool(_body_mc) if isinstance(_body_mc, bool) else _get_clawcode_merge_client_tools()
     )
 
-    clawcode_collection: str | None = None
+    clawcode_collection_app: str | None = None
     try:
         repo = get_settings_repository()
         _oc = (repo.get_app_setting(CLAWCODE_RAG_COLLECTION_APP_SETTING) or "").strip()
-        clawcode_collection = _oc if _oc else None
+        clawcode_collection_app = _oc if _oc else None
     except Exception:
         pass
+
+    clawcode_collection_resolved = _clawcode_resolve_rag_collection(body, clawcode_collection_app)
 
     params: RAGAnswerParams
     deps: RAGDependencies
     params, deps = get_rag_answer_params(
         webui_dir=webui_dir,
-        collection_name=clawcode_collection,
+        collection_name=clawcode_collection_resolved,
     )
     chat_client = deps.chat_client
     fallback_model = str(params.model_name or "").strip()
@@ -1350,7 +1400,10 @@ def iter_clawcode_agent_sse(
     clawcode_runtime: dict[str, Any] = {
         "include_rag_query_tool": include_rag_tool,
         "include_skill_tools": include_skill_tools,
-        "rag_collection_name": clawcode_collection,
+        "rag_collection_name": clawcode_collection_resolved,
+        "rag_collection_app_setting": clawcode_collection_app,
+        "rag_collection_resolved": clawcode_collection_resolved,
+        "rag_query_default_top_k": body.get("rag_query_default_top_k"),
         "merge_client_tools": merge_client_tools,
     }
     try:
@@ -1664,9 +1717,11 @@ def iter_clawcode_agent_sse(
                     if not q:
                         ctx_text = ""
                     else:
+                        _eff_k = _rag_query_effective_top_k(args, body)
                         ctx, _timings = build_rag_context(
                             q, deps.rag_repo, deps.embed_provider, deps.rerank_client,
                             params.context_chunk_chars, params.context_total_chars,
+                            top_k=_eff_k,
                         )
                         ctx_text = ctx.context_text
                         chunk_n = len(ctx.chunks_info)

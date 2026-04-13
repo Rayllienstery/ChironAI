@@ -1,9 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getClawCodeTraces, getProxyTraceCurrent } from '../services/api';
-import { getClawTraceNotificationFields } from '../utils/clawLiveActivity';
+import {
+  clawTracePhaseKey,
+  formatClawStepDuration,
+  getClawTraceNotificationFields,
+} from '../utils/clawLiveActivity';
 import { getClawTraceUsageCapsules } from '../utils/clawTraceSummary';
 import ClawCodeMarkIcon from './ClawCodeMarkIcon';
-import { traceModelFields } from './ProxyTraceTab';
+import { traceModelFields } from '../utils/proxyTraceModel';
 import { useNotificationCenter } from './NotificationCenterContext';
 
 const POLL_MS = 1000;
@@ -23,14 +27,15 @@ function proxyLiveSlotId(kind, traceId) {
 
 /**
  * @param {{ run_line?: string, step_primary?: string, step_secondary?: string, tone?: string }} fields
- * @param {{ showPulse?: boolean }} opts
+ * @param {{ showPulse?: boolean, stepElapsedMs?: number | null }} opts
  */
-function ClawTraceTaskStepBlock({ fields, showPulse = false }) {
+function ClawTraceTaskStepBlock({ fields, showPulse = false, stepElapsedMs = null }) {
   if (!fields) return null;
   const runLine = typeof fields.run_line === 'string' ? fields.run_line.trim() : '';
   const primary = (fields.step_primary != null && String(fields.step_primary).trim()) || '—';
   const secondary = typeof fields.step_secondary === 'string' && fields.step_secondary.trim() ? fields.step_secondary.trim() : '';
   const tone = fields.tone != null ? String(fields.tone) : 'idle';
+  const showTimer = typeof stepElapsedMs === 'number' && stepElapsedMs >= 0;
   return (
     <div className="claw-live-activity claw-trace-task-step" data-claw-activity-tone={tone} role="status">
       {showPulse ? <span className="claw-live-activity-pulse" aria-hidden="true" /> : null}
@@ -46,9 +51,50 @@ function ClawTraceTaskStepBlock({ fields, showPulse = false }) {
           <span className="claw-trace-task-step-primary">{primary}</span>
           {secondary ? <span className="claw-trace-task-step-secondary">{secondary}</span> : null}
         </div>
+        {showTimer ? (
+          <div className="claw-trace-task-step-section claw-trace-task-step-timer-row" aria-live="polite">
+            <span className="claw-trace-task-step-label">Step time</span>
+            <span className="claw-trace-task-step-timer-value">{formatClawStepDuration(stepElapsedMs)}</span>
+          </div>
+        ) : null}
       </div>
     </div>
   );
+}
+
+/**
+ * Live duration for the current trace phase (resets when step_count / last step fingerprint changes).
+ * @param {Record<string, unknown> | null} trace
+ * @param {boolean} active
+ */
+function useClawStepElapsedMs(trace, active) {
+  const phaseKeyRef = useRef('');
+  const [anchorMs, setAnchorMs] = useState(null);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!active || !trace) {
+      phaseKeyRef.current = '';
+      setAnchorMs(null);
+      return;
+    }
+    const pk = clawTracePhaseKey(trace);
+    if (pk !== phaseKeyRef.current) {
+      phaseKeyRef.current = pk;
+      setAnchorMs(Date.now());
+    } else {
+      setAnchorMs((prev) => (prev == null ? Date.now() : prev));
+    }
+  }, [active, trace]);
+
+  useEffect(() => {
+    if (!active || !trace) return undefined;
+    const id = setInterval(() => setTick((n) => n + 1), 200);
+    return () => clearInterval(id);
+  }, [active, trace]);
+
+  if (!active || !trace || anchorMs == null) return null;
+  return Date.now() - anchorMs;
 }
 
 /**
@@ -182,7 +228,7 @@ function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
       ) : null}
       <div className="proxy-live-notification-actions">
         <button type="button" className="coreui-btn coreui-btn-small coreui-btn-ghost" onClick={onOpenLlmProxyTrace}>
-          Proxy Trace
+          Traces
         </button>
       </div>
     </div>
@@ -219,7 +265,7 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
       ) : null}
       <div className="proxy-live-notification-actions">
         <button type="button" className="coreui-btn coreui-btn-small coreui-btn-ghost" onClick={onOpenLlmProxyTrace}>
-          Proxy Trace
+          Traces
         </button>
       </div>
     </div>
@@ -287,7 +333,9 @@ function renderClawWindDownCard(endsAt, snap, onOpenClawTraces, onOpenClawJourna
   );
 }
 
-function renderClawLiveCard(latest, active, onOpenClawTraces, onOpenClawJournal, onOpenClawProxyTools) {
+function ClawLiveActiveCard({ latest, onOpenClawTraces, onOpenClawJournal, onOpenClawProxyTools }) {
+  const active = latest.final === false;
+  const stepElapsedMs = useClawStepElapsedMs(latest, active);
   const tid = (latest.trace_id && String(latest.trace_id).slice(0, 8)) || '—';
   const steps = latest.step_count;
   const model = latest.resolved_model != null && latest.resolved_model !== '' ? String(latest.resolved_model) : '—';
@@ -295,7 +343,9 @@ function renderClawLiveCard(latest, active, onOpenClawTraces, onOpenClawJournal,
   const liveFields = getClawTraceNotificationFields(latest);
   return (
     <div className="claw-live-notification notification-proxy-embed">
-      {active ? <ClawTraceTaskStepBlock showPulse fields={liveFields} /> : null}
+      {active ? (
+        <ClawTraceTaskStepBlock showPulse fields={liveFields} stepElapsedMs={stepElapsedMs} />
+      ) : null}
       <ClawTraceUsageCapsulesRow trace={latest} />
       <div className="proxy-live-notification-row">
         <span className="proxy-live-notification-label">Trace</span>
@@ -679,12 +729,13 @@ export default function ProxiesLiveNotificationBridge({
           id: proxyLiveSlotId('claw', tk),
           source: 'claw-proxy',
           headerLeading: CLAW_CODE_HEADER_ICON,
-          node: renderClawLiveCard(
-            latest,
-            latest.final === false,
-            onOpenClawTraces,
-            onOpenClawJournal,
-            onOpenClawProxyTools,
+          node: (
+            <ClawLiveActiveCard
+              latest={latest}
+              onOpenClawTraces={onOpenClawTraces}
+              onOpenClawJournal={onOpenClawJournal}
+              onOpenClawProxyTools={onOpenClawProxyTools}
+            />
           ),
         });
       }

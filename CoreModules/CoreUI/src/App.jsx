@@ -260,7 +260,7 @@ function App() {
 
   const handleOpenLlmProxyTrace = useCallback(() => {
     setActiveTab("rag-fusion-proxy");
-    setLlmProxyFocusSubTab("proxy-trace");
+    setLlmProxyFocusSubTab("traces");
   }, []);
 
   const handleOpenLlmProxyAutocomplete = useCallback(() => {

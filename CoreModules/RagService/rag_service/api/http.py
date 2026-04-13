@@ -150,11 +150,21 @@ def create_app(
             }],
         }
         if include_rag_metadata and rag_ctx_for_log:
-            response_data["rag_metadata"] = {
+            _rm: dict[str, object] = {
                 "chunks_info": rag_ctx_for_log.chunks_info,
                 "max_score": rag_ctx_for_log.max_score,
                 "chunks_count": len(rag_ctx_for_log.chunks_info),
             }
+            _rt = getattr(rag_ctx_for_log, "rag_trace", None)
+            if isinstance(_rt, list):
+                _rm["rag_trace"] = _rt
+            _cr = getattr(rag_ctx_for_log, "coverage_report", None)
+            if isinstance(_cr, dict):
+                _rm["coverage_report"] = _cr
+            _rq = getattr(rag_ctx_for_log, "rag_quality", None)
+            if isinstance(_rq, dict):
+                _rm["rag_quality"] = _rq
+            response_data["rag_metadata"] = _rm
         return jsonify(response_data)
 
     return app

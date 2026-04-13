@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import LlmProxyWebInteractionPanel from './LlmProxyWebInteractionPanel';
-import ProxyTraceTab from './ProxyTraceTab';
+import ClawProxyTracesTab from './ClawProxyTracesTab';
+import ClawProxyJournalTab from './ClawProxyJournalTab';
 import { getLlmProxyStatus } from '../services/api';
 import '../styles/components/SettingsTab.css';
 import '../styles/components/DashboardTab.css';
@@ -18,7 +19,8 @@ function kvRow(label, value, key) {
 
 const SUB_TABS = [
   { id: 'overview', label: 'Overview' },
-  { id: 'proxy-trace', label: 'Proxy Trace' },
+  { id: 'traces', label: 'Traces' },
+  { id: 'journal', label: 'Journal' },
   { id: 'web-interaction', label: 'Web Interaction' },
 ];
 
@@ -61,7 +63,7 @@ function LlmProxyTab({
   }, [focusSubTab, onFocusSubTabConsumed]);
 
   return (
-    <div className="settings-tab llm-proxy-tab">
+    <div className="settings-tab settings-tab--fullwidth llm-proxy-tab">
       <div className="llm-proxy-header">
         <div className="llm-proxy-header-row">
           <h2>RAG Fusion Proxy</h2>
@@ -226,8 +228,8 @@ function LlmProxyTab({
               </li>
               <li>
                 <strong>Response</strong>: JSON (or stream) with assistant content, model id, usage approximations, and
-                optional RAG trace when requested. The <strong>Proxy Trace</strong> sub-tab shows per-request timings;
-                this section describes the static algorithm they reflect.
+                optional RAG trace when requested. The <strong>Traces</strong> and <strong>Journal</strong> sub-tabs show
+                in-memory snapshots and persisted proxy runs; this section describes the static algorithm they reflect.
               </li>
             </ol>
           </details>
@@ -260,7 +262,9 @@ function LlmProxyTab({
         </div>
       )}
 
-      {subTab === 'proxy-trace' && <ProxyTraceTab />}
+      {subTab === 'traces' && <ClawProxyTracesTab variant="ragFusion" />}
+
+      {subTab === 'journal' && <ClawProxyJournalTab variant="ragFusion" />}
 
       {subTab === 'web-interaction' && <LlmProxyWebInteractionPanel />}
     </div>

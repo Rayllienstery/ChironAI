@@ -128,6 +128,13 @@ def clawcode_status():
         return jsonify({"available": False, "reason": str(e)}), 200
 
 
+def _annotate_claw_trace_row(rec: dict) -> dict:
+    """Copy trace dict and mark optimistic queue pulses (not final outcomes, not journal-persisted)."""
+    out = dict(rec)
+    out["is_optimistic_pulse"] = bool(rec.get("journal_skip"))
+    return out
+
+
 @clawcode_bp.get("/traces")
 def clawcode_traces():
     if not _ensure_clawcode_path():
@@ -139,7 +146,11 @@ def clawcode_traces():
         limit = 40
     from clawcode.trace_store import recent
 
-    return jsonify({"available": True, "traces": list(reversed(recent(limit)))})
+    rows = list(reversed(recent(limit)))
+    omit_pulse = (request.args.get("omit_pulse") or "").strip().lower() in ("1", "true", "yes", "on")
+    if omit_pulse:
+        rows = [r for r in rows if isinstance(r, dict) and not r.get("journal_skip")]
+    return jsonify({"available": True, "traces": [_annotate_claw_trace_row(r) if isinstance(r, dict) else r for r in rows]})
 
 
 @clawcode_bp.post("/traces/clear")
@@ -393,6 +404,57 @@ def clawcode_skills_list():
         return jsonify({"ok": True, "skills": skills})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e), "skills": []}), 500
+
+
+_MAX_SKILL_MD_BYTES = 512_000
+
+
+@clawcode_bp.get("/skills/skill-md")
+def clawcode_skills_skill_md():
+    """Read-only SKILL.md for Model Tester / debug (by skill_id or invocation query)."""
+    if not _ensure_clawcode_path():
+        return jsonify({"ok": False, "error": "clawcode unavailable"}), 400
+    skill_id = (request.args.get("skill_id") or "").strip()
+    invocation = (request.args.get("invocation") or "").strip()
+    if not skill_id and not invocation:
+        return jsonify({"ok": False, "error": "skill_id or invocation is required"}), 400
+    try:
+        from infrastructure.database import get_settings_repository
+
+        from clawcode.skills_registry import load_skills_registry
+
+        repo = get_settings_repository()
+        registry = load_skills_registry(repo)
+        rec = None
+        if skill_id and skill_id in registry:
+            rec = registry[skill_id]
+        elif invocation:
+            inv_l = invocation.lower()
+            for r in registry.values():
+                if (r.invocation_name or "").strip().lower() == inv_l or r.id == invocation:
+                    rec = r
+                    break
+        if rec is None:
+            return jsonify({"ok": False, "error": "skill not found"}), 404
+        skill_path = Path(str(rec.installed_path)) / "SKILL.md"
+        if not skill_path.is_file():
+            return jsonify({"ok": False, "error": "SKILL.md missing"}), 404
+        raw = skill_path.read_bytes()
+        truncated = len(raw) > _MAX_SKILL_MD_BYTES
+        if truncated:
+            raw = raw[:_MAX_SKILL_MD_BYTES]
+        content = raw.decode("utf-8", errors="replace")
+        return jsonify(
+            {
+                "ok": True,
+                "skill_id": rec.id,
+                "invocation_name": rec.invocation_name,
+                "content": content,
+                "truncated": truncated,
+            }
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @clawcode_bp.post("/skills/install")

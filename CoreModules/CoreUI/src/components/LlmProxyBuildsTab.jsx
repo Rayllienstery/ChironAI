@@ -790,7 +790,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   maxWidth: '42rem',
                 }}
               >
-                No proxy rows in the logs database, no Proxy Trace snapshot for this request, and no live or history
+                No proxy rows in the logs database, no live trace snapshot for this request, and no live or history
                 entries in Notifications. Claw builds also skip the in-memory trace buffer and Claw journal rows.
                 Does not affect Ollama or OS-level logging.
               </p>

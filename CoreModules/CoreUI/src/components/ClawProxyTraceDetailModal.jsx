@@ -27,11 +27,14 @@ function isClawTraceStyleLog(log, meta) {
 
 export function ClawTraceStepBlock({ step, index }) {
   if (!step || typeof step !== 'object') return null;
-  const kind = step.kind || 'unknown';
+  const kind = step.kind;
+  const label =
+    kind ||
+    (step.name != null && String(step.name).trim() !== '' ? String(step.name) : 'unknown');
   return (
     <details className="dashboard-trace-item" style={{ marginBottom: 8 }}>
       <summary>
-        Step {index + 1}: <code>{kind}</code>
+        Step {index + 1}: <code>{label}</code>
         {step.step != null ? ` (agent step ${step.step})` : ''}
         {step.ok === false ? ' · failed' : ''}
       </summary>
@@ -135,12 +138,26 @@ export function ClawTraceStepBlock({ step, index }) {
         {(kind === 'tool_unhandled' || kind === 'config_error') && (
           <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(step, null, 2)}</pre>
         )}
+        {!kind && step.name != null && String(step.name).trim() !== '' && (
+          <>
+            <p>
+              <strong>Duration:</strong> {step.duration_ms != null ? `${step.duration_ms} ms` : '—'}
+            </p>
+            {(step.tokens_in_est != null || step.tokens_out_est != null) && (
+              <p className="dashboard-card-muted" style={{ fontSize: 12 }}>
+                Token est.: in {step.tokens_in_est ?? '—'} · out {step.tokens_out_est ?? '—'}
+              </p>
+            )}
+            <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, marginTop: 8 }}>{JSON.stringify(step, null, 2)}</pre>
+          </>
+        )}
         {kind !== 'model_call' &&
           kind !== 'tool_rag' &&
           kind !== 'tool_skill' &&
           kind !== 'tool_pass_through' &&
           kind !== 'tool_unhandled' &&
-          kind !== 'config_error' && (
+          kind !== 'config_error' &&
+          !(step.name != null && String(step.name).trim() !== '' && !kind) && (
             <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(step, null, 2)}</pre>
           )}
       </div>

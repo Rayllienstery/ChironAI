@@ -308,6 +308,46 @@ export async function getProxyTraceCurrent() {
   return response.json();
 }
 
+export async function getProxyTraces(limit = 40) {
+  const response = await fetch(`${API_BASE}/proxy-traces?limit=${encodeURIComponent(limit)}`);
+  if (!response.ok) {
+    throw new Error('Failed to get proxy traces');
+  }
+  return response.json();
+}
+
+export async function clearProxyTraces() {
+  const response = await fetch(`${API_BASE}/proxy-traces/clear`, { method: 'POST' });
+  if (!response.ok) {
+    throw new Error('Failed to clear proxy traces');
+  }
+  return response.json();
+}
+
+export async function getProxyJournal(options = {}) {
+  const params = new URLSearchParams();
+  const { limit, since_id, from, to } = options;
+  if (limit != null) params.set('limit', String(limit));
+  if (since_id != null) params.set('since_id', String(since_id));
+  if (from != null && from !== '') params.set('from', from);
+  if (to != null && to !== '') params.set('to', to);
+  const response = await fetch(`${API_BASE}/proxy-journal?${params}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Failed to load proxy journal');
+  }
+  return data;
+}
+
+export async function clearProxyJournal() {
+  const response = await fetch(`${API_BASE}/proxy-journal`, { method: 'DELETE' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Failed to clear proxy journal');
+  }
+  return data;
+}
+
 export async function getSettings() {
   const response = await fetch(`${API_BASE}/settings`);
   if (!response.ok) {
@@ -1528,6 +1568,21 @@ export async function disableClawCodeSkill(skillId) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.ok) {
     throw new Error(data.error || 'Failed to disable skill');
+  }
+  return data;
+}
+
+/** Load SKILL.md for Model Tester (skill_id and/or invocation query). */
+export async function fetchClawCodeSkillMarkdown({ skillId, invocation } = {}) {
+  const params = new URLSearchParams();
+  if (skillId) params.set('skill_id', String(skillId));
+  if (invocation) params.set('invocation', String(invocation));
+  const q = params.toString();
+  if (!q) throw new Error('skill_id or invocation is required');
+  const response = await fetch(`${CLAWCODE_BASE}/skills/skill-md?${q}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Failed to load SKILL.md');
   }
   return data;
 }

@@ -131,7 +131,7 @@ def test_build_rag_context_with_custom_keywords_uses_rag_when_match() -> None:
 
 
 def test_search_rag_returns_list() -> None:
-    results, timings = search_rag("SwiftUI View", MockRagRepo(), MockEmbed(), MockRerank())
+    results, timings, _pool = search_rag("SwiftUI View", MockRagRepo(), MockEmbed(), MockRerank())
     assert isinstance(results, list)
     assert len(results) >= 1
     assert (

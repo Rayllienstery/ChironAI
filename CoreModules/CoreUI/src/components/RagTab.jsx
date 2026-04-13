@@ -24,8 +24,111 @@ import {
 } from '../services/api';
 import { useMergedPipelinePreview } from '../hooks/useMergedPipelinePreview';
 import PipelineCiDiagram from './PipelineCiDiagram';
+import RagTraceTimeline, {
+  CHIRONAI_RAG_TRACE_EVENT,
+  CHIRONAI_RAG_TRACE_STORAGE_KEY,
+} from './RagTraceTimeline';
+import RagPipelineOverview from './RagPipelineOverview';
 import '../styles/components/CoreUIButtons.css';
 import '../styles/components/RagTab.css';
+
+/** Keys must match `application/rag/retrieval_ui_overrides.RETRIEVAL_UI_BOOL_KEYS` and API. */
+const ADVANCED_RETRIEVAL_OPTIONS = [
+  {
+    key: 'structured_rag_context_enabled',
+    label: 'Structured RAG context (Concepts / Evidence)',
+    cost: 'very_low',
+    costLabel: 'Negligible cost',
+    lines: [
+      {
+        tag: 'Pro',
+        text: 'Clearer prompt layout for the model; good first toggle when answers feel “blobby”.',
+      },
+      {
+        tag: 'Con',
+        text: 'A few extra heading lines in the context; no extra Qdrant or embed calls.',
+      },
+    ],
+  },
+  {
+    key: 'coverage_aware_selection',
+    label: 'Coverage-aware chunk selection',
+    cost: 'low',
+    costLabel: 'Low cost',
+    lines: [
+      {
+        tag: 'Pro',
+        text: 'When the question implies several ideas, chunks span more distinct concepts instead of repeating one topic.',
+      },
+      {
+        tag: 'Con',
+        text: 'May swap in slightly lower-similarity snippets for breadth; tune with final_context_k in YAML.',
+      },
+    ],
+  },
+  {
+    key: 'coverage_gate_enabled',
+    label: 'Coverage gate (widen chunk budget)',
+    cost: 'low',
+    costLabel: 'Low when it runs',
+    lines: [
+      {
+        tag: 'Pro',
+        text: 'If inferred concepts are under-represented in the first cut, take more chunks from the same rerank pool—no second embed of the main query.',
+      },
+      {
+        tag: 'Con',
+        text: 'Larger context → more tokens and latency; only runs when heuristics find targets and coverage ratio is below the YAML threshold.',
+      },
+    ],
+  },
+  {
+    key: 'concept_expansion_enabled',
+    label: 'Concept expansion (second vector pass)',
+    cost: 'medium',
+    costLabel: 'Medium cost',
+    lines: [
+      {
+        tag: 'Pro',
+        text: 'Broadens recall for concurrency, APIs, and mapped synonyms (concept_expansion_map)—helps “near miss” queries.',
+      },
+      {
+        tag: 'Con',
+        text: 'Extra embed + Qdrant search per request when enabled; a loose map adds noise.',
+      },
+    ],
+  },
+  {
+    key: 'coverage_retry_supplemental_search_enabled',
+    label: 'Supplemental search for missing concepts',
+    cost: 'high',
+    costLabel: 'High cost',
+    lines: [
+      {
+        tag: 'Pro',
+        text: 'Last resort when coverage is still poor: another search biased with missing terms, then rerank again—fills holes the first pass missed.',
+      },
+      {
+        tag: 'Con',
+        text: 'Roughly doubles retrieval work when it fires (embed + search + rerank again). Use when quality gaps justify latency, not for every deployment.',
+      },
+    ],
+  },
+];
+
+function readMirroredRagTraceFromStorage() {
+  try {
+    const raw = sessionStorage.getItem(CHIRONAI_RAG_TRACE_STORAGE_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (Array.isArray(o.trace) && o.trace.length > 0) {
+      return { steps: o.trace, latencyMs: o.latencyMs ?? null };
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return null;
+}
 
 function wordsInMultipleCollections(collections) {
   const wordToCollections = new Map();
@@ -82,11 +185,23 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
     hybrid_sparse_enabled: true,
     rerank_for_rag: false,
     rerank_model: '',
+    coverage_aware_selection: false,
+    concept_expansion_enabled: false,
+    coverage_gate_enabled: false,
+    coverage_retry_supplemental_search_enabled: false,
+    structured_rag_context_enabled: false,
   });
   const [ragModelDefaults, setRagModelDefaults] = useState({
     rag_embed_model: '',
     hybrid_sparse_enabled: true,
     rerank_model: '',
+  });
+  const [retrievalYamlDefaults, setRetrievalYamlDefaults] = useState({
+    coverage_aware_selection: false,
+    concept_expansion_enabled: false,
+    coverage_gate_enabled: false,
+    coverage_retry_supplemental_search_enabled: false,
+    structured_rag_context_enabled: false,
   });
   const [ragModelSaving, setRagModelSaving] = useState(false);
   const [ragModelSaveNotice, setRagModelSaveNotice] = useState(null);
@@ -103,6 +218,29 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
     liveHybridSparse: ragModelSettings.hybrid_sparse_enabled,
     liveRerankForRag: ragModelSettings.rerank_for_rag,
   });
+
+  const [mirroredPipelineTrace, setMirroredPipelineTrace] = useState(readMirroredRagTraceFromStorage);
+
+  useEffect(() => {
+    const onTrace = (e) => {
+      const d = e?.detail;
+      if (d && Array.isArray(d.trace) && d.trace.length > 0) {
+        setMirroredPipelineTrace({ steps: d.trace, latencyMs: d.latencyMs ?? null });
+      }
+    };
+    window.addEventListener(CHIRONAI_RAG_TRACE_EVENT, onTrace);
+    return () => window.removeEventListener(CHIRONAI_RAG_TRACE_EVENT, onTrace);
+  }, []);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        setMirroredPipelineTrace(readMirroredRagTraceFromStorage());
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
 
   useEffect(() => {
     if (!scrollToModelsSection) return undefined;
@@ -159,11 +297,25 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
         hybrid_sparse_enabled: data?.defaults?.hybrid_sparse_enabled !== false,
         rerank_model: (data?.defaults?.rerank_model || '').trim(),
       });
+      const ra = data?.retrieval_advanced || {};
+      const ryd = data?.retrieval_yaml_defaults || {};
+      setRetrievalYamlDefaults({
+        coverage_aware_selection: Boolean(ryd.coverage_aware_selection),
+        concept_expansion_enabled: Boolean(ryd.concept_expansion_enabled),
+        coverage_gate_enabled: Boolean(ryd.coverage_gate_enabled),
+        coverage_retry_supplemental_search_enabled: Boolean(ryd.coverage_retry_supplemental_search_enabled),
+        structured_rag_context_enabled: Boolean(ryd.structured_rag_context_enabled),
+      });
       setRagModelSettings({
         rag_embed_model: data?.rag_embed_model || '',
         hybrid_sparse_enabled: data?.hybrid_sparse_enabled !== false,
         rerank_for_rag: Boolean(data?.rerank_for_rag),
         rerank_model: data?.rerank_model || '',
+        coverage_aware_selection: Boolean(ra.coverage_aware_selection),
+        concept_expansion_enabled: Boolean(ra.concept_expansion_enabled),
+        coverage_gate_enabled: Boolean(ra.coverage_gate_enabled),
+        coverage_retry_supplemental_search_enabled: Boolean(ra.coverage_retry_supplemental_search_enabled),
+        structured_rag_context_enabled: Boolean(ra.structured_rag_context_enabled),
       });
     } catch (e) {
       setError(e.message);
@@ -367,6 +519,13 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
         hybrid_sparse_enabled: Boolean(ragModelSettings.hybrid_sparse_enabled),
         rerank_for_rag: Boolean(ragModelSettings.rerank_for_rag),
         rerank_model: ragModelSettings.rerank_model || '',
+        coverage_aware_selection: Boolean(ragModelSettings.coverage_aware_selection),
+        concept_expansion_enabled: Boolean(ragModelSettings.concept_expansion_enabled),
+        coverage_gate_enabled: Boolean(ragModelSettings.coverage_gate_enabled),
+        coverage_retry_supplemental_search_enabled: Boolean(
+          ragModelSettings.coverage_retry_supplemental_search_enabled,
+        ),
+        structured_rag_context_enabled: Boolean(ragModelSettings.structured_rag_context_enabled),
       });
       await loadRagModelSettings();
       await reloadPipelinePreview();
@@ -576,6 +735,55 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
           )}
         </div>
       )}
+
+      <section
+        className="rag-pipeline-overview-section"
+        aria-labelledby="rag-pipeline-overview-heading"
+      >
+        <h3 id="rag-pipeline-overview-heading" className="rag-pipeline-mirror-title">
+          RAG pipeline map (how it runs, in order)
+        </h3>
+        <p className="rag-pipeline-mirror-hint">
+          This is a <strong>static</strong> description of the server-side retrieval path: the same sequence applies to
+          every RAG-backed request; only the timings and which optional branches actually run change per call.{' '}
+          <strong>Highlighting</strong> reflects your current <strong>Models for RAG / Qdrant</strong> card (saved flags):{' '}
+          <span className="rag-pipeline-legend rag-pipeline-legend--core">always runs</span>
+          {' · '}
+          <span className="rag-pipeline-legend rag-pipeline-legend--on">optional, on</span>
+          {' · '}
+          <span className="rag-pipeline-legend rag-pipeline-legend--off">optional, off</span>
+          . Sub-badges (e.g. hybrid sparse, structured layout) apply on top of a core step. The live trace merges
+          gate/retry hints into <strong>Context assembly</strong>; this map lists every stage. For timings, use{' '}
+          <strong>Testing</strong> → Model Tester with <strong>Use RAG</strong>.
+        </p>
+        <RagPipelineOverview pipelineSettings={ragModelSettings} />
+      </section>
+
+      <section
+        className="rag-pipeline-mirror-section"
+        aria-labelledby="rag-pipeline-mirror-heading"
+      >
+        <h3 id="rag-pipeline-mirror-heading" className="rag-pipeline-mirror-title">
+          Last run timeline (with timings)
+        </h3>
+        <p className="rag-pipeline-mirror-hint">
+          Send a message in <strong>Testing</strong> → <strong>Model Tester</strong> with <strong>Use RAG</strong>{' '}
+          enabled. The live timeline appears there immediately; this card mirrors the <strong>most recent</strong>{' '}
+          captured trace (per-step latency and skip reasons when applicable).
+        </p>
+        {mirroredPipelineTrace?.steps?.length > 0 ? (
+          <RagTraceTimeline
+            steps={mirroredPipelineTrace.steps}
+            title="Last RAG pipeline"
+            totalLatencyMs={mirroredPipelineTrace.latencyMs ?? undefined}
+          />
+        ) : (
+          <p className="rag-pipeline-mirror-empty">
+            No trace yet — open Testing, enable Use RAG, send a message, then return here or stay on Testing to see
+            steps.
+          </p>
+        )}
+      </section>
 
       <section
         id="rag-consumer-bindings-section"
@@ -1003,6 +1211,50 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
             You can pick a rerank model even when Enabled is off; it is used only after you turn rerank on. Enabled
             rerank improves quality but slows down requests — prefer a dedicated (smaller) rerank model.
           </p>
+
+          <div style={{ height: 20 }} />
+
+          <h4 className="rag-trigger-test-title" style={{ marginBottom: 8 }}>
+            Retrieval quality &amp; coverage
+          </h4>
+          <p className="rag-adv-retrieval-intro">
+            Stored in proxy settings; they override <code>retrieval.yaml</code> on this server. Listed{' '}
+            <strong>cheapest → most expensive</strong> (badge on the right). Each row has a <strong>Pro</strong>{' '}
+            (why turn it on) and <strong>Con</strong> (price or risk). All default <strong>off</strong> in YAML until you
+            enable them here or in the file. Numeric thresholds stay in YAML only. Save with <strong>Save Models</strong>{' '}
+            together with embedding / hybrid / rerank.
+          </p>
+          {ADVANCED_RETRIEVAL_OPTIONS.map((opt) => (
+            <div key={opt.key} className="rag-adv-option">
+              <div className="rag-adv-option-head">
+                <label htmlFor={`rag-adv-${opt.key}`}>
+                  <input
+                    id={`rag-adv-${opt.key}`}
+                    type="checkbox"
+                    checked={Boolean(ragModelSettings[opt.key])}
+                    onChange={(e) =>
+                      setRagModelSettings((prev) => ({ ...prev, [opt.key]: e.target.checked }))
+                    }
+                  />
+                  {opt.label}
+                </label>
+                <span className={`rag-adv-cost rag-adv-cost--${opt.cost}`}>{opt.costLabel}</span>
+              </div>
+              <div className="rag-adv-option-body">
+                {opt.lines.map((ln) => (
+                  <span key={ln.tag} style={{ display: 'block', marginBottom: 4 }}>
+                    <strong>{ln.tag}:</strong> {ln.text}
+                  </span>
+                ))}
+                <span className="rag-adv-yaml-hint">
+                  <code>retrieval.yaml</code> default:{' '}
+                  {retrievalYamlDefaults[opt.key] ? 'On' : 'Off'}
+                  {' '}
+                  (before any value saved here)
+                </span>
+              </div>
+            </div>
+          ))}
 
           <div style={{ marginTop: 12 }}>
             <button

@@ -107,13 +107,6 @@
   margin-right: 12px;
 }
 
-/* Nested Proxy Trace: main tab already has header + sub-tabs; avoid fixed full-viewport height */
-.llm-proxy-tab .proxy-trace-tab {
-  height: auto;
-  min-height: 420px;
-  max-height: calc(100vh - 200px);
-}
-
 .llm-proxy-web-panel .form-actions {
   margin-top: var(--md-sys-spacing-lg);
 }

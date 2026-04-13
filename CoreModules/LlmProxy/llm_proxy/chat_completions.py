@@ -112,7 +112,9 @@ def _rag_request_completed_payload(
     query_hash = hashlib.sha256((user_query or "").encode()).hexdigest()[:16]
     chunks_count = len(rag_context_for_obs.chunks_info) if rag_context_for_obs else 0
     max_score = float(rag_context_for_obs.max_score) if rag_context_for_obs else 0.0
-    return {
+    rag_quality = getattr(rag_context_for_obs, "rag_quality", None)
+    cov_rep = getattr(rag_context_for_obs, "coverage_report", None)
+    out: dict[str, Any] = {
         "event": "rag_request_completed",
         "query_hash": query_hash,
         "trace_id": trace_id,
@@ -129,6 +131,11 @@ def _rag_request_completed_payload(
         "rag_steps": dict(rag_timings or {}),
         "web_supplement_used": _web_supplement_used_from_trace(trace),
     }
+    if isinstance(rag_quality, dict):
+        out["rag_quality"] = rag_quality
+    if isinstance(cov_rep, dict):
+        out["coverage_ratio"] = cov_rep.get("coverage_ratio")
+    return out
 
 
 _OLLAMA_TRACE_MSG_PREVIEW = 300
@@ -1575,11 +1582,21 @@ def run_chat_completions(
             ],
         }
         if include_rag_metadata and rag_ctx:
-            response_data["rag_metadata"] = {
+            _rm: dict[str, object] = {
                 "chunks_info": rag_ctx.chunks_info,
                 "max_score": rag_ctx.max_score,
                 "chunks_count": len(rag_ctx.chunks_info),
             }
+            _rt = getattr(rag_ctx, "rag_trace", None)
+            if isinstance(_rt, list):
+                _rm["rag_trace"] = _rt
+            _cr = getattr(rag_ctx, "coverage_report", None)
+            if isinstance(_cr, dict):
+                _rm["coverage_report"] = _cr
+            _rq = getattr(rag_ctx, "rag_quality", None)
+            if isinstance(_rq, dict):
+                _rm["rag_quality"] = _rq
+            response_data["rag_metadata"] = _rm
         if not private_build:
             try:
                 session_manager = w.get_session_manager()
@@ -2161,11 +2178,21 @@ def run_chat_completions(
     
     # Add RAG metadata if requested
     if include_rag_metadata and rag_ctx:
-        response_data["rag_metadata"] = {
+        _rm2: dict[str, object] = {
             "chunks_info": rag_ctx.chunks_info,
             "max_score": rag_ctx.max_score,
             "chunks_count": len(rag_ctx.chunks_info),
         }
+        _rt2 = getattr(rag_ctx, "rag_trace", None)
+        if isinstance(_rt2, list):
+            _rm2["rag_trace"] = _rt2
+        _cr2 = getattr(rag_ctx, "coverage_report", None)
+        if isinstance(_cr2, dict):
+            _rm2["coverage_report"] = _cr2
+        _rq2 = getattr(rag_ctx, "rag_quality", None)
+        if isinstance(_rq2, dict):
+            _rm2["rag_quality"] = _rq2
+        response_data["rag_metadata"] = _rm2
 
     # Persist trace for non-stream requests
     if not private_build:

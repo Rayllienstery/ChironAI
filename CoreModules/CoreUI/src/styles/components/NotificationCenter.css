@@ -384,6 +384,19 @@
   word-break: break-word;
 }
 
+.claw-trace-task-step-timer-row {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.claw-trace-task-step-timer-value {
+  font: var(--md-sys-typescale-title-small-font);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--md-sys-color-primary);
+}
+
 .claw-trace-usage-capsules {
   display: flex;
   flex-wrap: wrap;

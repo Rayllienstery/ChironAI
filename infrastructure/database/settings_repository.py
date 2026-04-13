@@ -65,6 +65,14 @@ class SettingsRepository:
                     settings["tester_proxy_mode"] = str(rc_flat.get("tester_proxy_mode") or "").strip() or "rag_fusion"
                 if rc_flat.get("claw_build_id") is not None:
                     settings["claw_build_id"] = str(rc_flat.get("claw_build_id") or "").strip()
+                if "claw_override_rag_collection" in rc_flat:
+                    settings["claw_override_rag_collection"] = str(rc_flat.get("claw_override_rag_collection") or "").strip()
+                if "claw_override_rag_top_k" in rc_flat:
+                    _tk = rc_flat.get("claw_override_rag_top_k")
+                    settings["claw_override_rag_top_k"] = "" if _tk is None else str(_tk)
+                if "claw_override_max_agent_steps" in rc_flat:
+                    _ms = rc_flat.get("claw_override_max_agent_steps")
+                    settings["claw_override_max_agent_steps"] = "" if _ms is None else str(_ms)
             else:
                 settings["rag_collection"] = ""
 
@@ -83,6 +91,26 @@ class SettingsRepository:
         cb = settings.get("claw_build_id")
         if cb is not None:
             rag_config["claw_build_id"] = str(cb or "").strip()
+        if "claw_override_rag_collection" in settings:
+            rag_config["claw_override_rag_collection"] = str(settings.get("claw_override_rag_collection") or "").strip()
+        if "claw_override_rag_top_k" in settings:
+            _tk = settings.get("claw_override_rag_top_k")
+            if _tk is None or (isinstance(_tk, str) and not str(_tk).strip()):
+                rag_config["claw_override_rag_top_k"] = None
+            else:
+                try:
+                    rag_config["claw_override_rag_top_k"] = int(_tk)
+                except (TypeError, ValueError):
+                    rag_config["claw_override_rag_top_k"] = None
+        if "claw_override_max_agent_steps" in settings:
+            _ms = settings.get("claw_override_max_agent_steps")
+            if _ms is None or (isinstance(_ms, str) and not str(_ms).strip()):
+                rag_config["claw_override_max_agent_steps"] = None
+            else:
+                try:
+                    rag_config["claw_override_max_agent_steps"] = int(_ms)
+                except (TypeError, ValueError):
+                    rag_config["claw_override_max_agent_steps"] = None
         rag_config_json = json.dumps(rag_config)
 
         with sqlite3.connect(self.db_path) as conn:

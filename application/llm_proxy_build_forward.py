@@ -18,6 +18,15 @@ _LOG = logging.getLogger(__name__)
 _claw_http_session = requests.Session()
 
 
+def _inject_tester_request_id(payload: dict[str, Any], body: dict[str, Any]) -> dict[str, Any]:
+    tid = body.get("tester_request_id") if isinstance(body, dict) else None
+    if not isinstance(tid, str) or not tid.strip():
+        return payload
+    out = dict(payload)
+    out.setdefault("tester_request_id", tid.strip())
+    return out
+
+
 def _last_user_query_from_messages(messages: Any) -> str:
     if not isinstance(messages, list):
         return ""
@@ -285,10 +294,14 @@ def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
     """
     POST to ClawCode; the forwarded JSON uses the build's concrete Ollama tag as ``model`` (required).
     ClawCode resolves the upstream model from that field (or from RAG/chat config if ``model`` were empty).
+
+    Extended fields (ChironAI, ignored by stock OpenAI clients): optional ``rag_collection`` and
+    ``rag_query_default_top_k`` (merged from the request ``body`` and/or the build). Optional
+    ``claw_override_max_agent_steps`` on ``body`` overrides the build's ``max_agent_steps``.
     """
     ollama_tag = str(build.get("ollama_model") or "").strip()
     if not ollama_tag:
-        return jsonify({"error": "claw build is missing ollama_model"}), 400
+        return jsonify(_inject_tester_request_id({"error": "claw build is missing ollama_model"}, body)), 400
 
     private_build = bool(build.get("private"))
     claw_headers = {"X-Chiron-Private": "1"} if private_build else None
@@ -324,14 +337,59 @@ def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
     if build.get("chat_think") and "think" not in forward:
         forward["think"] = True
 
-    ms = build.get("max_agent_steps")
-    if ms is not None:
+    max_steps_set: int | None = None
+    oms = body.get("claw_override_max_agent_steps") if isinstance(body, dict) else None
+    if oms is not None and str(oms).strip() != "":
         try:
-            n = int(ms)
-            if 1 <= n <= 256:
-                forward["max_agent_steps"] = n
+            n_oms = int(oms)
+            if 1 <= n_oms <= 256:
+                max_steps_set = n_oms
         except (TypeError, ValueError):
             pass
+    if max_steps_set is None:
+        ms = build.get("max_agent_steps")
+        if ms is not None:
+            try:
+                n = int(ms)
+                if 1 <= n <= 256:
+                    max_steps_set = n
+            except (TypeError, ValueError):
+                pass
+    if max_steps_set is not None:
+        forward["max_agent_steps"] = max_steps_set
+
+    # Optional RAG routing for ClawCode rag_query: request body overrides, else build profile.
+    rc_body = ""
+    if isinstance(body, dict):
+        _rc = body.get("rag_collection")
+        if isinstance(_rc, str):
+            rc_body = _rc.strip()
+    if rc_body:
+        forward["rag_collection"] = rc_body
+    else:
+        rc_build = str(build.get("rag_collection") or "").strip()
+        if rc_build:
+            forward["rag_collection"] = rc_build
+
+    rtk_set: int | None = None
+    if isinstance(body, dict) and body.get("rag_query_default_top_k") is not None:
+        try:
+            ntk = int(body["rag_query_default_top_k"])
+            if 1 <= ntk <= 256:
+                rtk_set = ntk
+        except (TypeError, ValueError):
+            pass
+    if rtk_set is None:
+        rtk_b = build.get("rag_top_k")
+        if rtk_b is not None and str(rtk_b).strip() != "":
+            try:
+                ntb = int(rtk_b)
+                if 1 <= ntb <= 256:
+                    rtk_set = ntb
+            except (TypeError, ValueError):
+                pass
+    if rtk_set is not None:
+        forward["rag_query_default_top_k"] = rtk_set
 
     # Build profile always controls whether ClawCode registers rag_query (ignore client override on this hop).
     forward["include_rag_query_tool"] = bool(build.get("rag_enabled", True))
@@ -352,7 +410,9 @@ def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
             stream=True,
         )
     except requests.RequestException as e:
-        return jsonify({"error": f"ClawCode unreachable at {base}: {e}"}), 502
+        return jsonify(
+            _inject_tester_request_id({"error": f"ClawCode unreachable at {base}: {e}"}, body)
+        ), 502
 
     if resp.status_code >= 400:
         try:
@@ -367,7 +427,7 @@ def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
                 msg = str(err or resp.text or "ClawCode error")
         else:
             msg = str(resp.text or "ClawCode error")
-        return jsonify({"error": msg}), 502
+        return jsonify(_inject_tester_request_id({"error": msg}, body)), 502
 
     content_type = (resp.headers.get("Content-Type") or "").lower()
     if "text/event-stream" in content_type:
@@ -397,7 +457,9 @@ def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
     except ValueError:
         data = {}
     if not isinstance(data, dict):
-        return jsonify({"error": "ClawCode returned non-JSON response"}), 502
+        return jsonify(
+            _inject_tester_request_id({"error": "ClawCode returned non-JSON response"}, body)
+        ), 502
 
     latency_ms = int((time.time() - start_time) * 1000)
     if "latency_ms" not in data:
@@ -427,4 +489,5 @@ def forward_claw_build_chat(body: dict[str, Any], build: dict[str, Any]) -> Any:
         except Exception as e:
             _LOG.warning("forward_claw_build_chat: failed to persist proxy log: %s", e)
 
+    data = _inject_tester_request_id(data, body)
     return jsonify(data), 200

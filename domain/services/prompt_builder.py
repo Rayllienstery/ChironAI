@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from domain.services.retrieval import extract_target_concepts_for_coverage
 from domain.value_objects import REASONING_LEVEL_VALUES, ReasoningLevel
 
 # Models that support reasoning levels (GPT-OSS family).
@@ -166,10 +167,15 @@ def build_context_block(
     hits: list[dict[str, Any]],
     chunk_chars: int,
     total_chars: int,
+    *,
+    structured: bool = False,
+    question: str = "",
 ) -> tuple[str, list[dict[str, Any]], float]:
     """
     Build RAG context text and chunks_info from search hits.
     Truncates each chunk at sentence (or line) boundaries to avoid cutting mid-sentence/code.
+    When ``structured`` is True (retrieval.yaml ``structured_rag_context_enabled``), prepend
+    short Concepts / Evidence sections for readability.
     Returns (context_text, chunks_info, max_score).
     """
     if not hits:
@@ -178,6 +184,21 @@ def build_context_block(
     parts: list[str] = []
     chunks_info: list[dict[str, Any]] = []
     total = 0
+    if structured:
+        concepts = extract_target_concepts_for_coverage(question)
+        if concepts:
+            cline = ", ".join(concepts[:24])
+            if len(concepts) > 24:
+                cline += ", …"
+            header_txt = (
+                f"### Concepts (heuristic targets from the question)\n{cline}\n\n### Evidence\n"
+            )
+        else:
+            header_txt = "### Evidence\n"
+        hlen = len(header_txt)
+        if hlen <= total_chars:
+            parts.append(header_txt.rstrip())
+            total += hlen + 2
     for idx, h in enumerate(hits, start=1):
         if total >= total_chars:
             break
@@ -191,8 +212,9 @@ def build_context_block(
         snippet = _truncate_at_boundary(txt, min(chunk_chars, remaining))
         if not snippet:
             continue
-        parts.append(snippet)
-        total += len(snippet) + 2
+        block = f"[{idx}] {snippet}" if structured else snippet
+        parts.append(block)
+        total += len(block) + 2
         score = h.get("score", 0.0)
         rerank_score = h.get("rerank_score")
         section_path = payload.get("section_path") or []
@@ -228,6 +250,7 @@ def build_system_content(
     web_supplement: str | None = None,
     *,
     retrieval_skipped: bool = False,
+    coverage_missing_concepts: list[str] | None = None,
 ) -> str:
     """
     Build final system message: prefix + optional reasoning + primary-task block + delimited
@@ -253,6 +276,14 @@ def build_system_content(
             supplement_parts.append(
                 "Note: Retrieval match quality is low—these snippets may be a weak fit for the question. "
                 "You are still not required to use them; prioritize the user's message and attachments.\n"
+            )
+        miss = [str(x).strip() for x in (coverage_missing_concepts or []) if str(x).strip()]
+        if miss:
+            shown = ", ".join(miss[:12])
+            more = f" (+{len(miss) - 12} more)" if len(miss) > 12 else ""
+            supplement_parts.append(
+                "Note: The following concepts were inferred from the question but were not clearly found in the "
+                f"retrieved snippets: {shown}{more}. Do not invent APIs or behavior for them; say if evidence is missing.\n"
             )
     elif not retrieval_skipped:
         no_hits = (

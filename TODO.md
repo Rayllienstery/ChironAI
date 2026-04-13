@@ -13,7 +13,6 @@
 - [ ] Web framework search - work the same as crawl...
 
 - [ ] Check RAG Quality TASK
-- [x] rag-ollama -> ChironAI-Worker (default logical id `ChironAI-Worker`; `rag-ollama` still accepted)
 - [x] Autocomplete model inside proxy
 - [ ] Crawler / Indexer - улучшить понимание того что было проиндексировано, а что нет - Indexed is ok, but skipped count is mandatory
 - [ ] Indexing debug - why so much <400 chars filtering, probably it is useful files
@@ -39,28 +38,25 @@ Failed to get embeddings for wwdc_sessions_2019_plus/wwdc2023-10241-transcript-e
 - [x] **Сместить цель retrieval: similarity -> coverage**
   - Трактовка: оптимизировать не только семантическую близость чанков, но и полноту ключевых концептов для ответа.
   - Сделано: после rerank — опциональный отбор по покрытию концептов (`coverage_aware_selection` в `retrieval.yaml`, по умолчанию off): `extract_target_concepts_for_coverage` / `select_hits_for_concept_coverage` в `domain/services/retrieval.py`, `_finalize_reranked_hits` в `application/rag/use_cases.py`, усилен `build_rerank_prompt` (`domain/services/rerank.py`), описание в `config/README.md`.
-- [ ] **Добавить слой concept expansion после первого retrieval**
-  - Трактовка: извлекать найденные концепты и расширять их связанными (например `actor -> Sendable, nonisolated, MainActor`), затем догружать вторичный контекст.
-- [ ] **Ввести двухпроходный retrieval**
-  - Трактовка: pass 1 находит тему, pass 2 добирает недостающие связанные концепты.
-- [ ] **Добавить coverage gate перед финальной генерацией**
-  - Трактовка: если `coverage < 0.75`, запускать расширение контекста и только потом финальный ответ.
-- [ ] **Сделать targeted auto-retry при низком coverage**
-  - Трактовка: retry не общий, а только с дозабором missing concepts и одной повторной генерацией.
-- [ ] **Поднять `top_k` контролируемо**
-  - Трактовка: увеличить recall (например до 15-20), но компенсировать шум через дедупликацию и фильтрацию.
-- [ ] **Сжимать и структурировать контекст для LLM**
-  - Трактовка: формировать компактные блоки `Concepts / Relations / Evidence`, чтобы снизить токены и улучшить связность.
-- [ ] **Разделять типы FAIL: retrieval vs reasoning**
-  - Трактовка: если `missing_concepts != []` — проблема retrieval; если coverage полный, но ответ провален — модель/reasoning.
-- [ ] **Усилить prompt-контракт на полноту**
-  - Трактовка: требовать покрытие критичных концептов без превращения ответа в жесткий "мертвый" шаблон.
-- [ ] **Добавить диагностику по каждому запуску**
-  - Трактовка: логировать found/missing concepts, coverage ratio, размер контекста и latency по этапам.
-- [ ] **Считать GPU вторичной оптимизацией на текущем этапе**
-  - Трактовка: сначала улучшать архитектуру retrieval/composition, затем масштабировать железо под throughput.
-- [ ] **Вести A/B оценку на фиксированном наборе из 115 тестов**
-  - Трактовка: измерять accuracy и latency после каждого изменения пайплайна, а не полагаться на субъективные ощущения.
+- [x] **Слой concept expansion после первого retrieval**
+  - Реализовано: `concept_expansion_enabled`, `concept_expansion_map`, семена из вопроса и топовых hit’ов pass 1, лимиты в `config/retrieval.yaml`; `expand_concepts_with_map` / `build_secondary_retrieval_query` в `domain/services/retrieval.py`; слияние и дедуп в `application/rag/use_cases.py`; описание в `config/README.md`.
+- [x] **Двухпроходный retrieval**
+  - Реализовано: pass 1 (embed + Qdrant), при включённом expansion — pass 2 (второй embed + поиск), merge уникальных hit’ов; тайминги и флаги в trace (`concept_expansion_pass2_*`).
+- [x] **Coverage gate перед финальной генерацией**
+  - Сделано: `coverage_gate_enabled`, `coverage_gate_min_percent`, `coverage_gate_boost_final_k`, `coverage_gate_max_final_k` в `retrieval.yaml`; при извлечённых целях и `coverage_ratio` ниже порога — один раз увеличить `final_k` из уже отранжированного пула (`build_rag_context` в `application/rag/use_cases.py`); флаг в таймингах / detail trace.
+- [x] **Targeted retry при низком coverage (retrieval-слой)**
+  - Сделано: `coverage_retry_supplemental_search_enabled` — доп. embed+search по запросу с missing terms, merge в пул, повторный rerank и finalize (`retrieval.yaml`, `use_cases.py`). Отдельный второй вызов chat completion не делался — один проход к модели с улучшенным контекстом.
+- [x] **Поднять `top_k` / глубину контекста контролируемо**
+  - Сделано: по-прежнему `top_k`, `multi_chunk_*`, `final_context_k`, pass2 и т.д. в YAML; плюс адаптивное расширение `final_k` через coverage gate и опциональный supplemental search.
+- [x] **Структурировать контекст для LLM (опционально)**
+  - Сделано: `structured_rag_context_enabled` — блоки Concepts / Evidence и нумерация `[n]` в `build_context_block` (`domain/services/prompt_builder.py` + зеркало в RagService); отдельный блок Relations не вводился (при необходимости — следующий шаг).
+- [x] **Разделять типы FAIL: retrieval vs reasoning (частично)**
+  - Сделано: `rag_metadata.rag_quality` с `failure_class`: `retrieval_gap` при непустых `missing_concepts` в отчёте покрытия, иначе `ok` при наличии целей; structured log `rag_request_completed` — `rag_quality`, `coverage_ratio`. Классификация «ответ модели плох при полном coverage» по-прежнему без автоматики.
+- [x] **Усилить prompt-контракт на полноту / пробелы retrieval**
+  - Сделано: заметка в system message при `missing_concepts` (`build_system_content`), дополнения в `RAG_SYSTEM_PREFIX` (`config/rag_prompts.py`), файл `prompts/system_rag_v1.md`.
+- [x] **Диагностика по каждому запуску (базовый слой)**
+  - Сделано: `rag_metadata.rag_trace` + **`coverage_report`** (targets / covered / missing / `coverage_ratio`) + **`rag_quality`** в прокси / webui / rag_service; в trace context assembly — краткий суффикс (coverage, gate_widen, retry_search); CoreUI: таймлайн, зеркало, карта конвейера на RAG / Qdrant.
+  - Дальше по желанию: явный слой «reasoning fail», Relations в структурированном контексте, второй chat при экстремально низком coverage.
 
 ---
 

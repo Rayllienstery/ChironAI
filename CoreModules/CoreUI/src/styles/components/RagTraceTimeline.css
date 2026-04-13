@@ -1,0 +1,319 @@
+/* Material Dashboard–style vertical timeline (Orders overview inspired) */
+.rag-trace-card {
+  background: var(--dashboard-card-bg, #fff);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  padding: 1rem 1.25rem 1.25rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.06));
+}
+
+.rag-trace-card-header {
+  margin-bottom: 0.75rem;
+}
+
+.rag-trace-card-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary, #1a1a1a);
+  letter-spacing: -0.01em;
+}
+
+.rag-trace-card-subtitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted, #7b809a);
+}
+
+.rag-trace-card-subtitle strong {
+  color: var(--text-primary, #344767);
+  font-weight: 700;
+}
+
+.rag-trace-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
+.rag-trace-list::before {
+  content: "";
+  position: absolute;
+  left: 15px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--border-timeline, #e9ecef);
+  border-radius: 1px;
+}
+
+.rag-trace-item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  position: relative;
+  padding: 0.5rem 0 0.5rem 0;
+  min-height: 48px;
+}
+
+.rag-trace-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  z-index: 1;
+  background: #f8f9fa;
+  color: #344767;
+}
+
+.rag-trace-icon--prep {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.rag-trace-icon--search {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.rag-trace-icon--expand {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
+.rag-trace-icon--meta {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.rag-trace-icon--rerank {
+  background: #fce4ec;
+  color: #c2185b;
+}
+
+.rag-trace-icon--context {
+  background: #eceff1;
+  color: #455a64;
+}
+
+.rag-trace-icon--coverage {
+  background: #e0f7fa;
+  color: #00838f;
+}
+
+.rag-trace-icon--chat {
+  background: #e8eaf6;
+  color: #3949ab;
+}
+
+.rag-trace-icon--metrics {
+  background: #ece7f3;
+  color: #5e35b1;
+}
+
+.rag-trace-icon--gate {
+  background: #fff8e1;
+  color: #f57f17;
+}
+
+.rag-trace-icon--supplemental {
+  background: #fbe9e7;
+  color: #bf360c;
+}
+
+.rag-trace-card--overview {
+  border-style: dashed;
+  border-color: var(--border-subtle, rgba(0, 0, 0, 0.12));
+}
+
+/* Pipeline map: core path vs optional toggles (RagTab overview only) */
+.rag-trace-item--overview-core,
+.rag-trace-item--overview-option_on,
+.rag-trace-item--overview-option_off {
+  margin-left: 2px;
+  padding-left: 10px;
+  border-radius: 0 8px 8px 0;
+  border-left: 3px solid transparent;
+}
+
+.rag-trace-item--overview-core {
+  border-left-color: #43a047;
+  background: rgba(67, 160, 71, 0.06);
+}
+
+.rag-trace-item--overview-option_on {
+  border-left-color: #1e88e5;
+  background: rgba(30, 136, 229, 0.08);
+}
+
+.rag-trace-item--overview-option_off {
+  border-left-color: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.02);
+  opacity: 0.72;
+}
+
+.rag-trace-overview-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.rag-trace-overview-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(30, 136, 229, 0.14);
+  color: #1565c0;
+  border: 1px solid rgba(30, 136, 229, 0.35);
+}
+
+.rag-trace-icon--optional.rag-trace-icon--skip {
+  opacity: 1;
+  filter: none;
+}
+
+.rag-trace-icon--skip {
+  background: #fafafa;
+  color: #9e9e9e;
+}
+
+.rag-trace-body {
+  flex: 1;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.rag-trace-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-primary, #344767);
+  line-height: 1.3;
+}
+
+.rag-trace-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-muted, #7b809a);
+  margin-top: 0.15rem;
+  line-height: 1.35;
+}
+
+@media (prefers-color-scheme: dark) {
+  .rag-trace-card {
+    background: var(--dashboard-card-bg, #1e1e1e);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  }
+
+  .rag-trace-card-title {
+    color: var(--text-primary, #e8e8e8);
+  }
+
+  .rag-trace-list::before {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .rag-trace-title {
+    color: var(--text-primary, #e8e8e8);
+  }
+
+  .rag-trace-subtitle {
+    color: var(--text-muted, #a0a0a0);
+  }
+
+  .rag-trace-icon {
+    background: #2a2a2a;
+    color: #ccc;
+  }
+
+  .rag-trace-icon--prep {
+    background: #1b3d1f;
+    color: #81c784;
+  }
+
+  .rag-trace-icon--search {
+    background: #1a2f4a;
+    color: #64b5f6;
+  }
+
+  .rag-trace-icon--expand {
+    background: #3d2e1a;
+    color: #ffb74d;
+  }
+
+  .rag-trace-icon--meta {
+    background: #2d1f3d;
+    color: #ce93d8;
+  }
+
+  .rag-trace-icon--rerank {
+    background: #3d1f2a;
+    color: #f48fb1;
+  }
+
+  .rag-trace-icon--context {
+    background: #2a3033;
+    color: #90a4ae;
+  }
+
+  .rag-trace-icon--coverage {
+    background: #1a3336;
+    color: #4dd0e1;
+  }
+
+  .rag-trace-icon--chat {
+    background: #252838;
+    color: #9fa8da;
+  }
+
+  .rag-trace-icon--metrics {
+    background: #2a2440;
+    color: #b39ddb;
+  }
+
+  .rag-trace-icon--gate {
+    background: #3d3518;
+    color: #ffd54f;
+  }
+
+  .rag-trace-icon--supplemental {
+    background: #3d241f;
+    color: #ffab91;
+  }
+
+  .rag-trace-icon--skip {
+    background: #2a2a2a;
+    color: #888;
+  }
+
+  .rag-trace-item--overview-core {
+    border-left-color: #66bb6a;
+    background: rgba(102, 187, 106, 0.12);
+  }
+
+  .rag-trace-item--overview-option_on {
+    border-left-color: #64b5f6;
+    background: rgba(100, 181, 246, 0.1);
+  }
+
+  .rag-trace-item--overview-option_off {
+    border-left-color: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.03);
+    opacity: 0.65;
+  }
+
+  .rag-trace-overview-badge {
+    background: rgba(100, 181, 246, 0.18);
+    color: #90caf9;
+    border-color: rgba(100, 181, 246, 0.35);
+  }
+}

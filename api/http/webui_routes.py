@@ -209,7 +209,13 @@ from api.http.proxy_status import (
     STATUS_PREPARING_RESPONSE,
     STATUS_RESPONSE,
 )
-from api.http.proxy_trace import get_current_trace, get_current_trace_updated_at
+from api.http.proxy_trace import (
+    annotate_proxy_trace_for_ui,
+    clear_proxy_trace_buffer,
+    get_current_trace,
+    get_current_trace_updated_at,
+    recent_proxy_traces,
+)
 
 import requests
 
@@ -1004,6 +1010,76 @@ def get_proxy_trace_current() -> Any:
         return jsonify({"error": str(e)}), 500
 
 
+@webui_bp.route("/proxy-traces", methods=["GET"])
+def get_proxy_traces() -> Any:
+    """Ring-buffer snapshots of LLM proxy traces (RAG Fusion Proxy → Traces), Claw-shaped JSON."""
+    try:
+        lim_raw = request.args.get("limit", "40")
+        limit = max(1, min(200, int(lim_raw)))
+    except (TypeError, ValueError):
+        limit = 40
+    try:
+        rows = list(reversed(recent_proxy_traces(limit)))
+        traces = [
+            annotate_proxy_trace_for_ui(r) if isinstance(r, dict) else r for r in rows
+        ]
+        return jsonify({"available": True, "traces": traces})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_proxy_traces", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/proxy-traces/clear", methods=["POST"])
+def post_proxy_traces_clear() -> Any:
+    try:
+        clear_proxy_trace_buffer()
+        return jsonify({"ok": True})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.post_proxy_traces_clear", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/proxy-journal", methods=["GET"])
+def get_proxy_journal() -> Any:
+    """Persisted proxy request rows only (session_id=proxy), not merged with ClawCode."""
+    try:
+        lim_raw = request.args.get("limit", "200")
+        limit = max(1, min(5000, int(lim_raw)))
+    except (TypeError, ValueError):
+        limit = 200
+    since_id = request.args.get("since_id")
+    from_date = (request.args.get("from") or "").strip() or None
+    to_date = (request.args.get("to") or "").strip() or None
+    try:
+        logs_repo = get_logs_repository()
+        logs = logs_repo.get_logs(
+            session_id="proxy",
+            level="INFO",
+            limit=limit,
+            since_id=int(since_id) if since_id else None,
+            source="proxy",
+            include_system=False,
+            from_date=from_date,
+            to_date=to_date,
+        )
+        return jsonify({"ok": True, "logs": logs})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_proxy_journal", exc_info=True)
+        return jsonify({"ok": False, "logs": [], "error": str(e)}), 500
+
+
+@webui_bp.route("/proxy-journal", methods=["DELETE"])
+def delete_proxy_journal() -> Any:
+    """Delete persisted proxy log rows (same scope as DELETE /proxy-logs without autocomplete filter)."""
+    try:
+        logs_repo = get_logs_repository()
+        deleted = logs_repo.delete_proxy_logs(autocomplete_only=False)
+        return jsonify({"ok": True, "deleted_count": deleted})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.delete_proxy_journal", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @webui_bp.route("/logs", methods=["POST"])
 def create_log() -> Any:
     """Create a log entry."""
@@ -1338,7 +1414,7 @@ def webui_chat() -> Any:
             if len(ollama_messages[0].get("content", "")) > 500:
                 system_preview += "..."
             
-            response_data["rag_metadata"] = {
+            _rm: dict[str, Any] = {
                 "chunks_info": ctx.chunks_info,
                 "max_score": ctx.max_score,
                 "chunks_count": len(ctx.chunks_info),
@@ -1347,6 +1423,16 @@ def webui_chat() -> Any:
                 "system_prompt_preview": system_preview,
                 "rag_queries": [{"query": (last_user or "")[:2000], "step": 0}],
             }
+            _rt = getattr(ctx, "rag_trace", None)
+            if isinstance(_rt, list):
+                _rm["rag_trace"] = _rt
+            _cr = getattr(ctx, "coverage_report", None)
+            if isinstance(_cr, dict):
+                _rm["coverage_report"] = _cr
+            _rq = getattr(ctx, "rag_quality", None)
+            if isinstance(_rq, dict):
+                _rm["rag_quality"] = _rq
+            response_data["rag_metadata"] = _rm
         
         # Store in buffer for dev console
         _REQUEST_BUFFER.append({
@@ -1665,6 +1751,9 @@ def get_tester_settings() -> Any:
                 "fetch_web_knowledge": False,
                 "tester_proxy_mode": "rag_fusion",
                 "claw_build_id": "",
+                "claw_override_rag_collection": "",
+                "claw_override_rag_top_k": "",
+                "claw_override_max_agent_steps": "",
             })
         
         # Ensure rag_collection field exists
@@ -1676,6 +1765,12 @@ def get_tester_settings() -> Any:
             settings["tester_proxy_mode"] = "rag_fusion"
         if "claw_build_id" not in settings:
             settings["claw_build_id"] = ""
+        if "claw_override_rag_collection" not in settings:
+            settings["claw_override_rag_collection"] = ""
+        if "claw_override_rag_top_k" not in settings:
+            settings["claw_override_rag_top_k"] = ""
+        if "claw_override_max_agent_steps" not in settings:
+            settings["claw_override_max_agent_steps"] = ""
 
         return jsonify(settings)
     except Exception as e:
@@ -1724,7 +1819,9 @@ def tester_chat() -> Any:
         
         if not session_id:
             return jsonify({"error": "session_id is required"}), 400
-        
+
+        tester_request_id = str(uuid.uuid4())
+
         # Get tester settings if not provided
         settings_repo = get_settings_repository()
         tester_settings = settings_repo.get_tester_settings(session_id) if session_id else None
@@ -1776,6 +1873,24 @@ def tester_chat() -> Any:
                 forward_body["temperature"] = temperature
             if top_p is not None:
                 forward_body["top_p"] = top_p
+            ocr = body.get("claw_override_rag_collection")
+            if isinstance(ocr, str) and ocr.strip():
+                forward_body["rag_collection"] = ocr.strip()
+            otk = body.get("claw_override_rag_top_k")
+            if otk is not None and str(otk).strip() != "":
+                try:
+                    forward_body["rag_query_default_top_k"] = int(otk)
+                except (TypeError, ValueError):
+                    pass
+            oms = body.get("claw_override_max_agent_steps")
+            if oms is not None and str(oms).strip() != "":
+                try:
+                    n_oms = int(oms)
+                    if 1 <= n_oms <= 256:
+                        forward_body["claw_override_max_agent_steps"] = n_oms
+                except (TypeError, ValueError):
+                    pass
+            forward_body["tester_request_id"] = tester_request_id
             return forward_claw_build_chat(forward_body, active_build)
 
         # Get collection name from request, tester settings, or global settings; no config default
@@ -1832,6 +1947,7 @@ def tester_chat() -> Any:
         
         rag_chunks_info: list[dict[str, Any]] | None = None
         context_chars: int | None = None
+        ctx: Any = None
 
         if use_rag:
             # Use RAG flow
@@ -2134,15 +2250,16 @@ def tester_chat() -> Any:
             options["temperature"] = float(temperature)
         if top_p is not None:
             options["top_p"] = float(top_p)
-        
-        # Call chat
+
+        t_llm = time.perf_counter()
         content = chat_client.chat(
             ollama_messages,
             use_model,
             stream=False,
             options=options if options else None,
         )
-        
+        llm_phase_ms = int((time.perf_counter() - t_llm) * 1000)
+
         latency_ms = int((time.time() - start_time) * 1000)
 
         # Rough token accounting (approximate, for diagnostics / UX only)
@@ -2163,6 +2280,8 @@ def tester_chat() -> Any:
             "object": "chat.completion",
             "created": int(time.time()),
             "model": use_model,
+            "tester_request_id": tester_request_id,
+            "llm_phase_ms": llm_phase_ms,
             "latency_ms": latency_ms,
             "usage": {
                 "prompt_tokens": prompt_tokens,
@@ -2177,11 +2296,21 @@ def tester_chat() -> Any:
         }
 
         if use_rag:
-            response_data["rag_metadata"] = {
+            _rmt: dict[str, Any] = {
                 "chunks_info": rag_chunks_info or [],
                 "chunks_count": len(rag_chunks_info or []),
                 "context_chars": context_chars,
             }
+            _rtx = getattr(ctx, "rag_trace", None)
+            if isinstance(_rtx, list):
+                _rmt["rag_trace"] = _rtx
+            _crx = getattr(ctx, "coverage_report", None)
+            if isinstance(_crx, dict):
+                _rmt["coverage_report"] = _crx
+            _rqx = getattr(ctx, "rag_quality", None)
+            if isinstance(_rqx, dict):
+                _rmt["rag_quality"] = _rqx
+            response_data["rag_metadata"] = _rmt
         
         return jsonify(response_data)
     except Exception as e:
@@ -2569,10 +2698,29 @@ def update_rag_framework_settings() -> Any:
         return jsonify({"error": str(e)}), 500
 
 
+def _retrieval_yaml_raw_bool(key: str) -> bool:
+    """Bool as stored in merged retrieval YAML (before WebUI proxy_settings override)."""
+    try:
+        from config import RETRIEVAL_CONFIG
+
+        v = RETRIEVAL_CONFIG.get(key, False)
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.strip().lower() in ("1", "true", "yes", "on")
+        if isinstance(v, (int, float)):
+            return bool(v)
+        return bool(v)
+    except Exception:
+        return False
+
+
 @webui_bp.route("/rag-model-settings", methods=["GET"])
 def get_rag_model_settings() -> Any:
     """Return embedding + rerank model settings for RAG/Qdrant UI."""
     try:
+        from application.rag.retrieval_ui_overrides import RETRIEVAL_UI_BOOL_KEYS, retrieval_bool_with_ui_override
+
         settings_repo = get_settings_repository()
 
         default_embed_model = get_ollama_embed_model()
@@ -2600,12 +2748,17 @@ def get_rag_model_settings() -> Any:
         else:
             hybrid_sparse_enabled = yaml_hybrid
 
+        retrieval_advanced = {k: retrieval_bool_with_ui_override(k) for k in sorted(RETRIEVAL_UI_BOOL_KEYS)}
+        retrieval_yaml_defaults = {k: _retrieval_yaml_raw_bool(k) for k in sorted(RETRIEVAL_UI_BOOL_KEYS)}
+
         return jsonify(
             {
                 "rag_embed_model": rag_embed_model,
                 "rerank_for_rag": rerank_for_rag,
                 "rerank_model": rerank_model,
                 "hybrid_sparse_enabled": hybrid_sparse_enabled,
+                "retrieval_advanced": retrieval_advanced,
+                "retrieval_yaml_defaults": retrieval_yaml_defaults,
                 "defaults": {
                     "rag_embed_model": default_embed_model,
                     "rerank_model": default_rerank_model,
@@ -2704,6 +2857,8 @@ def get_pipeline_preview() -> Any:
 def update_rag_model_settings() -> Any:
     """Persist embedding + rerank model settings for RAG/Qdrant UI."""
     try:
+        from application.rag.retrieval_ui_overrides import RETRIEVAL_UI_BOOL_KEYS, retrieval_bool_with_ui_override
+
         body = request.get_json(force=True, silent=True) or {}
         settings_repo = get_settings_repository()
 
@@ -2728,6 +2883,10 @@ def update_rag_model_settings() -> Any:
         proxy_settings["rerank_for_rag"] = rerank_for_rag
         proxy_settings["hybrid_sparse_enabled"] = hybrid_sparse_enabled
 
+        for rk in RETRIEVAL_UI_BOOL_KEYS:
+            if rk in body:
+                proxy_settings[rk] = bool(body.get(rk))
+
         # When enabled, default to a known-good reranker if user chose "Default".
         if rerank_for_rag:
             proxy_settings["rerank_model"] = rerank_model or default_rerank_model
@@ -2739,6 +2898,8 @@ def update_rag_model_settings() -> Any:
         settings_repo.set_app_setting("proxy_settings", json.dumps(proxy_settings))
 
         default_embed_model = get_ollama_embed_model()
+        retrieval_advanced = {k: retrieval_bool_with_ui_override(k) for k in sorted(RETRIEVAL_UI_BOOL_KEYS)}
+        retrieval_yaml_defaults = {k: _retrieval_yaml_raw_bool(k) for k in sorted(RETRIEVAL_UI_BOOL_KEYS)}
         return jsonify(
             {
                 "status": "ok",
@@ -2746,6 +2907,8 @@ def update_rag_model_settings() -> Any:
                 "rerank_for_rag": rerank_for_rag,
                 "rerank_model": proxy_settings.get("rerank_model") or "",
                 "hybrid_sparse_enabled": hybrid_sparse_enabled,
+                "retrieval_advanced": retrieval_advanced,
+                "retrieval_yaml_defaults": retrieval_yaml_defaults,
                 "defaults": {
                     "rag_embed_model": default_embed_model,
                     "rerank_model": default_rerank_model,

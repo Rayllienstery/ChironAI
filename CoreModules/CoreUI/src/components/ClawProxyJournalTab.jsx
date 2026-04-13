@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { getClawCodeJournal, clearClawCodeJournal } from '../services/api';
+import { getClawCodeJournal, clearClawCodeJournal, getProxyJournal, clearProxyJournal } from '../services/api';
 import '../styles/components/DashboardTab.css';
 import ClawProxyTraceDetailModal from './ClawProxyTraceDetailModal';
 
@@ -41,7 +41,10 @@ function getDateRangeForJournal(period, selectedDate) {
   }
 }
 
-export default function ClawProxyJournalTab() {
+/**
+ * @param {{ variant?: 'claw' | 'ragFusion' }} props
+ */
+export default function ClawProxyJournalTab({ variant = 'claw' }) {
   const [period, setPeriod] = useState('week');
   const [selectedDate, setSelectedDate] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -50,30 +53,40 @@ export default function ClawProxyJournalTab() {
   const [selectedId, setSelectedId] = useState(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
 
-  const loadJournal = useCallback(async (opts = {}) => {
-    const silent = opts.silent === true;
-    if (!silent) {
-      setLoading(true);
-      setErr(null);
-    }
-    try {
-      const { from, to } = getDateRangeForJournal(period, selectedDate);
-      const data = await getClawCodeJournal({
-        limit: JOURNAL_LIMIT,
-        from: from || undefined,
-        to: to || undefined,
-      });
-      const rows = data.logs || [];
-      setLogs(rows.slice().reverse());
-    } catch (e) {
+  const loadJournal = useCallback(
+    async (opts = {}) => {
+      const silent = opts.silent === true;
       if (!silent) {
-        setErr(String(e.message || e));
-        setLogs([]);
+        setLoading(true);
+        setErr(null);
       }
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [period, selectedDate]);
+      try {
+        const { from, to } = getDateRangeForJournal(period, selectedDate);
+        const data =
+          variant === 'ragFusion'
+            ? await getProxyJournal({
+                limit: JOURNAL_LIMIT,
+                from: from || undefined,
+                to: to || undefined,
+              })
+            : await getClawCodeJournal({
+                limit: JOURNAL_LIMIT,
+                from: from || undefined,
+                to: to || undefined,
+              });
+        const rows = data.logs || [];
+        setLogs(rows.slice().reverse());
+      } catch (e) {
+        if (!silent) {
+          setErr(String(e.message || e));
+          setLogs([]);
+        }
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [period, selectedDate, variant],
+  );
 
   useEffect(() => {
     loadJournal();
@@ -142,9 +155,17 @@ export default function ClawProxyJournalTab() {
   );
 
   const clearDb = async () => {
-    if (!window.confirm('Delete all persisted ClawCode journal entries from the database?')) return;
+    const msg =
+      variant === 'ragFusion'
+        ? 'Delete all persisted RAG Fusion Proxy journal entries from the database?'
+        : 'Delete all persisted ClawCode journal entries from the database?';
+    if (!window.confirm(msg)) return;
     try {
-      await clearClawCodeJournal();
+      if (variant === 'ragFusion') {
+        await clearProxyJournal();
+      } else {
+        await clearClawCodeJournal();
+      }
       setSelectedId(null);
       setDetailModalOpen(false);
       await loadJournal();
@@ -158,11 +179,27 @@ export default function ClawProxyJournalTab() {
     setDetailModalOpen(true);
   };
 
+  const journalHeadingId = variant === 'ragFusion' ? 'rag-fusion-journal-heading' : 'claw-journal-heading';
+  const blurb =
+    variant === 'ragFusion' ? (
+      <>
+        Persisted proxy requests (SQLite, <code>session_id=proxy</code>). The list refreshes every few seconds while
+        this tab is open. Use the <strong>Traces</strong> subtab for the in-memory buffer. Click a row to open full
+        detail.
+      </>
+    ) : (
+      <>
+        Persisted agent traces (one row per run, updated as the agent progresses). The list refreshes every few seconds
+        while this tab is open. Use the <strong>Traces</strong> subtab for the in-memory buffer and detailed trace list.
+        Click a row to open full detail.
+      </>
+    );
+
   return (
     <div className="dashboard-layout">
-      <section className="app-default-card" aria-labelledby="claw-journal-heading">
+      <section className="app-default-card" aria-labelledby={journalHeadingId}>
         <div className="dashboard-card-header">
-          <h2 id="claw-journal-heading">Journal</h2>
+          <h2 id={journalHeadingId}>Journal</h2>
           <div className="dashboard-card-actions">
             <button type="button" className="dashboard-primary-btn" onClick={() => loadJournal()} disabled={loading}>
               Refresh
@@ -172,11 +209,7 @@ export default function ClawProxyJournalTab() {
             </button>
           </div>
         </div>
-        <p className="dashboard-card-muted">
-          Persisted agent traces (one row per run, updated as the agent progresses). The list refreshes every few seconds
-          while this tab is open. Use the <strong>Traces</strong> subtab for the in-memory buffer and detailed trace list.
-          Click a row to open full detail.
-        </p>
+        <p className="dashboard-card-muted">{blurb}</p>
         {err && <div className="dashboard-card-error">{err}</div>}
 
         <div className="claw-journal-toolbar">

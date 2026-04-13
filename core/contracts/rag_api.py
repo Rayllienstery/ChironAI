@@ -91,7 +91,7 @@ def rag_chat_response_shape() -> dict[str, Any]:
                 "finish_reason": "stop | tool_calls",
             }
         ],
-        "rag_metadata": "optional: { chunks_info, max_score, chunks_count }",
+        "rag_metadata": "optional: { chunks_info, max_score, chunks_count, rag_trace?, coverage_report?, rag_quality? }",
     }
 
 

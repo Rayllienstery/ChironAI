@@ -108,18 +108,41 @@ export function summarizeClawTraceMeta(meta) {
       : '';
   const displayModel = resolved || legacyLogical || '—';
 
+  let totalPromptTokensEst = num(meta.total_prompt_tokens_est, 0);
+  let totalCompletionTokensEst = num(meta.total_completion_tokens_est, 0);
+  const ollTok =
+    meta.ollama && typeof meta.ollama === 'object' && meta.ollama.tokens_estimates
+      ? meta.ollama.tokens_estimates
+      : null;
+  if (totalPromptTokensEst === 0 && totalCompletionTokensEst === 0 && ollTok && typeof ollTok === 'object') {
+    totalPromptTokensEst = num(ollTok.prompt_tokens_estimated, 0);
+    totalCompletionTokensEst = num(ollTok.completion_tokens_estimated, 0);
+  }
+  if (totalPromptTokensEst === 0 && totalCompletionTokensEst === 0) {
+    const oc = steps.filter((s) => s && s.name === 'ollama_chat');
+    const lastOc = oc.length ? oc[oc.length - 1] : null;
+    if (lastOc && typeof lastOc === 'object') {
+      totalPromptTokensEst = num(lastOc.tokens_in_est, 0);
+      totalCompletionTokensEst = num(lastOc.tokens_out_est, 0);
+    }
+  }
+  let durationMsEff = durationMs;
+  if (!durationMsEff && steps.length > 0 && !steps.some((s) => s && s.kind === 'model_call')) {
+    durationMsEff = steps.reduce((a, s) => a + num(s && s.duration_ms, 0), 0);
+  }
+
   return {
     empty: false,
     traceId: meta.trace_id != null ? String(meta.trace_id) : '',
     stepCount,
-    durationMs,
+    durationMs: durationMsEff,
     resolvedModel: displayModel,
     logicalModelId: legacyLogical || '—',
     clientModel: meta.client_model != null ? String(meta.client_model) : null,
     thinkRequested: meta.think_requested,
     error: meta.error != null ? String(meta.error) : null,
-    totalPromptTokensEst: num(meta.total_prompt_tokens_est, 0),
-    totalCompletionTokensEst: num(meta.total_completion_tokens_est, 0),
+    totalPromptTokensEst,
+    totalCompletionTokensEst,
     sumPromptFromSteps,
     sumCompletionFromSteps,
     perModelCallTokenRows,
