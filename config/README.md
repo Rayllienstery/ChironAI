@@ -13,8 +13,7 @@ config/
 ├── crawler.yaml      # Web crawling concurrency, timeouts, path filters
 ├── indexing.yaml     # Content filtering, chunking, embedding batch sizes
 ├── models.yaml       # Ollama endpoints, model names, generation options
-├── server.yaml       # Flask server host/port, Qdrant connection
-└── clawcode.yaml     # ClawCode agent HTTP (8082), MCP info (8083), vendor GitHub
+└── server.yaml       # Flask server host/port, Qdrant connection, build proxy
 ```
 
 ## Usage
@@ -71,16 +70,6 @@ export RAG_TOP_K=12
 | Retrieval `top_k` | `retrieval.yaml` (`top_k`, etc.) | `RAG_TOP_K` overrides `get_retrieval_int("top_k", …)` | Optional build field `rag_top_k` (same merge path). |
 
 Passthrough requests (concrete Ollama tag, no build id) still use YAML/env and collection-specific params from `get_rag_answer_params`; they do not read build fields.
-
-### ClawCode `POST /v1/chat/completions` (ChironAI extensions)
-
-Standard OpenAI fields apply (`model`, `messages`, `temperature`, `top_p`, …). Additional JSON keys understood by ClawCode (other clients may ignore them):
-
-- **`rag_collection`**: non-empty string selects the Qdrant collection for `rag_query`; overrides app setting `clawcode_rag_collection` for that request.
-- **`rag_query_default_top_k`**: integer 1–256; default `top_k` passed into retrieval when the model does not set `top_k` on the `rag_query` tool call. If omitted, retrieval uses `retrieval.yaml` / env as usual.
-- **`max_agent_steps`**: integer 1–256; caps agent loop iterations for that request (ClawCode HTTP layer). If omitted, uses configured default (`get_clawcode_max_agent_steps`).
-
-ClawCode accepts rag_collection, rag_query_default_top_k, and max_agent_steps as per-request fields on POST /v1/chat/completions.
 
 ### rag.yaml
 Controls RAG context size and model behavior:
