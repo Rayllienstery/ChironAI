@@ -29,7 +29,6 @@ import RagTab from "./components/RagTab";
 import CrawlerTab from "./components/CrawlerTab";
 import TestingTab from "./components/TestingTab";
 import TemplateEditorTab from "./components/TemplateEditorTab";
-import ClawProxyTab from "./components/ClawProxyTab";
 import OllamaTab from "./components/OllamaTab";
 import OpenWebUiTab from "./components/OpenWebUiTab";
 import Card from "./components/Card";
@@ -76,7 +75,6 @@ function App() {
   const [ragTestRunError, setRagTestRunError] = useState(null);
   const [llmProxyFocusSubTab, setLlmProxyFocusSubTab] = useState(null);
   const [llmProxyBuildsFocusSubTab, setLlmProxyBuildsFocusSubTab] = useState(null);
-  const [clawProxyFocusSubTab, setClawProxyFocusSubTab] = useState(null);
   const [tabErrors, setTabErrors] = useState({});
   const [themeMode, setThemeMode] = useState("system");
   const [lightAccent, setLightAccent] = useState("purple");
@@ -268,31 +266,12 @@ function App() {
     setLlmProxyBuildsFocusSubTab("autocomplete");
   }, []);
 
-  const handleOpenClawJournal = useCallback(() => {
-    setActiveTab("claw-proxy");
-    setClawProxyFocusSubTab("journal");
-  }, []);
-
-  const handleOpenClawTraces = useCallback(() => {
-    setActiveTab("claw-proxy");
-    setClawProxyFocusSubTab("traces");
-  }, []);
-
-  const handleOpenClawProxyTools = useCallback(() => {
-    setActiveTab("claw-proxy");
-    setClawProxyFocusSubTab("proxy");
-  }, []);
-
   const consumeLlmProxyFocusSubTab = useCallback(() => {
     setLlmProxyFocusSubTab(null);
   }, []);
 
   const consumeLlmProxyBuildsFocusSubTab = useCallback(() => {
     setLlmProxyBuildsFocusSubTab(null);
-  }, []);
-
-  const consumeClawProxyFocusSubTab = useCallback(() => {
-    setClawProxyFocusSubTab(null);
   }, []);
 
   const loadThemeSettings = async () => {
@@ -345,7 +324,6 @@ function App() {
     { id: "dashboard", label: "Dashboard" },
     { id: "llm-proxy", label: "LLM Proxy" },
     { id: "rag-fusion-proxy", label: "RAG Fusion Proxy" },
-    { id: "claw-proxy", label: "Claw Proxy" },
     { id: "logs", label: "Logs" },
     { id: "ollama", label: "Ollama" },
     { id: "open-webui", label: "Open WebUI" },
@@ -363,13 +341,6 @@ function App() {
             onNavigate={setActiveTab}
             onOpenLogs={() => setActiveTab("logs")}
             onOpenLlmProxyAutocomplete={handleOpenLlmProxyAutocomplete}
-          />
-        );
-      case "claw-proxy":
-        return (
-          <ClawProxyTab
-            focusSubTab={clawProxyFocusSubTab}
-            onFocusSubTabConsumed={consumeClawProxyFocusSubTab}
           />
         );
       case "logs":
@@ -609,9 +580,6 @@ function App() {
       {sessionId && (
         <ProxiesLiveNotificationBridge
           onOpenLlmProxyTrace={handleOpenLlmProxyTrace}
-          onOpenClawJournal={handleOpenClawJournal}
-          onOpenClawTraces={handleOpenClawTraces}
-          onOpenClawProxyTools={handleOpenClawProxyTools}
         />
       )}
       {sessionId && (

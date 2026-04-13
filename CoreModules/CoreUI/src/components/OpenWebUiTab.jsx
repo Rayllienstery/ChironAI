@@ -177,7 +177,7 @@ function OpenWebUiTab({ onErrorStateChange }) {
 
   return (
     <div className="dashboard-tab openwebui-tab">
-      <div className="claw-proxy-page-header">
+      <div className="tab-page-header">
         <h2>Open WebUI</h2>
       </div>
 

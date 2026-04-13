@@ -58,7 +58,6 @@ from application.llm_proxy_builds import (
     load_builds_json,
     validate_builds_list,
 )
-from application.llm_proxy_build_forward import forward_claw_build_chat
 from application.rag.collection_freshness import check_collection_freshness
 from application.rag.params import get_rag_answer_params
 from application.rag.use_cases import build_rag_context, prepare_ollama_messages
@@ -1820,63 +1819,6 @@ def tester_chat() -> Any:
             if "fetch_web_knowledge" not in body:
                 fetch_web_knowledge = tester_settings.get("fetch_web_knowledge", False)
         
-        tester_proxy_mode = (body.get("tester_proxy_mode") or "").strip().lower() or None
-        if tester_proxy_mode is None and tester_settings:
-            tester_proxy_mode = str(tester_settings.get("tester_proxy_mode") or "rag_fusion").strip().lower()
-        if tester_proxy_mode not in ("rag_fusion", "claw"):
-            tester_proxy_mode = "rag_fusion"
-
-        if tester_proxy_mode == "claw":
-            claw_build_id = (body.get("claw_build_id") or "").strip()
-            if not claw_build_id and tester_settings:
-                claw_build_id = str(tester_settings.get("claw_build_id") or "").strip()
-            if not claw_build_id:
-                return jsonify(
-                    {
-                        "error": "claw_build_id is required when tester_proxy_mode is claw",
-                        "detail": "Configure a Claw build in LLM Proxy Builds and select it in Model Tester.",
-                    }
-                ), 400
-            raw_builds = settings_repo.get_app_setting(LLM_PROXY_BUILDS_APP_KEY)
-            builds_list = load_builds_json(raw_builds)
-            active_build = find_build_by_id(builds_list, claw_build_id)
-            if not active_build:
-                return jsonify(
-                    {
-                        "error": "Claw build not found",
-                        "detail": f"claw_build_id={claw_build_id!r}",
-                    }
-                ), 400
-            if str(active_build.get("backend") or "").strip().lower() != "claw":
-                return jsonify({"error": "Selected build is not a Claw backend"}), 400
-            forward_body: dict[str, Any] = {
-                "messages": messages,
-                "include_rag_metadata": True,
-            }
-            if temperature is not None:
-                forward_body["temperature"] = temperature
-            if top_p is not None:
-                forward_body["top_p"] = top_p
-            ocr = body.get("claw_override_rag_collection")
-            if isinstance(ocr, str) and ocr.strip():
-                forward_body["rag_collection"] = ocr.strip()
-            otk = body.get("claw_override_rag_top_k")
-            if otk is not None and str(otk).strip() != "":
-                try:
-                    forward_body["rag_query_default_top_k"] = int(otk)
-                except (TypeError, ValueError):
-                    pass
-            oms = body.get("claw_override_max_agent_steps")
-            if oms is not None and str(oms).strip() != "":
-                try:
-                    n_oms = int(oms)
-                    if 1 <= n_oms <= 256:
-                        forward_body["claw_override_max_agent_steps"] = n_oms
-                except (TypeError, ValueError):
-                    pass
-            forward_body["tester_request_id"] = tester_request_id
-            return forward_claw_build_chat(forward_body, active_build)
-
         # Get collection name from request, tester settings, or global settings; no config default
         collection_name = (body.get("collection_name") or "").strip() or None
         if not collection_name and tester_settings:

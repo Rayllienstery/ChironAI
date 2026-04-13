@@ -16,7 +16,7 @@ const LIVE_POLL_MS = 3000;
 /**
  * @param {{ variant?: 'claw' | 'ragFusion' }} props
  */
-export default function ClawProxyTracesTab({ variant = 'claw' }) {
+export default function ProxyTracesTab({ variant = 'claw' }) {
   const [status, setStatus] = useState(null);
   const [traces, setTraces] = useState([]);
   const [liveTraces, setLiveTraces] = useState([]);

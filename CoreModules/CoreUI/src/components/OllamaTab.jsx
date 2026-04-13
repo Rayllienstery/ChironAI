@@ -329,7 +329,7 @@ function OllamaTab({ onErrorStateChange }) {
 
   return (
     <div className="dashboard-tab ollama-tab">
-      <div className="claw-proxy-page-header">
+      <div className="tab-page-header">
         <h2>Ollama</h2>
       </div>
 

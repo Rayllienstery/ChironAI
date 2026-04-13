@@ -481,12 +481,6 @@ def run_chat_completions(
     except Exception:
         active_build = None
 
-    if active_build and str(active_build.get("backend") or "").strip().lower() == "claw":
-        from application.llm_proxy_build_forward import forward_claw_build_chat
-
-        w.set_proxy_status(w.status_idle)
-        return forward_claw_build_chat(body, active_build)
-
     if active_build and str(active_build.get("backend") or "").strip().lower() == "dumb":
         proxy_settings = merge_build_into_proxy_settings(proxy_settings, active_build)
         _om_b = str(active_build.get("ollama_model") or "").strip()

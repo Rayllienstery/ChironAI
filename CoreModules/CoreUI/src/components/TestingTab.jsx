@@ -36,12 +36,6 @@ function TestingTab({
     }
   }, [isControlled, activeSubTab]);
 
-  useEffect(() => {
-    if (isControlled && activeSubTab === 'claw-proxy' && typeof onSubTabChange === 'function') {
-      onSubTabChange('rag-tests');
-    }
-  }, [isControlled, activeSubTab, onSubTabChange]);
-
   const handleSubTabClick = (id) => setSubTab(id);
 
   return (

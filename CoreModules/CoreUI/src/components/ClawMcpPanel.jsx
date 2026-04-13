@@ -81,11 +81,10 @@ function ClawMcpPanel() {
             </div>
             <ul className="dashboard-card-muted" style={{ margin: '0 0 var(--md-sys-spacing-md) 1.25rem', padding: 0 }}>
               <li style={{ marginBottom: 'var(--md-sys-spacing-sm)' }}>
-                <strong>Chat / agent with custom base URL</strong> → <strong>Claw Proxy</strong> on port{' '}
+                <strong>Chat / agent with custom base URL</strong> → <strong>ClawCode</strong> on port{' '}
                 <code>8082</code>: OpenAI base URL for <code>/v1/chat/completions</code>, or set Claude Code{' '}
                 <code>ANTHROPIC_BASE_URL</code> to the same host for <code>/v1/messages</code>. Set{' '}
-                <code>model</code> to an Ollama tag from <code>GET /v1/models</code> on that port (or use an LLM Proxy
-                build with <code>backend: claw</code>).
+                <code>model</code> to an Ollama tag from <code>GET /v1/models</code> on that port.
               </li>
               <li style={{ marginBottom: 'var(--md-sys-spacing-sm)' }}>
                 <strong>VS Code MCP servers</strong> → configure per Microsoft / extension docs (stdio command). See{' '}

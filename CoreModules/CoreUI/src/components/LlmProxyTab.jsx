@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import LlmProxyWebInteractionPanel from './LlmProxyWebInteractionPanel';
-import ClawProxyTracesTab from './ClawProxyTracesTab';
-import ClawProxyJournalTab from './ClawProxyJournalTab';
+import ProxyTracesTab from './ProxyTracesTab';
+import ProxyJournalTab from './ProxyJournalTab';
 import { getLlmProxyStatus } from '../services/api';
 import '../styles/components/SettingsTab.css';
 import '../styles/components/DashboardTab.css';
@@ -262,9 +262,9 @@ function LlmProxyTab({
         </div>
       )}
 
-      {subTab === 'traces' && <ClawProxyTracesTab variant="ragFusion" />}
+      {subTab === 'traces' && <ProxyTracesTab variant="ragFusion" />}
 
-      {subTab === 'journal' && <ClawProxyJournalTab variant="ragFusion" />}
+      {subTab === 'journal' && <ProxyJournalTab variant="ragFusion" />}
 
       {subTab === 'web-interaction' && <LlmProxyWebInteractionPanel />}
     </div>

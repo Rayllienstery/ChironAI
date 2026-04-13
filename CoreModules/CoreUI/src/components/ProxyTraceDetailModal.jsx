@@ -177,7 +177,7 @@ function ProxyRequestStructuredBody({ log, meta }) {
     backend === 'claw' ? 'Claw' : backend === 'rag_fusion' ? 'RAG Fusion' : backend ? String(backend) : '—';
 
   return (
-    <div className="claw-proxy-trace-proxy-body">
+    <div className="proxy-trace-detail-body">
       <p className="dashboard-card-muted" style={{ marginBottom: 12, fontSize: 13 }}>
         <strong>Pipeline:</strong> {pipelineLabel}
         {isAc ? ' · Autocomplete' : ''}
@@ -262,9 +262,9 @@ function ProxyRequestStructuredBody({ log, meta }) {
 }
 
 /**
- * Full-screen trace / request detail (same structured view as Claw Proxy → Journal → row).
+ * Full-screen trace / request detail.
  */
-export default function ClawProxyTraceDetailModal({ log, isOpen, onClose }) {
+export default function ProxyTraceDetailModal({ log, isOpen, onClose }) {
   const [showRaw, setShowRaw] = useState(false);
 
   useEffect(() => {
@@ -283,7 +283,7 @@ export default function ClawProxyTraceDetailModal({ log, isOpen, onClose }) {
   const meta = useMemo(() => (log ? readMetadata(log) : null), [log]);
   const traceSummary = useMemo(() => summarizeClawTraceMeta(meta), [meta]);
   const clawStyle = log && meta ? isClawTraceStyleLog(log, meta) : false;
-  const titleId = 'claw-proxy-trace-detail-modal-title';
+  const titleId = 'proxy-trace-detail-modal-title';
 
   if (!isOpen || !log) return null;
 

@@ -7,7 +7,7 @@ import ProxyLogsAnalytics, {
   clawJournalUserPreview,
 } from './ProxyLogsAnalytics';
 import ClawCodeMarkIcon from './ClawCodeMarkIcon';
-import ClawProxyTraceDetailModal from './ClawProxyTraceDetailModal';
+import ProxyTraceDetailModal from './ProxyTraceDetailModal';
 import '../styles/components/CoreUIButtons.css';
 import '../styles/components/LogsTab.css';
 import '../styles/components/CoreUIPillTabs.css';
@@ -812,7 +812,7 @@ function LogsTab({ sessionId }) {
         <div ref={logsEndRef} />
       </div>
 
-      <ClawProxyTraceDetailModal
+      <ProxyTraceDetailModal
         log={clawTraceDetailLog}
         isOpen={Boolean(clawTraceDetailLog)}
         onClose={() => setClawTraceDetailLog(null)}

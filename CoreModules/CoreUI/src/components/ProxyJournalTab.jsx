@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { getClawCodeJournal, clearClawCodeJournal, getProxyJournal, clearProxyJournal } from '../services/api';
 import '../styles/components/DashboardTab.css';
-import ClawProxyTraceDetailModal from './ClawProxyTraceDetailModal';
+import ProxyTraceDetailModal from './ProxyTraceDetailModal';
 
 const JOURNAL_LIMIT = 2000;
 const JOURNAL_POLL_MS = 3000;
@@ -44,7 +44,7 @@ function getDateRangeForJournal(period, selectedDate) {
 /**
  * @param {{ variant?: 'claw' | 'ragFusion' }} props
  */
-export default function ClawProxyJournalTab({ variant = 'claw' }) {
+export default function ProxyJournalTab({ variant = 'claw' }) {
   const [period, setPeriod] = useState('week');
   const [selectedDate, setSelectedDate] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -270,7 +270,7 @@ export default function ClawProxyJournalTab({ variant = 'claw' }) {
         )}
       </section>
 
-      <ClawProxyTraceDetailModal
+      <ProxyTraceDetailModal
         log={selectedLog}
         isOpen={Boolean(detailModalOpen && selectedLog)}
         onClose={() => setDetailModalOpen(false)}

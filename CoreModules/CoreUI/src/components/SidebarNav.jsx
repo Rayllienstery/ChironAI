@@ -38,7 +38,6 @@ const TAB_MATERIAL_ICONS = {
   dashboard: "dashboard",
   "rag-fusion-proxy": "psychology",
   "llm-proxy": "hub",
-  "claw-proxy": "terminal",
   logs: "article",
   rag: "database",
   crawler: "travel_explore",

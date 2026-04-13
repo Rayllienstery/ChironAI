@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import { useThemeChartColors } from '../hooks/useThemeChartColors';
 import ProxyLogsPeriodCalendar from './ProxyLogsPeriodCalendar';
-import ClawProxyTraceDetailModal from './ClawProxyTraceDetailModal';
+import ProxyTraceDetailModal from './ProxyTraceDetailModal';
 import '../styles/components/CoreUIPillTabs.css';
 
 const PERIODS = [
@@ -727,7 +727,7 @@ function ProxyLogsAnalytics({
         </div>
       </div>
 
-      <ClawProxyTraceDetailModal
+      <ProxyTraceDetailModal
         log={topDetailLog}
         isOpen={Boolean(topDetailLog)}
         onClose={() => setTopDetailLog(null)}

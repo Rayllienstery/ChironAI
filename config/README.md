@@ -80,7 +80,7 @@ Standard OpenAI fields apply (`model`, `messages`, `temperature`, `top_p`, …).
 - **`rag_query_default_top_k`**: integer 1–256; default `top_k` passed into retrieval when the model does not set `top_k` on the `rag_query` tool call. If omitted, retrieval uses `retrieval.yaml` / env as usual.
 - **`max_agent_steps`**: integer 1–256; caps agent loop iterations for that request (ClawCode HTTP layer). If omitted, uses configured default (`get_clawcode_max_agent_steps`).
 
-`forward_claw_build_chat` (LLM Proxy → ClawCode) merges the build’s `rag_collection` and `rag_top_k` into `rag_collection` / `rag_query_default_top_k` when the client did not set them, and sets `max_agent_steps` from the build unless the forward body already carries a tester override. Model Tester may send `claw_override_*` fields to the WebUI; those are merged into the forward payload before POST.
+ClawCode accepts rag_collection, rag_query_default_top_k, and max_agent_steps as per-request fields on POST /v1/chat/completions.
 
 ### rag.yaml
 Controls RAG context size and model behavior:

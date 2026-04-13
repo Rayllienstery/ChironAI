@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import PipelineCiDiagram from './PipelineCiDiagram';
 import { useMergedPipelinePreview } from '../hooks/useMergedPipelinePreview';
-import { getModelSettings, getRagStatus, getClawCodeStatus, getClawCodeSettings, getRagCollections } from '../services/api';
+import { getModelSettings, getRagStatus } from '../services/api';
 import '../styles/components/DashboardTab.css';
 
 const INFO_TABS = [
@@ -105,88 +105,6 @@ function DashboardLlmProxyCard({ onNavigate, onOpenLogs, onOpenLlmProxyAutocompl
             {row('DDG news', formatBool(settings.web_interaction_ddg_news))}
             {row('Fetch page', formatBool(settings.web_interaction_fetch_page))}
             {row('Wikipedia', formatBool(settings.web_interaction_wikipedia))}
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function DashboardClawProxyCard({ onNavigate }) {
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
-  const [status, setStatus] = useState(null);
-  const [settings, setSettings] = useState(null);
-  const [collections, setCollections] = useState([]);
-
-  const load = useCallback(async () => {
-    setLoadError(null);
-    try {
-      const [statusData, settingsData, colData] = await Promise.all([
-        getClawCodeStatus(),
-        getClawCodeSettings().catch(() => null),
-        getRagCollections().catch(() => ({ collections: [] })),
-      ]);
-      setStatus(statusData || {});
-      setSettings(settingsData || {});
-      setCollections(colData.collections || []);
-    } catch (e) {
-      console.error(e);
-      setLoadError(e.message || 'Failed to load');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const row = (label, value, titleAttr) => (
-    <div className="dashboard-kv-row" key={label}>
-      <span className="dashboard-kv-label">{label}</span>
-      <span className="dashboard-kv-value" title={titleAttr || (typeof value === 'string' ? value : undefined)}>
-        {value === '' || value == null ? '—' : String(value)}
-      </span>
-    </div>
-  );
-
-  const collectionNames = collections.map((c) => c.name).filter(Boolean);
-  const collectionSelectValue =
-    collectionNames.length > 0 && collectionNames.includes((settings?.rag_collection || '').trim())
-      ? settings?.rag_collection
-      : '';
-
-  return (
-    <section className="app-default-card dashboard-proxy-card" aria-labelledby="dashboard-claw-proxy-heading">
-      <div className="dashboard-card-header">
-        <h2 id="dashboard-claw-proxy-heading">Claw Proxy</h2>
-        <div className="dashboard-card-actions">
-          <button type="button" className="dashboard-primary-btn" onClick={() => onNavigate('claw-proxy')}>
-            Open Claw Proxy
-          </button>
-        </div>
-      </div>
-      {loading && <div className="dashboard-card-muted">Loading…</div>}
-      {loadError && (
-        <div className="dashboard-card-error">
-          {loadError}
-          <button type="button" className="dashboard-text-btn" onClick={load}>
-            Retry
-          </button>
-        </div>
-      )}
-      {!loading && !loadError && status && (
-        <div className="dashboard-proxy-sections">
-          <div className="dashboard-proxy-block">
-            <h3 className="dashboard-proxy-block-title">Status</h3>
-            {row('Enabled', String(status.enabled))}
-            {row('Base URL', status.openai_base_url)}
-            {row('Health', `${status.openai_base_url}/health`)}
-          </div>
-          <div className="dashboard-proxy-block">
-            <h3 className="dashboard-proxy-block-title">ClawCode</h3>
-            {row('Max agent steps (YAML/env)', settings?.max_agent_steps ?? '—')}
           </div>
         </div>
       )}
