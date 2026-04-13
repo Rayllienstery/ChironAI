@@ -262,9 +262,9 @@ function LlmProxyTab({
         </div>
       )}
 
-      {subTab === 'traces' && <ProxyTracesTab variant="ragFusion" />}
+      {subTab === 'traces' && <ProxyTracesTab />}
 
-      {subTab === 'journal' && <ProxyJournalTab variant="ragFusion" />}
+      {subTab === 'journal' && <ProxyJournalTab />}
 
       {subTab === 'web-interaction' && <LlmProxyWebInteractionPanel />}
     </div>

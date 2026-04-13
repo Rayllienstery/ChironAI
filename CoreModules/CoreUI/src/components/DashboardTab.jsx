@@ -289,8 +289,8 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                     <p>OpenAI /v1/chat/completions + Anthropic /v1/messages — single proxy, two formats</p>
                   </div>
                   <div className="feature-card">
-                    <h4>Agent Framework</h4>
-                    <p>ClawCode: tool-calling loop, in-memory traces, MCP info HTTP, versioned vendor snapshots</p>
+                    <h4>Agent traces</h4>
+                    <p>RAG Fusion proxy can record multi-step traces (tool calls, RAG, skills) for debugging in the Web UI</p>
                   </div>
                   <div className="feature-card">
                     <h4>Local-First Infrastructure</h4>
@@ -302,7 +302,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                   </div>
                   <div className="feature-card">
                     <h4>Build Presets</h4>
-                    <p>Configurable builds (dumb/claw backend) — switch models via model parameter</p>
+                    <p>Configurable builds — switch models via model parameter</p>
                   </div>
                   <div className="feature-card">
                     <h4>Autocomplete Support</h4>
@@ -326,7 +326,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                   </div>
                   <div className="feature-card">
                     <h4>Multi-Port Architecture</h4>
-                    <p>8080 (main), 8082 (ClawCode agent), 8083 (MCP info), 8087 (build proxy) — scenario isolation</p>
+                    <p>8080 (main app), 8087 (build proxy when enabled) — auxiliary services on their own ports</p>
                   </div>
                 </div>
               </div>
@@ -375,10 +375,6 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                     <div className="module-card">
                       <h5>LlmProxy</h5>
                       <p>OpenAI + Anthropic API compatibility. Build presets, streaming synthesis, autocomplete model. pip: <code>llm-proxy</code></p>
-                    </div>
-                    <div className="module-card">
-                      <h5>ClawCode</h5>
-                      <p>Agent framework with tool-calling, in-memory traces, MCP info HTTP. pip: <code>clawcode</code></p>
                     </div>
                     <div className="module-card">
                       <h5>MdIngestionService</h5>
@@ -568,11 +564,6 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                 <div className="credits-section">
                   <h4>Core Projects</h4>
                   <div className="credit-cards">
-                    <div className="credit-card">
-                      <h5>ClawCode</h5>
-                      <p>Agent framework with tool-calling, in-memory traces, and MCP info HTTP integration.</p>
-                      <code>pip: chironai-clawcode</code>
-                    </div>
                     <div className="credit-card">
                       <h5>RagService</h5>
                       <p>Full RAG pipeline: retrieval → rerank → prompt → LLM answer generation.</p>

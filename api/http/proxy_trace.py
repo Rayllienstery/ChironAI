@@ -48,7 +48,7 @@ def _recent_raw(limit: int) -> list[dict[str, Any]]:
 
 
 def recent_proxy_traces(limit: int = 40) -> list[dict[str, Any]]:
-    """Oldest-first slice of the last ``limit`` buffered snapshots (matches Claw trace_store.recent)."""
+    """Oldest-first slice of the last ``limit`` buffered in-memory trace snapshots."""
     return _recent_raw(limit)
 
 
@@ -59,7 +59,7 @@ def clear_proxy_trace_buffer() -> None:
 
 def annotate_proxy_trace_for_ui(tr: dict[str, Any]) -> dict[str, Any]:
     """
-    Copy trace and add Claw-compatible top-level fields for Traces tab summary / summarizeClawTraceMeta.
+    Copy trace and add top-level fields used by the WebUI Traces tab and ``summarizeAgentTraceMeta`` (CoreUI).
     """
     out = dict(tr)
     req = tr.get("request") if isinstance(tr.get("request"), dict) else {}

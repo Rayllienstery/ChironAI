@@ -59,11 +59,9 @@ export function debugTraceIdRows(result) {
  * Build flat list of run-log cards for Model Tester UI.
  * @param {object} options
  * @param {Record<string, unknown>|null} options.result — successful testerChat JSON
- * @param {boolean} options.isClawMode
  * @param {string|null} options.errorMessage — set on fetch failure
- * @param {null|{ buildId: string, buildLabel: string, ollamaModel: string, ragEnabled: boolean, skillsEnabled: boolean, maxAgentSteps?: unknown }} options.clawBuildContext
  */
-export function buildTesterRunLogCards({ result, isClawMode, errorMessage, clawBuildContext = null }) {
+export function buildTesterRunLogCards({ result, errorMessage }) {
   const cards = [];
 
   if (errorMessage) {
@@ -91,31 +89,7 @@ export function buildTesterRunLogCards({ result, isClawMode, errorMessage, clawB
   const rm = result.rag_metadata;
   const ragTrace = rm && Array.isArray(rm.rag_trace) ? rm.rag_trace : null;
 
-  if (isClawMode && clawBuildContext) {
-    const b = clawBuildContext;
-    const metaParts = [
-      b.ollamaModel && `Ollama: ${b.ollamaModel}`,
-      `RAG tool: ${b.ragEnabled ? 'on' : 'off'}`,
-      `Skills tool: ${b.skillsEnabled ? 'on' : 'off'}`,
-      b.maxAgentSteps != null && String(b.maxAgentSteps).trim() !== '' && `max_agent_steps: ${b.maxAgentSteps}`,
-    ].filter(Boolean);
-    cards.push({
-      key: 'claw-build-profile',
-      indexLabel: nextIndex(),
-      title: b.buildLabel || 'Claw build',
-      badges: [
-        {
-          key: 'bid',
-          text: b.buildId ? String(b.buildId).slice(0, 28) : 'build',
-          variant: 'score',
-        },
-      ],
-      body: metaParts.join(' · '),
-      skillClickable: false,
-    });
-  }
-
-  if (!isClawMode && ragTrace && ragTrace.length > 0) {
+  if (ragTrace && ragTrace.length > 0) {
     ragTrace.forEach((step, i) => {
       const id = step && step.id != null ? String(step.id) : `rag-${i}`;
       const label = (step && step.label) || id;
@@ -134,50 +108,6 @@ export function buildTesterRunLogCards({ result, isClawMode, errorMessage, clawB
         skillClickable: false,
       });
     });
-  }
-
-  if (isClawMode && rm && Array.isArray(rm.rag_queries) && rm.rag_queries.length > 0) {
-    rm.rag_queries.forEach((q, i) => {
-      const query = q && q.query != null ? String(q.query) : '';
-      const chunks = q && q.chunks != null ? Number(q.chunks) : null;
-      const ok = q && q.ok;
-      const err = q && q.error != null ? String(q.error) : '';
-      const badges = [];
-      if (chunks != null && !Number.isNaN(chunks)) badges.push({ key: 'ch', text: `${chunks} chunks`, variant: 'score' });
-      if (ok === false) badges.push({ key: 'ko', text: 'failed', variant: 'rerank' });
-      else badges.push({ key: 'ok', text: 'ok', variant: 'rerank' });
-      const lines = [query && `query: ${query}`, err && `error: ${err}`].filter(Boolean);
-      cards.push({
-        key: `claw-rq-${i}`,
-        indexLabel: nextIndex(),
-        title: 'rag_query',
-        badges,
-        body: lines.length ? lines.join('\n') : null,
-        skillClickable: false,
-      });
-    });
-  }
-
-  if (isClawMode && rm && typeof rm === 'object') {
-    const nq = Array.isArray(rm.rag_queries) ? rm.rag_queries.length : 0;
-    if (nq === 0) {
-      const cc = rm.chunks_count;
-      const cchars = rm.context_chars;
-      const badges = [{ key: 'rq', text: '0 rag_query', variant: 'score' }];
-      if (cc != null) badges.push({ key: 'ch', text: `${cc} chunks (meta)`, variant: 'rerank' });
-      const lines = [
-        'No rag_query tool steps in this response.',
-        typeof cchars === 'number' && `context_chars (metadata): ${cchars}`,
-      ].filter(Boolean);
-      cards.push({
-        key: 'claw-rag-summary',
-        indexLabel: nextIndex(),
-        title: 'RAG (rag_query)',
-        badges,
-        body: lines.join('\n'),
-        skillClickable: false,
-      });
-    }
   }
 
   const usage = result.usage && typeof result.usage === 'object' ? result.usage : {};
@@ -220,55 +150,7 @@ export function buildTesterRunLogCards({ result, isClawMode, errorMessage, clawB
   const enabledRun = sk && typeof sk.enabled_count === 'number' ? sk.enabled_count : null;
   let skillsBlock = null;
 
-  if (isClawMode && clawBuildContext) {
-    const bodyLines = [];
-    bodyLines.push(
-      clawBuildContext.skillsEnabled
-        ? 'Build profile: skill tools ON (agent may call load_skill).'
-        : 'Build profile: skill tools OFF.',
-    );
-    if (inv.length > 0 || loadedNum > 0) {
-      bodyLines.push(
-        `This response: ${Math.max(inv.length, loadedNum)} skill pack(s) loaded via load_skill.`,
-      );
-    } else {
-      bodyLines.push(
-        'This response: no load_skill — the model did not load a SKILL.md pack for this answer.',
-      );
-    }
-    if (enabledRun != null) {
-      bodyLines.push(`Skills metadata enabled_count: ${enabledRun} (catalog for this run).`);
-    }
-    skillsBlock = { loaded: loadedNum, enabled: enabledRun, invocations: inv };
-    cards.push({
-      key: 'skills-claw-summary',
-      indexLabel: nextIndex(),
-      title: 'Skills',
-      badges: [
-        {
-          key: 'ld',
-          text: `Loaded: ${inv.length > 0 ? inv.length : loadedNum}`,
-          variant: 'score',
-        },
-        ...(enabledRun != null
-          ? [{ key: 'en', text: `Enabled in run: ${enabledRun}`, variant: 'rerank' }]
-          : []),
-      ],
-      body: bodyLines.join('\n'),
-      skillClickable: false,
-    });
-    inv.forEach((name, j) => {
-      cards.push({
-        key: `skill-${name}-${j}`,
-        indexLabel: nextIndex(),
-        title: name,
-        badges: [],
-        body: 'Click to open SKILL.md',
-        skillClickable: true,
-        invocation: name,
-      });
-    });
-  } else if (sk && (loadedNum > 0 || inv.length > 0 || enabledRun != null)) {
+  if (sk && (loadedNum > 0 || inv.length > 0 || enabledRun != null)) {
     skillsBlock = { loaded: loadedNum, enabled: enabledRun, invocations: inv };
     cards.push({
       key: 'skills-summary',
@@ -289,9 +171,8 @@ export function buildTesterRunLogCards({ result, isClawMode, errorMessage, clawB
         indexLabel: nextIndex(),
         title: name,
         badges: [],
-        body: 'Click to open SKILL.md',
-        skillClickable: true,
-        invocation: name,
+        body: 'Loaded invocation (see proxy / agent traces for SKILL.md context).',
+        skillClickable: false,
       });
     });
   }

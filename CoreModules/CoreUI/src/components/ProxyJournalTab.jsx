@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { getClawCodeJournal, clearClawCodeJournal, getProxyJournal, clearProxyJournal } from '../services/api';
+import { getProxyJournal, clearProxyJournal } from '../services/api';
 import '../styles/components/DashboardTab.css';
 import ProxyTraceDetailModal from './ProxyTraceDetailModal';
 
@@ -41,10 +41,7 @@ function getDateRangeForJournal(period, selectedDate) {
   }
 }
 
-/**
- * @param {{ variant?: 'claw' | 'ragFusion' }} props
- */
-export default function ProxyJournalTab({ variant = 'claw' }) {
+export default function ProxyJournalTab() {
   const [period, setPeriod] = useState('week');
   const [selectedDate, setSelectedDate] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -62,18 +59,11 @@ export default function ProxyJournalTab({ variant = 'claw' }) {
       }
       try {
         const { from, to } = getDateRangeForJournal(period, selectedDate);
-        const data =
-          variant === 'ragFusion'
-            ? await getProxyJournal({
-                limit: JOURNAL_LIMIT,
-                from: from || undefined,
-                to: to || undefined,
-              })
-            : await getClawCodeJournal({
-                limit: JOURNAL_LIMIT,
-                from: from || undefined,
-                to: to || undefined,
-              });
+        const data = await getProxyJournal({
+          limit: JOURNAL_LIMIT,
+          from: from || undefined,
+          to: to || undefined,
+        });
         const rows = data.logs || [];
         setLogs(rows.slice().reverse());
       } catch (e) {
@@ -85,7 +75,7 @@ export default function ProxyJournalTab({ variant = 'claw' }) {
         if (!silent) setLoading(false);
       }
     },
-    [period, selectedDate, variant],
+    [period, selectedDate],
   );
 
   useEffect(() => {
@@ -155,17 +145,10 @@ export default function ProxyJournalTab({ variant = 'claw' }) {
   );
 
   const clearDb = async () => {
-    const msg =
-      variant === 'ragFusion'
-        ? 'Delete all persisted RAG Fusion Proxy journal entries from the database?'
-        : 'Delete all persisted ClawCode journal entries from the database?';
+    const msg = 'Delete all persisted RAG Fusion Proxy journal entries from the database?';
     if (!window.confirm(msg)) return;
     try {
-      if (variant === 'ragFusion') {
-        await clearProxyJournal();
-      } else {
-        await clearClawCodeJournal();
-      }
+      await clearProxyJournal();
       setSelectedId(null);
       setDetailModalOpen(false);
       await loadJournal();
@@ -179,21 +162,13 @@ export default function ProxyJournalTab({ variant = 'claw' }) {
     setDetailModalOpen(true);
   };
 
-  const journalHeadingId = variant === 'ragFusion' ? 'rag-fusion-journal-heading' : 'claw-journal-heading';
-  const blurb =
-    variant === 'ragFusion' ? (
-      <>
-        Persisted proxy requests (SQLite, <code>session_id=proxy</code>). The list refreshes every few seconds while
-        this tab is open. Use the <strong>Traces</strong> subtab for the in-memory buffer. Click a row to open full
-        detail.
-      </>
-    ) : (
-      <>
-        Persisted agent traces (one row per run, updated as the agent progresses). The list refreshes every few seconds
-        while this tab is open. Use the <strong>Traces</strong> subtab for the in-memory buffer and detailed trace list.
-        Click a row to open full detail.
-      </>
-    );
+  const journalHeadingId = 'rag-fusion-journal-heading';
+  const blurb = (
+    <>
+      Persisted proxy requests (SQLite, <code>session_id=proxy</code>). The list refreshes every few seconds while this
+      tab is open. Use the <strong>Traces</strong> subtab for the in-memory buffer. Click a row to open full detail.
+    </>
+  );
 
   return (
     <div className="dashboard-layout">
@@ -212,7 +187,7 @@ export default function ProxyJournalTab({ variant = 'claw' }) {
         <p className="dashboard-card-muted">{blurb}</p>
         {err && <div className="dashboard-card-error">{err}</div>}
 
-        <div className="claw-journal-toolbar">
+        <div className="proxy-journal-toolbar">
           <label className="dashboard-card-muted">
             Period{' '}
             <select
@@ -251,18 +226,18 @@ export default function ProxyJournalTab({ variant = 'claw' }) {
         {loading && <p className="dashboard-card-muted">Loading…</p>}
         {!loading && logs.length === 0 && <p className="dashboard-card-muted">No journal entries.</p>}
         {!loading && displayLogs.length > 0 && (
-          <ul className="claw-journal-list" aria-busy={loading}>
+          <ul className="proxy-journal-list" aria-busy={loading}>
             {displayLogs.map((row) => (
               <li key={row.id}>
                 <button
                   type="button"
                   onClick={() => openEntry(row.id)}
-                  className={`claw-journal-list-item${
-                    detailModalOpen && selectedId === row.id ? ' claw-journal-list-item--active' : ''
+                  className={`proxy-journal-list-item${
+                    detailModalOpen && selectedId === row.id ? ' proxy-journal-list-item--active' : ''
                   }`}
                 >
-                  <span className="claw-journal-list-item-time">{row.timestamp}</span>
-                  <span className="claw-journal-list-item-msg">{row.message}</span>
+                  <span className="proxy-journal-list-item-time">{row.timestamp}</span>
+                  <span className="proxy-journal-list-item-msg">{row.message}</span>
                 </button>
               </li>
             ))}

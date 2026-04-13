@@ -48,12 +48,12 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
         return None, errors
 
     backend = str(build.get("backend") or "dumb").strip().lower()
-    if backend not in ("dumb", "claw"):
-        errors.append("backend must be 'dumb' or 'claw'")
+    if backend != "dumb":
+        errors.append("backend must be 'dumb'")
 
     ollama_model = str(build.get("ollama_model") or "").strip()
-    if backend in ("dumb", "claw") and not ollama_model:
-        errors.append("dumb and claw builds require ollama_model")
+    if backend == "dumb" and not ollama_model:
+        errors.append("dumb builds require ollama_model")
 
     prompt_name = str(build.get("prompt_name") or "").strip()
     if not prompt_name:
@@ -275,24 +275,18 @@ def diagnose_build(
     ollama_tag_names: set[str],
     prompt_exists: bool,
     qdrant_collection_names: set[str] | None = None,
-    claw_reachable: bool | None = None,
 ) -> tuple[list[str], bool]:
     """Return (issues, healthy) for WebUI list/detail."""
     issues: list[str] = []
-    backend = str(build.get("backend") or "dumb").strip().lower()
     om = str(build.get("ollama_model") or "").strip()
-    if backend in ("dumb", "claw"):
-        if om and ollama_tag_names and om not in ollama_tag_names:
-            issues.append(f'Ollama model "{om}" is not in the current tag list (removed or renamed?)')
+    if om and ollama_tag_names and om not in ollama_tag_names:
+        issues.append(f'Ollama model "{om}" is not in the current tag list (removed or renamed?)')
     pn = str(build.get("prompt_name") or "").strip()
     if pn and not prompt_exists:
         issues.append(f'Prompt template "{pn}" not found under prompts/')
     rc = str(build.get("rag_collection") or "").strip()
     if rc and qdrant_collection_names is not None and rc not in qdrant_collection_names:
         issues.append(f'RAG collection "{rc}" not found in Qdrant')
-    if backend == "claw":
-        if claw_reachable is False:
-            issues.append("ClawCode OpenAI endpoint is not reachable")
     return issues, len(issues) == 0
 
 

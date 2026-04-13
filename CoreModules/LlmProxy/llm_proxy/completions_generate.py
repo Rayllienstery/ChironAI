@@ -66,7 +66,7 @@ def _resolve_ollama_model(w: LlmProxyWiring, requested: str) -> tuple[str | None
         bd = find_build_by_id(builds, req)
         if bd:
             backend = str(bd.get("backend") or "").strip().lower()
-            if backend in ("dumb", "claw"):
+            if backend == "dumb":
                 om = str(bd.get("ollama_model") or "").strip()
                 if om:
                     return om, None

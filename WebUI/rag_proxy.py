@@ -44,50 +44,6 @@ WEBUI_FRONTEND_DIR = os.path.join(PROJECT_ROOT, "CoreModules", "CoreUI")
 app = create_app(webui_dir=BASE_DIR)
 
 
-def _start_clawcode_servers(_main_app) -> None:
-    try:
-        from config import (
-            get_clawcode_enabled,
-            get_clawcode_host,
-            get_clawcode_mcp_http_enabled,
-            get_clawcode_mcp_port,
-            get_clawcode_openai_port,
-            get_clawcode_trace_buffer_size,
-        )
-    except Exception:
-        return
-    if not get_clawcode_enabled():
-        return
-    _cc = os.path.join(PROJECT_ROOT, "CoreModules", "ClawCode")
-    if _cc not in sys.path:
-        sys.path.insert(0, _cc)
-    try:
-        from werkzeug.serving import make_server
-
-        from clawcode.http_server import create_clawcode_flask_app
-        from clawcode.mcp_info_app import create_mcp_info_app
-        from clawcode.trace_store import configure as clawcode_trace_configure
-
-        clawcode_trace_configure(get_clawcode_trace_buffer_size())
-        host = get_clawcode_host()
-        oa_port = get_clawcode_openai_port()
-        oapp = create_clawcode_flask_app()
-        srv = make_server(host, oa_port, oapp, threaded=True)
-        threading.Thread(target=srv.serve_forever, name="clawcode_openai", daemon=True).start()
-        logging.getLogger(__name__).info("ClawCode OpenAI listening on %s:%s", host, oa_port)
-        if get_clawcode_mcp_http_enabled():
-            mp = get_clawcode_mcp_port()
-            mapp = create_mcp_info_app()
-            srv_m = make_server(host, mp, mapp, threaded=True)
-            threading.Thread(target=srv_m.serve_forever, name="clawcode_mcp_info", daemon=True).start()
-            logging.getLogger(__name__).info("ClawCode MCP info listening on %s:%s", host, mp)
-    except Exception:
-        logging.getLogger(__name__).exception("ClawCode servers failed to start; continuing without them")
-
-
-threading.Thread(target=_start_clawcode_servers, args=(app,), name="clawcode_boot", daemon=True).start()
-
-
 def _start_build_proxy_server(_main_app) -> None:
     try:
         from config import get_build_proxy_enabled, get_build_proxy_host, get_build_proxy_port

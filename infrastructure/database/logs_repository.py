@@ -83,68 +83,6 @@ class LogsRepository:
             conn.commit()
             return cursor.lastrowid
 
-    def upsert_clawcode_journal_trace(
-        self,
-        message: str,
-        metadata: dict[str, Any],
-    ) -> int:
-        """
-        Persist a ClawCode agent trace snapshot: one SQLite row per trace_id.
-
-        Updates the earliest row for that trace_id (stable id across partial snapshots)
-        and removes duplicate rows so the journal does not fragment one run into many cards.
-        """
-        trace_id = str(metadata.get("trace_id") or "").strip()
-        if not trace_id:
-            return self.add_log(
-                session_id="clawcode",
-                level="INFO",
-                message=message,
-                source="clawcode",
-                metadata=metadata,
-            )
-
-        meta_json = json.dumps(metadata, ensure_ascii=False)
-        with sqlite3.connect(self.db_path) as conn:
-            cur = conn.execute(
-                """
-                SELECT id FROM logs
-                WHERE session_id = 'clawcode' AND source = 'clawcode' AND metadata IS NOT NULL
-                  AND json_extract(metadata, '$.trace_id') = ?
-                ORDER BY id ASC
-                """,
-                (trace_id,),
-            )
-            ids = [int(r[0]) for r in cur.fetchall()]
-
-            if not ids:
-                cursor = conn.execute(
-                    """
-                    INSERT INTO logs (session_id, level, source, message, error_type, metadata)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    ("clawcode", "INFO", "clawcode", message[:500], None, meta_json),
-                )
-                conn.commit()
-                return int(cursor.lastrowid or 0)
-
-            keeper = ids[0]
-            extras = ids[1:]
-            if extras:
-                q_marks = ",".join("?" * len(extras))
-                conn.execute(f"DELETE FROM logs WHERE id IN ({q_marks})", extras)
-
-            conn.execute(
-                """
-                UPDATE logs
-                SET message = ?, metadata = ?, timestamp = CURRENT_TIMESTAMP, level = ?
-                WHERE id = ?
-                """,
-                (message[:500], meta_json, "INFO", keeper),
-            )
-            conn.commit()
-            return keeper
-
     def get_logs(
         self,
         session_id: str,
@@ -245,71 +183,6 @@ class LogsRepository:
             logs.reverse()
             return logs
 
-    def get_proxy_and_clawcode_logs(
-        self,
-        *,
-        limit: int = 100,
-        since_id: Optional[int] = None,
-        from_date: Optional[str] = None,
-        to_date: Optional[str] = None,
-    ) -> list[dict[str, Any]]:
-        """
-        Single-query merge of LLM proxy rows (session proxy) and ClawCode journal (clawcode).
-
-        SQLite ``logs.id`` is global, so ``since_id`` and ``limit`` apply to the combined
-        stream in insertion order — correct for incremental polling with ``max(id)`` from
-        the previous merged response.
-        """
-        if from_date is not None:
-            from_date = _normalize_log_timestamp_bound(from_date, end=False)
-        if to_date is not None:
-            to_date = _normalize_log_timestamp_bound(to_date, end=True)
-
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            query = (
-                "SELECT * FROM logs WHERE level = 'INFO' AND ("
-                "(session_id = 'proxy' AND source = 'proxy') OR "
-                "(session_id = 'clawcode' AND source = 'clawcode')"
-                ")"
-            )
-            params: list[Any] = []
-            if since_id is not None:
-                query += " AND id > ?"
-                params.append(since_id)
-            if from_date:
-                query += " AND timestamp >= ?"
-                params.append(from_date)
-            if to_date:
-                query += " AND timestamp <= ?"
-                params.append(to_date)
-            query += " ORDER BY id DESC LIMIT ?"
-            params.append(limit)
-
-            cursor = conn.execute(query, params)
-            rows = cursor.fetchall()
-
-            logs: list[dict[str, Any]] = []
-            for row in rows:
-                log: dict[str, Any] = {
-                    "id": row["id"],
-                    "session_id": row["session_id"],
-                    "timestamp": row["timestamp"],
-                    "level": row["level"],
-                    "source": row["source"],
-                    "message": row["message"],
-                    "error_type": row["error_type"],
-                }
-                if row["metadata"]:
-                    try:
-                        log["metadata"] = json.loads(row["metadata"])
-                    except json.JSONDecodeError:
-                        log["metadata"] = {}
-                logs.append(log)
-
-            logs.reverse()
-            return logs
-
     def get_all_logs(
         self,
         level: Optional[str] = None,
@@ -384,15 +257,6 @@ class LogsRepository:
                     "AND json_extract(metadata, '$.is_autocomplete') = 1"
                 )
             cursor = conn.execute(query)
-            conn.commit()
-            return cursor.rowcount or 0
-
-    def delete_clawcode_logs(self) -> int:
-        """Delete ClawCode journal rows (``session_id='clawcode'``, ``source='clawcode'``)."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                "DELETE FROM logs WHERE session_id = 'clawcode' AND source = 'clawcode'"
-            )
             conn.commit()
             return cursor.rowcount or 0
 

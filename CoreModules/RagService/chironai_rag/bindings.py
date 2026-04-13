@@ -11,7 +11,7 @@ __all__ = ["ConsumerRagBindings"]
 
 class ConsumerRagBindings:
     """
-    Facade over app_settings for LLM Proxy vs ClawCode collection overrides.
+    Facade over app_settings for LLM Proxy collection overrides.
 
     Policy hook: when ``policy.is_rag_enabled()`` is False, ``get_stored_collection`` returns
     empty string (callers treat as unset / use config default). Persistence still allowed so

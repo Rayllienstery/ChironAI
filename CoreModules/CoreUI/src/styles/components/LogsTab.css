@@ -93,26 +93,6 @@
   font-size: 14px;
 }
 
-.log-icon--claw-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 0;
-}
-
-.log-icon--claw-mark .notification-center-claw-svg {
-  width: 22px;
-  height: 22px;
-}
-
-.proxy-log-entry--claw-journal-open-detail {
-  cursor: pointer;
-}
-
-.proxy-log-entry--claw-journal-open-detail:hover {
-  border-color: var(--md-sys-color-outline, #79747e);
-}
-
 .log-summary {
   font-size: 13px;
 }
@@ -164,24 +144,9 @@
   letter-spacing: 0.02em;
 }
 
-.proxy-log-pipeline-badge--claw {
-  background: var(--md-sys-color-tertiary-container, #e8def8);
-  color: var(--md-sys-color-on-tertiary-container, #1d192b);
-}
-
 .proxy-log-pipeline-badge--rag {
   background: var(--md-sys-color-secondary-container, #e3e8ef);
   color: var(--md-sys-color-on-secondary-container, #1d1b20);
-}
-
-.proxy-log-entry--claw-journal .log-summary {
-  font-weight: 600;
-}
-
-.proxy-log-claw-error {
-  margin-top: var(--md-sys-spacing-xs);
-  color: var(--md-sys-color-error, #b3261e);
-  font-size: 13px;
 }
 
 .proxy-log-ac-badge {
@@ -221,21 +186,6 @@
   font-size: 12px;
   max-height: 200px;
   overflow-y: auto;
-}
-
-.proxy-log-section--claw-response-clickable {
-  cursor: pointer;
-  border-radius: var(--md-sys-shape-corner-extra-small);
-  outline-offset: 2px;
-}
-
-.proxy-log-section--claw-response-clickable:hover .proxy-log-text--claw-response-preview {
-  border-color: var(--md-sys-color-outline, #79747e);
-  background: color-mix(in srgb, var(--md-sys-color-surface-container-highest, #e6e0e9) 40%, transparent);
-}
-
-.proxy-log-section--claw-response-clickable:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary, #6750a4);
 }
 
 .proxy-log-metrics {
@@ -278,73 +228,6 @@
   border: 1px solid var(--md-sys-color-outline-variant);
   padding: var(--md-sys-spacing-sm);
   border-radius: var(--md-sys-shape-corner-extra-small);
-}
-
-.claw-journal-runtime-inner {
-  display: flex;
-  flex-direction: column;
-  gap: var(--md-sys-spacing-xs);
-}
-
-.claw-journal-kv {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--md-sys-spacing-sm);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.claw-journal-kv--hint {
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.claw-journal-k {
-  min-width: 10rem;
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.claw-journal-v code {
-  font-size: 11px;
-}
-
-.claw-journal-id-list code {
-  margin-right: 4px;
-}
-
-.claw-journal-flag--yes {
-  color: var(--md-sys-color-primary, #006a6a);
-  font-weight: 600;
-}
-
-.claw-journal-flag--no {
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.claw-journal-step-list {
-  margin: var(--md-sys-spacing-xs) 0 0;
-  padding-left: 1.1rem;
-  font-size: 12px;
-}
-
-.claw-journal-step-item {
-  margin-bottom: var(--md-sys-spacing-xs);
-}
-
-.claw-journal-step-meta {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.claw-journal-step-err {
-  margin-top: 2px;
-  font-size: 11px;
-}
-
-.claw-journal-err {
-  color: var(--md-sys-color-error, #b3261e);
 }
 
 .rag-metric {
@@ -784,7 +667,7 @@ button.proxy-logs-top-row:disabled {
   border-color: var(--md-sys-color-primary);
 }
 
-/* Claw journal — full response modal */
+/* Full-screen modal for long log text (legacy / shared pattern) */
 .logs-tab-modal-overlay {
   position: fixed;
   inset: 0;

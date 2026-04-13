@@ -48,7 +48,6 @@ _models_cfg = _load_yaml("models.yaml")
 _retrieval_cfg = _load_yaml("retrieval.yaml")
 _crawler_cfg = _load_yaml("crawler.yaml")
 _indexing_cfg = _load_yaml("indexing.yaml")
-_clawcode_cfg = _load_yaml("clawcode.yaml")
 
 RAG_CONFIG: Dict[str, Any] = _rag_cfg.get("rag", {})
 SERVER_CONFIG: Dict[str, Any] = _server_cfg.get("server", {})
@@ -57,7 +56,6 @@ OLLAMA_CONFIG: Dict[str, Any] = _models_cfg.get("ollama", {})
 RETRIEVAL_CONFIG: Dict[str, Any] = _retrieval_cfg.get("retrieval", {})
 CRAWLER_CONFIG: Dict[str, Any] = _crawler_cfg.get("crawler", {})
 INDEXING_CONFIG: Dict[str, Any] = _indexing_cfg.get("indexing", {})
-CLAWCODE_CONFIG: Dict[str, Any] = _clawcode_cfg.get("clawcode", {})
 BUILD_PROXY_CONFIG: Dict[str, Any] = _server_cfg.get("build_proxy", {})
 LLM_PROXY_SERVER_CONFIG: Dict[str, Any] = _server_cfg.get("llm_proxy", {})
 
@@ -447,134 +445,4 @@ def get_v1_include_autocomplete_logical_model() -> bool:
     if env in ("1", "true", "yes", "on"):
         return True
     return bool(LLM_PROXY_SERVER_CONFIG.get("v1_include_autocomplete_logical_model", True))
-
-
-def get_clawcode_enabled() -> bool:
-    """ClawCode agent HTTP + optional MCP info server. ``CLAWCODE_ENABLED=0`` disables."""
-    env = os.getenv("CLAWCODE_ENABLED", "").strip().lower()
-    if env in ("0", "false", "no", "off"):
-        return False
-    if env in ("1", "true", "yes", "on"):
-        return True
-    return bool(CLAWCODE_CONFIG.get("enabled", True))
-
-
-def get_clawcode_host() -> str:
-    return os.getenv("CLAWCODE_HOST", str(CLAWCODE_CONFIG.get("host", "0.0.0.0")))
-
-
-def get_clawcode_openai_port() -> int:
-    try:
-        p = os.getenv("CLAWCODE_OPENAI_PORT")
-        if p:
-            return int(p)
-    except (TypeError, ValueError):
-        pass
-    return int(CLAWCODE_CONFIG.get("openai_port", 8082))
-
-
-def get_clawcode_mcp_port() -> int:
-    try:
-        p = os.getenv("CLAWCODE_MCP_PORT")
-        if p:
-            return int(p)
-    except (TypeError, ValueError):
-        pass
-    return int(CLAWCODE_CONFIG.get("mcp_port", 8083))
-
-
-def get_clawcode_mcp_http_enabled() -> bool:
-    env = os.getenv("CLAWCODE_MCP_HTTP", "").strip().lower()
-    if env in ("0", "false", "no", "off"):
-        return False
-    if env in ("1", "true", "yes", "on"):
-        return True
-    return bool(CLAWCODE_CONFIG.get("mcp_http_enabled", True))
-
-
-def get_clawcode_merge_client_tools_config_yaml() -> bool:
-    """Value from ``clawcode.yaml`` only. Defaults to True if the key is omitted."""
-    return bool(CLAWCODE_CONFIG.get("merge_client_tools", True))
-
-
-def get_clawcode_merge_client_tools() -> bool:
-    """
-    When True (default from YAML), ClawCode merges client ``tools`` (e.g. Copilot) with
-    ``rag_query`` for Ollama and can return client-only ``tool_calls`` to the IDE. When False, only
-    ``rag_query`` is advertised.
-
-    Precedence: ``CLAWCODE_MERGE_CLIENT_TOOLS`` env, then YAML ``merge_client_tools``.
-    """
-    env = os.getenv("CLAWCODE_MERGE_CLIENT_TOOLS", "").strip().lower()
-    if env in ("1", "true", "yes", "on"):
-        return True
-    if env in ("0", "false", "no", "off"):
-        return False
-    return get_clawcode_merge_client_tools_config_yaml()
-
-
-def get_clawcode_max_agent_steps_config_yaml() -> int:
-    """Default from clawcode.yaml only (no env, no DB); for WebUI hints."""
-    try:
-        return max(1, int(CLAWCODE_CONFIG.get("max_agent_steps", 40)))
-    except (TypeError, ValueError):
-        return 40
-
-
-def get_clawcode_max_agent_steps() -> int:
-    """
-    Effective max agent steps for direct ClawCode HTTP: env ``CLAWCODE_MAX_AGENT_STEPS``, then YAML.
-    Clamped to [1, 256]. LLM Proxy claw builds pass ``max_agent_steps`` per request.
-    """
-    try:
-        v = os.getenv("CLAWCODE_MAX_AGENT_STEPS")
-        if v:
-            return max(1, min(256, int(v)))
-    except (TypeError, ValueError):
-        pass
-    return max(1, min(256, get_clawcode_max_agent_steps_config_yaml()))
-
-
-def get_clawcode_trace_buffer_size() -> int:
-    try:
-        return max(10, int(CLAWCODE_CONFIG.get("trace_buffer_size", 80)))
-    except (TypeError, ValueError):
-        return 80
-
-
-def get_clawcode_think_num_predict_floor_config_yaml() -> int:
-    """Minimum ``num_predict`` when ClawCode uses Ollama ``think: true`` (YAML only)."""
-    try:
-        return max(256, int(CLAWCODE_CONFIG.get("think_num_predict_floor", 12288)))
-    except (TypeError, ValueError):
-        return 12288
-
-
-def get_clawcode_think_num_predict_floor() -> int:
-    """
-    Effective floor for Ollama ``num_predict`` when thinking is enabled.
-
-    Precedence: ``CLAWCODE_THINK_NUM_PREDICT_FLOOR`` env, then ``think_num_predict_floor`` in clawcode.yaml.
-    Clamped to [256, 262144].
-    """
-    try:
-        v = os.getenv("CLAWCODE_THINK_NUM_PREDICT_FLOOR")
-        if v is not None and str(v).strip():
-            return max(256, min(262_144, int(str(v).strip())))
-    except (TypeError, ValueError):
-        pass
-    try:
-        return max(256, min(262_144, int(get_clawcode_think_num_predict_floor_config_yaml())))
-    except (TypeError, ValueError):
-        return 12288
-
-
-def get_clawcode_vendor_config() -> Dict[str, Any]:
-    v = CLAWCODE_CONFIG.get("vendor") if isinstance(CLAWCODE_CONFIG.get("vendor"), dict) else {}
-    return {
-        "github_owner": os.getenv("CLAWCODE_GITHUB_OWNER", str(v.get("github_owner", "ultraworkers"))),
-        "github_repo": os.getenv("CLAWCODE_GITHUB_REPO", str(v.get("github_repo", "claw-code-parity"))),
-        "branch": os.getenv("CLAWCODE_VENDOR_BRANCH", str(v.get("branch", "main"))),
-        "root_relative": str(v.get("root_relative", "vendor/claw-code")),
-    }
 

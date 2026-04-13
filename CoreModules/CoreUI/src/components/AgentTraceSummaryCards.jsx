@@ -22,9 +22,9 @@ function pill(label, value) {
 function chipList(items) {
   if (!items || items.length === 0) return <span className="dashboard-card-muted">—</span>;
   return (
-    <span className="claw-trace-summary-chips">
+    <span className="agent-trace-summary-chips">
       {items.map((t, i) => (
-        <code key={`${t}-${i}`} className="claw-trace-summary-chip">
+        <code key={`${t}-${i}`} className="agent-trace-summary-chip">
           {t}
         </code>
       ))}
@@ -35,7 +35,7 @@ function chipList(items) {
 /**
  * @param {{ summary: Record<string, unknown> }} props
  */
-export default function ClawTraceSummaryCards({ summary }) {
+export default function AgentTraceSummaryCards({ summary }) {
   if (!summary || summary.empty) {
     return <p className="dashboard-card-muted">No trace data to summarize.</p>;
   }
@@ -54,13 +54,13 @@ export default function ClawTraceSummaryCards({ summary }) {
       summary.sumCompletionFromSteps !== summary.totalCompletionTokensEst);
 
   return (
-    <div className="claw-trace-summary-root">
-      <p className="claw-trace-summary-lead dashboard-card-muted">
-        Token figures are <strong>internal estimates</strong> (serialized message size ÷ 4), not provider billing usage.
+    <div className="agent-trace-summary-root">
+      <p className="agent-trace-summary-lead dashboard-card-muted">
+        Token figures are <strong>internal estimates</strong> (serialized message size / 4), not provider billing usage.
       </p>
 
-      <section className="claw-trace-summary-section" aria-labelledby="claw-sum-overview">
-        <h4 id="claw-sum-overview" className="dashboard-proxy-block-title">
+      <section className="agent-trace-summary-section" aria-labelledby="agent-sum-overview">
+        <h4 id="agent-sum-overview" className="dashboard-proxy-block-title">
           Overview
         </h4>
         {summary.traceId ? (
@@ -85,8 +85,8 @@ export default function ClawTraceSummaryCards({ summary }) {
         )}
       </section>
 
-      <section className="claw-trace-summary-section" aria-labelledby="claw-sum-tokens">
-        <h4 id="claw-sum-tokens" className="dashboard-proxy-block-title">
+      <section className="agent-trace-summary-section" aria-labelledby="agent-sum-tokens">
+        <h4 id="agent-sum-tokens" className="dashboard-proxy-block-title">
           Tokens (estimate)
         </h4>
         <div className="dashboard-rag-status-grid">
@@ -103,7 +103,7 @@ export default function ClawTraceSummaryCards({ summary }) {
         {perRows.length > 0 && (
           <details className="dashboard-trace-item" style={{ marginTop: 10 }}>
             <summary>Per model_call step</summary>
-            <table className="claw-trace-summary-table">
+            <table className="agent-trace-summary-table">
               <thead>
                 <tr>
                   <th>Agent step</th>
@@ -129,8 +129,8 @@ export default function ClawTraceSummaryCards({ summary }) {
         )}
       </section>
 
-      <section className="claw-trace-summary-section" aria-labelledby="claw-sum-ctx">
-        <h4 id="claw-sum-ctx" className="dashboard-proxy-block-title">
+      <section className="agent-trace-summary-section" aria-labelledby="agent-sum-ctx">
+        <h4 id="agent-sum-ctx" className="dashboard-proxy-block-title">
           Context volume
         </h4>
         <div className="dashboard-rag-status-grid">
@@ -141,22 +141,22 @@ export default function ClawTraceSummaryCards({ summary }) {
       </section>
 
       {summary.processRssMb != null && (
-        <section className="claw-trace-summary-section" aria-labelledby="claw-sum-rss">
-          <h4 id="claw-sum-rss" className="dashboard-proxy-block-title">
+        <section className="agent-trace-summary-section" aria-labelledby="agent-sum-rss">
+          <h4 id="agent-sum-rss" className="dashboard-proxy-block-title">
             Process
           </h4>
           <div className="dashboard-rag-status-grid">{pill('RSS (MB)', summary.processRssMb)}</div>
         </section>
       )}
 
-      <section className="claw-trace-summary-section" aria-labelledby="claw-sum-rag">
-        <h4 id="claw-sum-rag" className="dashboard-proxy-block-title">
+      <section className="agent-trace-summary-section" aria-labelledby="agent-sum-rag">
+        <h4 id="agent-sum-rag" className="dashboard-proxy-block-title">
           RAG
         </h4>
         {ragCalls.length === 0 ? (
           <p className="dashboard-card-muted">No rag_query steps in this trace.</p>
         ) : (
-          <ul className="claw-trace-summary-list">
+          <ul className="agent-trace-summary-list">
             {ragCalls.map((r, i) => (
               <li key={i}>
                 <span className={r.ok ? '' : 'dashboard-card-error'}>
@@ -164,7 +164,7 @@ export default function ClawTraceSummaryCards({ summary }) {
                   {r.step != null ? ` · step ${r.step}` : ''}
                 </span>
                 {r.query ? (
-                  <div className="dashboard-card-muted claw-trace-summary-query">{r.query}</div>
+                  <div className="dashboard-card-muted agent-trace-summary-query">{r.query}</div>
                 ) : null}
                 {r.error ? <div className="dashboard-card-error">{r.error}</div> : null}
               </li>
@@ -173,8 +173,8 @@ export default function ClawTraceSummaryCards({ summary }) {
         )}
       </section>
 
-      <section className="claw-trace-summary-section" aria-labelledby="claw-sum-skills">
-        <h4 id="claw-sum-skills" className="dashboard-proxy-block-title">
+      <section className="agent-trace-summary-section" aria-labelledby="agent-sum-skills">
+        <h4 id="agent-sum-skills" className="dashboard-proxy-block-title">
           Skills
         </h4>
         {skillsSnap && (
@@ -189,7 +189,7 @@ export default function ClawTraceSummaryCards({ summary }) {
           <p className="dashboard-card-muted">No skills metadata or load_skill steps.</p>
         )}
         {skillLoads.length > 0 && (
-          <ul className="claw-trace-summary-list">
+          <ul className="agent-trace-summary-list">
             {skillLoads.map((s, i) => (
               <li key={i}>
                 <code>{s.invocation || s.skillId || 'load_skill'}</code>
@@ -209,8 +209,8 @@ export default function ClawTraceSummaryCards({ summary }) {
         )}
       </section>
 
-      <section className="claw-trace-summary-section" aria-labelledby="claw-sum-tools">
-        <h4 id="claw-sum-tools" className="dashboard-proxy-block-title">
+      <section className="agent-trace-summary-section" aria-labelledby="agent-sum-tools">
+        <h4 id="agent-sum-tools" className="dashboard-proxy-block-title">
           Server tools (assistant requested)
         </h4>
         <p className="dashboard-card-muted" style={{ fontSize: 12, marginBottom: 8 }}>
@@ -228,14 +228,14 @@ export default function ClawTraceSummaryCards({ summary }) {
       </section>
 
       {passThrough.length > 0 && (
-        <section className="claw-trace-summary-section" aria-labelledby="claw-sum-pt">
-          <h4 id="claw-sum-pt" className="dashboard-proxy-block-title">
+        <section className="agent-trace-summary-section" aria-labelledby="agent-sum-pt">
+          <h4 id="agent-sum-pt" className="dashboard-proxy-block-title">
             IDE pass-through
           </h4>
           <p className="dashboard-card-muted" style={{ fontSize: 12, marginBottom: 8 }}>
-            Tool batch returned to the client for execution outside ClawCode.
+            Tool batch returned to the client for execution outside the proxy process.
           </p>
-          <ul className="claw-trace-summary-list">
+          <ul className="agent-trace-summary-list">
             {passThrough.map((p, i) => (
               <li key={i}>
                 Step {p.step != null ? p.step : '—'}: {chipList(p.names)}
@@ -245,8 +245,8 @@ export default function ClawTraceSummaryCards({ summary }) {
         </section>
       )}
 
-      <section className="claw-trace-summary-section" aria-labelledby="claw-sum-ide">
-        <h4 id="claw-sum-ide" className="dashboard-proxy-block-title">
+      <section className="agent-trace-summary-section" aria-labelledby="agent-sum-ide">
+        <h4 id="agent-sum-ide" className="dashboard-proxy-block-title">
           IDE tool schema
         </h4>
         <p>

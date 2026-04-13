@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { summarizeClawTraceMeta } from '../utils/clawTraceSummary';
-import ClawTraceSummaryCards from './ClawTraceSummaryCards';
+import { summarizeAgentTraceMeta } from '../utils/agentTraceSummary';
+import AgentTraceSummaryCards from './AgentTraceSummaryCards';
 import '../styles/components/DashboardTab.css';
 
 function readMetadata(log) {
@@ -15,9 +15,8 @@ function readMetadata(log) {
   return log.metadata;
 }
 
-function isClawTraceStyleLog(log, meta) {
+function isAgentTraceDetailLog(log, meta) {
   if (!log) return false;
-  if (log.session_id === 'clawcode') return true;
   if (meta.trace_id != null && String(meta.trace_id).trim() !== '') {
     if (meta.request != null && typeof meta.request === 'object') return true;
     if (Array.isArray(meta.steps)) return true;
@@ -25,7 +24,7 @@ function isClawTraceStyleLog(log, meta) {
   return false;
 }
 
-export function ClawTraceStepBlock({ step, index }) {
+export function AgentTraceStepBlock({ step, index }) {
   if (!step || typeof step !== 'object') return null;
   const kind = step.kind;
   const label =
@@ -174,7 +173,7 @@ function ProxyRequestStructuredBody({ log, meta }) {
   const chunksInfo = Array.isArray(ragContext.chunks_info) ? ragContext.chunks_info : [];
 
   const pipelineLabel =
-    backend === 'claw' ? 'Claw' : backend === 'rag_fusion' ? 'RAG Fusion' : backend ? String(backend) : '—';
+    backend === 'rag_fusion' ? 'RAG Fusion' : backend ? String(backend) : '—';
 
   return (
     <div className="proxy-trace-detail-body">
@@ -281,50 +280,50 @@ export default function ProxyTraceDetailModal({ log, isOpen, onClose }) {
   }, [isOpen, onClose]);
 
   const meta = useMemo(() => (log ? readMetadata(log) : null), [log]);
-  const traceSummary = useMemo(() => summarizeClawTraceMeta(meta), [meta]);
-  const clawStyle = log && meta ? isClawTraceStyleLog(log, meta) : false;
+  const traceSummary = useMemo(() => summarizeAgentTraceMeta(meta), [meta]);
+  const agentTraceStyle = log && meta ? isAgentTraceDetailLog(log, meta) : false;
   const titleId = 'proxy-trace-detail-modal-title';
 
   if (!isOpen || !log) return null;
 
   return (
-    <div className="claw-journal-modal-overlay" role="presentation" onClick={onClose}>
+    <div className="proxy-journal-modal-overlay" role="presentation" onClick={onClose}>
       <div
-        className="claw-journal-modal"
+        className="proxy-journal-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="claw-journal-modal-header">
-          <div className="claw-journal-modal-title-block">
-            <h2 id={titleId}>{clawStyle ? 'Trace detail' : 'Request detail'}</h2>
-            <p className="claw-journal-modal-meta">{log.timestamp}</p>
+        <div className="proxy-journal-modal-header">
+          <div className="proxy-journal-modal-title-block">
+            <h2 id={titleId}>{agentTraceStyle ? 'Trace detail' : 'Request detail'}</h2>
+            <p className="proxy-journal-modal-meta">{log.timestamp}</p>
             {meta?.trace_id != null && String(meta.trace_id).trim() !== '' && (
-              <p className="claw-journal-modal-meta">
+              <p className="proxy-journal-modal-meta">
                 <code>{String(meta.trace_id)}</code>
               </p>
             )}
           </div>
-          <div className="claw-journal-modal-header-actions">
+          <div className="proxy-journal-modal-header-actions">
             <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="checkbox" checked={showRaw} onChange={(e) => setShowRaw(e.target.checked)} />
               Raw JSON
             </label>
-            <button type="button" className="claw-journal-modal-close" onClick={onClose}>
+            <button type="button" className="proxy-journal-modal-close" onClick={onClose}>
               Close
             </button>
           </div>
         </div>
-        <div className="claw-journal-modal-body">
+        <div className="proxy-journal-modal-body">
           {showRaw && (
             <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, margin: 0 }}>
               {JSON.stringify(meta || log, null, 2)}
             </pre>
           )}
-          {!showRaw && clawStyle && meta && (
+          {!showRaw && agentTraceStyle && meta && (
             <>
-              <ClawTraceSummaryCards summary={traceSummary} />
+              <AgentTraceSummaryCards summary={traceSummary} />
               {meta.request != null && (
                 <details className="dashboard-trace-item">
                   <summary>
@@ -345,7 +344,7 @@ export default function ProxyTraceDetailModal({ log, isOpen, onClose }) {
                 <div style={{ marginTop: 12 }}>
                   <strong>Steps</strong>
                   {meta.steps.map((s, i) => (
-                    <ClawTraceStepBlock key={i} step={s} index={i} />
+                    <AgentTraceStepBlock key={i} step={s} index={i} />
                   ))}
                 </div>
               )}
@@ -364,7 +363,7 @@ export default function ProxyTraceDetailModal({ log, isOpen, onClose }) {
               )}
             </>
           )}
-          {!showRaw && !clawStyle && meta && <ProxyRequestStructuredBody log={log} meta={meta} />}
+          {!showRaw && !agentTraceStyle && meta && <ProxyRequestStructuredBody log={log} meta={meta} />}
           {!showRaw && !meta && (
             <p className="dashboard-card-muted">No metadata on this row (legacy or empty).</p>
           )}

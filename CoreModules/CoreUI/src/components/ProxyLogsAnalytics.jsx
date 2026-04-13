@@ -29,7 +29,6 @@ const MODEL_TOP = 8;
 
 const PIPELINE_OPTIONS = [
   { id: 'mixed', label: 'Mixed' },
-  { id: 'claw', label: 'Claw' },
   { id: 'rag_fusion', label: 'RAG Fusion' },
 ];
 
@@ -67,85 +66,26 @@ function resolveModelLabel(meta) {
   return (meta.model || meta.requested_model || 'N/A').trim() || 'N/A';
 }
 
-/** Last user text preview from ClawCode journal trace `request.messages`. */
-export function clawJournalUserPreview(traceMeta) {
-  const req = traceMeta.request && typeof traceMeta.request === 'object' ? traceMeta.request : {};
-  const msgs = Array.isArray(req.messages) ? req.messages : [];
-  for (let i = msgs.length - 1; i >= 0; i -= 1) {
-    const m = msgs[i];
-    if (m && m.role === 'user' && typeof m.content === 'string' && m.content.trim()) {
-      return m.content.slice(0, 500);
-    }
-  }
-  const tid = traceMeta.trace_id ? String(traceMeta.trace_id).slice(0, 12) : '';
-  return tid ? `Claw trace ${tid}` : 'ClawCode run';
-}
-
 /**
- * Map proxy row or ClawCode journal row (session_id clawcode) to common analytics fields.
+ * Map a proxy log row to common analytics fields.
  */
 function normalizeLogForAnalytics(log) {
   const raw = getMetadata(log);
-  if (log.session_id !== 'clawcode') {
-    const ragContext = raw.rag_context;
-    const chunksInfo = Array.isArray(ragContext?.chunks_info) ? ragContext.chunks_info : [];
-    const hasRag = (ragContext?.chunks_count > 0) || chunksInfo.length > 0;
-    return {
-      model: resolveModelLabel(raw),
-      ragContext: hasRag ? ragContext : null,
-      chunksInfo,
-      hasRag,
-      latency_ms: raw.latency_ms,
-      prompt_tokens: raw.prompt_tokens,
-      completion_tokens: raw.completion_tokens,
-      total_tokens: raw.total_tokens,
-      userPreview: (raw.user_query || '').slice(0, 40),
-      proxyBackend: raw.proxy_backend,
-    };
-  }
-
-  const model = String(raw.resolved_model || raw.model || raw.client_model || 'N/A').trim() || 'N/A';
-  const steps = Array.isArray(raw.steps) ? raw.steps : [];
-  const chunksFromSteps = [];
-  for (const st of steps) {
-    if (!st || typeof st !== 'object') continue;
-    if (st.kind === 'tool_rag' && Array.isArray(st.chunks_info)) {
-      chunksFromSteps.push(...st.chunks_info);
-    }
-  }
-  const hasRag =
-    chunksFromSteps.length > 0 ||
-    steps.some((st) => st && st.kind === 'tool_rag' && Number(st.chunks) > 0);
-  const ragContext =
-    chunksFromSteps.length > 0
-      ? { chunks_info: chunksFromSteps, chunks_count: chunksFromSteps.length }
-      : null;
-
-  const pt = raw.total_prompt_tokens_est;
-  const ct = raw.total_completion_tokens_est;
-  const ptn = typeof pt === 'number' ? pt : undefined;
-  const ctn = typeof ct === 'number' ? ct : undefined;
-
+  const ragContext = raw.rag_context;
+  const chunksInfo = Array.isArray(ragContext?.chunks_info) ? ragContext.chunks_info : [];
+  const hasRag = (ragContext?.chunks_count > 0) || chunksInfo.length > 0;
   return {
-    model,
-    ragContext,
-    chunksInfo: chunksFromSteps,
+    model: resolveModelLabel(raw),
+    ragContext: hasRag ? ragContext : null,
+    chunksInfo,
     hasRag,
-    latency_ms: typeof raw.elapsed_ms === 'number' ? raw.elapsed_ms : undefined,
-    prompt_tokens: ptn,
-    completion_tokens: ctn,
-    total_tokens:
-      ptn != null && ctn != null ? ptn + ctn : undefined,
-    userPreview: clawJournalUserPreview(raw).slice(0, 40),
-    proxyBackend: 'claw',
+    latency_ms: raw.latency_ms,
+    prompt_tokens: raw.prompt_tokens,
+    completion_tokens: raw.completion_tokens,
+    total_tokens: raw.total_tokens,
+    userPreview: (raw.user_query || '').slice(0, 40),
+    proxyBackend: raw.proxy_backend,
   };
-}
-
-/** For pipeline filter: treat ClawCode journal same as proxy_backend claw. */
-export function isClawPipelineLog(log) {
-  if (!log) return false;
-  if (log.session_id === 'clawcode') return true;
-  return getMetadata(log).proxy_backend === 'claw';
 }
 
 function bucketKeyForLog(period, selectedDate, d) {
@@ -237,7 +177,6 @@ function aggregateLogs(logsInput, period, selectedDate, isAutocomplete) {
       o[k] = {
         withRag: 0,
         withoutRag: 0,
-        claw: 0,
         rag_fusion: 0,
         cloud: 0,
         nonCloud: 0,
@@ -299,9 +238,6 @@ function aggregateLogs(logsInput, period, selectedDate, isAutocomplete) {
       } else {
         byBucket[bk].withoutRag += 1;
       }
-      if (norm.proxyBackend === 'claw') {
-        byBucket[bk].claw += 1;
-      }
       if (norm.proxyBackend === 'rag_fusion') {
         byBucket[bk].rag_fusion += 1;
       }
@@ -344,7 +280,6 @@ function aggregateLogs(logsInput, period, selectedDate, isAutocomplete) {
       const b = byBucket[k] || {
         withRag: 0,
         withoutRag: 0,
-        claw: 0,
         rag_fusion: 0,
         cloud: 0,
         nonCloud: 0,
@@ -354,7 +289,6 @@ function aggregateLogs(logsInput, period, selectedDate, isAutocomplete) {
         tick: shortTickLabel(period, k),
         withRag: b.withRag,
         withoutRag: b.withoutRag,
-        claw: b.claw,
         rag_fusion: b.rag_fusion,
         cloud: b.cloud,
         nonCloud: b.nonCloud,
@@ -383,7 +317,6 @@ function aggregateLogs(logsInput, period, selectedDate, isAutocomplete) {
       (row) =>
         row.withRag !== 0 ||
         row.withoutRag !== 0 ||
-        row.claw !== 0 ||
         row.rag_fusion !== 0 ||
         row.cloud !== 0 ||
         row.nonCloud !== 0,
@@ -573,8 +506,8 @@ function ProxyLogsAnalytics({
               )}
             </div>
 
-            <div className="proxy-logs-chart-block proxy-logs-chart-block--wide" role="figure" aria-label="Claw vs RAG Fusion">
-              <h3 className="proxy-logs-chart-title">Claw / RAG Fusion (by time)</h3>
+            <div className="proxy-logs-chart-block proxy-logs-chart-block--wide" role="figure" aria-label="RAG Fusion pipeline requests by time">
+              <h3 className="proxy-logs-chart-title">RAG Fusion pipeline (by time)</h3>
               {agg.hasTimeSeriesData ? (
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={agg.timeSeries} margin={{ top: 8, right: 16, left: 8, bottom: period === 'day' ? 48 : 32 }}>
@@ -583,7 +516,6 @@ function ProxyLogsAnalytics({
                     <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                     <Tooltip contentStyle={chartTooltipStyle} />
                     <Legend />
-                    <Bar dataKey="claw" name="Claw" fill={colors[1]} />
                     <Bar dataKey="rag_fusion" name="RAG Fusion" fill={colors[4] || colors[0]} />
                   </BarChart>
                 </ResponsiveContainer>

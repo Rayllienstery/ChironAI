@@ -18,9 +18,6 @@ import {
   updateRagModelSettings,
   getModelSettings,
   updateModelSettings,
-  getClawCodeStatus,
-  getClawCodeSettings,
-  updateClawCodeSettings,
 } from '../services/api';
 import { useMergedPipelinePreview } from '../hooks/useMergedPipelinePreview';
 import PipelineCiDiagram from './PipelineCiDiagram';
@@ -207,12 +204,8 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
   const [ragModelSaveNotice, setRagModelSaveNotice] = useState(null);
 
   const [llmProxyRagSelect, setLlmProxyRagSelect] = useState('');
-  const [clawRagSelect, setClawRagSelect] = useState('');
-  const [clawCodeAvailable, setClawCodeAvailable] = useState(false);
-  const [clawConfigDefaultRag, setClawConfigDefaultRag] = useState('');
   const [bindingsNotice, setBindingsNotice] = useState(null);
   const [savingLlmRagBinding, setSavingLlmRagBinding] = useState(false);
-  const [savingClawRagBinding, setSavingClawRagBinding] = useState(false);
 
   const { merged: pipelineMerged, reload: reloadPipelinePreview } = useMergedPipelinePreview({
     liveHybridSparse: ragModelSettings.hybrid_sparse_enabled,
@@ -269,23 +262,6 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
       setLlmProxyRagSelect((ms.rag_collection || '').trim());
     } catch (e) {
       setBindingsNotice({ type: 'error', text: e.message || 'Failed to load LLM Proxy RAG binding' });
-    }
-    try {
-      const st = await getClawCodeStatus();
-      if (!st.available) {
-        setClawCodeAvailable(false);
-        setClawRagSelect('');
-        setClawConfigDefaultRag('');
-        return;
-      }
-      setClawCodeAvailable(true);
-      const cs = await getClawCodeSettings();
-      if (cs.ok) {
-        setClawRagSelect(cs.stored_rag_collection != null ? cs.stored_rag_collection : '');
-        setClawConfigDefaultRag(cs.config_default_rag_collection || '');
-      }
-    } catch {
-      setClawCodeAvailable(false);
     }
   }, []);
 
@@ -439,27 +415,6 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
       setBindingsNotice({ type: 'error', text: e.message || 'Save failed' });
     } finally {
       setSavingLlmRagBinding(false);
-    }
-  };
-
-  const saveClawRagBinding = async () => {
-    if (!clawCodeAvailable) return;
-    const v = (clawRagSelect || '').trim();
-    if (v && qdrantCollectionNames.length > 0 && !qdrantCollectionNames.includes(v)) {
-      setBindingsNotice({ type: 'error', text: 'Pick a collection from the list or clear to use the config default.' });
-      return;
-    }
-    setSavingClawRagBinding(true);
-    setBindingsNotice(null);
-    try {
-      await updateClawCodeSettings({ rag_collection: v });
-      await loadConsumerBindings();
-      setBindingsNotice({ type: 'success', text: 'ClawCode RAG collection saved.' });
-      window.setTimeout(() => setBindingsNotice(null), 5000);
-    } catch (e) {
-      setBindingsNotice({ type: 'error', text: e.message || 'Save failed' });
-    } finally {
-      setSavingClawRagBinding(false);
     }
   };
 
@@ -852,62 +807,6 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
                   clear to default.
                 </p>
               )}
-          </div>
-          <div className="rag-service-binding-row">
-            <label className="rag-service-binding-label" htmlFor="rag-binding-claw">
-              ClawCode (<code>rag_query</code>)
-            </label>
-            {!clawCodeAvailable ? (
-              <p className="rag-service-binding-unavailable">
-                ClawCode is not available on this server. Install <code>CoreModules/ClawCode</code> to bind a collection
-                here.
-              </p>
-            ) : (
-              <>
-                <div className="rag-service-binding-controls">
-                  <select
-                    id="rag-binding-claw"
-                    className="rag-service-binding-select"
-                    value={
-                      qdrantCollectionNames.length > 0 && qdrantCollectionNames.includes((clawRagSelect || '').trim())
-                        ? clawRagSelect
-                        : ''
-                    }
-                    onChange={(e) => setClawRagSelect(e.target.value)}
-                    disabled={collections.length === 0}
-                    aria-label="Qdrant collection for ClawCode"
-                  >
-                    <option value="">
-                      {collections.length === 0
-                        ? 'No collections — create one below or crawl/index first'
-                        : `Config default${clawConfigDefaultRag ? ` (${clawConfigDefaultRag})` : ''}`}
-                    </option>
-                    {collections.map((col) => (
-                      <option key={`claw-${col.name}`} value={col.name}>
-                        {col.name}
-                        {col.points_count != null ? ` (${col.points_count} vectors)` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="rag-button primary"
-                    onClick={saveClawRagBinding}
-                    disabled={savingClawRagBinding || busy}
-                  >
-                    {savingClawRagBinding ? 'Saving…' : 'Save'}
-                  </button>
-                </div>
-                {(clawRagSelect || '').trim() &&
-                  qdrantCollectionNames.length > 0 &&
-                  !qdrantCollectionNames.includes((clawRagSelect || '').trim()) && (
-                    <p className="rag-service-binding-stale">
-                      Database has <code>{clawRagSelect}</code> (not in current Qdrant list) — pick a listed collection or
-                      clear to default.
-                    </p>
-                  )}
-              </>
-            )}
           </div>
         </div>
       </section>

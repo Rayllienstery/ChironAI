@@ -105,8 +105,6 @@ from config import (
     get_ollama_chat_model,
     get_ollama_embed_model,
     get_ollama_rerank_model,
-    get_clawcode_host,
-    get_clawcode_openai_port,
     get_qdrant_collection_name,
     get_qdrant_url,
     get_rag_float,
@@ -391,20 +389,6 @@ def _get_ollama_url() -> str:
     except Exception:
         return (os.getenv("OLLAMA_BASE_URL") or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
 
-
-def _clawcode_openai_http_base() -> str:
-    """HTTP origin for ClawCode OpenAI-compatible API (e.g. http://127.0.0.1:8082)."""
-    env = (os.getenv("CLAWCODE_OPENAI_BASE_URL") or "").strip().rstrip("/")
-    if env:
-        return env
-    host = get_clawcode_host()
-    port = get_clawcode_openai_port()
-    if host in ("0.0.0.0", "::", ""):
-        dh = get_server_host()
-        if dh in ("0.0.0.0", "::", ""):
-            dh = "127.0.0.1"
-        host = dh
-    return f"http://{host}:{port}".rstrip("/")
 
 
 @webui_bp.route("/models", methods=["GET"])
@@ -942,11 +926,9 @@ def clear_coreui_notifications() -> Any:
 
 @webui_bp.route("/proxy-logs", methods=["GET"])
 def get_proxy_logs() -> Any:
-    """Return proxy logs from database.
+    """Return proxy logs from database (``session_id=proxy``, ``source=proxy``).
 
-    When ``autocomplete_only`` is false, returns a single merged stream of ``session_id=proxy``
-    and ``session_id=clawcode`` rows ordered by global ``logs.id``, so ``since_id`` (max id from
-    the previous poll) and ``limit`` apply consistently across both sources.
+    ``since_id`` (max id from the previous poll) and ``limit`` apply in insertion order.
     """
     try:
         limit = int(request.args.get("limit", 100))
@@ -970,9 +952,13 @@ def get_proxy_logs() -> Any:
                 autocomplete_only=True,
             )
         else:
-            logs = logs_repo.get_proxy_and_clawcode_logs(
+            logs = logs_repo.get_logs(
+                session_id="proxy",
+                level="INFO",
                 limit=limit,
                 since_id=sid,
+                source="proxy",
+                include_system=False,
                 from_date=from_date or None,
                 to_date=to_date or None,
             )
@@ -1003,7 +989,7 @@ def get_proxy_trace_current() -> Any:
 
 @webui_bp.route("/proxy-traces", methods=["GET"])
 def get_proxy_traces() -> Any:
-    """Ring-buffer snapshots of LLM proxy traces (RAG Fusion Proxy → Traces), Claw-shaped JSON."""
+    """Ring-buffer snapshots of LLM proxy traces (RAG Fusion Proxy → Traces), UI-oriented JSON."""
     try:
         lim_raw = request.args.get("limit", "40")
         limit = max(1, min(200, int(lim_raw)))
@@ -1032,7 +1018,7 @@ def post_proxy_traces_clear() -> Any:
 
 @webui_bp.route("/proxy-journal", methods=["GET"])
 def get_proxy_journal() -> Any:
-    """Persisted proxy request rows only (session_id=proxy), not merged with ClawCode."""
+    """Persisted proxy request rows only (session_id=proxy)."""
     try:
         lim_raw = request.args.get("limit", "200")
         limit = max(1, min(5000, int(lim_raw)))
@@ -1579,15 +1565,6 @@ def _ollama_tag_name_set_for_builds_diag() -> set[str]:
     return names
 
 
-def _claw_openai_reachable() -> bool:
-    try:
-        base = _clawcode_openai_http_base().rstrip("/")
-        r = requests.get(f"{base}/health", timeout=2.0)
-        return r.status_code < 500
-    except Exception:
-        return False
-
-
 def _enrich_builds_with_diagnostics(builds: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ollama_names = _ollama_tag_name_set_for_builds_diag()
     qset: set[str] | None = None
@@ -1595,9 +1572,6 @@ def _enrich_builds_with_diagnostics(builds: list[dict[str, Any]]) -> list[dict[s
         qset = set(_get_qdrant_collection_names() or [])
     except Exception:
         qset = set()
-    claw_ok: bool | None = None
-    if any(str(b.get("backend") or "").strip().lower() == "claw" for b in builds):
-        claw_ok = _claw_openai_reachable()
     out: list[dict[str, Any]] = []
     for b in builds:
         row = dict(b)
@@ -1606,7 +1580,6 @@ def _enrich_builds_with_diagnostics(builds: list[dict[str, Any]]) -> list[dict[s
             ollama_tag_names=ollama_names,
             prompt_exists=rag_prompt_file_exists(str(b.get("prompt_name") or "").strip()),
             qdrant_collection_names=qset,
-            claw_reachable=claw_ok,
         )
         row["issues"] = issues
         row["healthy"] = healthy
@@ -1733,10 +1706,6 @@ def get_tester_settings() -> Any:
                 "rag_collection": "",
                 "fetch_web_knowledge": False,
                 "tester_proxy_mode": "rag_fusion",
-                "claw_build_id": "",
-                "claw_override_rag_collection": "",
-                "claw_override_rag_top_k": "",
-                "claw_override_max_agent_steps": "",
             })
         
         # Ensure rag_collection field exists
@@ -1746,14 +1715,6 @@ def get_tester_settings() -> Any:
             settings["fetch_web_knowledge"] = False
         if "tester_proxy_mode" not in settings:
             settings["tester_proxy_mode"] = "rag_fusion"
-        if "claw_build_id" not in settings:
-            settings["claw_build_id"] = ""
-        if "claw_override_rag_collection" not in settings:
-            settings["claw_override_rag_collection"] = ""
-        if "claw_override_rag_top_k" not in settings:
-            settings["claw_override_rag_top_k"] = ""
-        if "claw_override_max_agent_steps" not in settings:
-            settings["claw_override_max_agent_steps"] = ""
 
         return jsonify(settings)
     except Exception as e:

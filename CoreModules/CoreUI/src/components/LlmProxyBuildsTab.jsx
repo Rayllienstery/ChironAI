@@ -8,7 +8,6 @@ import {
   getModelSettings,
   getPipelinePreview,
   getRagModelSettings,
-  getClawCodeSkills,
 } from '../services/api';
 import { mergePipelineSnapshot } from '../hooks/useMergedPipelinePreview';
 import PipelineCiDiagram from './PipelineCiDiagram';
@@ -23,9 +22,7 @@ const SECTION_TABS = [
   { id: 'autocomplete', label: 'Autocomplete' },
 ];
 
-const DEFAULT_CLAW_STEPS = 40;
-
-function mergeBuildDraftIntoPipelinePreview(snapshot, hybridSparse, rerankForRag, draft, clawSkillsToolAvailable) {
+function mergeBuildDraftIntoPipelinePreview(snapshot, hybridSparse, rerankForRag, draft) {
   if (!snapshot || !draft) return null;
   const base = mergePipelineSnapshot(snapshot, hybridSparse, rerankForRag);
   const webOff = draft.web_enabled === false;
@@ -42,10 +39,7 @@ function mergeBuildDraftIntoPipelinePreview(snapshot, hybridSparse, rerankForRag
   return {
     ...base,
     env,
-    claw_build_pipeline_preview: true,
-    backend: String(draft.backend || 'dumb').toLowerCase(),
-    skills_enabled: draft.skills_enabled !== false,
-    claw_skills_tool_available: clawSkillsToolAvailable,
+    backend: 'dumb',
     rag_collection_configured:
       Boolean(draft.rag_enabled) &&
       (Boolean(String(draft.rag_collection || '').trim()) || Boolean(base.rag_collection_configured)),
@@ -222,7 +216,6 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
   const [buildModalPipelineSnap, setBuildModalPipelineSnap] = useState(null);
   const [buildModalHybrid, setBuildModalHybrid] = useState(true);
   const [buildModalRerank, setBuildModalRerank] = useState(false);
-  const [buildModalClawSkillsAvail, setBuildModalClawSkillsAvail] = useState(false);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -260,16 +253,13 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
   }, [focusSubTab, onFocusSubTabConsumed]);
 
   const buildModalOpen = Boolean(draft);
-  const buildModalBackendKey = draft ? String(draft.backend || '').toLowerCase() : '';
 
   useEffect(() => {
     if (!draft) {
       setBuildModalPipelineSnap(null);
-      setBuildModalClawSkillsAvail(false);
       return undefined;
     }
     let cancelled = false;
-    const backendLower = String(draft.backend || '').toLowerCase();
     (async () => {
       try {
         const [p, r] = await Promise.all([getPipelinePreview(), getRagModelSettings()]);
@@ -277,17 +267,6 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
         setBuildModalPipelineSnap(p);
         setBuildModalHybrid(r?.hybrid_sparse_enabled !== false);
         setBuildModalRerank(Boolean(r?.rerank_for_rag));
-        let clawOk = false;
-        if (backendLower === 'claw') {
-          try {
-            const sk = await getClawCodeSkills();
-            const list = sk?.skills || [];
-            clawOk = Array.isArray(list) && list.some((s) => s.enabled);
-          } catch {
-            clawOk = false;
-          }
-        }
-        if (!cancelled) setBuildModalClawSkillsAvail(clawOk);
       } catch {
         if (!cancelled) setBuildModalPipelineSnap(null);
       }
@@ -295,9 +274,8 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
     return () => {
       cancelled = true;
     };
-    // Intentionally omit `draft` so typing other fields does not refetch; open + backend drive reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- draft read from latest render when deps change
-  }, [buildModalOpen, buildModalBackendKey]);
+  }, [buildModalOpen]);
 
   const buildModalPipelineData = useMemo(
     () =>
@@ -306,9 +284,8 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
         buildModalHybrid,
         buildModalRerank,
         draft,
-        buildModalClawSkillsAvail,
       ),
-    [buildModalPipelineSnap, buildModalHybrid, buildModalRerank, draft, buildModalClawSkillsAvail],
+    [buildModalPipelineSnap, buildModalHybrid, buildModalRerank, draft],
   );
 
   const detailBuild = useMemo(
@@ -432,9 +409,6 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
           if (String(next.temperature || '').trim() === '' && t != null) next.temperature = String(t);
           if (String(next.top_p || '').trim() === '' && tp != null) next.top_p = String(tp);
           if (String(next.num_ctx || '').trim() === '' && ctxLen != null) next.num_ctx = String(ctxLen);
-          if (String(next.backend || '') === 'claw' && String(next.max_agent_steps || '').trim() === '') {
-            next.max_agent_steps = String(DEFAULT_CLAW_STEPS);
-          }
           return next;
         });
       } catch (e) {
@@ -646,35 +620,8 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 onChange={(e) => setDraft({ ...draft, display_name: e.target.value })}
               />
             </label>
-            <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              Backend
-              <select
-                className="dashboard-card-field"
-                value={draft.backend}
-                onChange={(e) => setDraft({ ...draft, backend: e.target.value })}
-              >
-                <option value="dumb">dumb (RAG + Ollama pipeline)</option>
-                <option value="claw">claw (ClawCode agent)</option>
-              </select>
-            </label>
-            {String(draft.backend || '').toLowerCase() === 'claw' && (
-              <>
-                <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input
-                    type="checkbox"
-                    checked={draft.skills_enabled !== false}
-                    onChange={(e) => setDraft({ ...draft, skills_enabled: e.target.checked })}
-                  />
-                  Enable skill packs (<code>load_skill</code>)
-                </label>
-                <p className="dashboard-card-muted" style={{ margin: 0 }}>
-                  Skill catalog and installs are under <strong>ClawCode Skills</strong> in the Web UI.
-                </p>
-              </>
-            )}
             <p className="dashboard-card-muted" style={{ margin: 0 }}>
-              <strong>Ollama model</strong> is required for both backends: dumb uses it for the RAG chat pipeline; claw uses
-              the same tag for the ClawCode agent (no separate logical model id).
+              <strong>Ollama model</strong> is required for the RAG chat pipeline.
             </p>
             <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               Ollama model
@@ -791,8 +738,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 }}
               >
                 No proxy rows in the logs database, no live trace snapshot for this request, and no live or history
-                entries in Notifications. Claw builds also skip the in-memory trace buffer and Claw journal rows.
-                Does not affect Ollama or OS-level logging.
+                entries in Notifications. Does not affect Ollama or OS-level logging.
               </p>
               <p
                 style={{
@@ -888,7 +834,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 />
               </label>
               <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                Max agent steps (claw)
+                Max agent steps
                 <input
                   className="dashboard-card-field"
                   value={draft.max_agent_steps}
@@ -901,11 +847,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
               <PipelineCiDiagram
                 data={buildModalPipelineData}
                 title="LLM proxy pipeline (RAG + supplements)"
-                subtitle={
-                  String(draft.backend || '').toLowerCase() === 'claw'
-                    ? 'Stages reflect this draft on current server settings. Web stages are indicative for claw; edit hybrid/rerank and collection on RAG / Qdrant; skills under ClawCode Skills.'
-                    : 'Stages reflect this draft overlaid on current server settings. Edit hybrid/rerank and collection on the RAG / Qdrant tab; Claw skills on ClawCode Skills.'
-                }
+                subtitle="Stages reflect this draft overlaid on current server settings. Edit hybrid/rerank and collection on the RAG / Qdrant tab."
                 compact
               />
             </div>

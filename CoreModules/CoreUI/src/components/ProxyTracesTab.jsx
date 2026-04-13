@@ -1,22 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  getClawCodeStatus,
-  getClawCodeTraces,
-  clearClawCodeTraces,
-  getLlmProxyStatus,
-  getProxyTraces,
-  clearProxyTraces,
-} from '../services/api';
+import { getLlmProxyStatus, getProxyTraces, clearProxyTraces } from '../services/api';
 import '../styles/components/DashboardTab.css';
-import { summarizeClawTraceMeta } from '../utils/clawTraceSummary';
-import ClawTraceSummaryCards from './ClawTraceSummaryCards';
+import { summarizeAgentTraceMeta } from '../utils/agentTraceSummary';
+import AgentTraceSummaryCards from './AgentTraceSummaryCards';
 
 const LIVE_POLL_MS = 3000;
 
-/**
- * @param {{ variant?: 'claw' | 'ragFusion' }} props
- */
-export default function ProxyTracesTab({ variant = 'claw' }) {
+export default function ProxyTracesTab() {
   const [status, setStatus] = useState(null);
   const [traces, setTraces] = useState([]);
   const [liveTraces, setLiveTraces] = useState([]);
@@ -26,34 +16,23 @@ export default function ProxyTracesTab({ variant = 'claw' }) {
   const loadDetailTraces = useCallback(async () => {
     setErr(null);
     try {
-      if (variant === 'ragFusion') {
-        const s = await getLlmProxyStatus();
-        const available = Boolean(s.enabled);
-        setStatus({
-          available,
-          reason: available ? '' : String(s.health || 'RAG Fusion Proxy is disabled in settings.'),
-        });
-        if (!available) {
-          setTraces([]);
-          return;
-        }
-        const t = await getProxyTraces(50);
-        setTraces(t.traces || []);
-        return;
-      }
-      const s = await getClawCodeStatus();
-      setStatus(s);
-      if (!s.available) {
+      const s = await getLlmProxyStatus();
+      const available = Boolean(s.enabled);
+      setStatus({
+        available,
+        reason: available ? '' : String(s.health || 'RAG Fusion Proxy is disabled in settings.'),
+      });
+      if (!available) {
         setTraces([]);
         return;
       }
-      const t = await getClawCodeTraces(50);
+      const t = await getProxyTraces(50);
       setTraces(t.traces || []);
     } catch (e) {
       setErr(String(e.message || e));
       setTraces([]);
     }
-  }, [variant]);
+  }, []);
 
   useEffect(() => {
     loadDetailTraces();
@@ -63,12 +42,7 @@ export default function ProxyTracesTab({ variant = 'claw' }) {
     let cancelled = false;
     const poll = async () => {
       try {
-        if (variant === 'ragFusion') {
-          const data = await getProxyTraces(25);
-          if (!cancelled) setLiveTraces(data.traces || []);
-          return;
-        }
-        const data = await getClawCodeTraces(25);
+        const data = await getProxyTraces(25);
         if (!cancelled) setLiveTraces(data.traces || []);
       } catch {
         if (!cancelled) setLiveTraces([]);
@@ -80,25 +54,16 @@ export default function ProxyTracesTab({ variant = 'claw' }) {
       cancelled = true;
       clearInterval(t);
     };
-  }, [variant]);
+  }, []);
 
   const doClearTraces = async () => {
     setBusy(true);
     setErr(null);
     try {
-      if (variant === 'ragFusion') {
-        await clearProxyTraces();
-      } else {
-        await clearClawCodeTraces();
-      }
+      await clearProxyTraces();
       await loadDetailTraces();
-      if (variant === 'ragFusion') {
-        const data = await getProxyTraces(25);
-        setLiveTraces(data.traces || []);
-      } else {
-        const data = await getClawCodeTraces(25);
-        setLiveTraces(data.traces || []);
-      }
+      const data = await getProxyTraces(25);
+      setLiveTraces(data.traces || []);
     } catch (e) {
       setErr(String(e.message || e));
     } finally {
@@ -106,10 +71,9 @@ export default function ProxyTracesTab({ variant = 'claw' }) {
     }
   };
 
-  const unavailableHeadingId =
-    variant === 'ragFusion' ? 'rag-fusion-traces-unavailable-heading' : 'claw-traces-unavailable-heading';
-  const mainHeadingId = variant === 'ragFusion' ? 'rag-fusion-traces-heading' : 'claw-traces-heading';
-  const liveHeadingId = variant === 'ragFusion' ? 'rag-fusion-traces-live-heading' : 'claw-traces-live-heading';
+  const unavailableHeadingId = 'rag-fusion-traces-unavailable-heading';
+  const mainHeadingId = 'rag-fusion-traces-heading';
+  const liveHeadingId = 'rag-fusion-traces-live-heading';
 
   if (!status) {
     return (
@@ -127,17 +91,8 @@ export default function ProxyTracesTab({ variant = 'claw' }) {
             <h2 id={unavailableHeadingId}>Traces</h2>
           </div>
           <p className="dashboard-card-muted">
-            {variant === 'ragFusion' ? (
-              <>
-                RAG Fusion Proxy is not available ({status.reason || 'unknown'}). Enable the proxy in app settings
-                and ensure the server is running.
-              </>
-            ) : (
-              <>
-                ClawCode is not available ({status.reason || 'unknown'}). Install <code>CoreModules/ClawCode</code>{' '}
-                and restart the app.
-              </>
-            )}
+            RAG Fusion Proxy is not available ({status.reason || 'unknown'}). Enable the proxy in app settings and ensure
+            the server is running.
           </p>
         </section>
       </div>
@@ -145,9 +100,7 @@ export default function ProxyTracesTab({ variant = 'claw' }) {
   }
 
   const intro =
-    variant === 'ragFusion'
-      ? 'Recent proxy runs: resolved model, pipeline step timings (RAG sub-steps, ollama_chat), token estimates when present.'
-      : 'Last agent runs: model, steps (model_call / rag_query), token estimates, RSS when psutil is installed.';
+    'Recent proxy runs: resolved model, pipeline step timings (RAG sub-steps, ollama_chat), token estimates when present.';
 
   return (
     <div className="dashboard-layout">
@@ -174,7 +127,7 @@ export default function ProxyTracesTab({ variant = 'claw' }) {
                 {t.resolved_model}
                 {t.error ? ` · error: ${t.error}` : ''}
               </summary>
-              <ClawTraceSummaryCards summary={summarizeClawTraceMeta(t)} />
+              <AgentTraceSummaryCards summary={summarizeAgentTraceMeta(t)} />
               <details className="dashboard-trace-item" style={{ marginTop: 12 }}>
                 <summary>Full JSON</summary>
                 <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(t, null, 2)}</pre>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   getModels,
   getPrompts,
@@ -7,8 +7,6 @@ import {
   testerChat,
   testerPromptPreview,
   getRagCollections,
-  getLlmProxyBuilds,
-  fetchClawCodeSkillMarkdown,
 } from '../services/api';
 import { CHIRONAI_RAG_TRACE_EVENT, CHIRONAI_RAG_TRACE_STORAGE_KEY } from './RagTraceTimeline';
 import { renderTesterMarkdown } from '../utils/modelTesterMarkdown';
@@ -19,9 +17,6 @@ function ModelTester({ sessionId }) {
   const [models, setModels] = useState([]);
   const [prompts, setPrompts] = useState([]);
   const [collections, setCollections] = useState([]);
-  /** From GET /rag/collections (effective default_rag_top_k); used for Claw override placeholder when build has no rag_top_k. */
-  const [ragDefaultTopK, setRagDefaultTopK] = useState(null);
-  const [llmBuilds, setLlmBuilds] = useState([]);
   const [settings, setSettings] = useState({
     model: '',
     prompt_name: '',
@@ -32,11 +27,6 @@ function ModelTester({ sessionId }) {
     top_k: 4,
     rag_collection: '',
     fetch_web_knowledge: false,
-    tester_proxy_mode: 'rag_fusion',
-    claw_build_id: '',
-    claw_override_rag_collection: '',
-    claw_override_rag_top_k: '',
-    claw_override_max_agent_steps: '',
   });
   const [query, setQuery] = useState('');
   const [response, setResponse] = useState('');
@@ -52,54 +42,8 @@ function ModelTester({ sessionId }) {
   const [runLogError, setRunLogError] = useState(null);
   const [runLogCollapsed, setRunLogCollapsed] = useState(false);
   const [debugTraceCollapsed, setDebugTraceCollapsed] = useState(true);
-  const [skillModalOpen, setSkillModalOpen] = useState(false);
-  const [skillModalTitle, setSkillModalTitle] = useState('');
-  const [skillModalBody, setSkillModalBody] = useState('');
-  const [skillModalLoading, setSkillModalLoading] = useState(false);
-  const [skillModalError, setSkillModalError] = useState(null);
   const [responseModalOpen, setResponseModalOpen] = useState(false);
   const responseRef = useRef(null);
-
-  const clawBuilds = useMemo(
-    () =>
-      (llmBuilds || []).filter((b) => String(b.backend || '').toLowerCase() === 'claw'),
-    [llmBuilds]
-  );
-
-  const selectedClawBuild = useMemo(() => {
-    const id = (settings.claw_build_id || '').trim();
-    if (!id) return null;
-    return clawBuilds.find((b) => b.id === id) || null;
-  }, [clawBuilds, settings.claw_build_id]);
-
-  const clawOverridePlaceholders = useMemo(() => {
-    const b = selectedClawBuild;
-    const coll =
-      b == null
-        ? 'select a Claw build'
-        : (b.rag_collection || '').trim() || '(app: clawcode_rag_collection)';
-    let topKLabel;
-    if (b == null) {
-      topKLabel = '—';
-    } else if (b.rag_top_k != null && String(b.rag_top_k).trim() !== '') {
-      topKLabel = String(b.rag_top_k);
-    } else if (ragDefaultTopK != null) {
-      topKLabel = String(ragDefaultTopK);
-    } else {
-      topKLabel = '—';
-    }
-    const steps =
-      b == null
-        ? '—'
-        : b.max_agent_steps != null && String(b.max_agent_steps).trim() !== ''
-          ? String(b.max_agent_steps)
-          : 'ClawCode server default';
-    return {
-      collection: `Default: ${coll}`,
-      topK: `Default: ${topKLabel}`,
-      maxSteps: `Default: ${steps}`,
-    };
-  }, [selectedClawBuild, ragDefaultTopK]);
 
   useEffect(() => {
     if (sessionId) {
@@ -126,54 +70,17 @@ function ModelTester({ sessionId }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [responseModalOpen]);
 
-  useEffect(() => {
-    if (!skillModalOpen) return undefined;
-    const onKey = (e) => {
-      if (e.key === 'Escape') setSkillModalOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [skillModalOpen]);
-
-  const openSkillMarkdownModal = useCallback(async (invocation) => {
-    const inv = String(invocation || '').trim();
-    if (!inv) return;
-    setSkillModalOpen(true);
-    setSkillModalTitle(inv);
-    setSkillModalBody('');
-    setSkillModalError(null);
-    setSkillModalLoading(true);
-    try {
-      const data = await fetchClawCodeSkillMarkdown({ invocation: inv });
-      setSkillModalTitle(data.invocation_name || inv);
-      let text = data.content != null ? String(data.content) : '';
-      if (data.truncated) text += '\n\n…[truncated]';
-      setSkillModalBody(text);
-    } catch (e) {
-      setSkillModalError(e.message || 'Failed to load skill');
-    } finally {
-      setSkillModalLoading(false);
-    }
-  }, []);
-
   const loadData = async () => {
     try {
-      const [modelsData, promptsData, collectionsData, buildsData] = await Promise.all([
+      const [modelsData, promptsData, collectionsData] = await Promise.all([
         getModels(),
         getPrompts(),
         getRagCollections().catch(() => ({ collections: [] })),
-        getLlmProxyBuilds().catch(() => ({ builds: [] })),
       ]);
       setModels(modelsData);
       const promptsList = promptsData?.prompts || [];
       setPrompts(promptsList);
       setCollections(collectionsData?.collections || []);
-      const dtk = collectionsData?.default_rag_top_k;
-      if (dtk != null && String(dtk).trim() !== '') {
-        const n = parseInt(String(dtk), 10);
-        if (!Number.isNaN(n)) setRagDefaultTopK(n);
-      }
-      setLlmBuilds(buildsData?.builds || []);
     } catch (error) {
       console.error('Failed to load data:', error);
     }
@@ -210,54 +117,29 @@ function ModelTester({ sessionId }) {
     }
   };
 
-  const isClawMode = settings.tester_proxy_mode === 'claw';
-
-  const clawRunLogContext = useMemo(() => {
-    if (!isClawMode || !selectedClawBuild) return null;
-    const b = selectedClawBuild;
-    return {
-      buildId: b.id != null ? String(b.id) : '',
-      buildLabel: (b.name && String(b.name).trim()) || (b.id != null ? String(b.id) : 'Claw build'),
-      ollamaModel: b.ollama_model != null ? String(b.ollama_model) : '',
-      ragEnabled: Boolean(b.rag_enabled),
-      skillsEnabled: Boolean(b.skills_enabled),
-      maxAgentSteps:
-        b.max_agent_steps != null && String(b.max_agent_steps).trim() !== '' ? b.max_agent_steps : null,
-    };
-  }, [isClawMode, selectedClawBuild]);
-
   const runLogModel = useMemo(
     () =>
       buildTesterRunLogCards({
         result: lastRunResult,
-        isClawMode,
         errorMessage: runLogError,
-        clawBuildContext: clawRunLogContext,
       }),
-    [lastRunResult, isClawMode, runLogError, clawRunLogContext]
+    [lastRunResult, runLogError]
   );
 
   const handleSend = async () => {
     if (!query.trim() || !sessionId) return;
 
-    if (isClawMode) {
-      if (!(settings.claw_build_id || '').trim()) {
-        window.alert('Select a Claw build (configure one under LLM Proxy → Builds if the list is empty).');
-        return;
-      }
-    } else {
-      if (settings.use_rag && !(settings.prompt_name || '').trim()) {
-        window.alert('Select a prompt template when RAG is enabled.');
-        return;
-      }
-      if (
-        settings.use_rag &&
-        collections.length > 0 &&
-        !(settings.rag_collection || '').trim()
-      ) {
-        window.alert('Select a RAG collection when RAG is enabled.');
-        return;
-      }
+    if (settings.use_rag && !(settings.prompt_name || '').trim()) {
+      window.alert('Select a prompt template when RAG is enabled.');
+      return;
+    }
+    if (
+      settings.use_rag &&
+      collections.length > 0 &&
+      !(settings.rag_collection || '').trim()
+    ) {
+      window.alert('Select a RAG collection when RAG is enabled.');
+      return;
     }
 
     setLoading(true);
@@ -271,22 +153,6 @@ function ModelTester({ sessionId }) {
     setRunLogError(null);
 
     try {
-      const clawTopKRaw = String(settings.claw_override_rag_top_k || '').trim();
-      const clawTopKParsed = clawTopKRaw ? parseInt(clawTopKRaw, 10) : NaN;
-      const clawStepsRaw = String(settings.claw_override_max_agent_steps || '').trim();
-      const clawStepsParsed = clawStepsRaw ? parseInt(clawStepsRaw, 10) : NaN;
-      const clawOpts =
-        isClawMode
-          ? {
-              claw_build_id: settings.claw_build_id,
-              ...(settings.claw_override_rag_collection.trim()
-                ? { claw_override_rag_collection: settings.claw_override_rag_collection.trim() }
-                : {}),
-              ...(!Number.isNaN(clawTopKParsed) ? { claw_override_rag_top_k: clawTopKParsed } : {}),
-              ...(!Number.isNaN(clawStepsParsed) ? { claw_override_max_agent_steps: clawStepsParsed } : {}),
-            }
-          : {};
-
       const result = await testerChat(
         sessionId,
         [{ role: 'user', content: query }],
@@ -300,8 +166,7 @@ function ModelTester({ sessionId }) {
           top_k: settings.use_rag ? settings.top_k : undefined,
           collection_name: settings.use_rag && settings.rag_collection ? settings.rag_collection : undefined,
           fetch_web_knowledge: settings.use_rag && settings.fetch_web_knowledge,
-          tester_proxy_mode: settings.tester_proxy_mode,
-          ...clawOpts,
+          tester_proxy_mode: 'rag_fusion',
         }
       );
 
@@ -360,7 +225,6 @@ function ModelTester({ sessionId }) {
   };
 
   const handlePreviewPrompt = async () => {
-    if (isClawMode) return;
     setPromptLoading(true);
     try {
       const result = await testerPromptPreview({
@@ -444,26 +308,8 @@ function ModelTester({ sessionId }) {
         <div className="tester-settings-panel">
           <h3>Test Settings</h3>
 
-          <div className="form-group">
-            <label htmlFor="tester-proxy-mode">Proxy pipeline</label>
-            <select
-              id="tester-proxy-mode"
-              value={settings.tester_proxy_mode === 'claw' ? 'claw' : 'rag_fusion'}
-              onChange={(e) => handleSettingChange('tester_proxy_mode', e.target.value)}
-            >
-              <option value="rag_fusion">RAG Fusion (in-process RAG + Ollama)</option>
-              <option value="claw">Claw (ClawCode OpenAI agent)</option>
-            </select>
-            <div className="form-hint">
-              {isClawMode
-                ? 'Uses the selected LLM Proxy build (backend claw): model, RAG tool, skills, and build defaults are forwarded to ClawCode. Sampling sliders below override request temperature / top_p.'
-                : 'Single-shot chat with optional in-process RAG: choose Ollama model, prompt template, and Qdrant collection here.'}
-            </div>
-          </div>
-
-          {!isClawMode && (
-            <div className="tester-mode-section tester-mode-section--fusion">
-              <h4 className="tester-mode-section-title">RAG Fusion</h4>
+          <div className="tester-mode-section tester-mode-section--fusion">
+            <h4 className="tester-mode-section-title">RAG Fusion</h4>
 
               <div className="form-group">
                 <label htmlFor="tester-fusion-model">Model</label>
@@ -626,154 +472,6 @@ function ModelTester({ sessionId }) {
                 </>
               )}
             </div>
-          )}
-
-          {isClawMode && (
-            <div className="tester-mode-section tester-mode-section--claw">
-              <h4 className="tester-mode-section-title">Claw (ClawCode agent)</h4>
-
-              <div className="form-group">
-                <label htmlFor="tester-claw-build">Claw build</label>
-                <select
-                  id="tester-claw-build"
-                  value={
-                    clawBuilds.some((b) => b.id === settings.claw_build_id) ? settings.claw_build_id : ''
-                  }
-                  onChange={(e) => handleSettingChange('claw_build_id', e.target.value)}
-                  disabled={clawBuilds.length === 0}
-                >
-                  {clawBuilds.length === 0 ? (
-                    <option value="">— No Claw builds —</option>
-                  ) : (
-                    <>
-                      <option value="">Select Claw build…</option>
-                      {clawBuilds.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.display_name || b.id}
-                        </option>
-                      ))}
-                    </>
-                  )}
-                </select>
-                <div className="form-hint">
-                  {clawBuilds.length === 0
-                    ? 'Add a build with backend “claw” under LLM Proxy → Builds.'
-                    : 'Build defines Ollama tag, RAG tool on/off, skills, max agent steps, and default RAG fields.'}
-                </div>
-              </div>
-
-              {selectedClawBuild && (
-                <div className="tester-claw-build-summary" aria-label="Selected build summary">
-                  <div className="tester-claw-build-summary-title">Build profile</div>
-                  <dl className="tester-claw-build-summary-dl">
-                    <dt>Ollama model</dt>
-                    <dd><code>{selectedClawBuild.ollama_model || '—'}</code></dd>
-                    <dt>RAG tool</dt>
-                    <dd>{selectedClawBuild.rag_enabled !== false ? 'On' : 'Off'}</dd>
-                    <dt>Skills tool</dt>
-                    <dd>{selectedClawBuild.skills_enabled !== false ? 'On' : 'Off'}</dd>
-                    <dt>Max agent steps</dt>
-                    <dd>{selectedClawBuild.max_agent_steps ?? '—'}</dd>
-                    <dt>Build RAG collection</dt>
-                    <dd>{(selectedClawBuild.rag_collection || '').trim() || '—'}</dd>
-                    <dt>Build rag_top_k</dt>
-                    <dd>{selectedClawBuild.rag_top_k != null ? selectedClawBuild.rag_top_k : '—'}</dd>
-                    <dt>Build temperature / top_p</dt>
-                    <dd>
-                      {selectedClawBuild.temperature != null ? selectedClawBuild.temperature : '—'} /{' '}
-                      {selectedClawBuild.top_p != null ? selectedClawBuild.top_p : '—'}
-                    </dd>
-                    <dt>Reasoning (build)</dt>
-                    <dd>{(selectedClawBuild.reasoning_level || '').trim() || '—'}</dd>
-                    <dt>Think mode</dt>
-                    <dd>{selectedClawBuild.chat_think ? 'On' : 'Off'}</dd>
-                  </dl>
-                  <p className="form-hint" style={{ marginTop: 8 }}>
-                    If the build leaves RAG collection empty, ClawCode falls back to app setting{' '}
-                    <code>clawcode_rag_collection</code>. Final chunk count still follows{' '}
-                    <code>retrieval.yaml</code> unless you set rag_top_k on the build or an override below.
-                  </p>
-                </div>
-              )}
-
-              <div className="form-group">
-                <label>
-                  Temperature: {settings.temperature.toFixed(1)}
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="20"
-                  step="0.1"
-                  value={settings.temperature * 10}
-                  onChange={(e) => handleSettingChange('temperature', parseFloat(e.target.value) / 10)}
-                />
-                <div className="form-hint">Sent on this request; build default applies only if omitted.</div>
-              </div>
-
-              <div className="form-group">
-                <label>
-                  Top-p: {settings.top_p.toFixed(1)}
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="10"
-                  step="0.1"
-                  value={settings.top_p * 10}
-                  onChange={(e) => handleSettingChange('top_p', parseFloat(e.target.value) / 10)}
-                />
-              </div>
-
-              <div className="tester-claw-overrides">
-                <div className="tester-claw-overrides-title">Tester overrides (optional)</div>
-                <p className="form-hint">
-                  Leave blank to use the default shown in each placeholder (build → server).
-                </p>
-                <div className="form-group">
-                  <label htmlFor="tester-claw-ov-collection">Override RAG collection</label>
-                  <input
-                    id="tester-claw-ov-collection"
-                    type="text"
-                    className="tester-claw-override-input"
-                    placeholder={clawOverridePlaceholders.collection}
-                    title={clawOverridePlaceholders.collection}
-                    value={settings.claw_override_rag_collection}
-                    onChange={(e) => handleSettingChange('claw_override_rag_collection', e.target.value)}
-                    autoComplete="off"
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="tester-claw-ov-topk">Override rag_query default top_k (1–256)</label>
-                  <input
-                    id="tester-claw-ov-topk"
-                    type="number"
-                    min={1}
-                    max={256}
-                    className="tester-claw-override-input"
-                    placeholder={clawOverridePlaceholders.topK}
-                    title={clawOverridePlaceholders.topK}
-                    value={settings.claw_override_rag_top_k}
-                    onChange={(e) => handleSettingChange('claw_override_rag_top_k', e.target.value)}
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="tester-claw-ov-steps">Override max agent steps (1–256)</label>
-                  <input
-                    id="tester-claw-ov-steps"
-                    type="number"
-                    min={1}
-                    max={256}
-                    className="tester-claw-override-input"
-                    placeholder={clawOverridePlaceholders.maxSteps}
-                    title={clawOverridePlaceholders.maxSteps}
-                    value={settings.claw_override_max_agent_steps}
-                    onChange={(e) => handleSettingChange('claw_override_max_agent_steps', e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
 
           <button type="button" onClick={handleSaveSettings} className="save-button">
             Save Settings
@@ -803,9 +501,8 @@ function ModelTester({ sessionId }) {
               <button
                 type="button"
                 className="preview-button"
-                disabled={promptLoading || isClawMode}
+                disabled={promptLoading}
                 onClick={handlePreviewPrompt}
-                title={isClawMode ? 'Prompt preview applies to RAG Fusion only' : undefined}
               >
                 {promptLoading ? 'Previewing...' : 'Preview Prompt'}
               </button>
@@ -859,24 +556,7 @@ function ModelTester({ sessionId }) {
                 )}
                 {!loading &&
                   runLogModel.cards.map((card) => (
-                    <div
-                      key={card.key}
-                      className={`rag-chunk-item${card.skillClickable ? ' rag-chunk-item--clickable' : ''}`}
-                      role={card.skillClickable ? 'button' : undefined}
-                      tabIndex={card.skillClickable ? 0 : undefined}
-                      onClick={() => {
-                        if (card.skillClickable && card.invocation) {
-                          openSkillMarkdownModal(card.invocation);
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (!card.skillClickable || !card.invocation) return;
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          openSkillMarkdownModal(card.invocation);
-                        }
-                      }}
-                    >
+                    <div key={card.key} className="rag-chunk-item">
                       <div className="rag-chunk-header">
                         <span className="rag-chunk-index">{card.indexLabel}</span>
                         {card.title ? (
@@ -1071,42 +751,6 @@ function ModelTester({ sessionId }) {
         </div>
       )}
 
-      {skillModalOpen && (
-        <div
-          className="model-tester-modal-overlay"
-          role="presentation"
-          onClick={() => setSkillModalOpen(false)}
-        >
-          <div
-            className="model-tester-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="model-tester-skill-md-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="model-tester-modal-header">
-              <h2 id="model-tester-skill-md-title" className="model-tester-modal-title">
-                Skill: {skillModalTitle || '—'}
-              </h2>
-              <button
-                type="button"
-                className="model-tester-modal-close"
-                aria-label="Close"
-                onClick={() => setSkillModalOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-            {skillModalLoading ? (
-              <div className="model-tester-modal-body">Loading SKILL.md…</div>
-            ) : skillModalError ? (
-              <div className="model-tester-modal-body">{skillModalError}</div>
-            ) : (
-              <pre className="model-tester-modal-body">{skillModalBody}</pre>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

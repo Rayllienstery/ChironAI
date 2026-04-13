@@ -1,6 +1,6 @@
 /**
- * Derive human-readable summary objects from ClawCode trace records
- * (same shape as journal row.metadata and GET /clawcode/traces items).
+ * Derive human-readable summary objects from agent/proxy trace records
+ * (journal metadata or GET /api/webui/proxy-traces items).
  */
 
 function num(v, fallback = 0) {
@@ -16,7 +16,7 @@ function safeArr(x) {
  * @param {Record<string, unknown> | null | undefined} meta
  * @returns {Record<string, unknown>}
  */
-export function summarizeClawTraceMeta(meta) {
+export function summarizeAgentTraceMeta(meta) {
   if (!meta || typeof meta !== 'object') {
     return { empty: true };
   }
@@ -173,20 +173,20 @@ export function summarizeClawTraceMeta(meta) {
 }
 
 /**
- * @typedef {{ key: string, label: string, title?: string, variant: 'tool' | 'rag' | 'skill' | 'client' | 'warn' }} ClawUsageCapsule
+ * @typedef {{ key: string, label: string, title?: string, variant: 'tool' | 'rag' | 'skill' | 'client' | 'warn' }} AgentUsageCapsule
  */
 
 /**
  * Pills for live UI: model tool choices, executed RAG, skills, IDE pass-through.
  * @param {Record<string, unknown> | null | undefined} trace
- * @returns {{ capsules: ClawUsageCapsule[] }}
+ * @returns {{ capsules: AgentUsageCapsule[] }}
  */
-export function getClawTraceUsageCapsules(trace) {
+export function getAgentTraceUsageCapsules(trace) {
   if (!trace || typeof trace !== 'object') {
     return { capsules: [] };
   }
   const steps = safeArr(trace.steps);
-  /** @type {ClawUsageCapsule[]} */
+  /** @type {AgentUsageCapsule[]} */
   const capsules = [];
 
   const ragSteps = steps.filter((s) => s && s.kind === 'tool_rag');
@@ -306,7 +306,7 @@ export function getClawTraceUsageCapsules(trace) {
     capsules.push({
       key: `uh-${nm}-${s.step}`,
       label: `Not run · ${nm.length > 14 ? `${nm.slice(0, 13)}…` : nm}`,
-      title: typeof s.note === 'string' && s.note.trim() ? s.note.trim().slice(0, 400) : 'Tool not executed in ClawCode runtime',
+      title: typeof s.note === 'string' && s.note.trim() ? s.note.trim().slice(0, 400) : 'Tool not executed in this runtime',
       variant: 'warn',
     });
   }

@@ -10,7 +10,7 @@ const STEPS = [
   {
     id: 'skills',
     label: 'Agent skills',
-    hint: 'ClawCode load_skill tool when enabled packs exist (claw builds only).',
+    hint: 'load_skill and related tools when skill packs are enabled in proxy settings.',
   },
   { id: 'github', label: 'Merged docs', hint: 'GitHub / external_docs_rag merge (fetch web knowledge).' },
   { id: 'web', label: 'Web (DDG)', hint: 'DuckDuckGo snippet supplement.' },
@@ -30,12 +30,7 @@ export function computePipelineActive(data) {
     env.web_interaction_globally_enabled === undefined ? true : Boolean(env.web_interaction_globally_enabled);
   const webMaster = Boolean(data.web_interaction_enabled) && globalWeb;
   const ragOn = Boolean(data.rag_collection_configured);
-  const skillsActive = Boolean(
-    data.claw_build_pipeline_preview &&
-      String(data.backend || '').toLowerCase() === 'claw' &&
-      data.skills_enabled !== false &&
-      data.claw_skills_tool_available,
-  );
+  const skillsActive = Boolean(data.skills_enabled !== false);
 
   return {
     parse: true,
@@ -78,8 +73,7 @@ function PipelineCiDiagram({ data, title = 'LLM proxy pipeline', subtitle, compa
   const activeMap = useMemo(() => (data ? computePipelineActive(data) : null), [data]);
 
   const visibleSteps = useMemo(() => {
-    if (data && data.claw_build_pipeline_preview) return STEPS;
-    return STEPS.filter((s) => s.id !== 'skills');
+    return STEPS;
   }, [data]);
 
   const killSwitch =
