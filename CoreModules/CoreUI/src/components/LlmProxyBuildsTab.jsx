@@ -11,6 +11,7 @@ import {
 } from '../services/api';
 import { mergePipelineSnapshot } from '../hooks/useMergedPipelinePreview';
 import PipelineCiDiagram from './PipelineCiDiagram';
+import PipelineVerticalDiagram from './PipelineVerticalDiagram';
 import LlmProxyAutocompletePanel from './LlmProxyAutocompletePanel';
 import '../styles/components/DashboardTab.css';
 import '../styles/components/SettingsTab.css';
@@ -95,7 +96,7 @@ function CoreUiModal({ title, onClose, children }) {
         <div className="coreui-modal-header">
           <h3>{title}</h3>
           <button type="button" className="coreui-modal-close-btn" onClick={onClose} aria-label="Close dialog">
-            Close
+            <span className="material-symbols-outlined" aria-hidden="true">close</span>
           </button>
         </div>
         <div className="coreui-modal-body">{children}</div>
@@ -103,6 +104,15 @@ function CoreUiModal({ title, onClose, children }) {
     </div>
   );
 }
+
+const WIZARD_STEPS = [
+  { id: 'basic', label: 'Basic Info', icon: 'info' },
+  { id: 'rag', label: 'RAG', icon: 'search' },
+  { id: 'privacy', label: 'Privacy', icon: 'lock' },
+  { id: 'parameters', label: 'Parameters', icon: 'tune' },
+  { id: 'web', label: 'Web Knowledge', icon: 'language' },
+  { id: 'preview', label: 'Pipeline', icon: 'flowchart' },
+];
 
 function emptyDraft() {
   return {
@@ -126,6 +136,7 @@ function emptyDraft() {
     include_rag_metadata: true,
     reasoning_level: '',
     chat_think: false,
+    sse_streaming: true,
     private: false,
     rag_collection: '',
     context_chunk_chars: '',
@@ -173,6 +184,7 @@ function draftToPayload(draft) {
   o.code_only = Boolean(draft.code_only);
   o.include_rag_metadata = Boolean(draft.include_rag_metadata);
   o.chat_think = Boolean(draft.chat_think);
+  o.sse_streaming = draft.sse_streaming !== false;
   o.private = Boolean(draft.private);
   o.reasoning_level = String(draft.reasoning_level || '').trim();
   o.rag_collection = String(draft.rag_collection || '').trim();
@@ -221,6 +233,8 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
   const [openMenuModel, setOpenMenuModel] = useState(null);
   const modelMenuRootRef = useRef(null);
   const [rowBusy, setRowBusy] = useState({});
+  const [wizardStep, setWizardStep] = useState(0);
+  const [wizardDirection, setWizardDirection] = useState('forward');
 
   const load = useCallback(async () => {
     setErr(null);
@@ -310,6 +324,11 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
     [buildModalPipelineSnap, buildModalHybrid, buildModalRerank, draft],
   );
 
+  const isFormValid = useMemo(() => {
+    if (!draft) return false;
+    return Boolean(draft.id?.trim()) && Boolean(draft.ollama_model?.trim());
+  }, [draft]);
+
   const detailBuild = useMemo(
     () => builds.find((x) => x.id === detailId) || null,
     [builds, detailId],
@@ -320,6 +339,8 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
     setEditingId(null);
     setDraft(emptyDraft());
     setPreviewMsg(null);
+    setWizardStep(0);
+    setWizardDirection('forward');
   };
 
   const openEdit = (b) => {
@@ -327,6 +348,8 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
     setEditingId(b.id);
     setDraft(buildToDraft(b));
     setPreviewMsg(null);
+    setWizardStep(0);
+    setWizardDirection('forward');
   };
 
   const openDetails = (bid) => {
@@ -679,276 +702,774 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
       </section>
 
       {draft && (
-        <CoreUiModal title={editingId ? `Edit build: ${editingId}` : 'New build'} onClose={closeForm}>
-          <div className="settings-form" style={{ display: 'grid', gap: 12, width: '100%' }}>
-            <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              Build id (API model name)
-              <input
-                className="dashboard-card-field"
-                value={draft.id}
-                onChange={(e) => setDraft({ ...draft, id: e.target.value })}
-                disabled={!!editingId}
-                placeholder="e.g. my-dev-build"
-              />
-            </label>
-            <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              Display name
-              <input
-                className="dashboard-card-field"
-                value={draft.display_name}
-                onChange={(e) => setDraft({ ...draft, display_name: e.target.value })}
-              />
-            </label>
-            <p className="dashboard-card-muted" style={{ margin: 0 }}>
-              <strong>Ollama model</strong> is required for the RAG chat pipeline.
-            </p>
-            <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              Ollama model
-              <select
-                className="dashboard-card-field"
-                value={draft.ollama_model}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setDraft((prev) => ({ ...(prev || {}), ollama_model: v }));
-                  void applySelectedModelDefaults(v);
-                }}
-              >
-                <option value="">Select…</option>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name || m.id}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="dashboard-card-actions" style={{ flexWrap: 'wrap' }}>
+        <CoreUiModal title={editingId ? `Edit build: ${editingId}` : 'Create new build'} onClose={closeForm}>
+          {/* Wizard steps: standard underline tabs (not pill + connector) */}
+          <div className="llm-proxy-wizard-steps" role="tablist" aria-label="Build configuration sections">
+            {WIZARD_STEPS.map((step, idx) => (
               <button
+                key={step.id}
                 type="button"
-                className="dashboard-primary-btn"
-                disabled={previewBusy}
-                onClick={runPreview}
+                role="tab"
+                aria-selected={idx === wizardStep}
+                className={`llm-proxy-wizard-step${
+                  idx === wizardStep ? ' llm-proxy-wizard-step-active' : ''
+                }${idx < wizardStep ? ' llm-proxy-wizard-step-completed' : ''}`}
+                onClick={() => { setWizardStep(idx); setWizardDirection(idx < wizardStep ? 'back' : 'forward'); }}
+                data-step={idx + 1}
+                aria-label={`Step ${idx + 1}: ${step.label}`}
+                aria-current={idx === wizardStep ? 'step' : undefined}
               >
-                Check model (Ollama show)
+                <span className="llm-proxy-wizard-step-icon material-symbols-outlined" aria-hidden="true">
+                  {idx < wizardStep ? 'check' : step.icon}
+                </span>
+                {step.label}
               </button>
-              {previewMsg && <span className="dashboard-card-muted">{previewMsg}</span>}
-            </div>
-            <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input
-                type="checkbox"
-                checked={draft.use_prompt_template !== false}
-                onChange={(e) => setDraft({ ...draft, use_prompt_template: e.target.checked })}
-              />
-              Use Prompt Template
-            </label>
-            {draft.use_prompt_template !== false && (
-              <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                Prompt template
-                <select
-                  className="dashboard-card-field"
-                  value={draft.prompt_name}
-                  onChange={(e) => setDraft({ ...draft, prompt_name: e.target.value })}
-                >
-                  <option value="">Select…</option>
-                  {prompts.map((p) => (
-                    <option key={p.id || p.name} value={p.name || p.id}>
-                      {p.name || p.id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input
-                type="checkbox"
-                checked={!!draft.rag_enabled}
-                onChange={(e) => setDraft({ ...draft, rag_enabled: e.target.checked })}
-              />
-              RAG enabled
-            </label>
-            <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input
-                type="checkbox"
-                checked={!!draft.web_enabled}
-                onChange={(e) => setDraft({ ...draft, web_enabled: e.target.checked })}
-              />
-              Web supplement enabled
-            </label>
-            <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input
-                type="checkbox"
-                checked={!!draft.fetch_web_knowledge}
-                onChange={(e) => setDraft({ ...draft, fetch_web_knowledge: e.target.checked })}
-              />
-              Fetch web knowledge
-            </label>
-            <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input
-                type="checkbox"
-                checked={!!draft.code_only}
-                onChange={(e) => setDraft({ ...draft, code_only: e.target.checked })}
-              />
-              Code only
-            </label>
-            <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input
-                type="checkbox"
-                checked={!!draft.include_rag_metadata}
-                onChange={(e) => setDraft({ ...draft, include_rag_metadata: e.target.checked })}
-              />
-              Include RAG metadata in response
-            </label>
-            <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input
-                type="checkbox"
-                checked={!!draft.chat_think}
-                onChange={(e) => setDraft({ ...draft, chat_think: e.target.checked })}
-              />
-              Ollama think (when supported)
-            </label>
-            <div
-              className="dashboard-card-muted"
-              style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}
-            >
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={!!draft.private}
-                  onChange={(e) => setDraft({ ...draft, private: e.target.checked })}
-                />
-                Private
-              </label>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '0.8125rem',
-                  lineHeight: 1.45,
-                  opacity: 0.88,
-                  maxWidth: '42rem',
-                }}
-              >
-                No proxy rows in the logs database, no live trace snapshot for this request, and no live or history
-                entries in Notifications. Does not affect Ollama or OS-level logging.
-              </p>
-              <p
-                style={{
-                  margin: '8px 0 0',
-                  fontSize: '0.8125rem',
-                  lineHeight: 1.45,
-                  opacity: 0.88,
-                  maxWidth: '42rem',
-                }}
-              >
-                <strong>Cloud models:</strong> if your client or pipeline sends traffic to hosted or third-party model
-                APIs, read those providers&apos; privacy policies and terms — they govern how your data is stored and
-                processed; Private here only limits traces and logs inside this app.
-              </p>
-            </div>
-            <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              RAG collection override (optional)
-              <input
-                className="dashboard-card-field"
-                value={draft.rag_collection}
-                onChange={(e) => setDraft({ ...draft, rag_collection: e.target.value })}
-                placeholder="empty = server default"
-              />
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-              <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                Context chunk chars
-                <input
-                  className="dashboard-card-field"
-                  inputMode="numeric"
-                  value={draft.context_chunk_chars}
-                  onChange={(e) => setDraft({ ...draft, context_chunk_chars: e.target.value })}
-                  placeholder="YAML / env default"
-                />
-              </label>
-              <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                Context total chars
-                <input
-                  className="dashboard-card-field"
-                  inputMode="numeric"
-                  value={draft.context_total_chars}
-                  onChange={(e) => setDraft({ ...draft, context_total_chars: e.target.value })}
-                  placeholder="YAML / env default"
-                />
-              </label>
-              <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                RAG top_k
-                <input
-                  className="dashboard-card-field"
-                  inputMode="numeric"
-                  value={draft.rag_top_k}
-                  onChange={(e) => setDraft({ ...draft, rag_top_k: e.target.value })}
-                  placeholder="retrieval default"
-                />
-              </label>
-            </div>
-            <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              Reasoning level hint (optional)
-              <input
-                className="dashboard-card-field"
-                value={draft.reasoning_level}
-                onChange={(e) => setDraft({ ...draft, reasoning_level: e.target.value })}
-              />
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                Temperature
-                <input
-                  className="dashboard-card-field"
-                  value={draft.temperature}
-                  onChange={(e) => setDraft({ ...draft, temperature: e.target.value })}
-                  placeholder="inherit"
-                />
-              </label>
-              <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                Top P
-                <input
-                  className="dashboard-card-field"
-                  value={draft.top_p}
-                  onChange={(e) => setDraft({ ...draft, top_p: e.target.value })}
-                  placeholder="inherit"
-                />
-              </label>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                num_ctx
-                <input
-                  className="dashboard-card-field"
-                  value={draft.num_ctx}
-                  onChange={(e) => setDraft({ ...draft, num_ctx: e.target.value })}
-                  placeholder="Ollama context"
-                />
-              </label>
-              <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                Max agent steps
-                <input
-                  className="dashboard-card-field"
-                  value={draft.max_agent_steps}
-                  onChange={(e) => setDraft({ ...draft, max_agent_steps: e.target.value })}
-                  placeholder="1–256"
-                />
-              </label>
-            </div>
-            <div className="app-default-card" style={{ marginTop: 4 }}>
-              <PipelineCiDiagram
-                data={buildModalPipelineData}
-                title="LLM proxy pipeline (RAG + supplements)"
-                subtitle="Stages reflect this draft overlaid on current server settings. Edit hybrid/rerank and collection on the RAG / Qdrant tab."
-                compact
-              />
-            </div>
-            <div className="dashboard-card-actions">
-              <button type="button" className="dashboard-primary-btn" disabled={saving} onClick={saveForm}>
-                Save build
-              </button>
-              <button type="button" className="dashboard-primary-btn" disabled={saving} onClick={closeForm}>
-                Cancel
-              </button>
-            </div>
+            ))}
           </div>
+
+          {/* Wizard Content - scrollable area */}
+          <div className="llm-proxy-wizard-content-wrapper">
+            <div className="llm-proxy-wizard-content" key={wizardStep}>
+            {/* ── Step 0: Basic Info ── */}
+            {wizardStep === 0 && (
+              <div className="llm-proxy-wizard-step-panel">
+                <div className="llm-proxy-info-card">
+                  <h3 className="llm-proxy-info-card-title">
+                    <span className="llm-proxy-info-card-title-icon material-symbols-outlined" aria-hidden="true">info</span>
+                    Name your build
+                  </h3>
+                  <div className="llm-proxy-info-card-body">
+                    A <strong>build</strong> is a named configuration that API clients reference by the <code>model</code> field.
+                    Think of it as a profile — each build wires up a specific Ollama model, RAG settings, and behaviour so
+                    you can switch between them instantly without changing client code.
+                  </div>
+                </div>
+
+                <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  Build id (API model name)
+                  <input
+                    className="dashboard-card-field"
+                    value={draft.id}
+                    onChange={(e) => setDraft({ ...draft, id: e.target.value })}
+                    disabled={!!editingId}
+                    placeholder="e.g. my-dev-build"
+                  />
+                  <span className="llm-proxy-param-card-hint">This is the <code>model</code> value clients send in API requests. Must be unique. Lowercase, hyphens ok.</span>
+                </label>
+
+                <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  Display name
+                  <input
+                    className="dashboard-card-field"
+                    value={draft.display_name}
+                    onChange={(e) => setDraft({ ...draft, display_name: e.target.value })}
+                    placeholder="Human-friendly name shown in the UI"
+                  />
+                  <span className="llm-proxy-param-card-hint">Optional. A readable label for the builds list. Falls back to the build id if empty.</span>
+                </label>
+
+                <div className="llm-proxy-info-card">
+                  <h3 className="llm-proxy-info-card-title">
+                    <span className="llm-proxy-info-card-title-icon material-symbols-outlined" aria-hidden="true">smart_toy</span>
+                    Choose the Ollama model
+                  </h3>
+                  <div className="llm-proxy-info-card-body">
+                    The Ollama model is the LLM that actually generates responses. The proxy sends it the assembled
+                    prompt (system + RAG context + conversation). Pick a model you have pulled locally via <code>ollama pull</code>.
+                  </div>
+                </div>
+
+                <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  Ollama model
+                  <select
+                    className="dashboard-card-field"
+                    value={draft.ollama_model}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDraft((prev) => ({ ...(prev || {}), ollama_model: v }));
+                      void applySelectedModelDefaults(v);
+                    }}
+                  >
+                    <option value="">Select…</option>
+                    {models.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name || m.id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="dashboard-card-actions" style={{ flexWrap: 'wrap' }}>
+                  <button type="button" className="dashboard-primary-btn" disabled={previewBusy} onClick={runPreview}>
+                    Check model (Ollama show)
+                  </button>
+                  {previewMsg && <span className="dashboard-card-muted">{previewMsg}</span>}
+                </div>
+
+                <div className="llm-proxy-toggle-with-explanation">
+                  <div className="llm-proxy-toggle-row">
+                    <span className="llm-proxy-toggle-label">
+                      <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">description</span>
+                      Use Prompt Template
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={draft.use_prompt_template !== false}
+                      onChange={(e) => setDraft({ ...draft, use_prompt_template: e.target.checked })}
+                    />
+                  </div>
+                  <p className="llm-proxy-toggle-explanation">
+                    When enabled, the proxy wraps the conversation with a system prompt template (selected below).
+                    Templates define the AI's persona, tone, and instructions. Disable only if your client sends its own full system prompt.
+                  </p>
+                </div>
+
+                {draft.use_prompt_template !== false && (
+                  <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    Prompt template
+                    <select
+                      className="dashboard-card-field"
+                      value={draft.prompt_name}
+                      onChange={(e) => setDraft({ ...draft, prompt_name: e.target.value })}
+                    >
+                      <option value="">Select…</option>
+                      {prompts.map((p) => (
+                        <option key={p.id || p.name} value={p.name || p.id}>
+                          {p.name || p.id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+
+                <div className="llm-proxy-toggle-with-explanation">
+                  <div className="llm-proxy-toggle-row">
+                    <span className="llm-proxy-toggle-label">
+                      <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">psychology</span>
+                      Ollama think mode
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={!!draft.chat_think}
+                      onChange={(e) => setDraft({ ...draft, chat_think: e.target.checked })}
+                    />
+                  </div>
+                  <p className="llm-proxy-toggle-explanation">
+                    Enables extended "thinking" output for models that support it (e.g. DeepSeek-R1, QwQ). The model
+                    produces a hidden reasoning chain before the final answer, improving quality on complex tasks.
+                  </p>
+                </div>
+
+                <div className="llm-proxy-toggle-with-explanation">
+                  <div className="llm-proxy-toggle-row">
+                    <span className="llm-proxy-toggle-label">
+                      <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">stream</span>
+                      Token-by-token SSE streaming
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={draft.sse_streaming !== false}
+                      onChange={(e) => setDraft({ ...draft, sse_streaming: e.target.checked })}
+                    />
+                  </div>
+                  <p className="llm-proxy-toggle-explanation">
+                    When on, tokens stream from Ollama to the client one-by-one in real time. When off, the proxy
+                    collects the full response first, then sends it as a single SSE burst — useful if streaming causes
+                    incomplete tool calls or flaky clients.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* ── Step 1: RAG ── */}
+            {wizardStep === 1 && (
+              <div className="llm-proxy-wizard-step-panel">
+                <div className="llm-proxy-info-card">
+                  <h3 className="llm-proxy-info-card-title">
+                    <span className="llm-proxy-info-card-title-icon material-symbols-outlined" aria-hidden="true">search</span>
+                    What is RAG and why does it matter?
+                  </h3>
+                  <div className="llm-proxy-info-card-body">
+                    <strong>RAG (Retrieval-Augmented Generation)</strong> supercharges the AI with your own documents.
+                    Instead of relying solely on the model's training data, RAG searches a vector database (Qdrant)
+                    for relevant passages <em>before</em> generating a response, then injects them into the prompt.
+                    <ul>
+                      <li><strong>Accurate answers</strong> — the model cites your docs, not just its memory</li>
+                      <li><strong>Up-to-date</strong> — works with docs added or changed today, not last year's training cut-off</li>
+                      <li><strong>Domain-specific</strong> — private codebases, internal wikis, API docs — anything you index</li>
+                      <li><strong>Reduced hallucinations</strong> — grounded context keeps the model honest</li>
+                    </ul>
+                    Without RAG, the model answers from general knowledge only. With RAG, it answers from <em>your</em> knowledge base.
+                  </div>
+                </div>
+
+                <div className="llm-proxy-toggle-with-explanation" style={{ borderLeft: '3px solid var(--md-sys-color-primary)' }}>
+                  <div className="llm-proxy-toggle-row">
+                    <span className="llm-proxy-toggle-label">
+                      <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">search</span>
+                      Enable RAG for this build
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={!!draft.rag_enabled}
+                      onChange={(e) => setDraft({ ...draft, rag_enabled: e.target.checked })}
+                    />
+                  </div>
+                  <p className="llm-proxy-toggle-explanation">
+                    When enabled, every chat request will search your Qdrant collections for relevant context before
+                    calling the LLM. Disable if you want a pure passthrough to the Ollama model with no document retrieval.
+                  </p>
+                </div>
+
+                {draft.rag_enabled && (
+                  <>
+                    <div className="llm-proxy-rag-features">
+                      <div className="llm-proxy-rag-feature">
+                        <span className="llm-proxy-rag-feature-icon material-symbols-outlined" aria-hidden="true">database</span>
+                        <span className="llm-proxy-rag-feature-text"><strong>Vector search</strong> — embeds the query and finds the closest document chunks by semantic similarity</span>
+                      </div>
+                      <div className="llm-proxy-rag-feature">
+                        <span className="llm-proxy-rag-feature-icon material-symbols-outlined" aria-hidden="true">merge_type</span>
+                        <span className="llm-proxy-rag-feature-text"><strong>Hybrid fusion</strong> — combines dense + sparse vectors with RRF for better recall (config in RAG / Qdrant)</span>
+                      </div>
+                      <div className="llm-proxy-rag-feature">
+                        <span className="llm-proxy-rag-feature-icon material-symbols-outlined" aria-hidden="true">filter_alt</span>
+                        <span className="llm-proxy-rag-feature-text"><strong>Smart filtering</strong> — auto-skips RAG for greetings and small talk; uses keyword triggers for technical questions</span>
+                      </div>
+                      <div className="llm-proxy-rag-feature">
+                        <span className="llm-proxy-rag-feature-icon material-symbols-outlined" aria-hidden="true">rank</span>
+                        <span className="llm-proxy-rag-feature-text"><strong>Reranking</strong> — optional LLM-based rerank of top candidates for precision (config in RAG / Qdrant)</span>
+                      </div>
+                    </div>
+
+                    <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+                      RAG collection override
+                      <input
+                        className="dashboard-card-field"
+                        value={draft.rag_collection}
+                        onChange={(e) => setDraft({ ...draft, rag_collection: e.target.value })}
+                        placeholder="empty = server default"
+                      />
+                      <span className="llm-proxy-param-card-hint">Leave empty to use the server's default collection. Set a name to search a specific Qdrant collection for this build.</span>
+                    </label>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                      <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        Context chunk chars
+                        <input
+                          className="dashboard-card-field"
+                          inputMode="numeric"
+                          value={draft.context_chunk_chars}
+                          onChange={(e) => setDraft({ ...draft, context_chunk_chars: e.target.value })}
+                          placeholder="YAML default"
+                        />
+                        <span className="llm-proxy-param-card-hint">Max characters per retrieved chunk sent to the model.</span>
+                      </label>
+                      <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        Context total chars
+                        <input
+                          className="dashboard-card-field"
+                          inputMode="numeric"
+                          value={draft.context_total_chars}
+                          onChange={(e) => setDraft({ ...draft, context_total_chars: e.target.value })}
+                          placeholder="YAML default"
+                        />
+                        <span className="llm-proxy-param-card-hint">Total RAG context budget across all chunks.</span>
+                      </label>
+                      <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        RAG top_k
+                        <input
+                          className="dashboard-card-field"
+                          inputMode="numeric"
+                          value={draft.rag_top_k}
+                          onChange={(e) => setDraft({ ...draft, rag_top_k: e.target.value })}
+                          placeholder="retrieval default"
+                        />
+                        <span className="llm-proxy-param-card-hint">Number of document chunks to retrieve from Qdrant.</span>
+                      </label>
+                    </div>
+
+                    <div className="llm-proxy-toggle-with-explanation">
+                      <div className="llm-proxy-toggle-row">
+                        <span className="llm-proxy-toggle-label">
+                          <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">code</span>
+                          Code only mode
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={!!draft.code_only}
+                          onChange={(e) => setDraft({ ...draft, code_only: e.target.checked })}
+                        />
+                      </div>
+                      <p className="llm-proxy-toggle-explanation">
+                        Restricts RAG retrieval to code documents only (snippets, source files). Useful for coding assistants that shouldn't pull prose docs.
+                      </p>
+                    </div>
+
+                    <div className="llm-proxy-toggle-with-explanation">
+                      <div className="llm-proxy-toggle-row">
+                        <span className="llm-proxy-toggle-label">
+                          <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">metadata</span>
+                          Include RAG metadata in response
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={!!draft.include_rag_metadata}
+                          onChange={(e) => setDraft({ ...draft, include_rag_metadata: e.target.checked })}
+                        />
+                      </div>
+                      <p className="llm-proxy-toggle-explanation">
+                        Appends citation metadata (source file, chunk id, score) to the API response so clients can show where the answer came from.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── Step 2: Privacy ── */}
+            {wizardStep === 2 && (
+              <div className="llm-proxy-wizard-step-panel">
+                <div className="llm-proxy-info-card">
+                  <h3 className="llm-proxy-info-card-title">
+                    <span className="llm-proxy-info-card-title-icon material-symbols-outlined" aria-hidden="true">lock</span>
+                    Privacy &amp; logging
+                  </h3>
+                  <div className="llm-proxy-info-card-body">
+                    By default, the proxy logs every request: it stores a row in the journal database, creates a live
+                    trace snapshot, and may show notifications. <strong>Private mode</strong> turns all of that off for
+                    this build — no database rows, no traces, no notifications.
+                    <ul>
+                      <li><strong>When to enable Private:</strong> sensitive prompts, personal data, confidential code reviews, or any workflow where you don't want a record</li>
+                      <li><strong>When to keep it off:</strong> normal development, debugging, or when you want the Traces and Journal tabs to show request history</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="llm-proxy-toggle-with-explanation" style={{ borderLeft: '3px solid var(--md-sys-color-tertiary)' }}>
+                  <div className="llm-proxy-toggle-row">
+                    <span className="llm-proxy-toggle-label">
+                      <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">visibility_off</span>
+                      Private mode
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={!!draft.private}
+                      onChange={(e) => setDraft({ ...draft, private: e.target.checked })}
+                    />
+                  </div>
+                  <p className="llm-proxy-toggle-explanation">
+                    No proxy rows in the logs database, no live trace snapshot for this request, and no live or history
+                    entries in Notifications. Does not affect Ollama or OS-level logging.
+                  </p>
+                  {draft.private && (
+                    <p className="llm-proxy-toggle-explanation" style={{ marginTop: 8, color: 'var(--md-sys-color-on-tertiary-container)' }}>
+                      <strong>⚠ Cloud models:</strong> if your client or pipeline sends traffic to hosted or third-party model
+                      APIs, read those providers' privacy policies and terms — they govern how your data is stored and
+                      processed; Private here only limits traces and logs inside this app.
+                    </p>
+                  )}
+                </div>
+
+                <div className="llm-proxy-info-card" style={{ opacity: draft.private ? 0.6 : 1 }}>
+                  <h3 className="llm-proxy-info-card-title" style={{ fontSize: '1rem' }}>
+                    <span className="llm-proxy-info-card-title-icon material-symbols-outlined" aria-hidden="true">visibility</span>
+                    What gets logged when Private is off
+                  </h3>
+                  <div className="llm-proxy-info-card-body">
+                    <ul>
+                      <li><strong>Journal</strong> — full request/response stored in SQLite for the Journal tab</li>
+                      <li><strong>Traces</strong> — live in-memory snapshot of the pipeline stages (RAG hits, timing, etc.)</li>
+                      <li><strong>Notifications</strong> — completion alerts in the notification center</li>
+                    </ul>
+                    All of the above are disabled when Private is on.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Step 3: Parameters ── */}
+            {wizardStep === 3 && (
+              <div className="llm-proxy-wizard-step-panel">
+                <div className="llm-proxy-info-card">
+                  <h3 className="llm-proxy-info-card-title">
+                    <span className="llm-proxy-info-card-title-icon material-symbols-outlined" aria-hidden="true">tune</span>
+                    Fine-tune the model
+                  </h3>
+                  <div className="llm-proxy-info-card-body">
+                    These parameters control how the LLM generates text. Leave a field empty to inherit the server's
+                    default value. Each one is explained below — no PhD required.
+                  </div>
+                </div>
+
+                <div className="llm-proxy-param-card">
+                  <div className="llm-proxy-param-card-header">
+                    <span className="llm-proxy-param-card-icon material-symbols-outlined" aria-hidden="true">thermostat</span>
+                    <h4 className="llm-proxy-param-card-title">Temperature</h4>
+                  </div>
+                  <p className="llm-proxy-param-card-description">
+                    Controls <strong>creativity vs. consistency</strong>. Low values (0.0–0.3) make the model focused and
+                    deterministic — great for code, facts, and precise answers. High values (0.7–1.5) make it more
+                    creative and varied — better for brainstorming and storytelling. Think of it as a dial between
+                    "robot" and "poet".
+                  </p>
+                  <input
+                    className="dashboard-card-field llm-proxy-param-card-field"
+                    value={draft.temperature}
+                    onChange={(e) => setDraft({ ...draft, temperature: e.target.value })}
+                    placeholder="inherit (server default)"
+                    inputMode="decimal"
+                  />
+                  <p className="llm-proxy-param-card-hint">Range: 0.0 – 2.0. Typical: 0.1 for code, 0.7 for chat, 1.0+ for creative writing.</p>
+                </div>
+
+                <div className="llm-proxy-param-card">
+                  <div className="llm-proxy-param-card-header">
+                    <span className="llm-proxy-param-card-icon material-symbols-outlined" aria-hidden="true">filter_list</span>
+                    <h4 className="llm-proxy-param-card-title">Top P (nucleus sampling)</h4>
+                  </div>
+                  <p className="llm-proxy-param-card-description">
+                    Another way to control randomness. Instead of cutting off low-probability tokens entirely (like
+                    Temperature), <strong>Top P</strong> keeps the smallest set of tokens whose cumulative probability
+                    exceeds P. Low P (0.1) = only the most likely tokens. High P (0.9+) = almost all tokens are
+                    considered. In practice, you usually adjust <em>either</em> Temperature <em>or</em> Top P, not both.
+                  </p>
+                  <input
+                    className="dashboard-card-field llm-proxy-param-card-field"
+                    value={draft.top_p}
+                    onChange={(e) => setDraft({ ...draft, top_p: e.target.value })}
+                    placeholder="inherit (server default)"
+                    inputMode="decimal"
+                  />
+                  <p className="llm-proxy-param-card-hint">Range: 0.0 – 1.0. Typical: 0.9 for general use, 0.1 for strict/focused output.</p>
+                </div>
+
+                <div className="llm-proxy-param-card">
+                  <div className="llm-proxy-param-card-header">
+                    <span className="llm-proxy-param-card-icon material-symbols-outlined" aria-hidden="true">context_memory</span>
+                    <h4 className="llm-proxy-param-card-title">num_ctx (context window)</h4>
+                  </div>
+                  <p className="llm-proxy-param-card-description">
+                    The <strong>total number of tokens</strong> the model can "see" at once — including the system prompt,
+                    RAG context, conversation history, and the new question. A larger window means more context but
+                    uses more memory and is slower. The model's maximum is set by Ollama (shown when you click
+                    "Check model"). Setting this lower than the max saves resources for short conversations.
+                  </p>
+                  <input
+                    className="dashboard-card-field llm-proxy-param-card-field"
+                    value={draft.num_ctx}
+                    onChange={(e) => setDraft({ ...draft, num_ctx: e.target.value })}
+                    placeholder="inherit (model default)"
+                    inputMode="numeric"
+                  />
+                  <p className="llm-proxy-param-card-hint">Example: 8192 for small models, 32768+ for large context models. Auto-filled when you select an Ollama model above.</p>
+                </div>
+
+                <div className="llm-proxy-param-card">
+                  <div className="llm-proxy-param-card-header">
+                    <span className="llm-proxy-param-card-icon material-symbols-outlined" aria-hidden="true">route</span>
+                    <h4 className="llm-proxy-param-card-title">Max agent steps</h4>
+                  </div>
+                  <p className="llm-proxy-param-card-description">
+                    When the model uses <strong>tool calls</strong> (function calling), each round of "think → call tool →
+                    read result → think again" is one agent step. This limit prevents infinite loops. A step count of 1
+                    means no tool use at all (single-shot). Higher values allow multi-step reasoning chains.
+                  </p>
+                  <input
+                    className="dashboard-card-field llm-proxy-param-card-field"
+                    value={draft.max_agent_steps}
+                    onChange={(e) => setDraft({ ...draft, max_agent_steps: e.target.value })}
+                    placeholder="inherit (1–256)"
+                    inputMode="numeric"
+                  />
+                  <p className="llm-proxy-param-card-hint">Range: 1–256. Typical: 1 for simple chat, 5–10 for tool-using agents, 50+ for complex agentic workflows.</p>
+                </div>
+
+
+              </div>
+            )}
+
+            {/* ── Step 4: Web Knowledge ── */}
+            {wizardStep === 4 && (
+              <div className="llm-proxy-wizard-step-panel">
+                <div className="llm-proxy-info-card">
+                  <h3 className="llm-proxy-info-card-title">
+                    <span className="llm-proxy-info-card-title-icon material-symbols-outlined" aria-hidden="true">language</span>
+                    Web Knowledge — fresh info beyond your docs
+                  </h3>
+                  <div className="llm-proxy-info-card-body">
+                    Your RAG database contains <em>your</em> indexed documents, but what about the latest library release,
+                    a new API, or a recent changelog? <strong>Web Knowledge</strong> supplements RAG with live internet
+                    data — search results, web pages, and GitHub-sourced documentation — so the model can answer
+                    questions about things that happened <em>after</em> your last index run.
+                  </div>
+                </div>
+
+                <div className="llm-proxy-toggle-with-explanation" style={{ borderLeft: '3px solid var(--md-sys-color-tertiary)' }}>
+                  <div className="llm-proxy-toggle-row">
+                    <span className="llm-proxy-toggle-label">
+                      <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">public</span>
+                      Web supplement enabled
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={!!draft.web_enabled}
+                      onChange={(e) => setDraft({ ...draft, web_enabled: e.target.checked })}
+                    />
+                  </div>
+                  <p className="llm-proxy-toggle-explanation">
+                    Master switch for all web-based features below. When off, no web data is fetched for this build —
+                    only your local RAG collection is used.
+                  </p>
+                </div>
+
+                {draft.web_enabled && (
+                  <>
+                    <div className="llm-proxy-web-features">
+                      <div className="llm-proxy-web-feature-item">
+                        <span className="llm-proxy-web-feature-title">
+                          <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 18, color: 'var(--md-sys-color-tertiary)' }}>travel_explore</span>
+                          DuckDuckGo search snippets
+                        </span>
+                        <p className="llm-proxy-web-feature-desc">
+                          Fetches short text snippets from DuckDuckGo search results. Free, no API key needed.
+                          Great for quick facts, version numbers, and recent announcements.
+                        </p>
+                        <div className="llm-proxy-toggle-row" style={{ marginTop: 4 }}>
+                          <span className="llm-proxy-toggle-label" style={{ fontSize: '0.8125rem' }}>Enable DDG news</span>
+                          <input
+                            type="checkbox"
+                            checked={!!draft.web_interaction_ddg_news}
+                            onChange={(e) => setDraft({ ...draft, web_interaction_ddg_news: e.target.checked })}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="llm-proxy-web-feature-item">
+                        <span className="llm-proxy-web-feature-title">
+                          <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 18, color: 'var(--md-sys-color-tertiary)' }}>web</span>
+                          Fetch web pages
+                        </span>
+                        <p className="llm-proxy-web-feature-desc">
+                          When a search result looks promising, the proxy can fetch and extract the full page content
+                          for deeper context. Uses more tokens but provides much richer information.
+                        </p>
+                        <div className="llm-proxy-toggle-row" style={{ marginTop: 4 }}>
+                          <span className="llm-proxy-toggle-label" style={{ fontSize: '0.8125rem' }}>Enable page fetching</span>
+                          <input
+                            type="checkbox"
+                            checked={!!draft.web_interaction_fetch_page}
+                            onChange={(e) => setDraft({ ...draft, web_interaction_fetch_page: e.target.checked })}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="llm-proxy-web-feature-item">
+                        <span className="llm-proxy-web-feature-title">
+                          <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 18, color: 'var(--md-sys-color-tertiary)' }}>menu_book</span>
+                          Wikipedia lookup
+                        </span>
+                        <p className="llm-proxy-web-feature-desc">
+                          Searches Wikipedia for encyclopedic background on topics. Useful for general knowledge,
+                          definitions, and historical context.
+                        </p>
+                        <div className="llm-proxy-toggle-row" style={{ marginTop: 4 }}>
+                          <span className="llm-proxy-toggle-label" style={{ fontSize: '0.8125rem' }}>Enable Wikipedia</span>
+                          <input
+                            type="checkbox"
+                            checked={!!draft.web_interaction_wikipedia}
+                            onChange={(e) => setDraft({ ...draft, web_interaction_wikipedia: e.target.checked })}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="llm-proxy-toggle-with-explanation" style={{ marginTop: 8 }}>
+                      <div className="llm-proxy-toggle-row">
+                        <span className="llm-proxy-toggle-label">
+                          <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">cloud_download</span>
+                          Fetch web knowledge (GitHub docs)
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={!!draft.fetch_web_knowledge}
+                          onChange={(e) => setDraft({ ...draft, fetch_web_knowledge: e.target.checked })}
+                        />
+                      </div>
+                      <p className="llm-proxy-toggle-explanation">
+                        Enables merged multi-collection retrieval and background GitHub markdown refresh via
+                        <code>external_docs_rag</code>. Pulls documentation from public GitHub repos (rate-limited via
+                        the public API) and indexes them into a separate Qdrant collection. Ideal for framework docs,
+                        SDK references, and open-source project wikis.
+                      </p>
+                    </div>
+
+                    <div className="llm-proxy-toggle-with-explanation">
+                      <div className="llm-proxy-toggle-row">
+                        <span className="llm-proxy-toggle-label">
+                          <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">toggle_on</span>
+                          Web on keyword triggers
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={draft.web_interaction_on_keywords !== false}
+                          onChange={(e) => setDraft({ ...draft, web_interaction_on_keywords: e.target.checked })}
+                        />
+                      </div>
+                      <p className="llm-proxy-toggle-explanation">
+                        Automatically triggers web search when the query contains keywords that suggest the user needs
+                        fresh information (e.g. "latest", "new", "release", "changelog").
+                      </p>
+                    </div>
+
+                    <div className="llm-proxy-toggle-with-explanation">
+                      <div className="llm-proxy-toggle-row">
+                        <span className="llm-proxy-toggle-label">
+                          <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">help</span>
+                          Web on low-confidence framework questions
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={draft.web_interaction_on_low_confidence_framework !== false}
+                          onChange={(e) => setDraft({ ...draft, web_interaction_on_low_confidence_framework: e.target.checked })}
+                        />
+                      </div>
+                      <p className="llm-proxy-toggle-explanation">
+                        When RAG returns low-confidence results for framework-related questions, automatically supplements
+                        with web search to fill the gap.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── Step 5: Pipeline Preview ── */}
+            {wizardStep === 5 && (
+              <div className="llm-proxy-wizard-step-panel">
+                <div className="llm-proxy-info-card">
+                  <h3 className="llm-proxy-info-card-title">
+                    <span className="llm-proxy-info-card-title-icon material-symbols-outlined" aria-hidden="true">flowchart</span>
+                    Pipeline preview
+                  </h3>
+                  <div className="llm-proxy-info-card-body">
+                    This diagram shows the full request pipeline for your build — from the incoming API request through
+                    RAG retrieval, web supplements, and the final LLM call. It reflects your current settings overlaid
+                    on the server defaults.
+                  </div>
+                </div>
+
+                <PipelineVerticalDiagram data={buildModalPipelineData} />
+
+                <div className="llm-proxy-build-summary">
+                  <h3 className="llm-proxy-build-summary-title">
+                    <span className="material-symbols-outlined" aria-hidden="true">summarize</span>
+                    Build summary
+                  </h3>
+                  <div className="llm-proxy-build-summary-grid">
+                    <div className="llm-proxy-build-summary-row">
+                      <span className="llm-proxy-build-summary-key">Build id</span>
+                      <code className="llm-proxy-build-summary-val">{draft.id || '—'}</code>
+                    </div>
+                    <div className="llm-proxy-build-summary-row">
+                      <span className="llm-proxy-build-summary-key">Display name</span>
+                      <span className="llm-proxy-build-summary-val">{draft.display_name || '—'}</span>
+                    </div>
+                    <div className="llm-proxy-build-summary-row">
+                      <span className="llm-proxy-build-summary-key">Ollama model</span>
+                      <code className="llm-proxy-build-summary-val">{draft.ollama_model || '—'}</code>
+                    </div>
+                    <div className="llm-proxy-build-summary-row">
+                      <span className="llm-proxy-build-summary-key">RAG</span>
+                      <span className={`llm-proxy-build-summary-val${draft.rag_enabled ? ' llm-proxy-build-summary-val--on' : ' llm-proxy-build-summary-val--off'}`}>
+                        {draft.rag_enabled ? 'Enabled' : 'Disabled'}{draft.rag_enabled && draft.rag_collection ? ` · ${draft.rag_collection}` : ''}
+                      </span>
+                    </div>
+                    <div className="llm-proxy-build-summary-row">
+                      <span className="llm-proxy-build-summary-key">Private</span>
+                      <span className={`llm-proxy-build-summary-val${draft.private ? ' llm-proxy-build-summary-val--on' : ' llm-proxy-build-summary-val--off'}`}>
+                        {draft.private ? 'On' : 'Off'}
+                      </span>
+                    </div>
+                    <div className="llm-proxy-build-summary-row">
+                      <span className="llm-proxy-build-summary-key">Web</span>
+                      <span className={`llm-proxy-build-summary-val${draft.web_enabled ? ' llm-proxy-build-summary-val--on' : ' llm-proxy-build-summary-val--off'}`}>
+                        {draft.web_enabled ? 'Enabled' : 'Disabled'}
+                      </span>
+                    </div>
+                    <div className="llm-proxy-build-summary-row">
+                      <span className="llm-proxy-build-summary-key">Temperature</span>
+                      <span className="llm-proxy-build-summary-val">{draft.temperature || 'Inherit'}</span>
+                    </div>
+                    <div className="llm-proxy-build-summary-row">
+                      <span className="llm-proxy-build-summary-key">Top P</span>
+                      <span className="llm-proxy-build-summary-val">{draft.top_p || 'Inherit'}</span>
+                    </div>
+                    <div className="llm-proxy-build-summary-row">
+                      <span className="llm-proxy-build-summary-key">num_ctx</span>
+                      <span className="llm-proxy-build-summary-val">{draft.num_ctx || 'Inherit'}</span>
+                    </div>
+                    <div className="llm-proxy-build-summary-row">
+                      <span className="llm-proxy-build-summary-key">Max agent steps</span>
+                      <span className="llm-proxy-build-summary-val">{draft.max_agent_steps || 'Inherit'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          </div>
+
+          {/* Wizard Navigation - sticky footer */}
+            <div className="llm-proxy-wizard-nav">
+              <div className="llm-proxy-wizard-nav-left">
+                {wizardStep > 0 && (
+                  <button
+                    type="button"
+                    className="dashboard-primary-btn"
+                    onClick={() => { setWizardStep(wizardStep - 1); setWizardDirection('back'); }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 18, marginRight: 4 }} aria-hidden="true">arrow_back</span>
+                    Back
+                  </button>
+                )}
+              </div>
+              <div className="llm-proxy-wizard-nav-center">
+                {wizardStep < WIZARD_STEPS.length - 1 && (
+                  <button
+                    type="button"
+                    className="dashboard-primary-btn"
+                    disabled={saving}
+                    onClick={saveForm}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 18, marginRight: 4 }} aria-hidden="true">save</span>
+                    {saving ? 'Saving...' : 'Save build'}
+                  </button>
+                )}
+              </div>
+              <div className="llm-proxy-wizard-nav-right">
+                {wizardStep < WIZARD_STEPS.length - 1 ? (
+                  <button
+                    type="button"
+                    className="dashboard-primary-btn"
+                    onClick={() => { setWizardStep(wizardStep + 1); setWizardDirection('forward'); }}
+                  >
+                    Next
+                    <span className="material-symbols-outlined" style={{ fontSize: 18, marginLeft: 4 }} aria-hidden="true">arrow_forward</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="dashboard-primary-btn"
+                    disabled={saving}
+                    onClick={saveForm}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 18, marginRight: 4 }} aria-hidden="true">save</span>
+                    {saving ? 'Saving...' : 'Save build'}
+                  </button>
+                )}
+              </div>
+            </div>
         </CoreUiModal>
       )}
         </>

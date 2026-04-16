@@ -130,6 +130,9 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
         "chat_think": bool(build.get("chat_think", False)),
         "private": bool(build.get("private", False)),
         "rag_collection": str(build.get("rag_collection") or "").strip(),
+        # When False: client may still send stream=true; proxy calls Ollama once (non-stream)
+        # and emits a single OpenAI-shaped SSE burst (role + content/tool_calls + finish + [DONE]).
+        "sse_streaming": build.get("sse_streaming", True) is not False,
     }
 
     t = build.get("temperature")

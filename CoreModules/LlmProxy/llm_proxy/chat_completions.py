@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import threading
 import time
 import uuid
@@ -27,6 +28,9 @@ from infrastructure.ollama.model_capabilities import (
     chat_error_suggests_no_think,
     chat_error_suggests_no_tools,
     get_cached_ollama_capabilities,
+)
+from infrastructure.ollama.openai_ollama_tool_bridge import (
+    openai_finish_reason_from_ollama,
 )
 from llm_proxy.contracts import LlmProxyWiring
 from llm_proxy.tool_helpers import (
@@ -195,8 +199,19 @@ def passthrough_think_from_body(body: dict[str, Any]) -> bool | str | None:
 
 
 def _ollama_native_think_broken_for_model(model_name: str | None) -> bool:
-    """Ollama native ``think`` with Qwen3 often returns only placeholder output (e.g. ``.``)."""
-    return "qwen3" in (model_name or "").lower()
+    """Ollama native ``think`` with Qwen3 often returns only placeholder output (e.g. ``.``).
+
+    Only matches the ``qwen3`` family (qwen3, qwen3:7b, etc.), NOT newer
+    versions like ``qwen3.5``, ``qwen3.1`` where thinking works correctly.
+    """
+    name = (model_name or "").lower()
+    idx = name.find("qwen3")
+    if idx < 0:
+        return False
+    after = idx + 5  # position right after "qwen3"
+    if after < len(name) and name[after] in ".0123456789":
+        return False
+    return True
 
 
 def effective_ollama_think_from_body(
@@ -208,8 +223,9 @@ def effective_ollama_think_from_body(
     """
     Value actually sent to Ollama ``/api/chat``.
 
-    For Qwen3, omitting ``think`` often leaves the model's template with thinking enabled by default,
-    which yields placeholder-only output. Always send explicit ``think: false`` for those models.
+    For the original Qwen3 family, omitting ``think`` often leaves the model's template with
+    thinking enabled by default, which yields placeholder-only output.  Always send explicit
+    ``think: false`` for those models.  Newer versions (qwen3.5, qwen3.1, …) are not affected.
     For other models, passthrough only when the client sent ``think`` (mediator).
     When ``capabilities`` is known and excludes thinking, omit ``think`` so Ollama uses model defaults.
     """
@@ -249,6 +265,19 @@ def _is_micro_garbage_reply(text: str | None) -> bool:
 
 def _degenerate_assistant_reply(text: str | None) -> bool:
     return _is_placeholder_only_reply(text) or _is_micro_garbage_reply(text)
+
+
+def _trace_ollama_api_metrics(src: dict[str, Any] | None) -> dict[str, Any]:
+    """Top-level Ollama /api/chat fields useful for diagnosing stop vs length truncation."""
+    if not isinstance(src, dict):
+        return {}
+    out: dict[str, Any] = {}
+    if src.get("done_reason") is not None:
+        out["ollama_done_reason"] = src["done_reason"]
+    for k in ("eval_count", "prompt_eval_count"):
+        if src.get(k) is not None:
+            out[f"ollama_{k}"] = src[k]
+    return out
 
 
 def _proxy_ollama_chat_text(
@@ -333,13 +362,14 @@ def _iter_proxy_ollama_chat_stream(
             tc = msg.get("tool_calls") if isinstance(msg, dict) else None
             if isinstance(tc, list) and tc:
                 yield ("tool_calls", tc)
+            yield ("done", data if isinstance(data, dict) else {})
         else:
             text = _proxy_ollama_chat_text(
                 chat_client, messages, model, think, options_overlay=options_overlay,
             )
             if text:
                 yield ("content_delta", text)
-        yield ("done", {})
+            yield ("done", {})
 
 
 def _normalize_request_messages(body: dict[str, Any]) -> list[dict[str, Any]]:
@@ -349,7 +379,7 @@ def _normalize_request_messages(body: dict[str, Any]) -> list[dict[str, Any]]:
     """
     raw = body.get("messages")
     if isinstance(raw, list) and len(raw) > 0:
-        return raw
+        return _normalize_and_sanitize_messages(raw)
 
     prompt: str | None = None
     p_raw = body.get("prompt")
@@ -377,6 +407,79 @@ def _normalize_request_messages(body: dict[str, Any]) -> list[dict[str, Any]]:
         return [{"role": "user", "content": inp}]
 
     return []
+
+
+_DATA_IMAGE_RE = re.compile(r"data:image/[a-z0-9.+-]+;base64,", re.IGNORECASE)
+
+
+def _text_from_openai_content_parts(parts: list[Any]) -> str:
+    """
+    OpenAI-style message content may be a list of parts:
+    - {"type":"text","text":"..."}
+    - {"type":"image_url","image_url":{...}} or other types
+    Keep only text parts; omit everything else.
+    """
+    out_parts: list[str] = []
+    for p in parts:
+        if not isinstance(p, dict):
+            continue
+        if p.get("type") == "text" and isinstance(p.get("text"), str):
+            t = (p.get("text") or "").strip()
+            if t:
+                out_parts.append(t)
+    return "\n".join(out_parts).strip()
+
+
+def _sanitize_message_text(text: str, *, max_chars: int = 80_000) -> str:
+    """
+    Prevent huge clipboard payloads (e.g. base64 images) from being sent to Ollama.
+    - Removes inline `data:image/...;base64,` payloads (common when pasting images into some chats)
+    - Hard caps message size to keep within model context budget
+    """
+    s = (text or "").strip()
+    if not s:
+        return ""
+
+    m = _DATA_IMAGE_RE.search(s)
+    if m is not None:
+        prefix = s[: m.start()].rstrip()
+        note = (
+            "[Image omitted: inline data:image;base64 payload was removed because it exceeds the model context. "
+            "Please attach the image as a file/attachment or describe it in text.]"
+        )
+        s = (prefix + "\n\n" + note).strip() if prefix else note
+
+    if len(s) > max_chars:
+        s = s[:max_chars].rstrip() + "\n\n" + f"[Truncated: exceeded {max_chars} characters.]"
+    return s
+
+
+def _normalize_and_sanitize_messages(raw_messages: list[Any]) -> list[dict[str, Any]]:
+    """
+    Normalize OpenAI chat messages into a safe, Ollama-friendly shape.
+    - Ensures `content` is always a string
+    - Drops non-text content parts (images, etc.)
+    - Sanitizes data:image;base64 and caps size
+    """
+    out: list[dict[str, Any]] = []
+    for m in raw_messages:
+        if not isinstance(m, dict):
+            continue
+        nm: dict[str, Any] = dict(m)
+        nm["role"] = str(m.get("role") or "").strip() or "user"
+
+        c = m.get("content")
+        if isinstance(c, list):
+            nm["content"] = _sanitize_message_text(_text_from_openai_content_parts(c))
+        elif isinstance(c, str):
+            nm["content"] = _sanitize_message_text(c)
+        elif c is None:
+            nm["content"] = ""
+        else:
+            nm["content"] = _sanitize_message_text(json.dumps(c, ensure_ascii=False))
+
+        out.append(nm)
+    return out
 
 
 def run_chat_completions(
@@ -448,6 +551,15 @@ def run_chat_completions(
         proxy_model_setting = str(proxy_settings.get("model") or "").strip()
 
     stream = body.get("stream", False)
+    chat_max_tokens: int | None = None
+    _mt_raw = body.get("max_tokens")
+    if _mt_raw is not None:
+        try:
+            _mt_n = int(_mt_raw)
+            if _mt_n > 0:
+                chat_max_tokens = _mt_n
+        except (TypeError, ValueError):
+            pass
     raw_model = body.get("model")
     if raw_model is None or not str(raw_model).strip():
         w.set_proxy_status(w.status_idle)
@@ -503,6 +615,16 @@ def run_chat_completions(
         _rl_b = str(active_build.get("reasoning_level") or "").strip()
         if _rl_b and not body.get("reasoning_level") and not body.get("reasoning"):
             body["reasoning_level"] = _rl_b
+
+    build_sse_streaming = True
+    if dumb_build_pipeline and active_build:
+        build_sse_streaming = active_build.get("sse_streaming", True) is not False
+
+    def ollama_options_overlay() -> dict[str, Any] | None:
+        merged: dict[str, Any] = {**build_extra_options}
+        if chat_max_tokens is not None:
+            merged["num_predict"] = chat_max_tokens
+        return merged if merged else None
 
     private_build = bool(dumb_build_pipeline and active_build and bool(active_build.get("private")))
     if private_build:
@@ -693,6 +815,8 @@ def run_chat_completions(
         "actual_model": actual_model,
         "proxy_pipeline": "passthrough_only",
         "stream": bool(stream),
+        "build_sse_streaming": build_sse_streaming,
+        "max_tokens": chat_max_tokens,
         "ollama_chat_stream": False,
         "include_rag_metadata": bool(include_rag_metadata),
         "tools_count": len(tools),
@@ -1257,7 +1381,7 @@ def run_chat_completions(
         # ------------------------------------------------------------------ #
         #  STREAMING native tools: true token-by-token SSE                    #
         # ------------------------------------------------------------------ #
-        if stream:
+        if stream and build_sse_streaming:
             w.set_proxy_status(w.status_response)
 
             def generate_sse_native():
@@ -1265,6 +1389,8 @@ def run_chat_completions(
                 stream_start_time = time.time()
                 accumulated_content: list[str] = []
                 tool_calls_raw: list[dict[str, Any]] = []
+                ollama_done_reason: str | None = None
+                ollama_done_payload: dict[str, Any] | None = None
                 total_tokens_holder = [0]
 
                 yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
@@ -1272,7 +1398,7 @@ def run_chat_completions(
                 try:
                     for kind, data in _iter_proxy_ollama_chat_stream(
                         chat_client, ollama_messages, use_model, ollama_think,
-                        options_overlay=build_extra_options if build_extra_options else None,
+                        options_overlay=ollama_options_overlay(),
                         tools=oll_tools,
                         tool_choice=tool_choice_effective,
                     ):
@@ -1281,6 +1407,9 @@ def run_chat_completions(
                             yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': data}, 'finish_reason': None}]})}\n\n"
                         elif kind == "tool_calls" and data:
                             tool_calls_raw = data
+                        elif kind == "done" and isinstance(data, dict):
+                            ollama_done_payload = data
+                            ollama_done_reason = data.get("done_reason")
                         elif kind == "error":
                             accumulated_content.append(f"[Error: {data}]")
                             yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': f'[Error: {data}]'}, 'finish_reason': None}]})}\n\n"
@@ -1320,7 +1449,9 @@ def run_chat_completions(
                             })
                         yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'tool_calls': payload_calls}, 'finish_reason': None}]})}\n\n"
                 else:
-                    finish_reason = "stop"
+                    finish_reason = openai_finish_reason_from_ollama(
+                        {}, ollama_done_reason=ollama_done_reason,
+                    )
 
                 yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}]})}\n\n"
                 yield "data: [DONE]\n\n"
@@ -1336,6 +1467,7 @@ def run_chat_completions(
                     "latency_ms": stream_latency_ms,
                     "tool_calls_count": len(tool_calls_raw),
                     "native_tools": True,
+                    **_trace_ollama_api_metrics(ollama_done_payload),
                 }
                 if tool_calls_raw:
                     trace["response"]["tool_calls_raw"] = tool_calls_raw
@@ -1413,8 +1545,9 @@ def run_chat_completions(
         #  NON-STREAMING native tools (existing retry cascade)                #
         # ------------------------------------------------------------------ #
         _co = dict(getattr(chat_client, "_default_options", None) or {})
-        if build_extra_options:
-            _co.update(build_extra_options)
+        _oo = ollama_options_overlay()
+        if _oo:
+            _co.update(_oo)
         body_ollama: dict[str, object] = {
             "model": use_model,
             "messages": ollama_messages,
@@ -1461,7 +1594,7 @@ def run_chat_completions(
                     ollama_messages,
                     use_model,
                     stream=False,
-                    options=build_extra_options if build_extra_options else None,
+                    options=ollama_options_overlay(),
                     think=ollama_think,
                 )
                 data = {"message": {"role": "assistant", "content": msg_only}}
@@ -1495,7 +1628,9 @@ def run_chat_completions(
                 }
             ), 502
         openai_msg = ollama_message_to_openai_assistant(oll_msg)
-        finish = openai_finish_reason_from_ollama(oll_msg)
+        finish = openai_finish_reason_from_ollama(
+            oll_msg, ollama_done_reason=data.get("done_reason"),
+        )
         tool_calls_out = openai_msg.get("tool_calls") if isinstance(openai_msg.get("tool_calls"), list) else []
         content_out = openai_msg.get("content")
         content_str = content_out if isinstance(content_out, str) else ("" if content_out is None else str(content_out))
@@ -1532,7 +1667,7 @@ def run_chat_completions(
                         rag_context_for_obs=rag_ctx_for_log,
                         rag_timings=rag_timings,
                         trace=trace,
-                        stream=False,
+                        stream=bool(stream),
                         is_autocomplete=bool(is_autocomplete),
                         native_tools=True,
                     )
@@ -1544,18 +1679,10 @@ def run_chat_completions(
             "latency_ms": latency_ms,
             "tool_calls_count": len(tool_calls_out),
             "native_tools": True,
+            **_trace_ollama_api_metrics(data if isinstance(data, dict) else None),
         }
         if tool_calls_out:
             trace["response"]["tool_calls"] = tool_calls_out
-        trace["steps"].append(
-            {
-                "name": "ollama_chat_native_tools",
-                "duration_ms": int(latency_ms),
-                "tokens_in_est": _pt,
-                "tokens_out_est": _ct,
-            }
-        )
-        publish_trace(trace)
 
         choice_msg: dict[str, object] = {
             "role": "assistant",
@@ -1592,32 +1719,116 @@ def run_chat_completions(
             if isinstance(_rq, dict):
                 _rm["rag_quality"] = _rq
             response_data["rag_metadata"] = _rm
-        if not private_build:
-            try:
-                session_manager = w.get_session_manager()
-                session_manager.get_or_create_session("proxy")
-                logs_repo = w.get_logs_repository()
-                logs_repo.add_log(
-                    session_id="proxy",
-                    level="INFO",
-                    message=f"Proxy request (native tools): {user_query[:100]}...",
-                    source="proxy",
-                    metadata={
-                        "user_query": user_query[:500],
-                        "response_preview": (content_str or "")[:500],
-                        "trace_id": trace_id,
-                        "model": use_model,
-                        "latency_ms": latency_ms,
-                        "trace": trace,
-                        "stream": False,
-                        "is_autocomplete": bool(is_autocomplete),
-                        "requested_model": requested_model,
-                        "proxy_backend": proxy_backend_tag(),
-                    },
-                )
-            except Exception as e:
-                _RAG_LOG.warning("Failed to log native-tools proxy request: %s", e)
-        return jsonify(response_data)
+
+        if not stream:
+            trace["steps"].append(
+                {
+                    "name": "ollama_chat_native_tools",
+                    "duration_ms": int(latency_ms),
+                    "tokens_in_est": _pt,
+                    "tokens_out_est": _ct,
+                }
+            )
+            publish_trace(trace)
+            if not private_build:
+                try:
+                    session_manager = w.get_session_manager()
+                    session_manager.get_or_create_session("proxy")
+                    logs_repo = w.get_logs_repository()
+                    logs_repo.add_log(
+                        session_id="proxy",
+                        level="INFO",
+                        message=f"Proxy request (native tools): {user_query[:100]}...",
+                        source="proxy",
+                        metadata={
+                            "user_query": user_query[:500],
+                            "response_preview": (content_str or "")[:500],
+                            "trace_id": trace_id,
+                            "model": use_model,
+                            "latency_ms": latency_ms,
+                            "trace": trace,
+                            "stream": False,
+                            "is_autocomplete": bool(is_autocomplete),
+                            "requested_model": requested_model,
+                            "proxy_backend": proxy_backend_tag(),
+                        },
+                    )
+                except Exception as e:
+                    _RAG_LOG.warning("Failed to log native-tools proxy request: %s", e)
+            return jsonify(response_data)
+
+        trace["request"]["sse_single_chunk"] = True
+
+        def generate_sse_native_single() -> Iterator[str]:
+            oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+            if content_str:
+                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': content_str}, 'finish_reason': None}]})}\n\n"
+            if tool_calls_out:
+                payload_calls: list[dict[str, object]] = []
+                for i, tc in enumerate(tool_calls_out):
+                    if not isinstance(tc, dict):
+                        continue
+                    fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+                    payload_calls.append({
+                        "index": i,
+                        "id": tc.get("id"),
+                        "type": "function",
+                        "function": {
+                            "name": fn.get("name"),
+                            "arguments": fn.get("arguments"),
+                        },
+                    })
+                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'tool_calls': payload_calls}, 'finish_reason': None}]})}\n\n"
+            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish}]})}\n\n"
+            yield "data: [DONE]\n\n"
+
+            trace["ollama"]["chat_stream"] = False
+            trace["steps"].append(
+                {
+                    "name": "ollama_chat_native_tools_sse_single",
+                    "duration_ms": int(latency_ms),
+                    "tokens_in_est": _pt,
+                    "tokens_out_est": _ct,
+                }
+            )
+            publish_trace(trace)
+            if not private_build:
+                try:
+                    session_manager = w.get_session_manager()
+                    session_manager.get_or_create_session("proxy")
+                    logs_repo = w.get_logs_repository()
+                    logs_repo.add_log(
+                        session_id="proxy",
+                        level="INFO",
+                        message=f"Proxy request (native tools SSE single): {user_query[:100]}...",
+                        source="proxy",
+                        metadata={
+                            "user_query": user_query[:500],
+                            "response_preview": (content_str or "")[:500],
+                            "trace_id": trace_id,
+                            "model": use_model,
+                            "latency_ms": latency_ms,
+                            "trace": trace,
+                            "stream": True,
+                            "ollama_chat_stream": False,
+                            "sse_single_chunk": True,
+                            "is_autocomplete": bool(is_autocomplete),
+                            "requested_model": requested_model,
+                            "proxy_backend": proxy_backend_tag(),
+                        },
+                    )
+                except Exception as e:
+                    _RAG_LOG.warning("Failed to log native-tools SSE single proxy request: %s", e)
+            w.set_proxy_status(w.status_idle)
+            w.set_latest_request_seconds(time.time() - start_time)
+            w.set_latest_request_total_tokens(_pt + _ct)
+
+        return Response(
+            generate_sse_native_single(),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     if tools and tool_choice_effective != "none":
         if not post_tool_success_turn:
@@ -1651,7 +1862,7 @@ def run_chat_completions(
                 ollama_messages,
                 use_model,
                 stream=False,
-                options=build_extra_options if build_extra_options else None,
+                options=ollama_options_overlay(),
                 think=ollama_think,
             )
         except Exception:
@@ -1669,7 +1880,7 @@ def run_chat_completions(
                     compact_messages or ollama_messages,
                     use_model,
                     stream=False,
-                    options=build_extra_options if build_extra_options else None,
+                    options=ollama_options_overlay(),
                     think=ollama_think,
                 )
             except Exception as e2:
@@ -1886,13 +2097,15 @@ def run_chat_completions(
                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
             )
 
-    if stream:
+    if stream and build_sse_streaming:
         w.set_proxy_status(w.status_response)
 
         def generate_sse():
             oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
             stream_start_time = time.time()
             accumulated_content: list[str] = []
+            ollama_done_reason: str | None = None
+            ollama_done_payload: dict[str, Any] | None = None
             total_tokens_holder = [0]
 
             yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
@@ -1900,11 +2113,14 @@ def run_chat_completions(
             try:
                 for kind, data in _iter_proxy_ollama_chat_stream(
                     chat_client, ollama_messages, use_model, ollama_think,
-                    options_overlay=build_extra_options if build_extra_options else None,
+                    options_overlay=ollama_options_overlay(),
                 ):
                     if kind == "content_delta" and data:
                         accumulated_content.append(data)
                         yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': data}, 'finish_reason': None}]})}\n\n"
+                    elif kind == "done" and isinstance(data, dict):
+                        ollama_done_payload = data
+                        ollama_done_reason = data.get("done_reason")
                     elif kind == "error":
                         accumulated_content.append(f"[Error: {data}]")
                         yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': f'[Error: {data}]'}, 'finish_reason': None}]})}\n\n"
@@ -1924,7 +2140,10 @@ def run_chat_completions(
                 yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': fallback}, 'finish_reason': None}]})}\n\n"
                 full_response = fallback
 
-            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+            finish_reason = openai_finish_reason_from_ollama(
+                {}, ollama_done_reason=ollama_done_reason,
+            )
+            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}]})}\n\n"
             yield "data: [DONE]\n\n"
 
             stream_latency_ms = int((time.time() - stream_start_time) * 1000)
@@ -1953,6 +2172,7 @@ def run_chat_completions(
                 + ("..." if len(full_response) > log_preview else ""),
                 "content_length_chars": len(full_response),
                 "latency_ms": stream_latency_ms,
+                **_trace_ollama_api_metrics(ollama_done_payload),
             }
             trace["steps"].append({
                 "name": "ollama_chat_stream",
@@ -2036,7 +2256,7 @@ def run_chat_completions(
             ollama_messages,
             use_model,
             ollama_think,
-            options_overlay=build_extra_options if build_extra_options else None,
+            options_overlay=ollama_options_overlay(),
         )
         if _degenerate_assistant_reply(content):
             content = _PLACEHOLDER_REPLY_FALLBACK_EN
@@ -2083,7 +2303,7 @@ def run_chat_completions(
                     rag_context_for_obs=rag_ctx_for_log,
                     rag_timings=rag_timings,
                     trace=trace,
-                    stream=False,
+                    stream=bool(stream),
                     is_autocomplete=bool(is_autocomplete),
                     native_tools=False,
                 )
@@ -2121,7 +2341,12 @@ def run_chat_completions(
     )
     publish_trace(trace)
     tool_calls: list[dict[str, object]] = []
-    if (not stream) and tools and tool_choice_effective != "none" and not post_tool_success_turn:
+    if (
+        tools
+        and tool_choice_effective != "none"
+        and not post_tool_success_turn
+        and (not stream or not build_sse_streaming)
+    ):
         edit_payload = _extract_edit_from_response(content or "")
         if edit_payload and selected_edit_tool_name:
             tool_args = _build_tool_arguments(
@@ -2188,6 +2413,75 @@ def run_chat_completions(
         if isinstance(_rq2, dict):
             _rm2["rag_quality"] = _rq2
         response_data["rag_metadata"] = _rm2
+
+    if stream:
+        trace["request"]["sse_single_chunk"] = True
+        trace["ollama"]["chat_stream"] = False
+        publish_trace(trace)
+
+        finish_sse = str(choice.get("finish_reason") or ("tool_calls" if tool_calls else "stop"))
+        rid = str(response_data.get("id") or f"chatcmpl-{uuid.uuid4().hex[:24]}")
+
+        def generate_sse_plain_single() -> Iterator[str]:
+            yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+            if content:
+                yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': content}, 'finish_reason': None}]})}\n\n"
+            if tool_calls:
+                payload_tc: list[dict[str, object]] = []
+                for i, tc in enumerate(tool_calls):
+                    if not isinstance(tc, dict):
+                        continue
+                    fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+                    payload_tc.append({
+                        "index": i,
+                        "id": tc.get("id"),
+                        "type": "function",
+                        "function": {
+                            "name": fn.get("name"),
+                            "arguments": fn.get("arguments"),
+                        },
+                    })
+                yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'tool_calls': payload_tc}, 'finish_reason': None}]})}\n\n"
+            yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_sse}]})}\n\n"
+            yield "data: [DONE]\n\n"
+            if not private_build:
+                try:
+                    session_manager = w.get_session_manager()
+                    session_manager.get_or_create_session("proxy")
+                    logs_repo = w.get_logs_repository()
+                    logs_repo.add_log(
+                        session_id="proxy",
+                        level="INFO",
+                        message=f"Proxy request (SSE single): {user_query[:100]}...",
+                        source="proxy",
+                        metadata={
+                            "user_query": user_query[:500],
+                            "response_preview": content_preview[:500],
+                            "trace_id": trace_id,
+                            "model": use_model,
+                            "latency_ms": latency_ms,
+                            "prompt_tokens": prompt_tokens_approx,
+                            "completion_tokens": completion_tokens_approx,
+                            "total_tokens": _total_tokens_approx,
+                            "rag_context": rag_context_data,
+                            "rag_steps": rag_timings,
+                            "trace": trace,
+                            "stream": True,
+                            "ollama_chat_stream": False,
+                            "sse_single_chunk": True,
+                            "is_autocomplete": bool(is_autocomplete),
+                            "requested_model": requested_model,
+                            "proxy_backend": proxy_backend_tag(),
+                        },
+                    )
+                except Exception as e:
+                    _RAG_LOG.warning("Failed to log proxy SSE single request to database: %s", e)
+
+        return Response(
+            generate_sse_plain_single(),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     # Persist trace for non-stream requests
     if not private_build:
