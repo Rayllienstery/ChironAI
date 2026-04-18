@@ -9,6 +9,10 @@
   max-width: 100%;
 }
 
+.logs-tab.logs-tab--fill-screen {
+  min-height: calc(100dvh - 180px);
+}
+
 .logs-header {
   display: flex;
   justify-content: space-between;
@@ -50,6 +54,12 @@
   font-family: 'Courier New', monospace;
   font-size: 13px;
   box-shadow: var(--md-sys-elevation-level1);
+}
+
+.logs-tab.logs-tab--fill-screen .logs-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
 }
 
 .log-entry {

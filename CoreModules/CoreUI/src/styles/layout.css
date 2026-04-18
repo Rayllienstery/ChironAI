@@ -264,6 +264,12 @@ html, body {
   background: var(--md-sys-color-background);
 }
 
+.app-main > * {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
 /* Material Web Components base styles */
 md-filled-button,
 md-outlined-button,

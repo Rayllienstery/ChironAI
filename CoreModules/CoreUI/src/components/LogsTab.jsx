@@ -89,6 +89,21 @@ function getPeriodLabel(period, selectedDate) {
   }
 }
 
+function compareLogsNewestFirst(a, b) {
+  const timeA = a?.timestamp ? new Date(a.timestamp).getTime() : NaN;
+  const timeB = b?.timestamp ? new Date(b.timestamp).getTime() : NaN;
+  const safeTimeA = Number.isNaN(timeA) ? 0 : timeA;
+  const safeTimeB = Number.isNaN(timeB) ? 0 : timeB;
+  if (safeTimeA !== safeTimeB) {
+    return safeTimeB - safeTimeA;
+  }
+  return Number(b?.id || 0) - Number(a?.id || 0);
+}
+
+function sortLogsNewestFirst(items) {
+  return [...(items || [])].sort(compareLogsNewestFirst);
+}
+
 function LogsTab({ sessionId }) {
   const [viewMode, setViewMode] = useState('logs'); // 'logs' | 'proxy' | 'autocomplete'
   const [logs, setLogs] = useState([]);
@@ -98,7 +113,6 @@ function LogsTab({ sessionId }) {
   const [period, setPeriod] = useState('day');
   const [selectedDate, setSelectedDate] = useState(null);
   const [pipelineFilter, setPipelineFilter] = useState('mixed');
-  const logsEndRef = useRef(null);
 
   const displayProxyLogs = useMemo(() => {
     if (viewMode !== 'proxy') return logs;
@@ -108,18 +122,6 @@ function LogsTab({ sessionId }) {
     }
     return logs;
   }, [logs, viewMode, pipelineFilter]);
-
-  const scrollToBottom = () => {
-    const container = document.querySelector('.logs-content');
-    if (container) {
-      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
-      if (isNearBottom) {
-        logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }
-    } else {
-      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -133,11 +135,7 @@ function LogsTab({ sessionId }) {
           autocompleteOnly: viewMode === 'autocomplete',
         });
         const newLogs = data.logs || [];
-        setLogs((prev) => {
-          const hadNewLogs = prev.length > 0 && newLogs.length > prev.length;
-          if (prev.length === 0 || hadNewLogs) setTimeout(() => scrollToBottom(), 100);
-          return newLogs;
-        });
+        setLogs(sortLogsNewestFirst(newLogs));
       } else {
         if (!sessionId) return;
         const data = await getLogs(sessionId, {
@@ -146,11 +144,7 @@ function LogsTab({ sessionId }) {
           limit: 100,
         });
         const newLogs = data.logs || [];
-        setLogs((prev) => {
-          const hadNewLogs = prev.length > 0 && newLogs.length > prev.length;
-          if (prev.length === 0 || hadNewLogs) setTimeout(() => scrollToBottom(), 100);
-          return newLogs;
-        });
+        setLogs(sortLogsNewestFirst(newLogs));
       }
     } catch (error) {
       console.error('Failed to load logs:', error);
@@ -186,10 +180,9 @@ function LogsTab({ sessionId }) {
         setLogs(prev => {
           const existingIds = new Set(prev.map(log => log.id));
           const uniqueNewLogs = newLogs.filter(log => !existingIds.has(log.id));
-          const hadNewLogs = uniqueNewLogs.length > 0;
-          const updated = [...prev, ...uniqueNewLogs].slice(-500);
-          if (hadNewLogs) setTimeout(() => scrollToBottom(), 100);
-          return updated;
+          if (uniqueNewLogs.length === 0) return prev;
+          const updated = [...sortLogsNewestFirst(uniqueNewLogs), ...prev];
+          return updated.slice(0, 500);
         });
       }, 3000);
       return () => stopLogPolling();
@@ -417,7 +410,7 @@ function LogsTab({ sessionId }) {
   };
 
   return (
-    <div className="logs-tab">
+    <div className={`logs-tab${viewMode === 'logs' ? ' logs-tab--fill-screen' : ''}`}>
       <div className="logs-header">
         <div className="logs-header-left">
           <h2>Logs</h2>
@@ -512,7 +505,6 @@ function LogsTab({ sessionId }) {
             )
           )
         )}
-        <div ref={logsEndRef} />
       </div>
 
     </div>
