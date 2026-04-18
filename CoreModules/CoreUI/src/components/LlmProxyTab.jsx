@@ -5,8 +5,8 @@ import ProxyJournalTab from './ProxyJournalTab';
 import { getLlmProxyStatus } from '../services/api';
 import '../styles/components/SettingsTab.css';
 import '../styles/components/DashboardTab.css';
-import '../styles/components/CoreUIPillTabs.css';
 import '../styles/components/LlmProxyTab.css';
+import CoreUIPillTabs from './CoreUIPillTabs';
 
 function kvRow(label, value, key) {
   return (
@@ -91,20 +91,12 @@ function LlmProxyTab({
             </button>
           )}
         </div>
-        <div className="coreui-pill-tablist" role="tablist" aria-label="RAG Fusion Proxy sections">
-          {SUB_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              className={`coreui-pill-tab ${subTab === tab.id ? 'coreui-pill-tab-active' : ''}`}
-              role="tab"
-              aria-selected={subTab === tab.id}
-              onClick={() => setSubTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        <CoreUIPillTabs
+          tabs={SUB_TABS}
+          value={subTab}
+          onChange={setSubTab}
+          ariaLabel="RAG Fusion Proxy sections"
+        />
       </div>
 
       {subTab === 'overview' && (

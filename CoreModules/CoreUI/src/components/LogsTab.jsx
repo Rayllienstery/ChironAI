@@ -1,13 +1,19 @@
 import React, { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { getLogs, getProxyLogs, clearLogs, clearProxyLogs } from '../services/api';
 import { startLogPolling, stopLogPolling } from '../services/logs';
-import '../styles/components/CoreUIButtons.css';
 import '../styles/components/LogsTab.css';
-import '../styles/components/CoreUIPillTabs.css';
+import CoreUIButton from './CoreUIButton';
+import CoreUIPillTabs from './CoreUIPillTabs';
+import EmptyState from './EmptyState';
 
 const ProxyLogsAnalytics = lazy(() => import('./ProxyLogsAnalytics'));
 
 const PROXY_LOGS_ANALYTICS_LIMIT = 5000;
+const VIEW_MODE_TABS = [
+  { id: 'logs', label: 'Logs' },
+  { id: 'proxy', label: 'Proxy Logs' },
+  { id: 'autocomplete', label: 'Autocomplete Logs' },
+];
 
 function getMetadata(log) {
   if (!log || !log.metadata) return {};
@@ -415,35 +421,12 @@ function LogsTab({ sessionId }) {
       <div className="logs-header">
         <div className="logs-header-left">
           <h2>Logs</h2>
-          <div className="coreui-pill-tablist" role="tablist" aria-label="Log source">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={viewMode === 'logs'}
-              className={`coreui-pill-tab ${viewMode === 'logs' ? 'coreui-pill-tab-active' : ''}`}
-              onClick={() => setViewMode('logs')}
-            >
-              Logs
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={viewMode === 'proxy'}
-              className={`coreui-pill-tab ${viewMode === 'proxy' ? 'coreui-pill-tab-active' : ''}`}
-              onClick={() => setViewMode('proxy')}
-            >
-              Proxy Logs
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={viewMode === 'autocomplete'}
-              className={`coreui-pill-tab ${viewMode === 'autocomplete' ? 'coreui-pill-tab-active' : ''}`}
-              onClick={() => setViewMode('autocomplete')}
-            >
-              Autocomplete Logs
-            </button>
-          </div>
+          <CoreUIPillTabs
+            tabs={VIEW_MODE_TABS}
+            value={viewMode}
+            onChange={setViewMode}
+            ariaLabel="Log source"
+          />
         </div>
         <div className="logs-controls">
           {viewMode === 'logs' && (
@@ -468,17 +451,12 @@ function LogsTab({ sessionId }) {
               </select>
             </>
           )}
-          <button
-            type="button"
-            className="coreui-btn"
-            onClick={handleClearLogs}
-            disabled={viewMode === 'logs' && !sessionId}
-          >
+          <CoreUIButton onClick={handleClearLogs} disabled={viewMode === 'logs' && !sessionId}>
             Clear
-          </button>
-          <button type="button" className="coreui-btn coreui-btn-ghost" onClick={loadLogs}>
+          </CoreUIButton>
+          <CoreUIButton variant="ghost" onClick={loadLogs}>
             Refresh
-          </button>
+          </CoreUIButton>
         </div>
       </div>
 
@@ -511,11 +489,11 @@ function LogsTab({ sessionId }) {
             logs...
           </div>
         ) : (viewMode === 'proxy' || viewMode === 'autocomplete' ? displayProxyLogs : logs).length === 0 ? (
-          <div className="empty-state">
+          <EmptyState className="empty-state">
             No{' '}
             {viewMode === 'proxy' ? 'proxy ' : viewMode === 'autocomplete' ? 'autocomplete ' : ''}
             logs found
-          </div>
+          </EmptyState>
         ) : (
           (viewMode === 'proxy' || viewMode === 'autocomplete' ? displayProxyLogs : logs).map((log) => 
             viewMode === 'proxy' || viewMode === 'autocomplete' ? (
@@ -542,4 +520,3 @@ function LogsTab({ sessionId }) {
 }
 
 export default LogsTab;
-

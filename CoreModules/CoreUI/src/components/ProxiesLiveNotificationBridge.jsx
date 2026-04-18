@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getProxyTraceCurrent } from '../services/api';
 import { traceModelFields } from '../utils/proxyTraceModel';
+import CoreUIButton from './CoreUIButton';
 import { useNotificationCenter } from './NotificationCenterContext';
 
 const POLL_MS = 1000;
@@ -116,9 +117,9 @@ function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
         </div>
       ) : null}
       <div className="proxy-live-notification-actions">
-        <button type="button" className="coreui-btn coreui-btn-small coreui-btn-ghost" onClick={onOpenLlmProxyTrace}>
+        <CoreUIButton size="sm" variant="ghost" onClick={onOpenLlmProxyTrace}>
           Traces
-        </button>
+        </CoreUIButton>
       </div>
     </div>
   );
@@ -153,9 +154,9 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
         </div>
       ) : null}
       <div className="proxy-live-notification-actions">
-        <button type="button" className="coreui-btn coreui-btn-small coreui-btn-ghost" onClick={onOpenLlmProxyTrace}>
+        <CoreUIButton size="sm" variant="ghost" onClick={onOpenLlmProxyTrace}>
           Traces
-        </button>
+        </CoreUIButton>
       </div>
     </div>
   );

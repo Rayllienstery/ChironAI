@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Card from "./Card";
+import CoreUIPillTabs from "./CoreUIPillTabs";
+import EmptyState from "./EmptyState";
 import {
   getCrawlerSources,
   getCrawlerSourcePages,
@@ -23,7 +25,6 @@ import {
 } from "../services/api";
 import "../styles/components/CoreUIButtons.css";
 import "../styles/components/CrawlerTab.css";
-import "../styles/components/CoreUIPillTabs.css";
 import { useOptionalNotificationCenter } from "./NotificationCenterContext";
 
 const MD_STEP_TYPES_META = [
@@ -136,6 +137,11 @@ const SKIP_REASON_LABELS = {
   dim_mismatch: "Vector dimension mismatch",
   other: "Other",
 };
+
+const SECTION_TABS = [
+  { id: "crawler", label: "Crawler" },
+  { id: "md-pipeline", label: "MD Pipeline" },
+];
 
 function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
   if (!progress) return null;
@@ -1289,30 +1295,12 @@ function CrawlerTab() {
       <div className="crawler-header">
         <h2>Crawler / Indexer</h2>
         <div className="crawler-header-tabs-and-actions">
-          <div
-            className="coreui-pill-tablist"
-            role="tablist"
-            aria-label="Crawler and indexer tools"
-          >
-            <button
-              type="button"
-              className={`coreui-pill-tab ${activeSection === "crawler" ? "coreui-pill-tab-active" : ""}`}
-              role="tab"
-              aria-selected={activeSection === "crawler"}
-              onClick={() => setActiveSection("crawler")}
-            >
-              Crawler
-            </button>
-            <button
-              type="button"
-              className={`coreui-pill-tab ${activeSection === "md-pipeline" ? "coreui-pill-tab-active" : ""}`}
-              role="tab"
-              aria-selected={activeSection === "md-pipeline"}
-              onClick={() => setActiveSection("md-pipeline")}
-            >
-              MD Pipeline
-            </button>
-          </div>
+          <CoreUIPillTabs
+            tabs={SECTION_TABS}
+            value={activeSection}
+            onChange={setActiveSection}
+            ariaLabel="Crawler and indexer tools"
+          />
           <div className="crawler-actions">
             <button
               type="button"
@@ -1453,9 +1441,9 @@ function CrawlerTab() {
           {loading ? (
             <div className="loading">Loading sources...</div>
           ) : !sources.length ? (
-            <div className="empty-state">
+            <EmptyState className="empty-state">
               No crawl sources found. Run crawler first.
-            </div>
+            </EmptyState>
           ) : (
             <div className="crawler-sources">
               <div className="sources-header">

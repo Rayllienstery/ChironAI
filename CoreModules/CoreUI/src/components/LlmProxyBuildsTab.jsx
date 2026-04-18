@@ -15,8 +15,8 @@ import PipelineVerticalDiagram from './PipelineVerticalDiagram';
 import LlmProxyAutocompletePanel from './LlmProxyAutocompletePanel';
 import '../styles/components/DashboardTab.css';
 import '../styles/components/SettingsTab.css';
-import '../styles/components/CoreUIPillTabs.css';
 import '../styles/components/LlmProxyTab.css';
+import CoreUIPillTabs from './CoreUIPillTabs';
 
 const SECTION_TABS = [
   { id: 'builds', label: 'Builds' },
@@ -479,20 +479,12 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
         <div className="llm-proxy-header-row">
           <h2>LLM Proxy</h2>
         </div>
-        <div className="coreui-pill-tablist" role="tablist" aria-label="LLM Proxy sections">
-          {SECTION_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              className={`coreui-pill-tab ${sectionTab === tab.id ? 'coreui-pill-tab-active' : ''}`}
-              role="tab"
-              aria-selected={sectionTab === tab.id}
-              onClick={() => setSectionTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        <CoreUIPillTabs
+          tabs={SECTION_TABS}
+          value={sectionTab}
+          onChange={setSectionTab}
+          ariaLabel="LLM Proxy sections"
+        />
       </div>
 
       {sectionTab === 'autocomplete' && <LlmProxyAutocompletePanel />}

@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
 import '../styles/components/TestingTab.css';
-import '../styles/components/CoreUIPillTabs.css';
+import CoreUIPillTabs from './CoreUIPillTabs';
 
 const ModelTester = lazy(() => import('./ModelTester'));
 const RagTestsTab = lazy(() => import('./RagTestsTab'));
@@ -47,20 +47,12 @@ function TestingTab({
     <div className="testing-tab">
       <div className="testing-tab-header">
         <h2>Testing</h2>
-        <div className="coreui-pill-tablist" role="tablist" aria-label="Testing tools">
-          {SUB_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              className={`coreui-pill-tab ${currentSubTab === tab.id ? 'coreui-pill-tab-active' : ''}`}
-              role="tab"
-              aria-selected={currentSubTab === tab.id}
-              onClick={() => handleSubTabClick(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        <CoreUIPillTabs
+          tabs={SUB_TABS}
+          value={currentSubTab}
+          onChange={handleSubTabClick}
+          ariaLabel="Testing tools"
+        />
       </div>
       <div className="testing-tab-content">
         <Suspense fallback={<TestingPanelFallback />}>

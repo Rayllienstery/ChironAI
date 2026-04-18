@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Card from './Card';
+import CoreUIButton from './CoreUIButton';
 import { notificationModuleLabel } from './notificationModuleLabels';
 import { useNotificationCenter } from './NotificationCenterContext';
-import '../styles/components/CoreUIButtons.css';
 import '../styles/components/NotificationCenter.css';
 
 function BellIcon() {
@@ -66,15 +66,15 @@ function NotificationCenterShell() {
         <div className="notification-center-popover" role="dialog" aria-label="Notification history">
           <div className="notification-center-popover-header">
             <span className="notification-center-popover-title">History</span>
-            <button
-              type="button"
-              className="coreui-btn coreui-btn-small coreui-btn-ghost"
+            <CoreUIButton
+              size="sm"
+              variant="ghost"
               onClick={() => {
                 clearPersisted();
               }}
             >
               Clear
-            </button>
+            </CoreUIButton>
           </div>
           <div className="notification-center-popover-list">
             {history.length === 0 ? (

@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { getModels, getModelSettings, updateModelSettings } from '../services/api';
 import { isLogicalRagModelId } from '../constants/llmProxyModels';
+import CoreUIButton from './CoreUIButton';
 import '../styles/components/ModelSettings.css';
 
 const LOGICAL_AUTOCOMPLETE_ID = 'ChironAI-Autocomplete';
@@ -90,9 +91,9 @@ function LlmProxyAutocompletePanel() {
               </p>
             )}
         </div>
-        <button type="button" className="save-button" onClick={handleSave} disabled={saving}>
+        <CoreUIButton variant="primary" className="save-button" onClick={handleSave} disabled={saving}>
           {saving ? 'Saving…' : 'Save'}
-        </button>
+        </CoreUIButton>
       </div>
 
       <div className="settings-section">

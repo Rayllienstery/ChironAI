@@ -14,7 +14,7 @@ import {
 import { useThemeChartColors } from '../hooks/useThemeChartColors';
 import ProxyLogsPeriodCalendar from './ProxyLogsPeriodCalendar';
 import ProxyTraceDetailModal from './ProxyTraceDetailModal';
-import '../styles/components/CoreUIPillTabs.css';
+import CoreUIPillTabs from './CoreUIPillTabs';
 
 const PERIODS = [
   { id: 'day', label: 'Day' },
@@ -360,21 +360,15 @@ function ProxyLogsAnalytics({
       aria-label={isAc ? 'Autocomplete logs analytics' : 'Proxy logs analytics'}
     >
       <div className="proxy-logs-analytics-controls">
-        <div className="coreui-pill-tablist" role="tablist" aria-label="Time period">
-          {PERIODS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              role="tab"
-              aria-selected={period === p.id}
-              aria-label={`Show statistics for ${p.label.toLowerCase()}`}
-              className={`coreui-pill-tab ${period === p.id ? 'coreui-pill-tab-active' : ''}`}
-              onClick={() => onPeriodChange(p.id)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        <CoreUIPillTabs
+          tabs={PERIODS}
+          value={period}
+          onChange={onPeriodChange}
+          ariaLabel="Time period"
+          getButtonProps={(tab) => ({
+            'aria-label': `Show statistics for ${tab.label.toLowerCase()}`,
+          })}
+        />
         <div className="proxy-logs-period-label" aria-live="polite">
           For: {periodLabel}
         </div>
@@ -385,24 +379,12 @@ function ProxyLogsAnalytics({
           <span className="proxy-logs-pipeline-label" id="proxy-logs-pipeline-label">
             Pipeline
           </span>
-          <div
-            className="coreui-pill-tablist"
-            role="tablist"
-            aria-labelledby="proxy-logs-pipeline-label"
-          >
-            {PIPELINE_OPTIONS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                role="tab"
-                aria-selected={pipelineFilter === p.id}
-                className={`coreui-pill-tab ${pipelineFilter === p.id ? 'coreui-pill-tab-active' : ''}`}
-                onClick={() => onPipelineFilterChange(p.id)}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+          <CoreUIPillTabs
+            tabs={PIPELINE_OPTIONS}
+            value={pipelineFilter}
+            onChange={onPipelineFilterChange}
+            ariaLabelledBy="proxy-logs-pipeline-label"
+          />
         </div>
       )}
 
