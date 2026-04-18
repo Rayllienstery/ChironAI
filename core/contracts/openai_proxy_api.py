@@ -11,7 +11,7 @@ See [CoreModules/LlmProxy/README.md](CoreModules/LlmProxy/README.md) for behavio
 
 from __future__ import annotations
 
-from typing import Literal, TypedDict
+from typing import TypedDict
 
 # Paths relative to proxy base URL (same blueprint on main port and optional build_proxy port).
 V1_MODELS_PATH: str = "/v1/models"

@@ -37,7 +37,4 @@ export function stopLogPolling() {
   lastLogId = 0;
 }
 
-export function resetLogPolling() {
-  lastLogId = 0;
-}
 

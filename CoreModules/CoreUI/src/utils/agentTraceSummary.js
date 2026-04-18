@@ -181,7 +181,7 @@ export function summarizeAgentTraceMeta(meta) {
  * @param {Record<string, unknown> | null | undefined} trace
  * @returns {{ capsules: AgentUsageCapsule[] }}
  */
-export function getAgentTraceUsageCapsules(trace) {
+function getAgentTraceUsageCapsules(trace) {
   if (!trace || typeof trace !== 'object') {
     return { capsules: [] };
   }

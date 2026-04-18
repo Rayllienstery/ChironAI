@@ -105,7 +105,6 @@ from config import (
     get_ollama_chat_model,
     get_ollama_embed_model,
     get_ollama_rerank_model,
-    get_qdrant_collection_name,
     get_qdrant_url,
     get_rag_float,
     get_rag_int,
@@ -1845,11 +1844,11 @@ exit $LASTEXITCODE
 '''
 
         # Generate .bat wrappers
-        claude_bat_content = f'''@echo off
+        claude_bat_content = '''@echo off
 powershell -ExecutionPolicy Bypass -File "%~dp0start_claude_proxy_configured.ps1" %*
 '''
 
-        codex_bat_content = f'''@echo off
+        codex_bat_content = '''@echo off
 powershell -ExecutionPolicy Bypass -File "%~dp0start_codex_proxy_configured.ps1" %*
 '''
 
@@ -6225,8 +6224,26 @@ def rag_tests_create() -> Any:
     concept_mode = (body.get("concept_mode") or "all").strip().lower()
     if concept_mode not in ("any", "all"):
         concept_mode = "all"
+    rag_strict = bool(body.get("rag_strict"))
+    min_os = (body.get("min_os") or "").strip()
+    notes = (body.get("notes") or "").strip()
+    if not question:
+        return jsonify({"error": "question is required"}), 400
+
+    slug = re.sub(r"[^\w\s-]", "", name).strip()
+    slug = re.sub(r"[-\s]+", "_", slug).lower()[:80] or "test"
+    root = Path(get_root())
+    platform_dir = root / platform.lower().replace(" ", "_")
+    framework_dir = platform_dir / framework.lower().replace(" ", "_")
+    framework_dir.mkdir(parents=True, exist_ok=True)
+    path = framework_dir / f"{slug}.md"
+    if path.exists():
+        n = 1
+        while (framework_dir / f"{slug}_{n}.md").exists():
+            n += 1
         path = framework_dir / f"{slug}_{n}.md"
         slug = f"{slug}_{n}"
+
     content = _rag_tests_build_md(
         name, question, concepts, platform, framework, difficulty, concept_mode, rag_strict, min_os, notes
     )

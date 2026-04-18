@@ -2,7 +2,7 @@
  * Model Tester "Run log" cards (same layout tokens as RAG Chunks) + debug trace ids.
  */
 
-export function formatDurationMs(ms) {
+function formatDurationMs(ms) {
   if (ms == null) return null;
   const n = Number(ms);
   if (Number.isNaN(n)) return null;
@@ -15,7 +15,7 @@ export function formatDurationMs(ms) {
  * @param {Record<string, unknown>|null|undefined} result
  * @returns {string[]}
  */
-export function collectDebugTraceIds(result) {
+function collectDebugTraceIds(result) {
   if (!result || typeof result !== 'object') return [];
   const seen = new Set();
   const out = [];
@@ -37,7 +37,7 @@ export function collectDebugTraceIds(result) {
  * @param {Record<string, unknown>|null|undefined} result
  * @returns {{ label: string, value: string }[]}
  */
-export function debugTraceIdRows(result) {
+function debugTraceIdRows(result) {
   if (!result || typeof result !== 'object') return [];
   const rows = [];
   const seen = new Set();

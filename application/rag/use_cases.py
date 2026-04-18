@@ -7,16 +7,13 @@ and injected ports (RagRepository, EmbeddingProvider, RerankClient, ChatLLMClien
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import time
-import uuid
 from typing import Any
 
 from domain.entities.rag import QueryIntent, RagAnswerResponse, RagContext, RagQuestionRequest
 from domain.ports import ChatLLMClient, EmbeddingProvider, RagRepository, RerankClient
-from infrastructure.metrics import increment, histogram, gauge
 from domain.services.prompt_builder import (
     build_context_block,
     build_system_content,

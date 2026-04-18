@@ -1,12 +1,29 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { getLogs, getProxyLogs, clearLogs, clearProxyLogs } from '../services/api';
 import { startLogPolling, stopLogPolling } from '../services/logs';
-import ProxyLogsAnalytics, { getMetadata } from './ProxyLogsAnalytics';
 import '../styles/components/CoreUIButtons.css';
 import '../styles/components/LogsTab.css';
 import '../styles/components/CoreUIPillTabs.css';
 
+const ProxyLogsAnalytics = lazy(() => import('./ProxyLogsAnalytics'));
+
 const PROXY_LOGS_ANALYTICS_LIMIT = 5000;
+
+function getMetadata(log) {
+  if (!log || !log.metadata) return {};
+  if (typeof log.metadata === 'string') {
+    try {
+      return JSON.parse(log.metadata);
+    } catch {
+      return {};
+    }
+  }
+  return log.metadata;
+}
+
+function LogsAnalyticsFallback() {
+  return <div className="loading">Loading analytics...</div>;
+}
 
 function getDateRangeForProxyLogs(period, selectedDate) {
   const now = new Date();
@@ -466,19 +483,21 @@ function LogsTab({ sessionId }) {
       </div>
 
       {(viewMode === 'proxy' || viewMode === 'autocomplete') && (
-        <ProxyLogsAnalytics
-          logs={displayProxyLogs}
-          period={period}
-          onPeriodChange={setPeriod}
-          selectedDate={selectedDate}
-          onDateSelect={setSelectedDate}
-          onDateReset={() => setSelectedDate(null)}
-          periodLabel={getPeriodLabel(period, selectedDate)}
-          variant={viewMode === 'autocomplete' ? 'autocomplete' : 'proxy'}
-          pipelineFilter={pipelineFilter}
-          onPipelineFilterChange={setPipelineFilter}
-          showPipelineFilter={viewMode === 'proxy'}
-        />
+        <Suspense fallback={<LogsAnalyticsFallback />}>
+          <ProxyLogsAnalytics
+            logs={displayProxyLogs}
+            period={period}
+            onPeriodChange={setPeriod}
+            selectedDate={selectedDate}
+            onDateSelect={setSelectedDate}
+            onDateReset={() => setSelectedDate(null)}
+            periodLabel={getPeriodLabel(period, selectedDate)}
+            variant={viewMode === 'autocomplete' ? 'autocomplete' : 'proxy'}
+            pipelineFilter={pipelineFilter}
+            onPipelineFilterChange={setPipelineFilter}
+            showPipelineFilter={viewMode === 'proxy'}
+          />
+        </Suspense>
       )}
 
       <div className="logs-content">
@@ -523,5 +542,4 @@ function LogsTab({ sessionId }) {
 }
 
 export default LogsTab;
-
 

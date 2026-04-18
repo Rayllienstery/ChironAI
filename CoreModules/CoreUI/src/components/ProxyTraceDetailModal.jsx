@@ -24,7 +24,7 @@ function isAgentTraceDetailLog(log, meta) {
   return false;
 }
 
-export function AgentTraceStepBlock({ step, index }) {
+function AgentTraceStepBlock({ step, index }) {
   if (!step || typeof step !== 'object') return null;
   const kind = step.kind;
   const label =

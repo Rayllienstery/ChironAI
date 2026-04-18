@@ -118,8 +118,8 @@ Failed to get embeddings for wwdc_sessions_2019_plus/wwdc2023-10241-transcript-e
 
 ## 8. Качество кода (проект)
 
-- [ ] **Типизация** — включить проверку типов (mypy или pyright) для `rag_proxy.py`, `rag_client.py`, ключевых функций в `app.py`; исправить замечания.
-- [ ] **Русские комментарии** — в `rag_client.py` и других файлах часть комментариев на русском; по желанию перевести на английский для единообразия с промптом «код и комментарии на английском».
+- [ ] **Типизация** — включить проверку типов (mypy или pyright) для `rag_proxy.py`, ключевых функций в `app.py`; исправить замечания.
+- [ ] **Русские комментарии** — в кодовой базе часть комментариев на русском; по желанию перевести на английский для единообразия с промптом «код и комментарии на английском».
 - [x] **Тесты (retrieval / prompt helpers)** — `query_for_retrieval`, `build_qdrant_filter` / `merge_qdrant_filters`, `framework_filter`, `last_user_content`: покрытие в `tests/domain/test_retrieval.py`, `tests/domain/test_prompt_builder.py` (и дубли в `tests/rag_service/` где применимо).
 - [ ] **Доп. unit-тесты** — расширить покрытие вспомогательных функций retrieval/прокси по мере рефакторинга.
 - [x] **Интеграция HTTP прокси** — `tests/api/test_http_endpoints.py`: mock/doubles, `POST /v1/chat/completions`, проверки формата и веток RAG (в т.ч. health `/health`).

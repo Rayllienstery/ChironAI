@@ -198,6 +198,7 @@ _SWIFT_VERSION_Q_RE = re.compile(r"\bSwift\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
 # API symbols: PascalCase / CamelCase type names (UIViewController, ContentUnavailableView, NSViewRepresentable).
 # First segment may be all-caps (UI, NS); then at least one [A-Z][a-z0-9]+ segment.
 _API_SYMBOL_RE = re.compile(r"[A-Z][a-zA-Z0-9]*(?:[A-Z][a-z0-9]+)+")
+_LOWER_CAMEL_SYMBOL_RE = re.compile(r"[a-z][a-z0-9]*[A-Z][a-zA-Z0-9]+")
 
 
 def parse_versions_from_question(question: str) -> tuple[list[str], list[str]]:
@@ -453,6 +454,11 @@ def infer_query_intent(question: str) -> QueryIntent:
         if len(match) >= 4:
             symbol = match
             break
+    if symbol is None:
+        for match in _LOWER_CAMEL_SYMBOL_RE.findall(q_raw):
+            if len(match) >= 4:
+                symbol = match
+                break
 
     framework: str | None = None
     if "uikit" in q_lower:

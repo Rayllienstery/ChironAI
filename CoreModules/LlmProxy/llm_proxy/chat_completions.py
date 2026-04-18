@@ -35,7 +35,6 @@ from infrastructure.ollama.openai_multipart_vision import (
 )
 from infrastructure.ollama.openai_ollama_tool_bridge import (
     ollama_chat_tool_choice_payload_value,
-    openai_finish_reason_from_ollama,
     openai_tool_choice_means_none,
 )
 from llm_proxy.contracts import LlmProxyWiring
@@ -1352,7 +1351,6 @@ def run_chat_completions(
 
     if use_native_tools:
         from infrastructure.ollama.openai_ollama_tool_bridge import (
-            arguments_to_openai_string,
             ollama_message_to_openai_assistant,
             ollama_tools_from_openai,
             openai_finish_reason_from_ollama,

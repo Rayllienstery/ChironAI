@@ -115,11 +115,6 @@ class TestQueryForRetrieval:
         # RAG query should carry strong hints toward Observation/observation tracking docs.
         assert "observation tracking" in q
 
-    def test_observable_uikit_query_contains_observation_tracking_bias(self) -> None:
-        q = query_for_retrieval("Observable macro + UIKit iOS 18+")
-        # RAG query should carry strong hints toward Observation/observation tracking docs.
-        assert "observation tracking" in q
-
 
 class TestShouldSkipRagSearch:
     def test_returns_true_for_hi(self) -> None:

@@ -3,7 +3,7 @@ Ingest local Markdown files (e.g. from Apple-Developer-Documentation-Offline-Arc
 into Qdrant using Ollama embedding model.
 
 Uses domain.services.chunking (semantic sections/paragraphs, section_path) and config
-indexing limits — same policy as WebUI "Create collection from sources" and ingest_markdown.py.
+indexing limits — same policy as WebUI "Create collection from sources".
 
 Embedding model and endpoint are shared with the main RAG pipeline:
 - Model name: ``config.get_ollama_embed_model()`` or env ``RAG_EMBED_MODEL`` if ``config`` is unavailable.
@@ -52,7 +52,7 @@ except ImportError:
         "OLLAMA_EMBED_URL", "http://localhost:11434/api/embed"
     )
 
-# Shared embedding configuration with app.py / rag_client.py
+# Shared embedding configuration with the main RAG pipeline
 OLLAMA_EMBED_URL = get_ollama_embed_url()
 EMBED_MODEL_NAME = get_ollama_embed_model()
 EMBED_BATCH_SIZE = 32

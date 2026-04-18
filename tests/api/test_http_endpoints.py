@@ -232,7 +232,6 @@ def test_models_endpoint() -> None:
     data = r.get_json()
     assert "data" in data
     assert isinstance(data["data"], list)
-    ids = [m.get("id") for m in data["data"]]
 
 
 def test_models_endpoint_includes_chironai_autocomplete_when_backend_configured(

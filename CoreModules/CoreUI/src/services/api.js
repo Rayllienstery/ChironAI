@@ -50,14 +50,6 @@ export async function getPrompts() {
   return data;
 }
 
-export async function getConfig() {
-  const response = await fetch(`${API_BASE}/config`);
-  if (!response.ok) {
-    throw new Error('Failed to get config');
-  }
-  return response.json();
-}
-
 export async function getModelSettings() {
   const response = await fetch(`${API_BASE}/model-settings`);
   if (!response.ok) {
@@ -1280,15 +1272,6 @@ export async function getCrawlerSourcePages(sourceId) {
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || 'Failed to get source pages');
-  }
-  return response.json();
-}
-
-export async function getCrawlerSourceStats(sourceId) {
-  const response = await fetch(`${API_BASE}/crawler/sources/${encodeURIComponent(sourceId)}/stats`);
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to get source stats');
   }
   return response.json();
 }

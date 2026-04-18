@@ -1,4 +1,12 @@
-import React, { useState, useEffect, useRef, useCallback, Component } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  Component,
+  Suspense,
+  lazy,
+} from "react";
 import SidebarNav from "./components/SidebarNav";
 
 class TabErrorBoundary extends Component {
@@ -20,17 +28,19 @@ class TabErrorBoundary extends Component {
     return this.props.children;
   }
 }
-import DashboardTab from "./components/DashboardTab";
-import LogsTab from "./components/LogsTab";
-import SettingsTab from "./components/SettingsTab";
-import LlmProxyTab from "./components/LlmProxyTab";
-import LlmProxyBuildsTab from "./components/LlmProxyBuildsTab";
-import RagTab from "./components/RagTab";
-import CrawlerTab from "./components/CrawlerTab";
-import TestingTab from "./components/TestingTab";
-import TemplateEditorTab from "./components/TemplateEditorTab";
-import OllamaTab from "./components/OllamaTab";
-import OpenWebUiTab from "./components/OpenWebUiTab";
+
+const DashboardTab = lazy(() => import("./components/DashboardTab"));
+const LogsTab = lazy(() => import("./components/LogsTab"));
+const SettingsTab = lazy(() => import("./components/SettingsTab"));
+const LlmProxyTab = lazy(() => import("./components/LlmProxyTab"));
+const LlmProxyBuildsTab = lazy(() => import("./components/LlmProxyBuildsTab"));
+const RagTab = lazy(() => import("./components/RagTab"));
+const CrawlerTab = lazy(() => import("./components/CrawlerTab"));
+const TestingTab = lazy(() => import("./components/TestingTab"));
+const TemplateEditorTab = lazy(() => import("./components/TemplateEditorTab"));
+const OllamaTab = lazy(() => import("./components/OllamaTab"));
+const OpenWebUiTab = lazy(() => import("./components/OpenWebUiTab"));
+
 import Card from "./components/Card";
 import {
   getSession,
@@ -55,6 +65,16 @@ import "./styles/default-card.css";
 import "./styles/sidebar.css";
 
 const METRICS_HISTORY_LEN = 30;
+
+function TabLoadingFallback() {
+  return (
+    <div style={{ padding: 24 }}>
+      <Card className="loading" elevation="var(--md-sys-elevation-level1)">
+        Loading tab…
+      </Card>
+    </div>
+  );
+}
 
 function clampServiceStatusPollSec(raw) {
   const n = parseInt(String(raw ?? ""), 10);
@@ -557,7 +577,11 @@ function App() {
 
         <main className="app-main">
           {sessionId ? (
-            <TabErrorBoundary>{renderTabContent()}</TabErrorBoundary>
+            <TabErrorBoundary>
+              <Suspense fallback={<TabLoadingFallback />}>
+                {renderTabContent()}
+              </Suspense>
+            </TabErrorBoundary>
           ) : (
             <div className="loading">Initializing session...</div>
           )}

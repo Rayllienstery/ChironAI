@@ -1,5 +1,4 @@
 import React from 'react';
-import Card from './Card';
 import '../styles/components/RagTestRunPanel.css';
 
 export function RagTestRunPanelBody({
@@ -83,19 +82,3 @@ export function RagTestRunPanelBody({
     </>
   );
 }
-
-function RagTestRunPanel(props) {
-  return (
-    <Card
-      className="rag-test-run-panel rag-test-run-panel--docked"
-      role="status"
-      aria-live="polite"
-      aria-label="RAG tests run progress"
-      elevation="var(--md-sys-elevation-level3)"
-    >
-      <RagTestRunPanelBody {...props} />
-    </Card>
-  );
-}
-
-export default RagTestRunPanel;

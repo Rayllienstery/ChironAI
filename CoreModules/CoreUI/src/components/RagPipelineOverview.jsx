@@ -10,7 +10,7 @@ import RagTraceTimeline from './RagTraceTimeline';
  * Static pipeline map for the RAG / Qdrant tab: canonical order of stages,
  * not tied to a single request (see application/rag/use_cases.py + retrieval config).
  */
-export const RAG_PIPELINE_OVERVIEW_STEPS = [
+const RAG_PIPELINE_OVERVIEW_STEPS = [
   {
     id: 'query_prep',
     label: 'Query preparation',
@@ -85,7 +85,7 @@ export const RAG_PIPELINE_OVERVIEW_STEPS = [
  * @param {Record<string, unknown>} s
  * @returns {Array<typeof RAG_PIPELINE_OVERVIEW_STEPS[0] & { overviewBand: OverviewBand, overviewBadges?: string[] }>}
  */
-export function buildOverviewStepsWithHighlights(s) {
+function buildOverviewStepsWithHighlights(s) {
   const hybrid = Boolean(s?.hybrid_sparse_enabled);
   const rerank = Boolean(s?.rerank_for_rag);
   const covSel = Boolean(s?.coverage_aware_selection);

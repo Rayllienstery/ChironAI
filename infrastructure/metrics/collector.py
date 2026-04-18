@@ -8,7 +8,6 @@ Thread-safe with in-memory storage (last N values for histograms).
 from __future__ import annotations
 
 import threading
-import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional

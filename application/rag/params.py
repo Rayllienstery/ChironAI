@@ -3,7 +3,7 @@ Unified RAG parameters and wiring for CLI and HTTP proxy.
 
 Single place for: prompt (prefix/suffix), context limits, confidence threshold,
 model name, and wired dependencies (rag_repo, embed_provider, rerank_client, chat_client).
-Used by rag_client.py and api.http.rag_routes so both share the same logic.
+Used by CLI and api.http.rag_routes so both share the same logic.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ def get_rag_answer_params(
     Return (params, rag_repo, embed_provider, rerank_client, chat_client) for RAG.
 
     Single source for prompt, config limits, and wired services. Use this in
-    rag_client and rag_routes so search, filtering, and chunk handling stay unified.
+    CLI and rag_routes so search, filtering, and chunk handling stay unified.
 
     Args:
         webui_dir: Optional WebUI directory hint for wiring dependencies.
