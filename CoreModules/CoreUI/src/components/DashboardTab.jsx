@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import PipelineCiDiagram from './PipelineCiDiagram';
 import { useMergedPipelinePreview } from '../hooks/useMergedPipelinePreview';
-import { getLlmProxyBuilds, getModelSettings, getRagStatus } from '../services/api';
+import { getLlmProxyBuilds, getModelSettings, getRagStatus, getProxyConfiguredStatus, getProxyConfiguredCurrentValues, generateProxyConfiguredScripts } from '../services/api';
 import '../styles/components/DashboardTab.css';
 
 const INFO_TABS = [
@@ -237,6 +237,10 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
   const [configuredBuildId, setConfiguredBuildId] = useState(PROXY_CUSTOM_PRESETS[0].buildId);
   const [configuredAuthToken, setConfiguredAuthToken] = useState(PROXY_CUSTOM_PRESETS[0].authToken);
   const [configuredOpenAiApiKey, setConfiguredOpenAiApiKey] = useState(PROXY_CUSTOM_PRESETS[0].openAiApiKey);
+  const [configuredScriptsExist, setConfiguredScriptsExist] = useState(false);
+  const [isGeneratingScripts, setIsGeneratingScripts] = useState(false);
+  const [generationMessage, setGenerationMessage] = useState(null);
+  const [lastGeneratedConfig, setLastGeneratedConfig] = useState(null);
   const [availableBuildIds, setAvailableBuildIds] = useState([]);
 
   const go = (tabId) => {
@@ -269,6 +273,72 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
       cancelled = true;
     };
   }, []);
+
+  // Check if configured scripts exist and read current values
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await getProxyConfiguredStatus();
+        if (!cancelled) {
+          const scriptsExist = status.claude_exists || status.codex_exists;
+          setConfiguredScriptsExist(scriptsExist);
+          if (scriptsExist) {
+            // Read current values from files
+            const values = await getProxyConfiguredCurrentValues();
+            if (!cancelled && values) {
+              setLastGeneratedConfig({
+                baseUrl: values.baseUrl || '',
+                buildId: values.buildId || '',
+                authToken: values.authToken || '',
+                openAiApiKey: configuredOpenAiApiKey, // Use current state since codex values aren't in claude file
+              });
+            }
+          }
+        }
+      } catch {
+        // ignore - will default to Generate button
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const currentConfig = {
+    baseUrl: configuredBaseUrl,
+    buildId: configuredBuildId,
+    authToken: configuredAuthToken,
+    openAiApiKey: configuredOpenAiApiKey,
+  };
+
+  const configsMatch = lastGeneratedConfig &&
+    lastGeneratedConfig.baseUrl === configuredBaseUrl &&
+    lastGeneratedConfig.buildId === configuredBuildId &&
+    lastGeneratedConfig.authToken === configuredAuthToken &&
+    lastGeneratedConfig.openAiApiKey === configuredOpenAiApiKey;
+
+  const showGenerateButton = !configuredScriptsExist || !configsMatch;
+
+  const handleGenerateConfiguredScripts = async () => {
+    setIsGeneratingScripts(true);
+    setGenerationMessage(null);
+    try {
+      await generateProxyConfiguredScripts({
+        baseUrl: configuredBaseUrl,
+        buildId: configuredBuildId,
+        authToken: configuredAuthToken,
+        openAiApiKey: configuredOpenAiApiKey,
+      });
+      setConfiguredScriptsExist(true);
+      setLastGeneratedConfig({ ...currentConfig });
+      setGenerationMessage({ type: 'success', text: 'Scripts generated successfully!' });
+    } catch (err) {
+      setGenerationMessage({ type: 'error', text: err.message || 'Failed to generate scripts' });
+    } finally {
+      setIsGeneratingScripts(false);
+    }
+  };
 
   return (
     <div className="dashboard-tab">
@@ -759,12 +829,16 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
             {proxyGuideTab === 'configured' && (
               <div className="dashboard-section-inner">
                 <h3>Configured launch (no required arguments)</h3>
-                <p>
-                  Edit <code>start_claude_proxy_configured.ps1</code> and <code>start_codex_proxy_configured.ps1</code>{' '}
-                  once, then launch with:
-                </p>
-                <code className="dashboard-proxy-guide-code">.\start_claude_proxy_configured.bat</code>
-                <code className="dashboard-proxy-guide-code">.\start_codex_proxy_configured.bat</code>
+                {configuredScriptsExist && (
+                  <>
+                    <p>
+                      Edit <code>start_claude_proxy_configured.ps1</code> and <code>start_codex_proxy_configured.ps1</code>{' '}
+                      once, then launch with:
+                    </p>
+                    <code className="dashboard-proxy-guide-code">.\start_claude_proxy_configured.bat</code>
+                    <code className="dashboard-proxy-guide-code">.\start_codex_proxy_configured.bat</code>
+                  </>
+                )}
 
                 <div className="dashboard-proxy-customizer">
                   <label className="dashboard-proxy-customizer-field">
@@ -839,18 +913,22 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                   </label>
                 </div>
 
-                <p className="dashboard-proxy-guide-hint">Use these values in *_configured.ps1 files:</p>
-                <pre className="dashboard-proxy-guide-pre">
-{`# start_claude_proxy_configured.ps1
-$ConfiguredBaseUrl = "${configuredBaseUrl}"
-$ConfiguredModel = "${configuredBuildId}"
-$ConfiguredAuthToken = "${configuredAuthToken}"
-
-# start_codex_proxy_configured.ps1
-$ConfiguredBaseUrl = "${configuredBaseUrl}"
-$ConfiguredModel = "${configuredBuildId}"
-$ConfiguredOpenAiApiKey = "${configuredOpenAiApiKey}"`}
-                </pre>
+                {/* Configured scripts action bar - pill capsule at bottom right of card */}
+                <div className="dashboard-configured-action-bar">
+                  {generationMessage && (
+                    <span className={`coreui-msg ${generationMessage.type === 'error' ? 'error' : 'success'}`}>
+                      {generationMessage.text}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="dashboard-primary-btn"
+                    onClick={handleGenerateConfiguredScripts}
+                    disabled={!showGenerateButton || isGeneratingScripts}
+                  >
+                    {isGeneratingScripts ? 'Generating...' : (configuredScriptsExist ? 'Update' : 'Generate')}
+                  </button>
+                </div>
               </div>
             )}
             {proxyGuideTab === 'checks' && (

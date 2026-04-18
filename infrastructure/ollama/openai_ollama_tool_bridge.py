@@ -6,6 +6,8 @@ import json
 import uuid
 from typing import Any
 
+from infrastructure.ollama.openai_multipart_vision import build_ollama_user_message_from_openai_content
+
 
 def _new_call_id() -> str:
     return f"call_{uuid.uuid4().hex[:24]}"
@@ -60,10 +62,16 @@ def _openai_message_content_to_text(content: object) -> str:
                     iu = p.get("image_url")
                     url = ""
                     if isinstance(iu, str):
-                        url = iu
+                        url = iu.strip()
                     elif isinstance(iu, dict):
-                        url = str(iu.get("url") or "")
-                    parts.append(f"[image]{f' {url}' if url else ''}")
+                        url = str(iu.get("url") or "").strip()
+                    ul = url
+                    if ul.lower().startswith("data:image"):
+                        parts.append("[image: inline data URL omitted]")
+                    elif ul.lower().startswith("http://") or ul.lower().startswith("https://"):
+                        parts.append("[image: external URL omitted]")
+                    elif ul:
+                        parts.append("[image]")
                     continue
                 try:
                     parts.append(json.dumps(p, ensure_ascii=False))
@@ -123,7 +131,7 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
             ollama.append({"role": "system", "content": _openai_message_content_to_text(m.get("content"))})
             continue
         if role == "user":
-            ollama.append({"role": "user", "content": _openai_message_content_to_text(m.get("content"))})
+            ollama.append(build_ollama_user_message_from_openai_content(m.get("content")))
             continue
         if role == "assistant":
             text = _openai_message_content_to_text(m.get("content"))
@@ -188,6 +196,41 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
             }
         )
     return ollama
+
+
+def openai_tool_choice_means_none(raw: Any) -> bool:
+    """True when the client asked for no tools (OpenAI string or dict shape)."""
+    if raw is None or raw == "":
+        return False
+    if isinstance(raw, str):
+        return raw.strip().lower() == "none"
+    if isinstance(raw, dict):
+        return str(raw.get("type") or "").strip().lower() == "none"
+    return False
+
+
+def ollama_chat_tool_choice_payload_value(raw: Any) -> str | None:
+    """
+    Map OpenAI ``tool_choice`` to a value safe for Ollama ``POST /api/chat``.
+
+    OpenAI allows object shapes (e.g. ``{"type": "auto"}``, function forcing). Ollama's native
+    endpoint expects a small string enum or the field omitted; passing arbitrary dicts often
+    yields **400 Bad Request**.
+    """
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, str):
+        s = raw.strip().lower()
+        if s in ("", "auto"):
+            return None
+        if s == "none":
+            return "none"
+        if s == "required":
+            return "required"
+        return None
+    if isinstance(raw, dict):
+        return None
+    return None
 
 
 def ollama_tools_from_openai(tools: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
@@ -272,8 +315,10 @@ def openai_finish_reason_from_ollama(
 __all__ = [
     "arguments_to_ollama_object",
     "arguments_to_openai_string",
+    "ollama_chat_tool_choice_payload_value",
     "openai_finish_reason_from_ollama",
     "openai_messages_to_ollama",
+    "openai_tool_choice_means_none",
     "ollama_message_to_openai_assistant",
     "ollama_tools_from_openai",
 ]

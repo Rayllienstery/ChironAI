@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import re
 import threading
 import time
 import uuid
@@ -29,8 +28,15 @@ from infrastructure.ollama.model_capabilities import (
     chat_error_suggests_no_tools,
     get_cached_ollama_capabilities,
 )
+from infrastructure.ollama.openai_multipart_vision import (
+    ollama_messages_drop_images,
+    sanitize_openai_text_part,
+    sanitize_proxy_content_parts,
+)
 from infrastructure.ollama.openai_ollama_tool_bridge import (
+    ollama_chat_tool_choice_payload_value,
     openai_finish_reason_from_ollama,
+    openai_tool_choice_means_none,
 )
 from llm_proxy.contracts import LlmProxyWiring
 from llm_proxy.tool_helpers import (
@@ -145,6 +151,17 @@ def _rag_request_completed_payload(
 _OLLAMA_TRACE_MSG_PREVIEW = 300
 
 
+def _ollama_message_content_str(content: Any) -> str:
+    """String form of an Ollama message ``content`` for logging / token estimates."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return json.dumps(content, ensure_ascii=False)
+    if content is None:
+        return ""
+    return str(content)
+
+
 def _trace_ollama_messages_for_ui(ollama_messages: list[Any]) -> list[dict[str, Any]]:
     """Snapshots messages for Proxy Trace (preview + full text for the WebUI modal)."""
     out: list[dict[str, Any]] = []
@@ -153,22 +170,19 @@ def _trace_ollama_messages_for_ui(ollama_messages: list[Any]) -> list[dict[str, 
             continue
         role = m.get("role") or ""
         _raw_content = m.get("content")
-        if isinstance(_raw_content, str):
-            content_str = _raw_content
-        elif _raw_content is None:
-            content_str = ""
-        else:
-            content_str = json.dumps(_raw_content, ensure_ascii=False)
+        content_str = _ollama_message_content_str(_raw_content)
         content_len = len(content_str)
         lim = _OLLAMA_TRACE_MSG_PREVIEW
-        out.append(
-            {
-                "role": str(role),
-                "content_length_chars": int(content_len),
-                "content_preview": content_str[:lim] + ("..." if content_len > lim else ""),
-                "content_full": content_str,
-            }
-        )
+        entry: dict[str, Any] = {
+            "role": str(role),
+            "content_length_chars": int(content_len),
+            "content_preview": content_str[:lim] + ("..." if content_len > lim else ""),
+            "content_full": content_str,
+        }
+        _imgs = m.get("images")
+        if isinstance(_imgs, list) and _imgs:
+            entry["images_count"] = len(_imgs)
+        out.append(entry)
     return out
 
 
@@ -332,9 +346,10 @@ def _iter_proxy_ollama_chat_stream(
     _co = dict(getattr(chat_client, "_default_options", None) or {})
     if options_overlay:
         _co.update(options_overlay)
+    msg_for_upstream = ollama_messages_drop_images(messages) if tools else messages
     payload: dict[str, Any] = {
         "model": model,
-        "messages": messages,
+        "messages": msg_for_upstream,
         "stream": True,
         "options": dict(_co),
     }
@@ -342,8 +357,9 @@ def _iter_proxy_ollama_chat_stream(
         payload["think"] = think
     if tools:
         payload["tools"] = tools
-    if tool_choice not in (None, "", "auto"):
-        payload["tool_choice"] = tool_choice
+    _tc_ollama = ollama_chat_tool_choice_payload_value(tool_choice)
+    if _tc_ollama is not None:
+        payload["tool_choice"] = _tc_ollama
 
     stream_fn = getattr(chat_client, "iter_chat_api_stream_events", None)
     if callable(stream_fn):
@@ -409,57 +425,22 @@ def _normalize_request_messages(body: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
-_DATA_IMAGE_RE = re.compile(r"data:image/[a-z0-9.+-]+;base64,", re.IGNORECASE)
-
-
-def _text_from_openai_content_parts(parts: list[Any]) -> str:
-    """
-    OpenAI-style message content may be a list of parts:
-    - {"type":"text","text":"..."}
-    - {"type":"image_url","image_url":{...}} or other types
-    Keep only text parts; omit everything else.
-    """
-    out_parts: list[str] = []
-    for p in parts:
-        if not isinstance(p, dict):
-            continue
-        if p.get("type") == "text" and isinstance(p.get("text"), str):
-            t = (p.get("text") or "").strip()
-            if t:
-                out_parts.append(t)
-    return "\n".join(out_parts).strip()
-
-
 def _sanitize_message_text(text: str, *, max_chars: int = 80_000) -> str:
     """
     Prevent huge clipboard payloads (e.g. base64 images) from being sent to Ollama.
     - Removes inline `data:image/...;base64,` payloads (common when pasting images into some chats)
     - Hard caps message size to keep within model context budget
     """
-    s = (text or "").strip()
-    if not s:
-        return ""
-
-    m = _DATA_IMAGE_RE.search(s)
-    if m is not None:
-        prefix = s[: m.start()].rstrip()
-        note = (
-            "[Image omitted: inline data:image;base64 payload was removed because it exceeds the model context. "
-            "Please attach the image as a file/attachment or describe it in text.]"
-        )
-        s = (prefix + "\n\n" + note).strip() if prefix else note
-
-    if len(s) > max_chars:
-        s = s[:max_chars].rstrip() + "\n\n" + f"[Truncated: exceeded {max_chars} characters.]"
-    return s
+    return sanitize_openai_text_part(text, max_chars=max_chars)
 
 
 def _normalize_and_sanitize_messages(raw_messages: list[Any]) -> list[dict[str, Any]]:
     """
-    Normalize OpenAI chat messages into a safe, Ollama-friendly shape.
-    - Ensures `content` is always a string
-    - Drops non-text content parts (images, etc.)
-    - Sanitizes data:image;base64 and caps size
+    Normalize OpenAI chat messages into a safe shape for the proxy pipeline.
+
+    - String ``content``: sanitize inline data URLs and cap length.
+    - List ``content`` (OpenAI multimodal): keep validated ``data:image`` ``image_url`` parts for
+      downstream mapping to Ollama ``images``; replace unsupported URLs with short text notes.
     """
     out: list[dict[str, Any]] = []
     for m in raw_messages:
@@ -470,7 +451,7 @@ def _normalize_and_sanitize_messages(raw_messages: list[Any]) -> list[dict[str, 
 
         c = m.get("content")
         if isinstance(c, list):
-            nm["content"] = _sanitize_message_text(_text_from_openai_content_parts(c))
+            nm["content"] = sanitize_proxy_content_parts(c)
         elif isinstance(c, str):
             nm["content"] = _sanitize_message_text(c)
         elif c is None:
@@ -642,6 +623,8 @@ def run_chat_completions(
     tools = body.get("tools") if isinstance(body.get("tools"), list) else []
     tool_choice = body.get("tool_choice")
     tool_choice_effective = tool_choice if tool_choice not in (None, "") else "auto"
+    if openai_tool_choice_means_none(tool_choice):
+        tool_choice_effective = "none"
     explicit_reasoning = body.get("reasoning_level") or body.get("reasoning")
     if dumb_build_pipeline and "include_rag_metadata" not in body:
         include_rag_metadata = bool(proxy_settings.get("include_rag_metadata", False))
@@ -1550,7 +1533,7 @@ def run_chat_completions(
             _co.update(_oo)
         body_ollama: dict[str, object] = {
             "model": use_model,
-            "messages": ollama_messages,
+            "messages": ollama_messages_drop_images(ollama_messages) if oll_tools else ollama_messages,
             "stream": False,
             "options": dict(_co),
         }
@@ -1558,8 +1541,9 @@ def run_chat_completions(
             body_ollama["think"] = ollama_think
         if oll_tools:
             body_ollama["tools"] = oll_tools
-        if tool_choice_effective not in (None, "", "auto"):
-            body_ollama["tool_choice"] = tool_choice_effective
+        _tc_native = ollama_chat_tool_choice_payload_value(tool_choice_effective)
+        if _tc_native is not None:
+            body_ollama["tool_choice"] = _tc_native
 
         w.set_proxy_status(w.status_response)
         _native_err: str | None = None
@@ -2027,7 +2011,11 @@ def run_chat_completions(
                 return max(1, int(len(text) / 4))
 
             _pt_stm = _approx_tokens_stm(
-                " ".join((m.get("content") or "") for m in ollama_messages if isinstance(m, dict))
+                " ".join(
+                    _ollama_message_content_str(m.get("content"))
+                    for m in ollama_messages
+                    if isinstance(m, dict)
+                )
             )
             _ct_stm = _approx_tokens_stm(tool_plain_fallback)
             _tt_stm = _pt_stm + _ct_stm
@@ -2154,7 +2142,9 @@ def run_chat_completions(
                 return max(1, int(len(text) / 4))
 
             prompt_text = " ".join(
-                (m.get("content") or "") for m in ollama_messages if isinstance(m, dict)
+                _ollama_message_content_str(m.get("content"))
+                for m in ollama_messages
+                if isinstance(m, dict)
             )
             prompt_tokens_approx = _approx_tokens(prompt_text)
             completion_tokens_approx = _approx_tokens(full_response)
@@ -2269,7 +2259,11 @@ def run_chat_completions(
         w.set_proxy_status(w.status_idle)
         w.set_latest_request_seconds(time.time() - start_time)
     latency_ms = int((time.time() - start_time) * 1000)
-    _prompt_text = " ".join((m.get("content") or "") for m in ollama_messages if isinstance(m, dict))
+    _prompt_text = " ".join(
+        _ollama_message_content_str(m.get("content"))
+        for m in ollama_messages
+        if isinstance(m, dict)
+    )
     prompt_tokens_approx = max(1, int(len(_prompt_text) / 4))
     completion_tokens_approx = max(1, int(len(content or "") / 4))
     _total_tokens_approx = prompt_tokens_approx + completion_tokens_approx

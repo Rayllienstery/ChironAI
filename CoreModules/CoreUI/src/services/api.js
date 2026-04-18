@@ -111,6 +111,36 @@ export async function previewLlmProxyBuildModel(model) {
   return data;
 }
 
+export async function getProxyConfiguredStatus() {
+  const response = await fetch(`${API_BASE}/proxy-configured/status`);
+  if (!response.ok) {
+    throw new Error('Failed to get proxy configured status');
+  }
+  return response.json();
+}
+
+export async function getProxyConfiguredCurrentValues() {
+  const response = await fetch(`${API_BASE}/proxy-configured/current-values`);
+  if (!response.ok) {
+    return null;
+  }
+  return response.json();
+}
+
+export async function generateProxyConfiguredScripts(config) {
+  const { baseUrl, buildId, authToken, openAiApiKey } = config;
+  const response = await fetch(`${API_BASE}/proxy-configured/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ baseUrl, buildId, authToken, openAiApiKey }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to generate scripts');
+  }
+  return data;
+}
+
 export async function updateModelSettings(settings) {
   const response = await fetch(`${API_BASE}/model-settings`, {
     method: 'POST',

@@ -6,7 +6,7 @@ param(
 # Configure once, then launch without parameters:
 #   .\start_codex_proxy_configured.ps1
 $ConfiguredBaseUrl = "http://127.0.0.1:8080"
-$ConfiguredModel = "your-build-id"
+$ConfiguredModel = "Hard-worker"
 $ConfiguredOpenAiApiKey = "ollama"
 $ConfiguredExtraArgs = @()
 

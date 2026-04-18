@@ -1387,3 +1387,37 @@ input.dashboard-card-field {
   min-height: 0;
 }
 
+/* Generate/Update button feedback messages (coreui-msg pattern) */
+.coreui-msg {
+  margin-top: var(--md-sys-spacing-sm);
+  padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
+  border-radius: var(--md-sys-shape-corner-small);
+  font: var(--md-sys-typescale-label-large-font);
+}
+
+.coreui-msg.success {
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
+}
+
+.coreui-msg.error {
+  color: var(--md-sys-color-on-error-container);
+  background: var(--md-sys-color-error-container);
+}
+
+.coreui-msg.info {
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container-high);
+}
+
+/* Configured scripts action bar - pill capsule at bottom right of card */
+.dashboard-configured-action-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--md-sys-spacing-sm);
+  padding: var(--md-sys-spacing-md) 0 0;
+  margin-top: var(--md-sys-spacing-lg);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+

@@ -1684,6 +1684,195 @@ def llm_proxy_build_preview_model() -> Any:
     )
 
 
+@webui_bp.route("/proxy-configured/status", methods=["GET"])
+def get_proxy_configured_status() -> Any:
+    """Check if proxy configured script files exist."""
+    try:
+        claude_script = Path(_ROOT) / "start_claude_proxy_configured.ps1"
+        codex_script = Path(_ROOT) / "start_codex_proxy_configured.ps1"
+        return jsonify({
+            "claude_exists": claude_script.is_file(),
+            "codex_exists": codex_script.is_file(),
+        })
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_proxy_configured_status", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/proxy-configured/current-values", methods=["GET"])
+def get_proxy_configured_current_values() -> Any:
+    """Read current values from existing configured script files."""
+    try:
+        claude_script = Path(_ROOT) / "start_claude_proxy_configured.ps1"
+        if not claude_script.is_file():
+            return jsonify({"error": "File not found"}), 404
+
+        content = claude_script.read_text(encoding="utf-8")
+
+        # Parse values from Claude script
+        base_url = ""
+        build_id = ""
+        auth_token = ""
+
+        for line in content.splitlines():
+            line = line.strip()
+            if line.startswith('$ConfiguredBaseUrl'):
+                base_url = line.split('=', 1)[1].strip().strip('"')
+            elif line.startswith('$ConfiguredModel'):
+                build_id = line.split('=', 1)[1].strip().strip('"')
+            elif line.startswith('$ConfiguredAuthToken'):
+                auth_token = line.split('=', 1)[1].strip().strip('"')
+
+        return jsonify({
+            "baseUrl": base_url,
+            "buildId": build_id,
+            "authToken": auth_token,
+        })
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_proxy_configured_current_values", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/proxy-configured/generate", methods=["POST"])
+def generate_proxy_configured_scripts() -> Any:
+    """Generate or update proxy configured script files."""
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        base_url = (body.get("baseUrl") or "").strip()
+        build_id = (body.get("buildId") or "").strip()
+        auth_token = (body.get("authToken") or "").strip()
+        openai_api_key = (body.get("openAiApiKey") or "").strip()
+
+        if not base_url:
+            return jsonify({"error": "baseUrl is required"}), 400
+        if not build_id:
+            return jsonify({"error": "buildId is required"}), 400
+
+        claude_ps1_path = Path(_ROOT) / "start_claude_proxy_configured.ps1"
+        codex_ps1_path = Path(_ROOT) / "start_codex_proxy_configured.ps1"
+        claude_bat_path = Path(_ROOT) / "start_claude_proxy_configured.bat"
+        codex_bat_path = Path(_ROOT) / "start_codex_proxy_configured.bat"
+
+        # Delete existing files if they exist
+        for path in [claude_ps1_path, codex_ps1_path, claude_bat_path, codex_bat_path]:
+            if path.is_file():
+                path.unlink()
+
+        # Generate Claude proxy configured script
+        claude_ps1_content = f'''param(
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$CliArgs
+)
+
+# Configure once, then launch without parameters:
+#   .\\start_claude_proxy_configured.ps1
+$ConfiguredBaseUrl = "{base_url}"
+$ConfiguredModel = "{build_id}"
+$ConfiguredAuthToken = "{auth_token}"
+$ConfiguredExtraArgs = @()
+
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$baseScript = Join-Path $scriptRoot "start_claude_proxy.ps1"
+if (-not (Test-Path -LiteralPath $baseScript)) {{
+    Write-Error "Base script not found: $baseScript"
+    exit 1
+}}
+
+if (-not [string]::IsNullOrWhiteSpace($ConfiguredBaseUrl)) {{
+    $env:CHIRON_PROXY_BASE_URL = $ConfiguredBaseUrl
+}}
+if (-not [string]::IsNullOrWhiteSpace($ConfiguredAuthToken)) {{
+    $env:ANTHROPIC_AUTH_TOKEN = $ConfiguredAuthToken
+}}
+
+$launchArgs = @()
+if (-not [string]::IsNullOrWhiteSpace($ConfiguredModel)) {{
+    $launchArgs += "--model"
+    $launchArgs += $ConfiguredModel
+}}
+if ($ConfiguredExtraArgs) {{
+    $launchArgs += $ConfiguredExtraArgs
+}}
+if ($CliArgs) {{
+    $launchArgs += $CliArgs
+}}
+
+& $baseScript @launchArgs
+exit $LASTEXITCODE
+'''
+
+        # Generate Codex proxy configured script
+        codex_ps1_content = f'''param(
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$CliArgs
+)
+
+# Configure once, then launch without parameters:
+#   .\\start_codex_proxy_configured.ps1
+$ConfiguredBaseUrl = "{base_url}"
+$ConfiguredModel = "{build_id}"
+$ConfiguredOpenAiApiKey = "{openai_api_key}"
+$ConfiguredExtraArgs = @()
+
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$baseScript = Join-Path $scriptRoot "start_codex_proxy.ps1"
+if (-not (Test-Path -LiteralPath $baseScript)) {{
+    Write-Error "Base script not found: $baseScript"
+    exit 1
+}}
+
+if (-not [string]::IsNullOrWhiteSpace($ConfiguredBaseUrl)) {{
+    $env:CHIRON_PROXY_BASE_URL = $ConfiguredBaseUrl
+}}
+if (-not [string]::IsNullOrWhiteSpace($ConfiguredOpenAiApiKey)) {{
+    $env:OPENAI_API_KEY = $ConfiguredOpenAiApiKey
+}}
+
+$launchArgs = @()
+if (-not [string]::IsNullOrWhiteSpace($ConfiguredModel)) {{
+    $launchArgs += "--model"
+    $launchArgs += $ConfiguredModel
+}}
+if ($ConfiguredExtraArgs) {{
+    $launchArgs += $ConfiguredExtraArgs
+}}
+if ($CliArgs) {{
+    $launchArgs += $CliArgs
+}}
+
+& $baseScript @launchArgs
+exit $LASTEXITCODE
+'''
+
+        # Generate .bat wrappers
+        claude_bat_content = f'''@echo off
+powershell -ExecutionPolicy Bypass -File "%~dp0start_claude_proxy_configured.ps1" %*
+'''
+
+        codex_bat_content = f'''@echo off
+powershell -ExecutionPolicy Bypass -File "%~dp0start_codex_proxy_configured.ps1" %*
+'''
+
+        # Write all files
+        claude_ps1_path.write_text(claude_ps1_content, encoding="utf-8")
+        codex_ps1_path.write_text(codex_ps1_content, encoding="utf-8")
+        claude_bat_path.write_text(claude_bat_content, encoding="utf-8")
+        codex_bat_path.write_text(codex_bat_content, encoding="utf-8")
+
+        return jsonify({
+            "status": "generated",
+            "files": {
+                "claude_ps1": str(claude_ps1_path),
+                "codex_ps1": str(codex_ps1_path),
+                "claude_bat": str(claude_bat_path),
+                "codex_bat": str(codex_bat_path),
+            }
+        })
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.generate_proxy_configured_scripts", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @webui_bp.route("/tester-settings", methods=["GET"])
 def get_tester_settings() -> Any:
     """Get Model Tester settings for a session."""

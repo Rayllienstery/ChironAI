@@ -29,6 +29,19 @@ Use **`POST /v1/chat/completions`** (or **`POST /v1/messages`** for Anthropic-sh
 
 The **`/api/tags`**, **`/api/show`**, **`/api/generate`**, and **`/api/chat`** routes exist so clients can point at this host as an **Ollama base URL** (e.g. Zed). They **forward the JSON body to upstream Ollama** and do **not** apply RAG, WebUI prompt templates, build presets, or the same **proxy** logging as `/v1/chat/completions`. Prefer **`/v1/chat/completions`** for observability and RAG unless you intentionally want raw Ollama.
 
+### Vision (multimodal images) on `POST /v1/chat/completions`
+
+OpenAI-style user messages may use multipart `content`: an array of `{ "type": "text", "text": "..." }` and `{ "type": "image_url", "image_url": { "url": "..." } }`.
+
+- **Supported toward Ollama:** `image_url.url` values that are **`data:image/...;base64,...`** data URLs. The proxy validates and forwards them as Ollama’s native **`images`** array on the same user message (base64 payload after `base64,`), with adjacent text in **`content`**.
+- **Not loaded by the proxy:** plain **`http://` / `https://`** image URLs are replaced with a short in-band note (no server-side fetch; avoids SSRF). Use a data URL, call upstream **`POST /api/chat`** directly, or host a client that inlines the image as base64.
+- **Limits:** decoded size per image, max images per message, and the usual text sanitiser for huge inline base64 pasted into **string-only** `content` are defined in [`infrastructure/ollama/openai_multipart_vision.py`](../../infrastructure/ollama/openai_multipart_vision.py).
+
+Proxy traces expose **`images_count`** per Ollama message when `images` is present; base64 blobs are not expanded into trace previews.
+
+- **`tool_choice`:** OpenAI allows object values (e.g. `{"type":"auto"}`). Ollama’s native **`/api/chat`** expects a small string or the field omitted; the proxy maps unsupported shapes to **omit** the field (default auto) and maps string **`none`** / dict **`{"type":"none"}`** to disabling tools for routing.
+- **Tools + vision:** when **`tools`** is sent to Ollama, the proxy **drops `images`** from outbound messages for that request only (trace still reflects the pre-strip list). Some backends (including several cloud models) return **400** if `images` and `tools` are combined.
+
 **`POST /v1/completions`** is a separate legacy shape (OpenAI `prompt` / `input` → Ollama **`/api/generate`**); it is not merged into the same analytics semantics as chat completions.
 
 **Network note:** the server often binds `0.0.0.0` ([`config/server.yaml`](../../config/server.yaml)); there is **no API key** on the proxy by default—use only on a trusted network.

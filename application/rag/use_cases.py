@@ -30,6 +30,10 @@ from domain.services.rerank import (
     reorder_hits_by_indices,
 )
 from domain.services.rag_trigger import compute_rag_trigger_score
+from infrastructure.ollama.openai_multipart_vision import (
+    collect_ollama_images_b64_from_parts,
+    openai_parts_to_flat_text,
+)
 from infrastructure.ollama.openai_ollama_tool_bridge import openai_messages_to_ollama
 from domain.services.rag_trace import build_rag_trace_from_timings
 from domain.services.retrieval import (
@@ -712,10 +716,15 @@ def answer_question(
             continue
         if role in ("user", "assistant"):
             if isinstance(content, list):
-                text = " ".join(p.get("text", "") for p in content if p.get("type") == "text")
+                text = openai_parts_to_flat_text(content)
+                images = collect_ollama_images_b64_from_parts(content) if role == "user" else []
             else:
                 text = content or ""
-            ollama_messages.append({"role": role, "content": text})
+                images = []
+            msg: dict[str, Any] = {"role": role, "content": text}
+            if role == "user" and images:
+                msg["images"] = images
+            ollama_messages.append(msg)
     model = request.model or model_name
     content = chat_client.chat(ollama_messages, model, stream=False, options=None)
     return RagAnswerResponse(content=content, model=model, finish_reason="stop")
@@ -814,9 +823,11 @@ def prepare_ollama_messages(
             continue
         if role in ("user", "assistant"):
             if isinstance(content, list):
-                text = " ".join(p.get("text", "") for p in content if p.get("type") == "text")
+                text = openai_parts_to_flat_text(content)
+                images = collect_ollama_images_b64_from_parts(content) if role == "user" else []
             else:
                 text = content or ""
+                images = []
             # Preserve assistant tool-call turn in text form for models without native tool role.
             if role == "assistant" and not text and isinstance(m.get("tool_calls"), list):
                 tc = m.get("tool_calls") or []
@@ -829,7 +840,10 @@ def prepare_ollama_messages(
                     args = fn.get("arguments") or ""
                     parts.append(f"[tool_call:{name}] {args}")
                 text = "\n".join(parts)
-            ollama_messages.append({"role": role, "content": text})
+            msg2: dict[str, Any] = {"role": role, "content": text}
+            if role == "user" and images:
+                msg2["images"] = images
+            ollama_messages.append(msg2)
             continue
         if role == "tool":
             # Prefer explicit `name`, otherwise infer from `tool_call_id`.

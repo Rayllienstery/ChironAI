@@ -142,6 +142,17 @@ class OllamaChatClient:
         try:
             resp = requests.post(self._url, json=payload, timeout=600, stream=True)
             resp.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            snippet = ""
+            if e.response is not None:
+                try:
+                    snippet = (e.response.text or "").strip()[:800]
+                except Exception:
+                    snippet = ""
+            extra = f" {snippet}" if snippet else ""
+            raise RuntimeError(
+                f"Ollama chat stream API error (model={use_model}, url={self._url}): {e}{extra}"
+            ) from e
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Ollama chat stream API error (model={use_model}, url={self._url}): {e}") from e
         try:
@@ -194,6 +205,16 @@ class OllamaChatClient:
         try:
             resp = requests.post(self._url, json=payload, timeout=600, stream=True)
             resp.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            snippet = ""
+            if e.response is not None:
+                try:
+                    snippet = (e.response.text or "").strip()[:800]
+                except Exception:
+                    snippet = ""
+            extra = f" {snippet}" if snippet else ""
+            yield ("error", f"Ollama chat stream API error (model={use_model}, url={self._url}): {e}{extra}")
+            return
         except requests.exceptions.RequestException as e:
             yield ("error", f"Ollama chat stream API error (model={use_model}, url={self._url}): {e}")
             return
