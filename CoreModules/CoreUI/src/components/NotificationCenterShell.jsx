@@ -53,12 +53,28 @@ function ModuleFooter({ source, notification }) {
   );
 }
 
+function BroomIcon() {
+  return (
+    <svg
+      className="notification-center-broom-svg"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="currentColor"
+    >
+      <path d="M18.68 3.32a1 1 0 0 0-1.41 0l-4.95 4.95a1 1 0 0 0 0 1.41l.35.35-7.78 7.78a3 3 0 0 0-.83 1.54l-.34 1.69a.75.75 0 0 0 .88.88l1.69-.34a3 3 0 0 0 1.54-.83l7.78-7.78.35.35a1 1 0 0 0 1.41 0l4.95-4.95a1 1 0 0 0 0-1.41zm-12.2 16.16a1.5 1.5 0 0 1-.77.42l-.74.15.15-.74a1.5 1.5 0 0 1 .42-.77l7.78-7.78 1.06 1.06z" />
+    </svg>
+  );
+}
+
 function NotificationCenterShell() {
   const {
     sessionId,
     persisted,
     liveActivities,
     dismissPersisted,
+    dismissPersistedMany,
     clearPersisted,
     suppressLiveActivity,
   } = useNotificationCenter();
@@ -84,6 +100,12 @@ function NotificationCenterShell() {
   const history = [...persisted].sort((a, b) => notificationSortValue(b) - notificationSortValue(a));
 
   const liveEntries = [...liveActivities.entries()];
+  const hasVisibleCards = activePersisted.length > 0 || liveEntries.length > 0;
+
+  const handleClearVisible = () => {
+    void dismissPersistedMany(activePersisted.map((n) => n.id));
+    liveEntries.forEach(([id]) => suppressLiveActivity(id));
+  };
 
   return (
     <div className="notification-center-root" ref={rootRef}>
@@ -185,19 +207,35 @@ function NotificationCenterShell() {
         ))}
       </div>
 
-      <Card
-        as="button"
-        type="button"
-        className="notification-center-bell-capsule"
-        elevation="var(--md-sys-elevation-level3)"
-        interactive
-        onClick={() => setMenuOpen((o) => !o)}
-        aria-expanded={menuOpen}
-        aria-haspopup="dialog"
-      >
-        <BellIcon />
-        <span>Notifications</span>
-      </Card>
+      <div className="notification-center-actions-row">
+        {hasVisibleCards ? (
+          <Card
+            as="button"
+            type="button"
+            className="notification-center-clear-capsule"
+            elevation="var(--md-sys-elevation-level3)"
+            interactive
+            onClick={handleClearVisible}
+            aria-label="Clear visible notifications"
+            title="Clear visible notifications"
+          >
+            <BroomIcon />
+          </Card>
+        ) : null}
+        <Card
+          as="button"
+          type="button"
+          className="notification-center-bell-capsule"
+          elevation="var(--md-sys-elevation-level3)"
+          interactive
+          onClick={() => setMenuOpen((o) => !o)}
+          aria-expanded={menuOpen}
+          aria-haspopup="dialog"
+        >
+          <BellIcon />
+          <span>Notifications</span>
+        </Card>
+      </div>
     </div>
   );
 }

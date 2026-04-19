@@ -97,11 +97,40 @@ export function NotificationCenterProvider({ sessionId, children }) {
   const dismissPersisted = useCallback(
     async (notificationId) => {
       if (!sessionId) return;
+      const dismissedAt = new Date().toISOString();
+      setPersisted((prev) =>
+        prev.map((item) => (
+          item.id === notificationId ? { ...item, dismissed_at: item.dismissed_at || dismissedAt } : item
+        )),
+      );
       try {
         await dismissCoreuiNotification(sessionId, notificationId);
-        await refreshPersisted();
       } catch (e) {
         console.error('NotificationCenter: dismiss failed', e);
+        await refreshPersisted();
+      }
+    },
+    [sessionId, refreshPersisted],
+  );
+
+  const dismissPersistedMany = useCallback(
+    async (notificationIds) => {
+      if (!sessionId) return;
+      const ids = [...new Set((notificationIds || []).filter((id) => id != null))];
+      if (ids.length === 0) return;
+      const dismissedAt = new Date().toISOString();
+      const idSet = new Set(ids);
+      setPersisted((prev) =>
+        prev.map((item) => (
+          idSet.has(item.id) ? { ...item, dismissed_at: item.dismissed_at || dismissedAt } : item
+        )),
+      );
+      const results = await Promise.allSettled(
+        ids.map((id) => dismissCoreuiNotification(sessionId, id)),
+      );
+      if (results.some((result) => result.status === 'rejected')) {
+        console.error('NotificationCenter: bulk dismiss had failures');
+        await refreshPersisted();
       }
     },
     [sessionId, refreshPersisted],
@@ -130,6 +159,7 @@ export function NotificationCenterProvider({ sessionId, children }) {
       clearLiveSuppression,
       persistNotification,
       dismissPersisted,
+      dismissPersistedMany,
       clearPersisted,
     }),
     [
@@ -144,6 +174,7 @@ export function NotificationCenterProvider({ sessionId, children }) {
       clearLiveSuppression,
       persistNotification,
       dismissPersisted,
+      dismissPersistedMany,
       clearPersisted,
     ],
   );

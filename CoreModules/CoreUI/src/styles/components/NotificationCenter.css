@@ -20,6 +20,21 @@
   }
 }
 
+@keyframes notification-clear-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(22px, -10px, 0) rotate(10deg) scale(0.92);
+  }
+  70% {
+    opacity: 1;
+    transform: translate3d(-3px, 2px, 0) rotate(-4deg) scale(1.02);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+}
+
 .notification-center-root {
   --notification-center-panel-width: min(340px, calc(100vw - 32px));
 
@@ -53,7 +68,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .notification-center-root .notification-center-card.app-card,
-  .notification-center-popover {
+  .notification-center-popover,
+  .notification-center-clear-capsule {
     animation: none;
   }
 }
@@ -62,6 +78,11 @@
   --app-card-box-shadow: var(--md-sys-elevation-level3) !important;
   box-shadow: var(--md-sys-elevation-level3) !important;
   align-self: flex-end;
+}
+
+.notification-center-root .notification-center-clear-capsule.app-card {
+  --app-card-box-shadow: var(--md-sys-elevation-level3) !important;
+  box-shadow: var(--md-sys-elevation-level3) !important;
 }
 
 .notification-center-root > * {
@@ -102,6 +123,44 @@
 }
 
 .notification-center-bell-svg {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.notification-center-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.notification-center-clear-capsule {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 14px 8px 12px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 999px;
+  cursor: pointer;
+  font: var(--md-sys-typescale-label-medium-font);
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface) !important;
+  animation: notification-clear-enter 0.38s cubic-bezier(0.2, 0.9, 0.28, 1.15) both;
+  transform-origin: right center;
+}
+
+.notification-center-clear-capsule:hover {
+  filter: brightness(1.02);
+}
+
+.notification-center-clear-capsule:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.notification-center-broom-svg {
   flex-shrink: 0;
   opacity: 0.85;
 }
