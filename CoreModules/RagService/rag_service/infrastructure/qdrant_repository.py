@@ -13,10 +13,7 @@ import httpx
 
 from rag_service.domain.errors import RetrievalError
 
-try:
-    from config import get_qdrant_url
-except ImportError:
-    get_qdrant_url = lambda: "http://localhost:6333"  # type: ignore
+from rag_service.config import get_qdrant_url
 
 
 class QdrantRagRepository:

@@ -49,7 +49,14 @@ class RagContext:
     context_text: str
     chunks_info: list[dict[str, Any]]
     max_score: float = 0.0
+    #: True when retrieval was not run (e.g. client ``skip_rag``); avoids "zero hits" boilerplate in system prompt.
     retrieval_skipped: bool = False
+    #: Ordered pipeline steps for UI (e.g. RAG timeline); optional.
+    rag_trace: list[dict[str, Any]] | None = None
+    #: Heuristic concept coverage over selected hits (see ``compute_concept_coverage_report``).
+    coverage_report: dict[str, Any] | None = None
+    #: High-level RAG quality hint for clients and logs (e.g. failure_class).
+    rag_quality: dict[str, Any] | None = None
 
 
 @dataclass
@@ -71,9 +78,26 @@ class RagAnswerResponse:
     finish_reason: str = "stop"
 
 
+@dataclass
+class QueryIntent:
+    """
+    Parsed intent for a RAG question, used to build metadata filters
+    and adjust document priority.
+
+    symbol: API symbol or type name (e.g. UIViewController, handleEvents).
+    framework: High-level technology/framework (e.g. uikit, swiftui, combine).
+    section_hint: Optional section preference (e.g. discussion, overview, examples).
+    """
+
+    symbol: str | None = None
+    framework: str | None = None
+    section_hint: str | None = None
+
+
 __all__ = [
     "RagChunk",
     "RagContext",
     "RagQuestionRequest",
     "RagAnswerResponse",
+    "QueryIntent",
 ]

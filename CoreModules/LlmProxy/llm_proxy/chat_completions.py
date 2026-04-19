@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import logging
 import threading
@@ -462,6 +463,33 @@ def _normalize_and_sanitize_messages(raw_messages: list[Any]) -> list[dict[str, 
     return out
 
 
+def _get_rag_answer_params_compat(
+    get_params: Any,
+    *,
+    webui_dir: str | None,
+    collection_name: str | None,
+    prompt_name: str | None,
+) -> tuple[Any, Any]:
+    """
+    Compatibility bridge for legacy/new signatures of ``get_rag_answer_params``.
+
+    New isolated RagService API dropped ``prompt_name``; older host wiring may still accept it.
+    """
+    kwargs: dict[str, Any] = {
+        "webui_dir": webui_dir,
+        "collection_name": collection_name,
+    }
+    if prompt_name:
+        try:
+            sig = inspect.signature(get_params)
+            if "prompt_name" in sig.parameters:
+                kwargs["prompt_name"] = prompt_name
+        except (TypeError, ValueError):
+            # Builtins/partial callables may not expose signature reliably; fall back to minimal kwargs.
+            pass
+    return get_params(**kwargs)
+
+
 def run_chat_completions(
     w: LlmProxyWiring, *, body_override: dict[str, Any] | None = None
 ) -> Response | tuple[Response, int]:
@@ -909,7 +937,8 @@ def run_chat_completions(
             request_collection = None
             collection_source = "default"
     if request_collection and not is_autocomplete:
-        req_params, req_deps = w.get_rag_answer_params(
+        req_params, req_deps = _get_rag_answer_params_compat(
+            w.get_rag_answer_params,
             webui_dir=webui_dir,
             collection_name=request_collection,
             prompt_name=proxy_prompt_name_required if system_prefix is None else None,
@@ -917,10 +946,7 @@ def run_chat_completions(
         if system_prefix is not None:
             effective_prefix = system_prefix
             effective_suffix = system_suffix if system_suffix is not None else req_params.system_suffix
-        elif use_prompt_template_enabled:
-            effective_prefix = req_params.system_prefix
-            effective_suffix = req_params.system_suffix
-        else:
+        elif not use_prompt_template_enabled:
             effective_prefix = ""
             effective_suffix = ""
         effective_context_chunk_chars = req_params.context_chunk_chars

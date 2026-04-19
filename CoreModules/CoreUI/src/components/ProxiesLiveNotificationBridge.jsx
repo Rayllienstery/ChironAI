@@ -30,6 +30,29 @@ function pickLastStepName(steps) {
   return n != null && n !== '' ? String(n) : null;
 }
 
+function buildStepCapsules(steps) {
+  if (!Array.isArray(steps) || steps.length === 0) return [];
+  let currentIndex = -1;
+  for (let i = steps.length - 1; i >= 0; i -= 1) {
+    const s = steps[i];
+    if (s && s.duration_ms == null) {
+      currentIndex = i;
+      break;
+    }
+  }
+  const capsules = [];
+  for (let i = 0; i < steps.length; i += 1) {
+    const s = steps[i];
+    const name = s?.name != null && s.name !== '' ? String(s.name) : null;
+    if (!name) continue;
+    const completed = s?.duration_ms != null;
+    const current = i === currentIndex;
+    if (!completed && !current) continue;
+    capsules.push({ name, state: current ? 'current' : 'completed' });
+  }
+  return capsules;
+}
+
 function WindDownLinearBar({ endsAt }) {
   const endsRef = useRef(endsAt);
   endsRef.current = endsAt;
@@ -98,7 +121,8 @@ function WindDownLinearBar({ endsAt }) {
 }
 
 function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
-  const { endsAt, status, model, stepLine } = wd;
+  const { endsAt, status, model, traceId, steps } = wd;
+  const stepCapsules = buildStepCapsules(steps);
   return (
     <div className="proxy-live-notification notification-proxy-embed notification-proxy-embed--winddown">
       <WindDownLinearBar endsAt={endsAt} />
@@ -110,10 +134,19 @@ function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
         <span className="proxy-live-notification-label">Model</span>
         <span className="proxy-live-notification-value proxy-live-notification-mono">{model}</span>
       </div>
-      {stepLine ? (
-        <div className="proxy-live-notification-row proxy-live-notification-step">
-          <span className="proxy-live-notification-label">Step</span>
-          <span className="proxy-live-notification-value">{stepLine}</span>
+      {traceId ? (
+        <div className="proxy-live-notification-row">
+          <span className="proxy-live-notification-label">Track ID</span>
+          <span className="proxy-live-notification-value proxy-live-notification-mono">{traceId}</span>
+        </div>
+      ) : null}
+      {stepCapsules.length ? (
+        <div className="proxy-live-notification-steps" aria-label="Trace steps">
+          {stepCapsules.map((step, idx) => (
+            <span key={`${step.name}-${idx}`} className={`proxy-live-step-capsule proxy-live-step-capsule--${step.state}`}>
+              {step.name}
+            </span>
+          ))}
         </div>
       ) : null}
       <div className="proxy-live-notification-actions">
@@ -131,7 +164,8 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
   ).trim();
   const trace = proxyPayload.trace;
   const model = traceModelFields(trace).headerShort;
-  const stepLine = pickLastStepName(trace?.steps);
+  const stepCapsules = buildStepCapsules(trace?.steps);
+  const traceId = trace?.trace_id != null && trace.trace_id !== '' ? String(trace.trace_id) : '';
   return (
     <div className="proxy-live-notification notification-proxy-embed">
       {busyLlm ? (
@@ -147,10 +181,19 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
         <span className="proxy-live-notification-label">Model</span>
         <span className="proxy-live-notification-value proxy-live-notification-mono">{model}</span>
       </div>
-      {stepLine ? (
-        <div className="proxy-live-notification-row proxy-live-notification-step">
-          <span className="proxy-live-notification-label">Step</span>
-          <span className="proxy-live-notification-value">{stepLine}</span>
+      {traceId ? (
+        <div className="proxy-live-notification-row">
+          <span className="proxy-live-notification-label">Track ID</span>
+          <span className="proxy-live-notification-value proxy-live-notification-mono">{traceId}</span>
+        </div>
+      ) : null}
+      {stepCapsules.length ? (
+        <div className="proxy-live-notification-steps" aria-label="Trace steps">
+          {stepCapsules.map((step, idx) => (
+            <span key={`${step.name}-${idx}`} className={`proxy-live-step-capsule proxy-live-step-capsule--${step.state}`}>
+              {step.name}
+            </span>
+          ))}
         </div>
       ) : null}
       <div className="proxy-live-notification-actions">
@@ -178,7 +221,7 @@ export default function ProxiesLiveNotificationBridge({
   } = useNotificationCenter();
 
   const [proxyPayload, setProxyPayload] = useState(null);
-  /** @type {React.MutableRefObject<Map<string, { gen: number, endsAt: number, status: string, model: string, stepLine: string | null, traceIdShort: string }>>} */
+  /** @type {React.MutableRefObject<Map<string, { gen: number, endsAt: number, status: string, model: string, stepLine: string | null, traceIdShort: string, traceId: string, steps: unknown[] }>>} */
   const llmWindDownsRef = useRef(new Map());
   const [llmWindDownsTick, setLlmWindDownsTick] = useState(0);
 
@@ -235,6 +278,8 @@ export default function ProxiesLiveNotificationBridge({
         model,
         stepLine,
         traceIdShort: trace.trace_id != null ? String(trace.trace_id).slice(0, 12) : '',
+        traceId: trace.trace_id != null ? String(trace.trace_id) : '',
+        steps: Array.isArray(trace.steps) ? trace.steps : [],
       });
       bumpLlmWindDowns();
     }

@@ -12,14 +12,7 @@ from typing import NamedTuple
 
 from rag_service.domain.ports import ChatLLMClient, EmbeddingProvider, RagRepository, RerankClient
 
-try:
-    from config import get_ollama_chat_model, get_rag_float, get_rag_int
-    from config.rag_prompts import get_rag_system_prompt
-except ImportError:
-    get_rag_int = lambda k, d: d  # type: ignore
-    get_rag_float = lambda k, d: d  # type: ignore
-    get_ollama_chat_model = lambda: ""  # type: ignore
-    get_rag_system_prompt = lambda _prompt_name=None: ("", "\n=================================\n")  # type: ignore
+from rag_service.config import get_ollama_chat_model, get_rag_float, get_rag_int, get_rag_system_prompt
 
 
 class RAGAnswerParams(NamedTuple):

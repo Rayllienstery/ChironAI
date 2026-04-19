@@ -2,6 +2,7 @@ from rag_service.domain.entities import (
     RagAnswerResponse,
     RagChunk,
     RagContext,
+    QueryIntent,
     RagQuestionRequest,
 )
 from rag_service.domain.errors import EmbeddingError, RerankError, RetrievalError
@@ -18,6 +19,7 @@ __all__ = [
     "RagContext",
     "RagQuestionRequest",
     "RagAnswerResponse",
+    "QueryIntent",
     "RetrievalError",
     "EmbeddingError",
     "RerankError",

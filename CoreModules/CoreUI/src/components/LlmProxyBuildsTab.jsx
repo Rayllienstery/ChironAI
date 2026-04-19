@@ -240,23 +240,30 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
     setErr(null);
     setLoading(true);
     try {
-      const [b, m, p, ms] = await Promise.all([
-        getLlmProxyBuilds(),
-        getModels(),
-        getPrompts(),
-        getModelSettings(),
-      ]);
+      const b = await getLlmProxyBuilds();
       setBuilds(b.builds || []);
       setUrls(b.openai_models_urls || {});
-      setModels(Array.isArray(m) ? m : []);
-      setPrompts(p.prompts || []);
-      setProxyDefaults(ms || null);
     } catch (e) {
       setErr(String(e.message || e));
       setBuilds([]);
+      setUrls({});
     } finally {
       setLoading(false);
     }
+
+    const [modelsResult, promptsResult, settingsResult] = await Promise.allSettled([
+      getModels(),
+      getPrompts(),
+      getModelSettings(),
+    ]);
+
+    setModels(modelsResult.status === 'fulfilled' && Array.isArray(modelsResult.value) ? modelsResult.value : []);
+    setPrompts(
+      promptsResult.status === 'fulfilled' && Array.isArray(promptsResult.value?.prompts)
+        ? promptsResult.value.prompts
+        : [],
+    );
+    setProxyDefaults(settingsResult.status === 'fulfilled' ? settingsResult.value || null : null);
   }, []);
 
   useEffect(() => {

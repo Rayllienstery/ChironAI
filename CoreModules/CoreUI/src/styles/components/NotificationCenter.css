@@ -367,6 +367,39 @@
   font: var(--md-sys-typescale-label-medium-font);
 }
 
+.proxy-live-notification-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.proxy-live-step-capsule {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font: var(--md-sys-typescale-label-small-font);
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.proxy-live-step-capsule--completed {
+  background: var(--md-sys-color-primary, var(--md-sys-color-secondary));
+  color: var(--md-sys-color-on-primary, #fff);
+  border-color: var(--md-sys-color-primary, var(--md-sys-color-secondary));
+}
+
+.proxy-live-step-capsule--current {
+  background: transparent;
+  color: var(--md-sys-color-primary, var(--md-sys-color-secondary));
+  border-color: var(--md-sys-color-primary, var(--md-sys-color-secondary));
+}
+
 .proxy-live-notification-error {
   font: var(--md-sys-typescale-body-small-font);
   color: var(--md-sys-color-error);

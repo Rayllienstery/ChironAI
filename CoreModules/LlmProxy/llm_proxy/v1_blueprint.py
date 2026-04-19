@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from flask import Blueprint, Response, jsonify, request
+from werkzeug.exceptions import HTTPException
 
 from llm_proxy.apply_edit import run_apply_file_edit
 from llm_proxy.anthropic_compat import (
@@ -64,6 +65,25 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
     set_workspace_root(wiring.workspace_root)
 
     bp = Blueprint("llm_proxy_v1", __name__)
+
+    @bp.errorhandler(Exception)
+    def _handle_unexpected_exception(error: Exception):
+        if isinstance(error, HTTPException):
+            return error
+        try:
+            wiring.log_webui_error(
+                "rag_routes.v1_unhandled",
+                error,
+                {
+                    "stage": "unhandled_exception",
+                    "path": request.path,
+                    "method": request.method,
+                    "endpoint": request.endpoint or "",
+                },
+            )
+        except Exception:
+            pass
+        return jsonify({"error": str(error)}), 500
 
     @bp.route("/v1", methods=["GET", "POST"])
     def v1_root():

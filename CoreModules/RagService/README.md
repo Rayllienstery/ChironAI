@@ -31,6 +31,24 @@ Or from repo root after editable install:
 flask --app rag_service.api.http:create_app run --port 5001
 ```
 
+## Runtime Health / Start
+
+The module now owns its own runtime dependency helpers for `ollama` and `qdrant`.
+
+```bash
+python -m rag_service health
+python -m rag_service start-ollama
+python -m rag_service start-qdrant
+python -m rag_service start-deps --services ollama,qdrant
+```
+
+Or after install:
+
+```bash
+rag-service health
+rag-service start-deps --services ollama,qdrant
+```
+
 ## Data
 
 Keyword collections DB defaults to `rag_service/data/rag_keywords.db` (created next to the `rag_service` package).

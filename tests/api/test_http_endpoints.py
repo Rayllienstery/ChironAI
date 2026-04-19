@@ -2556,3 +2556,101 @@ def test_chat_completions_accepts_direct_ollama_model_without_proxy_model_settin
         json={"model": "llama3:latest", "messages": [{"role": "user", "content": "hi"}], "skip_rag": True},
     )
     assert r.status_code == 200
+
+
+def test_chat_completions_collection_params_call_is_compatible_without_prompt_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    import api.http.rag_routes as rag_routes
+
+    seen: dict[str, Any] = {}
+
+    def fake_get_rag_answer_params(*, webui_dir=None, collection_name=None):
+        seen["webui_dir"] = webui_dir
+        seen["collection_name"] = collection_name
+        fake_params = SimpleNamespace(
+            system_prefix="",
+            system_suffix="",
+            context_chunk_chars=500,
+            context_total_chars=2000,
+            confidence_threshold=0.0,
+            model_name="unused",
+            log_preview_chars=200,
+        )
+
+        class FakeChatClient:
+            def chat(self, _messages, model, stream=False, options=None):  # noqa
+                return "ok"
+
+            def stream_chat(self, _messages, _model):
+                yield ""
+
+        fake_deps = SimpleNamespace(
+            rag_repo=object(),
+            embed_provider=object(),
+            rerank_client=None,
+            chat_client=_OllamaShimChatClient(FakeChatClient()),
+        )
+        return fake_params, fake_deps
+
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", fake_get_rag_answer_params)
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda *args, **kwargs: ([{"role": "user", "content": "hi"}], "llama3"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    r = app.test_client().post(
+        "/v1/chat/completions",
+        json={
+            "model": "llama3:latest",
+            "collection_name": "docs",
+            "messages": [{"role": "user", "content": "hi"}],
+        },
+    )
+    assert r.status_code == 200
+    assert seen.get("collection_name") == "docs"
+
+
+def test_v1_blueprint_unhandled_exception_is_logged_for_notifications(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+    import llm_proxy.v1_blueprint as v1_blueprint
+
+    logged: list[tuple[str, str, str | None]] = []
+
+    def fake_log_webui_error(source: str, error: Exception, extra: dict[str, Any]) -> None:
+        logged.append((source, type(error).__name__, (extra or {}).get("stage")))
+
+    monkeypatch.setattr(rag_routes, "log_webui_error", fake_log_webui_error)
+
+    def raising_chat_completions(_wiring):
+        raise RuntimeError("forced crash")
+
+    monkeypatch.setattr(v1_blueprint, "run_chat_completions", raising_chat_completions)
+
+    app = rag_routes.create_app()
+    r = app.test_client().post(
+        "/v1/chat/completions",
+        json={"model": "llama3:latest", "messages": [{"role": "user", "content": "hi"}]},
+    )
+    assert r.status_code == 500
+    assert "forced crash" in str((r.get_json() or {}).get("error", ""))
+    assert logged
+    source, err_type, stage = logged[0]
+    assert source == "rag_routes.v1_unhandled"
+    assert err_type == "RuntimeError"
+    assert stage == "unhandled_exception"

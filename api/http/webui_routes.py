@@ -1571,10 +1571,20 @@ def update_model_settings() -> Any:
 
 
 def _ollama_tag_name_set_for_builds_diag() -> set[str]:
+    cache_key = f"llm_proxy_builds_diag_ollama_names:{_get_ollama_url().rstrip('/')}"
+    cached = _get_cached_status(
+        cache_key,
+        ttl_sec=3.0,
+        compute=lambda: {"names": sorted(_fetch_ollama_tag_name_set_for_builds_diag(timeout_sec=0.8))},
+    )
+    return set(cached.get("names") or [])
+
+
+def _fetch_ollama_tag_name_set_for_builds_diag(timeout_sec: float) -> set[str]:
     names: set[str] = set()
     try:
         url = _get_ollama_url().rstrip("/")
-        data = invoke_tags(base_url=url, timeout=5.0)
+        data = invoke_tags(base_url=url, timeout=timeout_sec)
         for m in data.get("models") or []:
             if not isinstance(m, dict):
                 continue
@@ -1588,11 +1598,7 @@ def _ollama_tag_name_set_for_builds_diag() -> set[str]:
 
 def _enrich_builds_with_diagnostics(builds: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ollama_names = _ollama_tag_name_set_for_builds_diag()
-    qset: set[str] | None = None
-    try:
-        qset = set(_get_qdrant_collection_names() or [])
-    except Exception:
-        qset = set()
+    qset = _get_cached_qdrant_collection_name_set_for_builds_diag()
     out: list[dict[str, Any]] = []
     for b in builds:
         row = dict(b)
@@ -3113,9 +3119,24 @@ def dashboard_metrics() -> Any:
 
 def _get_qdrant_collection_names() -> list[str]:
     """Return list of Qdrant collection names (empty if Qdrant unreachable or no collections)."""
+    return _get_qdrant_collection_names_with_timeout(timeout_sec=5.0)
+
+
+def _get_cached_qdrant_collection_name_set_for_builds_diag() -> set[str]:
+    cache_key = f"llm_proxy_builds_diag_qdrant_names:{get_qdrant_url().rstrip('/')}"
+    cached = _get_cached_status(
+        cache_key,
+        ttl_sec=3.0,
+        compute=lambda: {"names": _get_qdrant_collection_names_with_timeout(timeout_sec=0.8)},
+    )
+    return set(cached.get("names") or [])
+
+
+def _get_qdrant_collection_names_with_timeout(timeout_sec: float) -> list[str]:
+    """Return Qdrant collection names using an explicit timeout."""
     url = get_qdrant_url().rstrip("/")
     try:
-        resp = requests.get(f"{url}/collections", timeout=5)
+        resp = requests.get(f"{url}/collections", timeout=timeout_sec)
         if not resp.ok:
             return []
         data = resp.json() or {}

@@ -1,30 +1,32 @@
 """
 Domain-level markdown chunking.
 
-Split markdown into chunks with section_path, merge small adjacent chunks, quality check.
-Respects code blocks and tables; supports long-paragraph split and overlap.
-Config from project root when run from repo.
+Pure business logic for:
+- Splitting markdown into chunks with section_path (heading hierarchy).
+- Merging adjacent small chunks in the same section.
+- Quality check: minimum word count and alpha ratio (filters nav/footer noise).
+
+Configurable via config.get_indexing_* with sensible defaults.
 """
 
 from __future__ import annotations
 
 import re
 
-try:
-    from config import get_indexing_float, get_indexing_int
-except ImportError:
-    get_indexing_int = lambda k, d: d  # noqa: E731
-    get_indexing_float = lambda k, d: d  # noqa: E731
+from rag_service.config import get_indexing_float, get_indexing_int
+
 
 CHUNK_MAX_SIZE: int = get_indexing_int("chunk_max_size", 1200)
 CHUNK_MIN_SIZE: int = get_indexing_int("chunk_min_size", 300)
 CHUNK_OVERLAP: int = get_indexing_int("chunk_overlap", 0)
-MIN_CHUNK_WORDS: int = get_indexing_int("min_chunk_words", 25)
+MIN_CHUNK_WORDS: int = get_indexing_int("min_chunk_words", 5)
 MIN_CHUNK_ALPHA_RATIO: float = get_indexing_float("min_chunk_alpha_ratio", 0.2)
 
 
 def chunk_quality_ok(text: str) -> bool:
-    """False if chunk is too short or mostly non-alphabetic."""
+    """
+    Return False if the chunk is too short or mostly non-alphabetic (nav/footer noise).
+    """
     if not text or not (text or "").strip():
         return False
     words = (text or "").split()
@@ -42,7 +44,8 @@ def chunk_quality_ok(text: str) -> bool:
 def _split_into_paragraphs(md: str) -> list[str]:
     """
     Split markdown into paragraphs respecting code blocks and tables.
-    Fenced code blocks and markdown table lines are kept as single units.
+    Fenced code blocks (```...```) and markdown table lines (|...|) are kept
+    as single units and not split on internal \\n\\n.
     """
     if not md:
         return []
@@ -90,6 +93,7 @@ def _split_into_paragraphs(md: str) -> list[str]:
                 continue
             in_table = False
             flush_paragraph()
+            # Fall through to process current line in normal mode.
             continue
 
         if stripped.startswith("|") and "|" in stripped:
@@ -111,11 +115,25 @@ def _split_into_paragraphs(md: str) -> list[str]:
     return paragraphs
 
 
+def _is_heading_only_chunk(text: str) -> bool:
+    """
+    Return True if the chunk text consists only of markdown heading line(s) with no body.
+    Such chunks are poor for embedding; we merge them with the next chunk when same section.
+    """
+    if not text or not text.strip():
+        return False
+    lines = [ln.strip() for ln in text.strip().splitlines() if ln.strip()]
+    if not lines:
+        return False
+    return all(ln.startswith("#") for ln in lines)
+
+
 def _split_long_paragraph(text: str, max_sz: int) -> list[str]:
     """Split a single paragraph longer than max_sz by sentence or line boundaries."""
     if len(text) <= max_sz:
         return [text]
     parts: list[str] = []
+    # Prefer splitting on sentence end (. ! ?) followed by space or newline.
     pattern = re.compile(r"(?<=[.!?])\s+(?=\S)|(?<=\n)(?=\S)")
     start = 0
     while start < len(text):
@@ -124,11 +142,13 @@ def _split_long_paragraph(text: str, max_sz: int) -> list[str]:
             parts.append(remaining.strip())
             break
         chunk = remaining[: max_sz + 1]
+        # Find last sentence or line boundary in chunk.
         last_break = -1
         for m in pattern.finditer(chunk):
             if m.start() <= max_sz:
                 last_break = m.start()
         if last_break <= 0:
+            # No sentence break; split on last newline or last space.
             last_nl = chunk.rfind("\n")
             last_sp = chunk.rfind(" ")
             last_break = max(last_nl, last_sp)
@@ -151,8 +171,11 @@ def split_markdown_into_chunks(
 ) -> list[tuple[str, list[str]]]:
     """
     Split markdown into chunks with section_path (heading hierarchy).
-    Returns list of (chunk_text, section_path). Respects code blocks and tables;
-    splits long paragraphs by sentence; optional overlap.
+    Returns list of (chunk_text, section_path). section_path is e.g. ["Concurrency", "Actors"].
+    Prefers starting new chunks at headings; enforces min/max chunk size.
+    Merges adjacent chunks below min_chunk_size when same section_path.
+    Respects code blocks and tables (no split inside them); splits long paragraphs by sentence.
+    Optional overlap: next chunk starts with tail of previous for context.
     """
     max_sz = max_chunk_size if max_chunk_size is not None else CHUNK_MAX_SIZE
     min_sz = min_chunk_size if min_chunk_size is not None else CHUNK_MIN_SIZE
@@ -248,7 +271,25 @@ def split_markdown_into_chunks(
             text += "\n\n" + chunks[i][0]
         merged.append((text, path))
         i += 1
-    return merged
+
+    # Merge heading-only chunks with the next chunk when same section_path, so each
+    # chunk contains section header + content (better for embedding and answers).
+    result: list[tuple[str, list[str]]] = []
+    j = 0
+    while j < len(merged):
+        text_j, path_j = merged[j]
+        if (
+            j + 1 < len(merged)
+            and _is_heading_only_chunk(text_j)
+            and merged[j + 1][1] == path_j
+        ):
+            next_text, next_path = merged[j + 1]
+            result.append((text_j + "\n\n" + next_text, next_path))
+            j += 2
+        else:
+            result.append((text_j, path_j))
+            j += 1
+    return result
 
 
 __all__ = [

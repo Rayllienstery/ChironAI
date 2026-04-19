@@ -1,20 +1,15 @@
 """
-Ollama embedding client for rag_service — CLI subprocess; rag_service EmbeddingError.
+Ollama embedding client implementing EmbeddingProvider.
+
+Calls Ollama via ollama_interactor CLI (subprocess); maps errors to domain.errors.EmbeddingError.
 """
 
 from __future__ import annotations
 
+from rag_service.config import get_ollama_embed_model, get_ollama_embed_timeout_seconds, get_ollama_embed_url
 from rag_service.domain.errors import EmbeddingError
 from rag_service.domain.services.retrieval import MAX_EMBED_TEXT_LENGTH
-
-try:
-    from config import get_ollama_embed_model, get_ollama_embed_timeout_seconds, get_ollama_embed_url
-except ImportError:
-    get_ollama_embed_url = lambda: "http://localhost:11434/api/embed"  # type: ignore
-    get_ollama_embed_model = lambda: ""  # type: ignore  # set RAG_EMBED_MODEL if config package missing
-    get_ollama_embed_timeout_seconds = lambda: 180.0  # type: ignore
-
-from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_embed
+from rag_service.infrastructure.cli_runner import OllamaInteractorCliError, invoke_embed
 
 
 class OllamaEmbeddingProvider:
@@ -33,6 +28,7 @@ class OllamaEmbeddingProvider:
         )
 
     def embed(self, text: str) -> list[float]:
+        """Embed a single text. Raises EmbeddingError on failure."""
         if len(text) > MAX_EMBED_TEXT_LENGTH:
             text = text[:MAX_EMBED_TEXT_LENGTH]
         t = max(10.0, self._embed_timeout)
@@ -51,14 +47,20 @@ class OllamaEmbeddingProvider:
                 return first if isinstance(first, list) else list(first)
             raise EmbeddingError(f"Unexpected embeddings format: {embeddings}")
         except OllamaInteractorCliError as e:
-            raise EmbeddingError(f"Ollama embed API error (model={self._model}): {e}") from e
+            raise EmbeddingError(
+                f"Ollama embed API error (model={self._model}, url={self._url}): {e}"
+            ) from e
         except (ValueError, TypeError) as e:
             raise EmbeddingError(str(e)) from e
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """Embed multiple texts. Raises EmbeddingError on failure."""
         if not texts:
             return []
-        truncated = [t[:MAX_EMBED_TEXT_LENGTH] if len(t) > MAX_EMBED_TEXT_LENGTH else t for t in texts]
+        truncated = [
+            t[:MAX_EMBED_TEXT_LENGTH] if len(t) > MAX_EMBED_TEXT_LENGTH else t
+            for t in texts
+        ]
         batch_t = max(120.0, self._embed_timeout * 2.0)
         stdin_obj: dict = {
             "url": self._url,
@@ -71,10 +73,14 @@ class OllamaEmbeddingProvider:
             if embeddings is None:
                 raise EmbeddingError("No 'embeddings' key in Ollama response")
             if len(embeddings) != len(truncated):
-                raise EmbeddingError(f"Ollama returned {len(embeddings)} embeddings for {len(truncated)} inputs")
+                raise EmbeddingError(
+                    f"Ollama returned {len(embeddings)} embeddings for {len(truncated)} inputs"
+                )
             return [e if isinstance(e, list) else list(e) for e in embeddings]
         except OllamaInteractorCliError as e:
-            raise EmbeddingError(f"Ollama embed batch API error: {e}") from e
+            raise EmbeddingError(
+                f"Ollama embed batch API error (model={self._model}): {e}"
+            ) from e
         except (ValueError, TypeError) as e:
             raise EmbeddingError(str(e)) from e
 

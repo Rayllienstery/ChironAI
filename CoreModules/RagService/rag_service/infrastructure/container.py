@@ -1,8 +1,4 @@
-"""
-RAG service composition root.
-
-Builds default infrastructure implementations. Requires project root on PYTHONPATH for config.
-"""
+"""RAG service composition root."""
 
 from __future__ import annotations
 
@@ -12,24 +8,15 @@ from rag_service.infrastructure.ollama_embedding import OllamaEmbeddingProvider
 from rag_service.infrastructure.ollama_rerank import OllamaRerankClient
 from rag_service.infrastructure.qdrant_repository import QdrantRagRepository
 
-try:
-    from config import (
-        get_ollama_chat_model,
-        get_ollama_chat_url,
-        get_ollama_embed_url,
-        get_ollama_generate_url,
-        get_ollama_rerank_model,
-        get_qdrant_url,
-    )
-    from config import QDRANT_CONFIG
-except ImportError:
-    get_qdrant_url = lambda: "http://localhost:6333"  # type: ignore
-    get_ollama_embed_url = lambda: "http://localhost:11434/api/embed"  # type: ignore
-    get_ollama_generate_url = lambda: "http://localhost:11434/api/generate"  # type: ignore
-    get_ollama_chat_url = lambda: "http://localhost:11434/api/chat"  # type: ignore
-    get_ollama_chat_model = lambda: ""  # type: ignore
-    get_ollama_rerank_model = lambda: ""  # type: ignore  # no Ollama model id without project config
-    QDRANT_CONFIG = {}  # type: ignore
+from rag_service.config import (
+    QDRANT_CONFIG,
+    get_ollama_chat_model,
+    get_ollama_chat_url,
+    get_ollama_embed_url,
+    get_ollama_generate_url,
+    get_ollama_rerank_model,
+    get_qdrant_url,
+)
 
 
 def default_rag_repository(
@@ -43,6 +30,7 @@ def default_rag_repository(
         base_url=qdrant_url or get_qdrant_url(),
         collection_file=collection_file,
         default_collection=collection,
+        explicit_collection=collection_name,
     )
 
 

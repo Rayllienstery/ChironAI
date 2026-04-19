@@ -1,9 +1,4 @@
-"""
-Flask RAG API for rag_service.
-
-Exposes /health, /v1/models, /v1/chat/completions. Run with project root on PYTHONPATH
-so config and config.rag_prompts are available.
-"""
+"""Flask RAG API for rag_service."""
 
 from __future__ import annotations
 
@@ -13,15 +8,15 @@ import uuid
 
 from flask import Flask, Response, jsonify, request
 
-from domain.entities.rag import RagQuestionRequest
-from domain.services.prompt_builder import determine_reasoning_level, last_user_content
-from infrastructure.stack_health import check_stack_health
 from rag_service.application.params import get_rag_answer_params
 from rag_service.application.use_cases import (
     answer_question,
     build_rag_context,
     prepare_ollama_messages,
 )
+from rag_service.domain.entities import RagQuestionRequest
+from rag_service.domain.services.prompt_builder import determine_reasoning_level, last_user_content
+from rag_service.runtime import RagRuntime
 
 _LOG = logging.getLogger("rag_service.api")
 
@@ -34,6 +29,7 @@ def create_app(
     """Create Flask app with RAG routes."""
     app = Flask(__name__)
     params, deps = get_rag_answer_params(webui_dir=webui_dir)
+    runtime = RagRuntime()
     prefix = system_prefix if system_prefix is not None else params.system_prefix
     suffix = system_suffix if system_suffix is not None else params.system_suffix
     context_chunk_chars = params.context_chunk_chars
@@ -47,8 +43,17 @@ def create_app(
 
     @app.route("/health", methods=["GET"])
     def health() -> Response:
-        result = check_stack_health()
-        return jsonify(result.to_json_dict(service="rag_service")), result.http_status
+        runtime_health = runtime.health()
+        payload = {
+            "service": "rag_service",
+            "components": {
+                "ollama": "healthy" if runtime_health.get("ollama", {}).get("running") else "unhealthy",
+                "qdrant": "healthy" if runtime_health.get("qdrant", {}).get("running") else "unhealthy",
+            },
+            "runtime": runtime_health,
+        }
+        status = 200 if payload["components"]["ollama"] == "healthy" and payload["components"]["qdrant"] == "healthy" else 503
+        return jsonify(payload), status
 
     @app.route("/v1/models", methods=["GET"])
     def list_models() -> Response:
