@@ -616,6 +616,98 @@
   font: var(--md-sys-typescale-body-small-font);
 }
 
+.rag-tests-live-monitor {
+  margin-bottom: 8px;
+}
+
+.rag-tests-live-monitor-panel {
+  border-radius: var(--md-sys-shape-corner-small, 6px);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-low);
+  padding: 8px 10px;
+}
+
+.rag-tests-live-monitor-scroll {
+  font: var(--md-sys-typescale-body-small-font);
+  line-height: 1.35;
+  max-height: calc(15 * 1.35em);
+  overflow-y: auto;
+}
+
+.rag-tests-live-line {
+  margin: 0 0 6px 0;
+  color: var(--md-sys-color-on-surface);
+}
+
+.rag-tests-live-empty {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.rag-tests-live-sse {
+  margin: 0 0 8px 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-lowest);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: calc(4 * 1.35em);
+  overflow-y: auto;
+  font-size: 0.82rem;
+}
+
+.rag-tests-live-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rag-tests-live-step-item {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.rag-tests-live-step-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rag-tests-live-step-status {
+  font-weight: 600;
+}
+
+.rag-tests-live-step-status.pass {
+  color: var(--md-sys-color-primary);
+}
+
+.rag-tests-live-step-status.fail {
+  color: var(--md-sys-color-error);
+}
+
+.rag-tests-live-step-duration {
+  color: var(--md-sys-color-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+.rag-tests-live-step-item-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rag-tests-live-step-breakdown {
+  margin: 0 0 2px 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
 .rag-tests-history-table {
   width: 100%;
   border-collapse: collapse;

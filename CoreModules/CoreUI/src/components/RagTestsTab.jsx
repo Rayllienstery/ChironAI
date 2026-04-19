@@ -8,6 +8,7 @@ import {
   getModels,
   getPrompts,
   getRagCollections,
+  getProxyTraceCurrent,
   getRagTests,
   getRagTest,
   getRagTestRuns,
@@ -97,6 +98,15 @@ function RagTestsTab({
   const [selectedCollection, setSelectedCollection] = useState('');
   const [prompts, setPrompts] = useState([]);
   const [selectedPromptName, setSelectedPromptName] = useState('');
+  const [liveMonitorOpen, setLiveMonitorOpen] = useState(true);
+  const [currentStepStartedAt, setCurrentStepStartedAt] = useState(null);
+  const [liveNowMs, setLiveNowMs] = useState(Date.now());
+  const [liveSse, setLiveSse] = useState({
+    available: false,
+    active: false,
+    text: '',
+    updatedAt: '',
+  });
 
   const loadCollections = useCallback(async () => {
     try {
@@ -235,6 +245,78 @@ function RagTestsTab({
       loadRunHistory();
     }
   }, [running, runJobId, loadRunHistory]);
+
+  useEffect(() => {
+    if (!running) {
+      setCurrentStepStartedAt(null);
+      return;
+    }
+    if (runProgress?.current_test_name) {
+      setCurrentStepStartedAt(Date.now());
+    }
+  }, [running, runProgress?.current_index, runProgress?.current_test_name]);
+
+  useEffect(() => {
+    if (!running || !liveMonitorOpen) return undefined;
+    const id = setInterval(() => setLiveNowMs(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [running, liveMonitorOpen]);
+
+  useEffect(() => {
+    if (!running || !liveMonitorOpen) {
+      setLiveSse((prev) => ({ ...prev, available: false, active: false, text: '' }));
+      return undefined;
+    }
+    const progressAvailable = Boolean(runProgress?.sse_enabled);
+    const progressPreview = String(runProgress?.sse_preview || '');
+    if (progressAvailable || progressPreview) return undefined;
+    let cancelled = false;
+    let timer = null;
+
+    const tick = async () => {
+      try {
+        const data = await getProxyTraceCurrent();
+        if (cancelled) return;
+        const trace = data?.trace || null;
+        const streamEnabled = Boolean(trace?.request?.stream || trace?.ollama?.chat_stream);
+        const preview = String(trace?.response?.content_preview || '');
+        setLiveSse({
+          available: streamEnabled,
+          active: streamEnabled && preview.trim() !== '',
+          text: preview,
+          updatedAt: String(data?.updated_at || ''),
+        });
+      } catch {
+        if (!cancelled) {
+          setLiveSse((prev) => ({ ...prev, available: false, active: false }));
+        }
+      } finally {
+        if (!cancelled) timer = setTimeout(tick, 900);
+      }
+    };
+
+    void tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [running, liveMonitorOpen, runJobId, runProgress?.sse_enabled, runProgress?.sse_preview]);
+
+  useEffect(() => {
+    if (!running) return;
+    const progressPreview = String(runProgress?.sse_preview || '');
+    const progressAvailable = Boolean(runProgress?.sse_enabled);
+    if (!progressAvailable && !progressPreview) return;
+    setLiveSse((prev) => {
+      const nextText = progressPreview || '';
+      return {
+        ...prev,
+        available: progressAvailable,
+        active: progressAvailable && nextText.trim() !== '',
+        text: nextText,
+      };
+    });
+  }, [running, runProgress?.sse_enabled, runProgress?.sse_preview]);
 
   useEffect(() => {
     if (!resultDetailModal) return undefined;
@@ -541,6 +623,26 @@ function RagTestsTab({
   const tableRows = isViewingPastRun
     ? displayResults
     : filteredTests;
+  const previousSteps = [...(results || [])]
+    .filter((r) => r && (r.test_name || r.test_id))
+    .slice(-12)
+    .reverse();
+  const currentStepElapsedMs = currentStepStartedAt && running
+    ? Math.max(0, liveNowMs - currentStepStartedAt)
+    : null;
+
+  const formatDuration = (ms) => {
+    if (ms == null || Number.isNaN(Number(ms))) return '-';
+    const n = Math.max(0, Math.round(Number(ms)));
+    if (n < 1000) return `${n} ms`;
+    return `${(n / 1000).toFixed(1)} s`;
+  };
+  const formatSeconds = (v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '-';
+    return `${n.toFixed(2)} s`;
+  };
+
   const formatRunDate = (iso) => {
     if (!iso) return '-';
     try {
@@ -905,6 +1007,67 @@ function RagTestsTab({
               </>
             )}
           </div>
+        )}
+      </div>
+
+      <div className="rag-tests-live-monitor">
+        <button
+          type="button"
+          className="rag-tests-history-toggle"
+          onClick={() => setLiveMonitorOpen((v) => !v)}
+          aria-expanded={liveMonitorOpen}
+        >
+          {liveMonitorOpen ? '[-]' : '[+]'} Live test monitor
+        </button>
+        {liveMonitorOpen && (
+          <Card className="rag-tests-live-monitor-panel" elevation="var(--md-sys-elevation-level1)">
+            <div className="rag-tests-live-monitor-scroll">
+              <p className="rag-tests-live-line">
+                <strong>Current step:</strong> {runProgress?.current_test_name || 'idle'}
+              </p>
+              <p className="rag-tests-live-line">
+                <strong>Timer:</strong> {formatDuration(currentStepElapsedMs)}
+              </p>
+              <p className="rag-tests-live-line">
+                <strong>SSE:</strong>{' '}
+                {liveSse.available
+                  ? liveSse.active
+                    ? 'streaming'
+                    : 'enabled (no chunks yet)'
+                  : 'not available for this request'}
+              </p>
+              {liveSse.text ? (
+                <pre className="rag-tests-live-sse">{liveSse.text}</pre>
+              ) : null}
+              <p className="rag-tests-live-line">
+                <strong>Previous steps:</strong>
+              </p>
+              <div className="rag-tests-live-steps">
+                {previousSteps.length === 0 ? (
+                  <p className="rag-tests-live-line rag-tests-live-empty">No completed steps yet.</p>
+                ) : (
+                  previousSteps.map((item, idx) => (
+                    <div key={`${item.test_id || item.test_name}-${idx}`} className="rag-tests-live-step-item-wrap">
+                      <p className="rag-tests-live-step-item">
+                        <span className="rag-tests-live-step-name">{item.test_name || item.test_id}</span>
+                        <span className={`rag-tests-live-step-status ${(item.status || '').toLowerCase()}`}>
+                          {item.status || '-'}
+                        </span>
+                        <span className="rag-tests-live-step-duration">
+                          {formatDuration(item.response_time_ms ?? item.latency_ms)}
+                        </span>
+                      </p>
+                      {item.rag_timings ? (
+                        <p className="rag-tests-live-step-breakdown">
+                          embed {formatSeconds(item.rag_timings.embed_s)} | search {formatSeconds(item.rag_timings.search_s)} | rerank {formatSeconds(item.rag_timings.rerank_s)} | rag {formatSeconds(item.rag_timings.total_rag_s)} | chat {formatSeconds(item.rag_timings.chat_s_estimated)}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </Card>
         )}
       </div>
 

@@ -184,6 +184,15 @@ export function RagResultDetailModal({ detail, onClose }) {
   const rawChunks = lm && (lm.chunks_info?.length ? lm.chunks_info : lm.retrieved_chunks);
   const chunks = Array.isArray(rawChunks) ? rawChunks : [];
   const ragQ = (lm && lm.rag_queries) || [];
+  const ragTimings = lm && lm.rag_timings && typeof lm.rag_timings === 'object' ? lm.rag_timings : null;
+  const traceSteps = lm && Array.isArray(lm.trace_steps)
+    ? lm.trace_steps.filter((s) => s && typeof s === 'object')
+    : [];
+  const fmtSec = (v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '-';
+    return `${n.toFixed(2)} s`;
+  };
 
   return (
     <div
@@ -210,11 +219,11 @@ export function RagResultDetailModal({ detail, onClose }) {
         </div>
         <p className="rag-tests-result-modal-meta">
           <span className="rag-tests-result-id">{tm.id}</span>
-          {lm?.model && <span> · Model: {lm.model}</span>}
+          {lm?.model && <span> | Model: {lm.model}</span>}
           {lm?.status && (
             <span className={`rag-tests-status ${(lm.status || "").toLowerCase()}`}>
               {" "}
-              · {lm.status}
+              | {lm.status}
             </span>
           )}
         </p>
@@ -231,17 +240,44 @@ export function RagResultDetailModal({ detail, onClose }) {
             <section className="rag-tests-result-section">
               <h4>Metrics</h4>
               <p className="rag-tests-detail-metrics">
-                Latency: {lm.latency_ms ?? lm.response_time_ms ?? "—"} ms
-                {lm.prompt_tokens != null && ` · Prompt tokens: ${lm.prompt_tokens}`}
+                Latency: {lm.latency_ms ?? lm.response_time_ms ?? "-"} ms
+                {lm.prompt_tokens != null && ` | Prompt tokens: ${lm.prompt_tokens}`}
                 {lm.completion_tokens != null &&
-                  ` · Completion tokens: ${lm.completion_tokens}`}
-                {lm.total_tokens != null && ` · Total tokens: ${lm.total_tokens}`}
+                  ` | Completion tokens: ${lm.completion_tokens}`}
+                {lm.total_tokens != null && ` | Total tokens: ${lm.total_tokens}`}
                 {lm.context_chars != null &&
                   lm.context_chars > 0 &&
-                  ` · Context chars: ${lm.context_chars}`}
+                  ` | Context chars: ${lm.context_chars}`}
               </p>
             </section>
           )}
+        {ragTimings && (
+          <section className="rag-tests-result-section">
+            <h4>Pipeline timings</h4>
+            <p className="rag-tests-detail-metrics">
+              embed: {fmtSec(ragTimings.embed_s)}
+              {' | '}search: {fmtSec(ragTimings.search_s)}
+              {' | '}rerank: {fmtSec(ragTimings.rerank_s)}
+              {' | '}rag_total: {fmtSec(ragTimings.total_rag_s)}
+              {' | '}chat_estimated: {fmtSec(ragTimings.chat_s_estimated)}
+              {' | '}latency_total: {fmtSec(ragTimings.latency_s_total)}
+            </p>
+          </section>
+        )}
+        {traceSteps.length > 0 && (
+          <section className="rag-tests-result-section">
+            <h4>Pipeline steps</h4>
+            <ul className="rag-tests-rag-query-list">
+              {traceSteps.map((s, i) => (
+                <li key={`${s.name || 'step'}-${i}`}>
+                  <span className="rag-tests-rag-query-meta">
+                    {String(s.name || `step_${i}`)} | {Number(s.duration_ms || 0)} ms
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {lm?.failure_reason && (
           <section className="rag-tests-result-section">
             <h4>Failure reason</h4>
@@ -277,10 +313,10 @@ export function RagResultDetailModal({ detail, onClose }) {
               {ragQ.map((q, i) => (
                 <li key={i}>
                   <span className="rag-tests-rag-query-meta">
-                    {q.step != null && <>Step {q.step} · </>}
-                    {q.chunks != null && <>chunks {q.chunks} · </>}
+                    {q.step != null && <>Step {q.step} | </>}
+                    {q.chunks != null && <>chunks {q.chunks} | </>}
                     {q.ok === false && (
-                      <span className="rag-tests-detail-error">failed · </span>
+                      <span className="rag-tests-detail-error">failed | </span>
                     )}
                   </span>
                   <pre className="rag-tests-pre rag-tests-pre-tight">

@@ -8,6 +8,7 @@ Provides enhanced chat endpoint with RAG metadata and in-memory request buffer f
 from __future__ import annotations
 
 import difflib
+import inspect
 import json
 import logging
 import os
@@ -131,6 +132,28 @@ TRASH_DIR = PROMPTS_DIR / ".trash"
 def is_readme_name(name: str) -> bool:
     """Check if a prompt name is README (case-insensitive)."""
     return name.lower() == "readme"
+
+
+def _get_rag_answer_params_compat(
+    *,
+    webui_dir: str | None = None,
+    collection_name: str | None = None,
+    prompt_name: str | None = None,
+) -> tuple[Any, Any]:
+    """Call get_rag_answer_params with backward/forward compatible kwargs."""
+    kwargs: dict[str, Any] = {}
+    if webui_dir is not None:
+        kwargs["webui_dir"] = webui_dir
+    if collection_name is not None:
+        kwargs["collection_name"] = collection_name
+    if prompt_name:
+        try:
+            sig = inspect.signature(get_rag_answer_params)
+            if "prompt_name" in sig.parameters:
+                kwargs["prompt_name"] = prompt_name
+        except (TypeError, ValueError):
+            pass
+    return get_rag_answer_params(**kwargs)
 
 
 def _get_rag_required_keywords_from_module() -> list[str] | None:
@@ -1240,7 +1263,7 @@ def webui_chat() -> Any:
         possible_webui = os.path.join(_ROOT, "WebUI")
         if os.path.isdir(possible_webui):
             webui_dir = possible_webui
-        params, deps = get_rag_answer_params(
+        params, deps = _get_rag_answer_params_compat(
             webui_dir=webui_dir,
             collection_name=collection_name,
             prompt_name=prompt_name,
@@ -1378,6 +1401,19 @@ def webui_chat() -> Any:
         completion_tokens = _approx_tokens(content or "")
         total_tokens = prompt_tokens + completion_tokens
         set_latest_request_total_tokens(total_tokens)
+        rag_timings_out: dict[str, float] = {}
+        if isinstance(rag_timings, dict):
+            for k in ("embed_s", "search_s", "rerank_s", "total_rag_s"):
+                try:
+                    if rag_timings.get(k) is not None:
+                        rag_timings_out[k] = float(rag_timings.get(k) or 0.0)
+                except (TypeError, ValueError):
+                    pass
+        if "total_rag_s" in rag_timings_out:
+            rag_total_s = max(0.0, float(rag_timings_out.get("total_rag_s") or 0.0))
+            rag_timings_out["chat_s_estimated"] = max(0.0, (latency_ms / 1000.0) - rag_total_s)
+        if rag_timings_out:
+            rag_timings_out["latency_s_total"] = max(0.0, latency_ms / 1000.0)
 
         # Build response
         response_data: dict[str, Any] = {
@@ -1413,6 +1449,8 @@ def webui_chat() -> Any:
                 "system_prompt_preview": system_preview,
                 "rag_queries": [{"query": (last_user or "")[:2000], "step": 0}],
             }
+            if rag_timings_out:
+                _rm["rag_timings"] = rag_timings_out
             _rt = getattr(ctx, "rag_trace", None)
             if isinstance(_rt, list):
                 _rm["rag_trace"] = _rt
@@ -2031,7 +2069,7 @@ def tester_chat() -> Any:
         except Exception:
             pass
 
-        params, deps = get_rag_answer_params(
+        params, deps = _get_rag_answer_params_compat(
             collection_name=collection_name,
             prompt_name=prompt_name if use_rag else None,
         )
@@ -5650,6 +5688,28 @@ def _get_rag_tests_module():
         return None, None, None, None, None
 
 
+def _find_trace_by_client_request_id(request_id: str) -> dict[str, Any] | None:
+    """Find most recent trace for a request id from in-memory ring buffer/current snapshot."""
+    rid = str(request_id or "").strip()
+    if not rid:
+        return None
+    try:
+        for tr in reversed(recent_proxy_traces(limit=80)):
+            if not isinstance(tr, dict):
+                continue
+            req = tr.get("request") if isinstance(tr.get("request"), dict) else {}
+            if str(req.get("client_request_id") or "") == rid:
+                return tr
+    except Exception:
+        pass
+    tr = get_current_trace() or {}
+    if isinstance(tr, dict):
+        req = tr.get("request") if isinstance(tr.get("request"), dict) else {}
+        if str(req.get("client_request_id") or "") == rid:
+            return tr
+    return None
+
+
 @webui_bp.route("/rag-tests", methods=["GET"])
 def rag_tests_list() -> Any:
     """List all RAG tests, optionally filtered by platform, framework, difficulty."""
@@ -6018,22 +6078,36 @@ def _rag_tests_run_worker(
                     "passed": passed,
                     "failed": failed,
                     "pending": total - i - 1,
+                    "sse_enabled": False,
+                    "sse_preview": "",
                 }
                 _rag_test_jobs[job_id]["results"] = list(results)
             question = test.get("question") or ""
             start_time = time.time()
             try:
+                request_id = f"ragtest-{job_id}-{i+1}"
                 chat_payload: dict[str, Any] = {
                     "messages": [{"role": "user", "content": question}],
                     "model": model,
-                    "include_rag_metadata": True,
                     "collection_name": collection_name,
                     # Force RAG for test runs to validate retrieval and strict overlap
                     "force_rag": True,
+                    "stream": True,
+                    "include_rag_metadata": True,
+                    "testing_disable_rerank": True,
+                    "client_request_id": request_id,
                 }
                 if prompt_name:
                     chat_payload["prompt_name"] = prompt_name
-                resp = client.post("/api/webui/chat", json=chat_payload)
+                resp = client.post("/v1/chat/completions", json=chat_payload, buffered=False)
+                content_type = str(resp.headers.get("Content-Type") or "")
+                is_sse_response = "text/event-stream" in content_type.lower()
+                with _rag_test_jobs_lock:
+                    job = _rag_test_jobs.get(job_id)
+                    if job:
+                        pr = dict(job.get("progress") or {})
+                        pr["sse_enabled"] = bool(is_sse_response)
+                        job["progress"] = pr
                 elapsed_ms = int((time.time() - start_time) * 1000)
                 if resp.status_code != 200:
                     data = resp.get_json(silent=True) or {}
@@ -6066,12 +6140,76 @@ def _rag_tests_run_worker(
                     results.append(result)
                     failed += 1
                     continue
-                data = resp.get_json(silent=True) or {}
-                choices = data.get("choices") or []
-                content = (choices[0].get("message") or {}).get("content", "") if choices else ""
-                rag_metadata = data.get("rag_metadata") or {}
-                usage = data.get("usage") or {}
-                latency_ms = data.get("latency_ms") or rag_metadata.get("latency_ms") or elapsed_ms
+
+                sse_buf = ""
+                sse_full = ""
+                for piece in resp.response:
+                    text = piece.decode("utf-8", errors="replace") if isinstance(piece, (bytes, bytearray)) else str(piece)
+                    sse_buf += text
+                    while "\n" in sse_buf:
+                        line, sse_buf = sse_buf.split("\n", 1)
+                        line = line.strip()
+                        if not line.startswith("data:"):
+                            continue
+                        payload = line[5:].strip()
+                        if not payload or payload == "[DONE]":
+                            continue
+                        try:
+                            obj = json.loads(payload)
+                        except Exception:
+                            continue
+                        choices = obj.get("choices") if isinstance(obj, dict) else None
+                        if not isinstance(choices, list) or not choices:
+                            continue
+                        delta = choices[0].get("delta") if isinstance(choices[0], dict) else None
+                        if not isinstance(delta, dict):
+                            continue
+                        part = delta.get("content")
+                        if isinstance(part, str) and part:
+                            sse_full += part
+                            with _rag_test_jobs_lock:
+                                job = _rag_test_jobs.get(job_id)
+                                if job:
+                                    pr = dict(job.get("progress") or {})
+                                    pr["sse_enabled"] = bool(is_sse_response)
+                                    pr["sse_preview"] = sse_full[-1600:]
+                                    job["progress"] = pr
+
+                content = sse_full
+                trace = _find_trace_by_client_request_id(request_id) or {}
+                trace_ok = bool(trace)
+                trace_rag = trace.get("rag") if trace_ok and isinstance(trace.get("rag"), dict) else {}
+                trace_ctx = trace_rag.get("context") if isinstance(trace_rag.get("context"), dict) else {}
+                trace_chunks = trace_ctx.get("chunks") if isinstance(trace_ctx.get("chunks"), list) else []
+                trace_timings = trace_rag.get("timings") if isinstance(trace_rag.get("timings"), dict) else {}
+                trace_ollama = trace.get("ollama") if trace_ok and isinstance(trace.get("ollama"), dict) else {}
+                trace_tokens = trace_ollama.get("tokens_estimates") if isinstance(trace_ollama.get("tokens_estimates"), dict) else {}
+                trace_resp = trace.get("response") if trace_ok and isinstance(trace.get("response"), dict) else {}
+                latency_ms = int(trace_resp.get("latency_ms") or elapsed_ms)
+                if isinstance(trace_timings, dict):
+                    trace_timings = dict(trace_timings)
+                    try:
+                        total_rag_s = float(trace_timings.get("total_rag_s") or 0.0)
+                    except Exception:
+                        total_rag_s = 0.0
+                    trace_timings["chat_s_estimated"] = max(0.0, (latency_ms / 1000.0) - total_rag_s)
+                    trace_timings["latency_s_total"] = max(0.0, latency_ms / 1000.0)
+                trace_steps = trace.get("steps") if trace_ok and isinstance(trace.get("steps"), list) else []
+                rag_metadata = {
+                    "chunks_info": trace_chunks,
+                    "max_score": trace_ctx.get("max_score") if isinstance(trace_ctx, dict) else None,
+                    "chunks_count": len(trace_chunks),
+                    "latency_ms": latency_ms,
+                    "context_chars": trace_ctx.get("context_chars_used") if isinstance(trace_ctx, dict) else None,
+                    "rag_queries": [{"query": (question or "")[:2000], "step": 0}],
+                    "rag_timings": trace_timings if isinstance(trace_timings, dict) else None,
+                }
+                usage = {
+                    "prompt_tokens": trace_tokens.get("prompt_tokens_estimated"),
+                    "completion_tokens": trace_tokens.get("completion_tokens_estimated"),
+                    "total_tokens": trace_tokens.get("total_tokens_estimated"),
+                }
+                rag_timings = rag_metadata.get("rag_timings") if isinstance(rag_metadata.get("rag_timings"), dict) else None
                 validation = validate_result(test, content, rag_metadata)
                 result = {
                     "test_id": test.get("id"),
@@ -6095,6 +6233,8 @@ def _rag_tests_run_worker(
                     "completion_tokens": usage.get("completion_tokens"),
                     "total_tokens": usage.get("total_tokens"),
                     "context_chars": rag_metadata.get("context_chars"),
+                    "rag_timings": rag_timings,
+                    "trace_steps": trace_steps,
                 }
                 if validation.get("failure_reason") is not None:
                     result["failure_reason"] = validation["failure_reason"]
@@ -6103,6 +6243,12 @@ def _rag_tests_run_worker(
                     passed += 1
                 else:
                     failed += 1
+                with _rag_test_jobs_lock:
+                    job = _rag_test_jobs.get(job_id)
+                    if job:
+                        pr = dict(job.get("progress") or {})
+                        pr["sse_preview"] = ""
+                        job["progress"] = pr
             except Exception as e:
                 _ERROR_LOG.exception("rag_tests_run single test")
                 _elapsed = int((time.time() - start_time) * 1000)

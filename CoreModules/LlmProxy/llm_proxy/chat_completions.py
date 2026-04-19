@@ -658,6 +658,7 @@ def run_chat_completions(
     tool_choice_effective = tool_choice if tool_choice not in (None, "") else "auto"
     if openai_tool_choice_means_none(tool_choice):
         tool_choice_effective = "none"
+    testing_disable_rerank = bool(body.get("testing_disable_rerank"))
     explicit_reasoning = body.get("reasoning_level") or body.get("reasoning")
     if dumb_build_pipeline and "include_rag_metadata" not in body:
         include_rag_metadata = bool(proxy_settings.get("include_rag_metadata", False))
@@ -820,7 +821,7 @@ def run_chat_completions(
     proxy_prompt_name_required: str | None = None
     if system_prefix is None:
         if use_prompt_template_enabled:
-            _pn = str(proxy_settings.get("prompt_name") or "").strip()
+            _pn = str(body.get("prompt_name") or "").strip() or str(proxy_settings.get("prompt_name") or "").strip()
             if not _pn or not rag_prompt_file_exists(_pn):
                 w.set_proxy_status(w.status_idle)
                 return jsonify(
@@ -917,6 +918,8 @@ def run_chat_completions(
         "reasoning_for_prompt": reasoning_for_prompt,
         "user_query_preview": (user_query or "")[:500],
         "is_autocomplete": bool(is_autocomplete),
+        "testing_disable_rerank": bool(testing_disable_rerank),
+        "client_request_id": str(body.get("client_request_id") or "").strip() or None,
     }
 
     # IDE-independent mode: do not fail fast solely on schema checks.
@@ -1079,7 +1082,9 @@ def run_chat_completions(
 
     # Proxy: do not read settings from DB; rerank is configurable via proxy_rerank_enabled.
     effective_rerank_client = (
-        effective_base_rerank_client if w.get_proxy_rerank_enabled() else None
+        effective_base_rerank_client
+        if (w.get_proxy_rerank_enabled() and not testing_disable_rerank)
+        else None
     )
     rag_keywords = w.get_rag_required_keywords()
 
