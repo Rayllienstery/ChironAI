@@ -621,7 +621,7 @@ def build_rag_context(
         count = len(chunks_info)
         if count:
             sources = list({c.get("doc_type") or "N/A" for c in chunks_info})
-            _rag_log.info(
+            _rag_log.debug(
                 "RAG chunks count=%s max_score=%.2f sources=%s embed_s=%.2f search_s=%.2f rerank_s=%.2f total_rag_s=%.2f",
                 count,
                 max_score,

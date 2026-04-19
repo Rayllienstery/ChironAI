@@ -35,6 +35,13 @@ logging.basicConfig(
 )
 # Werkzeug logs every HTTP request at INFO; hide that noise (errors still use WARNING+).
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
+_rag_verbose = (os.getenv("RAG_VERBOSE_LOGS", "0") or "").strip().lower() in ("1", "true", "yes", "on")
+if not _rag_verbose:
+    # Keep cmd output clean: show only warnings/errors for routine RAG and HTTP client operations.
+    logging.getLogger("trag.rag").setLevel(logging.WARNING)
+    logging.getLogger("llm_proxy").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 # Frontend: CoreUI (React) under CoreModules

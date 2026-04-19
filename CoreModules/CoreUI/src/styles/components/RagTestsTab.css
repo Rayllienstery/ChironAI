@@ -52,6 +52,15 @@
   color: var(--md-sys-color-on-surface-variant);
 }
 
+.rag-tests-slider-label {
+  min-width: 160px;
+}
+
+.rag-tests-range {
+  width: 170px;
+  accent-color: var(--md-sys-color-primary);
+}
+
 .rag-tests-select {
   padding: 6px 10px;
   border-radius: var(--md-sys-shape-corner-small, 4px);
@@ -597,6 +606,20 @@
   text-align: center;
 }
 
+.rag-tests-history-compare-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 12px;
+  flex-wrap: wrap;
+}
+
+.rag-tests-history-compare-selected {
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+  margin-right: auto;
+}
+
 .rag-tests-history-section {
   margin-bottom: 12px;
 }
@@ -865,6 +888,10 @@
   background: var(--md-sys-color-surface-container-high);
 }
 
+.rag-tests-history-row.selected {
+  background: var(--md-sys-color-primary-container);
+}
+
 .rag-tests-stat-passed {
   color: var(--md-sys-color-primary);
   font-weight: 600;
@@ -1005,4 +1032,153 @@
 .rag-tests-fail-table th,
 .rag-tests-fail-table td {
   font-size: 0.8rem;
+}
+
+.rag-tests-compare-modal {
+  z-index: 1200;
+}
+
+.rag-tests-compare-modal-content {
+  width: 98vw;
+  max-width: 98vw;
+  max-height: 95vh;
+  height: 95vh;
+  overflow-y: auto;
+}
+
+.rag-tests-compare-run-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.rag-tests-compare-run-card {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium, 10px);
+  background: var(--md-sys-color-surface-container-lowest);
+  padding: 12px;
+}
+
+.rag-tests-compare-run-card h4 {
+  margin: 0 0 6px;
+}
+
+.rag-tests-compare-vs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-medium, 10px);
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-title-small-font);
+}
+
+.rag-tests-compare-table {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rag-tests-compare-head {
+  display: none;
+}
+
+.rag-tests-compare-row,
+.rag-tests-compare-test-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.rag-tests-compare-cell {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small, 6px);
+  padding: 10px;
+  background: var(--md-sys-color-surface-container-lowest);
+}
+
+.rag-tests-compare-delta {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small, 6px);
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-primary);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: var(--md-sys-typescale-title-small-font);
+  font-weight: 700;
+}
+
+.rag-tests-compare-delta-stack {
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+}
+
+.rag-tests-compare-tests {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rag-tests-compare-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.rag-tests-compare-toolbar h4 {
+  margin: 0;
+}
+
+.rag-tests-compare-focus-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rag-tests-compare-delta.positive {
+  color: var(--md-sys-color-primary);
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 40%, var(--md-sys-color-outline-variant));
+  background: color-mix(in srgb, var(--md-sys-color-primary-container) 35%, transparent);
+}
+
+.rag-tests-compare-delta.negative {
+  color: var(--md-sys-color-error);
+  border-color: color-mix(in srgb, var(--md-sys-color-error) 40%, var(--md-sys-color-outline-variant));
+  background: color-mix(in srgb, var(--md-sys-color-error-container) 45%, transparent);
+}
+
+.rag-tests-compare-delta.neutral {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.rag-tests-compare-delta-value.positive {
+  color: var(--md-sys-color-primary);
+}
+
+.rag-tests-compare-delta-value.negative {
+  color: var(--md-sys-color-error);
+}
+
+.rag-tests-compare-delta-value.neutral {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+@media (max-width: 980px) {
+  .rag-tests-compare-run-cards,
+  .rag-tests-compare-row,
+  .rag-tests-compare-test-row {
+    grid-template-columns: 1fr;
+  }
+
+  .rag-tests-compare-vs {
+    min-height: 44px;
+  }
 }

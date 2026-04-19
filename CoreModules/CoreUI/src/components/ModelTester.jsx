@@ -166,7 +166,6 @@ function ModelTester({ sessionId }) {
           top_k: settings.use_rag ? settings.top_k : undefined,
           collection_name: settings.use_rag && settings.rag_collection ? settings.rag_collection : undefined,
           fetch_web_knowledge: settings.use_rag && settings.fetch_web_knowledge,
-          tester_proxy_mode: 'rag_fusion',
         }
       );
 

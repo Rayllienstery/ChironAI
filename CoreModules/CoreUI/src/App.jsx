@@ -82,6 +82,17 @@ function clampServiceStatusPollSec(raw) {
   return Math.min(300, Math.max(2, n));
 }
 
+function isTransientFetchLikeError(message) {
+  const lower = String(message || "").toLowerCase();
+  return (
+    lower.includes("failed to fetch") ||
+    lower.includes("networkerror") ||
+    lower.includes("load failed") ||
+    lower.includes("failed to get run status") ||
+    lower.includes("typeerror: failed to fetch")
+  );
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [scrollToRagModelsSection, setScrollToRagModelsSection] =
@@ -93,6 +104,7 @@ function App() {
   const [ragTestRunProgress, setRagTestRunProgress] = useState(null);
   const [ragTestRunResults, setRagTestRunResults] = useState([]);
   const [ragTestRunError, setRagTestRunError] = useState(null);
+  const ragTestStatusPollFailuresRef = useRef(0);
   const [llmProxyFocusSubTab, setLlmProxyFocusSubTab] = useState(null);
   const [llmProxyBuildsFocusSubTab, setLlmProxyBuildsFocusSubTab] = useState(null);
   const [tabErrors, setTabErrors] = useState({});
@@ -215,9 +227,14 @@ function App() {
 
   useEffect(() => {
     if (!ragTestRunJobId || !ragTestRunning) return;
+    let cancelled = false;
+    let t;
+
     const poll = async () => {
+      let nextDelayMs = 500;
       try {
         const data = await getRagTestRunStatus(ragTestRunJobId);
+        ragTestStatusPollFailuresRef.current = 0;
         setRagTestRunProgress(data.progress || null);
         if (data.results && data.results.length > 0) {
           setRagTestRunResults(data.results);
@@ -231,16 +248,43 @@ function App() {
           return;
         }
       } catch (e) {
-        setRagTestRunError(e.message);
-        setRagTestRunJobId(null);
-        setRagTestRunProgress(null);
-        setRagTestRunning(false);
-        return;
+        const msg = String(e?.message || "");
+        const lower = msg.toLowerCase();
+        const isTransient = isTransientFetchLikeError(msg);
+        const isNotFound = lower.includes("job not found");
+
+        ragTestStatusPollFailuresRef.current += 1;
+        const failures = ragTestStatusPollFailuresRef.current;
+
+        if (isNotFound && failures >= 12) {
+          setRagTestRunError(
+            "Run status is no longer available in memory. Open Run history for final result."
+          );
+          setRagTestRunJobId(null);
+          setRagTestRunProgress(null);
+          setRagTestRunning(false);
+          return;
+        }
+
+        // Keep run state alive on polling errors (including unknown ones); only
+        // repeated "job not found" is treated as terminal.
+        nextDelayMs = Math.min(3000, 500 * Math.max(1, failures));
+        console.warn(
+          isTransient
+            ? "RAG test status polling transient error:"
+            : "RAG test status polling non-fatal error:",
+          msg || e
+        );
       }
-      t = setTimeout(poll, 500);
+      if (!cancelled) {
+        t = setTimeout(poll, nextDelayMs);
+      }
     };
-    let t = setTimeout(poll, 300);
-    return () => clearTimeout(t);
+    t = setTimeout(poll, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [ragTestRunJobId, ragTestRunning]);
 
   useEffect(() => {
@@ -255,6 +299,7 @@ function App() {
   const handleRagTestRunStart = async (body) => {
     setRagTestRunError(null);
     setRagTestRunResults([]);
+    ragTestStatusPollFailuresRef.current = 0;
     try {
       const data = await runRagTests(body);
       if (data.job_id) {

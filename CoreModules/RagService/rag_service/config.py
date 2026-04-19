@@ -211,6 +211,62 @@ def _merge_dict(dst: dict[str, Any], src: dict[str, Any]) -> dict[str, Any]:
     return dst
 
 
+def _load_yaml_file(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _repo_root_guess() -> Path | None:
+    """
+    Best-effort monorepo root for local/dev runs.
+
+    .../CoreModules/RagService/rag_service/config.py -> repo root is parents[3].
+    """
+    try:
+        return Path(__file__).resolve().parents[3]
+    except Exception:
+        return None
+
+
+def _load_host_repo_overlay() -> dict[str, Any]:
+    """
+    Overlay from project-wide config/*.yaml to avoid silent drift vs proxy/tester.
+
+    Applies only when running inside the monorepo and RAG_SERVICE_CONFIG is not set.
+    """
+    root = _repo_root_guess()
+    if root is None:
+        return {}
+    cfg_dir = root / "config"
+    if not cfg_dir.is_dir():
+        return {}
+
+    retrieval = (_load_yaml_file(cfg_dir / "retrieval.yaml").get("retrieval") or {})
+    indexing = (_load_yaml_file(cfg_dir / "indexing.yaml").get("indexing") or {})
+    rag = (_load_yaml_file(cfg_dir / "rag.yaml").get("rag") or {})
+    models = (_load_yaml_file(cfg_dir / "models.yaml").get("ollama") or {})
+    server = _load_yaml_file(cfg_dir / "server.yaml")
+    qdrant = (server.get("qdrant") or {}) if isinstance(server, dict) else {}
+
+    out: dict[str, Any] = {}
+    if isinstance(retrieval, dict):
+        out["retrieval"] = retrieval
+    if isinstance(indexing, dict):
+        out["indexing"] = indexing
+    if isinstance(rag, dict):
+        out["rag"] = rag
+    if isinstance(models, dict):
+        out["ollama"] = models
+    if isinstance(qdrant, dict):
+        out["qdrant"] = qdrant
+    return out
+
+
 @lru_cache(maxsize=1)
 def _config_data() -> dict[str, Any]:
     data: dict[str, Any] = {
@@ -228,6 +284,8 @@ def _config_data() -> dict[str, Any]:
             raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
             if isinstance(raw, dict):
                 _merge_dict(data, raw)
+    else:
+        _merge_dict(data, _load_host_repo_overlay())
     return data
 
 
@@ -331,6 +389,18 @@ def get_rag_float(key: str, default: float) -> float:
         return float(_section("rag").get(key, default))
     except (TypeError, ValueError):
         return default
+
+
+def get_rag_bool(key: str, default: bool = False) -> bool:
+    raw = _bool_env(f"RAG_{key.upper()}")
+    if raw is not None:
+        return raw
+    value = _section("rag").get(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value) if value is not None else default
 
 
 def get_ollama_chat_url() -> str:

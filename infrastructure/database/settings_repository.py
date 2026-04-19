@@ -61,8 +61,6 @@ class SettingsRepository:
                 settings["rag_collection"] = str(rc_flat.get("rag_collection") or "")
                 if "fetch_web_knowledge" in rc_flat:
                     settings["fetch_web_knowledge"] = bool(rc_flat.get("fetch_web_knowledge"))
-                if rc_flat.get("tester_proxy_mode") is not None:
-                    settings["tester_proxy_mode"] = "rag_fusion"
             else:
                 settings["rag_collection"] = ""
 
@@ -74,9 +72,6 @@ class SettingsRepository:
         rag_config["rag_collection"] = settings.get("rag_collection", "")
         if "fetch_web_knowledge" in settings:
             rag_config["fetch_web_knowledge"] = bool(settings.get("fetch_web_knowledge"))
-        tpm = settings.get("tester_proxy_mode")
-        if tpm is not None:
-            rag_config["tester_proxy_mode"] = "rag_fusion"
         rag_config_json = json.dumps(rag_config)
 
         with sqlite3.connect(self.db_path) as conn:

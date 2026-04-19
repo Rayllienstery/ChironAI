@@ -9,6 +9,7 @@ Order (must match docs / tests):
 5. if pipeline unavailable: same reject step via modules.md_indexer.application.steps
 6. strip noise sections (noise_section_headings)
 7. collapse excessive blank lines (_strip_markdown_simple equivalent)
+8. fallback reject_low_signal_body only when md_indexer pipeline is unavailable/fails
 """
 
 from __future__ import annotations
@@ -175,11 +176,13 @@ def prepare_markdown_for_indexing(
 
     rp = run_pipeline_fn or run_md_indexer_pipeline
     ap = active_pipeline_name_fn or get_active_pipeline_name
+    pipeline_applied = False
     if rp is not None and ap is not None:
         try:
             _meta_extra, body = rp(ap(), body)
             if isinstance(_meta_extra, dict) and _meta_extra:
                 page_meta = {**page_meta, **_meta_extra}
+            pipeline_applied = True
         except Exception:
             pass
 
@@ -187,8 +190,9 @@ def prepare_markdown_for_indexing(
     body = strip_noise_section_headings(body, noise)
     body = _collapse_whitespace(body)
 
-    # Final gate: same rule as pipeline step reject_low_signal_body (YAML noise can shrink text).
-    if step_reject_low_signal_body is not None and DEFAULT_REJECT_LOW_SIGNAL_PARAMS:
+    # Final gate fallback when md_indexer pipeline isn't available (or failed before applying).
+    # If pipeline ran, its own reject_low_signal_body step is the single source of truth.
+    if (not pipeline_applied) and step_reject_low_signal_body is not None and DEFAULT_REJECT_LOW_SIGNAL_PARAMS:
         body = step_reject_low_signal_body(body, dict(DEFAULT_REJECT_LOW_SIGNAL_PARAMS))
 
     if not body.strip():

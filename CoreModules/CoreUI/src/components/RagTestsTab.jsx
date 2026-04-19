@@ -36,6 +36,48 @@ function confirmCloudRagRun(modelId) {
   );
 }
 
+const RAG_TESTS_LAST_USED_KEY = 'coreui.rag_tests.last_used.v1';
+
+function loadLastUsedRagTestsSettings() {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(RAG_TESTS_LAST_USED_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function sortModelsCloudFirst(list) {
+  const items = Array.isArray(list) ? [...list] : [];
+  const byName = (a, b) => {
+    const an = String(a?.name || a?.id || '').toLowerCase();
+    const bn = String(b?.name || b?.id || '').toLowerCase();
+    return an.localeCompare(bn);
+  };
+  const cloud = [];
+  const other = [];
+  items.forEach((m) => {
+    if (modelTagLooksCloud(m?.id || m?.name || '')) cloud.push(m);
+    else other.push(m);
+  });
+  cloud.sort(byName);
+  other.sort(byName);
+  return [...cloud, ...other];
+}
+
+function isTransientFetchLikeError(message) {
+  const lower = String(message || '').toLowerCase();
+  return (
+    lower.includes('failed to fetch') ||
+    lower.includes('networkerror') ||
+    lower.includes('load failed') ||
+    lower.includes('typeerror: failed to fetch')
+  );
+}
+
 function RagTestsTab({
   runJobId = null,
   running = false,
@@ -45,8 +87,9 @@ function RagTestsTab({
   onStartRun,
   onCancelRun,
 }) {
+  const lastUsed = loadLastUsedRagTestsSettings();
   const [models, setModels] = useState([]);
-  const [selectedModel, setSelectedModel] = useState('');
+  const [selectedModel, setSelectedModel] = useState(String(lastUsed.model || ''));
   const [tests, setTests] = useState([]);
   const [filters, setFilters] = useState({ platform: '', framework: '', difficulty: '' });
   const [filterOptions, setFilterOptions] = useState({ platform: [], framework: [], difficulty: [] });
@@ -93,11 +136,22 @@ function RagTestsTab({
   const [runHistoryModal, setRunHistoryModal] = useState(null);
   const [runHistoryModalTab, setRunHistoryModalTab] = useState('summary');
   const [historySectionOpen, setHistorySectionOpen] = useState(false);
+  const [compareRunIds, setCompareRunIds] = useState([]);
+  const [runCompareLoading, setRunCompareLoading] = useState(false);
+  const [runCompareModal, setRunCompareModal] = useState(null);
+  const [compareOnlyDiff, setCompareOnlyDiff] = useState(false);
+  const [compareFocus, setCompareFocus] = useState('status');
   const [showFailDrilldown, setShowFailDrilldown] = useState(false);
   const [collections, setCollections] = useState([]);
-  const [selectedCollection, setSelectedCollection] = useState('');
+  const [selectedCollection, setSelectedCollection] = useState(String(lastUsed.collection_name || ''));
   const [prompts, setPrompts] = useState([]);
-  const [selectedPromptName, setSelectedPromptName] = useState('');
+  const [selectedPromptName, setSelectedPromptName] = useState(String(lastUsed.prompt_name || ''));
+  const [runTemperature, setRunTemperature] = useState(
+    Number.isFinite(Number(lastUsed.temperature)) ? Number(lastUsed.temperature) : 0
+  );
+  const [runTopK, setRunTopK] = useState(
+    Number.isFinite(Number(lastUsed.top_k)) ? Number(lastUsed.top_k) : 0.1
+  );
   const [runConcurrency, setRunConcurrency] = useState(1);
   const [liveMonitorOpen, setLiveMonitorOpen] = useState(true);
   const [liveMonitorDetailOpen, setLiveMonitorDetailOpen] = useState(false);
@@ -135,6 +189,10 @@ function RagTestsTab({
         (p) => p.name && p.name.toLowerCase() !== 'readme'
       );
       setPrompts(list);
+      setSelectedPromptName((prev) => {
+        if (!prev) return '';
+        return list.some((p) => p.name === prev) ? prev : '';
+      });
     } catch {
       setPrompts([]);
     }
@@ -143,13 +201,15 @@ function RagTestsTab({
   const loadModels = useCallback(async () => {
     try {
       const list = await getModels();
-      setModels(list || []);
-      if (!selectedModel && list?.length) {
-        const pick = list.find((m) => m.id && !isLogicalRagModelId(m.id)) || list[0];
+      const sorted = sortModelsCloudFirst(list || []);
+      setModels(sorted);
+      if (sorted?.length && (!selectedModel || !sorted.some((m) => m.id === selectedModel))) {
+        const pick = sorted.find((m) => m.id && !isLogicalRagModelId(m.id)) || sorted[0];
         setSelectedModel(pick.id || '');
       }
     } catch (e) {
-      setError(e.message);
+      const msg = String(e?.message || '');
+      if (!isTransientFetchLikeError(msg)) setError(msg);
     }
   }, [selectedModel]);
 
@@ -164,8 +224,11 @@ function RagTestsTab({
       setTests(data.tests || []);
       setFilterOptions(data.filters || { platform: [], framework: [], difficulty: [] });
     } catch (e) {
-      setError(e.message);
-      setTests([]);
+      const msg = String(e?.message || '');
+      if (!isTransientFetchLikeError(msg)) {
+        setError(msg);
+        setTests([]);
+      }
     }
   }, [filters.platform, filters.framework, filters.difficulty]);
 
@@ -184,6 +247,23 @@ function RagTestsTab({
   useEffect(() => {
     loadTests();
   }, [loadTests]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        RAG_TESTS_LAST_USED_KEY,
+        JSON.stringify({
+          model: selectedModel || '',
+          collection_name: selectedCollection || '',
+          prompt_name: selectedPromptName || '',
+          temperature: runTemperature,
+          top_k: runTopK,
+        })
+      );
+    } catch {
+      // ignore storage errors
+    }
+  }, [selectedModel, selectedCollection, selectedPromptName, runTemperature, runTopK]);
 
   const HISTORY_PAGE_SIZE = 20;
 
@@ -213,7 +293,8 @@ function RagTestsTab({
       }
       setRunHistoryHasMore(runs.length === HISTORY_PAGE_SIZE);
     } catch (e) {
-      setError(e.message);
+      const msg = String(e?.message || '');
+      if (!isTransientFetchLikeError(msg)) setError(msg);
     } finally {
       setRunHistoryLoading(false);
       setRunHistoryLoadingMore(false);
@@ -342,16 +423,63 @@ function RagTestsTab({
   }, [runProgress?.active_live, runProgress?.sse_preview, liveSse.text]);
 
   useEffect(() => {
-    if (!resultDetailModal && !liveMonitorDetailOpen && !runHistoryModal && !historySectionOpen) return undefined;
+    if (!resultDetailModal && !liveMonitorDetailOpen && !runHistoryModal && !historySectionOpen && !runCompareModal) return undefined;
     const onKey = (e) => {
       if (e.key === 'Escape') setResultDetailModal(null);
       if (e.key === 'Escape') setLiveMonitorDetailOpen(false);
       if (e.key === 'Escape') setRunHistoryModal(null);
       if (e.key === 'Escape') setHistorySectionOpen(false);
+      if (e.key === 'Escape') setRunCompareModal(null);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [resultDetailModal, liveMonitorDetailOpen, runHistoryModal, historySectionOpen]);
+  }, [resultDetailModal, liveMonitorDetailOpen, runHistoryModal, historySectionOpen, runCompareModal]);
+
+  const toggleCompareRun = useCallback((runId) => {
+    const key = String(runId || '').trim();
+    if (!key) return;
+    setCompareRunIds((prev) => {
+      if (prev.includes(key)) return prev.filter((x) => x !== key);
+      if (prev.length < 2) return [...prev, key];
+      return [prev[1], key];
+    });
+  }, []);
+
+  const clearCompareRuns = useCallback(() => setCompareRunIds([]), []);
+
+  const handleOpenRunCompare = useCallback(async () => {
+    if (compareRunIds.length !== 2) return;
+    setError(null);
+    setRunCompareLoading(true);
+    try {
+      const [firstId, secondId] = compareRunIds;
+      const [firstRun, secondRun] = await Promise.all([
+        getRagTestRun(firstId),
+        getRagTestRun(secondId),
+      ]);
+      const ts = (run) => {
+        const raw = run?.run?.created_at ?? run?.created_at;
+        const n = Date.parse(String(raw || ''));
+        return Number.isFinite(n) ? n : -1;
+      };
+      // Always render newer run on the right side.
+      const firstTs = ts(firstRun);
+      const secondTs = ts(secondRun);
+      const firstIsOlderOrEqual = firstTs <= secondTs;
+      const leftId = firstIsOlderOrEqual ? firstId : secondId;
+      const rightId = firstIsOlderOrEqual ? secondId : firstId;
+      const leftRun = firstIsOlderOrEqual ? firstRun : secondRun;
+      const rightRun = firstIsOlderOrEqual ? secondRun : firstRun;
+      setRunCompareModal({
+        left: { id: leftId, run: leftRun },
+        right: { id: rightId, run: rightRun },
+      });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setRunCompareLoading(false);
+    }
+  }, [compareRunIds]);
 
   const handleSelectPastRun = useCallback(async (runId) => {
     setError(null);
@@ -389,6 +517,8 @@ function RagTestsTab({
     model: selectedModel,
     collection_name: selectedCollection || undefined,
     prompt_name: selectedPromptName || undefined,
+    temperature: Number.isFinite(runTemperature) ? runTemperature : 0,
+    top_k: Number.isFinite(runTopK) && runTopK > 0 ? runTopK : undefined,
     concurrency: Number(runConcurrency) || 1,
     ...opts,
   });
@@ -860,6 +990,268 @@ function RagTestsTab({
     }
   };
 
+  const compareLeftRun = runCompareModal?.left?.run || null;
+  const compareRightRun = runCompareModal?.right?.run || null;
+  const compareLeftResults = Array.isArray(compareLeftRun?.run?.results)
+    ? compareLeftRun.run.results
+    : Array.isArray(compareLeftRun?.results)
+      ? compareLeftRun.results
+      : [];
+  const compareRightResults = Array.isArray(compareRightRun?.run?.results)
+    ? compareRightRun.run.results
+    : Array.isArray(compareRightRun?.results)
+      ? compareRightRun.results
+      : [];
+
+  const compareCountByStatus = (rows, status) =>
+    rows.filter((r) => String(r?.status || '').toUpperCase() === String(status || '').toUpperCase()).length;
+  const compareRagUsedCount = (rows) => rows.filter((r) => Boolean(r?.rag_used)).length;
+  const compareMeanLatency = (rows) => {
+    const vals = rows
+      .map((r) => Number(r?.latency_ms ?? r?.response_time_ms))
+      .filter((v) => Number.isFinite(v) && v >= 0);
+    if (!vals.length) return null;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  };
+  const comparePassRate = (rows) => {
+    if (!rows.length) return null;
+    return (compareCountByStatus(rows, 'PASS') / rows.length) * 100;
+  };
+  const compareTpsAvg = (rows) => {
+    const vals = rows
+      .map((r) => Number(r?.tokens_per_second_generated))
+      .filter((v) => Number.isFinite(v) && v >= 0);
+    if (!vals.length) return null;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  };
+  const compareSummaryRows = [
+    {
+      key: 'total',
+      label: 'Total tests',
+      left: compareLeftResults.length,
+      right: compareRightResults.length,
+      higherIsBetter: null,
+    },
+    {
+      key: 'pass',
+      label: 'Passed',
+      left: compareCountByStatus(compareLeftResults, 'PASS'),
+      right: compareCountByStatus(compareRightResults, 'PASS'),
+      higherIsBetter: true,
+    },
+    {
+      key: 'fail',
+      label: 'Failed',
+      left: compareCountByStatus(compareLeftResults, 'FAIL'),
+      right: compareCountByStatus(compareRightResults, 'FAIL'),
+      higherIsBetter: false,
+    },
+    {
+      key: 'pass_rate',
+      label: 'Pass rate %',
+      left: comparePassRate(compareLeftResults),
+      right: comparePassRate(compareRightResults),
+      higherIsBetter: true,
+    },
+    {
+      key: 'rag_used',
+      label: 'RAG used',
+      left: compareRagUsedCount(compareLeftResults),
+      right: compareRagUsedCount(compareRightResults),
+      higherIsBetter: true,
+    },
+    {
+      key: 'latency_avg',
+      label: 'Avg latency (ms)',
+      left: compareMeanLatency(compareLeftResults),
+      right: compareMeanLatency(compareRightResults),
+      higherIsBetter: false,
+    },
+    {
+      key: 'tps_avg',
+      label: 'Avg tok/s',
+      left: compareTpsAvg(compareLeftResults),
+      right: compareTpsAvg(compareRightResults),
+      higherIsBetter: true,
+    },
+  ];
+
+  const compareFmt = (v, digits = 0) => {
+    if (v == null) return '-';
+    const n = Number(v);
+    if (!Number.isFinite(n)) return String(v);
+    return digits > 0 ? n.toFixed(digits) : String(Math.round(n));
+  };
+  const compareDeltaText = (left, right, higherIsBetter = null, digits = 0) => {
+    const l = Number(left);
+    const r = Number(right);
+    if (!Number.isFinite(l) || !Number.isFinite(r)) return '·';
+    const d = r - l;
+    if (Math.abs(d) < 1e-9) return '±0';
+    const sign = d > 0 ? '+' : '-';
+    const abs = Math.abs(d);
+    const body = digits > 0 ? abs.toFixed(digits) : String(Math.round(abs));
+    if (higherIsBetter === true) return `${sign}${body}`;
+    if (higherIsBetter === false) return `${d < 0 ? '+' : '-'}${body}`;
+    return `${sign}${body}`;
+  };
+  const compareDeltaClass = (text) => {
+    const s = String(text || '').trim();
+    if (!s || s === '·' || s === '±0') return 'neutral';
+    if (s.startsWith('+')) return 'positive';
+    if (s.startsWith('-')) return 'negative';
+    return 'neutral';
+  };
+  const parseConfidenceLabel = (label) => {
+    const m = String(label || '').match(/^\s*(\d+)\s*\/\s*(\d+)\s*$/);
+    if (!m) return null;
+    const found = Number(m[1]);
+    const total = Number(m[2]);
+    if (!Number.isFinite(found) || !Number.isFinite(total) || total <= 0) return null;
+    return { found, total, ratio: found / total };
+  };
+  const compareConfidenceDeltaText = (left, right) => {
+    const lc = parseConfidenceLabel(left?.confidence_label);
+    const rc = parseConfidenceLabel(right?.confidence_label);
+    if (!lc || !rc) return '·';
+    if (lc.found === rc.found && lc.total === rc.total) return '±0';
+    if (lc.total === rc.total) {
+      const d = rc.found - lc.found;
+      const sign = d > 0 ? '+' : '-';
+      return `${sign}${Math.abs(d)}/${rc.total}`;
+    }
+    return `${lc.found}/${lc.total}→${rc.found}/${rc.total}`;
+  };
+  const compareTpsDeltaText = (left, right) => {
+    const lt = Number(left?.tokens_per_second_generated);
+    const rt = Number(right?.tokens_per_second_generated);
+    if (!Number.isFinite(lt) || !Number.isFinite(rt)) return '·';
+    return compareDeltaText(lt, rt, true, 2);
+  };
+  const compareSelectedDeltaText = (left, right, statusDelta, latencyDelta) => {
+    if (compareFocus === 'status') return statusDelta;
+    if (compareFocus === 'latency') return latencyDelta;
+    if (compareFocus === 'tps') return compareTpsDeltaText(left, right);
+    if (compareFocus === 'confidence') return compareConfidenceDeltaText(left, right);
+    return statusDelta;
+  };
+
+  const compareHasTestDiff = (left, right) => {
+    if (!left || !right) return true;
+
+    if (compareFocus === 'status') {
+      const ls = String(left?.status || '').toUpperCase();
+      const rs = String(right?.status || '').toUpperCase();
+      return ls !== rs;
+    }
+
+    if (compareFocus === 'latency') {
+      const ll = Number(left?.latency_ms ?? left?.response_time_ms);
+      const rl = Number(right?.latency_ms ?? right?.response_time_ms);
+      if (Number.isFinite(ll) !== Number.isFinite(rl)) return true;
+      if (!Number.isFinite(ll) || !Number.isFinite(rl)) return false;
+      return Math.round(ll) !== Math.round(rl);
+    }
+
+    if (compareFocus === 'tps') {
+      const lt = Number(left?.tokens_per_second_generated);
+      const rt = Number(right?.tokens_per_second_generated);
+      if (Number.isFinite(lt) !== Number.isFinite(rt)) return true;
+      if (!Number.isFinite(lt) || !Number.isFinite(rt)) return false;
+      return Math.abs(lt - rt) > 0.01;
+    }
+
+    if (compareFocus === 'confidence') {
+      const lc = parseConfidenceLabel(left?.confidence_label);
+      const rc = parseConfidenceLabel(right?.confidence_label);
+      if (!lc && !rc) return false;
+      if (!lc || !rc) return true;
+      return lc.found !== rc.found || lc.total !== rc.total;
+    }
+
+    return false;
+  };
+
+  const testMatchKey = (row, idx) => {
+    const id = String(row?.test_id || '').trim();
+    if (id) return `id:${id}`;
+    const name = String(row?.test_name || '').trim().toLowerCase();
+    if (name) return `name:${name}`;
+    return `row:${idx}`;
+  };
+  const bucketByTestKey = (rows) => {
+    const out = new Map();
+    rows.forEach((r, idx) => {
+      const key = testMatchKey(r, idx);
+      if (!out.has(key)) out.set(key, []);
+      out.get(key).push(r);
+    });
+    return out;
+  };
+  const leftBuckets = bucketByTestKey(compareLeftResults);
+  const rightBuckets = bucketByTestKey(compareRightResults);
+  const allBucketKeys = [...new Set([...leftBuckets.keys(), ...rightBuckets.keys()])];
+  const comparePairs = [];
+  allBucketKeys.forEach((k) => {
+    const leftRows = leftBuckets.get(k) || [];
+    const rightRows = rightBuckets.get(k) || [];
+    const maxLen = Math.max(leftRows.length, rightRows.length);
+    for (let i = 0; i < maxLen; i += 1) {
+      comparePairs.push({
+        pairKey: `${k}#${i}`,
+        left: leftRows[i] || null,
+        right: rightRows[i] || null,
+      });
+    }
+  });
+  const comparePairRank = (pair) => {
+    const left = pair?.left || null;
+    const right = pair?.right || null;
+    const leftStatus = String(left?.status || '-').toUpperCase();
+    const rightStatus = String(right?.status || '-').toUpperCase();
+    const leftLatency = Number(left?.latency_ms ?? left?.response_time_ms);
+    const rightLatency = Number(right?.latency_ms ?? right?.response_time_ms);
+    const leftTps = Number(left?.tokens_per_second_generated);
+    const rightTps = Number(right?.tokens_per_second_generated);
+    const leftConf = parseConfidenceLabel(left?.confidence_label);
+    const rightConf = parseConfidenceLabel(right?.confidence_label);
+
+    if (compareFocus === 'status') {
+      let rank = 0;
+      if (!left || !right) rank += 200;
+      if (leftStatus !== rightStatus) rank += 150;
+      if (leftStatus === 'FAIL' || rightStatus === 'FAIL') rank += 120;
+      if (leftStatus === 'PASS' && rightStatus === 'PASS') rank += 20;
+      return rank;
+    }
+    if (compareFocus === 'latency') {
+      if (!Number.isFinite(leftLatency) || !Number.isFinite(rightLatency)) return -1;
+      return Math.abs(rightLatency - leftLatency);
+    }
+    if (compareFocus === 'tps') {
+      if (!Number.isFinite(leftTps) || !Number.isFinite(rightTps)) return -1;
+      return Math.abs(rightTps - leftTps);
+    }
+    if (compareFocus === 'confidence') {
+      if (!leftConf || !rightConf) return -1;
+      const ratioDiff = Math.abs((rightConf.ratio - leftConf.ratio) * 100);
+      const foundDiff = Math.abs(rightConf.found - leftConf.found);
+      return ratioDiff + foundDiff;
+    }
+    return 0;
+  };
+  const compareVisiblePairs = compareOnlyDiff
+    ? comparePairs.filter((p) => compareHasTestDiff(p.left, p.right))
+    : comparePairs;
+  const compareRenderedPairs = [...compareVisiblePairs].sort((a, b) => {
+    const ra = comparePairRank(a);
+    const rb = comparePairRank(b);
+    if (rb !== ra) return rb - ra;
+    const la = String(a?.left?.test_name || a?.right?.test_name || a?.pairKey || '');
+    const lb = String(b?.left?.test_name || b?.right?.test_name || b?.pairKey || '');
+    return la.localeCompare(lb);
+  });
+
   return (
     <div className="rag-tests-tab">
       <div className="rag-tests-header">
@@ -934,6 +1326,34 @@ function RagTestsTab({
               ))}
             </select>
             <span className="rag-tests-concurrency-hint">Cloud tip: usually best up to 3 at once.</span>
+          </label>
+          <label className="rag-tests-model-label rag-tests-slider-label">
+            Temperature: {Number(runTemperature).toFixed(1)}
+            <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.1"
+              value={runTemperature}
+              onChange={(e) => setRunTemperature(Number(e.target.value))}
+              disabled={running}
+              className="rag-tests-range"
+              aria-label="RAG tests temperature"
+            />
+          </label>
+          <label className="rag-tests-model-label rag-tests-slider-label">
+            Top K: {Number(runTopK).toFixed(1)}
+            <input
+              type="range"
+              min="0.1"
+              max="30"
+              step="0.1"
+              value={runTopK}
+              onChange={(e) => setRunTopK(Number(e.target.value))}
+              disabled={running}
+              className="rag-tests-range"
+              aria-label="RAG tests top k"
+            />
           </label>
           {collections.length === 0 && (
             <span className="rag-tests-no-collections-hint">
@@ -1174,6 +1594,28 @@ function RagTestsTab({
                 </select>
               </label>
             </div>
+            <div className="rag-tests-history-compare-actions">
+              <span className="rag-tests-history-compare-selected">
+                Selected: {compareRunIds.length}/2
+                {compareRunIds.length > 0 ? ` (${compareRunIds.join(' vs ')})` : ''}
+              </span>
+              <button
+                type="button"
+                className="rag-tests-btn small"
+                disabled={compareRunIds.length === 0}
+                onClick={clearCompareRuns}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                className="rag-tests-btn small primary"
+                disabled={compareRunIds.length !== 2 || runCompareLoading}
+                onClick={() => void handleOpenRunCompare()}
+              >
+                {runCompareLoading ? 'Opening…' : 'Compare selected'}
+              </button>
+            </div>
             {runHistoryLoading ? (
               <p className="rag-tests-history-loading">Loading history...</p>
             ) : runHistory.length === 0 ? (
@@ -1183,6 +1625,7 @@ function RagTestsTab({
               <table className="rag-tests-history-table" role="table">
                 <thead>
                   <tr>
+                    <th>Cmp</th>
                     <th>Date</th>
                     <th>Model</th>
                     <th>Total</th>
@@ -1194,7 +1637,18 @@ function RagTestsTab({
                 </thead>
                 <tbody>
                   {runHistory.map((run) => (
-                    <tr key={run.id} className="rag-tests-history-row">
+                    <tr
+                      key={run.id}
+                      className={`rag-tests-history-row ${compareRunIds.includes(String(run.id)) ? 'selected' : ''}`}
+                    >
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={compareRunIds.includes(String(run.id))}
+                          onChange={() => toggleCompareRun(run.id)}
+                          aria-label={`Select run ${run.id} for compare`}
+                        />
+                      </td>
                       <td>{formatRunDate(run.created_at)}</td>
                       <td>{run.model}</td>
                       <td>{run.total}</td>
@@ -1798,6 +2252,180 @@ function RagTestsTab({
                 </tbody>
               </table>
             )}
+          </div>
+        </div>
+      )}
+
+      {runCompareModal && (
+        <div
+          className="rag-tests-modal rag-tests-result-modal rag-tests-compare-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rag-run-compare-modal-title"
+          onClick={() => setRunCompareModal(null)}
+        >
+          <div
+            className="rag-tests-modal-content rag-tests-result-modal-content rag-tests-compare-modal-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="rag-tests-result-modal-header">
+              <h3 id="rag-run-compare-modal-title">Run compare</h3>
+              <button
+                type="button"
+                className="rag-tests-result-modal-close"
+                onClick={() => setRunCompareModal(null)}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="rag-tests-compare-run-cards">
+              <section className="rag-tests-compare-run-card">
+                <h4>Left run</h4>
+                <p className="rag-tests-result-modal-meta">
+                  {formatRunDate(compareLeftRun?.created_at)} | Model: {compareLeftRun?.model || '-'}
+                </p>
+                <p className="rag-tests-detail-metrics">id: {String(runCompareModal.left?.id || '-')}</p>
+              </section>
+              <section className="rag-tests-compare-vs">+ / -</section>
+              <section className="rag-tests-compare-run-card">
+                <h4>Right run</h4>
+                <p className="rag-tests-result-modal-meta">
+                  {formatRunDate(compareRightRun?.created_at)} | Model: {compareRightRun?.model || '-'}
+                </p>
+                <p className="rag-tests-detail-metrics">id: {String(runCompareModal.right?.id || '-')}</p>
+              </section>
+            </div>
+
+            <section className="rag-tests-result-section">
+              <h4>Summary diff</h4>
+              <div className="rag-tests-compare-table">
+                <div className="rag-tests-compare-head">Left</div>
+                <div className="rag-tests-compare-head">Δ</div>
+                <div className="rag-tests-compare-head">Right</div>
+                {compareSummaryRows.map((row) => {
+                  const digits = row.key.includes('rate') || row.key.includes('tps') ? 2 : 0;
+                  const delta = compareDeltaText(row.left, row.right, row.higherIsBetter, digits);
+                  return (
+                    <div key={`sum-${row.key}`} className="rag-tests-compare-row">
+                      <div className="rag-tests-compare-cell">
+                        <strong>{row.label}:</strong> {compareFmt(row.left, digits)}
+                      </div>
+                      <div className={`rag-tests-compare-delta ${compareDeltaClass(delta)}`}>
+                        {delta}
+                      </div>
+                      <div className="rag-tests-compare-cell">
+                        <strong>{row.label}:</strong> {compareFmt(row.right, digits)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="rag-tests-result-section">
+              <div className="rag-tests-compare-toolbar">
+                <h4>Per-test diff ({compareVisiblePairs.length}/{comparePairs.length})</h4>
+                <div className="rag-tests-run-tabs rag-tests-compare-focus-tabs" role="tablist" aria-label="Compare focus">
+                  <button
+                    type="button"
+                    className={`rag-tests-btn small ${compareFocus === 'status' ? 'primary' : ''}`}
+                    onClick={() => setCompareFocus('status')}
+                    role="tab"
+                    aria-selected={compareFocus === 'status'}
+                  >
+                    Success/Fail
+                  </button>
+                  <button
+                    type="button"
+                    className={`rag-tests-btn small ${compareFocus === 'latency' ? 'primary' : ''}`}
+                    onClick={() => setCompareFocus('latency')}
+                    role="tab"
+                    aria-selected={compareFocus === 'latency'}
+                  >
+                    Latency
+                  </button>
+                  <button
+                    type="button"
+                    className={`rag-tests-btn small ${compareFocus === 'tps' ? 'primary' : ''}`}
+                    onClick={() => setCompareFocus('tps')}
+                    role="tab"
+                    aria-selected={compareFocus === 'tps'}
+                  >
+                    Tok/s
+                  </button>
+                  <button
+                    type="button"
+                    className={`rag-tests-btn small ${compareFocus === 'confidence' ? 'primary' : ''}`}
+                    onClick={() => setCompareFocus('confidence')}
+                    role="tab"
+                    aria-selected={compareFocus === 'confidence'}
+                  >
+                    Confidence n/m
+                  </button>
+                </div>
+                <label className="rag-tests-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={compareOnlyDiff}
+                    onChange={(e) => setCompareOnlyDiff(e.target.checked)}
+                  />
+                  Only differences
+                </label>
+              </div>
+              <div className="rag-tests-compare-tests">
+                {compareRenderedPairs.map((pair) => {
+                  const left = pair?.left || null;
+                  const right = pair?.right || null;
+                  const title = left?.test_name || right?.test_name || pair?.pairKey || '-';
+                  const leftStatus = String(left?.status || '-');
+                  const rightStatus = String(right?.status || '-');
+                  const leftLatency = Number(left?.latency_ms ?? left?.response_time_ms);
+                  const rightLatency = Number(right?.latency_ms ?? right?.response_time_ms);
+                  const latencyDelta = Number.isFinite(leftLatency) && Number.isFinite(rightLatency)
+                    ? compareDeltaText(leftLatency, rightLatency, false, 0)
+                    : '·';
+                  const statusDelta = leftStatus === rightStatus
+                    ? '±0'
+                    : (leftStatus === 'PASS' && rightStatus === 'FAIL')
+                      ? '- FAIL'
+                      : (leftStatus === 'FAIL' && rightStatus === 'PASS')
+                        ? '+ PASS'
+                        : `${leftStatus}→${rightStatus}`;
+                  const selectedDelta = compareSelectedDeltaText(left, right, statusDelta, latencyDelta);
+                  const selectedDeltaClass = compareDeltaClass(selectedDelta);
+                  const statusDeltaClass = compareDeltaClass(statusDelta);
+                  const latencyDeltaClass = compareDeltaClass(latencyDelta);
+                  return (
+                    <article key={`cmp-${pair?.pairKey || title}`} className="rag-tests-compare-test-row">
+                      <div className="rag-tests-compare-cell">
+                        <p className="rag-tests-rag-query-meta">{title}</p>
+                        <p className="rag-tests-detail-metrics">
+                          status: {leftStatus} | latency: {Number.isFinite(leftLatency) ? `${Math.round(leftLatency)} ms` : '-'} | tok/s: {left?.tokens_per_second_generated != null ? Number(left.tokens_per_second_generated).toFixed(2) : '-'} | rag: {left?.rag_used ? 'Yes' : 'No'}
+                        </p>
+                        <p className="rag-tests-detail-metrics">
+                          confidence: {left?.confidence_label || '-'} | reason: {left?.failure_reason || left?.error || '-'}
+                        </p>
+                      </div>
+                      <div className={`rag-tests-compare-delta rag-tests-compare-delta-stack ${selectedDeltaClass}`}>
+                        <span className={`rag-tests-compare-delta-value ${selectedDeltaClass}`}>{selectedDelta}</span>
+                        <span className={`rag-tests-compare-delta-value ${latencyDeltaClass}`}>{latencyDelta}</span>
+                        <span className={`rag-tests-compare-delta-value ${statusDeltaClass}`}>{statusDelta}</span>
+                      </div>
+                      <div className="rag-tests-compare-cell">
+                        <p className="rag-tests-rag-query-meta">{title}</p>
+                        <p className="rag-tests-detail-metrics">
+                          status: {rightStatus} | latency: {Number.isFinite(rightLatency) ? `${Math.round(rightLatency)} ms` : '-'} | tok/s: {right?.tokens_per_second_generated != null ? Number(right.tokens_per_second_generated).toFixed(2) : '-'} | rag: {right?.rag_used ? 'Yes' : 'No'}
+                        </p>
+                        <p className="rag-tests-detail-metrics">
+                          confidence: {right?.confidence_label || '-'} | reason: {right?.failure_reason || right?.error || '-'}
+                        </p>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
           </div>
         </div>
       )}

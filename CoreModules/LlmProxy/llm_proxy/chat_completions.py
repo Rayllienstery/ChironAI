@@ -1291,7 +1291,7 @@ def run_chat_completions(
         if rag_timings:
             w.set_latest_request_rag_steps(rag_timings)
             if not private_build:
-                _RAG_LOG.info(
+                _RAG_LOG.debug(
                     "RAG steps embed_s=%.2f search_s=%.2f rerank_s=%.2f fetch_s=%.2f discovery_s=%.2f total_rag_s=%.2f",
                     rag_timings.get("embed_s", 0),
                     rag_timings.get("search_s", 0),
@@ -1588,7 +1588,7 @@ def run_chat_completions(
                         ollama_chat_stream=True,
                         warn_label="native-tools stream",
                     )
-                    _RAG_LOG.info(
+                    _RAG_LOG.debug(
                         json.dumps(
                             _rag_request_completed_payload(
                                 user_query=user_query,
@@ -1732,7 +1732,7 @@ def run_chat_completions(
             increment("rag_empty_results", tags={"model": _metric_model})
 
         if not private_build:
-            _RAG_LOG.info(
+            _RAG_LOG.debug(
                 json.dumps(
                     _rag_request_completed_payload(
                         user_query=user_query,
@@ -2006,7 +2006,7 @@ def run_chat_completions(
                         warn_label="stream_tool_mode (tool_calls)",
                     )
 
-                    _RAG_LOG.info(
+                    _RAG_LOG.debug(
                         json.dumps(
                             _rag_request_completed_payload(
                                 user_query=user_query,
@@ -2085,7 +2085,7 @@ def run_chat_completions(
                     warn_label="stream_tool_mode (plain)",
                 )
 
-                _RAG_LOG.info(
+                _RAG_LOG.debug(
                     json.dumps(
                         _rag_request_completed_payload(
                             user_query=user_query,
@@ -2222,7 +2222,7 @@ def run_chat_completions(
                     warn_label="stream",
                 )
 
-                _RAG_LOG.info(
+                _RAG_LOG.debug(
                     json.dumps(
                         _rag_request_completed_payload(
                             user_query=user_query,
@@ -2241,7 +2241,7 @@ def run_chat_completions(
                         )
                     )
                 )
-                _RAG_LOG.info(
+                _RAG_LOG.debug(
                     "RAG response (stream) model=%s len=%s preview=%s",
                     use_model,
                     len(full_response),
@@ -2302,7 +2302,7 @@ def run_chat_completions(
         increment("rag_empty_results", tags={"model": _metric_model_ns})
 
     if not private_build:
-        _RAG_LOG.info(
+        _RAG_LOG.debug(
             json.dumps(
                 _rag_request_completed_payload(
                     user_query=user_query,
@@ -2327,7 +2327,7 @@ def run_chat_completions(
     if content_len > log_preview:
         content_preview += "..."
     if not private_build:
-        _RAG_LOG.info(
+        _RAG_LOG.debug(
             "RAG response model=%s len=%s preview=%s",
             use_model,
             content_len,

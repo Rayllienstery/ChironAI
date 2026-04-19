@@ -257,7 +257,7 @@ def step_replace_regex(md: str, params: dict[str, Any]) -> str:
 
 # Defaults for pipeline JSON and for prepare fallback when md_indexer runner is unavailable.
 DEFAULT_REJECT_LOW_SIGNAL_PARAMS: dict[str, Any] = {
-    "min_chars": 200,
+    "min_chars": 120,
     "min_words": 5,
     "min_alpha_ratio": 0.12,
 }
@@ -269,7 +269,7 @@ def step_reject_low_signal_body(md: str, params: dict[str, Any]) -> str:
     or mostly non-letters (e.g. link/nav soup). Keeps pages that are short but dense prose.
 
     Params (all optional; merged over DEFAULT_REJECT_LOW_SIGNAL_PARAMS):
-      min_chars: minimum stripped character count (default 200).
+      min_chars: minimum stripped character count (default 120).
       min_words: minimum whitespace-separated words; 0 disables (default from DEFAULT).
       min_alpha_ratio: min fraction of non-space chars that are letters; 0 disables (default from DEFAULT).
     """
@@ -280,9 +280,9 @@ def step_reject_low_signal_body(md: str, params: dict[str, Any]) -> str:
 
     p = {**DEFAULT_REJECT_LOW_SIGNAL_PARAMS, **(params or {})}
     try:
-        min_chars = max(0, int(p.get("min_chars", 200)))
+        min_chars = max(0, int(p.get("min_chars", 120)))
     except (TypeError, ValueError):
-        min_chars = 200
+        min_chars = 120
     try:
         min_words = int(p.get("min_words", 5))
     except (TypeError, ValueError):

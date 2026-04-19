@@ -9,6 +9,7 @@ override YAML values where appropriate.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict
 from urllib.parse import urlparse
@@ -21,6 +22,16 @@ except ImportError:  # pragma: no cover - runtime error if dependency missing
 
 _BASE_DIR = Path(__file__).resolve().parent.parent
 _CONFIG_DIR = _BASE_DIR / "config"
+_RAG_SERVICE_DIR = _BASE_DIR / "CoreModules" / "RagService"
+if _RAG_SERVICE_DIR.is_dir():
+    _rag_svc_path = str(_RAG_SERVICE_DIR)
+    if _rag_svc_path not in sys.path:
+        sys.path.insert(0, _rag_svc_path)
+
+try:
+    import rag_service.config as _rsc  # type: ignore
+except Exception:
+    _rsc = None  # type: ignore
 
 
 def _load_yaml(name: str) -> Dict[str, Any]:
@@ -62,6 +73,11 @@ LLM_PROXY_SERVER_CONFIG: Dict[str, Any] = _server_cfg.get("llm_proxy", {})
 
 def get_ollama_chat_url() -> str:
     """Return Ollama chat URL, allowing env override."""
+    if _rsc is not None:
+        try:
+            return str(_rsc.get_ollama_chat_url())
+        except Exception:
+            pass
     return os.getenv(
         "OLLAMA_CHAT_URL",
         OLLAMA_CONFIG.get("chat_url", "http://localhost:11434/api/chat"),
@@ -121,6 +137,11 @@ def get_ollama_base_url() -> str:
 
 def get_ollama_generate_url() -> str:
     """Return Ollama generate URL, allowing env override."""
+    if _rsc is not None:
+        try:
+            return str(_rsc.get_ollama_generate_url())
+        except Exception:
+            pass
     return os.getenv(
         "OLLAMA_URL",
         OLLAMA_CONFIG.get("generate_url", "http://localhost:11434/api/generate"),
@@ -129,6 +150,11 @@ def get_ollama_generate_url() -> str:
 
 def get_ollama_embed_url() -> str:
     """Return Ollama embed URL, allowing env override."""
+    if _rsc is not None:
+        try:
+            return str(_rsc.get_ollama_embed_url())
+        except Exception:
+            pass
     return os.getenv(
         "OLLAMA_EMBED_URL",
         OLLAMA_CONFIG.get("embed_url", "http://localhost:11434/api/embed"),
@@ -137,6 +163,11 @@ def get_ollama_embed_url() -> str:
 
 def get_ollama_chat_model() -> str:
     """Return chat model name, allowing env override. Empty string means 'not configured'."""
+    if _rsc is not None:
+        try:
+            return str(_rsc.get_ollama_chat_model())
+        except Exception:
+            pass
     env_val = os.getenv("OLLAMA_CHAT_MODEL")
     if env_val is not None:
         return env_val.strip()
@@ -152,6 +183,11 @@ def get_ollama_embed_model() -> str:
     2. ``config/models.yaml`` → ``ollama.embed_model``
     3. ``ollama.embed_model_last_resort`` (YAML only; no Python literal defaults)
     """
+    if _rsc is not None:
+        try:
+            return str(_rsc.get_ollama_embed_model())
+        except Exception:
+            pass
     env_v = os.getenv("RAG_EMBED_MODEL")
     if env_v is not None and str(env_v).strip() != "":
         return str(env_v).strip()
@@ -169,6 +205,11 @@ def get_ollama_embed_timeout_seconds() -> float:
     HTTP read timeout for Ollama /api/embed (RAG query + indexing via OllamaEmbeddingProvider).
     Override with OLLAMA_EMBED_TIMEOUT (seconds).
     """
+    if _rsc is not None:
+        try:
+            return float(_rsc.get_ollama_embed_timeout_seconds())
+        except Exception:
+            pass
     raw = os.getenv("OLLAMA_EMBED_TIMEOUT")
     if raw is not None and str(raw).strip() != "":
         try:
@@ -194,6 +235,11 @@ def get_ollama_rerank_model() -> str:
     Empty strings are skipped so ``ollama.rerank_model: ""`` does not yield
     ``model: ""`` (404).
     """
+    if _rsc is not None:
+        try:
+            return str(_rsc.get_ollama_rerank_model())
+        except Exception:
+            pass
     env_v = os.getenv("OLLAMA_RERANK_MODEL")
     if env_v is not None and str(env_v).strip() != "":
         return str(env_v).strip()
@@ -211,6 +257,11 @@ def get_ollama_rerank_model() -> str:
 
 def get_qdrant_url() -> str:
     """Return Qdrant URL, allowing env override."""
+    if _rsc is not None:
+        try:
+            return str(_rsc.get_qdrant_url())
+        except Exception:
+            pass
     return os.getenv("QDRANT_URL", QDRANT_CONFIG.get("url", "http://localhost:6333"))
 
 
@@ -227,6 +278,11 @@ _RAG_INT_ENV_KEYS: dict[str, str] = {
 
 def get_rag_int(key: str, default: int) -> int:
     """Helper to get integer RAG config with default. Env overrides YAML for selected keys."""
+    if _rsc is not None:
+        try:
+            return int(_rsc.get_rag_int(key, default))
+        except Exception:
+            pass
     env_name = _RAG_INT_ENV_KEYS.get(key)
     if env_name:
         env_v = os.getenv(env_name)
@@ -244,6 +300,11 @@ def get_rag_int(key: str, default: int) -> int:
 
 def get_rag_float(key: str, default: float) -> float:
     """Helper to get float RAG config with default."""
+    if _rsc is not None:
+        try:
+            return float(_rsc.get_rag_float(key, default))
+        except Exception:
+            pass
     try:
         value = RAG_CONFIG.get(key, default)
         return float(value)
@@ -253,11 +314,21 @@ def get_rag_float(key: str, default: float) -> float:
 
 def get_proxy_rerank_enabled() -> bool:
     """Return whether rerank is enabled for the proxy (no DB required). Default False."""
+    if _rsc is not None:
+        try:
+            return bool(_rsc.get_rag_bool("proxy_rerank_enabled", False))
+        except Exception:
+            pass
     return bool(RAG_CONFIG.get("proxy_rerank_enabled", False))
 
 
 def get_retrieval_int(key: str, default: int) -> int:
     """Helper to get integer retrieval config with default. ``RAG_TOP_K`` overrides ``top_k``."""
+    if _rsc is not None:
+        try:
+            return int(_rsc.get_retrieval_int(key, default))
+        except Exception:
+            pass
     if key == "top_k":
         env_v = os.getenv("RAG_TOP_K")
         if env_v is not None and str(env_v).strip() != "":
@@ -274,18 +345,33 @@ def get_retrieval_int(key: str, default: int) -> int:
 
 def get_retrieval_list(key: str, default: list) -> list:
     """Helper to get list retrieval config with default."""
+    if _rsc is not None:
+        try:
+            return list(_rsc.get_retrieval_list(key, default))
+        except Exception:
+            pass
     value = RETRIEVAL_CONFIG.get(key, default)
     return value if isinstance(value, list) else default
 
 
 def get_retrieval_dict(key: str, default: dict) -> dict:
     """Helper to get dict retrieval config with default."""
+    if _rsc is not None:
+        try:
+            return dict(_rsc.get_retrieval_dict(key, default))
+        except Exception:
+            pass
     value = RETRIEVAL_CONFIG.get(key, default)
     return value if isinstance(value, dict) else default
 
 
 def get_retrieval_bool(key: str, default: bool = False) -> bool:
     """Helper to get boolean retrieval config with default."""
+    if _rsc is not None:
+        try:
+            return bool(_rsc.get_retrieval_bool(key, default))
+        except Exception:
+            pass
     value = RETRIEVAL_CONFIG.get(key, default)
     if isinstance(value, bool):
         return value
@@ -311,6 +397,11 @@ def get_crawler_list(key: str, default: list) -> list:
 
 def get_indexing_int(key: str, default: int) -> int:
     """Helper to get integer indexing config with default."""
+    if _rsc is not None:
+        try:
+            return int(_rsc.get_indexing_int(key, default))
+        except Exception:
+            pass
     try:
         value = INDEXING_CONFIG.get(key, default)
         return int(value)
@@ -320,6 +411,11 @@ def get_indexing_int(key: str, default: int) -> int:
 
 def get_indexing_float(key: str, default: float) -> float:
     """Helper to get float indexing config with default."""
+    if _rsc is not None:
+        try:
+            return float(_rsc.get_indexing_float(key, default))
+        except Exception:
+            pass
     try:
         value = INDEXING_CONFIG.get(key, default)
         return float(value)
@@ -341,6 +437,11 @@ def get_indexing_dict(key: str, default: dict) -> dict:
 
 def get_ollama_chat_options() -> Dict[str, Any]:
     """Return Ollama chat generation options from config."""
+    if _rsc is not None:
+        try:
+            return dict(_rsc.get_ollama_chat_options())
+        except Exception:
+            pass
     return OLLAMA_CONFIG.get("chat_options", {
         "num_predict": 3072,
         "temperature": 0.0,
@@ -351,6 +452,14 @@ def get_ollama_chat_options() -> Dict[str, Any]:
 
 def get_qdrant_collection_name() -> str:
     """Return Qdrant collection name, allowing env override."""
+    if _rsc is not None:
+        try:
+            return os.getenv(
+                "QDRANT_COLLECTION_NAME",
+                str(_rsc.QDRANT_CONFIG.get("collection_name", "Apple_Documentation")),
+            )
+        except Exception:
+            pass
     return os.getenv(
         "QDRANT_COLLECTION_NAME",
         QDRANT_CONFIG.get("collection_name", "Apple_Documentation")

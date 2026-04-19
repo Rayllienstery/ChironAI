@@ -8,7 +8,6 @@ Provides enhanced chat endpoint with RAG metadata and in-memory request buffer f
 from __future__ import annotations
 
 import difflib
-import inspect
 import json
 import logging
 import os
@@ -50,7 +49,6 @@ _RAG_SVC = os.path.join(_ROOT, "CoreModules", "RagService")
 if os.path.isdir(_RAG_SVC) and _RAG_SVC not in sys.path:
     sys.path.insert(0, _RAG_SVC)
 
-from application.container import default_embed_provider, default_rerank_client
 from application.llm_proxy_builds import (
     LLM_PROXY_BUILDS_APP_KEY,
     diagnose_build,
@@ -62,7 +60,6 @@ from application.llm_proxy_builds import (
 )
 from application.rag.collection_freshness import check_collection_freshness
 from application.rag.params import get_rag_answer_params
-from application.rag.use_cases import build_rag_context, prepare_ollama_messages
 
 try:
     from rag_service.infrastructure.keyword_collections_sqlite import get_keyword_collections_repository
@@ -133,30 +130,6 @@ TRASH_DIR = PROMPTS_DIR / ".trash"
 def is_readme_name(name: str) -> bool:
     """Check if a prompt name is README (case-insensitive)."""
     return name.lower() == "readme"
-
-
-def _get_rag_answer_params_compat(
-    *,
-    webui_dir: str | None = None,
-    collection_name: str | None = None,
-    prompt_name: str | None = None,
-) -> tuple[Any, Any]:
-    """Call get_rag_answer_params with backward/forward compatible kwargs."""
-    kwargs: dict[str, Any] = {}
-    if webui_dir is not None:
-        kwargs["webui_dir"] = webui_dir
-    if collection_name is not None:
-        kwargs["collection_name"] = collection_name
-    if prompt_name:
-        try:
-            sig = inspect.signature(get_rag_answer_params)
-            if "prompt_name" in sig.parameters:
-                kwargs["prompt_name"] = prompt_name
-        except (TypeError, ValueError):
-            pass
-    return get_rag_answer_params(**kwargs)
-
-
 def _get_rag_required_keywords_from_module() -> list[str] | None:
     """Return flat list of enabled keywords from rag_service module, or None to use config default."""
     if get_keyword_collections_repository is None:
@@ -195,10 +168,7 @@ RAG_TRIGGER_HELP_ROWS = [
 ]
 
 
-from domain.entities.rag import RagQuestionRequest
 from domain.services.prompt_builder import (
-    determine_reasoning_level,
-    last_user_content,
     build_system_content,
 )
 from llm_proxy.config import AUTOCOMPLETE_MODEL_ID
@@ -1207,287 +1177,6 @@ def webui_chat() -> Any:
                 proxy_body["messages"] = _msgs
         return _run_unified_proxy_chat(proxy_body)
 
-        settings_repo = get_settings_repository()
-        proxy_settings: dict[str, Any] = {}
-        try:
-            psj = settings_repo.get_app_setting("proxy_settings")
-            if psj:
-                proxy_settings = json.loads(psj)
-        except Exception:
-            pass
-
-        stored_model = (settings_repo.get_app_setting("proxy_model") or "").strip()
-        if not stored_model and proxy_settings.get("model"):
-            stored_model = str(proxy_settings.get("model") or "").strip()
-        raw_req_model = body.get("model")
-        if raw_req_model is not None and str(raw_req_model).strip():
-            requested_model = str(raw_req_model).strip()
-        elif stored_model:
-            requested_model = stored_model
-        else:
-            return jsonify(
-                {"error": "model is required: pass an Ollama tag or choose a default in app settings."}
-            ), 400
-        if requested_model == AUTOCOMPLETE_MODEL_ID:
-            return jsonify(
-                {
-                    "error": (
-                        "ChironAI-Autocomplete is for /v1/completions only; use a chat model or build id here."
-                    ),
-                }
-            ), 400
-
-        prompt_name = (body.get("prompt_name") or proxy_settings.get("prompt_name") or "")
-        if isinstance(prompt_name, str):
-            prompt_name = prompt_name.strip()
-        else:
-            prompt_name = str(prompt_name or "").strip()
-        if not prompt_name or not rag_prompt_file_exists(prompt_name) or is_readme_name(prompt_name):
-            return jsonify(
-                {
-                    "error": "Invalid or missing prompt template. Set Prompt template in LLM Proxy settings.",
-                    "detail": f"prompt_name={prompt_name!r}" if prompt_name else "prompt_name is empty",
-                }
-            ), 400
-
-        # Get collection name from request or settings — explicit saved collection or error
-        collection_name = (body.get("collection_name") or "").strip() or None
-        if not collection_name:
-            collection_name = (settings_repo.get_app_setting(RAG_COLLECTION_APP_SETTING) or "").strip() or None
-        if not collection_name:
-            return jsonify(
-                {
-                    "error": "No RAG collection selected. Choose a collection in LLM Proxy settings or pass collection_name.",
-                }
-            ), 400
-        q_names = _get_qdrant_collection_names()
-        if q_names and collection_name not in q_names:
-            return jsonify(
-                {
-                    "error": f"RAG collection {collection_name!r} not found in Qdrant.",
-                }
-            ), 400
-
-        # Get RAG dependencies - try to find WebUI directory
-        webui_dir = None
-        possible_webui = os.path.join(_ROOT, "WebUI")
-        if os.path.isdir(possible_webui):
-            webui_dir = possible_webui
-        params, deps = _get_rag_answer_params_compat(
-            webui_dir=webui_dir,
-            collection_name=collection_name,
-            prompt_name=prompt_name,
-        )
-        prefix, suffix = params.system_prefix, params.system_suffix
-        
-        rag_repo = deps.rag_repo
-        embed_provider = deps.embed_provider
-        chat_client = deps.chat_client
-
-        # Override embedding model per WebUI app_settings (rag_embed_model).
-        # This is important because get_rag_answer_params() wires embed_provider at startup via env only.
-        try:
-            settings_repo = get_settings_repository()
-            selected_embed_model = (settings_repo.get_app_setting("rag_embed_model") or "").strip()
-        except Exception:
-            selected_embed_model = ""
-        if not selected_embed_model:
-            selected_embed_model = get_ollama_embed_model()
-        embed_provider = default_embed_provider(model=selected_embed_model)
-        
-        # Rerank on/off and model from model settings (default off)
-        use_rerank = False
-        rerank_model_override: str | None = None
-        try:
-            settings_repo = get_settings_repository()
-            proxy_settings_json = settings_repo.get_app_setting("proxy_settings")
-            if proxy_settings_json:
-                proxy_settings = json.loads(proxy_settings_json)
-                use_rerank = bool(proxy_settings.get("rerank_for_rag", False))
-                rm = (proxy_settings.get("rerank_model") or "").strip() or None
-                if rm:
-                    rerank_model_override = rm
-        except Exception:
-            pass
-        if use_rerank:
-            effective_rerank_client = default_rerank_client(model=rerank_model_override)
-        else:
-            effective_rerank_client = None
-        
-        last_user = last_user_content(messages)
-        context_length = len(last_user.split())
-        ollama_model = requested_model
-
-        # Determine reasoning level
-        if not reasoning_level:
-            reasoning_level = determine_reasoning_level(
-                last_user, context_length, ollama_model, None
-            )
-        
-        # Build RAG context to get chunks_info
-        rag_keywords = _get_rag_required_keywords_from_module()
-        trigger_threshold = _get_effective_rag_trigger_threshold()
-        force_rag = bool(body.get("force_rag"))
-        ctx, rag_timings = build_rag_context(
-            last_user,
-            rag_repo,
-            embed_provider,
-            effective_rerank_client,
-            params.context_chunk_chars,
-            params.context_total_chars,
-            rag_required_keywords=rag_keywords,
-            trigger_threshold=trigger_threshold,
-            force_rag=force_rag,
-        )
-        if rag_timings:
-            set_latest_request_rag_steps(rag_timings)
-        set_proxy_status(STATUS_PREPARING_RESPONSE)
-
-        web_sup_text: str | None = None
-        try:
-            from api.http.llm_proxy_wiring import build_web_supplement_for_proxy
-
-            ps_chat: dict[str, Any] = {str(k): v for k, v in (proxy_settings or {}).items()}
-            web_sup_text, _ = build_web_supplement_for_proxy(
-                last_user or "",
-                float(ctx.max_score),
-                float(params.confidence_threshold),
-                ps_chat,
-            )
-        except Exception:
-            web_sup_text = None
-
-        # Prepare messages
-        req = RagQuestionRequest(
-            messages=messages,
-            model=ollama_model,  # Use ollama_model (already resolved from requested_model)
-            stream=False,
-            reasoning_level=reasoning_level,
-        )
-
-        ollama_messages, use_model = prepare_ollama_messages(
-            req,
-            rag_repo,
-            embed_provider,
-            effective_rerank_client,
-            prefix,
-            suffix,
-            params.context_chunk_chars,
-            params.context_total_chars,
-            params.confidence_threshold,
-            ollama_model,
-            reasoning_level=reasoning_level,
-            rag_required_keywords=rag_keywords,
-            rag_context=ctx,
-            trigger_threshold=trigger_threshold,
-            web_supplement=web_sup_text,
-        )
-
-        # Add code_only instruction if requested
-        if code_only:
-            user_msg = ollama_messages[-1] if ollama_messages else None
-            if user_msg and user_msg.get("role") == "user":
-                user_msg["content"] = "Only code, no explanations. " + (user_msg.get("content") or "")
-        
-        # Prepare Ollama options
-        options: dict[str, Any] = {}
-        if temperature is not None:
-            options["temperature"] = float(temperature)
-        if top_p is not None:
-            options["top_p"] = float(top_p)
-        
-        # Call chat
-        set_proxy_status(STATUS_RESPONSE)
-        content = chat_client.chat(ollama_messages, use_model, stream=False, options=options if options else None)
-        _pt = " ".join((m.get("content") or "") for m in ollama_messages if isinstance(m, dict))
-        latency_ms = int((time.time() - start_time) * 1000)
-
-        def _approx_tokens(text: str) -> int:
-            if not text:
-                return 0
-            return max(1, int(len(text) / 4))
-
-        prompt_tokens = _approx_tokens(_pt)
-        completion_tokens = _approx_tokens(content or "")
-        total_tokens = prompt_tokens + completion_tokens
-        set_latest_request_total_tokens(total_tokens)
-        rag_timings_out: dict[str, float] = {}
-        if isinstance(rag_timings, dict):
-            for k in ("embed_s", "search_s", "rerank_s", "total_rag_s"):
-                try:
-                    if rag_timings.get(k) is not None:
-                        rag_timings_out[k] = float(rag_timings.get(k) or 0.0)
-                except (TypeError, ValueError):
-                    pass
-        if "total_rag_s" in rag_timings_out:
-            rag_total_s = max(0.0, float(rag_timings_out.get("total_rag_s") or 0.0))
-            rag_timings_out["chat_s_estimated"] = max(0.0, (latency_ms / 1000.0) - rag_total_s)
-        if rag_timings_out:
-            rag_timings_out["latency_s_total"] = max(0.0, latency_ms / 1000.0)
-
-        # Build response
-        response_data: dict[str, Any] = {
-            "id": f"chatcmpl-webui-{int(time.time())}",
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": use_model,
-            "latency_ms": latency_ms,
-            "usage": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
-            },
-            "choices": [{
-                "index": 0,
-                "message": {"role": "assistant", "content": content or ""},
-                "finish_reason": "stop",
-            }],
-        }
-
-        # Add RAG metadata if requested
-        if include_rag_metadata:
-            system_preview = ollama_messages[0].get("content", "")[:500] if ollama_messages else ""
-            if len(ollama_messages[0].get("content", "")) > 500:
-                system_preview += "..."
-            
-            _rm: dict[str, Any] = {
-                "chunks_info": ctx.chunks_info,
-                "max_score": ctx.max_score,
-                "chunks_count": len(ctx.chunks_info),
-                "latency_ms": latency_ms,
-                "context_chars": sum(int(c.get("text_length") or 0) for c in (ctx.chunks_info or [])),
-                "system_prompt_preview": system_preview,
-                "rag_queries": [{"query": (last_user or "")[:2000], "step": 0}],
-            }
-            if rag_timings_out:
-                _rm["rag_timings"] = rag_timings_out
-            _rt = getattr(ctx, "rag_trace", None)
-            if isinstance(_rt, list):
-                _rm["rag_trace"] = _rt
-            _cr = getattr(ctx, "coverage_report", None)
-            if isinstance(_cr, dict):
-                _rm["coverage_report"] = _cr
-            _rq = getattr(ctx, "rag_quality", None)
-            if isinstance(_rq, dict):
-                _rm["rag_quality"] = _rq
-            response_data["rag_metadata"] = _rm
-        
-        # Store in buffer for dev console
-        _REQUEST_BUFFER.append({
-            "timestamp": datetime.now().isoformat(),
-            "request": {
-                "messages": messages,
-                "model": use_model,
-                "temperature": temperature,
-                "top_p": top_p,
-                "reasoning_level": reasoning_level,
-                "code_only": code_only,
-            },
-            "response": response_data,
-            "latency_ms": latency_ms,
-        })
-        
-        return jsonify(response_data)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.webui_chat", exc_info=True)
         log_to_database("ERROR", str(e), source="webui_routes.webui_chat", error_type=type(e).__name__)
@@ -1970,7 +1659,6 @@ def get_tester_settings() -> Any:
                 "top_k": get_rag_int("top_k", 4),
                 "rag_collection": "",
                 "fetch_web_knowledge": False,
-                "tester_proxy_mode": "rag_fusion",
             })
         
         # Ensure rag_collection field exists
@@ -1978,8 +1666,6 @@ def get_tester_settings() -> Any:
             settings["rag_collection"] = ""
         if "fetch_web_knowledge" not in settings:
             settings["fetch_web_knowledge"] = False
-        if "tester_proxy_mode" not in settings:
-            settings["tester_proxy_mode"] = "rag_fusion"
 
         return jsonify(settings)
     except Exception as e:
@@ -2073,372 +1759,6 @@ def tester_chat() -> Any:
             proxy_body["reasoning_level"] = reasoning_level
         return _run_unified_proxy_chat(proxy_body)
 
-        last_user = last_user_content(messages)
-        
-        rag_chunks_info: list[dict[str, Any]] | None = None
-        context_chars: int | None = None
-        ctx: Any = None
-
-        if use_rag:
-            # Use RAG flow
-            rag_repo = deps.rag_repo
-            embed_provider = deps.embed_provider
-
-            # Override embedding model per WebUI app_settings (rag_embed_model).
-            selected_embed_model = (settings_repo.get_app_setting("rag_embed_model") or "").strip()
-            if not selected_embed_model:
-                selected_embed_model = get_ollama_embed_model()
-            embed_provider = default_embed_provider(model=selected_embed_model)
-
-            # Rerank on/off and model from model settings (default off)
-            use_rerank_tester = False
-            rerank_model_tester: str | None = None
-            try:
-                proxy_settings_json = settings_repo.get_app_setting("proxy_settings")
-                if proxy_settings_json:
-                    proxy_settings = json.loads(proxy_settings_json)
-                    use_rerank_tester = bool(proxy_settings.get("rerank_for_rag", False))
-                    rm = (proxy_settings.get("rerank_model") or "").strip() or None
-                    if rm:
-                        rerank_model_tester = rm
-            except Exception:
-                pass
-            if use_rerank_tester:
-                effective_rerank_client = default_rerank_client(model=rerank_model_tester)
-            else:
-                effective_rerank_client = None
-            
-            prefix, suffix = get_rag_system_prompt(prompt_name)
-            
-            context_length = len(last_user.split())
-            if not reasoning_level:
-                reasoning_level = determine_reasoning_level(
-                    last_user, context_length, ollama_model, None
-                )
-            
-            top_k_override = top_k if top_k is not None else None
-            rag_keywords = _get_rag_required_keywords_from_module()
-            trigger_threshold = _get_effective_rag_trigger_threshold()
-
-            # Same as proxy: project_context -> fresh collection names and optional background refresh
-            project_context = body.get("project_context") or (tester_settings.get("project_context") if tester_settings else None)
-            project_fresh_collection_names: set[str] | None = None
-            needs_refresh: list[tuple[str, str]] = []  # (framework_id_lower, collection_name); also filled from resolved below
-            if (
-                fetch_web_knowledge
-                and isinstance(project_context, dict)
-                and _EXTERNAL_DOCS_RAG_AVAILABLE
-                and load_rag_sources_config
-            ):
-                frameworks = project_context.get("frameworks") or []
-                if frameworks:
-                    rag_sources_config = load_rag_sources_config()
-                    name_to_collection: dict[str, str] = {}
-                    for cfg in rag_sources_config:
-                        for kw in (cfg.trigger_keywords or []):
-                            name_to_collection[(kw or "").strip().lower()] = cfg.collection_name
-                        if (cfg.external_source_id or "").strip():
-                            name_to_collection[(cfg.external_source_id or "").strip().lower()] = cfg.collection_name
-                    ttl_days = get_framework_collection_ttl_days()
-                    ttl_repo = get_settings_repository()
-                    try:
-                        ttl_raw = ttl_repo.get_app_setting("framework_collection_ttl_days")
-                        if ttl_raw is not None and str(ttl_raw).strip() != "":
-                            try:
-                                ttl_days = int(ttl_raw)
-                            except (TypeError, ValueError):
-                                pass
-                    except Exception:
-                        pass
-                    fresh_collections: list[str] = []
-                    needs_refresh.clear()
-                    for fw in frameworks:
-                        if not isinstance(fw, dict):
-                            continue
-                        name = (fw.get("name") or "").strip()
-                        if not name:
-                            continue
-                        coll = name_to_collection.get(name.lower())
-                        if not coll:
-                            continue
-                        meta = None
-                        try:
-                            meta = ttl_repo.get_collection_meta(coll)
-                        except Exception:
-                            pass
-                        if check_collection_freshness(meta, ttl_days) == "fresh":
-                            if coll not in fresh_collections:
-                                fresh_collections.append(coll)
-                        else:
-                            needs_refresh.append((name.lower(), coll))
-                    project_fresh_collection_names = set(fresh_collections) if fresh_collections else None
-
-            # Same as proxy: body_rag_sources, resolve, build_merged_rag_context with fresh_collection_names
-            use_merged = False
-            if (
-                fetch_web_knowledge
-                and _EXTERNAL_DOCS_RAG_AVAILABLE
-                and load_rag_sources_config
-                and resolve_rag_sources_for_request
-                and build_merged_rag_context
-                and QdrantRagSearchAdapter is not None
-            ):
-                rag_sources_config = load_rag_sources_config()
-                # When Fetch Web knowledge is on, resolve by triggers so frameworks (e.g. Alamofire) from the question are included; do not restrict to selected collection only
-                body_rag_sources = None if fetch_web_knowledge else (body.get("rag_sources") or (tester_settings.get("rag_sources") if tester_settings else None))
-                if isinstance(body_rag_sources, list):
-                    body_rag_sources = [str(x) for x in body_rag_sources]
-                else:
-                    body_rag_sources = None
-                resolved = resolve_rag_sources_for_request(last_user, messages, body_rag_sources, rag_sources_config)
-                if len(resolved) >= 1:
-                    use_merged = True
-                    # Trigger full crawl for resolved sources that are missing or stale when repo is on GitHub (same as proxy)
-                    try:
-                        _settings_repo = get_settings_repository()
-                        _ttl_days = get_framework_collection_ttl_days()
-                        _ttl_raw = _settings_repo.get_app_setting("framework_collection_ttl_days")
-                        if _ttl_raw is not None and str(_ttl_raw).strip() != "":
-                            try:
-                                _ttl_days = int(_ttl_raw)
-                            except (TypeError, ValueError):
-                                pass
-                    except Exception:
-                        _settings_repo = None
-                        _ttl_days = 90
-                    resolved_needs_refresh: list[tuple[str, str]] = []
-                    if _settings_repo:
-                        for cfg in resolved:
-                            meta = None
-                            try:
-                                meta = _settings_repo.get_collection_meta(cfg.collection_name)
-                            except Exception:
-                                pass
-                            if check_collection_freshness(meta, _ttl_days) != "fresh":
-                                fid = (cfg.external_source_id or cfg.collection_name or "").strip().lower() or cfg.collection_name.lower()
-                                resolved_needs_refresh.append((fid, cfg.collection_name))
-                    work_list = list(needs_refresh)
-                    for (fid, coll) in resolved_needs_refresh:
-                        if coll not in [c for _, c in work_list]:
-                            work_list.append((fid, coll))
-                    if work_list and load_github_repos and ingest_github_repo_markdown and HttpFetchClient and QdrantChunkSink and get_latest_release_tag:
-                        coll_to_framework_id = {}
-                        for cfg in rag_sources_config:
-                            fid = (cfg.external_source_id or cfg.collection_name or "").strip().lower()
-                            if fid:
-                                coll_to_framework_id[cfg.collection_name] = fid
-                        github_repos_list = load_github_repos()
-                        by_framework_id = {(e.get("framework_id") or "").lower(): e for e in github_repos_list if e.get("framework_id")}
-
-                        def _run_refresh(work: list) -> None:
-                            try:
-                                qdrant_url = get_qdrant_url()
-                                fetch_client = HttpFetchClient()
-                                chunk_sink = QdrantChunkSink(base_url=qdrant_url)
-                                repo = get_settings_repository()
-                                def on_indexed(cname: str, fid: str, ver: str | None, last_at: str) -> None:
-                                    repo.set_collection_meta(cname, fid, ver or "", last_at)
-                                for _name, coll in work:
-                                    fid = coll_to_framework_id.get(coll) or coll.lower()
-                                    entry = by_framework_id.get(fid)
-                                    if not entry:
-                                        continue
-                                    owner = entry.get("owner", "")
-                                    repo_name = entry.get("repo", "")
-                                    ref = entry.get("ref") or "main"
-                                    if ref in ("latest", ""):
-                                        tag = get_latest_release_tag(f"{owner}/{repo_name}")
-                                        if tag:
-                                            ref = tag
-                                        else:
-                                            ref = "main"
-                                    ingest_github_repo_markdown(
-                                        owner, repo_name, ref, coll, fid,
-                                        fetch_client, chunk_sink, embed_provider,
-                                        max_depth=3,
-                                        on_indexed=on_indexed,
-                                    )
-                                    break
-                            except Exception as e:
-                                _WEBUI_LOG.warning("Background framework refresh failed: %s", e)
-
-                        threading.Thread(target=_run_refresh, args=(work_list,), daemon=True).start()
-
-                    try:
-                        qdrant_url = get_qdrant_url()
-                    except Exception:
-                        qdrant_url = "http://localhost:6333"
-                    rag_search_adapter = QdrantRagSearchAdapter(base_url=qdrant_url)
-                    fetch_client = HttpFetchClient() if HttpFetchClient is not None else None
-                    external_sources_list = load_external_sources() if load_external_sources else []
-                    merged_ctx, merged_timings = build_merged_rag_context(
-                        last_user,
-                        resolved,
-                        rag_search_adapter,
-                        embed_provider,
-                        params.context_chunk_chars,
-                        params.context_total_chars,
-                        fetch_client=fetch_client,
-                        external_sources=external_sources_list,
-                        fresh_collection_names=project_fresh_collection_names,
-                    )
-                    if merged_timings:
-                        set_latest_request_rag_steps(merged_timings)
-                    from domain.entities.rag import RagContext as AppRagContext
-                    ctx = AppRagContext(
-                        context_text=merged_ctx.context_text,
-                        chunks_info=merged_ctx.chunks_info or [],
-                        max_score=merged_ctx.max_score,
-                    )
-                    rag_chunks_info = ctx.chunks_info or None
-                    context_chars = len(ctx.context_text) if ctx.context_text else None
-            if not use_merged:
-                ctx, rag_timings = build_rag_context(
-                    last_user,
-                    rag_repo,
-                    embed_provider,
-                    effective_rerank_client,
-                    params.context_chunk_chars,
-                    params.context_total_chars,
-                    top_k=top_k_override,
-                    rag_required_keywords=rag_keywords,
-                    trigger_threshold=trigger_threshold,
-                )
-                if rag_timings:
-                    set_latest_request_rag_steps(rag_timings)
-                rag_chunks_info = ctx.chunks_info or None
-                if rag_chunks_info:
-                    context_chars = sum(int(c.get("text_length") or 0) for c in rag_chunks_info)
-                else:
-                    context_chars = None
-
-            web_sup_text_tester: str | None = None
-            try:
-                from api.http.llm_proxy_wiring import build_web_supplement_for_proxy
-
-                ps_t: dict[str, Any] = {}
-                try:
-                    _raw_ps = settings_repo.get_app_setting("proxy_settings")
-                    if _raw_ps:
-                        _parsed = json.loads(_raw_ps)
-                        if isinstance(_parsed, dict):
-                            ps_t = {str(k): v for k, v in _parsed.items()}
-                except Exception:
-                    ps_t = {}
-                web_sup_text_tester, _ = build_web_supplement_for_proxy(
-                    last_user or "",
-                    float(ctx.max_score),
-                    float(params.confidence_threshold),
-                    ps_t,
-                )
-            except Exception:
-                web_sup_text_tester = None
-
-            # Use the actual Ollama model name here; logical RAG id is not an Ollama tag.
-            req = RagQuestionRequest(
-                messages=messages,
-                model=ollama_model,
-                stream=False,
-                reasoning_level=reasoning_level,
-            )
-
-            ollama_messages, use_model = prepare_ollama_messages(
-                req,
-                rag_repo,
-                embed_provider,
-                effective_rerank_client,
-                prefix,
-                suffix,
-                params.context_chunk_chars,
-                params.context_total_chars,
-                params.confidence_threshold,
-                ollama_model,
-                reasoning_level=reasoning_level,
-                rag_required_keywords=rag_keywords,
-                rag_context=ctx,
-                trigger_threshold=trigger_threshold,
-                web_supplement=web_sup_text_tester,
-            )
-        else:
-            # Direct chat without RAG
-            use_model = ollama_model
-            ollama_messages = messages.copy()
-            
-            # Add system prompt if needed
-            if prompt_name:
-                prefix, _ = get_rag_system_prompt(prompt_name)
-                if prefix:
-                    ollama_messages.insert(0, {"role": "system", "content": prefix})
-        
-        # Prepare Ollama options
-        options: dict[str, Any] = {}
-        if temperature is not None:
-            options["temperature"] = float(temperature)
-        if top_p is not None:
-            options["top_p"] = float(top_p)
-
-        t_llm = time.perf_counter()
-        content = chat_client.chat(
-            ollama_messages,
-            use_model,
-            stream=False,
-            options=options if options else None,
-        )
-        llm_phase_ms = int((time.perf_counter() - t_llm) * 1000)
-
-        latency_ms = int((time.time() - start_time) * 1000)
-
-        # Rough token accounting (approximate, for diagnostics / UX only)
-        def _approx_tokens(text: str) -> int:
-            # Simple heuristic: 1 token ≈ 4 characters
-            if not text:
-                return 0
-            return max(1, int(len(text) / 4))
-
-        prompt_text = " ".join((m.get("content") or "") for m in messages if isinstance(m, dict))
-        prompt_tokens = _approx_tokens(prompt_text)
-        completion_tokens = _approx_tokens(content or "")
-        total_tokens = prompt_tokens + completion_tokens
-        
-        # Build response
-        response_data: dict[str, Any] = {
-            "id": f"chatcmpl-tester-{int(time.time())}",
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": use_model,
-            "tester_request_id": tester_request_id,
-            "llm_phase_ms": llm_phase_ms,
-            "latency_ms": latency_ms,
-            "usage": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
-            },
-            "choices": [{
-                "index": 0,
-                "message": {"role": "assistant", "content": content or ""},
-                "finish_reason": "stop",
-            }],
-        }
-
-        if use_rag:
-            _rmt: dict[str, Any] = {
-                "chunks_info": rag_chunks_info or [],
-                "chunks_count": len(rag_chunks_info or []),
-                "context_chars": context_chars,
-            }
-            _rtx = getattr(ctx, "rag_trace", None)
-            if isinstance(_rtx, list):
-                _rmt["rag_trace"] = _rtx
-            _crx = getattr(ctx, "coverage_report", None)
-            if isinstance(_crx, dict):
-                _rmt["coverage_report"] = _crx
-            _rqx = getattr(ctx, "rag_quality", None)
-            if isinstance(_rqx, dict):
-                _rmt["rag_quality"] = _rqx
-            response_data["rag_metadata"] = _rmt
-        
-        return jsonify(response_data)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.tester_chat", exc_info=True)
         return jsonify({"error": str(e)}), 500
@@ -6085,6 +5405,8 @@ def _rag_tests_run_worker(
     model: str,
     collection_name: str,
     prompt_name: str | None = None,
+    temperature: float | None = None,
+    top_k: float | None = None,
     concurrency: int = 1,
 ) -> None:
     """Background worker: run tests concurrently, update progress, respect cancel."""
@@ -6191,11 +5513,14 @@ def _rag_tests_run_worker(
                         "collection_name": collection_name,
                         "stream": True,
                         "include_rag_metadata": True,
-                        "testing_disable_rerank": True,
                         "client_request_id": request_id,
                     }
                     if prompt_name:
                         chat_payload["prompt_name"] = prompt_name
+                    if temperature is not None:
+                        chat_payload["temperature"] = float(temperature)
+                    if top_k is not None:
+                        chat_payload["top_k"] = float(top_k)
                     resp = client.post("/v1/chat/completions", json=chat_payload, buffered=False)
                     content_type = str(resp.headers.get("Content-Type") or "")
                     is_sse_response = "text/event-stream" in content_type.lower()
@@ -6219,6 +5544,7 @@ def _rag_tests_run_worker(
                             "test_name": test.get("name"),
                             "platform": test.get("platform"),
                             "framework": test.get("framework"),
+                            "difficulty": test.get("difficulty"),
                             "model": model,
                             "status": "FAIL",
                             "response_time_ms": elapsed_ms,
@@ -6380,6 +5706,7 @@ def _rag_tests_run_worker(
                         "test_name": test.get("name"),
                         "platform": test.get("platform"),
                         "framework": test.get("framework"),
+                        "difficulty": test.get("difficulty"),
                         "model": model,
                         "status": validation.get("status", "FAIL"),
                         "response_time_ms": latency_ms if latency_ms > 0 else elapsed_total_ms,
@@ -6414,6 +5741,7 @@ def _rag_tests_run_worker(
                         "test_name": test.get("name"),
                         "platform": test.get("platform"),
                         "framework": test.get("framework"),
+                        "difficulty": test.get("difficulty"),
                         "model": model,
                         "status": "FAIL",
                         "response_time_ms": _elapsed,
@@ -6489,6 +5817,7 @@ def _rag_tests_run_worker(
                             "test_name": test.get("name"),
                             "platform": test.get("platform"),
                             "framework": test.get("framework"),
+                            "difficulty": test.get("difficulty"),
                             "model": model,
                             "status": "FAIL",
                             "response_time_ms": 0,
@@ -6598,6 +5927,16 @@ def rag_tests_run() -> Any:
             }), 400
         collection_name = names[0]
     prompt_name = (body.get("prompt_name") or "").strip() or None
+    temperature_raw = body.get("temperature")
+    top_k_raw = body.get("top_k")
+    try:
+        temperature = float(temperature_raw) if temperature_raw is not None else None
+    except (TypeError, ValueError):
+        temperature = None
+    try:
+        top_k = float(top_k_raw) if top_k_raw is not None else None
+    except (TypeError, ValueError):
+        top_k = None
     job_id = str(uuid.uuid4())[:12]
     with _rag_test_jobs_lock:
         _rag_test_jobs[job_id] = {
@@ -6633,7 +5972,17 @@ def rag_tests_run() -> Any:
         }
     thread = threading.Thread(
         target=_rag_tests_run_worker,
-        args=(job_id, current_app.app_context(), tests_to_run, model, collection_name, prompt_name, concurrency),
+        args=(
+            job_id,
+            current_app.app_context(),
+            tests_to_run,
+            model,
+            collection_name,
+            prompt_name,
+            temperature,
+            top_k,
+            concurrency,
+        ),
         daemon=True,
     )
     thread.start()
@@ -6641,6 +5990,8 @@ def rag_tests_run() -> Any:
         "job_id": job_id,
         "collection_name": collection_name,
         "prompt_name": prompt_name,
+        "temperature": temperature,
+        "top_k": top_k,
         "concurrency": concurrency,
     }), 202
 

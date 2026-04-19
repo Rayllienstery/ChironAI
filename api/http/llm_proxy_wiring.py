@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import os
 import sys
 from pathlib import Path
@@ -80,6 +81,29 @@ except ImportError:
     get_keyword_collections_repository = None  # type: ignore[assignment,misc]
 
 _RAG_LOG = logging.getLogger("trag.rag")
+
+
+def _get_proxy_rerank_enabled_for_proxy() -> bool:
+    """
+    Single contract for /v1 rerank toggle.
+
+    Priority:
+    1. persisted `proxy_settings.rerank_for_rag` from DB (WebUI setting),
+    2. fallback to static config/env `get_proxy_rerank_enabled()`.
+    """
+    try:
+        repo = get_settings_repository()
+        raw = repo.get_app_setting("proxy_settings")
+        if raw:
+            loaded = json.loads(raw)
+            if isinstance(loaded, dict) and "rerank_for_rag" in loaded:
+                return bool(loaded.get("rerank_for_rag"))
+    except Exception:
+        pass
+    try:
+        return bool(get_proxy_rerank_enabled())
+    except Exception:
+        return False
 
 
 def build_web_supplement_for_proxy(
@@ -289,7 +313,7 @@ def build_llm_proxy_wiring(
         status_response=STATUS_RESPONSE,
         check_collection_freshness=rr.check_collection_freshness,
         get_rag_answer_params=rr.get_rag_answer_params,
-        get_proxy_rerank_enabled=rr.get_proxy_rerank_enabled,
+        get_proxy_rerank_enabled=_get_proxy_rerank_enabled_for_proxy,
         get_qdrant_url=rr.get_qdrant_url,
         get_framework_collection_ttl_days=rr.get_framework_collection_ttl_days,
         get_rag_required_keywords=_get_rag_required_keywords_from_module,
