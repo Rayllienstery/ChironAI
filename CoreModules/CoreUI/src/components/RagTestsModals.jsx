@@ -248,6 +248,10 @@ export function RagResultDetailModal({ detail, onClose }) {
                 {lm.context_chars != null &&
                   lm.context_chars > 0 &&
                   ` | Context chars: ${lm.context_chars}`}
+                {lm.tokens_per_second_generated != null &&
+                  ` | Gen speed: ${Number(lm.tokens_per_second_generated).toFixed(2)} tok/s`}
+                {lm.tokens_per_second_total != null &&
+                  ` | Total speed: ${Number(lm.tokens_per_second_total).toFixed(2)} tok/s`}
               </p>
             </section>
           )}

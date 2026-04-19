@@ -243,6 +243,15 @@ function App() {
     return () => clearTimeout(t);
   }, [ragTestRunJobId, ragTestRunning]);
 
+  useEffect(() => {
+    const onOpenRagRunDetails = () => {
+      setActiveTab("testing");
+      setTestingSubTab("rag-tests");
+    };
+    window.addEventListener("coreui:open-rag-run-details", onOpenRagRunDetails);
+    return () => window.removeEventListener("coreui:open-rag-run-details", onOpenRagRunDetails);
+  }, []);
+
   const handleRagTestRunStart = async (body) => {
     setRagTestRunError(null);
     setRagTestRunResults([]);

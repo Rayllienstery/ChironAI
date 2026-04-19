@@ -107,6 +107,24 @@ function NotificationCenterShell() {
     liveEntries.forEach(([id]) => suppressLiveActivity(id));
   };
 
+  const extractRagRunId = (notification) => {
+    const meta = notification?.metadata && typeof notification.metadata === 'object'
+      ? notification.metadata
+      : null;
+    const rid = meta?.run_id || meta?.rag_run_id || meta?.runId || '';
+    return String(rid || '').trim();
+  };
+
+  const openRagRunResults = (runId) => {
+    if (!runId) return;
+    try {
+      window.__coreuiOpenRagRunId = runId;
+      window.dispatchEvent(new CustomEvent('coreui:open-rag-run-details', { detail: { runId } }));
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <div className="notification-center-root" ref={rootRef}>
       {menuOpen && (
@@ -168,6 +186,19 @@ function NotificationCenterShell() {
             <div className="notification-center-card-main">
               {n.message ? (
                 <div className="notification-center-card-message">{n.message}</div>
+              ) : null}
+              {n.source === 'rag-tests' && extractRagRunId(n) ? (
+                <div className="notification-center-card-actions">
+                  <button
+                    type="button"
+                    className="notification-center-card-action-btn"
+                    onClick={() => {
+                      openRagRunResults(extractRagRunId(n));
+                    }}
+                  >
+                    View results
+                  </button>
+                </div>
               ) : null}
             </div>
             <ModuleFooter source={n.source} notification={n} />

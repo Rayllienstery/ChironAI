@@ -21,6 +21,7 @@ export default function RagTestRunNotificationBridge({
     sessionId,
   } = useNotificationCenter();
   const lastProgressRef = useRef(null);
+  const lastJobIdRef = useRef(null);
   const prevActiveRef = useRef(false);
 
   useEffect(() => {
@@ -28,6 +29,12 @@ export default function RagTestRunNotificationBridge({
       lastProgressRef.current = ragTestRunProgress;
     }
   }, [ragTestRunProgress]);
+
+  useEffect(() => {
+    if (ragTestRunJobId) {
+      lastJobIdRef.current = ragTestRunJobId;
+    }
+  }, [ragTestRunJobId]);
 
   useEffect(() => {
     const active = !!(ragTestRunning || ragTestRunJobId);
@@ -78,6 +85,12 @@ export default function RagTestRunNotificationBridge({
       message: err
         ? String(err).slice(0, 400)
         : `${p.passed ?? 0} passed, ${p.failed ?? 0} failed`,
+      metadata: {
+        run_id: lastJobIdRef.current || null,
+        passed: p.passed ?? 0,
+        failed: p.failed ?? 0,
+        total: p.total ?? 0,
+      },
     });
   }, [
     ragTestRunning,

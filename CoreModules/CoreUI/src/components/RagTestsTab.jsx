@@ -90,16 +90,18 @@ function RagTestsTab({
   const [runHistoryHasMore, setRunHistoryHasMore] = useState(true);
   const [historyFilters, setHistoryFilters] = useState({ model: '', from_date: '', to_date: '', status: '' });
   const [runSummary, setRunSummary] = useState(null);
-  const [selectedRunId, setSelectedRunId] = useState(null);
-  const [selectedRunDetail, setSelectedRunDetail] = useState(null);
+  const [runHistoryModal, setRunHistoryModal] = useState(null);
+  const [runHistoryModalTab, setRunHistoryModalTab] = useState('summary');
   const [historySectionOpen, setHistorySectionOpen] = useState(false);
   const [showFailDrilldown, setShowFailDrilldown] = useState(false);
   const [collections, setCollections] = useState([]);
   const [selectedCollection, setSelectedCollection] = useState('');
   const [prompts, setPrompts] = useState([]);
   const [selectedPromptName, setSelectedPromptName] = useState('');
+  const [runConcurrency, setRunConcurrency] = useState(1);
   const [liveMonitorOpen, setLiveMonitorOpen] = useState(true);
   const [liveMonitorDetailOpen, setLiveMonitorDetailOpen] = useState(false);
+  const [liveDetailCardIndex, setLiveDetailCardIndex] = useState(null);
   const [currentStepStartedAt, setCurrentStepStartedAt] = useState(null);
   const [liveNowMs, setLiveNowMs] = useState(Date.now());
   const [liveTrace, setLiveTrace] = useState(null);
@@ -251,6 +253,7 @@ function RagTestsTab({
   useEffect(() => {
     if (!running) {
       setCurrentStepStartedAt(null);
+      setLiveDetailCardIndex(null);
       return;
     }
     if (runProgress?.current_test_name) {
@@ -325,32 +328,60 @@ function RagTestsTab({
   }, [running, runProgress?.sse_enabled, runProgress?.sse_preview]);
 
   useEffect(() => {
-    if (!resultDetailModal && !liveMonitorDetailOpen) return undefined;
+    const id = window.setTimeout(() => {
+      const nodes = document.querySelectorAll('.rag-tests-live-sse');
+      nodes.forEach((node) => {
+        try {
+          node.scrollTop = node.scrollHeight;
+        } catch {
+          // ignore
+        }
+      });
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [runProgress?.active_live, runProgress?.sse_preview, liveSse.text]);
+
+  useEffect(() => {
+    if (!resultDetailModal && !liveMonitorDetailOpen && !runHistoryModal && !historySectionOpen) return undefined;
     const onKey = (e) => {
       if (e.key === 'Escape') setResultDetailModal(null);
       if (e.key === 'Escape') setLiveMonitorDetailOpen(false);
+      if (e.key === 'Escape') setRunHistoryModal(null);
+      if (e.key === 'Escape') setHistorySectionOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [resultDetailModal, liveMonitorDetailOpen]);
+  }, [resultDetailModal, liveMonitorDetailOpen, runHistoryModal, historySectionOpen]);
 
-  const handleSelectPastRun = async (runId) => {
+  const handleSelectPastRun = useCallback(async (runId) => {
     setError(null);
     try {
       const run = await getRagTestRun(runId);
-      setSelectedRunId(runId);
-      setSelectedRunDetail(run);
+      setRunHistoryModalTab('summary');
+      setRunHistoryModal({ id: runId, run });
       setResultDetailModal(null);
     } catch (e) {
       setError(e.message);
     }
-  };
+  }, []);
 
-  const handleBackToCurrent = () => {
-    setSelectedRunId(null);
-    setSelectedRunDetail(null);
-    setResultDetailModal(null);
-  };
+  useEffect(() => {
+    const consumePendingOpen = () => {
+      const pendingId = String(window.__coreuiOpenRagRunId || '').trim();
+      if (!pendingId) return;
+      window.__coreuiOpenRagRunId = '';
+      void handleSelectPastRun(pendingId);
+    };
+    const onOpen = (e) => {
+      const rid = String(e?.detail?.runId || '').trim();
+      if (!rid) return;
+      window.__coreuiOpenRagRunId = '';
+      void handleSelectPastRun(rid);
+    };
+    consumePendingOpen();
+    window.addEventListener('coreui:open-rag-run-details', onOpen);
+    return () => window.removeEventListener('coreui:open-rag-run-details', onOpen);
+  }, [handleSelectPastRun]);
 
   const filteredTests = tests;
 
@@ -358,6 +389,7 @@ function RagTestsTab({
     model: selectedModel,
     collection_name: selectedCollection || undefined,
     prompt_name: selectedPromptName || undefined,
+    concurrency: Number(runConcurrency) || 1,
     ...opts,
   });
 
@@ -600,24 +632,18 @@ function RagTestsTab({
     try {
       await deleteRagTest(testId);
       loadTests();
-      if (selectedRunDetail?.results?.some((r) => r.test_id === testId)) {
-        setSelectedRunId(null);
-        setSelectedRunDetail(null);
-        setResultDetailModal(null);
-      }
     } catch (e) {
       setError(e.message);
     }
   };
 
-  const displayResults = selectedRunDetail?.results ?? results;
+  const displayResults = results;
   const lastResultByTestId = displayResults.length
     ? displayResults.reduce((acc, r) => {
         acc[r.test_id] = r;
         return acc;
       }, {})
     : {};
-  const isViewingPastRun = Boolean(selectedRunDetail);
   const failResults = (displayResults || []).filter((r) => r.status === 'FAIL');
 
   const [failFilters, setFailFilters] = useState({
@@ -627,15 +653,40 @@ function RagTestsTab({
     ragStrictOnly: false,
   });
 
-  const tableRows = isViewingPastRun
-    ? displayResults
-    : filteredTests;
+  const tableRows = filteredTests;
   const currentStepElapsedMs = currentStepStartedAt && running
     ? Math.max(0, liveNowMs - currentStepStartedAt)
     : null;
-  const liveStepTimings = runProgress?.current_step_timings && typeof runProgress.current_step_timings === 'object'
-    ? runProgress.current_step_timings
-    : null;
+  const activeLiveCards = Array.isArray(runProgress?.active_live)
+    ? runProgress.active_live
+        .filter((x) => x && typeof x === 'object')
+        .map((x, i) => ({
+          index: Number(x.index) || i + 1,
+          name: String(x.name || runProgress?.current_test_name || 'idle'),
+          started_at_ms: Number(x.started_at_ms) || null,
+          sse_enabled: Boolean(x.sse_enabled),
+          sse_preview: String(x.sse_preview || ''),
+          sse_token_tps_live: x.sse_token_tps_live,
+          sse_token_tps_avg: x.sse_token_tps_avg,
+          current_step_timings: x.current_step_timings && typeof x.current_step_timings === 'object'
+            ? x.current_step_timings
+            : null,
+        }))
+    : [];
+  const liveCards = activeLiveCards.length
+    ? activeLiveCards
+    : [{
+        index: 1,
+        name: String(runProgress?.current_test_name || 'idle'),
+        started_at_ms: currentStepStartedAt || null,
+        sse_enabled: Boolean(runProgress?.sse_enabled),
+        sse_preview: String(runProgress?.sse_preview || liveSse.text || ''),
+        sse_token_tps_live: runProgress?.sse_token_tps_live,
+        sse_token_tps_avg: runProgress?.sse_token_tps_avg,
+        current_step_timings: runProgress?.current_step_timings && typeof runProgress.current_step_timings === 'object'
+          ? runProgress.current_step_timings
+          : null,
+      }];
 
   const formatDuration = (ms) => {
     if (ms == null || Number.isNaN(Number(ms))) return '-';
@@ -649,24 +700,155 @@ function RagTestsTab({
     return `${n.toFixed(2)} s`;
   };
 
-  const liveStepRows = [
-    { key: 'total', value: liveStepTimings?.latency_s_total ?? (currentStepElapsedMs != null ? Number(currentStepElapsedMs) / 1000.0 : null) },
-    { key: 'embed', value: liveStepTimings?.embed_s },
-    { key: 'search', value: liveStepTimings?.search_s },
-    { key: 'rerank', value: liveStepTimings?.rerank_s },
-    { key: 'rag', value: liveStepTimings?.total_rag_s },
-    {
-      key: 'chat',
-      value: liveStepTimings?.chat_s_estimated != null
-        ? liveStepTimings.chat_s_estimated
-        : (currentStepElapsedMs != null ? Number(currentStepElapsedMs) / 1000.0 : null),
-    },
-  ];
+  const getLiveStepRows = (card) => {
+    const cardElapsedMs = card?.started_at_ms
+      ? Math.max(0, liveNowMs - Number(card.started_at_ms))
+      : currentStepElapsedMs;
+    const timings = card?.current_step_timings && typeof card.current_step_timings === 'object'
+      ? card.current_step_timings
+      : null;
+    return [
+      { key: 'total', value: timings?.latency_s_total ?? (cardElapsedMs != null ? Number(cardElapsedMs) / 1000.0 : null) },
+      { key: 'embed', value: timings?.embed_s },
+      { key: 'search', value: timings?.search_s },
+      { key: 'rerank', value: timings?.rerank_s },
+      { key: 'rag', value: timings?.total_rag_s },
+      {
+        key: 'chat',
+        value: timings?.chat_s_estimated != null
+          ? timings.chat_s_estimated
+          : (cardElapsedMs != null ? Number(cardElapsedMs) / 1000.0 : null),
+      },
+    ];
+  };
+  const selectedLiveDetailCard = liveCards.find((x) => x.index === liveDetailCardIndex) || liveCards[0] || null;
+  const selectedLiveStepRows = selectedLiveDetailCard ? getLiveStepRows(selectedLiveDetailCard) : [];
+
+  useEffect(() => {
+    if (!liveCards.length) {
+      setLiveDetailCardIndex(null);
+      return;
+    }
+    if (liveDetailCardIndex == null) return;
+    if (!liveCards.some((x) => x.index === liveDetailCardIndex)) {
+      setLiveDetailCardIndex(liveCards[0].index);
+    }
+  }, [liveCards, liveDetailCardIndex]);
   const liveTraceChunks = Array.isArray(liveTrace?.rag?.context?.chunks)
     ? liveTrace.rag.context.chunks
     : [];
   const liveTraceQuery = String(liveTrace?.request?.user_query_preview || '').trim();
-  const openLiveDetail = () => setLiveMonitorDetailOpen(true);
+  const openLiveDetail = () => {
+    if (liveDetailCardIndex == null && liveCards[0]?.index != null) {
+      setLiveDetailCardIndex(liveCards[0].index);
+    }
+    setLiveMonitorDetailOpen(true);
+  };
+
+  const runHistoryResults = runHistoryModal?.run?.results || [];
+
+  const computeStats = (values) => {
+    const nums = (values || [])
+      .map((v) => Number(v))
+      .filter((n) => Number.isFinite(n) && n >= 0);
+    if (!nums.length) return null;
+    const sorted = [...nums].sort((a, b) => a - b);
+    const pick = (p) => {
+      const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * p)));
+      return sorted[idx];
+    };
+    const sum = sorted.reduce((acc, n) => acc + n, 0);
+    return {
+      count: sorted.length,
+      avg: sum / sorted.length,
+      min: sorted[0],
+      max: sorted[sorted.length - 1],
+      p50: pick(0.5),
+      p95: pick(0.95),
+    };
+  };
+
+  const latencyStatsMs = computeStats(
+    runHistoryResults.map((r) => r.latency_ms ?? r.response_time_ms).filter((v) => v != null)
+  );
+  const stageAvg = (key) => {
+    const vals = runHistoryResults
+      .map((r) => (r?.rag_timings && typeof r.rag_timings === 'object' ? r.rag_timings[key] : null))
+      .filter((v) => Number.isFinite(Number(v)))
+      .map((v) => Number(v));
+    if (!vals.length) return null;
+    return vals.reduce((acc, n) => acc + n, 0) / vals.length;
+  };
+
+  const timingAverages = [
+    { label: 'embed', value: stageAvg('embed_s') },
+    { label: 'search', value: stageAvg('search_s') },
+    { label: 'rerank', value: stageAvg('rerank_s') },
+    { label: 'rag', value: stageAvg('total_rag_s') },
+    { label: 'chat', value: stageAvg('chat_s_estimated') },
+    { label: 'total', value: stageAvg('latency_s_total') },
+  ];
+
+  const withLatency = runHistoryResults
+    .map((r) => ({
+      test_id: r.test_id,
+      test_name: r.test_name,
+      latency_ms: Number(r.latency_ms ?? r.response_time_ms ?? NaN),
+      status: r.status,
+    }))
+    .filter((x) => Number.isFinite(x.latency_ms))
+    .sort((a, b) => a.latency_ms - b.latency_ms);
+  const fastestTests = withLatency.slice(0, 5);
+  const slowestTests = [...withLatency].reverse().slice(0, 5);
+
+  const chunkMap = new Map();
+  runHistoryResults.forEach((r) => {
+    const chunks = Array.isArray(r?.chunks_info) ? r.chunks_info : [];
+    chunks.forEach((c) => {
+      const key = String(c?.url || `${c?.source || 'unknown'}:${c?.title || c?.id || c?.text_preview || ''}` || '').trim();
+      if (!key) return;
+      const prev = chunkMap.get(key) || { key, count: 0, scoreSum: 0, scoreCount: 0 };
+      prev.count += 1;
+      const s = Number(c?.score);
+      if (Number.isFinite(s)) {
+        prev.scoreSum += s;
+        prev.scoreCount += 1;
+      }
+      chunkMap.set(key, prev);
+    });
+  });
+  const topChunks = [...chunkMap.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10)
+    .map((c) => ({ ...c, avgScore: c.scoreCount ? c.scoreSum / c.scoreCount : null }));
+  const mostPopularChunk = topChunks[0] || null;
+
+  const normalizeReason = (text) => String(text || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const reasonMap = new Map();
+  runHistoryResults.forEach((r) => {
+    const raw = String(r?.failure_reason || r?.error || '').trim();
+    if (!raw) return;
+    const norm = normalizeReason(raw);
+    const prev = reasonMap.get(norm) || { normalized: norm, sample: raw, count: 0, tests: [] };
+    prev.count += 1;
+    if (prev.tests.length < 5) prev.tests.push(r.test_name || r.test_id);
+    reasonMap.set(norm, prev);
+  });
+  const allFailureReasons = [...reasonMap.values()].sort((a, b) => b.count - a.count);
+  const topFailureReasons = allFailureReasons.slice(0, 10);
+  const failureMaxCount = topFailureReasons.reduce((m, x) => Math.max(m, x.count), 1);
+
+  const passCount = runHistoryResults.filter((r) => String(r.status || '').toUpperCase() === 'PASS').length;
+  const failCount = runHistoryResults.filter((r) => String(r.status || '').toUpperCase() === 'FAIL').length;
+  const ragUsedCount = runHistoryResults.filter((r) => r.rag_used).length;
+  const totalCount = runHistoryResults.length;
+
+  const summaryBars = [
+    { label: 'PASS', value: passCount },
+    { label: 'FAIL', value: failCount },
+    { label: 'RAG used', value: ragUsedCount },
+  ];
+  const summaryBarMax = summaryBars.reduce((m, x) => Math.max(m, x.value), 1);
 
   const formatRunDate = (iso) => {
     if (!iso) return '-';
@@ -736,6 +918,23 @@ function RagTestsTab({
               ))}
             </select>
           </label>
+          <label className="rag-tests-model-label rag-tests-concurrency-label">
+            Parallel tests
+            <select
+              value={runConcurrency}
+              onChange={(e) => setRunConcurrency(Number(e.target.value) || 1)}
+              disabled={running}
+              className="rag-tests-select rag-tests-concurrency-select"
+              aria-label="Number of tests to run in parallel"
+            >
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            <span className="rag-tests-concurrency-hint">Cloud tip: usually best up to 3 at once.</span>
+          </label>
           {collections.length === 0 && (
             <span className="rag-tests-no-collections-hint">
               No collections. Create one in Crawler / RAG then come back.
@@ -797,6 +996,12 @@ function RagTestsTab({
             <span className="rag-tests-progress-current-label">Current test:</span>{' '}
             <strong>{runProgress.current_test_name || '-'}</strong>
           </p>
+          <p className="rag-tests-progress-current">
+            <span className="rag-tests-progress-current-label">Active:</span>{' '}
+            <strong>{runProgress.active_count ?? 0}</strong>
+            {' / '}
+            <strong>{runProgress.max_concurrency ?? runConcurrency}</strong>
+          </p>
           <div className="rag-tests-progress-stats">
             <span className="rag-tests-progress-stat passed">
               <span className="rag-tests-progress-stat-value">{runProgress.passed ?? 0}</span>
@@ -829,46 +1034,38 @@ function RagTestsTab({
         </div>
       )}
 
-      {isViewingPastRun && selectedRunDetail && (
-        <div className="rag-tests-past-run-banner">
-          <span className="rag-tests-past-run-label">
-            Viewing run from {formatRunDate(selectedRunDetail.created_at)} - Model: {selectedRunDetail.model} - Passed: {selectedRunDetail.passed}, Failed: {selectedRunDetail.failed}
-          </span>
-          <div className="rag-tests-past-run-actions">
-            <button
-              type="button"
-              className="rag-tests-btn small"
-              onClick={() => exportRagTestRun(selectedRunId, 'json')}
-              aria-label="Export run as JSON"
-            >
-              Export JSON
-            </button>
-            <button
-              type="button"
-              className="rag-tests-btn small"
-              onClick={() => exportRagTestRun(selectedRunId, 'csv')}
-              aria-label="Export run as CSV"
-            >
-              Export CSV
-            </button>
-            <button type="button" className="rag-tests-btn" onClick={handleBackToCurrent}>
-              Back to current
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="rag-tests-history-section">
         <button
           type="button"
-          className="rag-tests-history-toggle"
-          onClick={() => setHistorySectionOpen((o) => !o)}
-          aria-expanded={historySectionOpen}
+          className="rag-tests-btn"
+          onClick={() => setHistorySectionOpen(true)}
         >
-          {historySectionOpen ? '[-]' : '[+]'} Run history
+          Run history
         </button>
         {historySectionOpen && (
-          <div className="rag-tests-history-panel">
+          <div
+            className="rag-tests-modal rag-tests-result-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rag-run-history-list-title"
+            onClick={() => setHistorySectionOpen(false)}
+          >
+            <div
+              className="rag-tests-modal-content rag-tests-result-modal-content"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="rag-tests-result-modal-header">
+                <h3 id="rag-run-history-list-title">Run history</h3>
+                <button
+                  type="button"
+                  className="rag-tests-result-modal-close"
+                  onClick={() => setHistorySectionOpen(false)}
+                  aria-label="Close"
+                >
+                  &times;
+                </button>
+              </div>
+              <div className="rag-tests-history-panel">
             {runSummary && (
               <div className="rag-tests-summary-block">
                 <p className="rag-tests-summary-line">
@@ -1031,6 +1228,8 @@ function RagTestsTab({
               )}
               </>
             )}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1059,46 +1258,62 @@ function RagTestsTab({
             }}
           >
             <div className="rag-tests-live-monitor-scroll">
-              <p className="rag-tests-live-line">
-                <strong>Current step:</strong> {runProgress?.current_test_name || 'idle'}
-              </p>
-              <p className="rag-tests-live-line">
-                <strong>Timer:</strong> {formatDuration(currentStepElapsedMs)}
-              </p>
-              <p className="rag-tests-live-line">
-                <strong>SSE:</strong>{' '}
-                {liveSse.available
-                  ? liveSse.active
+              {liveCards.map((card) => {
+                const stepRows = getLiveStepRows(card);
+                const cardElapsedMs = card?.started_at_ms
+                  ? Math.max(0, liveNowMs - Number(card.started_at_ms))
+                  : currentStepElapsedMs;
+                const hasSse = Boolean(card?.sse_enabled || String(card?.sse_preview || '').trim());
+                const sseLabel = !hasSse
+                  ? 'not available for this request'
+                  : String(card?.sse_preview || '').trim()
                     ? 'streaming'
-                    : 'enabled (no chunks yet)'
-                  : 'not available for this request'}
-              </p>
-              {liveSse.text ? (
-                <pre className="rag-tests-live-sse">{liveSse.text}</pre>
-              ) : null}
-              <p className="rag-tests-live-line">
-                <strong>Current test timings:</strong>
-              </p>
-              <ul className="rag-tests-live-current-steps">
-                {liveStepRows.map((row) => (
-                  <li key={row.key} className="rag-tests-live-current-step">
-                    <span className="rag-tests-live-current-step-name">{row.key}</span>
-                    <span className="rag-tests-live-current-step-value">{formatSeconds(row.value)}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="rag-tests-live-actions">
-                <button
-                  type="button"
-                  className="rag-tests-btn small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openLiveDetail();
-                  }}
-                >
-                  Details
-                </button>
-              </div>
+                    : 'enabled (no chunks yet)';
+                return (
+                  <section key={`live-card-${card.index}`} className="rag-tests-live-card">
+                    <p className="rag-tests-live-line">
+                      <strong>Current step:</strong> {card.name || 'idle'}
+                    </p>
+                    <p className="rag-tests-live-line">
+                      <strong>Timer:</strong> {formatDuration(cardElapsedMs)}
+                    </p>
+                    <p className="rag-tests-live-line">
+                      <strong>SSE:</strong> {sseLabel}
+                    </p>
+                    <p className="rag-tests-live-line">
+                      <strong>Tokens/s:</strong>{' '}
+                      live {card?.sse_token_tps_live != null ? `${Number(card.sse_token_tps_live).toFixed(2)}` : '-'} | avg {card?.sse_token_tps_avg != null ? `${Number(card.sse_token_tps_avg).toFixed(2)}` : '-'}
+                    </p>
+                    {card?.sse_preview ? (
+                      <pre className="rag-tests-live-sse">{card.sse_preview}</pre>
+                    ) : null}
+                    <p className="rag-tests-live-line">
+                      <strong>Current test timings:</strong>
+                    </p>
+                    <ul className="rag-tests-live-current-steps">
+                      {stepRows.map((row) => (
+                        <li key={`card-${card.index}-${row.key}`} className="rag-tests-live-current-step">
+                          <span className="rag-tests-live-current-step-name">{row.key}</span>
+                          <span className="rag-tests-live-current-step-value">{formatSeconds(row.value)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="rag-tests-live-actions">
+                      <button
+                        type="button"
+                        className="rag-tests-btn small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLiveDetailCardIndex(card.index);
+                          openLiveDetail();
+                        }}
+                      >
+                        Details
+                      </button>
+                    </div>
+                  </section>
+                );
+              })}
             </div>
           </Card>
         )}
@@ -1128,12 +1343,12 @@ function RagTestsTab({
               </button>
             </div>
             <p className="rag-tests-result-modal-meta">
-              Current test: <strong>{runProgress?.current_test_name || 'idle'}</strong>
+              Current test: <strong>{selectedLiveDetailCard?.name || runProgress?.current_test_name || 'idle'}</strong>
             </p>
             <section className="rag-tests-result-section">
               <h4>Current stage timings</h4>
               <ul className="rag-tests-live-current-steps">
-                {liveStepRows.map((row) => (
+                {selectedLiveStepRows.map((row) => (
                   <li key={`modal-${row.key}`} className="rag-tests-live-current-step">
                     <span className="rag-tests-live-current-step-name">{row.key}</span>
                     <span className="rag-tests-live-current-step-value">{formatSeconds(row.value)}</span>
@@ -1143,8 +1358,11 @@ function RagTestsTab({
             </section>
             <section className="rag-tests-result-section">
               <h4>SSE streaming</h4>
-              {liveSse.text ? (
-                <pre className="rag-tests-pre rag-tests-pre-answer">{liveSse.text}</pre>
+              <p className="rag-tests-detail-metrics">
+                live {selectedLiveDetailCard?.sse_token_tps_live != null ? `${Number(selectedLiveDetailCard.sse_token_tps_live).toFixed(2)} tok/s` : '-'} | avg {selectedLiveDetailCard?.sse_token_tps_avg != null ? `${Number(selectedLiveDetailCard.sse_token_tps_avg).toFixed(2)} tok/s` : '-'}
+              </p>
+              {(selectedLiveDetailCard?.sse_preview || liveSse.text) ? (
+                <pre className="rag-tests-pre rag-tests-pre-answer">{selectedLiveDetailCard?.sse_preview || liveSse.text}</pre>
               ) : (
                 <p className="rag-tests-result-empty">No stream chunks yet.</p>
               )}
@@ -1235,34 +1453,31 @@ function RagTestsTab({
         <table className="rag-tests-table" role="table">
           <thead>
             <tr>
-              {!isViewingPastRun && (
-                <th>
-                  <input
-                    type="checkbox"
-                    checked={filteredTests.length > 0 && selectedTestIds.size === filteredTests.length}
-                    onChange={toggleSelectAll}
-                    aria-label="Select all tests"
-                  />
-                </th>
-              )}
+              <th>
+                <input
+                  type="checkbox"
+                  checked={filteredTests.length > 0 && selectedTestIds.size === filteredTests.length}
+                  onChange={toggleSelectAll}
+                  aria-label="Select all tests"
+                />
+              </th>
               <th>Test name</th>
               <th>Platform</th>
               <th>Framework</th>
-              {!isViewingPastRun && <th>Difficulty</th>}
+              <th>Difficulty</th>
               <th>Status</th>
               <th>Time (ms)</th>
+              <th>Tok/s</th>
               <th>RAG</th>
               <th>Confidence</th>
               <th>Details</th>
-              {!isViewingPastRun && <th>Run</th>}
+              <th>Run</th>
             </tr>
           </thead>
           <tbody>
             {tableRows.map((row) => {
-              const t = isViewingPastRun
-                ? { id: row.test_id, name: row.test_name, platform: row.platform, framework: row.framework, difficulty: '', question: row.question || '' }
-                : row;
-              const last = isViewingPastRun ? row : lastResultByTestId[row.id];
+              const t = row;
+              const last = lastResultByTestId[row.id];
               const openDetails = () => setResultDetailModal({ test: t, last });
               return (
                 <tr
@@ -1274,20 +1489,18 @@ function RagTestsTab({
                   }}
                   style={{ cursor: 'pointer' }}
                 >
-                  {!isViewingPastRun && (
-                    <td onClick={(ev) => ev.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedTestIds.has(t.id)}
-                        onChange={() => toggleSelectTest(t.id)}
-                        aria-label={`Select ${t.name}`}
-                      />
-                    </td>
-                  )}
+                  <td onClick={(ev) => ev.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedTestIds.has(t.id)}
+                      onChange={() => toggleSelectTest(t.id)}
+                      aria-label={`Select ${t.name}`}
+                    />
+                  </td>
                   <td>{t.name || t.id}</td>
                   <td>{t.platform || '-'}</td>
                   <td>{t.framework || '-'}</td>
-                  {!isViewingPastRun && <td>{t.difficulty || '-'}</td>}
+                  <td>{t.difficulty || '-'}</td>
                   <td>
                     {last ? (
                       <span className={`rag-tests-status ${(last.status || '').toLowerCase()}`}>
@@ -1298,6 +1511,11 @@ function RagTestsTab({
                     )}
                   </td>
                   <td>{last?.response_time_ms != null ? last.response_time_ms : '-'}</td>
+                  <td>
+                    {last?.tokens_per_second_generated != null
+                      ? Number(last.tokens_per_second_generated).toFixed(2)
+                      : '-'}
+                  </td>
                   <td>{last ? (last.rag_used ? 'Yes' : 'No') : '-'}</td>
                   <td>{last?.confidence_label || '-'}</td>
                   <td onClick={(ev) => ev.stopPropagation()}>
@@ -1310,43 +1528,279 @@ function RagTestsTab({
                       Details
                     </button>
                   </td>
-                  {!isViewingPastRun && (
-                    <td onClick={(ev) => ev.stopPropagation()} className="rag-tests-actions-cell">
-                      <button
-                        type="button"
-                        className="rag-tests-btn small rag-tests-run-one"
-                        disabled={running || !canRun}
-                        onClick={() => handleRunSingle(t.id)}
-                        aria-label={`Run test ${t.name || t.id}`}
-                      >
-                        Run
-                      </button>
-                      <button
-                        type="button"
-                        className="rag-tests-btn small"
-                        disabled={running}
-                        onClick={() => handleEditClick(t.id)}
-                        aria-label={`Edit ${t.name || t.id}`}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="rag-tests-btn small rag-tests-delete-btn"
-                        disabled={running}
-                        onClick={() => handleDeleteClick(t.id)}
-                        aria-label={`Delete ${t.name || t.id}`}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  )}
+                  <td onClick={(ev) => ev.stopPropagation()} className="rag-tests-actions-cell">
+                    <button
+                      type="button"
+                      className="rag-tests-btn small rag-tests-run-one"
+                      disabled={running || !canRun}
+                      onClick={() => handleRunSingle(t.id)}
+                      aria-label={`Run test ${t.name || t.id}`}
+                    >
+                      Run
+                    </button>
+                    <button
+                      type="button"
+                      className="rag-tests-btn small"
+                      disabled={running}
+                      onClick={() => handleEditClick(t.id)}
+                      aria-label={`Edit ${t.name || t.id}`}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="rag-tests-btn small rag-tests-delete-btn"
+                      disabled={running}
+                      onClick={() => handleDeleteClick(t.id)}
+                      aria-label={`Delete ${t.name || t.id}`}
+                    >
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </Card>
+
+      {runHistoryModal && (
+        <div
+          className="rag-tests-modal rag-tests-result-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rag-run-history-modal-title"
+          onClick={() => setRunHistoryModal(null)}
+        >
+          <div
+            className="rag-tests-modal-content rag-tests-result-modal-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="rag-tests-result-modal-header">
+              <h3 id="rag-run-history-modal-title">Run details</h3>
+              <button
+                type="button"
+                className="rag-tests-result-modal-close"
+                onClick={() => setRunHistoryModal(null)}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+            <p className="rag-tests-result-modal-meta">
+              {formatRunDate(runHistoryModal.run?.created_at)} | Model: {runHistoryModal.run?.model} | Passed: {runHistoryModal.run?.passed} | Failed: {runHistoryModal.run?.failed}
+            </p>
+            <div className="rag-tests-run-tabs">
+              <button
+                type="button"
+                className={`rag-tests-btn small ${runHistoryModalTab === 'summary' ? 'primary' : ''}`}
+                onClick={() => setRunHistoryModalTab('summary')}
+              >
+                Summary
+              </button>
+              <button
+                type="button"
+                className={`rag-tests-btn small ${runHistoryModalTab === 'tests' ? 'primary' : ''}`}
+                onClick={() => setRunHistoryModalTab('tests')}
+              >
+                Tests
+              </button>
+            </div>
+            <div className="rag-tests-past-run-actions">
+              <button
+                type="button"
+                className="rag-tests-btn small"
+                onClick={() => exportRagTestRun(runHistoryModal.id, 'json')}
+                aria-label="Export run as JSON"
+              >
+                Export JSON
+              </button>
+              <button
+                type="button"
+                className="rag-tests-btn small"
+                onClick={() => exportRagTestRun(runHistoryModal.id, 'csv')}
+                aria-label="Export run as CSV"
+              >
+                Export CSV
+              </button>
+            </div>
+            {runHistoryModalTab === 'summary' ? (
+              <div className="rag-tests-run-summary">
+                <div className="rag-tests-summary-kpis">
+                  <div className="rag-tests-summary-kpi"><strong>Total:</strong> {totalCount}</div>
+                  <div className="rag-tests-summary-kpi"><strong>Pass rate:</strong> {totalCount ? `${Math.round((passCount / totalCount) * 100)}%` : '-'}</div>
+                  <div className="rag-tests-summary-kpi"><strong>Fail rate:</strong> {totalCount ? `${Math.round((failCount / totalCount) * 100)}%` : '-'}</div>
+                  <div className="rag-tests-summary-kpi"><strong>RAG used:</strong> {totalCount ? `${Math.round((ragUsedCount / totalCount) * 100)}%` : '-'}</div>
+                </div>
+
+                <section className="rag-tests-result-section">
+                  <h4>Timing stats</h4>
+                  {latencyStatsMs ? (
+                    <div className="rag-tests-summary-kpis">
+                      <div className="rag-tests-summary-kpi">avg: {Math.round(latencyStatsMs.avg)} ms</div>
+                      <div className="rag-tests-summary-kpi">p50: {Math.round(latencyStatsMs.p50)} ms</div>
+                      <div className="rag-tests-summary-kpi">p95: {Math.round(latencyStatsMs.p95)} ms</div>
+                      <div className="rag-tests-summary-kpi">min: {Math.round(latencyStatsMs.min)} ms</div>
+                      <div className="rag-tests-summary-kpi">max: {Math.round(latencyStatsMs.max)} ms</div>
+                    </div>
+                  ) : (
+                    <p className="rag-tests-result-empty">No timing data.</p>
+                  )}
+                  <div className="rag-tests-summary-bars">
+                    {timingAverages.map((item) => (
+                      <div key={item.label} className="rag-tests-summary-bar-row">
+                        <span>{item.label}</span>
+                        <span>{item.value != null ? `${item.value.toFixed(2)} s` : '-'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="rag-tests-result-section">
+                  <h4>Outcome bars</h4>
+                  <div className="rag-tests-summary-bars">
+                    {summaryBars.map((item) => (
+                      <div key={item.label} className="rag-tests-summary-bar-chart-row">
+                        <span className="rag-tests-summary-bar-label">{item.label}</span>
+                        <div className="rag-tests-summary-bar-track">
+                          <div
+                            className="rag-tests-summary-bar-fill"
+                            style={{ width: `${summaryBarMax ? (item.value / summaryBarMax) * 100 : 0}%` }}
+                          />
+                        </div>
+                        <span className="rag-tests-summary-bar-value">{item.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="rag-tests-result-section">
+                  <h4>Fastest tests</h4>
+                  <ul className="rag-tests-rag-query-list">
+                    {fastestTests.map((x) => (
+                      <li key={`fast-${x.test_id}`}>
+                        <span className="rag-tests-rag-query-meta">{x.test_name || x.test_id} | {Math.round(x.latency_ms)} ms</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <h4>Slowest tests</h4>
+                  <ul className="rag-tests-rag-query-list">
+                    {slowestTests.map((x) => (
+                      <li key={`slow-${x.test_id}`}>
+                        <span className="rag-tests-rag-query-meta">{x.test_name || x.test_id} | {Math.round(x.latency_ms)} ms</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+
+                <section className="rag-tests-result-section">
+                  <h4>Most popular RAG chunk</h4>
+                  {mostPopularChunk ? (
+                    <p className="rag-tests-detail-metrics">
+                      {mostPopularChunk.key} | count {mostPopularChunk.count} | avg score {mostPopularChunk.avgScore != null ? mostPopularChunk.avgScore.toFixed(3) : '-'}
+                    </p>
+                  ) : (
+                    <p className="rag-tests-result-empty">No RAG chunks in this run.</p>
+                  )}
+                </section>
+
+                <section className="rag-tests-result-section">
+                  <h4>Top failure reasons</h4>
+                  {topFailureReasons.length === 0 ? (
+                    <p className="rag-tests-result-empty">No failures in this run.</p>
+                  ) : (
+                    <div className="rag-tests-summary-bars">
+                      {topFailureReasons.map((fr) => (
+                        <div key={fr.normalized} className="rag-tests-summary-bar-chart-row">
+                          <span className="rag-tests-summary-bar-label">{fr.sample}</span>
+                          <div className="rag-tests-summary-bar-track">
+                            <div
+                              className="rag-tests-summary-bar-fill fail"
+                              style={{ width: `${failureMaxCount ? (fr.count / failureMaxCount) * 100 : 0}%` }}
+                            />
+                          </div>
+                          <span className="rag-tests-summary-bar-value">{fr.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="rag-tests-result-section">
+                  <h4>All failure reasons</h4>
+                  {allFailureReasons.length === 0 ? (
+                    <p className="rag-tests-result-empty">No failures in this run.</p>
+                  ) : (
+                    <ul className="rag-tests-rag-query-list">
+                      {allFailureReasons.map((fr) => (
+                        <li key={`all-${fr.normalized}`}>
+                          <span className="rag-tests-rag-query-meta">{fr.sample} | count {fr.count}</span>
+                          {fr.tests?.length ? (
+                            <p className="rag-tests-detail-metrics">Examples: {fr.tests.join(', ')}</p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              </div>
+            ) : (
+              <table className="rag-tests-history-table" role="table">
+                <thead>
+                  <tr>
+                    <th>Test name</th>
+                    <th>Status</th>
+                    <th>Time (ms)</th>
+                    <th>Tok/s</th>
+                    <th>RAG</th>
+                    <th>Confidence</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(runHistoryModal.run?.results || []).map((row) => (
+                    <tr key={`${row.test_id}-${row.status}-${row.response_time_ms || 0}`}>
+                      <td>{row.test_name || row.test_id}</td>
+                      <td>
+                        <span className={`rag-tests-status ${(row.status || '').toLowerCase()}`}>
+                          {row.status || '-'}
+                        </span>
+                      </td>
+                      <td>{row.response_time_ms != null ? row.response_time_ms : '-'}</td>
+                      <td>
+                        {row.tokens_per_second_generated != null
+                          ? Number(row.tokens_per_second_generated).toFixed(2)
+                          : '-'}
+                      </td>
+                      <td>{row.rag_used ? 'Yes' : 'No'}</td>
+                      <td>{row.confidence_label || '-'}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="rag-tests-btn small"
+                          onClick={() => setResultDetailModal({
+                            test: {
+                              id: row.test_id,
+                              name: row.test_name,
+                              platform: row.platform,
+                              framework: row.framework,
+                              difficulty: row.difficulty || '',
+                              question: row.question || '',
+                            },
+                            last: row,
+                          })}
+                        >
+                          Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
 
       {failResults.length > 0 && (
         <div className="rag-tests-fail-drilldown">
