@@ -29,6 +29,12 @@ class NotificationsRepository:
                     row[1]
                     for row in conn.execute("PRAGMA table_info(coreui_notifications)").fetchall()
                 }
+                if not cols:
+                    return
+                if "is_console_error" not in cols:
+                    conn.execute(
+                        "ALTER TABLE coreui_notifications ADD COLUMN is_console_error INTEGER NOT NULL DEFAULT 0"
+                    )
                 if "aggregation_key" not in cols:
                     conn.execute(
                         "ALTER TABLE coreui_notifications ADD COLUMN aggregation_key TEXT"
@@ -38,14 +44,22 @@ class NotificationsRepository:
                         "ALTER TABLE coreui_notifications ADD COLUMN occurrence_count INTEGER NOT NULL DEFAULT 1"
                     )
                 if "last_occurrence_at" not in cols:
+                    # SQLite ALTER TABLE is stricter than CREATE TABLE: avoid non-constant defaults here.
                     conn.execute(
-                        "ALTER TABLE coreui_notifications ADD COLUMN last_occurrence_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                        "ALTER TABLE coreui_notifications ADD COLUMN last_occurrence_at TIMESTAMP"
                     )
                 conn.execute(
                     """
                     UPDATE coreui_notifications
                     SET last_occurrence_at = COALESCE(last_occurrence_at, created_at, CURRENT_TIMESTAMP)
                     WHERE last_occurrence_at IS NULL
+                    """
+                )
+                conn.execute(
+                    """
+                    UPDATE coreui_notifications
+                    SET occurrence_count = COALESCE(occurrence_count, 1)
+                    WHERE occurrence_count IS NULL
                     """
                 )
                 conn.execute(
@@ -69,68 +83,76 @@ class NotificationsRepository:
         aggregation_key: Optional[str] = None,
         is_console_error: bool = False,
     ) -> int:
-        with sqlite3.connect(self.db_path) as conn:
-            if aggregation_key:
-                existing = conn.execute(
-                    """
-                    SELECT id
-                    FROM coreui_notifications
-                    WHERE session_id = ?
-                      AND aggregation_key = ?
-                      AND dismissed_at IS NULL
-                    ORDER BY id DESC
-                    LIMIT 1
-                    """,
-                    (session_id, aggregation_key),
-                ).fetchone()
-                if existing is not None:
-                    conn.execute(
+        for attempt in range(2):
+            try:
+                with sqlite3.connect(self.db_path) as conn:
+                    if aggregation_key:
+                        existing = conn.execute(
+                            """
+                            SELECT id
+                            FROM coreui_notifications
+                            WHERE session_id = ?
+                              AND aggregation_key = ?
+                              AND dismissed_at IS NULL
+                            ORDER BY id DESC
+                            LIMIT 1
+                            """,
+                            (session_id, aggregation_key),
+                        ).fetchone()
+                        if existing is not None:
+                            conn.execute(
+                                """
+                                UPDATE coreui_notifications
+                                SET kind = ?,
+                                    source = ?,
+                                    title = ?,
+                                    message = ?,
+                                    metadata = ?,
+                                    is_console_error = ?,
+                                    occurrence_count = COALESCE(occurrence_count, 1) + 1,
+                                    last_occurrence_at = CURRENT_TIMESTAMP
+                                WHERE id = ?
+                                """,
+                                (
+                                    kind,
+                                    source,
+                                    title,
+                                    message,
+                                    json.dumps(metadata) if metadata else None,
+                                    1 if is_console_error else 0,
+                                    int(existing[0]),
+                                ),
+                            )
+                            conn.commit()
+                            return int(existing[0])
+                    cursor = conn.execute(
                         """
-                        UPDATE coreui_notifications
-                        SET kind = ?,
-                            source = ?,
-                            title = ?,
-                            message = ?,
-                            metadata = ?,
-                            is_console_error = ?,
-                            occurrence_count = COALESCE(occurrence_count, 1) + 1,
-                            last_occurrence_at = CURRENT_TIMESTAMP
-                        WHERE id = ?
+                        INSERT INTO coreui_notifications
+                            (
+                                session_id, kind, source, title, message, metadata,
+                                aggregation_key, occurrence_count, last_occurrence_at, is_console_error
+                            )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
                         """,
                         (
+                            session_id,
                             kind,
                             source,
                             title,
                             message,
                             json.dumps(metadata) if metadata else None,
+                            aggregation_key,
                             1 if is_console_error else 0,
-                            int(existing[0]),
                         ),
                     )
                     conn.commit()
-                    return int(existing[0])
-            cursor = conn.execute(
-                """
-                INSERT INTO coreui_notifications
-                    (
-                        session_id, kind, source, title, message, metadata,
-                        aggregation_key, occurrence_count, last_occurrence_at, is_console_error
-                    )
-                VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
-                """,
-                (
-                    session_id,
-                    kind,
-                    source,
-                    title,
-                    message,
-                    json.dumps(metadata) if metadata else None,
-                    aggregation_key,
-                    1 if is_console_error else 0,
-                ),
-            )
-            conn.commit()
-            return int(cursor.lastrowid)
+                    return int(cursor.lastrowid)
+            except sqlite3.OperationalError:
+                if attempt == 0:
+                    self._ensure_notification_columns()
+                    continue
+                raise
+        raise RuntimeError("add_notification retry loop exhausted")
 
     def list_notifications(
         self,

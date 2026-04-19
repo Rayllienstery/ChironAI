@@ -3,12 +3,67 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from typing import Any, Literal
 
 import requests
 from rag_service.config import get_ollama_chat_model, get_ollama_chat_options, get_ollama_chat_url
 from rag_service.infrastructure.cli_runner import OllamaInteractorCliError, invoke_chat
+
+
+def _extract_http_status_from_cli_error(exc: OllamaInteractorCliError) -> int | None:
+    """Best-effort HTTP status extraction from interactor stderr/message."""
+    stderr = exc.stderr or ""
+    msg = str(exc)
+
+    # 1) Structured JSON details (preferred).
+    for line in reversed(stderr.strip().splitlines()):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            body = obj.get("body")
+            if isinstance(body, dict):
+                sc = body.get("status_code")
+                try:
+                    if sc is not None:
+                        n = int(sc)
+                        if 400 <= n <= 599:
+                            return n
+                except (TypeError, ValueError):
+                    pass
+            for key in ("status_code", "status"):
+                try:
+                    raw = obj.get(key)
+                    if raw is not None:
+                        n = int(raw)
+                        if 400 <= n <= 599:
+                            return n
+                except (TypeError, ValueError):
+                    pass
+
+    # 2) Common textual patterns.
+    blob = f"{msg}\n{stderr}"
+    patterns = (
+        r"\b([45]\d{2})\s+Server Error\b",
+        r"\bstatus(?:_code)?\s*[:=]\s*([45]\d{2})\b",
+        r"\bHTTP/\d(?:\.\d)?\s+([45]\d{2})\b",
+        r"\b\((4\d{2}|5\d{2})\)\b",
+    )
+    for pat in patterns:
+        m = re.search(pat, blob, flags=re.IGNORECASE)
+        if not m:
+            continue
+        try:
+            return int(m.group(1))
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def normalize_ollama_chat_options(options: dict[str, Any] | None) -> dict[str, Any]:
@@ -36,19 +91,24 @@ def normalize_ollama_chat_options(options: dict[str, Any] | None) -> dict[str, A
 
 
 def _chat_runtime_error(use_model: str, url: str, exc: OllamaInteractorCliError) -> RuntimeError:
-    msg = str(exc)
-    if "405" in msg or (exc.stderr and "405" in exc.stderr):
+    sc = _extract_http_status_from_cli_error(exc)
+    if sc == 405:
         return RuntimeError(
             f"Ollama endpoint method not allowed (405): {url}. "
             f"This usually means the endpoint doesn't support POST method or the URL is incorrect. "
             f"Model: {use_model}. "
             f"Try checking Ollama API documentation or verify the endpoint URL."
         )
-    if "404" in msg or (exc.stderr and "404" in exc.stderr):
+    if sc == 404:
         return RuntimeError(
             f"Ollama endpoint not found (404): {url}. "
             f"Please check if Ollama is running and the URL is correct. "
             f"Model: {use_model}"
+        )
+    if sc is not None and 500 <= sc <= 599:
+        return RuntimeError(
+            f"Ollama upstream error (HTTP {sc}) for model {use_model} via {url}. "
+            f"This is usually a temporary upstream/network issue; retry may succeed. Original: {exc}"
         )
     return RuntimeError(f"Ollama chat API error (model={use_model}, url={url}): {exc}")
 

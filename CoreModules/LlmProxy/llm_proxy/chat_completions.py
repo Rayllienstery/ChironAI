@@ -90,6 +90,25 @@ def _proxy_settings_optional_int(
     return n
 
 
+def _load_proxy_settings_and_model(get_settings_repository: Any) -> tuple[dict[str, object], str]:
+    """Load proxy_settings JSON + proxy_model with backward-compatible fallback to settings.model."""
+    proxy_settings: dict[str, object] = {}
+    proxy_model_setting = ""
+    try:
+        settings_repo = get_settings_repository()
+        proxy_model_setting = (settings_repo.get_app_setting("proxy_model") or "").strip()
+        proxy_settings_raw = settings_repo.get_app_setting("proxy_settings")
+        if proxy_settings_raw:
+            loaded = json.loads(proxy_settings_raw)
+            if isinstance(loaded, dict):
+                proxy_settings = loaded
+    except Exception:
+        pass
+    if not proxy_model_setting and proxy_settings.get("model"):
+        proxy_model_setting = str(proxy_settings.get("model") or "").strip()
+    return proxy_settings, proxy_model_setting
+
+
 def _web_supplement_used_from_trace(trace: dict[str, Any]) -> bool:
     internet = trace.get("internet")
     if not isinstance(internet, dict):
@@ -543,20 +562,7 @@ def run_chat_completions(
     body["messages"] = messages
     w.set_proxy_status(w.status_rag_search)
 
-    proxy_settings: dict[str, object] = {}
-    proxy_model_setting = ""
-    try:
-        _settings_repo_early = w.get_settings_repository()
-        proxy_model_setting = (_settings_repo_early.get_app_setting("proxy_model") or "").strip()
-        _ps_json_early = _settings_repo_early.get_app_setting("proxy_settings")
-        if _ps_json_early:
-            _loaded = json.loads(_ps_json_early)
-            if isinstance(_loaded, dict):
-                proxy_settings = _loaded
-    except Exception:
-        pass
-    if not proxy_model_setting and proxy_settings.get("model"):
-        proxy_model_setting = str(proxy_settings.get("model") or "").strip()
+    proxy_settings, proxy_model_setting = _load_proxy_settings_and_model(w.get_settings_repository)
 
     stream = body.get("stream", False)
     chat_max_tokens: int | None = None
@@ -664,6 +670,64 @@ def run_chat_completions(
         if dumb_build_pipeline:
             return "rag_fusion"
         return "direct"
+
+    def persist_proxy_request_log(
+        *,
+        message: str,
+        response_preview: str,
+        latency_ms_value: int,
+        trace_payload: dict[str, Any],
+        stream_value: bool,
+        include_rag_fields: bool,
+        include_token_fields: bool,
+        prompt_tokens_value: int | None = None,
+        completion_tokens_value: int | None = None,
+        total_tokens_value: int | None = None,
+        ollama_chat_stream: bool | None = None,
+        sse_single_chunk: bool = False,
+        extra_metadata: dict[str, Any] | None = None,
+        warn_label: str,
+    ) -> None:
+        if private_build:
+            return
+        try:
+            session_manager = w.get_session_manager()
+            session_manager.get_or_create_session("proxy")
+            logs_repo = w.get_logs_repository()
+            metadata: dict[str, Any] = {
+                "user_query": user_query[:500],
+                "response_preview": response_preview[:500],
+                "trace_id": trace_id,
+                "model": use_model,
+                "latency_ms": latency_ms_value,
+                "trace": trace_payload,
+                "stream": bool(stream_value),
+                "is_autocomplete": bool(is_autocomplete),
+                "requested_model": requested_model,
+                "proxy_backend": proxy_backend_tag(),
+            }
+            if include_rag_fields:
+                metadata["rag_context"] = rag_context_data
+                metadata["rag_steps"] = rag_timings
+            if include_token_fields:
+                metadata["prompt_tokens"] = prompt_tokens_value
+                metadata["completion_tokens"] = completion_tokens_value
+                metadata["total_tokens"] = total_tokens_value
+            if ollama_chat_stream is not None:
+                metadata["ollama_chat_stream"] = bool(ollama_chat_stream)
+            if sse_single_chunk:
+                metadata["sse_single_chunk"] = True
+            if extra_metadata:
+                metadata.update(extra_metadata)
+            logs_repo.add_log(
+                session_id="proxy",
+                level="INFO",
+                message=message,
+                source="proxy",
+                metadata=metadata,
+            )
+        except Exception as e:
+            _RAG_LOG.warning("Failed to log proxy %s request to database: %s", warn_label, e)
 
     force_rag = bool(body.get("force_rag"))
     if is_autocomplete:
@@ -927,12 +991,9 @@ def run_chat_completions(
             request_collection = (settings_repo.get_app_setting(RAG_COLLECTION_APP_SETTING) or "").strip() or None
             collection_source = "app_settings.rag_collection"
             if not request_collection:
-                proxy_settings_json = settings_repo.get_app_setting("proxy_settings")
-                if proxy_settings_json:
-                    proxy_settings = json.loads(proxy_settings_json)
-                    request_collection = (proxy_settings.get("rag_collection") or "").strip() or None
-                    if request_collection:
-                        collection_source = "proxy_settings.rag_collection"
+                request_collection = (proxy_settings.get("rag_collection") or "").strip() or None
+                if request_collection:
+                    collection_source = "proxy_settings.rag_collection"
         except Exception:
             request_collection = None
             collection_source = "default"
@@ -1487,37 +1548,20 @@ def run_chat_completions(
                 publish_trace(trace)
 
                 if not private_build:
-                    try:
-                        session_manager = w.get_session_manager()
-                        session_manager.get_or_create_session("proxy")
-                        logs_repo = w.get_logs_repository()
-                        logs_repo.add_log(
-                            session_id="proxy",
-                            level="INFO",
-                            message=f"Proxy request (native tools stream): {user_query[:100]}...",
-                            source="proxy",
-                            metadata={
-                                "user_query": user_query[:500],
-                                "response_preview": full_content[:500],
-                                "trace_id": trace_id,
-                                "model": use_model,
-                                "latency_ms": stream_latency_ms,
-                                "prompt_tokens": _pt,
-                                "completion_tokens": _ct,
-                                "total_tokens": total_tokens_holder[0],
-                                "rag_context": rag_context_data,
-                                "rag_steps": rag_timings,
-                                "trace": trace,
-                                "stream": True,
-                                "ollama_chat_stream": True,
-                                "is_autocomplete": bool(is_autocomplete),
-                                "requested_model": requested_model,
-                                "proxy_backend": proxy_backend_tag(),
-                            },
-                        )
-                    except Exception as e:
-                        _RAG_LOG.warning("Failed to log native-tools stream proxy request: %s", e)
-
+                    persist_proxy_request_log(
+                        message=f"Proxy request (native tools stream): {user_query[:100]}...",
+                        response_preview=full_content,
+                        latency_ms_value=stream_latency_ms,
+                        trace_payload=trace,
+                        stream_value=True,
+                        include_rag_fields=True,
+                        include_token_fields=True,
+                        prompt_tokens_value=_pt,
+                        completion_tokens_value=_ct,
+                        total_tokens_value=total_tokens_holder[0],
+                        ollama_chat_stream=True,
+                        warn_label="native-tools stream",
+                    )
                     _RAG_LOG.info(
                         json.dumps(
                             _rag_request_completed_payload(
@@ -1739,30 +1783,16 @@ def run_chat_completions(
             )
             publish_trace(trace)
             if not private_build:
-                try:
-                    session_manager = w.get_session_manager()
-                    session_manager.get_or_create_session("proxy")
-                    logs_repo = w.get_logs_repository()
-                    logs_repo.add_log(
-                        session_id="proxy",
-                        level="INFO",
-                        message=f"Proxy request (native tools): {user_query[:100]}...",
-                        source="proxy",
-                        metadata={
-                            "user_query": user_query[:500],
-                            "response_preview": (content_str or "")[:500],
-                            "trace_id": trace_id,
-                            "model": use_model,
-                            "latency_ms": latency_ms,
-                            "trace": trace,
-                            "stream": False,
-                            "is_autocomplete": bool(is_autocomplete),
-                            "requested_model": requested_model,
-                            "proxy_backend": proxy_backend_tag(),
-                        },
-                    )
-                except Exception as e:
-                    _RAG_LOG.warning("Failed to log native-tools proxy request: %s", e)
+                persist_proxy_request_log(
+                    message=f"Proxy request (native tools): {user_query[:100]}...",
+                    response_preview=(content_str or ""),
+                    latency_ms_value=latency_ms,
+                    trace_payload=trace,
+                    stream_value=False,
+                    include_rag_fields=False,
+                    include_token_fields=False,
+                    warn_label="native-tools",
+                )
             return jsonify(response_data)
 
         trace["request"]["sse_single_chunk"] = True
@@ -1802,32 +1832,18 @@ def run_chat_completions(
             )
             publish_trace(trace)
             if not private_build:
-                try:
-                    session_manager = w.get_session_manager()
-                    session_manager.get_or_create_session("proxy")
-                    logs_repo = w.get_logs_repository()
-                    logs_repo.add_log(
-                        session_id="proxy",
-                        level="INFO",
-                        message=f"Proxy request (native tools SSE single): {user_query[:100]}...",
-                        source="proxy",
-                        metadata={
-                            "user_query": user_query[:500],
-                            "response_preview": (content_str or "")[:500],
-                            "trace_id": trace_id,
-                            "model": use_model,
-                            "latency_ms": latency_ms,
-                            "trace": trace,
-                            "stream": True,
-                            "ollama_chat_stream": False,
-                            "sse_single_chunk": True,
-                            "is_autocomplete": bool(is_autocomplete),
-                            "requested_model": requested_model,
-                            "proxy_backend": proxy_backend_tag(),
-                        },
-                    )
-                except Exception as e:
-                    _RAG_LOG.warning("Failed to log native-tools SSE single proxy request: %s", e)
+                persist_proxy_request_log(
+                    message=f"Proxy request (native tools SSE single): {user_query[:100]}...",
+                    response_preview=(content_str or ""),
+                    latency_ms_value=latency_ms,
+                    trace_payload=trace,
+                    stream_value=True,
+                    include_rag_fields=False,
+                    include_token_fields=False,
+                    ollama_chat_stream=False,
+                    sse_single_chunk=True,
+                    warn_label="native-tools SSE single",
+                )
             w.set_proxy_status(w.status_idle)
             w.set_latest_request_seconds(time.time() - start_time)
             w.set_latest_request_total_tokens(_pt + _ct)
@@ -1949,36 +1965,20 @@ def run_chat_completions(
 
                 _stm_lat = int((time.time() - stream_start_time) * 1000)
                 if not private_build:
-                    try:
-                        session_manager = w.get_session_manager()
-                        session_manager.get_or_create_session("proxy")
-                        logs_repo = w.get_logs_repository()
-                        logs_repo.add_log(
-                            session_id="proxy",
-                            level="INFO",
-                            message=f"Proxy request (stream tool): {user_query[:100]}...",
-                            source="proxy",
-                            metadata={
-                                "user_query": user_query[:500],
-                                "response_preview": "",
-                                "trace_id": trace_id,
-                                "model": use_model,
-                                "latency_ms": _stm_lat,
-                                "prompt_tokens": 0,
-                                "completion_tokens": 0,
-                                "total_tokens": 0,
-                                "rag_context": rag_context_data,
-                                "rag_steps": rag_timings,
-                                "trace": trace,
-                                "stream": True,
-                                "is_autocomplete": bool(is_autocomplete),
-                                "requested_model": requested_model,
-                                "proxy_backend": proxy_backend_tag(),
-                                "stream_tool_mode": "tool_calls",
-                            },
-                        )
-                    except Exception as e:
-                        _RAG_LOG.warning("Failed to log proxy stream_tool_mode (tool_calls): %s", e)
+                    persist_proxy_request_log(
+                        message=f"Proxy request (stream tool): {user_query[:100]}...",
+                        response_preview="",
+                        latency_ms_value=_stm_lat,
+                        trace_payload=trace,
+                        stream_value=True,
+                        include_rag_fields=True,
+                        include_token_fields=True,
+                        prompt_tokens_value=0,
+                        completion_tokens_value=0,
+                        total_tokens_value=0,
+                        extra_metadata={"stream_tool_mode": "tool_calls"},
+                        warn_label="stream_tool_mode (tool_calls)",
+                    )
 
                     _RAG_LOG.info(
                         json.dumps(
@@ -2044,36 +2044,20 @@ def run_chat_completions(
             _ct_stm = _approx_tokens_stm(tool_plain_fallback)
             _tt_stm = _pt_stm + _ct_stm
             if not private_build:
-                try:
-                    session_manager = w.get_session_manager()
-                    session_manager.get_or_create_session("proxy")
-                    logs_repo = w.get_logs_repository()
-                    logs_repo.add_log(
-                        session_id="proxy",
-                        level="INFO",
-                        message=f"Proxy request (stream tool plain): {user_query[:100]}...",
-                        source="proxy",
-                        metadata={
-                            "user_query": user_query[:500],
-                            "response_preview": tool_plain_fallback[:500],
-                            "trace_id": trace_id,
-                            "model": use_model,
-                            "latency_ms": _stm_lat_pt,
-                            "prompt_tokens": _pt_stm,
-                            "completion_tokens": _ct_stm,
-                            "total_tokens": _tt_stm,
-                            "rag_context": rag_context_data,
-                            "rag_steps": rag_timings,
-                            "trace": trace,
-                            "stream": True,
-                            "is_autocomplete": bool(is_autocomplete),
-                            "requested_model": requested_model,
-                            "proxy_backend": proxy_backend_tag(),
-                            "stream_tool_mode": "plain_text_fallback",
-                        },
-                    )
-                except Exception as e:
-                    _RAG_LOG.warning("Failed to log proxy stream_tool_mode (plain): %s", e)
+                persist_proxy_request_log(
+                    message=f"Proxy request (stream tool plain): {user_query[:100]}...",
+                    response_preview=tool_plain_fallback,
+                    latency_ms_value=_stm_lat_pt,
+                    trace_payload=trace,
+                    stream_value=True,
+                    include_rag_fields=True,
+                    include_token_fields=True,
+                    prompt_tokens_value=_pt_stm,
+                    completion_tokens_value=_ct_stm,
+                    total_tokens_value=_tt_stm,
+                    extra_metadata={"stream_tool_mode": "plain_text_fallback"},
+                    warn_label="stream_tool_mode (plain)",
+                )
 
                 _RAG_LOG.info(
                     json.dumps(
@@ -2197,36 +2181,20 @@ def run_chat_completions(
             publish_trace(trace)
 
             if not private_build:
-                try:
-                    session_manager = w.get_session_manager()
-                    session_manager.get_or_create_session("proxy")
-                    logs_repo = w.get_logs_repository()
-                    logs_repo.add_log(
-                        session_id="proxy",
-                        level="INFO",
-                        message=f"Proxy request (stream): {user_query[:100]}...",
-                        source="proxy",
-                        metadata={
-                            "user_query": user_query[:500],
-                            "response_preview": full_response[:500],
-                            "trace_id": trace_id,
-                            "model": use_model,
-                            "latency_ms": stream_latency_ms,
-                            "prompt_tokens": prompt_tokens_approx,
-                            "completion_tokens": completion_tokens_approx,
-                            "total_tokens": total_tokens_approx,
-                            "rag_context": rag_context_data,
-                            "rag_steps": rag_timings,
-                            "trace": trace,
-                            "stream": True,
-                            "ollama_chat_stream": True,
-                            "is_autocomplete": bool(is_autocomplete),
-                            "requested_model": requested_model,
-                            "proxy_backend": proxy_backend_tag(),
-                        },
-                    )
-                except Exception as e:
-                    _RAG_LOG.warning("Failed to log proxy stream request to database: %s", e)
+                persist_proxy_request_log(
+                    message=f"Proxy request (stream): {user_query[:100]}...",
+                    response_preview=full_response,
+                    latency_ms_value=stream_latency_ms,
+                    trace_payload=trace,
+                    stream_value=True,
+                    include_rag_fields=True,
+                    include_token_fields=True,
+                    prompt_tokens_value=prompt_tokens_approx,
+                    completion_tokens_value=completion_tokens_approx,
+                    total_tokens_value=total_tokens_approx,
+                    ollama_chat_stream=True,
+                    warn_label="stream",
+                )
 
                 _RAG_LOG.info(
                     json.dumps(
@@ -2463,37 +2431,21 @@ def run_chat_completions(
             yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_sse}]})}\n\n"
             yield "data: [DONE]\n\n"
             if not private_build:
-                try:
-                    session_manager = w.get_session_manager()
-                    session_manager.get_or_create_session("proxy")
-                    logs_repo = w.get_logs_repository()
-                    logs_repo.add_log(
-                        session_id="proxy",
-                        level="INFO",
-                        message=f"Proxy request (SSE single): {user_query[:100]}...",
-                        source="proxy",
-                        metadata={
-                            "user_query": user_query[:500],
-                            "response_preview": content_preview[:500],
-                            "trace_id": trace_id,
-                            "model": use_model,
-                            "latency_ms": latency_ms,
-                            "prompt_tokens": prompt_tokens_approx,
-                            "completion_tokens": completion_tokens_approx,
-                            "total_tokens": _total_tokens_approx,
-                            "rag_context": rag_context_data,
-                            "rag_steps": rag_timings,
-                            "trace": trace,
-                            "stream": True,
-                            "ollama_chat_stream": False,
-                            "sse_single_chunk": True,
-                            "is_autocomplete": bool(is_autocomplete),
-                            "requested_model": requested_model,
-                            "proxy_backend": proxy_backend_tag(),
-                        },
-                    )
-                except Exception as e:
-                    _RAG_LOG.warning("Failed to log proxy SSE single request to database: %s", e)
+                persist_proxy_request_log(
+                    message=f"Proxy request (SSE single): {user_query[:100]}...",
+                    response_preview=content_preview,
+                    latency_ms_value=latency_ms,
+                    trace_payload=trace,
+                    stream_value=True,
+                    include_rag_fields=True,
+                    include_token_fields=True,
+                    prompt_tokens_value=prompt_tokens_approx,
+                    completion_tokens_value=completion_tokens_approx,
+                    total_tokens_value=_total_tokens_approx,
+                    ollama_chat_stream=False,
+                    sse_single_chunk=True,
+                    warn_label="SSE single",
+                )
 
         return Response(
             generate_sse_plain_single(),
@@ -2503,35 +2455,18 @@ def run_chat_completions(
 
     # Persist trace for non-stream requests
     if not private_build:
-        try:
-            session_manager = w.get_session_manager()
-            session_manager.get_or_create_session("proxy")
-            logs_repo = w.get_logs_repository()
-            log_metadata = {
-                "user_query": user_query[:500],
-                "response_preview": content_preview[:500],
-                "trace_id": trace_id,
-                "model": use_model,
-                "latency_ms": latency_ms,
-                "prompt_tokens": prompt_tokens_approx,
-                "completion_tokens": completion_tokens_approx,
-                "total_tokens": _total_tokens_approx,
-                "rag_context": rag_context_data,
-                "rag_steps": rag_timings,
-                "trace": trace,
-                "stream": False,
-                "is_autocomplete": bool(is_autocomplete),
-                "requested_model": requested_model,
-                "proxy_backend": proxy_backend_tag(),
-            }
-            logs_repo.add_log(
-                session_id="proxy",
-                level="INFO",
-                message=f"Proxy request: {user_query[:100]}...",
-                source="proxy",
-                metadata=log_metadata,
-            )
-        except Exception as e:
-            _RAG_LOG.warning("Failed to log proxy non-stream request to database: %s", e)
+        persist_proxy_request_log(
+            message=f"Proxy request: {user_query[:100]}...",
+            response_preview=content_preview,
+            latency_ms_value=latency_ms,
+            trace_payload=trace,
+            stream_value=False,
+            include_rag_fields=True,
+            include_token_fields=True,
+            prompt_tokens_value=prompt_tokens_approx,
+            completion_tokens_value=completion_tokens_approx,
+            total_tokens_value=_total_tokens_approx,
+            warn_label="non-stream",
+        )
 
     return jsonify(response_data)

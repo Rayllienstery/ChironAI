@@ -55,14 +55,22 @@ class SessionManager:
                     "ALTER TABLE coreui_notifications ADD COLUMN occurrence_count INTEGER NOT NULL DEFAULT 1"
                 )
             if "last_occurrence_at" not in cols:
+                # SQLite ALTER TABLE is stricter than CREATE TABLE: avoid non-constant defaults here.
                 conn.execute(
-                    "ALTER TABLE coreui_notifications ADD COLUMN last_occurrence_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                    "ALTER TABLE coreui_notifications ADD COLUMN last_occurrence_at TIMESTAMP"
                 )
             conn.execute(
                 """
                 UPDATE coreui_notifications
                 SET last_occurrence_at = COALESCE(last_occurrence_at, created_at, CURRENT_TIMESTAMP)
                 WHERE last_occurrence_at IS NULL
+                """
+            )
+            conn.execute(
+                """
+                UPDATE coreui_notifications
+                SET occurrence_count = COALESCE(occurrence_count, 1)
+                WHERE occurrence_count IS NULL
                 """
             )
             conn.execute(

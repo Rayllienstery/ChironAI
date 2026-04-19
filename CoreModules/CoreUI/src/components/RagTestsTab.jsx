@@ -21,7 +21,7 @@ import {
 import { isLogicalRagModelId } from '../constants/llmProxyModels';
 import '../styles/components/RagTestsTab.css';
 
-/** Cloud/metered Ollama tags (e.g. qwen3.5:cloud, â€¦:397b-cloud) may bill tokens. */
+/** Cloud/metered Ollama tags (e.g. qwen3.5:cloud, ...:397b-cloud) may bill tokens. */
 function modelTagLooksCloud(modelId) {
   const s = String(modelId || '').trim().toLowerCase();
   if (!s) return false;
@@ -31,7 +31,7 @@ function modelTagLooksCloud(modelId) {
 function confirmCloudRagRun(modelId) {
   if (!modelTagLooksCloud(modelId)) return true;
   return window.confirm(
-    'Ð’Ñ‹Ð±Ñ€Ð°Ð½Ð° Ð¼Ð¾Ð´ÐµÐ»ÑŒ Ñ Ñ‚ÐµÐ³Ð¾Ð¼ cloud â€” Ð¿Ñ€Ð¾Ð³Ð¾Ð½ RAG Tests Ð¼Ð¾Ð¶ÐµÑ‚ Ñ€Ð°ÑÑ…Ð¾Ð´Ð¾Ð²Ð°Ñ‚ÑŒ Ð¿Ð»Ð°Ñ‚Ð½Ñ‹Ðµ Ñ‚Ð¾ÐºÐµÐ½Ñ‹. ÐŸÑ€Ð¾Ð´Ð¾Ð»Ð¶Ð¸Ñ‚ÑŒ?'
+    'Cloud-tagged model selected: running RAG Tests may consume paid tokens. Continue?'
   );
 }
 
@@ -542,7 +542,7 @@ function RagTestsTab({
     ? displayResults
     : filteredTests;
   const formatRunDate = (iso) => {
-    if (!iso) return 'â€”';
+    if (!iso) return '-';
     try {
       const d = new Date(iso);
       return d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
@@ -582,7 +582,7 @@ function RagTestsTab({
               aria-label="Select Qdrant collection"
             >
               {collections.length === 0 ? (
-                <option value="">â€” No collections â€”</option>
+                <option value="">-- No collections --</option>
               ) : (
                 collections.map((col) => (
                   <option key={col.name} value={col.name}>
@@ -601,7 +601,7 @@ function RagTestsTab({
               className="rag-tests-select"
               aria-label="Select prompt template"
             >
-              <option value="">â€” Default â€”</option>
+              <option value="">-- Default --</option>
               {prompts.map((p) => (
                 <option key={p.id || p.name} value={p.name}>
                   {p.name}
@@ -668,7 +668,7 @@ function RagTestsTab({
           </div>
           <p className="rag-tests-progress-current">
             <span className="rag-tests-progress-current-label">Current test:</span>{' '}
-            <strong>{runProgress.current_test_name || 'â€”'}</strong>
+            <strong>{runProgress.current_test_name || '-'}</strong>
           </p>
           <div className="rag-tests-progress-stats">
             <span className="rag-tests-progress-stat passed">
@@ -705,7 +705,7 @@ function RagTestsTab({
       {isViewingPastRun && selectedRunDetail && (
         <div className="rag-tests-past-run-banner">
           <span className="rag-tests-past-run-label">
-            Viewing run from {formatRunDate(selectedRunDetail.created_at)} â€” Model: {selectedRunDetail.model} â€” Passed: {selectedRunDetail.passed}, Failed: {selectedRunDetail.failed}
+            Viewing run from {formatRunDate(selectedRunDetail.created_at)} - Model: {selectedRunDetail.model} - Passed: {selectedRunDetail.passed}, Failed: {selectedRunDetail.failed}
           </span>
           <div className="rag-tests-past-run-actions">
             <button
@@ -738,7 +738,7 @@ function RagTestsTab({
           onClick={() => setHistorySectionOpen((o) => !o)}
           aria-expanded={historySectionOpen}
         >
-          {historySectionOpen ? 'â–¼' : 'â–¶'} Run history
+          {historySectionOpen ? '[-]' : '[+]'} Run history
         </button>
         {historySectionOpen && (
           <div className="rag-tests-history-panel">
@@ -796,7 +796,7 @@ function RagTestsTab({
                         const passRate = total ? Math.round(((r.passed || 0) / total) * 100) : 0;
                         return `${formatRunDate(r.created_at)}: ${passRate}%`;
                       })
-                      .join(' â†’ ')}
+                      .join(' -> ')}
                   </p>
                 )}
               </div>
@@ -851,7 +851,7 @@ function RagTestsTab({
               </label>
             </div>
             {runHistoryLoading ? (
-              <p className="rag-tests-history-loading">Loading historyâ€¦</p>
+              <p className="rag-tests-history-loading">Loading history...</p>
             ) : runHistory.length === 0 ? (
               <p className="rag-tests-history-empty">No past runs yet.</p>
             ) : (
@@ -898,7 +898,7 @@ function RagTestsTab({
                     disabled={runHistoryLoadingMore}
                     onClick={() => loadRunHistory(runHistory.length)}
                   >
-                    {runHistoryLoadingMore ? 'Loadingâ€¦' : 'Load more'}
+                    {runHistoryLoadingMore ? 'Loading...' : 'Load more'}
                   </button>
                 </div>
               )}
@@ -1013,21 +1013,21 @@ function RagTestsTab({
                     </td>
                   )}
                   <td>{t.name || t.id}</td>
-                  <td>{t.platform || 'â€”'}</td>
-                  <td>{t.framework || 'â€”'}</td>
-                  {!isViewingPastRun && <td>{t.difficulty || 'â€”'}</td>}
+                  <td>{t.platform || '-'}</td>
+                  <td>{t.framework || '-'}</td>
+                  {!isViewingPastRun && <td>{t.difficulty || '-'}</td>}
                   <td>
                     {last ? (
                       <span className={`rag-tests-status ${(last.status || '').toLowerCase()}`}>
                         {last.status}
                       </span>
                     ) : (
-                      'â€”'
+                      '-'
                     )}
                   </td>
-                  <td>{last?.response_time_ms != null ? last.response_time_ms : 'â€”'}</td>
-                  <td>{last ? (last.rag_used ? 'Yes' : 'No') : 'â€”'}</td>
-                  <td>{last?.confidence_label || 'â€”'}</td>
+                  <td>{last?.response_time_ms != null ? last.response_time_ms : '-'}</td>
+                  <td>{last ? (last.rag_used ? 'Yes' : 'No') : '-'}</td>
+                  <td>{last?.confidence_label || '-'}</td>
                   <td onClick={(ev) => ev.stopPropagation()}>
                     <button
                       type="button"
@@ -1084,7 +1084,7 @@ function RagTestsTab({
             onClick={() => setShowFailDrilldown((v) => !v)}
             aria-expanded={showFailDrilldown}
           >
-            {showFailDrilldown ? 'â–¼' : 'â–¶'} Fail drill-down ({failResults.length})
+            {showFailDrilldown ? '[-]' : '[+]'} Fail drill-down ({failResults.length})
           </button>
           {showFailDrilldown && (
             <div className="rag-tests-fail-panel">
@@ -1171,13 +1171,13 @@ function RagTestsTab({
                     .map((r) => (
                       <tr key={`${r.test_id}-${r.model}`}>
                         <td>{r.test_name || r.test_id}</td>
-                        <td>{r.platform || 'â€”'}</td>
-                        <td>{r.framework || 'â€”'}</td>
-                        <td>{r.difficulty || 'â€”'}</td>
+                        <td>{r.platform || '-'}</td>
+                        <td>{r.framework || '-'}</td>
+                        <td>{r.difficulty || '-'}</td>
                         <td>{r.rag_used ? 'Yes' : 'No'}</td>
-                        <td>{r.confidence_label || 'â€”'}</td>
+                        <td>{r.confidence_label || '-'}</td>
                         <td>{(r.missing_concepts || []).join(', ') || 'none'}</td>
-                        <td>{r.failure_reason || 'â€”'}</td>
+                        <td>{r.failure_reason || '-'}</td>
                       </tr>
                     ))}
                 </tbody>
