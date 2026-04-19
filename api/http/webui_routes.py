@@ -1186,16 +1186,25 @@ def webui_chat() -> Any:
     try:
         body = request.get_json(force=True, silent=True) or {}
         messages = body.get("messages") or []
-        temperature = body.get("temperature")
-        top_p = body.get("top_p")
-        reasoning_level = body.get("reasoning_level")
-        code_only = body.get("code_only", False)
-        include_rag_metadata = body.get("include_rag_metadata", True)
-
         if not messages:
             return jsonify({"error": "messages is required"}), 400
 
-        set_proxy_status(STATUS_RAG_SEARCH)
+        # Unified path: delegate to /v1 core (single RAG implementation).
+        proxy_body: dict[str, Any] = dict(body)
+        proxy_body["messages"] = messages
+        proxy_body["stream"] = False
+        if "include_rag_metadata" not in proxy_body:
+            proxy_body["include_rag_metadata"] = True
+        if bool(body.get("code_only")) and isinstance(proxy_body.get("messages"), list):
+            _msgs = [m for m in proxy_body.get("messages", []) if isinstance(m, dict)]
+            if _msgs:
+                for i in range(len(_msgs) - 1, -1, -1):
+                    if str(_msgs[i].get("role") or "") == "user":
+                        _c = str(_msgs[i].get("content") or "")
+                        _msgs[i] = dict(_msgs[i], content=f"Only code, no explanations. {_c}".strip())
+                        break
+                proxy_body["messages"] = _msgs
+        return _run_unified_proxy_chat(proxy_body)
 
         settings_repo = get_settings_repository()
         proxy_settings: dict[str, Any] = {}
@@ -2019,8 +2028,6 @@ def tester_chat() -> Any:
         if not session_id:
             return jsonify({"error": "session_id is required"}), 400
 
-        tester_request_id = str(uuid.uuid4())
-
         # Get tester settings if not provided
         settings_repo = get_settings_repository()
         tester_settings = settings_repo.get_tester_settings(session_id) if session_id else None
@@ -2034,55 +2041,37 @@ def tester_chat() -> Any:
             top_k = top_k if top_k is not None else tester_settings.get("top_k")
             if "fetch_web_knowledge" not in body:
                 fetch_web_knowledge = tester_settings.get("fetch_web_knowledge", False)
-        
-        # Get collection name from request, tester settings, or global settings; no config default
+
+        # Resolve optional collection/prompt from tester settings and delegate to unified /v1 path.
         collection_name = (body.get("collection_name") or "").strip() or None
         if not collection_name and tester_settings:
             collection_name = (tester_settings.get("rag_collection") or "").strip() or None
-        if not collection_name or collection_name == "":
+        if not collection_name:
             collection_name = (settings_repo.get_app_setting(RAG_COLLECTION_APP_SETTING) or "").strip() or None
-        if use_rag and not collection_name:
-            names = _get_qdrant_collection_names()
-            if not names:
-                return jsonify({
-                    "error": "No Qdrant collections. Create one in Crawler / RAG then try again.",
-                }), 400
-            collection_name = names[0]
-
         prompt_name = (prompt_name or "").strip() if isinstance(prompt_name, str) else str(prompt_name or "").strip()
-        if use_rag:
-            if not prompt_name or not rag_prompt_file_exists(prompt_name) or is_readme_name(prompt_name):
-                return jsonify(
-                    {
-                        "error": "Model Tester requires a valid prompt_name (prompts/*.md) when RAG is enabled.",
-                        "detail": f"prompt_name={prompt_name!r}" if prompt_name else "prompt_name is empty",
-                    }
-                ), 400
-
-        stored_proxy_model = (settings_repo.get_app_setting("proxy_model") or "").strip()
-        try:
-            ps_global = settings_repo.get_app_setting("proxy_settings")
-            if ps_global:
-                _pg = json.loads(ps_global)
-                if not stored_proxy_model and _pg.get("model"):
-                    stored_proxy_model = str(_pg.get("model") or "").strip()
-        except Exception:
-            pass
-
-        params, deps = _get_rag_answer_params_compat(
-            collection_name=collection_name,
-            prompt_name=prompt_name if use_rag else None,
-        )
-        chat_client = deps.chat_client
-        # Same resolution as /api/webui/chat: concrete Ollama tag from LLM Proxy settings, not only env.
         model_req = (str(model).strip() if model is not None else "")
+
+        proxy_body: dict[str, Any] = {
+            "messages": messages,
+            "stream": False,
+            "include_rag_metadata": bool(use_rag),
+            "skip_rag": (not bool(use_rag)),
+            "fetch_web_knowledge": bool(fetch_web_knowledge),
+        }
         if model_req:
-            ollama_model = model_req
-        elif stored_proxy_model:
-            ollama_model = stored_proxy_model
-        else:
-            ollama_model = params.model_name
-        
+            proxy_body["model"] = model_req
+        if collection_name:
+            proxy_body["collection_name"] = collection_name
+        if prompt_name:
+            proxy_body["prompt_name"] = prompt_name
+        if temperature is not None:
+            proxy_body["temperature"] = temperature
+        if top_p is not None:
+            proxy_body["top_p"] = top_p
+        if reasoning_level:
+            proxy_body["reasoning_level"] = reasoning_level
+        return _run_unified_proxy_chat(proxy_body)
+
         last_user = last_user_content(messages)
         
         rag_chunks_info: list[dict[str, Any]] | None = None
@@ -5710,6 +5699,50 @@ def _find_trace_by_client_request_id(request_id: str) -> dict[str, Any] | None:
     return None
 
 
+def _live_rag_step_timings(trace: dict[str, Any] | None, elapsed_ms: int) -> dict[str, float]:
+    """Build live step timings for current test from trace + elapsed wall time."""
+    out: dict[str, float] = {
+        "embed_s": 0.0,
+        "search_s": 0.0,
+        "rerank_s": 0.0,
+        "total_rag_s": 0.0,
+        "chat_s_estimated": max(0.0, float(elapsed_ms) / 1000.0),
+        "latency_s_total": max(0.0, float(elapsed_ms) / 1000.0),
+    }
+    if not isinstance(trace, dict):
+        return out
+    rag = trace.get("rag") if isinstance(trace.get("rag"), dict) else {}
+    timings = rag.get("timings") if isinstance(rag.get("timings"), dict) else {}
+    if not isinstance(timings, dict):
+        return out
+    for k in ("embed_s", "search_s", "rerank_s", "total_rag_s"):
+        try:
+            if timings.get(k) is not None:
+                out[k] = max(0.0, float(timings.get(k) or 0.0))
+        except Exception:
+            pass
+    total_s = max(0.0, float(elapsed_ms) / 1000.0)
+    try:
+        resp = trace.get("response") if isinstance(trace.get("response"), dict) else {}
+        if resp.get("latency_ms") is not None:
+            total_s = max(0.0, float(resp.get("latency_ms") or 0.0) / 1000.0)
+    except Exception:
+        pass
+    out["latency_s_total"] = total_s
+    out["chat_s_estimated"] = max(0.0, total_s - float(out.get("total_rag_s") or 0.0))
+    return out
+
+
+def _run_unified_proxy_chat(body: dict[str, Any]) -> Any:
+    """Delegate chat handling to /v1 chat_completions core to avoid duplicate RAG logic."""
+    wiring = current_app.extensions.get("llm_proxy_wiring")
+    if wiring is None:
+        return jsonify({"error": "LLM proxy wiring not initialized"}), 500
+    from llm_proxy.chat_completions import run_chat_completions
+
+    return run_chat_completions(wiring, body_override=body)
+
+
 @webui_bp.route("/rag-tests", methods=["GET"])
 def rag_tests_list() -> Any:
     """List all RAG tests, optionally filtered by platform, framework, difficulty."""
@@ -6080,6 +6113,14 @@ def _rag_tests_run_worker(
                     "pending": total - i - 1,
                     "sse_enabled": False,
                     "sse_preview": "",
+                    "current_step_timings": {
+                        "embed_s": 0.0,
+                        "search_s": 0.0,
+                        "rerank_s": 0.0,
+                        "total_rag_s": 0.0,
+                        "chat_s_estimated": 0.0,
+                        "latency_s_total": 0.0,
+                    },
                 }
                 _rag_test_jobs[job_id]["results"] = list(results)
             question = test.get("question") or ""
@@ -6090,8 +6131,6 @@ def _rag_tests_run_worker(
                     "messages": [{"role": "user", "content": question}],
                     "model": model,
                     "collection_name": collection_name,
-                    # Force RAG for test runs to validate retrieval and strict overlap
-                    "force_rag": True,
                     "stream": True,
                     "include_rag_metadata": True,
                     "testing_disable_rerank": True,
@@ -6107,6 +6146,10 @@ def _rag_tests_run_worker(
                     if job:
                         pr = dict(job.get("progress") or {})
                         pr["sse_enabled"] = bool(is_sse_response)
+                        pr["current_step_timings"] = _live_rag_step_timings(
+                            _find_trace_by_client_request_id(request_id),
+                            int((time.time() - start_time) * 1000),
+                        )
                         job["progress"] = pr
                 elapsed_ms = int((time.time() - start_time) * 1000)
                 if resp.status_code != 200:
@@ -6173,8 +6216,13 @@ def _rag_tests_run_worker(
                                     pr = dict(job.get("progress") or {})
                                     pr["sse_enabled"] = bool(is_sse_response)
                                     pr["sse_preview"] = sse_full[-1600:]
+                                    pr["current_step_timings"] = _live_rag_step_timings(
+                                        _find_trace_by_client_request_id(request_id),
+                                        int((time.time() - start_time) * 1000),
+                                    )
                                     job["progress"] = pr
 
+                elapsed_total_ms = int((time.time() - start_time) * 1000)
                 content = sse_full
                 trace = _find_trace_by_client_request_id(request_id) or {}
                 trace_ok = bool(trace)
@@ -6185,7 +6233,7 @@ def _rag_tests_run_worker(
                 trace_ollama = trace.get("ollama") if trace_ok and isinstance(trace.get("ollama"), dict) else {}
                 trace_tokens = trace_ollama.get("tokens_estimates") if isinstance(trace_ollama.get("tokens_estimates"), dict) else {}
                 trace_resp = trace.get("response") if trace_ok and isinstance(trace.get("response"), dict) else {}
-                latency_ms = int(trace_resp.get("latency_ms") or elapsed_ms)
+                latency_ms = int(trace_resp.get("latency_ms") or elapsed_total_ms)
                 if isinstance(trace_timings, dict):
                     trace_timings = dict(trace_timings)
                     try:
@@ -6194,6 +6242,19 @@ def _rag_tests_run_worker(
                         total_rag_s = 0.0
                     trace_timings["chat_s_estimated"] = max(0.0, (latency_ms / 1000.0) - total_rag_s)
                     trace_timings["latency_s_total"] = max(0.0, latency_ms / 1000.0)
+                    with _rag_test_jobs_lock:
+                        job = _rag_test_jobs.get(job_id)
+                        if job:
+                            pr = dict(job.get("progress") or {})
+                            pr["current_step_timings"] = {
+                                "embed_s": float(trace_timings.get("embed_s") or 0.0),
+                                "search_s": float(trace_timings.get("search_s") or 0.0),
+                                "rerank_s": float(trace_timings.get("rerank_s") or 0.0),
+                                "total_rag_s": float(trace_timings.get("total_rag_s") or 0.0),
+                                "chat_s_estimated": float(trace_timings.get("chat_s_estimated") or 0.0),
+                                "latency_s_total": float(trace_timings.get("latency_s_total") or (latency_ms / 1000.0) or 0.0),
+                            }
+                            job["progress"] = pr
                 trace_steps = trace.get("steps") if trace_ok and isinstance(trace.get("steps"), list) else []
                 rag_metadata = {
                     "chunks_info": trace_chunks,
@@ -6218,7 +6279,7 @@ def _rag_tests_run_worker(
                     "framework": test.get("framework"),
                     "model": model,
                     "status": validation.get("status", "FAIL"),
-                    "response_time_ms": elapsed_ms,
+                    "response_time_ms": latency_ms if latency_ms > 0 else elapsed_total_ms,
                     "latency_ms": latency_ms,
                     "rag_used": validation.get("rag_used", False),
                     "confidence_label": validation.get("confidence_label", ""),

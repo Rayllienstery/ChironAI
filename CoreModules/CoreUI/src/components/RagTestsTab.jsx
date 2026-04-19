@@ -99,8 +99,10 @@ function RagTestsTab({
   const [prompts, setPrompts] = useState([]);
   const [selectedPromptName, setSelectedPromptName] = useState('');
   const [liveMonitorOpen, setLiveMonitorOpen] = useState(true);
+  const [liveMonitorDetailOpen, setLiveMonitorDetailOpen] = useState(false);
   const [currentStepStartedAt, setCurrentStepStartedAt] = useState(null);
   const [liveNowMs, setLiveNowMs] = useState(Date.now());
+  const [liveTrace, setLiveTrace] = useState(null);
   const [liveSse, setLiveSse] = useState({
     available: false,
     active: false,
@@ -265,11 +267,11 @@ function RagTestsTab({
   useEffect(() => {
     if (!running || !liveMonitorOpen) {
       setLiveSse((prev) => ({ ...prev, available: false, active: false, text: '' }));
+      setLiveTrace(null);
       return undefined;
     }
     const progressAvailable = Boolean(runProgress?.sse_enabled);
     const progressPreview = String(runProgress?.sse_preview || '');
-    if (progressAvailable || progressPreview) return undefined;
     let cancelled = false;
     let timer = null;
 
@@ -278,17 +280,21 @@ function RagTestsTab({
         const data = await getProxyTraceCurrent();
         if (cancelled) return;
         const trace = data?.trace || null;
+        setLiveTrace(trace);
         const streamEnabled = Boolean(trace?.request?.stream || trace?.ollama?.chat_stream);
         const preview = String(trace?.response?.content_preview || '');
-        setLiveSse({
-          available: streamEnabled,
-          active: streamEnabled && preview.trim() !== '',
-          text: preview,
-          updatedAt: String(data?.updated_at || ''),
-        });
+        if (!progressAvailable && !progressPreview) {
+          setLiveSse({
+            available: streamEnabled,
+            active: streamEnabled && preview.trim() !== '',
+            text: preview,
+            updatedAt: String(data?.updated_at || ''),
+          });
+        }
       } catch {
         if (!cancelled) {
           setLiveSse((prev) => ({ ...prev, available: false, active: false }));
+          setLiveTrace(null);
         }
       } finally {
         if (!cancelled) timer = setTimeout(tick, 900);
@@ -319,13 +325,14 @@ function RagTestsTab({
   }, [running, runProgress?.sse_enabled, runProgress?.sse_preview]);
 
   useEffect(() => {
-    if (!resultDetailModal) return undefined;
+    if (!resultDetailModal && !liveMonitorDetailOpen) return undefined;
     const onKey = (e) => {
       if (e.key === 'Escape') setResultDetailModal(null);
+      if (e.key === 'Escape') setLiveMonitorDetailOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [resultDetailModal]);
+  }, [resultDetailModal, liveMonitorDetailOpen]);
 
   const handleSelectPastRun = async (runId) => {
     setError(null);
@@ -623,12 +630,11 @@ function RagTestsTab({
   const tableRows = isViewingPastRun
     ? displayResults
     : filteredTests;
-  const previousSteps = [...(results || [])]
-    .filter((r) => r && (r.test_name || r.test_id))
-    .slice(-12)
-    .reverse();
   const currentStepElapsedMs = currentStepStartedAt && running
     ? Math.max(0, liveNowMs - currentStepStartedAt)
+    : null;
+  const liveStepTimings = runProgress?.current_step_timings && typeof runProgress.current_step_timings === 'object'
+    ? runProgress.current_step_timings
     : null;
 
   const formatDuration = (ms) => {
@@ -642,6 +648,25 @@ function RagTestsTab({
     if (!Number.isFinite(n)) return '-';
     return `${n.toFixed(2)} s`;
   };
+
+  const liveStepRows = [
+    { key: 'total', value: liveStepTimings?.latency_s_total ?? (currentStepElapsedMs != null ? Number(currentStepElapsedMs) / 1000.0 : null) },
+    { key: 'embed', value: liveStepTimings?.embed_s },
+    { key: 'search', value: liveStepTimings?.search_s },
+    { key: 'rerank', value: liveStepTimings?.rerank_s },
+    { key: 'rag', value: liveStepTimings?.total_rag_s },
+    {
+      key: 'chat',
+      value: liveStepTimings?.chat_s_estimated != null
+        ? liveStepTimings.chat_s_estimated
+        : (currentStepElapsedMs != null ? Number(currentStepElapsedMs) / 1000.0 : null),
+    },
+  ];
+  const liveTraceChunks = Array.isArray(liveTrace?.rag?.context?.chunks)
+    ? liveTrace.rag.context.chunks
+    : [];
+  const liveTraceQuery = String(liveTrace?.request?.user_query_preview || '').trim();
+  const openLiveDetail = () => setLiveMonitorDetailOpen(true);
 
   const formatRunDate = (iso) => {
     if (!iso) return '-';
@@ -1020,7 +1045,19 @@ function RagTestsTab({
           {liveMonitorOpen ? '[-]' : '[+]'} Live test monitor
         </button>
         {liveMonitorOpen && (
-          <Card className="rag-tests-live-monitor-panel" elevation="var(--md-sys-elevation-level1)">
+          <Card
+            className="rag-tests-live-monitor-panel"
+            elevation="var(--md-sys-elevation-level1)"
+            onClick={openLiveDetail}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openLiveDetail();
+              }
+            }}
+          >
             <div className="rag-tests-live-monitor-scroll">
               <p className="rag-tests-live-line">
                 <strong>Current step:</strong> {runProgress?.current_test_name || 'idle'}
@@ -1040,36 +1077,108 @@ function RagTestsTab({
                 <pre className="rag-tests-live-sse">{liveSse.text}</pre>
               ) : null}
               <p className="rag-tests-live-line">
-                <strong>Previous steps:</strong>
+                <strong>Current test timings:</strong>
               </p>
-              <div className="rag-tests-live-steps">
-                {previousSteps.length === 0 ? (
-                  <p className="rag-tests-live-line rag-tests-live-empty">No completed steps yet.</p>
-                ) : (
-                  previousSteps.map((item, idx) => (
-                    <div key={`${item.test_id || item.test_name}-${idx}`} className="rag-tests-live-step-item-wrap">
-                      <p className="rag-tests-live-step-item">
-                        <span className="rag-tests-live-step-name">{item.test_name || item.test_id}</span>
-                        <span className={`rag-tests-live-step-status ${(item.status || '').toLowerCase()}`}>
-                          {item.status || '-'}
-                        </span>
-                        <span className="rag-tests-live-step-duration">
-                          {formatDuration(item.response_time_ms ?? item.latency_ms)}
-                        </span>
-                      </p>
-                      {item.rag_timings ? (
-                        <p className="rag-tests-live-step-breakdown">
-                          embed {formatSeconds(item.rag_timings.embed_s)} | search {formatSeconds(item.rag_timings.search_s)} | rerank {formatSeconds(item.rag_timings.rerank_s)} | rag {formatSeconds(item.rag_timings.total_rag_s)} | chat {formatSeconds(item.rag_timings.chat_s_estimated)}
-                        </p>
-                      ) : null}
-                    </div>
-                  ))
-                )}
+              <ul className="rag-tests-live-current-steps">
+                {liveStepRows.map((row) => (
+                  <li key={row.key} className="rag-tests-live-current-step">
+                    <span className="rag-tests-live-current-step-name">{row.key}</span>
+                    <span className="rag-tests-live-current-step-value">{formatSeconds(row.value)}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="rag-tests-live-actions">
+                <button
+                  type="button"
+                  className="rag-tests-btn small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openLiveDetail();
+                  }}
+                >
+                  Details
+                </button>
               </div>
             </div>
           </Card>
         )}
       </div>
+
+      {liveMonitorDetailOpen && (
+        <div
+          className="rag-tests-modal rag-tests-result-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rag-live-monitor-modal-title"
+          onClick={() => setLiveMonitorDetailOpen(false)}
+        >
+          <div
+            className="rag-tests-modal-content rag-tests-result-modal-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="rag-tests-result-modal-header">
+              <h3 id="rag-live-monitor-modal-title">Live test monitor details</h3>
+              <button
+                type="button"
+                className="rag-tests-result-modal-close"
+                onClick={() => setLiveMonitorDetailOpen(false)}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+            <p className="rag-tests-result-modal-meta">
+              Current test: <strong>{runProgress?.current_test_name || 'idle'}</strong>
+            </p>
+            <section className="rag-tests-result-section">
+              <h4>Current stage timings</h4>
+              <ul className="rag-tests-live-current-steps">
+                {liveStepRows.map((row) => (
+                  <li key={`modal-${row.key}`} className="rag-tests-live-current-step">
+                    <span className="rag-tests-live-current-step-name">{row.key}</span>
+                    <span className="rag-tests-live-current-step-value">{formatSeconds(row.value)}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+            <section className="rag-tests-result-section">
+              <h4>SSE streaming</h4>
+              {liveSse.text ? (
+                <pre className="rag-tests-pre rag-tests-pre-answer">{liveSse.text}</pre>
+              ) : (
+                <p className="rag-tests-result-empty">No stream chunks yet.</p>
+              )}
+            </section>
+            <section className="rag-tests-result-section">
+              <h4>RAG request</h4>
+              {liveTraceQuery ? (
+                <pre className="rag-tests-pre rag-tests-pre-tight">{liveTraceQuery}</pre>
+              ) : (
+                <p className="rag-tests-result-empty">Request preview not available yet.</p>
+              )}
+            </section>
+            <section className="rag-tests-result-section">
+              <h4>RAG chunks</h4>
+              {liveTraceChunks.length === 0 ? (
+                <p className="rag-tests-result-empty">No chunks captured yet.</p>
+              ) : (
+                <ul className="rag-tests-chunks rag-tests-chunks-modal">
+                  {liveTraceChunks.map((ch, idx) => (
+                    <li key={`live-chunk-${idx}`}>
+                      <span className="rag-tests-chunk-meta">
+                        #{idx + 1} score={ch?.score ?? 'N/A'} {ch?.url ? `url=${ch.url}` : ''} {ch?.source ? `source=${ch.source}` : ''}
+                      </span>
+                      <pre className="rag-tests-pre small">
+                        {ch?.text_preview || ch?.text || ''}
+                      </pre>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+        </div>
+      )}
 
       <div className="rag-tests-filters">
         <label>

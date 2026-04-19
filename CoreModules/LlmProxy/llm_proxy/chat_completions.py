@@ -36,6 +36,7 @@ from infrastructure.ollama.openai_multipart_vision import (
 )
 from infrastructure.ollama.openai_ollama_tool_bridge import (
     ollama_chat_tool_choice_payload_value,
+    openai_finish_reason_from_ollama,
     openai_tool_choice_means_none,
 )
 from llm_proxy.contracts import LlmProxyWiring
@@ -1062,6 +1063,27 @@ def run_chat_completions(
     if effective_rag_top_k is not None:
         trace["request"]["rag_top_k"] = effective_rag_top_k
 
+    # Keep embed model in sync with WebUI setting for /v1 path as well.
+    # This avoids accidental model="" calls to /api/embed when env defaults are empty.
+    try:
+        settings_repo = w.get_settings_repository()
+        selected_embed_model = str(settings_repo.get_app_setting("rag_embed_model") or "").strip()
+        current_embed_model = str(
+            getattr(effective_embed_provider, "_model", None)
+            or getattr(effective_embed_provider, "model", None)
+            or ""
+        ).strip()
+        target_embed_model = selected_embed_model or current_embed_model or str(effective_ollama_model or "").strip()
+        if target_embed_model:
+            if hasattr(effective_embed_provider, "_model"):
+                setattr(effective_embed_provider, "_model", target_embed_model)
+            elif hasattr(effective_embed_provider, "model"):
+                setattr(effective_embed_provider, "model", target_embed_model)
+            if target_embed_model != current_embed_model:
+                trace["request"]["embed_model_override"] = target_embed_model
+    except Exception:
+        pass
+
     _ollama_caps: frozenset[str] | None = None
     try:
         _chat_u = getattr(chat_client, "_url", None)
@@ -1445,7 +1467,6 @@ def run_chat_completions(
         from infrastructure.ollama.openai_ollama_tool_bridge import (
             ollama_message_to_openai_assistant,
             ollama_tools_from_openai,
-            openai_finish_reason_from_ollama,
         )
 
         trace["request"]["native_tools"] = True
