@@ -46,6 +46,31 @@ class SessionManager:
                 conn.execute(
                     "ALTER TABLE coreui_notifications ADD COLUMN is_console_error INTEGER NOT NULL DEFAULT 0"
                 )
+            if "aggregation_key" not in cols:
+                conn.execute(
+                    "ALTER TABLE coreui_notifications ADD COLUMN aggregation_key TEXT"
+                )
+            if "occurrence_count" not in cols:
+                conn.execute(
+                    "ALTER TABLE coreui_notifications ADD COLUMN occurrence_count INTEGER NOT NULL DEFAULT 1"
+                )
+            if "last_occurrence_at" not in cols:
+                conn.execute(
+                    "ALTER TABLE coreui_notifications ADD COLUMN last_occurrence_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                )
+            conn.execute(
+                """
+                UPDATE coreui_notifications
+                SET last_occurrence_at = COALESCE(last_occurrence_at, created_at, CURRENT_TIMESTAMP)
+                WHERE last_occurrence_at IS NULL
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_coreui_notifications_aggregate
+                ON coreui_notifications(session_id, aggregation_key, dismissed_at)
+                """
+            )
         except sqlite3.OperationalError:
             # Table might not exist yet (fresh DB) or PRAGMA failed; schema.sql covers creation.
             pass
@@ -115,4 +140,3 @@ def get_session_manager(db_path: Optional[str] = None) -> SessionManager:
             db_path = os.getenv("WEBUI_DB_PATH", "logs/webui.db")
         _session_manager = SessionManager(db_path)
     return _session_manager
-

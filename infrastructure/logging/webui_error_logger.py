@@ -16,7 +16,77 @@ from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from typing import Any, Dict, Optional
 
-from infrastructure.database import get_logs_repository
+from infrastructure.database import get_logs_repository, get_notifications_repository
+
+try:
+    from flask import g, has_request_context, request
+except Exception:  # pragma: no cover - logger can be imported outside Flask runtime
+    g = None  # type: ignore[assignment]
+    request = None  # type: ignore[assignment]
+
+    def has_request_context() -> bool:
+        return False
+
+
+def _safe_notification_session_id() -> str:
+    if not has_request_context():
+        return "system"
+    try:
+        sid = getattr(g, "session_id", None) if g is not None else None
+        if sid:
+            return str(sid)
+        if request is not None:
+            sid = request.args.get("session_id")
+            if not sid and request.is_json:
+                body = request.get_json(silent=True) or {}
+                sid = body.get("session_id")
+            if sid:
+                return str(sid)
+    except Exception:
+        pass
+    return "system"
+
+
+def _notification_title_from_source(source: str) -> str:
+    s = (source or "backend").strip()
+    return s if s else "backend"
+
+
+class NotificationMirrorHandler(logging.Handler):
+    """Mirror WebUI error records into persisted notification center rows."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.levelno < logging.ERROR:
+            return
+        try:
+            source = record.getMessage().strip() or "backend"
+            error = record.exc_info[1] if record.exc_info and record.exc_info[1] else None
+            if error is not None:
+                message = str(error).strip() or type(error).__name__
+                error_type = type(error).__name__
+            else:
+                message = source
+                error_type = record.levelname
+            session_id = _safe_notification_session_id()
+            aggregation_key = f"backend-error|{source}|{error_type}|{message[:160]}"
+            get_notifications_repository().add_notification(
+                session_id=session_id,
+                kind="error",
+                source="logs",
+                title=_notification_title_from_source(source),
+                message=message[:8000],
+                metadata={
+                    "historyOnly": False,
+                    "origin": "backend_logger",
+                    "error_type": error_type,
+                    "session_scope": session_id,
+                },
+                aggregation_key=aggregation_key,
+                is_console_error=True,
+            )
+        except Exception:
+            # Never let notification mirroring break the primary logger.
+            pass
 
 
 def _clean_message(source: str, error: Exception, extra: Optional[Dict[str, Any]] = None) -> str:
@@ -82,6 +152,7 @@ def get_webui_error_logger(
             logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
         )
     logger.addHandler(handler)
+    logger.addHandler(NotificationMirrorHandler())
     logger.setLevel(logging.INFO)
     return logger
 

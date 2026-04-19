@@ -5,6 +5,26 @@ import { notificationModuleLabel } from './notificationModuleLabels';
 import { useNotificationCenter } from './NotificationCenterContext';
 import '../styles/components/NotificationCenter.css';
 
+function notificationDisplayTitle(notification) {
+  const title = notification?.title || '';
+  const count = Number(notification?.occurrence_count || 1);
+  return count > 1 ? `${title} (${count})` : title;
+}
+
+function notificationSortValue(notification) {
+  return Date.parse(notification?.last_occurrence_at || notification?.created_at || '') || 0;
+}
+
+function notificationDisplayTime(notification) {
+  const raw = notification?.last_occurrence_at || notification?.created_at || '';
+  const value = Date.parse(raw);
+  if (!Number.isFinite(value)) return '';
+  return new Intl.DateTimeFormat(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
 function BellIcon() {
   return (
     <svg
@@ -20,10 +40,15 @@ function BellIcon() {
   );
 }
 
-function ModuleFooter({ source }) {
+function ModuleFooter({ source, notification }) {
   return (
     <div className="notification-center-module-footer">
-      {notificationModuleLabel(source)}
+      <span className="notification-center-module-footer-source">
+        {notificationModuleLabel(source)}
+      </span>
+      <span className="notification-center-module-footer-time">
+        {notificationDisplayTime(notification)}
+      </span>
     </div>
   );
 }
@@ -56,7 +81,7 @@ function NotificationCenterShell() {
   const activePersisted = persisted.filter(
     (n) => !n.dismissed_at && !n.metadata?.historyOnly,
   );
-  const history = [...persisted].sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
+  const history = [...persisted].sort((a, b) => notificationSortValue(b) - notificationSortValue(a));
 
   const liveEntries = [...liveActivities.entries()];
 
@@ -86,17 +111,12 @@ function NotificationCenterShell() {
                   className={`notification-center-popover-row notification-center-popover-row--${n.kind || 'event'}`}
                 >
                   <div className="notification-center-popover-row-main">
-                    <div className="notification-center-popover-row-title">{n.title}</div>
+                    <div className="notification-center-popover-row-title">{notificationDisplayTitle(n)}</div>
                     {n.message ? (
                       <div className="notification-center-popover-row-msg">{n.message}</div>
                     ) : null}
-                    <div className="notification-center-popover-row-meta">
-                      <span className="notification-center-popover-row-time">
-                        {n.created_at ? String(n.created_at).replace('T', ' ').slice(0, 19) : ''}
-                      </span>
-                    </div>
                   </div>
-                  <ModuleFooter source={n.source} />
+                  <ModuleFooter source={n.source} notification={n} />
                 </div>
               ))
             )}
@@ -113,7 +133,7 @@ function NotificationCenterShell() {
             role="status"
           >
             <div className="notification-center-card-header">
-              <span className="notification-center-card-header-title">{n.title}</span>
+              <span className="notification-center-card-header-title">{notificationDisplayTitle(n)}</span>
               <button
                 type="button"
                 className="notification-center-card-close"
@@ -128,7 +148,7 @@ function NotificationCenterShell() {
                 <div className="notification-center-card-message">{n.message}</div>
               ) : null}
             </div>
-            <ModuleFooter source={n.source} />
+            <ModuleFooter source={n.source} notification={n} />
           </Card>
         ))}
 

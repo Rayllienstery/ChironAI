@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import { getRagStatus } from '../services/api';
 import { useNotificationCenter } from './NotificationCenterContext';
 
+const RAG_UNAVAILABLE_AGGREGATION_KEY = 'infrastructure:rag-unavailable';
+
 function clampPollSec(raw) {
   const n = parseInt(String(raw ?? ''), 10);
   if (Number.isNaN(n)) return 5;
@@ -60,6 +62,7 @@ export default function InfrastructureAlertsBridge({ pollIntervalSec = 5 }) {
               kind: 'error',
               source: 'rag',
               title: 'Qdrant / RAG unavailable',
+              aggregation_key: RAG_UNAVAILABLE_AGGREGATION_KEY,
               message: `${detail} · ${baseUrl}`.slice(0, 800),
             });
           } catch (err) {

@@ -83,6 +83,9 @@ CREATE TABLE IF NOT EXISTS coreui_notifications (
     title TEXT NOT NULL,
     message TEXT NOT NULL DEFAULT '',
     metadata TEXT,
+    aggregation_key TEXT,
+    occurrence_count INTEGER NOT NULL DEFAULT 1,
+    last_occurrence_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     is_console_error INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     dismissed_at TIMESTAMP,
@@ -91,4 +94,3 @@ CREATE TABLE IF NOT EXISTS coreui_notifications (
 
 CREATE INDEX IF NOT EXISTS idx_coreui_notifications_session ON coreui_notifications(session_id);
 CREATE INDEX IF NOT EXISTS idx_coreui_notifications_created ON coreui_notifications(created_at);
-

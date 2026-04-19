@@ -841,6 +841,21 @@ def get_coreui_notifications() -> Any:
             limit=limit,
             include_dismissed=include_dismissed,
         )
+        if session_id != "system":
+            system_items = repo.list_notifications(
+                session_id="system",
+                limit=limit,
+                include_dismissed=include_dismissed,
+            )
+            items.extend(system_items)
+            items.sort(
+                key=lambda n: (
+                    str(n.get("last_occurrence_at") or n.get("created_at") or ""),
+                    int(n.get("id") or 0),
+                ),
+                reverse=True,
+            )
+            items = items[:limit]
         return jsonify({"notifications": items})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_coreui_notifications", exc_info=True)
@@ -858,6 +873,7 @@ def create_coreui_notification() -> Any:
         title = (body.get("title") or "").strip()
         message = body.get("message") or ""
         metadata = body.get("metadata")
+        aggregation_key = (body.get("aggregation_key") or "").strip()
 
         if not session_id:
             return jsonify({"error": "session_id is required"}), 400
@@ -876,6 +892,8 @@ def create_coreui_notification() -> Any:
             if not isinstance(metadata, dict):
                 return jsonify({"error": "metadata must be an object"}), 400
             meta_dict = metadata
+        if not aggregation_key:
+            aggregation_key = None
 
         nid = get_notifications_repository().add_notification(
             session_id=session_id,
@@ -884,6 +902,7 @@ def create_coreui_notification() -> Any:
             title=title,
             message=message,
             metadata=meta_dict,
+            aggregation_key=aggregation_key,
         )
         return jsonify({"id": nid})
     except Exception as e:
@@ -899,7 +918,10 @@ def dismiss_coreui_notification(nid: int) -> Any:
         session_id = body.get("session_id") or request.args.get("session_id")
         if not session_id:
             return jsonify({"error": "session_id is required"}), 400
-        ok = get_notifications_repository().dismiss(session_id, nid)
+        repo = get_notifications_repository()
+        ok = repo.dismiss(session_id, nid)
+        if not ok and session_id != "system":
+            ok = repo.dismiss("system", nid)
         if not ok:
             return jsonify({"error": "not found or already dismissed"}), 404
         return jsonify({"ok": True})

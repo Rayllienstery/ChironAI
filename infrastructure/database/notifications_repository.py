@@ -19,6 +19,44 @@ class NotificationsRepository:
     def __init__(self, db_path: str | Path):
         self.db_path = Path(db_path)
         self.session_manager = get_session_manager(db_path)
+        self._ensure_notification_columns()
+
+    def _ensure_notification_columns(self) -> None:
+        """Ensure notification table has additive columns required by newer UI features."""
+        with sqlite3.connect(self.db_path) as conn:
+            try:
+                cols = {
+                    row[1]
+                    for row in conn.execute("PRAGMA table_info(coreui_notifications)").fetchall()
+                }
+                if "aggregation_key" not in cols:
+                    conn.execute(
+                        "ALTER TABLE coreui_notifications ADD COLUMN aggregation_key TEXT"
+                    )
+                if "occurrence_count" not in cols:
+                    conn.execute(
+                        "ALTER TABLE coreui_notifications ADD COLUMN occurrence_count INTEGER NOT NULL DEFAULT 1"
+                    )
+                if "last_occurrence_at" not in cols:
+                    conn.execute(
+                        "ALTER TABLE coreui_notifications ADD COLUMN last_occurrence_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                    )
+                conn.execute(
+                    """
+                    UPDATE coreui_notifications
+                    SET last_occurrence_at = COALESCE(last_occurrence_at, created_at, CURRENT_TIMESTAMP)
+                    WHERE last_occurrence_at IS NULL
+                    """
+                )
+                conn.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_coreui_notifications_aggregate
+                    ON coreui_notifications(session_id, aggregation_key, dismissed_at)
+                    """
+                )
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
 
     def add_notification(
         self,
@@ -28,14 +66,57 @@ class NotificationsRepository:
         title: str,
         message: str = "",
         metadata: Optional[dict[str, Any]] = None,
+        aggregation_key: Optional[str] = None,
         is_console_error: bool = False,
     ) -> int:
         with sqlite3.connect(self.db_path) as conn:
+            if aggregation_key:
+                existing = conn.execute(
+                    """
+                    SELECT id
+                    FROM coreui_notifications
+                    WHERE session_id = ?
+                      AND aggregation_key = ?
+                      AND dismissed_at IS NULL
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (session_id, aggregation_key),
+                ).fetchone()
+                if existing is not None:
+                    conn.execute(
+                        """
+                        UPDATE coreui_notifications
+                        SET kind = ?,
+                            source = ?,
+                            title = ?,
+                            message = ?,
+                            metadata = ?,
+                            is_console_error = ?,
+                            occurrence_count = COALESCE(occurrence_count, 1) + 1,
+                            last_occurrence_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        """,
+                        (
+                            kind,
+                            source,
+                            title,
+                            message,
+                            json.dumps(metadata) if metadata else None,
+                            1 if is_console_error else 0,
+                            int(existing[0]),
+                        ),
+                    )
+                    conn.commit()
+                    return int(existing[0])
             cursor = conn.execute(
                 """
                 INSERT INTO coreui_notifications
-                    (session_id, kind, source, title, message, metadata, is_console_error)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (
+                        session_id, kind, source, title, message, metadata,
+                        aggregation_key, occurrence_count, last_occurrence_at, is_console_error
+                    )
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
                 """,
                 (
                     session_id,
@@ -44,6 +125,7 @@ class NotificationsRepository:
                     title,
                     message,
                     json.dumps(metadata) if metadata else None,
+                    aggregation_key,
                     1 if is_console_error else 0,
                 ),
             )
@@ -58,30 +140,58 @@ class NotificationsRepository:
     ) -> list[dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            if include_dismissed:
-                rows = conn.execute(
-                    """
-                    SELECT id, session_id, kind, source, title, message, metadata, is_console_error,
-                           created_at, dismissed_at
-                    FROM coreui_notifications
-                    WHERE session_id = ?
-                    ORDER BY id DESC
-                    LIMIT ?
-                    """,
-                    (session_id, limit),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT id, session_id, kind, source, title, message, metadata, is_console_error,
-                           created_at, dismissed_at
-                    FROM coreui_notifications
-                    WHERE session_id = ? AND dismissed_at IS NULL
-                    ORDER BY id DESC
-                    LIMIT ?
-                    """,
-                    (session_id, limit),
-                ).fetchall()
+            try:
+                if include_dismissed:
+                    rows = conn.execute(
+                        """
+                        SELECT id, session_id, kind, source, title, message, metadata, aggregation_key,
+                               occurrence_count, is_console_error, created_at, last_occurrence_at, dismissed_at
+                        FROM coreui_notifications
+                        WHERE session_id = ?
+                        ORDER BY COALESCE(last_occurrence_at, created_at) DESC, id DESC
+                        LIMIT ?
+                        """,
+                        (session_id, limit),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        """
+                        SELECT id, session_id, kind, source, title, message, metadata, aggregation_key,
+                               occurrence_count, is_console_error, created_at, last_occurrence_at, dismissed_at
+                        FROM coreui_notifications
+                        WHERE session_id = ? AND dismissed_at IS NULL
+                        ORDER BY COALESCE(last_occurrence_at, created_at) DESC, id DESC
+                        LIMIT ?
+                        """,
+                        (session_id, limit),
+                    ).fetchall()
+            except sqlite3.OperationalError:
+                if include_dismissed:
+                    rows = conn.execute(
+                        """
+                        SELECT id, session_id, kind, source, title, message, metadata,
+                               NULL AS aggregation_key, 1 AS occurrence_count,
+                               is_console_error, created_at, created_at AS last_occurrence_at, dismissed_at
+                        FROM coreui_notifications
+                        WHERE session_id = ?
+                        ORDER BY created_at DESC, id DESC
+                        LIMIT ?
+                        """,
+                        (session_id, limit),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        """
+                        SELECT id, session_id, kind, source, title, message, metadata,
+                               NULL AS aggregation_key, 1 AS occurrence_count,
+                               is_console_error, created_at, created_at AS last_occurrence_at, dismissed_at
+                        FROM coreui_notifications
+                        WHERE session_id = ? AND dismissed_at IS NULL
+                        ORDER BY created_at DESC, id DESC
+                        LIMIT ?
+                        """,
+                        (session_id, limit),
+                    ).fetchall()
             return [_row_to_dict(r) for r in rows]
 
     def dismiss(self, session_id: str, notification_id: int) -> bool:

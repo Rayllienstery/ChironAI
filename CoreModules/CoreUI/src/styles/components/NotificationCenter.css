@@ -375,11 +375,30 @@
 .notification-center-module-footer {
   margin-top: auto;
   padding-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   font: var(--md-sys-typescale-label-small-font);
   color: var(--md-sys-color-on-surface-variant);
-  text-align: left;
   align-self: stretch;
   border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.notification-center-module-footer-source,
+.notification-center-module-footer-time {
+  min-width: 0;
+}
+
+.notification-center-module-footer-source {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-center-module-footer-time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .notification-center-popover {

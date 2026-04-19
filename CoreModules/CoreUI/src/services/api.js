@@ -240,6 +240,7 @@ export async function createCoreuiNotification(sessionId, payload) {
       title: payload.title,
       message: payload.message ?? '',
       metadata: payload.metadata,
+      aggregation_key: payload.aggregation_key ?? null,
       is_console_error: payload.is_console_error || false,
     }),
   });
