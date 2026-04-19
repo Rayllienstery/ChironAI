@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import '../styles/components/TestingTab.css';
 import CoreUIPillTabs from './CoreUIPillTabs';
 

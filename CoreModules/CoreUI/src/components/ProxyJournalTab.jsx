@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getProxyJournal, clearProxyJournal } from '../services/api';
 import '../styles/components/DashboardTab.css';
 import ProxyTraceDetailModal from './ProxyTraceDetailModal';

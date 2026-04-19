@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { previewExternalDocs } from '../services/api';
 import '../styles/components/IndexerTester.css';
 import '../styles/components/WebCallsTester.css';

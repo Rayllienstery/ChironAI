@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { getModelSettings, updateModelSettings, getPipelinePreview } from '../services/api';
 import PipelineCiDiagram from './PipelineCiDiagram';
 import '../styles/components/LlmProxyTab.css';

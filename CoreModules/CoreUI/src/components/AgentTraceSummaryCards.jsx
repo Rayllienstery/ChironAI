@@ -1,4 +1,3 @@
-import React from 'react';
 import '../styles/components/DashboardTab.css';
 
 function kv(label, value, key) {

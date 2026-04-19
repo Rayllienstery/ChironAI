@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Card from './Card';
 import CoreUIButton from './CoreUIButton';
 import { notificationModuleLabel } from './notificationModuleLabels';

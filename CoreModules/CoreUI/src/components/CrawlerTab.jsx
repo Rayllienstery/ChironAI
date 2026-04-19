@@ -1,6 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useRef, useState } from "react";
 import Card from "./Card";
 import CoreUIPillTabs from "./CoreUIPillTabs";
+import {
+  CreateCollectionModal,
+  CreatePipelineModal,
+  DeletePipelineConfirmModal,
+  SourceModal,
+} from "./CrawlerModals";
 import EmptyState from "./EmptyState";
 import {
   getCrawlerSources,
@@ -34,7 +40,7 @@ const MD_STEP_TYPES_META = [
     description:
       "Removes the leading HTML comment <!-- meta ... --> at the start of the document, parses fields (url, framework, doc_kind, etc.) and returns them as meta; only the remaining text (body) continues through the pipeline.",
     example:
-      'Input: "<!--\\nmeta: ...\\n-->\\n\\n# Title\\nContent" → meta = {...}, body = "# Title\\nContent". If no comment — meta = {}, body = original text.',
+      'Input: "<!--\\nmeta: ...\\n-->\\n\\n# Title\\nContent" â†’ meta = {...}, body = "# Title\\nContent". If no comment â€” meta = {}, body = original text.',
   },
   {
     type: "delete_lines_exact",
@@ -74,7 +80,7 @@ const MD_STEP_TYPES_META = [
     description:
       "Finds all non-overlapping matches of one regex (including multiline) and removes each match. Useful for cutting blocks by a single pattern (e.g. from marker to marker).",
     example:
-      'Param pattern: "(?ms)^<!-- no-index -->.*?^<!-- /no-index -->" — removes all blocks between those comments. Or a pattern for "[View in English](...)" link lines only.',
+      'Param pattern: "(?ms)^<!-- no-index -->.*?^<!-- /no-index -->" â€” removes all blocks between those comments. Or a pattern for "[View in English](...)" link lines only.',
   },
   {
     type: "strip_sections_by_heading",
@@ -90,7 +96,7 @@ const MD_STEP_TYPES_META = [
     description:
       "Trims trailing space per line, strips leading/trailing blank lines, collapses two or more spaces to one. Does not change content inside fenced code blocks (```) or lines with 4+ leading spaces.",
     example:
-      'Input: "  Title  \\n\\n  line   with   spaces  \\n" → "Title\\n\\nline with spaces".',
+      'Input: "  Title  \\n\\n  line   with   spaces  \\n" â†’ "Title\\n\\nline with spaces".',
   },
   {
     type: "wrap_indented_code",
@@ -106,7 +112,7 @@ const MD_STEP_TYPES_META = [
     description:
       "Replaces every match of the regex with the given string (e.g. to clean up stray characters or tags).",
     example:
-      'Param pattern: "\\s{3,}", replacement: "\\n\\n" — three or more spaces/newlines become two newlines.',
+      'Param pattern: "\\s{3,}", replacement: "\\n\\n" â€” three or more spaces/newlines become two newlines.',
   },
   {
     type: "reject_low_signal_body",
@@ -114,7 +120,7 @@ const MD_STEP_TYPES_META = [
     description:
       "After cleanup, drops the entire body (outputs empty markdown) if the text is too weak for RAG: fewer than min_chars characters, fewer than min_words words, or alphabetic letters below min_alpha_ratio of non-space characters (filters link/nav soup). Short but dense prose can still pass.",
     example:
-      "Params: min_chars 200, min_words 5, min_alpha_ratio 0.12 — place this step at the end of the pipeline (and tune thresholds in JSON).",
+      "Params: min_chars 200, min_words 5, min_alpha_ratio 0.12 â€” place this step at the end of the pipeline (and tune thresholds in JSON).",
   },
 ];
 
@@ -155,7 +161,7 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
   const processed = progress.processed_pages ?? 0;
   const pct =
     total > 0 ? Math.min(100, Math.round((100 * processed) / total)) : 0;
-  const sourcesLabel = (progress.source_ids || []).join(", ") || "—";
+  const sourcesLabel = (progress.source_ids || []).join(", ") || "â€”";
   const currentFile =
     progress.current_filename &&
     `${progress.current_source_id || ""}/${progress.current_filename}`.replace(
@@ -208,7 +214,7 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
         </div>
         <div className="create-collection-index-stat">
           <span className="create-collection-index-stat__value">
-            {processed} / {total || "…"}
+            {processed} / {total || "â€¦"}
           </span>
           <span className="create-collection-index-stat__label">pages done</span>
         </div>
@@ -587,7 +593,7 @@ function CrawlerTab() {
       <Card className="crawler-progress-panel" role="status" aria-live="polite">
         <div className="crawler-progress-header">
           <span className="crawler-progress-spinner" aria-hidden="true" />
-          <span className="crawler-progress-title">Crawling…</span>
+          <span className="crawler-progress-title">Crawlingâ€¦</span>
           <span className="crawler-progress-sources">
             {Array.from(crawlingSources).join(", ")}
           </span>
@@ -1068,7 +1074,7 @@ function CrawlerTab() {
               ? "Collection created"
               : createProgress.status === "failed"
                 ? "Collection failed"
-                : "Creating collection…"}
+                : "Creating collectionâ€¦"}
           </div>
           <button
             type="button"
@@ -1076,7 +1082,7 @@ function CrawlerTab() {
             onClick={handleCloseCreateToast}
             aria-label="Dismiss collection progress"
           >
-            ×
+            Ã—
           </button>
         </div>
         <div className="create-collection-toast-body">
@@ -1382,7 +1388,7 @@ function CrawlerTab() {
                   onClick={() => setCrawlAllResults([])}
                   aria-label="Close"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
               <div className="modal-body">
@@ -1395,7 +1401,7 @@ function CrawlerTab() {
                         {r.success
                           ? "Completed successfully."
                           : r.error ||
-                            `Failed (return code ${r.returnCode ?? "—"}).`}
+                            `Failed (return code ${r.returnCode ?? "â€”"}).`}
                       </p>
                     );
                   })()
@@ -1412,7 +1418,7 @@ function CrawlerTab() {
                           <strong>{r.sourceId}</strong>:{" "}
                           {r.success
                             ? "OK"
-                            : r.error || `code ${r.returnCode ?? "—"}`}
+                            : r.error || `code ${r.returnCode ?? "â€”"}`}
                         </li>
                       ))}
                     </ul>
@@ -1484,7 +1490,7 @@ function CrawlerTab() {
                           />
                         </td>
                         <td>{source.id}</td>
-                        <td className="url-cell">{source.url || "—"}</td>
+                        <td className="url-cell">{source.url || "â€”"}</td>
                         <td>{formatDate(source.last_crawled)}</td>
                         <td>{source.total_pages || 0}</td>
                         <td>
@@ -1510,7 +1516,7 @@ function CrawlerTab() {
                               onClick={() => handleEditSource(source.id)}
                               title="Edit source configuration"
                             >
-                              ✏️ Edit
+                              âœï¸ Edit
                             </button>
                             <button
                               type="button"
@@ -1524,7 +1530,7 @@ function CrawlerTab() {
                                   <span className="spinner"></span> Crawling...
                                 </>
                               ) : (
-                                "🔄 Refresh"
+                                "ðŸ”„ Refresh"
                               )}
                             </button>
                           </div>
@@ -1647,7 +1653,7 @@ function CrawlerTab() {
                 disabled={pipelineLoading}
               >
                 {pipelineList.length === 0 && (
-                  <option value="">— No pipelines —</option>
+                  <option value="">â€” No pipelines â€”</option>
                 )}
                 {pipelineList.map((n) => (
                   <option key={n} value={n}>
@@ -1671,7 +1677,7 @@ function CrawlerTab() {
                 pipelineSaving || !selectedPipelineName || pipelineLoading
               }
             >
-              {pipelineSaving ? "Saving…" : "Save"}
+              {pipelineSaving ? "Savingâ€¦" : "Save"}
             </button>
             {pipelineSaveToast && (
               <span className="md-pipeline-toast" role="status">
@@ -1688,7 +1694,7 @@ function CrawlerTab() {
               >
                 {pipelinePreviewSources.length === 0 &&
                   !pipelinePreviewSourcesLoading && (
-                    <option value="">— No sources —</option>
+                    <option value="">â€” No sources â€”</option>
                   )}
                 {pipelinePreviewSources.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -1709,7 +1715,7 @@ function CrawlerTab() {
               >
                 {pipelinePreviewFiles.length === 0 &&
                   !pipelinePreviewFilesLoading && (
-                    <option value="">— No files —</option>
+                    <option value="">â€” No files â€”</option>
                   )}
                 {pipelinePreviewFiles.map((f) => (
                   <option key={f.filename} value={f.filename}>
@@ -1729,7 +1735,7 @@ function CrawlerTab() {
               }
               title="Run this pipeline on the selected file"
             >
-              {previewLoading ? "Preview…" : "Preview on file"}
+              {previewLoading ? "Previewâ€¦" : "Preview on file"}
             </button>
             <button
               type="button"
@@ -1742,7 +1748,7 @@ function CrawlerTab() {
             </button>
           </div>
           {pipelineLoading ? (
-            <div className="loading">Loading pipeline…</div>
+            <div className="loading">Loading pipelineâ€¦</div>
           ) : (
             <>
               <div
@@ -1768,7 +1774,7 @@ function CrawlerTab() {
                             isExpanded ? "Collapse step" : "Expand step"
                           }
                         >
-                          {isExpanded ? "▾" : "▸"}
+                          {isExpanded ? "â–¾" : "â–¸"}
                         </button>
                         <label className="md-pipeline-step-type-label">
                           <span className="md-pipeline-step-type-caption">
@@ -1797,7 +1803,7 @@ function CrawlerTab() {
                             disabled={index === 0}
                             aria-label="Move up"
                           >
-                            ↑
+                            â†‘
                           </button>
                           <button
                             type="button"
@@ -1806,7 +1812,7 @@ function CrawlerTab() {
                             disabled={index === pipelineData.steps.length - 1}
                             aria-label="Move down"
                           >
-                            ↓
+                            â†“
                           </button>
                           <button
                             type="button"
@@ -2167,7 +2173,7 @@ function CrawlerTab() {
                         onClick={() => setShowAddStepMenu(false)}
                         aria-label="Close"
                       >
-                        ×
+                        Ã—
                       </button>
                     </div>
                     <div className="modal-body md-pipeline-add-modal-body">
@@ -2208,13 +2214,13 @@ function CrawlerTab() {
                 <div className="md-pipeline-preview-result">
                   <h4>Preview result</h4>
                   <p>
-                    {previewResult.filename} — processed length:{" "}
+                    {previewResult.filename} â€” processed length:{" "}
                     {(previewResult.processed_md || "").length} chars
                   </p>
                   <pre className="indexer-code-block indexer-code-block-full">
                     {(previewResult.processed_md || "").slice(0, 2000)}
                     {(previewResult.processed_md || "").length > 2000
-                      ? "\n…"
+                      ? "\nâ€¦"
                       : ""}
                   </pre>
                 </div>
@@ -2223,638 +2229,53 @@ function CrawlerTab() {
           )}
         </div>
       )}
-
-      {showCreatePipelineModal && (
-        <div
-          className="modal-overlay"
-          onClick={() => setShowCreatePipelineModal(false)}
-        >
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Create a new pipeline</h3>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setShowCreatePipelineModal(false)}
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-            <div className="modal-body">
-              <label className="indexer-select-label">
-                Pipeline name (letters, numbers, underscores, hyphens):
-                <input
-                  type="text"
-                  value={newPipelineName}
-                  onChange={(e) => setNewPipelineName(e.target.value)}
-                  className="md-pipeline-param-input"
-                  placeholder="e.g. apple_docs"
-                  onKeyDown={(e) =>
-                    e.key === "Enter" && handleConfirmCreatePipeline()
-                  }
-                />
-              </label>
-              <div className="md-pipeline-modal-actions">
-                <button
-                  type="button"
-                  className="crawler-button primary"
-                  onClick={handleConfirmCreatePipeline}
-                >
-                  Create
-                </button>
-                <button
-                  type="button"
-                  className="crawler-button ghost"
-                  onClick={() => setShowCreatePipelineModal(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showDeletePipelineConfirm && (
-        <div
-          className="modal-overlay"
-          onClick={() => setShowDeletePipelineConfirm(false)}
-        >
-          <div
-            className="modal-content md-pipeline-delete-confirm"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-header">
-              <h3>Delete pipeline</h3>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setShowDeletePipelineConfirm(false)}
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-            <div className="modal-body">
-              <p className="md-pipeline-delete-message">
-                Are you sure you want to delete the pipeline &quot;
-                {selectedPipelineName}&quot;? This cannot be undone.
-              </p>
-              <div className="md-pipeline-modal-actions">
-                <button
-                  type="button"
-                  className="crawler-button"
-                  onClick={() => setShowDeletePipelineConfirm(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="crawler-button primary"
-                  onClick={handleConfirmDeletePipeline}
-                  style={{ background: "var(--md-sys-color-error, #b3261e)" }}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showCreateModal && (
-        <div
-          className="modal-overlay"
-          onClick={() => setShowCreateModal(false)}
-        >
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Create New Collection</h3>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setShowCreateModal(false)}
-              >
-                ×
-              </button>
-            </div>
-            <div className="modal-body">
-              {createProgress && (
-                <div className="create-collection-progress create-collection-progress--detailed">
-                  {createProgress.status === "failed" && (
-                    <div className="create-collection-index-error-banner">
-                      {(createProgress.error &&
-                        String(createProgress.error).slice(0, 400)) ||
-                        "Collection creation failed."}
-                    </div>
-                  )}
-                  <CreateCollectionIndexProgress
-                    progress={createProgress}
-                    collectionName={createForm.collection_name || "Collection"}
-                    variant="modal"
-                  />
-                </div>
-              )}
-              <div className="form-group">
-                <label>Collection Name *</label>
-                <input
-                  type="text"
-                  value={createForm.collection_name}
-                  onChange={(e) =>
-                    setCreateForm((prev) => ({
-                      ...prev,
-                      collection_name: e.target.value,
-                    }))
-                  }
-                  placeholder="my_collection"
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="create-collection-embed-model">
-                  Embedding model (Ollama)
-                </label>
-                <select
-                  id="create-collection-embed-model"
-                  value={createForm.rag_embed_model}
-                  onChange={(e) =>
-                    setCreateForm((prev) => ({
-                      ...prev,
-                      rag_embed_model: e.target.value,
-                    }))
-                  }
-                  disabled={!createEmbedModels.length}
-                >
-                  <option value="">
-                    Server default ({createEmbedDefaults.rag_embed_model || 'not configured'})
-                  </option>
-                  {createForm.rag_embed_model &&
-                    !createEmbedModels.some(
-                      (m) => m.id === createForm.rag_embed_model,
-                    ) && (
-                      <option value={createForm.rag_embed_model}>
-                        {createForm.rag_embed_model} (saved — not in current
-                        Ollama list)
-                      </option>
-                    )}
-                  {createEmbedModels.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name || m.id}
-                    </option>
-                  ))}
-                </select>
-                <p className="create-collection-embed-hint">
-                  Same pool as in RAG / Qdrant. Choose a model for this indexing
-                  run, or leave Server default to use the saved RAG embedding
-                  model (and vector dimension must match the model).
-                </p>
-              </div>
-              <div className="form-group">
-                <label>Select Sources *</label>
-                <div className="sources-checkboxes">
-                  {sources.map((source) => (
-                    <label key={source.id} className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={createForm.source_ids.includes(source.id)}
-                        onChange={() => toggleSourceInForm(source.id)}
-                      />
-                      <span>
-                        {source.id} ({source.total_pages || 0} pages)
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Chunk Max Size</label>
-                  <input
-                    type="number"
-                    value={createForm.chunk_max_size}
-                    onChange={(e) =>
-                      setCreateForm((prev) => ({
-                        ...prev,
-                        chunk_max_size: parseInt(e.target.value) || 1200,
-                      }))
-                    }
-                    min="100"
-                    max="5000"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Chunk Min Size</label>
-                  <input
-                    type="number"
-                    value={createForm.chunk_min_size}
-                    onChange={(e) =>
-                      setCreateForm((prev) => ({
-                        ...prev,
-                        chunk_min_size: parseInt(e.target.value) || 300,
-                      }))
-                    }
-                    min="50"
-                    max="2000"
-                  />
-                </div>
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Confidence Threshold</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={createForm.confidence_threshold}
-                    onChange={(e) =>
-                      setCreateForm((prev) => ({
-                        ...prev,
-                        confidence_threshold:
-                          parseFloat(e.target.value) || 0.75,
-                      }))
-                    }
-                    min="0"
-                    max="1"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Top K</label>
-                  <input
-                    type="number"
-                    value={createForm.top_k}
-                    onChange={(e) =>
-                      setCreateForm((prev) => ({
-                        ...prev,
-                        top_k: parseInt(e.target.value) || 4,
-                      }))
-                    }
-                    min="1"
-                    max="20"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button
-                type="button"
-                className="crawler-button"
-                onClick={() => setShowCreateModal(false)}
-                disabled={creating}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="crawler-button primary"
-                onClick={handleCreateCollection}
-                disabled={creating}
-              >
-                {creating ? "Creating..." : "Create Collection"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showAddSourceModal && (
-        <div
-          className="modal-overlay"
-          onClick={() => setShowAddSourceModal(false)}
-        >
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Add New Source</h3>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setShowAddSourceModal(false)}
-              >
-                ×
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label>Source ID *</label>
-                <input
-                  type="text"
-                  value={addSourceForm.id}
-                  onChange={(e) =>
-                    setAddSourceForm((prev) => ({
-                      ...prev,
-                      id: e.target.value,
-                    }))
-                  }
-                  placeholder="my_source"
-                />
-                <div className="form-hint">
-                  Alphanumeric, underscores, and hyphens only
-                </div>
-              </div>
-              <div className="form-group">
-                <label>URL *</label>
-                <input
-                  type="url"
-                  value={addSourceForm.url}
-                  onChange={(e) =>
-                    setAddSourceForm((prev) => ({
-                      ...prev,
-                      url: e.target.value,
-                    }))
-                  }
-                  placeholder="https://example.com/documentation"
-                />
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Max Depth</label>
-                  <input
-                    type="number"
-                    value={addSourceForm.max_depth}
-                    onChange={(e) =>
-                      setAddSourceForm((prev) => ({
-                        ...prev,
-                        max_depth: parseInt(e.target.value) || 2,
-                      }))
-                    }
-                    min="1"
-                    max="5"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Crawler</label>
-                  <select
-                    value={addSourceForm.crawler}
-                    onChange={(e) =>
-                      setAddSourceForm((prev) => ({
-                        ...prev,
-                        crawler: e.target.value,
-                      }))
-                    }
-                  >
-                    <option value="playwright">Playwright</option>
-                  </select>
-                </div>
-              </div>
-              <div className="form-group">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={addSourceForm.doc_only}
-                    onChange={(e) =>
-                      setAddSourceForm((prev) => ({
-                        ...prev,
-                        doc_only: e.target.checked,
-                      }))
-                    }
-                  />
-                  Doc Only (restrict to documentation pages)
-                </label>
-              </div>
-              <div className="form-group">
-                <label>Seed URLs (optional)</label>
-                <div className="seed-urls-editor">
-                  <div className="seed-urls-list-editor">
-                    {addSourceForm.seed_urls.map((url, index) => (
-                      <div key={index} className="seed-url-item">
-                        <input
-                          type="url"
-                          value={url}
-                          onChange={(e) => {
-                            const newUrls = [...addSourceForm.seed_urls];
-                            newUrls[index] = e.target.value;
-                            setAddSourceForm((prev) => ({
-                              ...prev,
-                              seed_urls: newUrls,
-                            }));
-                          }}
-                          placeholder="https://example.com/page"
-                          className="seed-url-input"
-                        />
-                        <button
-                          type="button"
-                          className="crawler-button small remove"
-                          onClick={() => {
-                            const newUrls = addSourceForm.seed_urls.filter(
-                              (_, i) => i !== index,
-                            );
-                            setAddSourceForm((prev) => ({
-                              ...prev,
-                              seed_urls: newUrls,
-                            }));
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    className="crawler-button small"
-                    onClick={() => {
-                      setAddSourceForm((prev) => ({
-                        ...prev,
-                        seed_urls: [...prev.seed_urls, ""],
-                      }));
-                    }}
-                  >
-                    + Add Seed URL
-                  </button>
-                  <div className="form-hint">
-                    Additional entry points for the crawler. Each URL should be
-                    on a new line or separate entry.
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button
-                type="button"
-                className="crawler-button"
-                onClick={() => setShowAddSourceModal(false)}
-                disabled={addingSource}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="crawler-button primary"
-                onClick={handleAddSource}
-                disabled={addingSource}
-              >
-                {addingSource ? "Adding..." : "Add Source"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showEditSourceModal && (
-        <div
-          className="modal-overlay"
-          onClick={() => setShowEditSourceModal(false)}
-        >
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Edit Source: {editingSourceId}</h3>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setShowEditSourceModal(false)}
-              >
-                ×
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label>Source ID</label>
-                <input
-                  type="text"
-                  value={editSourceForm.id}
-                  disabled
-                  style={{ opacity: 0.6, cursor: "not-allowed" }}
-                />
-                <div className="form-hint">Source ID cannot be changed</div>
-              </div>
-              <div className="form-group">
-                <label>URL *</label>
-                <input
-                  type="url"
-                  value={editSourceForm.url}
-                  onChange={(e) =>
-                    setEditSourceForm((prev) => ({
-                      ...prev,
-                      url: e.target.value,
-                    }))
-                  }
-                  placeholder="https://example.com/documentation"
-                />
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Max Depth</label>
-                  <input
-                    type="number"
-                    value={editSourceForm.max_depth}
-                    onChange={(e) =>
-                      setEditSourceForm((prev) => ({
-                        ...prev,
-                        max_depth: parseInt(e.target.value) || 2,
-                      }))
-                    }
-                    min="1"
-                    max="5"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Crawler</label>
-                  <select
-                    value={editSourceForm.crawler}
-                    onChange={(e) =>
-                      setEditSourceForm((prev) => ({
-                        ...prev,
-                        crawler: e.target.value,
-                      }))
-                    }
-                  >
-                    <option value="playwright">Playwright</option>
-                  </select>
-                </div>
-              </div>
-              <div className="form-group">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={editSourceForm.doc_only}
-                    onChange={(e) =>
-                      setEditSourceForm((prev) => ({
-                        ...prev,
-                        doc_only: e.target.checked,
-                      }))
-                    }
-                  />
-                  Doc Only (restrict to documentation pages)
-                </label>
-              </div>
-              <div className="form-group">
-                <label>Seed URLs (optional)</label>
-                <div className="seed-urls-editor">
-                  <div className="seed-urls-list-editor">
-                    {editSourceForm.seed_urls.map((url, index) => (
-                      <div key={index} className="seed-url-item">
-                        <input
-                          type="url"
-                          value={url}
-                          onChange={(e) => {
-                            const newUrls = [...editSourceForm.seed_urls];
-                            newUrls[index] = e.target.value;
-                            setEditSourceForm((prev) => ({
-                              ...prev,
-                              seed_urls: newUrls,
-                            }));
-                          }}
-                          placeholder="https://example.com/page"
-                          className="seed-url-input"
-                        />
-                        <button
-                          type="button"
-                          className="crawler-button small remove"
-                          onClick={() => {
-                            const newUrls = editSourceForm.seed_urls.filter(
-                              (_, i) => i !== index,
-                            );
-                            setEditSourceForm((prev) => ({
-                              ...prev,
-                              seed_urls: newUrls,
-                            }));
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    className="crawler-button small"
-                    onClick={() => {
-                      setEditSourceForm((prev) => ({
-                        ...prev,
-                        seed_urls: [...prev.seed_urls, ""],
-                      }));
-                    }}
-                  >
-                    + Add Seed URL
-                  </button>
-                  <div className="form-hint">
-                    Additional entry points for the crawler. Each URL should be
-                    on a new line or separate entry.
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button
-                type="button"
-                className="crawler-button"
-                onClick={() => setShowEditSourceModal(false)}
-                disabled={updatingSource}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="crawler-button primary"
-                onClick={handleUpdateSource}
-                disabled={updatingSource}
-              >
-                {updatingSource ? "Updating..." : "Update Source"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CreatePipelineModal
+        open={showCreatePipelineModal}
+        newPipelineName={newPipelineName}
+        onChangeName={setNewPipelineName}
+        onConfirm={handleConfirmCreatePipeline}
+        onClose={() => setShowCreatePipelineModal(false)}
+      />
+      <DeletePipelineConfirmModal
+        open={showDeletePipelineConfirm}
+        pipelineName={selectedPipelineName}
+        onConfirm={handleConfirmDeletePipeline}
+        onClose={() => setShowDeletePipelineConfirm(false)}
+      />
+      <CreateCollectionModal
+        open={showCreateModal}
+        createProgress={createProgress}
+        createForm={createForm}
+        onFormChange={setCreateForm}
+        createEmbedModels={createEmbedModels}
+        createEmbedDefaults={createEmbedDefaults}
+        sources={sources}
+        toggleSourceInForm={toggleSourceInForm}
+        creating={creating}
+        onCreate={handleCreateCollection}
+        onClose={() => setShowCreateModal(false)}
+      />
+      <SourceModal
+        open={showAddSourceModal}
+        mode="add"
+        sourceId={null}
+        form={addSourceForm}
+        onFormChange={setAddSourceForm}
+        loading={addingSource}
+        onSubmit={handleAddSource}
+        onClose={() => setShowAddSourceModal(false)}
+      />
+      <SourceModal
+        open={showEditSourceModal}
+        mode="edit"
+        sourceId={editingSourceId}
+        form={editSourceForm}
+        onFormChange={setEditSourceForm}
+        loading={updatingSource}
+        onSubmit={handleUpdateSource}
+        onClose={() => setShowEditSourceModal(false)}
+      />
     </div>
   );
 }
-
 export default CrawlerTab;

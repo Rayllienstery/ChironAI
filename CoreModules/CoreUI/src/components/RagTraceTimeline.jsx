@@ -1,4 +1,3 @@
-import React from 'react';
 import '../styles/components/RagTraceTimeline.css';
 
 /** Shared with ModelTester + RagTab: persist last trace for the RAG tab mirror. */

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { getSettings, updateSettings } from '../services/api';
 import '../styles/components/SettingsTab.css';
 import '../styles/components/DashboardTab.css';

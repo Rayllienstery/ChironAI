@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { getLogs, getProxyLogs, clearLogs, clearProxyLogs } from '../services/api';
 import { startLogPolling, stopLogPolling } from '../services/logs';
 import '../styles/components/LogsTab.css';

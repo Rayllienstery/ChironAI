@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { summarizeAgentTraceMeta } from '../utils/agentTraceSummary';
 import AgentTraceSummaryCards from './AgentTraceSummaryCards';
 import '../styles/components/DashboardTab.css';

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import LlmProxyWebInteractionPanel from './LlmProxyWebInteractionPanel';
 import ProxyTracesTab from './ProxyTracesTab';
 import ProxyJournalTab from './ProxyJournalTab';

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { computePipelineActive } from './PipelineCiDiagram';
 import '../styles/components/PipelineVerticalDiagram.css';
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import PipelineCiDiagram from './PipelineCiDiagram';
 import { useMergedPipelinePreview } from '../hooks/useMergedPipelinePreview';
 import { getLlmProxyBuilds, getModelSettings, getRagStatus, getProxyConfiguredStatus, getProxyConfiguredCurrentValues, generateProxyConfiguredScripts } from '../services/api';

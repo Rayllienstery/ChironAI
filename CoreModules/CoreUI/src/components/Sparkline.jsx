@@ -1,4 +1,3 @@
-import React from 'react';
 
 const W = 48;
 const H = 20;

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getLlmProxyStatus, getProxyTraces, clearProxyTraces } from '../services/api';
 import '../styles/components/DashboardTab.css';
 import { summarizeAgentTraceMeta } from '../utils/agentTraceSummary';

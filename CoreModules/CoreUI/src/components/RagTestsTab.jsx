@@ -1,5 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import Card from './Card';
+import {
+  RagResultDetailModal,
+  RagTestFormModal,
+} from './RagTestsModals';
 import {
   getModels,
   getPrompts,
@@ -17,7 +21,7 @@ import {
 import { isLogicalRagModelId } from '../constants/llmProxyModels';
 import '../styles/components/RagTestsTab.css';
 
-/** Cloud/metered Ollama tags (e.g. qwen3.5:cloud, …:397b-cloud) may bill tokens. */
+/** Cloud/metered Ollama tags (e.g. qwen3.5:cloud, â€¦:397b-cloud) may bill tokens. */
 function modelTagLooksCloud(modelId) {
   const s = String(modelId || '').trim().toLowerCase();
   if (!s) return false;
@@ -27,7 +31,7 @@ function modelTagLooksCloud(modelId) {
 function confirmCloudRagRun(modelId) {
   if (!modelTagLooksCloud(modelId)) return true;
   return window.confirm(
-    'Выбрана модель с тегом cloud — прогон RAG Tests может расходовать платные токены. Продолжить?'
+    'Ð’Ñ‹Ð±Ñ€Ð°Ð½Ð° Ð¼Ð¾Ð´ÐµÐ»ÑŒ Ñ Ñ‚ÐµÐ³Ð¾Ð¼ cloud â€” Ð¿Ñ€Ð¾Ð³Ð¾Ð½ RAG Tests Ð¼Ð¾Ð¶ÐµÑ‚ Ñ€Ð°ÑÑ…Ð¾Ð´Ð¾Ð²Ð°Ñ‚ÑŒ Ð¿Ð»Ð°Ñ‚Ð½Ñ‹Ðµ Ñ‚Ð¾ÐºÐµÐ½Ñ‹. ÐŸÑ€Ð¾Ð´Ð¾Ð»Ð¶Ð¸Ñ‚ÑŒ?'
   );
 }
 
@@ -538,7 +542,7 @@ function RagTestsTab({
     ? displayResults
     : filteredTests;
   const formatRunDate = (iso) => {
-    if (!iso) return '—';
+    if (!iso) return 'â€”';
     try {
       const d = new Date(iso);
       return d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
@@ -578,7 +582,7 @@ function RagTestsTab({
               aria-label="Select Qdrant collection"
             >
               {collections.length === 0 ? (
-                <option value="">— No collections —</option>
+                <option value="">â€” No collections â€”</option>
               ) : (
                 collections.map((col) => (
                   <option key={col.name} value={col.name}>
@@ -597,7 +601,7 @@ function RagTestsTab({
               className="rag-tests-select"
               aria-label="Select prompt template"
             >
-              <option value="">— Default —</option>
+              <option value="">â€” Default â€”</option>
               {prompts.map((p) => (
                 <option key={p.id || p.name} value={p.name}>
                   {p.name}
@@ -664,7 +668,7 @@ function RagTestsTab({
           </div>
           <p className="rag-tests-progress-current">
             <span className="rag-tests-progress-current-label">Current test:</span>{' '}
-            <strong>{runProgress.current_test_name || '—'}</strong>
+            <strong>{runProgress.current_test_name || 'â€”'}</strong>
           </p>
           <div className="rag-tests-progress-stats">
             <span className="rag-tests-progress-stat passed">
@@ -701,7 +705,7 @@ function RagTestsTab({
       {isViewingPastRun && selectedRunDetail && (
         <div className="rag-tests-past-run-banner">
           <span className="rag-tests-past-run-label">
-            Viewing run from {formatRunDate(selectedRunDetail.created_at)} — Model: {selectedRunDetail.model} — Passed: {selectedRunDetail.passed}, Failed: {selectedRunDetail.failed}
+            Viewing run from {formatRunDate(selectedRunDetail.created_at)} â€” Model: {selectedRunDetail.model} â€” Passed: {selectedRunDetail.passed}, Failed: {selectedRunDetail.failed}
           </span>
           <div className="rag-tests-past-run-actions">
             <button
@@ -734,7 +738,7 @@ function RagTestsTab({
           onClick={() => setHistorySectionOpen((o) => !o)}
           aria-expanded={historySectionOpen}
         >
-          {historySectionOpen ? '▼' : '▶'} Run history
+          {historySectionOpen ? 'â–¼' : 'â–¶'} Run history
         </button>
         {historySectionOpen && (
           <div className="rag-tests-history-panel">
@@ -792,7 +796,7 @@ function RagTestsTab({
                         const passRate = total ? Math.round(((r.passed || 0) / total) * 100) : 0;
                         return `${formatRunDate(r.created_at)}: ${passRate}%`;
                       })
-                      .join(' → ')}
+                      .join(' â†’ ')}
                   </p>
                 )}
               </div>
@@ -847,7 +851,7 @@ function RagTestsTab({
               </label>
             </div>
             {runHistoryLoading ? (
-              <p className="rag-tests-history-loading">Loading history…</p>
+              <p className="rag-tests-history-loading">Loading historyâ€¦</p>
             ) : runHistory.length === 0 ? (
               <p className="rag-tests-history-empty">No past runs yet.</p>
             ) : (
@@ -894,7 +898,7 @@ function RagTestsTab({
                     disabled={runHistoryLoadingMore}
                     onClick={() => loadRunHistory(runHistory.length)}
                   >
-                    {runHistoryLoadingMore ? 'Loading…' : 'Load more'}
+                    {runHistoryLoadingMore ? 'Loadingâ€¦' : 'Load more'}
                   </button>
                 </div>
               )}
@@ -1009,21 +1013,21 @@ function RagTestsTab({
                     </td>
                   )}
                   <td>{t.name || t.id}</td>
-                  <td>{t.platform || '—'}</td>
-                  <td>{t.framework || '—'}</td>
-                  {!isViewingPastRun && <td>{t.difficulty || '—'}</td>}
+                  <td>{t.platform || 'â€”'}</td>
+                  <td>{t.framework || 'â€”'}</td>
+                  {!isViewingPastRun && <td>{t.difficulty || 'â€”'}</td>}
                   <td>
                     {last ? (
                       <span className={`rag-tests-status ${(last.status || '').toLowerCase()}`}>
                         {last.status}
                       </span>
                     ) : (
-                      '—'
+                      'â€”'
                     )}
                   </td>
-                  <td>{last?.response_time_ms != null ? last.response_time_ms : '—'}</td>
-                  <td>{last ? (last.rag_used ? 'Yes' : 'No') : '—'}</td>
-                  <td>{last?.confidence_label || '—'}</td>
+                  <td>{last?.response_time_ms != null ? last.response_time_ms : 'â€”'}</td>
+                  <td>{last ? (last.rag_used ? 'Yes' : 'No') : 'â€”'}</td>
+                  <td>{last?.confidence_label || 'â€”'}</td>
                   <td onClick={(ev) => ev.stopPropagation()}>
                     <button
                       type="button"
@@ -1080,7 +1084,7 @@ function RagTestsTab({
             onClick={() => setShowFailDrilldown((v) => !v)}
             aria-expanded={showFailDrilldown}
           >
-            {showFailDrilldown ? '▼' : '▶'} Fail drill-down ({failResults.length})
+            {showFailDrilldown ? 'â–¼' : 'â–¶'} Fail drill-down ({failResults.length})
           </button>
           {showFailDrilldown && (
             <div className="rag-tests-fail-panel">
@@ -1167,13 +1171,13 @@ function RagTestsTab({
                     .map((r) => (
                       <tr key={`${r.test_id}-${r.model}`}>
                         <td>{r.test_name || r.test_id}</td>
-                        <td>{r.platform || '—'}</td>
-                        <td>{r.framework || '—'}</td>
-                        <td>{r.difficulty || '—'}</td>
+                        <td>{r.platform || 'â€”'}</td>
+                        <td>{r.framework || 'â€”'}</td>
+                        <td>{r.difficulty || 'â€”'}</td>
                         <td>{r.rag_used ? 'Yes' : 'No'}</td>
-                        <td>{r.confidence_label || '—'}</td>
+                        <td>{r.confidence_label || 'â€”'}</td>
                         <td>{(r.missing_concepts || []).join(', ') || 'none'}</td>
-                        <td>{r.failure_reason || '—'}</td>
+                        <td>{r.failure_reason || 'â€”'}</td>
                       </tr>
                     ))}
                 </tbody>
@@ -1186,397 +1190,35 @@ function RagTestsTab({
       {filteredTests.length === 0 && !error && !runError && (
         <p className="rag-tests-empty">No tests found. Create one or add .md files under rag_tests/.</p>
       )}
-
-      {resultDetailModal && (
-        <div
-          className="rag-tests-modal rag-tests-result-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="rag-result-modal-title"
-          onClick={() => setResultDetailModal(null)}
-        >
-          <div
-            className="rag-tests-modal-content rag-tests-result-modal-content"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {(() => {
-              const tm = resultDetailModal.test;
-              const lm = resultDetailModal.last;
-              const rawChunks = lm && (lm.chunks_info?.length ? lm.chunks_info : lm.retrieved_chunks);
-              const chunks = Array.isArray(rawChunks) ? rawChunks : [];
-              const ragQ = (lm && lm.rag_queries) || [];
-              return (
-                <>
-                  <div className="rag-tests-result-modal-header">
-                    <h3 id="rag-result-modal-title">{tm.name || tm.id}</h3>
-                    <button
-                      type="button"
-                      className="rag-tests-result-modal-close"
-                      onClick={() => setResultDetailModal(null)}
-                      aria-label="Close"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <p className="rag-tests-result-modal-meta">
-                    <span className="rag-tests-result-id">{tm.id}</span>
-                    {lm?.model && <span> · Model: {lm.model}</span>}
-                    {lm?.status && (
-                      <span className={`rag-tests-status ${(lm.status || '').toLowerCase()}`}> · {lm.status}</span>
-                    )}
-                  </p>
-                  {tm.question && (
-                    <section className="rag-tests-result-section">
-                      <h4>Question</h4>
-                      <p className="rag-tests-result-question">{tm.question}</p>
-                    </section>
-                  )}
-                  {lm && (lm.latency_ms != null || lm.response_time_ms != null || lm.prompt_tokens != null) && (
-                    <section className="rag-tests-result-section">
-                      <h4>Metrics</h4>
-                      <p className="rag-tests-detail-metrics">
-                        Latency: {lm.latency_ms ?? lm.response_time_ms ?? '—'} ms
-                        {lm.prompt_tokens != null && ` · Prompt tokens: ${lm.prompt_tokens}`}
-                        {lm.completion_tokens != null && ` · Completion tokens: ${lm.completion_tokens}`}
-                        {lm.total_tokens != null && ` · Total tokens: ${lm.total_tokens}`}
-                        {lm.context_chars != null && lm.context_chars > 0 && ` · Context chars: ${lm.context_chars}`}
-                      </p>
-                    </section>
-                  )}
-                  {lm?.failure_reason && (
-                    <section className="rag-tests-result-section">
-                      <h4>Failure reason</h4>
-                      <p className="rag-tests-detail-reason">{lm.failure_reason}</p>
-                    </section>
-                  )}
-                  {lm && Array.isArray(lm.found_concepts) && (
-                    <section className="rag-tests-result-section">
-                      <h4>Found concepts</h4>
-                      <p>{lm.found_concepts.length ? lm.found_concepts.join(', ') : 'none'}</p>
-                    </section>
-                  )}
-                  {lm && Array.isArray(lm.missing_concepts) && lm.missing_concepts.length > 0 && (
-                    <section className="rag-tests-result-section">
-                      <h4>Missing concepts</h4>
-                      <p>{lm.missing_concepts.join(', ')}</p>
-                    </section>
-                  )}
-                  {lm?.error && (
-                    <section className="rag-tests-result-section">
-                      <h4>Error</h4>
-                      <p className="rag-tests-detail-error">{lm.error}</p>
-                    </section>
-                  )}
-                  <section className="rag-tests-result-section">
-                    <h4>RAG requests</h4>
-                    {ragQ.length === 0 ? (
-                      <p className="rag-tests-result-empty">No rag_query calls recorded (or pipeline used implicit retrieval only).</p>
-                    ) : (
-                      <ul className="rag-tests-rag-query-list">
-                        {ragQ.map((q, i) => (
-                          <li key={i}>
-                            <span className="rag-tests-rag-query-meta">
-                              {q.step != null && <>Step {q.step} · </>}
-                              {q.chunks != null && <>chunks {q.chunks} · </>}
-                              {q.ok === false && <span className="rag-tests-detail-error">failed · </span>}
-                            </span>
-                            <pre className="rag-tests-pre rag-tests-pre-tight">{q.query || JSON.stringify(q)}</pre>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </section>
-                  <section className="rag-tests-result-section">
-                    <h4>RAG chunks</h4>
-                    {chunks.length === 0 ? (
-                      <p className="rag-tests-result-empty">No chunks in metadata (empty retrieval or not recorded).</p>
-                    ) : (
-                      <ul className="rag-tests-chunks rag-tests-chunks-modal">
-                        {chunks.map((ch, i) => (
-                          <li key={i}>
-                            <span className="rag-tests-chunk-meta">
-                              #{ch.index != null ? ch.index : i + 1} score={ch.score ?? 'N/A'}{' '}
-                              {ch.url ? `url=${ch.url}` : ''} {ch.source ? `source=${ch.source}` : ''}
-                            </span>
-                            <pre className="rag-tests-pre small">{ch.text_preview || ch.text || ''}</pre>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </section>
-                  {lm && String(lm.full_response || '').trim() !== '' && (
-                    <section className="rag-tests-result-section">
-                      <h4>Model answer</h4>
-                      <pre className="rag-tests-pre rag-tests-pre-answer">{lm.full_response}</pre>
-                    </section>
-                  )}
-                  {!lm && (
-                    <p className="rag-tests-result-empty">No run result for this test yet. Run the test to see the model answer and RAG data.</p>
-                  )}
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      {createOpen && (
-        <div className="rag-tests-modal" role="dialog" aria-modal="true" aria-labelledby="create-test-title">
-          <div className="rag-tests-modal-content">
-            <h3 id="create-test-title">Create RAG test</h3>
-            <form onSubmit={handleCreateSubmit}>
-              <label>
-                Name (optional)
-                <input
-                  type="text"
-                  value={createForm.name}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="Short title"
-                  className="rag-tests-input"
-                />
-              </label>
-              <label>
-                Question <span className="required">*</span>
-                <textarea
-                  value={createForm.question}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, question: e.target.value }))}
-                  placeholder="Question to ask the model"
-                  rows={3}
-                  className="rag-tests-input"
-                  required
-                />
-              </label>
-              <label>
-                Expected concepts (one per line)
-                <textarea
-                  value={createForm.concepts}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, concepts: e.target.value }))}
-                  placeholder="concept1\nconcept2"
-                  rows={3}
-                  className="rag-tests-input"
-                />
-              </label>
-              {createConceptsWarning && (
-                <p className="rag-tests-hint">
-                  {createConceptsWarning}
-                </p>
-              )}
-              <div className="rag-tests-form-row">
-                <label>
-                  Platform
-                  <select
-                    value={createForm.platform}
-                    onChange={(e) => setCreateForm((f) => ({ ...f, platform: e.target.value }))}
-                    className="rag-tests-select"
-                  >
-                    <option value="iOS">iOS</option>
-                    <option value="macOS">macOS</option>
-                    <option value="watchOS">watchOS</option>
-                    <option value="visionOS">visionOS</option>
-                  </select>
-                </label>
-                <label>
-                  Framework
-                  <input
-                    type="text"
-                    value={createForm.framework}
-                    onChange={(e) => setCreateForm((f) => ({ ...f, framework: e.target.value }))}
-                    placeholder="SwiftUI"
-                    className="rag-tests-input"
-                  />
-                </label>
-                <label>
-                  Difficulty
-                  <select
-                    value={createForm.difficulty}
-                    onChange={(e) => setCreateForm((f) => ({ ...f, difficulty: e.target.value }))}
-                    className="rag-tests-select"
-                  >
-                    <option value="beginner">beginner</option>
-                    <option value="intermediate">intermediate</option>
-                    <option value="advanced">advanced</option>
-                  </select>
-                </label>
-                <label>
-                  Concept mode
-                  <select
-                    value={createForm.concept_mode}
-                    onChange={(e) => setCreateForm((f) => ({ ...f, concept_mode: e.target.value }))}
-                    className="rag-tests-select"
-                  >
-                    <option value="all">all</option>
-                    <option value="any">any</option>
-                  </select>
-                </label>
-              </div>
-              <label className="rag-tests-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={createForm.rag_strict}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, rag_strict: e.target.checked }))}
-                />
-                RAG Strict (response must overlap retrieved chunks)
-              </label>
-              <label>
-                Min OS (optional)
-                <input
-                  type="text"
-                  value={createForm.min_os}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, min_os: e.target.value }))}
-                  placeholder="e.g. iOS 18"
-                  className="rag-tests-input"
-                />
-              </label>
-              <label>
-                Notes (optional)
-                <textarea
-                  value={createForm.notes}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, notes: e.target.value }))}
-                  rows={2}
-                  className="rag-tests-input"
-                />
-              </label>
-              <div className="rag-tests-modal-actions">
-                <button type="button" className="rag-tests-btn" onClick={() => setCreateOpen(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="rag-tests-btn primary" disabled={createSubmitting || !createForm.question.trim()}>
-                  {createSubmitting ? 'Creating...' : 'Create'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {editOpen && (
-        <div className="rag-tests-modal" role="dialog" aria-modal="true" aria-labelledby="edit-test-title">
-          <div className="rag-tests-modal-content">
-            <h3 id="edit-test-title">Edit RAG test</h3>
-            <form onSubmit={handleEditSubmit}>
-              <label>
-                Name (optional)
-                <input
-                  type="text"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="Short title"
-                  className="rag-tests-input"
-                />
-              </label>
-              <label>
-                Question <span className="required">*</span>
-                <textarea
-                  value={editForm.question}
-                  onChange={(e) => setEditForm((f) => ({ ...f, question: e.target.value }))}
-                  placeholder="Question to ask the model"
-                  rows={3}
-                  className="rag-tests-input"
-                  required
-                />
-              </label>
-              <label>
-                Expected concepts (one per line)
-                <textarea
-                  value={editForm.concepts}
-                  onChange={(e) => setEditForm((f) => ({ ...f, concepts: e.target.value }))}
-                  placeholder="concept1\nconcept2"
-                  rows={3}
-                  className="rag-tests-input"
-                />
-              </label>
-              {editConceptsWarning && (
-                <p className="rag-tests-hint">
-                  {editConceptsWarning}
-                </p>
-              )}
-              <div className="rag-tests-form-row">
-                <label>
-                  Platform
-                  <select
-                    value={editForm.platform}
-                    onChange={(e) => setEditForm((f) => ({ ...f, platform: e.target.value }))}
-                    className="rag-tests-select"
-                  >
-                    <option value="iOS">iOS</option>
-                    <option value="macOS">macOS</option>
-                    <option value="watchOS">watchOS</option>
-                    <option value="visionOS">visionOS</option>
-                  </select>
-                </label>
-                <label>
-                  Framework
-                  <input
-                    type="text"
-                    value={editForm.framework}
-                    onChange={(e) => setEditForm((f) => ({ ...f, framework: e.target.value }))}
-                    placeholder="SwiftUI"
-                    className="rag-tests-input"
-                  />
-                </label>
-                <label>
-                  Difficulty
-                  <select
-                    value={editForm.difficulty}
-                    onChange={(e) => setEditForm((f) => ({ ...f, difficulty: e.target.value }))}
-                    className="rag-tests-select"
-                  >
-                    <option value="beginner">beginner</option>
-                    <option value="intermediate">intermediate</option>
-                    <option value="advanced">advanced</option>
-                  </select>
-                </label>
-                <label>
-                  Concept mode
-                  <select
-                    value={editForm.concept_mode}
-                    onChange={(e) => setEditForm((f) => ({ ...f, concept_mode: e.target.value }))}
-                    className="rag-tests-select"
-                  >
-                    <option value="all">all</option>
-                    <option value="any">any</option>
-                  </select>
-                </label>
-              </div>
-              <label className="rag-tests-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={editForm.rag_strict}
-                  onChange={(e) => setEditForm((f) => ({ ...f, rag_strict: e.target.checked }))}
-                />
-                RAG Strict (response must overlap retrieved chunks)
-              </label>
-              <label>
-                Min OS (optional)
-                <input
-                  type="text"
-                  value={editForm.min_os}
-                  onChange={(e) => setEditForm((f) => ({ ...f, min_os: e.target.value }))}
-                  placeholder="e.g. iOS 18"
-                  className="rag-tests-input"
-                />
-              </label>
-              <label>
-                Notes (optional)
-                <textarea
-                  value={editForm.notes}
-                  onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
-                  rows={2}
-                  className="rag-tests-input"
-                />
-              </label>
-              <div className="rag-tests-modal-actions">
-                <button type="button" className="rag-tests-btn" onClick={() => { setEditOpen(false); setEditTestId(null); }}>
-                  Cancel
-                </button>
-                <button type="submit" className="rag-tests-btn primary" disabled={editSubmitting || !editForm.question.trim()}>
-                  {editSubmitting ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <RagResultDetailModal
+        detail={resultDetailModal}
+        onClose={() => setResultDetailModal(null)}
+      />
+      <RagTestFormModal
+        open={createOpen}
+        title="Create RAG test"
+        form={createForm}
+        onFormChange={setCreateForm}
+        conceptsWarning={createConceptsWarning}
+        onSubmit={handleCreateSubmit}
+        onClose={() => setCreateOpen(false)}
+        submitting={createSubmitting}
+        submitLabel={{ idle: 'Create', pending: 'Creating...' }}
+      />
+      <RagTestFormModal
+        open={editOpen}
+        title="Edit RAG test"
+        form={editForm}
+        onFormChange={setEditForm}
+        conceptsWarning={editConceptsWarning}
+        onSubmit={handleEditSubmit}
+        onClose={() => {
+          setEditOpen(false);
+          setEditTestId(null);
+        }}
+        submitting={editSubmitting}
+        submitLabel={{ idle: 'Save', pending: 'Saving...' }}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import {
   getPrompts,
   getPromptContent,
@@ -11,6 +11,8 @@ import {
   restorePrompt,
   clearTrash,
 } from '../services/api';
+import TemplateEditorHelpModal from './TemplateEditorHelpModal';
+import TemplateEditorPanel from './TemplateEditorPanel';
 import '../styles/components/TemplateEditorTab.css';
 
 function TemplateEditorTab() {
@@ -871,640 +873,63 @@ function TemplateEditorTab() {
         </div>
 
         <div className="template-editor-panel">
-          {viewMode === 'trash' && selectedTrashName ? (
-            <>
-              <div className="template-editor-header">
-                <h2>
-                  <div className="template-name-with-rename">
-                    <span>{trashPrompts.find(p => p.trash_name === selectedTrashName)?.name || selectedTrashName}</span>
-                    <span className="template-trash-badge">(Trash)</span>
-                  </div>
-                </h2>
-                <div className="template-editor-actions">
-                  <button
-                    type="button"
-                    className="template-button ghost"
-                    onClick={() => setShowHelpModal(true)}
-                    title="Show prompt writing tips"
-                  >
-                    <span className="material-symbols-outlined">help</span>
-                  </button>
-                  <div className="template-edit-mode-toggle">
-                    <button
-                      type="button"
-                      className={`template-mode-button ${editMode === 'structured' ? 'active' : ''}`}
-                      onClick={() => {
-                        if (editMode === 'raw') {
-                          const newContent = assembleContentFromFields(editorFields);
-                          setEditorFields(prev => ({ ...prev, rawContent: newContent }));
-                        }
-                        setEditMode('structured');
-                      }}
-                    >
-                      Structured
-                    </button>
-                    <button
-                      type="button"
-                      className={`template-mode-button ${editMode === 'raw' ? 'active' : ''}`}
-                      onClick={() => {
-                        if (editMode === 'structured') {
-                          const newContent = assembleContentFromFields(editorFields);
-                          setEditorFields(prev => ({ ...prev, rawContent: newContent }));
-                        }
-                        setEditMode('raw');
-                      }}
-                    >
-                      Raw
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    className="template-button"
-                    onClick={handleStructurePrompt}
-                    disabled={isSaving}
-                    title="Auto-structure prompt"
-                  >
-                    <span className="material-symbols-outlined">auto_fix_high</span>
-                    Structure
-                  </button>
-                  <button
-                    type="button"
-                    className="template-button"
-                    onClick={handleRestore}
-                    disabled={isSaving}
-                    title="Restore from trash"
-                  >
-                    <span className="material-symbols-outlined">restore</span>
-                    Restore
-                  </button>
-                  <button
-                    type="button"
-                    className="template-button primary"
-                    onClick={handleSave}
-                    disabled={isSaving || isLoadingContent || !isDirty}
-                  >
-                    {isSaving ? 'Saving...' : 'Save'}
-                  </button>
-                </div>
-              </div>
-              {error && <div className="template-error">Error: {error}</div>}
-              {isLoadingContent ? (
-                <div className="loading">Loading template content...</div>
-              ) : editMode === 'structured' ? (
-                <div className="template-editor-form">
-                  <div className="template-field">
-                    <label>Title</label>
-                    <input
-                      type="text"
-                      value={editorFields.title}
-                      onChange={(e) => handleFieldChange('title', e.target.value)}
-                      placeholder="Template title (optional)"
-                    />
-                  </div>
-                  <div className="template-field">
-                    <label>Description</label>
-                    <textarea
-                      value={editorFields.description}
-                      onChange={(e) => handleFieldChange('description', e.target.value)}
-                      placeholder="Brief description (optional)"
-                      rows="2"
-                    />
-                  </div>
-                  <div className="template-field body-field">
-                    <label>Body</label>
-                    <textarea
-                      value={editorFields.body}
-                      onChange={(e) => handleFieldChange('body', e.target.value)}
-                      placeholder="Template content (Markdown)"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="template-editor-form">
-                  <div className="template-field body-field">
-                    <label>Raw Markdown</label>
-                    <textarea
-                      value={editorFields.rawContent}
-                      onChange={(e) => handleRawContentChange(e.target.value)}
-                      placeholder="Template content (Markdown)"
-                      className="template-raw-textarea"
-                    />
-                  </div>
-                </div>
-              )}
-            </>
-          ) : isCreatingNew ? (
-            <>
-              <div className="template-editor-header">
-                <h2>
-                  <input
-                    type="text"
-                    className="template-rename-input"
-                    value={newTemplateName}
-                    onChange={(e) => setNewTemplateName(e.target.value)}
-                    placeholder="Enter template name..."
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newTemplateName.trim()) {
-                        handleCreateNewSave();
-                      } else if (e.key === 'Escape') {
-                        handleCreateNewCancel();
-                      }
-                    }}
-                    autoFocus
-                  />
-                </h2>
-                <div className="template-editor-actions">
-                  <button
-                    type="button"
-                    className="template-button ghost"
-                    onClick={() => setShowHelpModal(true)}
-                    title="Show prompt writing tips"
-                  >
-                    <span className="material-symbols-outlined">help</span>
-                  </button>
-                  <div className="template-edit-mode-toggle">
-                    <button
-                      type="button"
-                      className={`template-mode-button ${editMode === 'structured' ? 'active' : ''}`}
-                      onClick={() => {
-                        if (editMode === 'raw') {
-                          const newContent = assembleContentFromFields(editorFields);
-                          setEditorFields(prev => ({ ...prev, rawContent: newContent }));
-                        }
-                        setEditMode('structured');
-                      }}
-                    >
-                      Structured
-                    </button>
-                    <button
-                      type="button"
-                      className={`template-mode-button ${editMode === 'raw' ? 'active' : ''}`}
-                      onClick={() => {
-                        if (editMode === 'structured') {
-                          const newContent = assembleContentFromFields(editorFields);
-                          setEditorFields(prev => ({ ...prev, rawContent: newContent }));
-                        }
-                        setEditMode('raw');
-                      }}
-                    >
-                      Raw
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    className="template-button"
-                    onClick={handleStructurePrompt}
-                    disabled={isSaving}
-                    title="Auto-structure prompt"
-                  >
-                    <span className="material-symbols-outlined">auto_fix_high</span>
-                    Structure
-                  </button>
-                  <button
-                    type="button"
-                    className="template-button primary"
-                    onClick={handleCreateNewSave}
-                    disabled={isSaving || !newTemplateName.trim()}
-                  >
-                    {isSaving ? 'Creating...' : 'Create'}
-                  </button>
-                  <button
-                    type="button"
-                    className="template-button ghost"
-                    onClick={handleCreateNewCancel}
-                    disabled={isSaving}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-              {error && <div className="template-error">Error: {error}</div>}
-              {editMode === 'structured' ? (
-                <div className="template-editor-form">
-                  <div className="template-field">
-                    <label>Title</label>
-                    <input
-                      type="text"
-                      value={editorFields.title}
-                      onChange={(e) => handleFieldChange('title', e.target.value)}
-                      placeholder="Template title (optional)"
-                    />
-                  </div>
-                  <div className="template-field">
-                    <label>Description</label>
-                    <textarea
-                      value={editorFields.description}
-                      onChange={(e) => handleFieldChange('description', e.target.value)}
-                      placeholder="Brief description (optional)"
-                      rows="2"
-                    />
-                  </div>
-                  <div className="template-field">
-                    <label>Body</label>
-                    <textarea
-                      value={editorFields.body}
-                      onChange={(e) => handleFieldChange('body', e.target.value)}
-                      placeholder="Template content (Markdown)"
-                      rows="20"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="template-editor-form">
-                  <div className="template-field">
-                    <label>Raw Markdown</label>
-                    <textarea
-                      value={editorFields.rawContent}
-                      onChange={(e) => handleRawContentChange(e.target.value)}
-                      placeholder="Template content (Markdown)"
-                      rows="25"
-                      className="template-raw-textarea"
-                    />
-                  </div>
-                </div>
-              )}
-            </>
-          ) : viewMode === 'templates' && selectedPromptName ? (
-            <>
-              <div className="template-editor-header">
-                <h2>
-                  {renamePromptName === selectedPromptName ? (
-                    <input
-                      type="text"
-                      className="template-rename-input"
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          handleRenameSave();
-                        } else if (e.key === 'Escape') {
-                          handleRenameCancel();
-                        }
-                      }}
-                      autoFocus
-                    />
-                  ) : (
-                    <div className="template-name-with-rename">
-                      <span>{selectedPromptName}</span>
-                      <button
-                        type="button"
-                        className="template-rename-inline-button"
-                        onClick={handleRenameStart}
-                        disabled={isSaving}
-                        title="Rename template"
-                      >
-                        <span className="material-symbols-outlined">edit</span>
-                      </button>
-                    </div>
-                  )}
-                </h2>
-                {renamePromptName === selectedPromptName ? (
-                  <div className="template-editor-actions">
-                    <button
-                      type="button"
-                      className="template-button"
-                      onClick={handleRenameSave}
-                      disabled={isSaving || !renameValue || renameValue === renamePromptName}
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      className="template-button ghost"
-                      onClick={handleRenameCancel}
-                      disabled={isSaving}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <div className="template-editor-actions">
-                    <button
-                      type="button"
-                      className="template-button ghost"
-                      onClick={() => setShowHelpModal(true)}
-                      title="Show prompt writing tips"
-                    >
-                      <span className="material-symbols-outlined">help</span>
-                    </button>
-                    <div className="template-edit-mode-toggle">
-                      <button
-                        type="button"
-                        className={`template-mode-button ${editMode === 'structured' ? 'active' : ''}`}
-                        onClick={() => {
-                          // Update rawContent when switching to structured mode
-                          if (editMode === 'raw') {
-                            const newContent = assembleContentFromFields(editorFields);
-                            setEditorFields(prev => ({ ...prev, rawContent: newContent }));
-                          }
-                          setEditMode('structured');
-                        }}
-                      >
-                        Structured
-                      </button>
-                      <button
-                        type="button"
-                        className={`template-mode-button ${editMode === 'raw' ? 'active' : ''}`}
-                        onClick={() => {
-                          // Ensure rawContent is up to date when switching to raw mode
-                          if (editMode === 'structured') {
-                            const newContent = assembleContentFromFields(editorFields);
-                            setEditorFields(prev => ({ ...prev, rawContent: newContent }));
-                          }
-                          setEditMode('raw');
-                        }}
-                      >
-                        Raw
-                      </button>
-                    </div>
-                    {!isReadme(selectedPromptName) && (
-                      <>
-                        <button
-                          type="button"
-                          className="template-button"
-                          onClick={handleStructurePrompt}
-                          disabled={isSaving}
-                          title="Auto-structure prompt"
-                        >
-                          <span className="material-symbols-outlined">auto_fix_high</span>
-                          Structure
-                        </button>
-                        <button
-                          type="button"
-                          className="template-button"
-                          onClick={handleDuplicate}
-                          disabled={isSaving}
-                          title="Duplicate template"
-                        >
-                          <span className="material-symbols-outlined">content_copy</span>
-                          Duplicate
-                        </button>
-                        <button
-                          type="button"
-                          className="template-button delete"
-                          onClick={handleDelete}
-                          disabled={isSaving}
-                          title="Move to trash"
-                        >
-                          <span className="material-symbols-outlined">delete</span>
-                          Delete
-                        </button>
-                        <button
-                          type="button"
-                          className="template-button primary"
-                          onClick={handleSave}
-                          disabled={isSaving || isLoadingContent || !isDirty}
-                        >
-                          {isSaving ? 'Saving...' : 'Save'}
-                        </button>
-                      </>
-                    )}
-                    {isReadme(selectedPromptName) && (
-                      <div className="template-readme-notice">
-                        README is read-only
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {error && <div className="template-error">Error: {error}</div>}
-
-              {/* Intelligent hints - real-time warnings */}
-              {!isReadme(selectedPromptName) && linterWarnings.length > 0 && (
-                <div className="template-intelligent-hints">
-                  <div className="template-intelligent-hints-header">
-                    <span className="material-symbols-outlined">lightbulb</span>
-                    <span>Intelligent Hints</span>
-                  </div>
-                  <div className="template-intelligent-hints-list">
-                    {linterWarnings.slice(0, 3).map((warning, index) => (
-                      <div key={index} className={`template-intelligent-hint template-intelligent-hint-${warning.severity}`}>
-                        <span className="material-symbols-outlined">
-                          {warning.severity === 'warning' ? 'warning' : 'info'}
-                        </span>
-                        <span>{warning.message}</span>
-                      </div>
-                    ))}
-                    {linterWarnings.length > 3 && (
-                      <button
-                        type="button"
-                        className="template-button ghost"
-                        onClick={() => {
-                          setHelpModalTab('linter');
-                          setShowHelpModal(true);
-                        }}
-                        style={{ fontSize: '0.875rem', padding: '4px 8px' }}
-                      >
-                        View all {linterWarnings.length} issues
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {isLoadingContent ? (
-                <div className="loading">Loading template content...</div>
-              ) : isReadme(selectedPromptName) ? (
-                <div className="template-editor-form template-readme-view">
-                  <div className="template-field body-field">
-                    <label>Content (Read-only)</label>
-                    <div className="template-readme-content">
-                      <pre>{editorFields.rawContent || editorFields.body || 'No content'}</pre>
-                    </div>
-                  </div>
-                </div>
-              ) : editMode === 'structured' ? (
-                <div className="template-editor-form">
-                  <div className="template-field">
-                    <label>Title</label>
-                    <input
-                      type="text"
-                      value={editorFields.title}
-                      onChange={(e) => handleFieldChange('title', e.target.value)}
-                      placeholder="Template title (optional)"
-                    />
-                  </div>
-                  <div className="template-field">
-                    <label>Description</label>
-                    <textarea
-                      value={editorFields.description}
-                      onChange={(e) => handleFieldChange('description', e.target.value)}
-                      placeholder="Brief description (optional)"
-                      rows="2"
-                    />
-                  </div>
-                  <div className="template-field body-field">
-                    <label>Body</label>
-                    <textarea
-                      value={editorFields.body}
-                      onChange={(e) => handleFieldChange('body', e.target.value)}
-                      placeholder="Template content (Markdown)"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="template-editor-form">
-                  <div className="template-field body-field">
-                    <label>Raw Markdown</label>
-                    <textarea
-                      value={editorFields.rawContent}
-                      onChange={(e) => handleRawContentChange(e.target.value)}
-                      placeholder="Template content (Markdown)"
-                      className="template-raw-textarea"
-                    />
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="template-editor-empty">
-              <p>
-                {viewMode === 'templates'
-                  ? 'Select a template from the list to edit, or click "New" to create one'
-                  : 'Select an item from trash to edit or restore'}
-              </p>
-            </div>
-          )}
+          <TemplateEditorPanel
+            mode={viewMode === 'trash' && selectedTrashName ? 'trash' : isCreatingNew ? 'new' : viewMode === 'templates' && selectedPromptName ? 'selected' : 'empty'}
+            viewMode={viewMode}
+            selectedTrashName={selectedTrashName}
+            trashPrompts={trashPrompts}
+            selectedPromptName={selectedPromptName}
+            renamePromptName={renamePromptName}
+            renameValue={renameValue}
+            setRenameValue={setRenameValue}
+            handleRenameSave={handleRenameSave}
+            handleRenameCancel={handleRenameCancel}
+            handleRenameStart={handleRenameStart}
+            newTemplateName={newTemplateName}
+            setNewTemplateName={setNewTemplateName}
+            handleCreateNewSave={handleCreateNewSave}
+            handleCreateNewCancel={handleCreateNewCancel}
+            setShowHelpModal={setShowHelpModal}
+            editMode={editMode}
+            setEditMode={setEditMode}
+            assembleContentFromFields={assembleContentFromFields}
+            editorFields={editorFields}
+            setEditorFields={setEditorFields}
+            handleStructurePrompt={handleStructurePrompt}
+            handleRestore={handleRestore}
+            handleSave={handleSave}
+            isSaving={isSaving}
+            isLoadingContent={isLoadingContent}
+            isDirty={isDirty}
+            error={error}
+            handleFieldChange={handleFieldChange}
+            handleRawContentChange={handleRawContentChange}
+            isReadme={isReadme}
+            linterWarnings={linterWarnings}
+            setHelpModalTab={setHelpModalTab}
+            handleDuplicate={handleDuplicate}
+            handleDelete={handleDelete}
+          />
         </div>
+
       </div>
 
-      {showHelpModal && (
-        <div className="template-help-modal-overlay" onClick={() => setShowHelpModal(false)}>
-          <div className="template-help-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="template-help-modal-header">
-              <h2>Prompt Assistant</h2>
-              <button
-                type="button"
-                className="template-help-modal-close"
-                onClick={() => setShowHelpModal(false)}
-                title="Close"
-              >
-                <span className="material-symbols-outlined">close</span>
-              </button>
-            </div>
-            <div className="template-help-modal-tabs">
-              <button
-                type="button"
-                className={`template-help-tab ${helpModalTab === 'tips' ? 'active' : ''}`}
-                onClick={() => setHelpModalTab('tips')}
-              >
-                Tips
-              </button>
-              <button
-                type="button"
-                className={`template-help-tab ${helpModalTab === 'linter' ? 'active' : ''}`}
-                onClick={() => {
-                  const currentText = editMode === 'raw'
-                    ? editorFields.rawContent
-                    : assembleContent();
-                  const warnings = runPromptLinter(currentText);
-                  setLinterWarnings(warnings);
-                  setHelpModalTab('linter');
-                }}
-              >
-                Linter
-                {linterWarnings.length > 0 && (
-                  <span className="template-help-tab-badge">{linterWarnings.length}</span>
-                )}
-              </button>
-              <button
-                type="button"
-                className={`template-help-tab ${helpModalTab === 'structure' ? 'active' : ''}`}
-                onClick={() => setHelpModalTab('structure')}
-              >
-                Structure
-              </button>
-            </div>
-            <div className="template-help-modal-content">
-              {helpModalTab === 'tips' && (
-                <div className="template-help-tips-section">
-                  <h3>Top 20 Tips for Writing Effective Prompts</h3>
-                  <ol className="template-help-tips-list">
-                    {promptTips.map((tip, index) => (
-                      <li key={index} className="template-help-tip">
-                        {tip}
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
-              {helpModalTab === 'linter' && (
-                <div className="template-help-linter-section">
-                  <h3>Prompt Quality Check</h3>
-                  <p className="template-help-linter-description">
-                    Analyzing your current prompt for missing elements...
-                  </p>
-                  {linterWarnings.length === 0 ? (
-                    <div className="template-help-linter-success">
-                      <span className="material-symbols-outlined">check_circle</span>
-                      <p>Great! Your prompt looks well-structured.</p>
-                    </div>
-                  ) : (
-                    <div className="template-help-linter-warnings">
-                      {linterWarnings.map((warning, index) => (
-                        <div key={index} className={`template-help-linter-warning template-help-linter-${warning.severity}`}>
-                          <span className="material-symbols-outlined">
-                            {warning.severity === 'warning' ? 'warning' : 'info'}
-                          </span>
-                          <div className="template-help-linter-warning-content">
-                            <strong>{warning.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</strong>
-                            <p>{warning.message}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    className="template-button primary"
-                    onClick={handleLintPrompt}
-                    style={{ marginTop: 'var(--md-sys-spacing-md)' }}
-                  >
-                    <span className="material-symbols-outlined">refresh</span>
-                    Re-check Prompt
-                  </button>
-                </div>
-              )}
-              {helpModalTab === 'structure' && (
-                <div className="template-help-structure-section">
-                  <h3>Auto-Structure Prompt</h3>
-                  <p className="template-help-structure-description">
-                    Automatically organize your prompt into structured sections: Context, Constraints, Architecture, and Expected Output.
-                  </p>
-                  <div className="template-help-structure-preview">
-                    <h4>Preview:</h4>
-                    <pre className="template-help-structure-preview-text">
-                      {structurePrompt(editMode === 'raw' ? editorFields.rawContent : assembleContent())}
-                    </pre>
-                  </div>
-                  <button
-                    type="button"
-                    className="template-button primary"
-                    onClick={() => {
-                      handleStructurePrompt();
-                      setShowHelpModal(false);
-                    }}
-                    style={{ marginTop: 'var(--md-sys-spacing-md)' }}
-                  >
-                    <span className="material-symbols-outlined">auto_fix_high</span>
-                    Apply Structure
-                  </button>
-                </div>
-              )}
-            </div>
-            <div className="template-help-modal-footer">
-              <button
-                type="button"
-                className="template-button primary"
-                onClick={() => setShowHelpModal(false)}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <TemplateEditorHelpModal
+        open={showHelpModal}
+        onClose={() => setShowHelpModal(false)}
+        helpModalTab={helpModalTab}
+        setHelpModalTab={setHelpModalTab}
+        linterWarnings={linterWarnings}
+        setLinterWarnings={setLinterWarnings}
+        promptTips={promptTips}
+        editMode={editMode}
+        editorFields={editorFields}
+        assembleContent={assembleContent}
+        runPromptLinter={runPromptLinter}
+        structurePrompt={structurePrompt}
+        handleLintPrompt={handleLintPrompt}
+        handleStructurePrompt={handleStructurePrompt}
+      />
     </div>
   );
 }

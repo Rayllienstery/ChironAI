@@ -1,4 +1,3 @@
-import React from 'react';
 import '../styles/components/RagTestRunPanel.css';
 
 export function RagTestRunPanelBody({
