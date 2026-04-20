@@ -97,7 +97,13 @@ def _responses_input_to_openai_messages(raw_input: Any) -> list[dict[str, Any]]:
             continue
         itype = str(item.get("type") or "").strip()
         if itype == "function_call_output":
-            call_id = str(item.get("call_id") or "").strip()
+            call_id = str(
+                item.get("call_id")
+                or item.get("tool_call_id")
+                or item.get("tool_callid")
+                or item.get("id")
+                or ""
+            ).strip()
             tool_output = item.get("output")
             if isinstance(tool_output, (dict, list)):
                 tool_content = json.dumps(tool_output, ensure_ascii=False)

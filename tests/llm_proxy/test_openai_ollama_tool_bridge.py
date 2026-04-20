@@ -60,6 +60,32 @@ def test_openai_tool_message_infers_name_from_tool_call_id() -> None:
     assert ollama[1]["tool_name"] == "edit_file"
 
 
+def test_openai_tool_message_infers_name_from_call_id_alias() -> None:
+    openai = [
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "id1",
+                    "type": "function",
+                    "function": {"name": "  edit_file  ", "arguments": "{}"},
+                }
+            ],
+        },
+        {"role": "tool", "call_id": "id1", "content": "ok"},
+    ]
+    ollama = openai_messages_to_ollama(openai)
+    assert ollama[1]["tool_name"] == "edit_file"
+
+
+def test_openai_tool_message_blank_name_falls_back_to_tool() -> None:
+    openai = [
+        {"role": "tool", "name": "   ", "content": "ok"},
+    ]
+    ollama = openai_messages_to_ollama(openai)
+    assert ollama[0]["tool_name"] == "tool"
+
+
 def test_ollama_message_to_openai_assistant_tool_calls() -> None:
     ollama_msg = {
         "role": "assistant",
@@ -93,6 +119,27 @@ def test_openai_finish_reason_length_from_ollama_done_reason() -> None:
 def test_ollama_tools_from_openai_filters_non_dict() -> None:
     assert ollama_tools_from_openai([{"type": "function", "function": {"name": "n"}}]) is not None
     assert ollama_tools_from_openai([]) is None
+
+
+def test_ollama_tools_from_openai_drops_unsupported_types_and_blank_names() -> None:
+    tools = [
+        {"type": "web_search"},
+        {"type": "function", "function": {"name": "   ", "parameters": {"type": "object"}}},
+        {"type": "function", "function": {"name": "ok", "parameters": {"type": "object"}}},
+    ]
+    out = ollama_tools_from_openai(tools) or []
+    assert len(out) == 1
+    assert out[0]["type"] == "function"
+    assert out[0]["function"]["name"] == "ok"
+
+
+def test_ollama_tools_from_openai_accepts_flat_function_shape() -> None:
+    out = ollama_tools_from_openai(
+        [{"type": "function", "name": "shell", "description": "Run shell", "parameters": {"type": "object"}}]
+    )
+    assert out is not None
+    assert out[0]["function"]["name"] == "shell"
+    assert out[0]["function"]["description"] == "Run shell"
 
 
 def test_arguments_to_openai_string() -> None:
@@ -161,6 +208,30 @@ def test_openai_messages_preserve_thought_signature_on_tool_calls() -> None:
     assert fn0["thought_signature"] == "Z2VtaW5pLXNpZw=="
     assert fn0["name"] == "get_temp"
     assert fn0["arguments"] == {"city": "NYC"}
+
+
+def test_openai_messages_adds_synthetic_thought_signature_when_missing() -> None:
+    openai = [
+        {"role": "user", "content": "hi"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_abc",
+                    "type": "function",
+                    "function": {
+                        "name": "get_temp",
+                        "arguments": '{"city":"NYC"}',
+                    },
+                }
+            ],
+        },
+    ]
+    ollama = openai_messages_to_ollama(openai)
+    fn0 = ollama[1]["tool_calls"][0]["function"]
+    assert isinstance(fn0.get("thought_signature"), str)
+    assert fn0["thought_signature"]
 
 
 def test_ollama_message_to_openai_preserves_thought_signature_and_message_signature() -> None:

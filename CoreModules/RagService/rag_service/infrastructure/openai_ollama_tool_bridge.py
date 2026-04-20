@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import uuid
 from typing import Any
@@ -11,6 +12,29 @@ from rag_service.infrastructure.openai_multipart_vision import build_ollama_user
 
 def _new_call_id() -> str:
     return f"call_{uuid.uuid4().hex[:24]}"
+
+
+def _sanitize_tool_name(raw: object, *, fallback: str = "tool") -> str:
+    if isinstance(raw, str):
+        name = raw.strip()
+        if name:
+            return name
+    return fallback
+
+
+def _message_tool_call_id(message: dict[str, Any]) -> str:
+    for key in ("tool_call_id", "tool_callid", "call_id", "id"):
+        value = message.get(key)
+        if isinstance(value, str):
+            value = value.strip()
+            if value:
+                return value
+    return ""
+
+
+def _synthetic_thought_signature(name: str, call_id: str, idx: int) -> str:
+    payload = f"synthetic:{name}:{call_id}:{idx}".encode("utf-8")
+    return base64.b64encode(payload).decode("ascii")
 
 
 def arguments_to_ollama_object(raw: object | None) -> dict[str, Any]:
@@ -108,10 +132,10 @@ def _build_tool_call_id_to_name(messages: list[dict[str, Any]]) -> dict[str, str
         for c in tcs:
             if not isinstance(c, dict):
                 continue
-            call_id = c.get("id")
+            call_id = _message_tool_call_id(c)
             fn = c.get("function") if isinstance(c.get("function"), dict) else {}
-            name = fn.get("name") if isinstance(fn, dict) else None
-            if isinstance(call_id, str) and call_id and isinstance(name, str) and name:
+            name = _sanitize_tool_name(fn.get("name") if isinstance(fn, dict) else None)
+            if call_id:
                 out[call_id] = name
     return out
 
@@ -142,7 +166,8 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
                     if not isinstance(c, dict):
                         continue
                     fn = c.get("function") if isinstance(c.get("function"), dict) else {}
-                    name = str(fn.get("name") or "tool") if isinstance(fn, dict) else "tool"
+                    name = _sanitize_tool_name(fn.get("name") if isinstance(fn, dict) else None)
+                    call_id = _message_tool_call_id(c)
                     args_obj = arguments_to_ollama_object(fn.get("arguments") if isinstance(fn, dict) else None)
                     ollama_fn: dict[str, Any] = {"name": name, "arguments": args_obj}
                     if isinstance(fn, dict) and fn.get("index") is not None:
@@ -154,6 +179,8 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
                         ollama_fn["index"] = idx
                     if isinstance(fn, dict) and "thought_signature" in fn:
                         ollama_fn["thought_signature"] = fn["thought_signature"]
+                    else:
+                        ollama_fn["thought_signature"] = _synthetic_thought_signature(name, call_id or "call", idx)
                     ollama_calls.append({"type": "function", "function": ollama_fn})
                 out_msg: dict[str, Any] = {"role": "assistant", "content": text}
                 if ollama_calls:
@@ -168,11 +195,13 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
                 ollama.append(plain_assistant)
             continue
         if role == "tool":
-            name = m.get("name")
-            if not isinstance(name, str) or not name:
-                tcid = m.get("tool_call_id") or m.get("tool_callid")
-                if isinstance(tcid, str) and tcid:
-                    name = tool_call_id_to_name.get(tcid, "tool")
+            name = _sanitize_tool_name(m.get("name"), fallback="")
+            if not name:
+                name = _sanitize_tool_name(m.get("tool_name"), fallback="")
+            if not name:
+                tcid = _message_tool_call_id(m)
+                if tcid:
+                    name = _sanitize_tool_name(tool_call_id_to_name.get(tcid), fallback="tool")
                 else:
                     name = "tool"
             raw_c = m.get("content")
@@ -234,13 +263,39 @@ def ollama_chat_tool_choice_payload_value(raw: Any) -> str | None:
 
 
 def ollama_tools_from_openai(tools: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
-    """Pass-through OpenAI tool definitions; Ollama uses the same shape."""
+    """Return only Ollama-compatible function tools."""
     if not tools:
         return None
     out: list[dict[str, Any]] = []
     for t in tools:
-        if isinstance(t, dict):
-            out.append(t)
+        if not isinstance(t, dict):
+            continue
+        ttype = str(t.get("type") or "").strip().lower()
+        if ttype not in ("", "function"):
+            continue
+        fn = t.get("function") if isinstance(t.get("function"), dict) else {}
+        if not isinstance(fn, dict):
+            fn = {}
+        fn_name = _sanitize_tool_name(fn.get("name"), fallback="")
+        if not fn_name:
+            fn_name = _sanitize_tool_name(t.get("name"), fallback="")
+        if not fn_name:
+            continue
+        fn_out: dict[str, Any] = {"name": fn_name}
+        params = fn.get("parameters")
+        if isinstance(params, dict):
+            fn_out["parameters"] = params
+        elif isinstance(t.get("parameters"), dict):
+            fn_out["parameters"] = t["parameters"]
+        if isinstance(fn.get("description"), str) and fn.get("description").strip():
+            fn_out["description"] = fn["description"].strip()
+        elif isinstance(t.get("description"), str) and t.get("description").strip():
+            fn_out["description"] = t["description"].strip()
+        if isinstance(fn.get("strict"), bool):
+            fn_out["strict"] = fn["strict"]
+        elif isinstance(t.get("strict"), bool):
+            fn_out["strict"] = t["strict"]
+        out.append({"type": "function", "function": fn_out})
     return out or None
 
 

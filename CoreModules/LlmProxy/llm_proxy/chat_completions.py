@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -234,6 +235,222 @@ def _trace_ollama_messages_for_ui(ollama_messages: list[Any]) -> list[dict[str, 
             entry["images_count"] = len(_imgs)
         out.append(entry)
     return out
+
+
+def _sanitize_tool_name(raw: object, *, fallback: str = "tool") -> str:
+    if isinstance(raw, str):
+        name = raw.strip()
+        if name:
+            return name
+    return fallback
+
+
+def _message_tool_call_id(message: dict[str, Any]) -> str:
+    for key in ("tool_call_id", "tool_callid", "call_id", "id"):
+        value = message.get(key)
+        if isinstance(value, str):
+            value = value.strip()
+            if value:
+                return value
+    return ""
+
+
+def _build_tool_call_id_to_name(messages: list[Any]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for m in messages:
+        if not isinstance(m, dict) or m.get("role") != "assistant":
+            continue
+        tool_calls = m.get("tool_calls")
+        if not isinstance(tool_calls, list):
+            continue
+        for c in tool_calls:
+            if not isinstance(c, dict):
+                continue
+            call_id = _message_tool_call_id(c)
+            fn = c.get("function") if isinstance(c.get("function"), dict) else {}
+            name = _sanitize_tool_name(fn.get("name") if isinstance(fn, dict) else None, fallback="")
+            if call_id and name:
+                out[call_id] = name
+    return out
+
+
+def _preflight_native_tool_messages(messages: list[Any]) -> tuple[list[Any], dict[str, Any]]:
+    tool_call_id_to_name = _build_tool_call_id_to_name(messages)
+    corrected_indices: list[int] = []
+    out: list[Any] = []
+    for idx, m in enumerate(messages):
+        if not isinstance(m, dict) or m.get("role") != "tool":
+            out.append(m)
+            continue
+        name = _sanitize_tool_name(m.get("tool_name"), fallback="")
+        if not name:
+            name = _sanitize_tool_name(m.get("name"), fallback="")
+        if not name:
+            call_id = _message_tool_call_id(m)
+            if call_id:
+                name = _sanitize_tool_name(tool_call_id_to_name.get(call_id))
+            else:
+                name = "tool"
+        if m.get("tool_name") != name:
+            m2 = dict(m)
+            m2["tool_name"] = name
+            out.append(m2)
+            corrected_indices.append(idx)
+        else:
+            out.append(m)
+    diag: dict[str, Any] = {}
+    if corrected_indices:
+        diag["tool_message_name_fixes"] = len(corrected_indices)
+        diag["tool_message_name_fixed_indices"] = corrected_indices[:10]
+    return out, diag
+
+
+def _preflight_native_tools_payload(tools: list[Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    valid: list[dict[str, Any]] = []
+    dropped: list[dict[str, Any]] = []
+    for idx, t in enumerate(tools):
+        if not isinstance(t, dict):
+            dropped.append({"index": idx, "reason": "non_dict"})
+            continue
+        ttype = str(t.get("type") or "").strip().lower()
+        fn = t.get("function") if isinstance(t.get("function"), dict) else {}
+        if not isinstance(fn, dict):
+            fn = {}
+        fn_name = _sanitize_tool_name(fn.get("name"), fallback="")
+        if not fn_name:
+            fn_name = _sanitize_tool_name(t.get("name"), fallback="")
+        if ttype not in ("", "function") or not fn_name:
+            dropped.append({"index": idx, "type": ttype or "unknown", "reason": "unsupported_or_missing_name"})
+            continue
+        fn_out = dict(fn)
+        fn_out["name"] = fn_name
+        t_out = dict(t)
+        t_out["type"] = "function"
+        t_out["function"] = fn_out
+        valid.append(t_out)
+    diag: dict[str, Any] = {}
+    if dropped:
+        diag["tools_dropped_count"] = len(dropped)
+        diag["tools_dropped"] = dropped[:10]
+    return valid, diag
+
+
+def _looks_like_explain_codebase_query(text: str) -> bool:
+    q = (text or "").strip().lower()
+    if not q:
+        return False
+    explain_tokens = ("explain", "describe", "overview", "архитект", "объясни", "опиши")
+    codebase_tokens = ("codebase", "project", "repo", "repository", "код", "проект", "репозитор")
+    return any(t in q for t in explain_tokens) and any(t in q for t in codebase_tokens)
+
+
+def _tool_round_stats_since_last_user(messages: list[Any]) -> dict[str, int]:
+    last_user_idx = -1
+    for i in range(len(messages) - 1, -1, -1):
+        m = messages[i]
+        if isinstance(m, dict) and m.get("role") == "user":
+            last_user_idx = i
+            break
+    rounds = 0
+    shell_rounds = 0
+    non_shell_rounds = 0
+    for m in messages[last_user_idx + 1 :]:
+        if not isinstance(m, dict) or m.get("role") != "assistant":
+            continue
+        tool_calls = m.get("tool_calls")
+        if not isinstance(tool_calls, list) or not tool_calls:
+            continue
+        rounds += 1
+        names: list[str] = []
+        for tc in tool_calls:
+            if not isinstance(tc, dict):
+                continue
+            fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+            if isinstance(fn, dict):
+                names.append(str(fn.get("name") or "").strip().lower())
+        if names and all(n == "shell" for n in names):
+            shell_rounds += 1
+        else:
+            non_shell_rounds += 1
+    return {"rounds": rounds, "shell_rounds": shell_rounds, "non_shell_rounds": non_shell_rounds}
+
+
+_POWERSHELL_COMMAND_WRAPPER_RE = re.compile(
+    r"""^\s*(?P<exe>(?:powershell|pwsh)(?:\.exe)?)\s+-Command\s+(?P<q>["'])(?P<script>.*)(?P=q)\s*$""",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _looks_like_recursive_get_child_item(cmd: str) -> bool:
+    c = cmd.lower()
+    return ("get-childitem" in c or "\ngci " in f"\n{c}" or "\ndir " in f"\n{c}" or "\nls " in f"\n{c}") and (
+        "-recurse" in c
+    )
+
+
+def _ensure_safe_windows_listing_command(cmd: str) -> str:
+    """Avoid hard failures on ACL-protected folders for recursive PowerShell listing."""
+    if not isinstance(cmd, str):
+        return cmd
+    if not _looks_like_recursive_get_child_item(cmd):
+        return cmd
+    if re.search(r"(?i)-ErrorAction\b", cmd):
+        return cmd
+
+    m = _POWERSHELL_COMMAND_WRAPPER_RE.match(cmd)
+    if m:
+        script = m.group("script")
+        if not re.search(r"(?i)-ErrorAction\b", script):
+            script = script.rstrip() + " -ErrorAction SilentlyContinue"
+        return f'{m.group("exe")} -Command {m.group("q")}{script}{m.group("q")}'
+
+    return cmd.rstrip() + " -ErrorAction SilentlyContinue"
+
+
+def _sanitize_outgoing_shell_tool_calls(tool_calls: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    if not tool_calls:
+        return tool_calls, 0
+    out: list[dict[str, Any]] = []
+    fixed = 0
+    for tc in tool_calls:
+        if not isinstance(tc, dict):
+            out.append(tc)
+            continue
+        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+        name = str(fn.get("name") or "").strip().lower() if isinstance(fn, dict) else ""
+        if name != "shell":
+            out.append(tc)
+            continue
+        args_raw = fn.get("arguments") if isinstance(fn, dict) else None
+        args_obj: dict[str, Any] | None = None
+        if isinstance(args_raw, str):
+            try:
+                parsed = json.loads(args_raw)
+                if isinstance(parsed, dict):
+                    args_obj = parsed
+            except json.JSONDecodeError:
+                args_obj = None
+        elif isinstance(args_raw, dict):
+            args_obj = dict(args_raw)
+        if not isinstance(args_obj, dict):
+            out.append(tc)
+            continue
+        cmd = args_obj.get("command")
+        if not isinstance(cmd, str):
+            out.append(tc)
+            continue
+        safe_cmd = _ensure_safe_windows_listing_command(cmd)
+        if safe_cmd == cmd:
+            out.append(tc)
+            continue
+        args_obj["command"] = safe_cmd
+        fn2 = dict(fn)
+        fn2["arguments"] = json.dumps(args_obj, ensure_ascii=False)
+        tc2 = dict(tc)
+        tc2["function"] = fn2
+        out.append(tc2)
+        fixed += 1
+    return out, fixed
 
 
 def _merge_ollama_visible_text(thinking: str | None, content: str | None) -> str:
@@ -758,6 +975,27 @@ def run_chat_completions(
             )
             break
     _ltl = last_tool_content.lower()
+    _tool_exit_code: int | None = None
+    _tool_ok_flag: bool | None = None
+    _tool_error_text: str = ""
+    try:
+        _parsed_tool = json.loads(last_tool_content) if last_tool_content.strip().startswith(("{", "[")) else None
+        if isinstance(_parsed_tool, dict):
+            if isinstance(_parsed_tool.get("ok"), bool):
+                _tool_ok_flag = bool(_parsed_tool.get("ok"))
+            _meta = _parsed_tool.get("metadata")
+            if isinstance(_meta, dict):
+                _ec = _meta.get("exit_code")
+                if isinstance(_ec, (int, float)):
+                    _tool_exit_code = int(_ec)
+                _stderr = _meta.get("stderr")
+                if isinstance(_stderr, str) and _stderr.strip():
+                    _tool_error_text = _stderr.strip().lower()
+            _err = _parsed_tool.get("error")
+            if isinstance(_err, str) and _err.strip():
+                _tool_error_text = (_tool_error_text + "\n" + _err.strip().lower()).strip()
+    except Exception:
+        pass
     tool_result_indicates_failure = any(
         x in _ltl
         for x in (
@@ -775,6 +1013,12 @@ def run_chat_completions(
             "unknown variant",
         )
     )
+    if not tool_result_indicates_failure and _tool_ok_flag is False:
+        tool_result_indicates_failure = True
+    if not tool_result_indicates_failure and _tool_exit_code is not None and _tool_exit_code != 0:
+        tool_result_indicates_failure = True
+    if not tool_result_indicates_failure and _tool_error_text:
+        tool_result_indicates_failure = True
     if not tool_result_indicates_failure and _tool_result_looks_like_unintended_deletion(last_tool_content):
         tool_result_indicates_failure = True
     _last_msg = messages[-1] if messages else None
@@ -863,6 +1107,9 @@ def run_chat_completions(
             selected_edit_tool = None
             selected_tool_write_capable = True
     use_native_tools = bool(tools) and tool_choice_effective != "none"
+    explain_loop_stats: dict[str, int] | None = None
+    if use_native_tools and _looks_like_explain_codebase_query(user_query):
+        explain_loop_stats = _tool_round_stats_since_last_user(messages)
     context_length = len(last_user.split())
     if system_prefix is not None:
         effective_prefix = prefix
@@ -929,6 +1176,8 @@ def run_chat_completions(
         "testing_disable_rerank": bool(testing_disable_rerank),
         "client_request_id": str(body.get("client_request_id") or "").strip() or None,
     }
+    if explain_loop_stats is not None:
+        trace["request"]["explain_loop_stats"] = explain_loop_stats
     if _proxy_trace_meta:
         for _k, _v in _proxy_trace_meta.items():
             if _k in ("proxy_v1_route", "responses_client_stream"):
@@ -1399,7 +1648,36 @@ def run_chat_completions(
         )
 
         trace["request"]["native_tools"] = True
-        oll_tools = ollama_tools_from_openai([t for t in tools if isinstance(t, dict)])
+        native_tools_diag: dict[str, Any] = {}
+        native_tools_payload, tools_diag = _preflight_native_tools_payload(tools)
+        if tools_diag:
+            native_tools_diag.update(tools_diag)
+        oll_tools = ollama_tools_from_openai(native_tools_payload)
+        native_ollama_messages, messages_diag = _preflight_native_tool_messages(ollama_messages)
+        if messages_diag:
+            native_tools_diag.update(messages_diag)
+        if (
+            _looks_like_explain_codebase_query(user_query)
+            and has_tool_result
+            and not tool_result_indicates_failure
+            and isinstance(explain_loop_stats, dict)
+            and int(explain_loop_stats.get("shell_rounds") or 0) >= 3
+            and int(explain_loop_stats.get("non_shell_rounds") or 0) == 0
+        ):
+            native_ollama_messages = [
+                *native_ollama_messages,
+                {
+                    "role": "system",
+                    "content": (
+                        "You already executed several shell inspection steps for this same request. "
+                        "Prioritize giving the final concise codebase explanation now. "
+                        "Call another tool only if a critical gap blocks the answer."
+                    ),
+                },
+            ]
+            native_tools_diag["explain_finalize_nudge"] = True
+        if native_tools_diag:
+            trace["request"]["native_tools_preflight"] = native_tools_diag
 
         # ------------------------------------------------------------------ #
         #  STREAMING native tools: true token-by-token SSE                    #
@@ -1420,7 +1698,7 @@ def run_chat_completions(
 
                 try:
                     for kind, data in _iter_proxy_ollama_chat_stream(
-                        chat_client, ollama_messages, use_model, ollama_think,
+                        chat_client, native_ollama_messages, use_model, ollama_think,
                         options_overlay=ollama_options_overlay(),
                         tools=oll_tools,
                         tool_choice=tool_choice_effective,
@@ -1479,7 +1757,7 @@ def run_chat_completions(
                 yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}]})}\n\n"
                 yield "data: [DONE]\n\n"
 
-                _pt = max(1, int(len(json.dumps(ollama_messages, ensure_ascii=False)) / 4))
+                _pt = max(1, int(len(json.dumps(native_ollama_messages, ensure_ascii=False)) / 4))
                 _ct = max(1, int(len(full_content) / 4))
                 total_tokens_holder[0] = _pt + _ct
 
@@ -1556,7 +1834,11 @@ def run_chat_completions(
             _co.update(_oo)
         body_ollama: dict[str, object] = {
             "model": use_model,
-            "messages": ollama_messages_drop_images(ollama_messages) if oll_tools else ollama_messages,
+            "messages": (
+                ollama_messages_drop_images(native_ollama_messages)
+                if oll_tools
+                else native_ollama_messages
+            ),
             "stream": False,
             "options": dict(_co),
         }
@@ -1598,7 +1880,7 @@ def run_chat_completions(
                     raise last_exc
             else:
                 msg_only = chat_client.chat(
-                    ollama_messages,
+                    native_ollama_messages,
                     use_model,
                     stream=False,
                     options=ollama_options_overlay(),
@@ -1607,7 +1889,10 @@ def run_chat_completions(
                 data = {"message": {"role": "assistant", "content": msg_only}}
         except Exception as e:
             if not private_build:
-                w.log_webui_error("rag_routes.chat_completions", e, {"stage": "native_tools_ollama"})
+                meta: dict[str, Any] = {"stage": "native_tools_ollama"}
+                if native_tools_diag:
+                    meta["native_tools_diag"] = native_tools_diag
+                w.log_webui_error("rag_routes.chat_completions", e, meta)
             _log_rag_error_private("native_tools_ollama", e, private_build=private_build)
             _native_err = str(e)
         finally:
@@ -1639,6 +1924,7 @@ def run_chat_completions(
             oll_msg, ollama_done_reason=data.get("done_reason"),
         )
         tool_calls_out = openai_msg.get("tool_calls") if isinstance(openai_msg.get("tool_calls"), list) else []
+        tool_calls_out, shell_sanitize_count = _sanitize_outgoing_shell_tool_calls(tool_calls_out)
         content_out = openai_msg.get("content")
         content_str = content_out if isinstance(content_out, str) else ("" if content_out is None else str(content_out))
 
@@ -1690,6 +1976,8 @@ def run_chat_completions(
         }
         if tool_calls_out:
             trace["response"]["tool_calls"] = tool_calls_out
+        if shell_sanitize_count:
+            trace["response"]["shell_tool_sanitized_count"] = int(shell_sanitize_count)
 
         choice_msg: dict[str, object] = {
             "role": "assistant",

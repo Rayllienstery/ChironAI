@@ -3091,3 +3091,82 @@ def test_v1_responses_followup_with_function_call_output_uses_previous_response_
     )
     assert has_prior_assistant_tool_call
     assert has_tool_output
+
+
+def test_v1_responses_input_parses_function_call_output_id_aliases() -> None:
+    import llm_proxy.v1_blueprint as v1_blueprint
+
+    msgs = v1_blueprint._responses_input_to_openai_messages(
+        [
+            {"type": "function_call_output", "tool_callid": "call_alias_1", "output": {"ok": True}},
+            {"type": "function_call_output", "id": "call_alias_2", "output": "done"},
+        ]
+    )
+    assert msgs[0]["role"] == "tool"
+    assert msgs[0]["tool_call_id"] == "call_alias_1"
+    assert msgs[1]["role"] == "tool"
+    assert msgs[1]["tool_call_id"] == "call_alias_2"
+
+
+def test_shell_tool_call_sanitizer_adds_erroraction_for_recursive_get_childitem() -> None:
+    import json
+
+    import llm_proxy.chat_completions as cc
+
+    tool_calls = [
+        {
+            "id": "call_1",
+            "type": "function",
+            "function": {
+                "name": "shell",
+                "arguments": json.dumps({"command": 'powershell.exe -Command "Get-ChildItem -Recurse -Depth 2"'}),
+            },
+        }
+    ]
+    out, fixed = cc._sanitize_outgoing_shell_tool_calls(tool_calls)
+    assert fixed == 1
+    args = json.loads(out[0]["function"]["arguments"])
+    assert "-ErrorAction SilentlyContinue" in args["command"]
+
+
+def test_shell_tool_call_sanitizer_keeps_command_with_explicit_erroraction() -> None:
+    import json
+
+    import llm_proxy.chat_completions as cc
+
+    cmd = 'powershell.exe -Command "Get-ChildItem -Recurse -Depth 2 -ErrorAction Stop"'
+    tool_calls = [
+        {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "shell", "arguments": json.dumps({"command": cmd})},
+        }
+    ]
+    out, fixed = cc._sanitize_outgoing_shell_tool_calls(tool_calls)
+    assert fixed == 0
+    args = json.loads(out[0]["function"]["arguments"])
+    assert args["command"] == cmd
+
+
+def test_explain_codebase_loop_query_detector() -> None:
+    import llm_proxy.chat_completions as cc
+
+    assert cc._looks_like_explain_codebase_query("Explain this codebase")
+    assert cc._looks_like_explain_codebase_query("Опиши проект")
+    assert not cc._looks_like_explain_codebase_query("Fix failing tests in CI")
+
+
+def test_tool_round_stats_since_last_user_counts_shell_rounds() -> None:
+    import llm_proxy.chat_completions as cc
+
+    messages = [
+        {"role": "user", "content": "Explain this codebase"},
+        {"role": "assistant", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "shell"}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": "ok"},
+        {"role": "assistant", "tool_calls": [{"id": "c2", "type": "function", "function": {"name": "shell"}}]},
+        {"role": "tool", "tool_call_id": "c2", "content": "ok"},
+    ]
+    stats = cc._tool_round_stats_since_last_user(messages)
+    assert stats["rounds"] == 2
+    assert stats["shell_rounds"] == 2
+    assert stats["non_shell_rounds"] == 0
