@@ -93,6 +93,7 @@ def create_app(
         open_webui_stop,
         webui_bp,
     )
+    from api.http.rag_tests_routes import rag_tests_bp
 
     app.add_url_rule(
         "/api/webui/open-webui/status",
@@ -116,6 +117,7 @@ def create_app(
     )
 
     app.register_blueprint(webui_bp)
+    app.register_blueprint(rag_tests_bp)
 
     return app
 

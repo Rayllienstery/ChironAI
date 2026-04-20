@@ -75,7 +75,7 @@ pythonpath = [
 ]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short -p no:cacheprovider"
 filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.ruff]
@@ -150,3 +150,5 @@ ignore_decorators = [
   "@*.route",
   "@*.before_first_request",
 ]
+
+

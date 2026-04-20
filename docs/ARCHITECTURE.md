@@ -72,3 +72,24 @@ The repository root is an installable project **`chironai`** ([`pyproject.toml`]
 - **New chat model**: configure in `config/models.yaml`; `OllamaChatClient` and `create_app` use it.
 - **New crawl source**: add a source dict to WebUI/app.py `SOURCES`; crawl CLI and index flow use it. For a new crawler implementation, implement `CrawlRunner` in `infrastructure/crawl/` and wire it in the application layer.
 - **New vector store**: implement `RagRepository` in `infrastructure/` and wire it in `application/container.py` instead of `QdrantRagRepository`.
+
+## Service Control Boundary
+
+Service orchestration for WebUI endpoints is routed through
+`api/http/service_control.py`.
+
+- `api/http/webui_routes.py` stays focused on HTTP composition.
+- `api/http/service_control.py` owns ServiceStarter bootstrap and service
+  actions (Qdrant/Open WebUI/Ollama start, stop, status helpers).
+
+This keeps lifecycle logic out of large route modules and makes service
+behavior easier to test and evolve.
+
+## OpenAI Compatibility Policy
+
+`CoreModules/LlmProxy` intentionally supports legacy OpenAI-style completion
+surface (`/v1/completions` and prompt-based compatibility flow) as an explicit
+compatibility contract.
+
+- The canonical path remains `/v1/chat/completions`.
+- Legacy compatibility is intentional and must stay documented + tested.

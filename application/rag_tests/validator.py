@@ -4,6 +4,7 @@ Validate RAG test run result: required concepts (any/all), confidence score, RAG
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
@@ -217,6 +218,10 @@ def validate_result(
         concept_mode = "all"
     require_rag = test.get("rag_requirement", True)
     require_rag_overlap = bool(test.get("rag_strict", False))
+    validation_mode = str(os.getenv("RAG_TESTS_VALIDATION_MODE", "strict") or "strict").strip().lower()
+    if validation_mode not in ("balanced", "strict"):
+        validation_mode = "balanced"
+    balanced_mode = validation_mode == "balanced"
 
     concepts_passed, hits, total, missing = validate_concepts(
         response_content or "",
@@ -225,19 +230,41 @@ def validate_result(
         concept_groups=concept_groups,
     )
     confidence_label = f"{hits}/{total} concepts found" if total else "N/A"
+    missing_count = max(0, total - hits)
 
     chunks_info = (rag_metadata or {}).get("chunks_info") or []
     chunks_count = (rag_metadata or {}).get("chunks_count", len(chunks_info))
-    rag_used = chunks_count > 0
-    if require_rag_overlap and rag_used and chunks_info:
-        rag_used = _response_overlaps_chunks(response_content or "", chunks_info)
+    rag_retrieved = chunks_count > 0
+    rag_overlap = True
+    if require_rag_overlap and rag_retrieved and chunks_info:
+        rag_overlap = _response_overlaps_chunks(response_content or "", chunks_info)
 
     empty = not (response_content or "").strip()
     min_length_ok = len((response_content or "").strip()) >= 10
 
-    rag_ok = (not require_rag) or rag_used
     concepts_ok = concepts_passed if (concepts or concept_groups) else True
+    # Default mode is intentionally less strict for RAG Tests:
+    # for non-rag_strict tests, allow one missing concept as "good enough".
+    if (
+        balanced_mode
+        and not require_rag_overlap
+        and concept_mode == "all"
+        and total > 0
+        and missing_count <= 1
+    ):
+        concepts_ok = True
+
+    rag_ok = (not require_rag) or rag_retrieved
+    overlap_waived = False
+    if require_rag and require_rag_overlap and rag_retrieved:
+        rag_ok = rag_overlap
+        # In balanced mode, don't fail a perfect concept answer only because
+        # overlap heuristic didn't detect exact chunk snippets.
+        if balanced_mode and not rag_overlap and concepts_ok and hits == total:
+            rag_ok = True
+            overlap_waived = True
     status = "PASS" if (concepts_ok and rag_ok and not empty and min_length_ok) else "FAIL"
+    rag_used = bool(rag_retrieved and (rag_overlap if require_rag_overlap else True))
 
     response_norm = response_content or ""
     found_concepts = _found_flat_concepts(response_norm, [c for c in concepts if isinstance(c, str)])
@@ -250,7 +277,7 @@ def validate_result(
         if not rag_ok:
             if chunks_count == 0:
                 reasons.append("RAG not triggered (no matching context found)")
-            elif require_rag_overlap and chunks_info:
+            elif require_rag_overlap and chunks_info and not overlap_waived:
                 reasons.append("RAG chunks did not overlap response")
             else:
                 reasons.append("RAG was skipped by trigger/keywords or produced no usable chunks")

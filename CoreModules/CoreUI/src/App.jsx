@@ -104,6 +104,7 @@ function App() {
   const [ragTestRunProgress, setRagTestRunProgress] = useState(null);
   const [ragTestRunResults, setRagTestRunResults] = useState([]);
   const [ragTestRunError, setRagTestRunError] = useState(null);
+  const [pendingRagRunOpenId, setPendingRagRunOpenId] = useState(null);
   const ragTestStatusPollFailuresRef = useRef(0);
   const [llmProxyFocusSubTab, setLlmProxyFocusSubTab] = useState(null);
   const [llmProxyBuildsFocusSubTab, setLlmProxyBuildsFocusSubTab] = useState(null);
@@ -225,6 +226,14 @@ function App() {
     return () => clearInterval(id);
   }, []);
 
+  const openCompletedRagRunModal = useCallback((runId) => {
+    const rid = String(runId || "").trim();
+    if (!rid) return;
+    setActiveTab("testing");
+    setTestingSubTab("rag-tests");
+    setPendingRagRunOpenId(rid);
+  }, []);
+
   useEffect(() => {
     if (!ragTestRunJobId || !ragTestRunning) return;
     let cancelled = false;
@@ -240,11 +249,15 @@ function App() {
           setRagTestRunResults(data.results);
         }
         if (data.status === "completed" || data.status === "cancelled") {
+          const completedId = String(data?.job_id || ragTestRunJobId || "").trim();
           setRagTestRunResults(data.results || []);
           setRagTestRunJobId(null);
           setRagTestRunProgress(null);
           setRagTestRunning(false);
           if (data.error) setRagTestRunError(data.error);
+          if (data.status === "completed" && completedId) {
+            openCompletedRagRunModal(completedId);
+          }
           return;
         }
       } catch (e) {
@@ -285,15 +298,10 @@ function App() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [ragTestRunJobId, ragTestRunning]);
+  }, [ragTestRunJobId, ragTestRunning, openCompletedRagRunModal]);
 
-  useEffect(() => {
-    const onOpenRagRunDetails = () => {
-      setActiveTab("testing");
-      setTestingSubTab("rag-tests");
-    };
-    window.addEventListener("coreui:open-rag-run-details", onOpenRagRunDetails);
-    return () => window.removeEventListener("coreui:open-rag-run-details", onOpenRagRunDetails);
+  const handlePendingRagRunOpenHandled = useCallback(() => {
+    setPendingRagRunOpenId(null);
   }, []);
 
   const handleRagTestRunStart = async (body) => {
@@ -446,6 +454,8 @@ function App() {
             runProgress={ragTestRunProgress}
             results={ragTestRunResults}
             runError={ragTestRunError}
+            pendingOpenRunId={pendingRagRunOpenId}
+            onPendingOpenHandled={handlePendingRagRunOpenHandled}
             onStartRun={handleRagTestRunStart}
             onCancelRun={handleRagTestRunCancel}
           />
@@ -663,7 +673,7 @@ function App() {
       {sessionId && (
         <InfrastructureAlertsBridge pollIntervalSec={serviceStatusPollIntervalSec} />
       )}
-      {sessionId && <NotificationCenterShell />}
+      {sessionId && <NotificationCenterShell onOpenRagRunDetails={openCompletedRagRunModal} />}
       </div>
     </NotificationCenterProvider>
   );

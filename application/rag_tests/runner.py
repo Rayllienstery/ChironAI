@@ -18,6 +18,37 @@ from domain.entities.rag import RagQuestionRequest
 from application.rag_tests.validator import validate_result
 
 
+def build_proxy_chat_payload(
+    *,
+    question: str,
+    model: str,
+    collection_name: str,
+    client_request_id: str,
+    prompt_name: str | None = None,
+    temperature: float | None = None,
+    top_k: float | None = None,
+    testing_disable_rerank: bool | None = None,
+) -> dict[str, Any]:
+    """Canonical /v1/chat/completions payload for RAG tests parity with proxy."""
+    payload: dict[str, Any] = {
+        "messages": [{"role": "user", "content": question}],
+        "model": model,
+        "collection_name": collection_name,
+        "stream": True,
+        "include_rag_metadata": True,
+        "client_request_id": client_request_id,
+    }
+    if prompt_name:
+        payload["prompt_name"] = prompt_name
+    if temperature is not None:
+        payload["temperature"] = float(temperature)
+    if top_k is not None:
+        payload["top_k"] = float(top_k)
+    if testing_disable_rerank is not None:
+        payload["testing_disable_rerank"] = bool(testing_disable_rerank)
+    return payload
+
+
 def run_one_test(
     test: dict[str, Any],
     model: str,

@@ -27,6 +27,8 @@ function TestingTab({
   runProgress,
   results,
   runError,
+  pendingOpenRunId,
+  onPendingOpenHandled,
   onStartRun,
   onCancelRun,
 }) {
@@ -64,6 +66,8 @@ function TestingTab({
               runProgress={runProgress}
               results={results}
               runError={runError}
+              pendingOpenRunId={pendingOpenRunId}
+              onPendingOpenHandled={onPendingOpenHandled}
               onStartRun={onStartRun}
               onCancelRun={onCancelRun}
             />

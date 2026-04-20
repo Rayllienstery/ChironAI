@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import logging
-import json
 import os
 import sys
 from pathlib import Path
 from typing import Any
 
 from application.rag.params import RAGAnswerParams, RAGDependencies
+from application.rag.proxy_settings_contract import (
+    load_proxy_settings,
+    resolve_proxy_rerank_enabled,
+    resolve_web_interaction_flags,
+)
 from infrastructure.database import get_settings_repository
 from llm_proxy.config import LlmProxyRuntimeConfig
 from llm_proxy.contracts import LlmProxyBaseContext, LlmProxyExternalDocsBundle, LlmProxyWiring
@@ -93,17 +97,20 @@ def _get_proxy_rerank_enabled_for_proxy() -> bool:
     """
     try:
         repo = get_settings_repository()
-        raw = repo.get_app_setting("proxy_settings")
-        if raw:
-            loaded = json.loads(raw)
-            if isinstance(loaded, dict) and "rerank_for_rag" in loaded:
-                return bool(loaded.get("rerank_for_rag"))
     except Exception:
-        pass
-    try:
-        return bool(get_proxy_rerank_enabled())
-    except Exception:
-        return False
+        repo = None
+    if repo is None:
+        try:
+            return bool(get_proxy_rerank_enabled())
+        except Exception:
+            return False
+    proxy_settings = load_proxy_settings(repo)
+    enabled, _source = resolve_proxy_rerank_enabled(
+        settings_repo=repo,
+        proxy_settings=proxy_settings,
+        fallback_getter=get_proxy_rerank_enabled,
+    )
+    return enabled
 
 
 def build_web_supplement_for_proxy(
@@ -137,9 +144,15 @@ def build_web_supplement_for_proxy(
     except ImportError:
         return None, meta
 
-    master = bool(proxy_settings.get("web_interaction_enabled", False))
-    on_kw = bool(proxy_settings.get("web_interaction_on_keywords", True))
-    on_fw = bool(proxy_settings.get("web_interaction_on_low_confidence_framework", True))
+    flags = resolve_web_interaction_flags(
+        proxy_settings=proxy_settings,
+        env_ddg_news=ddg_news_enabled(),
+        env_fetch_page=fetch_page_env_enabled(),
+        env_wikipedia=wikipedia_env_enabled(),
+    )
+    master = bool(flags["web_interaction_enabled"]["value"])
+    on_kw = bool(flags["web_interaction_on_keywords"]["value"])
+    on_fw = bool(flags["web_interaction_on_low_confidence_framework"]["value"])
 
     ok, trigger = should_fetch_web_supplement(
         last_user or "",
@@ -154,9 +167,9 @@ def build_web_supplement_for_proxy(
         return None, meta
     try:
         n = max_results_default()
-        enable_news = bool(proxy_settings.get("web_interaction_ddg_news", False)) or ddg_news_enabled()
-        enable_fetch = bool(proxy_settings.get("web_interaction_fetch_page", False)) or fetch_page_env_enabled()
-        enable_wiki = bool(proxy_settings.get("web_interaction_wikipedia", False)) or wikipedia_env_enabled()
+        enable_news = bool(flags["web_interaction_ddg_news"]["value"])
+        enable_fetch = bool(flags["web_interaction_fetch_page"]["value"])
+        enable_wiki = bool(flags["web_interaction_wikipedia"]["value"])
         text, dbg = build_web_supplement_bundle(
             (last_user or "").strip(),
             trigger=trigger,  # type: ignore[arg-type]
@@ -178,6 +191,8 @@ def build_web_supplement_for_proxy(
         ):
             if k in dbg:
                 meta[k] = dbg[k]
+        meta["settings_sources"] = {k: str(v.get("source") or "") for k, v in flags.items()}
+        meta["settings_effective"] = {k: bool(v.get("value")) for k, v in flags.items()}
     except Exception as e:
         meta["error"] = str(e)
         _RAG_LOG.warning("web supplement fetch failed: %s", e)

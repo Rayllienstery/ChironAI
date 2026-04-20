@@ -84,6 +84,8 @@ function RagTestsTab({
   runProgress = null,
   results = [],
   runError = null,
+  pendingOpenRunId = null,
+  onPendingOpenHandled = null,
   onStartRun,
   onCancelRun,
 }) {
@@ -425,11 +427,12 @@ function RagTestsTab({
   useEffect(() => {
     if (!resultDetailModal && !liveMonitorDetailOpen && !runHistoryModal && !historySectionOpen && !runCompareModal) return undefined;
     const onKey = (e) => {
-      if (e.key === 'Escape') setResultDetailModal(null);
-      if (e.key === 'Escape') setLiveMonitorDetailOpen(false);
-      if (e.key === 'Escape') setRunHistoryModal(null);
-      if (e.key === 'Escape') setHistorySectionOpen(false);
-      if (e.key === 'Escape') setRunCompareModal(null);
+      if (e.key !== 'Escape') return;
+      setResultDetailModal(null);
+      setLiveMonitorDetailOpen(false);
+      setRunHistoryModal(null);
+      setHistorySectionOpen(false);
+      setRunCompareModal(null);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -494,22 +497,13 @@ function RagTestsTab({
   }, []);
 
   useEffect(() => {
-    const consumePendingOpen = () => {
-      const pendingId = String(window.__coreuiOpenRagRunId || '').trim();
-      if (!pendingId) return;
-      window.__coreuiOpenRagRunId = '';
-      void handleSelectPastRun(pendingId);
-    };
-    const onOpen = (e) => {
-      const rid = String(e?.detail?.runId || '').trim();
-      if (!rid) return;
-      window.__coreuiOpenRagRunId = '';
-      void handleSelectPastRun(rid);
-    };
-    consumePendingOpen();
-    window.addEventListener('coreui:open-rag-run-details', onOpen);
-    return () => window.removeEventListener('coreui:open-rag-run-details', onOpen);
-  }, [handleSelectPastRun]);
+    const rid = String(pendingOpenRunId || '').trim();
+    if (!rid) return;
+    void handleSelectPastRun(rid);
+    if (typeof onPendingOpenHandled === 'function') {
+      onPendingOpenHandled();
+    }
+  }, [pendingOpenRunId, onPendingOpenHandled, handleSelectPastRun]);
 
   const filteredTests = tests;
 

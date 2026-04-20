@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import inspect
 import json
 import logging
 import threading
@@ -21,6 +20,11 @@ except ImportError:
 from flask import Response, jsonify, request
 
 from infrastructure.metrics import increment, histogram, gauge
+from application.rag.proxy_settings_contract import (
+    load_proxy_settings,
+    resolve_fetch_web_knowledge,
+    resolve_rag_collection,
+)
 
 from infrastructure.ollama.model_capabilities import (
     caps_supports_thinking,
@@ -98,11 +102,7 @@ def _load_proxy_settings_and_model(get_settings_repository: Any) -> tuple[dict[s
     try:
         settings_repo = get_settings_repository()
         proxy_model_setting = (settings_repo.get_app_setting("proxy_model") or "").strip()
-        proxy_settings_raw = settings_repo.get_app_setting("proxy_settings")
-        if proxy_settings_raw:
-            loaded = json.loads(proxy_settings_raw)
-            if isinstance(loaded, dict):
-                proxy_settings = loaded
+        proxy_settings = load_proxy_settings(settings_repo)
     except Exception:
         pass
     if not proxy_model_setting and proxy_settings.get("model"):
@@ -483,33 +483,6 @@ def _normalize_and_sanitize_messages(raw_messages: list[Any]) -> list[dict[str, 
     return out
 
 
-def _get_rag_answer_params_compat(
-    get_params: Any,
-    *,
-    webui_dir: str | None,
-    collection_name: str | None,
-    prompt_name: str | None,
-) -> tuple[Any, Any]:
-    """
-    Compatibility bridge for legacy/new signatures of ``get_rag_answer_params``.
-
-    New isolated RagService API dropped ``prompt_name``; older host wiring may still accept it.
-    """
-    kwargs: dict[str, Any] = {
-        "webui_dir": webui_dir,
-        "collection_name": collection_name,
-    }
-    if prompt_name:
-        try:
-            sig = inspect.signature(get_params)
-            if "prompt_name" in sig.parameters:
-                kwargs["prompt_name"] = prompt_name
-        except (TypeError, ValueError):
-            # Builtins/partial callables may not expose signature reliably; fall back to minimal kwargs.
-            pass
-    return get_params(**kwargs)
-
-
 def run_chat_completions(
     w: LlmProxyWiring, *, body_override: dict[str, Any] | None = None
 ) -> Response | tuple[Response, int]:
@@ -807,13 +780,11 @@ def run_chat_completions(
                 }
             ), 400
 
-    fetch_web_knowledge_raw = body.get("fetch_web_knowledge")
-    if fetch_web_knowledge_raw is None:
-        fetch_web_knowledge = bool(proxy_settings.get("fetch_web_knowledge", False))
-    else:
-        fetch_web_knowledge = bool(fetch_web_knowledge_raw)
-    if is_autocomplete:
-        fetch_web_knowledge = False
+    fetch_web_knowledge, fetch_web_knowledge_source = resolve_fetch_web_knowledge(
+        request_value=body.get("fetch_web_knowledge"),
+        proxy_settings=proxy_settings,
+        is_autocomplete=bool(is_autocomplete),
+    )
 
     _get_rag_prompt = w.get_rag_prompt_prefix_suffix
     rag_prompt_file_exists = w.rag_prompt_file_exists
@@ -915,6 +886,7 @@ def run_chat_completions(
         "tool_result_last_content_preview": (last_tool_content[:240] if last_tool_content else ""),
         "force_rag": bool(force_rag),
         "fetch_web_knowledge": bool(fetch_web_knowledge),
+        "fetch_web_knowledge_source": fetch_web_knowledge_source,
         "reasoning_level": explicit_reasoning or reasoning_level,
         "reasoning_for_prompt": reasoning_for_prompt,
         "user_query_preview": (user_query or "")[:500],
@@ -987,26 +959,24 @@ def run_chat_completions(
     # 2) app_settings.rag_collection
     # 3) proxy_settings.rag_collection (backward-compatible / single blob settings)
     # 4) default wiring (collection file/config) when none are set
-    request_collection = (body.get("collection_name") or "").strip() or None
-    collection_source = "request"
-    if not request_collection:
-        try:
-            settings_repo = w.get_settings_repository()
-            request_collection = (settings_repo.get_app_setting(RAG_COLLECTION_APP_SETTING) or "").strip() or None
-            collection_source = "app_settings.rag_collection"
-            if not request_collection:
-                request_collection = (proxy_settings.get("rag_collection") or "").strip() or None
-                if request_collection:
-                    collection_source = "proxy_settings.rag_collection"
-        except Exception:
-            request_collection = None
-            collection_source = "default"
+    try:
+        settings_repo = w.get_settings_repository()
+    except Exception:
+        settings_repo = None
+    if settings_repo is not None:
+        request_collection, collection_source = resolve_rag_collection(
+            request_collection=(body.get("collection_name") or "").strip() or None,
+            settings_repo=settings_repo,
+            proxy_settings=proxy_settings,
+            app_key=RAG_COLLECTION_APP_SETTING,
+        )
+    else:
+        request_collection = (body.get("collection_name") or "").strip() or None
+        collection_source = "request" if request_collection else "default"
     if request_collection and not is_autocomplete:
-        req_params, req_deps = _get_rag_answer_params_compat(
-            w.get_rag_answer_params,
+        req_params, req_deps = w.get_rag_answer_params(
             webui_dir=webui_dir,
             collection_name=request_collection,
-            prompt_name=proxy_prompt_name_required if system_prefix is None else None,
         )
         if system_prefix is not None:
             effective_prefix = system_prefix
@@ -1029,6 +999,7 @@ def run_chat_completions(
         trace["request"]["actual_model"] = actual_model
         trace["request"]["collection_name"] = request_collection
         trace["request"]["collection_source"] = collection_source
+        trace["request"]["legacy_collection_fallback_used"] = collection_source == "proxy_settings.rag_collection"
     else:
         trace["request"]["collection_source"] = "default"
 

@@ -68,7 +68,7 @@ function BroomIcon() {
   );
 }
 
-function NotificationCenterShell() {
+function NotificationCenterShell({ onOpenRagRunDetails = null }) {
   const {
     sessionId,
     persisted,
@@ -117,12 +117,7 @@ function NotificationCenterShell() {
 
   const openRagRunResults = (runId) => {
     if (!runId) return;
-    try {
-      window.__coreuiOpenRagRunId = runId;
-      window.dispatchEvent(new CustomEvent('coreui:open-rag-run-details', { detail: { runId } }));
-    } catch {
-      // ignore
-    }
+    if (typeof onOpenRagRunDetails === 'function') onOpenRagRunDetails(runId);
   };
 
   return (

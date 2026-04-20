@@ -25,6 +25,7 @@ class QdrantRagRepository:
 
     DENSE_NAME = "dense"
     SPARSE_NAME = "sparse"
+    LEGACY_DENSE_FALLBACK_ENV = "QDRANT_LEGACY_DENSE_FALLBACK_ENABLED"
 
     def __init__(
         self,
@@ -38,7 +39,11 @@ class QdrantRagRepository:
         self._default_collection = default_collection
         self._explicit_collection = (explicit_collection or "").strip() or None
         self._mode_cache_coll: str | None = None
-        self._mode_cache: str | None = None  # "legacy" | "hybrid"
+        self._mode_cache: str | None = None  # "legacy" | "named_dense" | "hybrid"
+
+    def _legacy_dense_fallback_enabled(self) -> bool:
+        raw = (os.getenv(self.LEGACY_DENSE_FALLBACK_ENV) or "1").strip().lower()
+        return raw in ("1", "true", "yes", "on")
 
     def get_collection_name(self) -> str:
         """Return current collection name. Explicit collection overrides file and default."""
@@ -71,7 +76,7 @@ class QdrantRagRepository:
                 mode = "hybrid"
             elif isinstance(vectors, dict) and self.DENSE_NAME in vectors:
                 # Named dense without sparse (partial); still use named dense search
-                mode = "legacy_named_dense"
+                mode = "named_dense"
             else:
                 mode = "legacy"
         except Exception:
@@ -124,7 +129,7 @@ class QdrantRagRepository:
             "limit": top_k,
             "with_payload": True,
         }
-        if mode in ("hybrid", "legacy_named_dense"):
+        if mode in ("hybrid", "named_dense"):
             body["vector"] = {"name": self.DENSE_NAME, "vector": vector}
         else:
             body["vector"] = vector
@@ -140,8 +145,8 @@ class QdrantRagRepository:
             data = resp.json()
             return data.get("result") or []
         except httpx.HTTPStatusError as e:
-            # Named vector failed — try legacy single vector
-            if mode in ("hybrid", "legacy_named_dense"):
+            # Explicit compatibility policy: only fallback to unnamed dense when enabled.
+            if mode in ("hybrid", "named_dense") and self._legacy_dense_fallback_enabled():
                 try:
                     body2 = {"vector": vector, "limit": top_k, "with_payload": True}
                     if filter_dict:
