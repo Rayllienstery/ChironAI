@@ -14,6 +14,7 @@ from rag_service.domain.services.retrieval import (
     merge_qdrant_filters,
     need_more_chunks,
 )
+from rag_service.application.pipeline_steps.helpers import retrieval_bool_with_ui_override
 
 
 class QueryPrepStep:
@@ -50,6 +51,9 @@ class QueryPrepStep:
                 "intent": intent,
                 "combined_extra_filter": combined_extra_filter,
                 "resolved_top_k": resolved_top_k,
+                "structured_rag_context_enabled": retrieval_bool_with_ui_override(
+                    "structured_rag_context_enabled"
+                ),
             }
         )
 

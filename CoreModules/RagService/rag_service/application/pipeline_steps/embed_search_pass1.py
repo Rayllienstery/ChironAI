@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Mapping, MutableMapping
 
 from rag_service.core.contracts import StepResult
+from rag_service.application.pipeline_steps.retrieval_flow import init_retrieval_timings, retrieve_pass1_candidates
 
 
 class EmbedSearchPass1Step:
@@ -26,31 +27,25 @@ class EmbedSearchPass1Step:
         return True
 
     def run(self, ctx: MutableMapping[str, Any]) -> StepResult:
-        # Local import to avoid broad module coupling at import-time.
-        from rag_service.application.use_cases import search_rag
-
         question = str(ctx["question"])
         rag_repo = ctx["rag_repo"]
         embed_provider = ctx["embed_provider"]
-        rerank_client = ctx.get("rerank_client")
         resolved_top_k = int(ctx["resolved_top_k"])
         combined_extra_filter = ctx.get("combined_extra_filter")
-        intent = ctx.get("intent")
-
-        results, timings, rerank_pool = search_rag(
+        timings = init_retrieval_timings()
+        results, final_k = retrieve_pass1_candidates(
             question,
             rag_repo,
             embed_provider,
-            rerank_client,
             top_k=resolved_top_k,
             extra_filter=combined_extra_filter,
-            intent=intent,
+            timings=timings,
         )
         return StepResult(
             context_updates={
-                "results": results,
+                "candidate_results": results,
                 "timings": timings,
-                "rerank_pool": rerank_pool,
+                "final_k": int(final_k),
                 "variants_n": int(timings.get("query_variants_count", 1) or 1),
             }
         )

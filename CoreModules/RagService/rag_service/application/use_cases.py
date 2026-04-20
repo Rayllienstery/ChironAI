@@ -13,50 +13,36 @@ import time
 from typing import Any
 
 from rag_service.application.pipeline_steps.context_assembly import ContextAssemblyStep
+from rag_service.application.pipeline_steps.concept_expansion_pass2 import ConceptExpansionPass2Step
+from rag_service.application.pipeline_steps.coverage_gate import CoverageGateStep
+from rag_service.application.pipeline_steps.coverage_supplemental import CoverageSupplementalStep
 from rag_service.application.pipeline_steps.embed_search_pass1 import EmbedSearchPass1Step
 from rag_service.application.pipeline_steps.helpers import finalize_reranked_hits
+from rag_service.application.pipeline_steps.metadata_rank import MetadataRankStep
 from rag_service.application.pipeline_steps.query_prep import QueryPrepStep
+from rag_service.application.pipeline_steps.rerank import RerankStep
+from rag_service.application.pipeline_steps.retrieval_flow import (
+    apply_metadata_rank,
+    apply_rerank as _rf_apply_rerank,
+    init_retrieval_timings,
+    retrieve_pass1_candidates,
+    search_one as _rf_search_one,
+    maybe_apply_concept_expansion,
+)
 from rag_service.config import get_retrieval_bool, get_retrieval_int
 from rag_service.core import RagCore, StepRegistry
 from rag_service.domain.entities import QueryIntent, RagAnswerResponse, RagContext, RagQuestionRequest
 from rag_service.domain.ports import ChatLLMClient, EmbeddingProvider, RagRepository, RerankClient
 from rag_service.domain.services.prompt_builder import (
-    build_context_block,
     build_system_content,
-    framework_filter,
     last_user_content,
 )
 from rag_service.domain.services.rag_trace import build_rag_trace_from_timings
 from rag_service.domain.services.rag_trigger import compute_rag_trigger_score
-from rag_service.domain.services.rerank import (
-    assign_rerank_scores,
-    build_rerank_prompt,
-    parse_rerank_order,
-    reorder_hits_by_indices,
-)
 from rag_service.domain.services.retrieval import (
-    FINAL_CONTEXT_K,
-    MULTI_CHUNK_FINAL_K,
     MULTI_CHUNK_TOP_K,
-    RERANK_MAX_CANDIDATES,
-    build_qdrant_filter,
-    build_secondary_retrieval_query,
-    merge_qdrant_filters,
-    combined_doc_priority,
-    intent_match_priority,
     compute_concept_coverage_report,
-    expand_concepts_with_map,
-    expand_query_variants,
-    extract_symbols_from_pass1_hits,
-    extract_target_concepts_for_coverage,
-    is_version_question,
     need_more_chunks,
-    parse_versions_from_question,
-    query_for_retrieval,
-    rrf_merge_hit_lists,
-    extra_filter_framework_equals,
-    extra_filter_symbol_equals,
-    infer_query_intent,
     should_skip_rag_search,
 )
 from rag_service.infrastructure.openai_multipart_vision import (
@@ -64,7 +50,6 @@ from rag_service.infrastructure.openai_multipart_vision import (
     openai_parts_to_flat_text,
 )
 from rag_service.infrastructure.openai_ollama_tool_bridge import openai_messages_to_ollama
-from rag_service.infrastructure.sparse_text import normalize_text_for_sparse, text_to_sparse_vector
 
 _rag_log = logging.getLogger("trag.rag")
 
@@ -85,27 +70,7 @@ def _apply_rerank(
     rerank_client: RerankClient | None,
     timings: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
-    """Apply LLM rerank ordering and assign rerank_score to all hits; caller cuts to final_k."""
-    if not hits:
-        return []
-    candidates = hits[:RERANK_MAX_CANDIDATES]
-    candidate_texts = [
-        (idx, (h.get("payload") or {}).get("text", ""))
-        for idx, h in enumerate(candidates, start=1)
-    ]
-    prompt_text = build_rerank_prompt(question, candidate_texts)
-    if timings is not None:
-        timings["rerank_prompt_tokens_in"] = timings.get("rerank_prompt_tokens_in", 0.0) + (
-            0 if not prompt_text else max(1, int(len(prompt_text) / 4))
-        )
-    raw = rerank_client.rerank(question, prompt_text) if rerank_client else None
-    order = parse_rerank_order(raw) if raw else None
-    if order is not None:
-        hits = reorder_hits_by_indices(candidates, order, hits)
-    else:
-        hits = list(hits)
-    assign_rerank_scores(hits)
-    return hits
+    return _rf_apply_rerank(question, hits, rerank_client, timings)
 
 
 def _finalize_reranked_hits(
@@ -128,40 +93,17 @@ def _search_one(
     embed_key: str = "embed_s",
     search_key: str = "search_s",
 ) -> list[dict[str, Any]]:
-    t0 = time.perf_counter()
-    vec = embed_provider.embed(search_query)
-    timings[embed_key] = timings.get(embed_key, 0.0) + time.perf_counter() - t0
-    timings["embed_tokens_in"] += 0 if not search_query else max(1, int(len(search_query) / 4))
-    si: list[int] | None = None
-    sv: list[float] | None = None
-    if hybrid_on:
-        si, sv = text_to_sparse_vector(normalize_text_for_sparse(search_query))
-        if not si:
-            si, sv = None, None
-    t0 = time.perf_counter()
-    if si and sv:
-        results = rag_repo.search(
-            vec,
-            top_k=top_k,
-            filter_dict=filter_dict,
-            sparse_indices=si,
-            sparse_values=sv,
-        )
-    else:
-        results = rag_repo.search(vec, top_k=top_k, filter_dict=filter_dict)
-    if filter_dict and not results:
-        if si and sv:
-            results = rag_repo.search(
-                vec,
-                top_k=top_k,
-                filter_dict=None,
-                sparse_indices=si,
-                sparse_values=sv,
-            )
-        else:
-            results = rag_repo.search(vec, top_k=top_k, filter_dict=None)
-    timings[search_key] = timings.get(search_key, 0.0) + time.perf_counter() - t0
-    return results
+    return _rf_search_one(
+        rag_repo,
+        embed_provider,
+        search_query,
+        top_k,
+        filter_dict,
+        hybrid_on=hybrid_on,
+        timings=timings,
+        embed_key=embed_key,
+        search_key=search_key,
+    )
 
 
 def search_rag(
@@ -181,202 +123,26 @@ def search_rag(
     ``extra_filter`` is merged with ``build_qdrant_filter(question)`` via ``merge_qdrant_filters``
     (e.g. ``extra_filter_section_path_joined_equals`` for section-scoped search).
     """
-    timings: dict[str, float] = {
-        "embed_s": 0.0,
-        "search_s": 0.0,
-        "rerank_s": 0.0,
-        "expand_variants_s": 0.0,
-        "pass2_embed_s": 0.0,
-        "pass2_search_s": 0.0,
-        "concept_expansion_prep_s": 0.0,
-        "concept_expansion_pass2_ran": 0.0,
-        "concept_expansion_pass2_new_hits": 0.0,
-        "retrieval_candidates_n": 0.0,
-        "query_variants_count": 1.0,
-        "context_assembly_s": 0.0,
-        # Token estimates for UI trace; true tokenization isn't available here.
-        "embed_tokens_in": 0.0,
-        "rerank_prompt_tokens_in": 0.0,
-        "final_context_k_used": 0.0,
-        "coverage_gate_applied": 0.0,
-        "coverage_retry_search_s": 0.0,
-    }
+    timings = init_retrieval_timings()
     if top_k is None:
         top_k = MULTI_CHUNK_TOP_K if need_more_chunks(question) else get_retrieval_int("top_k", DEFAULT_TOP_K)
-    hybrid_on = is_hybrid_sparse_enabled() and rag_repo.supports_hybrid()
-    filter_dict = merge_qdrant_filters(build_qdrant_filter(question), extra_filter)
-    k = max(top_k, RERANK_MAX_CANDIDATES) if not is_version_question(question) else top_k
-    final_k = MULTI_CHUNK_FINAL_K if need_more_chunks(question) else FINAL_CONTEXT_K
-
-    if not is_version_question(question):
-        t_exp0 = time.perf_counter()
-        variants = expand_query_variants(question)
-        timings["expand_variants_s"] += time.perf_counter() - t_exp0
-        per_variant_k = max(4, min(k, max(4, k // max(1, len(variants)))))
-        lists: list[list[dict[str, Any]]] = []
-        for variant in variants:
-            sq = query_for_retrieval(variant)
-            lists.append(
-                _search_one(
-                    rag_repo,
-                    embed_provider,
-                    sq,
-                    per_variant_k,
-                    filter_dict,
-                    hybrid_on=hybrid_on,
-                    timings=timings,
-                )
-            )
-        if len(lists) == 1:
-            results = lists[0]
-        else:
-            results = rrf_merge_hit_lists(lists, limit=k)
-        if intent is not None:
-            results.sort(
-                key=lambda h: combined_doc_priority(h) + intent_match_priority(h, intent),
-                reverse=True,
-            )
-        else:
-            results.sort(key=combined_doc_priority, reverse=True)
-
-        timings["query_variants_count"] = float(len(variants))
-        if retrieval_bool_with_ui_override("concept_expansion_enabled"):
-            t_prep = time.perf_counter()
-            seed_n = get_retrieval_int("concept_expansion_seed_hits", 4)
-            seeds: list[str] = []
-            seen_seed: set[str] = set()
-            for x in extract_target_concepts_for_coverage(question):
-                xl = (x or "").strip().lower()
-                if xl and xl not in seen_seed:
-                    seen_seed.add(xl)
-                    seeds.append(xl)
-            for x in extract_symbols_from_pass1_hits(results, seed_n):
-                if x not in seen_seed:
-                    seen_seed.add(x)
-                    seeds.append(x)
-            expanded = expand_concepts_with_map(seeds)
-            timings["concept_expansion_prep_s"] = time.perf_counter() - t_prep
-            if expanded:
-                sq2 = build_secondary_retrieval_query(question, expanded)
-                pass2_k = get_retrieval_int("concept_expansion_pass2_top_k", 8)
-                p2 = _search_one(
-                    rag_repo,
-                    embed_provider,
-                    sq2,
-                    pass2_k,
-                    filter_dict,
-                    hybrid_on=hybrid_on,
-                    timings=timings,
-                    embed_key="pass2_embed_s",
-                    search_key="pass2_search_s",
-                )
-                seen_ids = {h.get("id") for h in results}
-                added = 0
-                for h in p2:
-                    hid = h.get("id")
-                    if hid is not None and hid not in seen_ids:
-                        seen_ids.add(hid)
-                        results.append(h)
-                        added += 1
-                timings["concept_expansion_pass2_ran"] = 1.0
-                timings["concept_expansion_pass2_new_hits"] = float(added)
-                if intent is not None:
-                    results.sort(
-                        key=lambda h: combined_doc_priority(h) + intent_match_priority(h, intent),
-                        reverse=True,
-                    )
-                else:
-                    results.sort(key=combined_doc_priority, reverse=True)
-
-        timings["retrieval_candidates_n"] = float(len(results))
-        t0 = time.perf_counter()
-        results = _apply_rerank(question, results, rerank_client, timings=timings)
-        rerank_pool = list(results)
-        results = _finalize_reranked_hits(question, rerank_pool, final_k)
-        timings["final_context_k_used"] = float(final_k)
-        timings["rerank_s"] += time.perf_counter() - t0
-        return results, timings, rerank_pool
-    search_query = query_for_retrieval(question)
-    results = _search_one(
+    results, final_k = retrieve_pass1_candidates(
+        question,
         rag_repo,
         embed_provider,
-        search_query,
-        k,
-        filter_dict,
-        hybrid_on=hybrid_on,
+        top_k=top_k,
+        extra_filter=extra_filter,
         timings=timings,
     )
-    ios_q, swift_q = parse_versions_from_question(question)
-    extra_results: list[dict[str, Any]] = []
-    for v in swift_q:
-        qv = f"Swift {v} version RELEASE"
-        extra_results.extend(
-            _search_one(
-                rag_repo,
-                embed_provider,
-                qv,
-                6,
-                filter_dict,
-                hybrid_on=hybrid_on,
-                timings=timings,
-            )
-        )
-    for v in ios_q:
-        qv = f"iOS {v} version RELEASE"
-        extra_results.extend(
-            _search_one(
-                rag_repo,
-                embed_provider,
-                qv,
-                6,
-                filter_dict,
-                hybrid_on=hybrid_on,
-                timings=timings,
-            )
-        )
-    if not extra_results:
-        extra_results.extend(
-            _search_one(
-                rag_repo,
-                embed_provider,
-                "Swift version release number RELEASE",
-                8,
-                filter_dict,
-                hybrid_on=hybrid_on,
-                timings=timings,
-            )
-        )
-    seen_ids = {r["id"] for r in results}
-    for r in extra_results:
-        if r["id"] not in seen_ids:
-            results.append(r)
-            seen_ids.add(r["id"])
-    ios_set = set(ios_q)
-    swift_set = set(swift_q)
-
-    def _score(h: dict[str, Any]) -> int:
-        payload = h.get("payload") or {}
-        ios_payload = set(payload.get("ios_versions") or [])
-        swift_payload = set(payload.get("swift_versions") or [])
-        s = 0
-        if ios_set and ios_payload & ios_set:
-            s += 3
-        if swift_set and swift_payload & swift_set:
-            s += 3
-        if (ios_set or swift_set) and (ios_payload or swift_payload):
-            s += 1
-        return s
-
-    if ios_set or swift_set:
-        results.sort(key=_score, reverse=True)
-        if intent is not None:
-            results.sort(
-                key=lambda h: combined_doc_priority(h) + intent_match_priority(h, intent),
-                reverse=True,
-            )
-        else:
-            results.sort(key=combined_doc_priority, reverse=True)
-    timings["query_variants_count"] = 1.0
+    results = maybe_apply_concept_expansion(
+        question,
+        results,
+        rag_repo,
+        embed_provider,
+        extra_filter=extra_filter,
+        timings=timings,
+    )
+    results = apply_metadata_rank(results, intent)
     timings["retrieval_candidates_n"] = float(len(results))
     t0 = time.perf_counter()
     results = _apply_rerank(question, results, rerank_client, timings=timings)
@@ -425,6 +191,11 @@ def _build_base_rag_core() -> RagCore:
     registry = StepRegistry()
     registry.register(QueryPrepStep())
     registry.register(EmbedSearchPass1Step())
+    registry.register(ConceptExpansionPass2Step())
+    registry.register(MetadataRankStep())
+    registry.register(RerankStep())
+    registry.register(CoverageGateStep())
+    registry.register(CoverageSupplementalStep())
     registry.register(ContextAssemblyStep())
     return RagCore(registry)
 
