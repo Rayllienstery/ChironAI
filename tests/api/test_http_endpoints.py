@@ -2654,3 +2654,440 @@ def test_v1_blueprint_unhandled_exception_is_logged_for_notifications(
     assert source == "rag_routes.v1_unhandled"
     assert err_type == "RuntimeError"
     assert stage == "unhandled_exception"
+
+
+def test_v1_chat_completions_smoke_supports_two_turn_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+    import llm_proxy.v1_blueprint as v1_blueprint
+    from flask import jsonify, request
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_chat_completions(_wiring, body_override=None):
+        payload = body_override if isinstance(body_override, dict) else (request.get_json(force=True, silent=True) or {})
+        calls.append(dict(payload or {}))
+        messages = list((payload or {}).get("messages") or [])
+        last_user = ""
+        for m in reversed(messages):
+            if isinstance(m, dict) and m.get("role") == "user":
+                last_user = str(m.get("content") or "")
+                break
+        return jsonify(
+            {
+                "id": "chatcmpl_tools",
+                "object": "chat.completion",
+                "created": 789,
+                "model": "Hard-worker",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": f"echo:{last_user}"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            }
+        )
+
+    monkeypatch.setattr(v1_blueprint, "run_chat_completions", fake_chat_completions)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "Hard-worker",
+            "messages": [{"role": "user", "content": "Hi"}],
+        },
+    )
+    assert first.status_code == 200
+    assert "echo:Hi" in str((first.get_json() or {}).get("choices", [{}])[0].get("message", {}).get("content", ""))
+
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "Hard-worker",
+            "messages": [
+                {"role": "user", "content": "Hi"},
+                {"role": "assistant", "content": "echo:Hi"},
+                {"role": "user", "content": "Explain this codebase"},
+            ],
+            "tools": [{"type": "function", "function": {"name": "apply_file_edit", "parameters": {"type": "object"}}}],
+            "tool_choice": "auto",
+        },
+    )
+    assert second.status_code == 200
+    assert "echo:Explain this codebase" in str(
+        (second.get_json() or {}).get("choices", [{}])[0].get("message", {}).get("content", "")
+    )
+    assert len(calls) == 2
+    assert (calls[1].get("tools") or [])[0].get("type") == "function"
+
+
+def test_v1_responses_route_maps_to_chat_and_returns_response_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+    import llm_proxy.v1_blueprint as v1_blueprint
+    from flask import jsonify
+
+    captured: dict[str, Any] = {}
+
+    def fake_chat_completions(_wiring, body_override=None):
+        captured["body_override"] = body_override
+        return jsonify(
+            {
+                "id": "chatcmpl_test",
+                "object": "chat.completion",
+                "created": 123,
+                "model": "Hard-worker",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hello from RAG"}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            }
+        )
+
+    monkeypatch.setattr(v1_blueprint, "run_chat_completions", fake_chat_completions)
+
+    app = rag_routes.create_app()
+    r = app.test_client().post("/v1/responses", json={"model": "Hard-worker", "input": "Hi"})
+    assert r.status_code == 200
+    payload = r.get_json() or {}
+    assert payload.get("object") == "response"
+    assert payload.get("status") == "completed"
+    assert payload.get("output_text") == "Hello from RAG"
+    usage = payload.get("usage") or {}
+    assert usage.get("input_tokens") == 10
+    assert usage.get("output_tokens") == 5
+    msgs = (captured.get("body_override") or {}).get("messages") or []
+    assert msgs and msgs[0].get("role") == "user"
+    assert msgs[0].get("content") == "Hi"
+
+
+def test_v1_responses_tools_normalizer_maps_local_shell_and_custom_to_function() -> None:
+    import llm_proxy.v1_blueprint as v1_blueprint
+
+    tools, diag = v1_blueprint._responses_normalize_tools(
+        [
+            {"type": "local_shell"},
+            {"type": "custom", "name": "fetch_docs", "input_schema": {"type": "object", "properties": {"q": {"type": "string"}}}},
+            {"type": "function", "function": {"name": "apply_file_edit", "parameters": {"type": "object"}}},
+        ]
+    )
+    names = [str((((t or {}).get("function") or {}).get("name") or "")) for t in tools]
+    assert "shell" in names
+    assert "fetch_docs" in names
+    assert "apply_file_edit" in names
+    assert diag.get("tools_count_raw") == 3
+    assert diag.get("tools_count_normalized") == 3
+    assert "local_shell->function" in (diag.get("tools_types_normalized") or [])
+    assert "custom->function" in (diag.get("tools_types_normalized") or [])
+
+
+def test_v1_responses_tools_normalizer_drops_unsupported_types() -> None:
+    import llm_proxy.v1_blueprint as v1_blueprint
+
+    tools, diag = v1_blueprint._responses_normalize_tools(
+        [
+            {"type": "mcp_server"},
+            {"type": "image_generation"},
+            {"type": "unknown_codex_tool_xyz"},
+        ]
+    )
+    assert tools == []
+    assert diag.get("tools_count_raw") == 3
+    assert diag.get("tools_count_normalized") == 0
+    dropped = set(diag.get("tools_types_dropped") or [])
+    assert {"mcp_server", "image_generation", "unknown_codex_tool_xyz"}.issubset(dropped)
+
+
+def test_v1_responses_tools_normalizer_maps_codex_builtin_tools_to_functions() -> None:
+    import llm_proxy.v1_blueprint as v1_blueprint
+
+    tools, diag = v1_blueprint._responses_normalize_tools(
+        [
+            {"type": "web_search"},
+            {"type": "file_search"},
+            {"type": "computer_use"},
+            {"type": "shell"},
+        ]
+    )
+    names = sorted(str(((t or {}).get("function") or {}).get("name") or "") for t in tools)
+    assert names == ["computer_use", "file_search", "shell", "web_search"]
+    assert diag.get("tools_count_raw") == 4
+    assert diag.get("tools_count_normalized") == 4
+
+
+def test_v1_responses_tools_normalizer_accepts_codex_flat_function_tools() -> None:
+    """Codex often sends ``type:function`` with ``name``/``parameters`` at top level (no ``function`` dict)."""
+    import llm_proxy.v1_blueprint as v1_blueprint
+
+    tools, diag = v1_blueprint._responses_normalize_tools(
+        [
+            {"type": "function", "name": "apply_patch", "description": "patch", "parameters": {"type": "object"}},
+            {"type": "function", "function": {"name": "shell", "parameters": {"type": "object"}}},
+            {"type": "web_search"},
+        ]
+    )
+    names = {str(((t or {}).get("function") or {}).get("name") or "") for t in tools}
+    assert names == {"apply_patch", "shell", "web_search"}
+    assert diag.get("tools_count_raw") == 3
+    assert diag.get("tools_count_normalized") == 3
+    assert (diag.get("tools_types_dropped") or []) == []
+
+
+def test_v1_responses_tool_choice_flat_function_name() -> None:
+    import llm_proxy.v1_blueprint as v1_blueprint
+
+    body, _stream, _diag = v1_blueprint._responses_request_to_openai_chat_body(
+        {
+            "model": "Hard-worker",
+            "input": "x",
+            "tools": [{"type": "function", "name": "foo", "parameters": {"type": "object"}}],
+            "tool_choice": {"type": "function", "name": "foo"},
+        }
+    )
+    assert body.get("tool_choice") == {"type": "function", "function": {"name": "foo"}}
+
+
+def test_v1_responses_tool_choice_web_search_maps_to_function() -> None:
+    import llm_proxy.v1_blueprint as v1_blueprint
+
+    body, _stream, diag = v1_blueprint._responses_request_to_openai_chat_body(
+        {
+            "model": "Hard-worker",
+            "input": "hi",
+            "tools": [{"type": "web_search"}],
+            "tool_choice": {"type": "web_search"},
+        }
+    )
+    assert (body.get("tool_choice") or {}).get("type") == "function"
+    assert ((body.get("tool_choice") or {}).get("function") or {}).get("name") == "web_search"
+    assert diag.get("tool_choice_normalized") == {"type": "function", "function": {"name": "web_search"}}
+
+
+def test_responses_request_to_openai_body_includes_proxy_trace_meta() -> None:
+    import llm_proxy.v1_blueprint as v1_blueprint
+
+    body, stream, _diag = v1_blueprint._responses_request_to_openai_chat_body(
+        {"model": "Hard-worker", "input": "hi", "stream": True}
+    )
+    assert stream is True
+    assert body.get("_proxy_trace_meta") == {
+        "proxy_v1_route": "/v1/responses",
+        "responses_client_stream": True,
+    }
+
+
+def test_responses_sse_payload_output_item_done_includes_full_message_item() -> None:
+    import json
+
+    import llm_proxy.v1_blueprint as v1_blueprint
+
+    msg_id = "msg_sse_full_item"
+    out = {
+        "id": "resp_sse_msg",
+        "object": "response",
+        "model": "Hard-worker",
+        "output": [
+            {
+                "id": msg_id,
+                "type": "message",
+                "role": "assistant",
+                "status": "completed",
+                "content": [{"type": "output_text", "text": "Hello codex", "annotations": []}],
+            }
+        ],
+        "output_text": "Hello codex",
+    }
+    resp = v1_blueprint._responses_sse_payload(out)
+    payload = resp.get_data(as_text=True)
+    cur_event: str | None = None
+    for line in payload.split("\n"):
+        if line.startswith("event: "):
+            cur_event = line[len("event: ") :].strip()
+            continue
+        if line.startswith("data: ") and line.strip() != "data: [DONE]" and cur_event == "response.output_item.done":
+            data = json.loads(line[len("data: ") :])
+            item = data.get("item") or {}
+            if item.get("type") == "message":
+                assert item.get("id") == msg_id
+                assert item.get("content")
+                assert "Hello codex" in json.dumps(item)
+                return
+    raise AssertionError("message output_item.done with content not found")
+
+
+def test_responses_sse_payload_emits_function_call_stream_events() -> None:
+    import llm_proxy.v1_blueprint as v1_blueprint
+
+    out = {
+        "id": "resp_testfc",
+        "object": "response",
+        "model": "Hard-worker",
+        "output": [
+            {
+                "id": "call_fc1",
+                "type": "function_call",
+                "status": "completed",
+                "name": "shell",
+                "arguments": '{"command":"ls"}',
+                "call_id": "call_fc1",
+            }
+        ],
+        "output_text": "",
+    }
+    resp = v1_blueprint._responses_sse_payload(out)
+    payload = resp.get_data(as_text=True)
+    assert "response.output_item.added" in payload
+    assert "function_call" in payload
+    assert "response.completed" in payload
+    assert "call_fc1" in payload
+
+
+def test_v1_responses_tool_choice_normalized_after_tools_mapping() -> None:
+    import llm_proxy.v1_blueprint as v1_blueprint
+
+    body, _stream, diag = v1_blueprint._responses_request_to_openai_chat_body(
+        {
+            "model": "Hard-worker",
+            "input": "hi",
+            "tools": [{"type": "local_shell"}],
+            "tool_choice": {"type": "local_shell"},
+        }
+    )
+    assert (body.get("tool_choice") or {}).get("type") == "function"
+    assert ((body.get("tool_choice") or {}).get("function") or {}).get("name") == "shell"
+    assert diag.get("tool_choice_normalized") == {"type": "function", "function": {"name": "shell"}}
+
+
+def test_v1_responses_route_maps_local_shell_to_function_tool_for_chat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+    import llm_proxy.v1_blueprint as v1_blueprint
+    from flask import jsonify
+
+    captured: dict[str, Any] = {}
+
+    def fake_chat_completions(_wiring, body_override=None):
+        captured["body_override"] = body_override
+        return jsonify(
+            {
+                "id": "chatcmpl_tool",
+                "object": "chat.completion",
+                "created": 10,
+                "model": "Hard-worker",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            }
+        )
+
+    monkeypatch.setattr(v1_blueprint, "run_chat_completions", fake_chat_completions)
+
+    app = rag_routes.create_app()
+    r = app.test_client().post(
+        "/v1/responses",
+        json={
+            "model": "Hard-worker",
+            "input": "Explain this codebase",
+            "tools": [{"type": "local_shell"}],
+            "tool_choice": "auto",
+        },
+    )
+    assert r.status_code == 200
+    body = captured.get("body_override") or {}
+    tools = body.get("tools") or []
+    assert len(tools) == 1
+    assert tools[0].get("type") == "function"
+    assert ((tools[0].get("function") or {}).get("name")) == "shell"
+    assert body.get("tools_count_raw") == 1
+    assert body.get("tools_count_normalized") == 1
+
+
+def test_v1_responses_followup_with_function_call_output_uses_previous_response_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+    import llm_proxy.v1_blueprint as v1_blueprint
+    from flask import jsonify
+
+    v1_blueprint._RESPONSES_HISTORY.clear()
+    calls: list[dict[str, Any]] = []
+
+    def fake_chat_completions(_wiring, body_override=None):
+        body = dict(body_override or {})
+        calls.append(body)
+        if len(calls) == 1:
+            return jsonify(
+                {
+                    "id": "chatcmpl_first",
+                    "object": "chat.completion",
+                    "created": 1,
+                    "model": "Hard-worker",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": "",
+                                "tool_calls": [
+                                    {
+                                        "id": "call_1",
+                                        "type": "function",
+                                        "function": {"name": "shell", "arguments": "{\"command\":\"ls\"}"},
+                                    }
+                                ],
+                            },
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 2, "completion_tokens": 1, "total_tokens": 3},
+                }
+            )
+        return jsonify(
+            {
+                "id": "chatcmpl_second",
+                "object": "chat.completion",
+                "created": 2,
+                "model": "Hard-worker",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": "done"}}],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4},
+            }
+        )
+
+    monkeypatch.setattr(v1_blueprint, "run_chat_completions", fake_chat_completions)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    first = client.post(
+        "/v1/responses",
+        json={
+            "model": "Hard-worker",
+            "input": "list files",
+            "tools": [{"type": "local_shell"}],
+            "tool_choice": "auto",
+        },
+    )
+    assert first.status_code == 200
+    first_id = str((first.get_json() or {}).get("id") or "")
+    assert first_id.startswith("resp_")
+
+    second = client.post(
+        "/v1/responses",
+        json={
+            "model": "Hard-worker",
+            "previous_response_id": first_id,
+            "input": [
+                {"type": "function_call_output", "call_id": "call_1", "output": "file1\nfile2"},
+                {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "continue"}]},
+            ],
+        },
+    )
+    assert second.status_code == 200
+    assert len(calls) == 2
+    second_messages = calls[1].get("messages") or []
+    has_prior_assistant_tool_call = any(
+        isinstance(m, dict) and m.get("role") == "assistant" and isinstance(m.get("tool_calls"), list)
+        for m in second_messages
+    )
+    has_tool_output = any(
+        isinstance(m, dict) and m.get("role") == "tool" and m.get("tool_call_id") == "call_1"
+        for m in second_messages
+    )
+    assert has_prior_assistant_tool_call
+    assert has_tool_output

@@ -1,4 +1,5 @@
 param(
+    [string]$ProjectDir = (Get-Location).Path,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$CliArgs
 )
@@ -7,24 +8,39 @@ param(
 #   .\start_codex_proxy_configured.ps1
 $ConfiguredBaseUrl = "http://127.0.0.1:8080"
 $ConfiguredModel = "Hard-worker"
-$ConfiguredOpenAiApiKey = "ollama"
+$ConfiguredOpenAiApiKey = "ChironAI"
 $ConfiguredExtraArgs = @()
-
-$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$baseScript = Join-Path $scriptRoot "start_codex_proxy.ps1"
-if (-not (Test-Path -LiteralPath $baseScript)) {
-    Write-Error "Base script not found: $baseScript"
-    exit 1
-}
 
 if (-not [string]::IsNullOrWhiteSpace($ConfiguredBaseUrl)) {
     $env:CHIRON_PROXY_BASE_URL = $ConfiguredBaseUrl
 }
+$env:OPENAI_BASE_URL = $env:CHIRON_PROXY_BASE_URL
+$env:OPENAI_API_BASE = $env:CHIRON_PROXY_BASE_URL
 if (-not [string]::IsNullOrWhiteSpace($ConfiguredOpenAiApiKey)) {
     $env:OPENAI_API_KEY = $ConfiguredOpenAiApiKey
 }
 
+if (-not (Get-Command codex -ErrorAction SilentlyContinue)) {
+    Write-Error "codex CLI was not found in PATH. Install Codex CLI first."
+    exit 1
+}
+
+Write-Host "Starting Codex via ChironAI proxy..."
+Write-Host "Base URL: $($env:OPENAI_BASE_URL)"
+Write-Host "Project dir: $ProjectDir"
+
+try {
+    $ResolvedProjectDir = (Resolve-Path -LiteralPath $ProjectDir -ErrorAction Stop).Path
+} catch {
+    Write-Error "Project directory not found: $ProjectDir"
+    exit 1
+}
+
 $launchArgs = @()
+if (-not [string]::IsNullOrWhiteSpace($ResolvedProjectDir)) {
+    $launchArgs += "--cd"
+    $launchArgs += $ResolvedProjectDir
+}
 if (-not [string]::IsNullOrWhiteSpace($ConfiguredModel)) {
     $launchArgs += "--model"
     $launchArgs += $ConfiguredModel
@@ -36,5 +52,5 @@ if ($CliArgs) {
     $launchArgs += $CliArgs
 }
 
-& $baseScript @launchArgs
+& codex @launchArgs
 exit $LASTEXITCODE

@@ -120,15 +120,36 @@ export async function getProxyConfiguredCurrentValues() {
 }
 
 export async function generateProxyConfiguredScripts(config) {
-  const { baseUrl, buildId, authToken, openAiApiKey } = config;
+  const { baseUrl, buildId } = config;
   const response = await fetch(`${API_BASE}/proxy-configured/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ baseUrl, buildId, authToken, openAiApiKey }),
+    body: JSON.stringify({ baseUrl, buildId }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(data.error || 'Failed to generate scripts');
+  }
+  return data;
+}
+
+export async function getChironGlobalStatus() {
+  const response = await fetch(`${API_BASE}/proxy-configured/chiron-global/status`);
+  if (!response.ok) {
+    throw new Error('Failed to get Chiron global status');
+  }
+  return response.json();
+}
+
+export async function installChironGlobal() {
+  const response = await fetch(`${API_BASE}/proxy-configured/chiron-global/install`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to install Chiron globally');
   }
   return data;
 }

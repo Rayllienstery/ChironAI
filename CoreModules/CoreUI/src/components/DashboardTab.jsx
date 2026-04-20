@@ -1,7 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
 import PipelineCiDiagram from './PipelineCiDiagram';
 import { useMergedPipelinePreview } from '../hooks/useMergedPipelinePreview';
-import { getLlmProxyBuilds, getModelSettings, getRagStatus, getProxyConfiguredStatus, getProxyConfiguredCurrentValues, generateProxyConfiguredScripts } from '../services/api';
+import {
+  getLlmProxyBuilds,
+  getModelSettings,
+  getRagStatus,
+  getProxyConfiguredStatus,
+  getProxyConfiguredCurrentValues,
+  generateProxyConfiguredScripts,
+  getChironGlobalStatus,
+  installChironGlobal,
+} from '../services/api';
 import '../styles/components/DashboardTab.css';
 
 const INFO_TABS = [
@@ -14,10 +23,7 @@ const INFO_TABS = [
 
 const PROXY_GUIDE_TABS = [
   { id: 'why', label: 'Why' },
-  { id: 'claude', label: 'Claude Code' },
-  { id: 'codex', label: 'Codex' },
   { id: 'configured', label: 'Configured' },
-  { id: 'checks', label: 'Checks' },
 ];
 
 const PROXY_CUSTOM_PRESETS = [
@@ -26,24 +32,12 @@ const PROXY_CUSTOM_PRESETS = [
     label: 'Local default (8080)',
     baseUrl: 'http://127.0.0.1:8080',
     buildId: 'your-build-id',
-    authToken: 'ollama',
-    openAiApiKey: 'ollama',
   },
   {
     id: 'lan-machine',
     label: 'Remote LAN machine',
     baseUrl: 'http://192.168.1.10:8080',
     buildId: 'team-shared-build',
-    authToken: 'ollama',
-    openAiApiKey: 'ollama',
-  },
-  {
-    id: 'custom-token',
-    label: 'Custom auth token',
-    baseUrl: 'http://127.0.0.1:8080',
-    buildId: 'secure-build-id',
-    authToken: 'your-token',
-    openAiApiKey: 'your-token',
   },
 ];
 
@@ -235,13 +229,14 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
   const [proxyPresetId, setProxyPresetId] = useState(PROXY_CUSTOM_PRESETS[0].id);
   const [configuredBaseUrl, setConfiguredBaseUrl] = useState(PROXY_CUSTOM_PRESETS[0].baseUrl);
   const [configuredBuildId, setConfiguredBuildId] = useState(PROXY_CUSTOM_PRESETS[0].buildId);
-  const [configuredAuthToken, setConfiguredAuthToken] = useState(PROXY_CUSTOM_PRESETS[0].authToken);
-  const [configuredOpenAiApiKey, setConfiguredOpenAiApiKey] = useState(PROXY_CUSTOM_PRESETS[0].openAiApiKey);
   const [configuredScriptsExist, setConfiguredScriptsExist] = useState(false);
   const [isGeneratingScripts, setIsGeneratingScripts] = useState(false);
   const [generationMessage, setGenerationMessage] = useState(null);
   const [lastGeneratedConfig, setLastGeneratedConfig] = useState(null);
   const [availableBuildIds, setAvailableBuildIds] = useState([]);
+  const [globalInstallStatus, setGlobalInstallStatus] = useState(null);
+  const [globalInstallBusy, setGlobalInstallBusy] = useState(false);
+  const [globalInstallMessage, setGlobalInstallMessage] = useState(null);
 
   const go = (tabId) => {
     if (typeof onNavigate === 'function') onNavigate(tabId);
@@ -290,8 +285,6 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
               setLastGeneratedConfig({
                 baseUrl: values.baseUrl || '',
                 buildId: values.buildId || '',
-                authToken: values.authToken || '',
-                openAiApiKey: configuredOpenAiApiKey, // Use current state since codex values aren't in claude file
               });
             }
           }
@@ -308,15 +301,11 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
   const currentConfig = {
     baseUrl: configuredBaseUrl,
     buildId: configuredBuildId,
-    authToken: configuredAuthToken,
-    openAiApiKey: configuredOpenAiApiKey,
   };
 
   const configsMatch = lastGeneratedConfig &&
     lastGeneratedConfig.baseUrl === configuredBaseUrl &&
-    lastGeneratedConfig.buildId === configuredBuildId &&
-    lastGeneratedConfig.authToken === configuredAuthToken &&
-    lastGeneratedConfig.openAiApiKey === configuredOpenAiApiKey;
+    lastGeneratedConfig.buildId === configuredBuildId;
 
   const showGenerateButton = !configuredScriptsExist || !configsMatch;
 
@@ -327,8 +316,6 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
       await generateProxyConfiguredScripts({
         baseUrl: configuredBaseUrl,
         buildId: configuredBuildId,
-        authToken: configuredAuthToken,
-        openAiApiKey: configuredOpenAiApiKey,
       });
       setConfiguredScriptsExist(true);
       setLastGeneratedConfig({ ...currentConfig });
@@ -337,6 +324,40 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
       setGenerationMessage({ type: 'error', text: err.message || 'Failed to generate scripts' });
     } finally {
       setIsGeneratingScripts(false);
+    }
+  };
+
+  const refreshGlobalInstallStatus = useCallback(async () => {
+    try {
+      const status = await getChironGlobalStatus();
+      setGlobalInstallStatus(status || null);
+    } catch (err) {
+      setGlobalInstallStatus(null);
+      setGlobalInstallMessage({ type: 'error', text: err.message || 'Failed to check global status' });
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshGlobalInstallStatus();
+  }, [refreshGlobalInstallStatus]);
+
+  const handleInstallGlobal = async () => {
+    setGlobalInstallBusy(true);
+    setGlobalInstallMessage(null);
+    try {
+      const result = await installChironGlobal();
+      const isGlobal = Boolean(result?.global_status?.is_global);
+      setGlobalInstallStatus(result?.global_status || null);
+      setGlobalInstallMessage({
+        type: isGlobal ? 'success' : 'error',
+        text: isGlobal
+          ? 'ChironAI installed globally. Open a new CMD window if needed.'
+          : 'Install finished, but global check is still failing. Open a new CMD and click Re-check.',
+      });
+    } catch (err) {
+      setGlobalInstallMessage({ type: 'error', text: err.message || 'Failed to install globally' });
+    } finally {
+      setGlobalInstallBusy(false);
     }
   };
 
@@ -801,31 +822,6 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                 </ul>
               </div>
             )}
-            {proxyGuideTab === 'claude' && (
-              <div className="dashboard-section-inner">
-                <h3>Claude Code launch (Windows)</h3>
-                <p>From repository root, start Claude with proxy env preconfigured:</p>
-                <code className="dashboard-proxy-guide-code">.\start_claude_proxy.bat --model your-build-id</code>
-                <p>PowerShell variant:</p>
-                <code className="dashboard-proxy-guide-code">.\start_claude_proxy.ps1 --model your-build-id</code>
-                <p className="dashboard-proxy-guide-hint">
-                  Default proxy base URL: <code>http://127.0.0.1:8080</code>. Override with{' '}
-                  <code>CHIRON_PROXY_BASE_URL</code> before launch.
-                </p>
-              </div>
-            )}
-            {proxyGuideTab === 'codex' && (
-              <div className="dashboard-section-inner">
-                <h3>Codex launch (Windows)</h3>
-                <p>Start Codex with OpenAI-compatible proxy variables:</p>
-                <code className="dashboard-proxy-guide-code">.\start_codex_proxy.bat --model your-build-id</code>
-                <p>PowerShell variant:</p>
-                <code className="dashboard-proxy-guide-code">.\start_codex_proxy.ps1 --model your-build-id</code>
-                <p className="dashboard-proxy-guide-hint">
-                  The scripts set <code>OPENAI_BASE_URL</code> / <code>OPENAI_API_BASE</code> to the proxy host for the current run.
-                </p>
-              </div>
-            )}
             {proxyGuideTab === 'configured' && (
               <div className="dashboard-section-inner">
                 <h3>Configured launch (no required arguments)</h3>
@@ -853,8 +849,6 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                         if (!preset) return;
                         setConfiguredBaseUrl(preset.baseUrl);
                         setConfiguredBuildId(preset.buildId);
-                        setConfiguredAuthToken(preset.authToken);
-                        setConfiguredOpenAiApiKey(preset.openAiApiKey);
                       }}
                     >
                       {PROXY_CUSTOM_PRESETS.map((preset) => (
@@ -895,23 +889,52 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                       />
                     )}
                   </label>
-                  <label className="dashboard-proxy-customizer-field">
-                    Claude auth token
-                    <input
-                      className="dashboard-card-field"
-                      value={configuredAuthToken}
-                      onChange={(e) => setConfiguredAuthToken(e.target.value)}
-                    />
-                  </label>
-                  <label className="dashboard-proxy-customizer-field">
-                    Codex API key
-                    <input
-                      className="dashboard-card-field"
-                      value={configuredOpenAiApiKey}
-                      onChange={(e) => setConfiguredOpenAiApiKey(e.target.value)}
-                    />
-                  </label>
                 </div>
+                <p className="dashboard-proxy-guide-hint">
+                  Auth token and API key are hardcoded to <code>ChironAI</code> in generated scripts.
+                </p>
+                <p className="dashboard-proxy-guide-hint">
+                  Codex integration uses OpenAI-compatible <code>/v1/responses</code> wire API.
+                </p>
+                <p className="dashboard-proxy-guide-hint">
+                  Troubleshooting: verify trace has <code>tools_count_normalized &gt; 0</code> on Codex turns with tools.
+                </p>
+
+                <div className="dashboard-configured-action-bar">
+                  {globalInstallStatus?.is_global ? (
+                    <span className="coreui-msg success">ChironAI is Global</span>
+                  ) : (
+                    <span className="coreui-msg">
+                      {globalInstallStatus?.actionable_hint || 'Global command not configured yet'}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="dashboard-primary-btn"
+                    onClick={globalInstallStatus?.is_global ? refreshGlobalInstallStatus : handleInstallGlobal}
+                    disabled={globalInstallBusy}
+                  >
+                    {globalInstallBusy ? 'Installing...' : (globalInstallStatus?.is_global ? 'Re-check' : 'Install Chiron global')}
+                  </button>
+                  <button
+                    type="button"
+                    className="dashboard-secondary-btn"
+                    onClick={handleInstallGlobal}
+                    disabled={globalInstallBusy}
+                  >
+                    Reinstall
+                  </button>
+                </div>
+                {globalInstallMessage && (
+                  <div className={`coreui-msg ${globalInstallMessage.type === 'error' ? 'error' : 'success'}`}>
+                    {globalInstallMessage.text}
+                  </div>
+                )}
+                {!globalInstallStatus?.is_global && Array.isArray(globalInstallStatus?.mismatch_reasons) && globalInstallStatus.mismatch_reasons.length > 0 && (
+                  <div className="coreui-msg error">
+                    {globalInstallStatus.mismatch_reasons[0]}
+                  </div>
+                )}
 
                 {/* Configured scripts action bar - pill capsule at bottom right of card */}
                 <div className="dashboard-configured-action-bar">
@@ -929,26 +952,6 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                     {isGeneratingScripts ? 'Generating...' : (configuredScriptsExist ? 'Update' : 'Generate')}
                   </button>
                 </div>
-              </div>
-            )}
-            {proxyGuideTab === 'checks' && (
-              <div className="dashboard-section-inner">
-                <h3>Quick verification checklist</h3>
-                <ul className="dashboard-proxy-guide-list">
-                  <li>
-                    Ensure your target build exists in <strong>LLM Proxy</strong> tab and use its <code>id</code> in{' '}
-                    <code>--model</code>.
-                  </li>
-                  <li>
-                    Open <strong>RAG Fusion Proxy</strong> and verify status base URL points to your current host/port.
-                  </li>
-                  <li>
-                    Run <code>GET /v1/models</code> against proxy and confirm your build id is listed.
-                  </li>
-                  <li>
-                    Send one CLI request and confirm new entries appear in <strong>Logs</strong> and <strong>Traces</strong>.
-                  </li>
-                </ul>
               </div>
             )}
           </div>

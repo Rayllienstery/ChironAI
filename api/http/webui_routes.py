@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import random
+import sysconfig
 import sys
 import threading
 import time
@@ -290,6 +291,10 @@ except ImportError:
 import hashlib
 import re
 import subprocess
+try:
+    import winreg  # type: ignore[import-not-found]
+except Exception:  # pragma: no cover - non-Windows fallback
+    winreg = None  # type: ignore[assignment]
 
 # In-memory buffer for dev console (last 50 requests)
 _REQUEST_BUFFER: deque[dict[str, Any]] = deque(maxlen=50)
@@ -1472,6 +1477,316 @@ def get_proxy_configured_status() -> Any:
         return jsonify({"error": str(e)}), 500
 
 
+def _norm_path_for_compare(p: str) -> str:
+    return os.path.normcase(os.path.normpath((p or "").strip().rstrip("\\/")))
+
+
+def _split_path_entries(path_value: str) -> list[str]:
+    return [x.strip() for x in (path_value or "").split(";") if x and x.strip()]
+
+
+def _get_chiron_shim_dir() -> str:
+    return str((Path.home() / ".chironai" / "bin").resolve())
+
+
+def _get_chiron_codex_shim_path() -> str:
+    return str((Path(_get_chiron_shim_dir()) / "codex.cmd").resolve())
+
+
+def _get_windows_user_path() -> str:
+    if os.name != "nt" or winreg is None:
+        return ""
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            val, _ = winreg.QueryValueEx(key, "Path")
+            return str(val or "")
+    except Exception:
+        return ""
+
+
+def _set_windows_user_path(entries: list[str]) -> bool:
+    if os.name != "nt" or winreg is None:
+        return False
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_READ | winreg.KEY_WRITE) as key:
+            new_path = ";".join(entries)
+            winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, new_path)
+            return True
+    except Exception:
+        return False
+
+
+def _update_path_entries(entries: list[str], target: str, *, prepend: bool) -> tuple[list[str], bool]:
+    target_clean = (target or "").strip()
+    if not target_clean:
+        return entries, False
+    target_norm = _norm_path_for_compare(target_clean)
+    idx = -1
+    for i, entry in enumerate(entries):
+        if _norm_path_for_compare(entry) == target_norm:
+            idx = i
+            break
+    if idx >= 0:
+        if prepend and idx != 0:
+            out = entries[:]
+            item = out.pop(idx)
+            out.insert(0, item)
+            return out, True
+        return entries, False
+    out = entries[:]
+    if prepend:
+        out.insert(0, target_clean)
+    else:
+        out.append(target_clean)
+    return out, True
+
+
+def _ensure_windows_user_path_entry(entry: str, *, prepend: bool = False) -> bool:
+    if os.name != "nt" or winreg is None:
+        return False
+    target = (entry or "").strip()
+    if not target:
+        return False
+    try:
+        existing = _get_windows_user_path()
+        entries = _split_path_entries(existing)
+        updated, changed = _update_path_entries(entries, target, prepend=prepend)
+        if not changed:
+            return False
+        return _set_windows_user_path(updated)
+    except Exception:
+        return False
+
+
+def _build_status_cmd_env() -> dict[str, str] | None:
+    """
+    Build env for status checks that reflects latest User PATH from registry.
+    This avoids stale PATH values from a long-running backend process.
+    """
+    if os.name != "nt":
+        return None
+    user_path = _get_windows_user_path().strip()
+    if not user_path:
+        return None
+    env = os.environ.copy()
+    existing = env.get("Path") or env.get("PATH") or ""
+    merged = ";".join([p for p in [user_path, existing] if p])
+    env["Path"] = merged
+    env["PATH"] = merged
+    return env
+
+
+def _run_cmd_where(binary_name: str, env: dict[str, str] | None = None) -> tuple[list[str], str]:
+    try:
+        res = subprocess.run(
+            ["cmd", "/c", "where", binary_name],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=env,
+        )
+        if res.returncode == 0:
+            hits = [ln.strip() for ln in (res.stdout or "").splitlines() if ln.strip()]
+            return hits, ""
+        return [], (res.stderr or res.stdout or "").strip()
+    except Exception as e:
+        return [], str(e)
+
+
+def _compute_global_status_diagnostics() -> dict[str, Any]:
+    shim_dir = _get_chiron_shim_dir()
+    shim_codex = _get_chiron_codex_shim_path()
+    user_scripts_dir = ""
+    try:
+        if os.name == "nt":
+            user_scripts_dir = str(Path(sysconfig.get_path("scripts", scheme="nt_user")).resolve())
+    except Exception:
+        user_scripts_dir = ""
+
+    user_path = _get_windows_user_path()
+    user_path_entries = _split_path_entries(user_path)
+    user_path_has_shim_dir = any(
+        _norm_path_for_compare(x) == _norm_path_for_compare(shim_dir) for x in user_path_entries
+    )
+    user_path_has_scripts_dir = any(
+        _norm_path_for_compare(x) == _norm_path_for_compare(user_scripts_dir) for x in user_path_entries
+    ) if user_scripts_dir else False
+    user_path_shim_is_first = bool(user_path_entries) and (
+        _norm_path_for_compare(user_path_entries[0]) == _norm_path_for_compare(shim_dir)
+    )
+
+    status_env = _build_status_cmd_env()
+    codex_where_hits, codex_where_error = _run_cmd_where("codex", env=status_env)
+    codex_first_hit = codex_where_hits[0] if codex_where_hits else ""
+    codex_first_is_shim = bool(codex_first_hit) and (
+        _norm_path_for_compare(codex_first_hit) == _norm_path_for_compare(shim_codex)
+    )
+    codex_shim_exists = Path(shim_codex).is_file()
+
+    chironai_where_hits, chironai_where_error = _run_cmd_where("chironai", env=status_env)
+    chironai_exists = len(chironai_where_hits) > 0
+
+    launch_codex_available = False
+    launch_error = ""
+    if chironai_exists:
+        try:
+            launch_res = subprocess.run(
+                ["cmd", "/c", "chironai", "launch", "codex", "--help"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                env=status_env,
+            )
+            launch_codex_available = launch_res.returncode == 0
+            if not launch_codex_available:
+                launch_error = (launch_res.stderr or launch_res.stdout or "").strip()
+        except Exception as e:
+            launch_error = str(e)
+
+    mismatch_reasons: list[str] = []
+    if not codex_shim_exists:
+        mismatch_reasons.append(f"shim missing: {shim_codex}")
+    if not user_path_has_shim_dir:
+        mismatch_reasons.append(f"user PATH missing shim dir: {shim_dir}")
+    if user_path_has_shim_dir and not user_path_shim_is_first:
+        mismatch_reasons.append(f"shim dir not first in user PATH: {shim_dir}")
+    if codex_where_hits and not codex_first_is_shim:
+        mismatch_reasons.append(f"PATH precedence wrong: where codex first hit is {codex_first_hit}")
+    if not codex_where_hits and codex_where_error:
+        mismatch_reasons.append(f"where codex failed: {codex_where_error}")
+    if not chironai_exists:
+        mismatch_reasons.append("chironai command not found in CMD PATH")
+    if not launch_codex_available and launch_error:
+        mismatch_reasons.append(f"`chironai launch codex --help` failed: {launch_error}")
+
+    is_global = bool(codex_first_is_shim and chironai_exists and launch_codex_available)
+    actionable_hint = ""
+    if not is_global:
+        if not codex_shim_exists:
+            actionable_hint = "Click 'Install Chiron global' to create codex shim."
+        elif codex_where_hits and not codex_first_is_shim:
+            actionable_hint = "Shim exists but PATH precedence is wrong; re-run install to re-prepend shim dir."
+        elif not chironai_exists:
+            actionable_hint = "chironai is not visible in CMD PATH; re-run install and open a new CMD window."
+        else:
+            actionable_hint = "Run install and open a new CMD window, then click Re-check."
+
+    return {
+        "is_global": is_global,
+        "shim_dir": shim_dir,
+        "shim_codex_path": shim_codex,
+        "codex_shim_exists": bool(codex_shim_exists),
+        "codex_first_is_shim": bool(codex_first_is_shim),
+        "codex_first_hit": codex_first_hit,
+        "codex_where_hits": codex_where_hits,
+        "codex_where_error": codex_where_error,
+        "chironai_exists": bool(chironai_exists),
+        "chironai_where_hits": chironai_where_hits,
+        "chironai_where_error": chironai_where_error,
+        "launch_codex_available": bool(launch_codex_available),
+        "launch_error": launch_error,
+        "user_scripts_dir": user_scripts_dir,
+        "user_path_has_scripts_dir": bool(user_path_has_scripts_dir),
+        "user_path_has_shim_dir": bool(user_path_has_shim_dir),
+        "user_path_shim_is_first": bool(user_path_shim_is_first),
+        "mismatch_reasons": mismatch_reasons,
+        "actionable_hint": actionable_hint,
+        "status_path_includes_user_path": bool(status_env is not None),
+    }
+
+
+def _detect_chiron_global_status() -> dict[str, Any]:
+    return _compute_global_status_diagnostics()
+
+
+@webui_bp.route("/proxy-configured/chiron-global/status", methods=["GET"])
+def get_chiron_global_status() -> Any:
+    """Check real global availability of `chironai launch codex` from CMD (not project-local flags)."""
+    try:
+        return jsonify(_detect_chiron_global_status())
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_chiron_global_status", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/proxy-configured/chiron-global/install", methods=["POST"])
+def install_chiron_global() -> Any:
+    """Install chironai CLI globally and ensure user PATH contains the Python user Scripts dir."""
+    try:
+        pip_cmd = [sys.executable, "-m", "pip", "install", "-e", _ROOT]
+        pip_result = subprocess.run(
+            pip_cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        if pip_result.returncode != 0:
+            return jsonify(
+                {
+                    "error": "Failed to install chironai via pip",
+                    "pip_returncode": pip_result.returncode,
+                    "pip_stderr_tail": (pip_result.stderr or "")[-4000:],
+                    "pip_stdout_tail": (pip_result.stdout or "")[-4000:],
+                }
+            ), 500
+
+        path_updated = False
+        shim_path_updated = False
+        scripts_path_updated = False
+        user_scripts_dir = ""
+        shim_dir = _get_chiron_shim_dir()
+        shim_codex = _get_chiron_codex_shim_path()
+        shim_written = False
+
+        # Create/update codex shim (global entrypoint in CMD).
+        try:
+            Path(shim_dir).mkdir(parents=True, exist_ok=True)
+            shim_content = (
+                "@echo off\r\n"
+                "chironai launch codex --cd \"%CD%\" %*\r\n"
+            )
+            Path(shim_codex).write_text(shim_content, encoding="utf-8")
+            shim_written = True
+        except Exception:
+            shim_written = False
+
+        if os.name == "nt":
+            try:
+                user_scripts_dir = str(Path(sysconfig.get_path("scripts", scheme="nt_user")).resolve())
+                shim_path_updated = _ensure_windows_user_path_entry(shim_dir, prepend=True)
+                if user_scripts_dir:
+                    scripts_path_updated = _ensure_windows_user_path_entry(user_scripts_dir, prepend=False)
+                path_updated = bool(shim_path_updated or scripts_path_updated)
+                # Refresh current process PATH so immediate status checks reflect registry updates.
+                refreshed_env = _build_status_cmd_env()
+                if refreshed_env is not None:
+                    os.environ["Path"] = refreshed_env.get("Path", os.environ.get("Path", ""))
+                    os.environ["PATH"] = refreshed_env.get("PATH", os.environ.get("PATH", ""))
+            except Exception:
+                path_updated = False
+
+        status_after = _detect_chiron_global_status()
+        return jsonify(
+            {
+                "status": "ok",
+                "path_updated": bool(path_updated),
+                "shim_path_updated": bool(shim_path_updated),
+                "scripts_path_updated": bool(scripts_path_updated),
+                "user_scripts_dir": user_scripts_dir,
+                "shim_dir": shim_dir,
+                "shim_codex_path": shim_codex,
+                "shim_written": bool(shim_written),
+                "global_status": status_after,
+                "note": "Open a new CMD window if PATH was updated, then click Re-check.",
+            }
+        )
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Install timed out"}), 504
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.install_chiron_global", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @webui_bp.route("/proxy-configured/current-values", methods=["GET"])
 def get_proxy_configured_current_values() -> Any:
     """Read current values from existing configured script files."""
@@ -1485,21 +1800,16 @@ def get_proxy_configured_current_values() -> Any:
         # Parse values from Claude script
         base_url = ""
         build_id = ""
-        auth_token = ""
-
         for line in content.splitlines():
             line = line.strip()
             if line.startswith('$ConfiguredBaseUrl'):
                 base_url = line.split('=', 1)[1].strip().strip('"')
             elif line.startswith('$ConfiguredModel'):
                 build_id = line.split('=', 1)[1].strip().strip('"')
-            elif line.startswith('$ConfiguredAuthToken'):
-                auth_token = line.split('=', 1)[1].strip().strip('"')
 
         return jsonify({
             "baseUrl": base_url,
             "buildId": build_id,
-            "authToken": auth_token,
         })
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_proxy_configured_current_values", exc_info=True)
@@ -1513,8 +1823,6 @@ def generate_proxy_configured_scripts() -> Any:
         body = request.get_json(force=True, silent=True) or {}
         base_url = (body.get("baseUrl") or "").strip()
         build_id = (body.get("buildId") or "").strip()
-        auth_token = (body.get("authToken") or "").strip()
-        openai_api_key = (body.get("openAiApiKey") or "").strip()
 
         if not base_url:
             return jsonify({"error": "baseUrl is required"}), 400
@@ -1533,6 +1841,7 @@ def generate_proxy_configured_scripts() -> Any:
 
         # Generate Claude proxy configured script
         claude_ps1_content = f'''param(
+    [string]$ProjectDir = (Get-Location).Path,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$CliArgs
 )
@@ -1541,21 +1850,32 @@ def generate_proxy_configured_scripts() -> Any:
 #   .\\start_claude_proxy_configured.ps1
 $ConfiguredBaseUrl = "{base_url}"
 $ConfiguredModel = "{build_id}"
-$ConfiguredAuthToken = "{auth_token}"
+$ConfiguredAuthToken = "ChironAI"
 $ConfiguredExtraArgs = @()
-
-$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$baseScript = Join-Path $scriptRoot "start_claude_proxy.ps1"
-if (-not (Test-Path -LiteralPath $baseScript)) {{
-    Write-Error "Base script not found: $baseScript"
-    exit 1
-}}
 
 if (-not [string]::IsNullOrWhiteSpace($ConfiguredBaseUrl)) {{
     $env:CHIRON_PROXY_BASE_URL = $ConfiguredBaseUrl
 }}
+$env:ANTHROPIC_BASE_URL = $env:CHIRON_PROXY_BASE_URL
 if (-not [string]::IsNullOrWhiteSpace($ConfiguredAuthToken)) {{
     $env:ANTHROPIC_AUTH_TOKEN = $ConfiguredAuthToken
+}}
+$env:ANTHROPIC_API_KEY = ""
+
+if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {{
+    Write-Error "claude CLI was not found in PATH. Install Claude Code CLI first."
+    exit 1
+}}
+
+Write-Host "Starting Claude Code via ChironAI proxy..."
+Write-Host "Base URL: $($env:ANTHROPIC_BASE_URL)"
+Write-Host "Project dir: $ProjectDir"
+
+try {{
+    $ResolvedProjectDir = (Resolve-Path -LiteralPath $ProjectDir -ErrorAction Stop).Path
+}} catch {{
+    Write-Error "Project directory not found: $ProjectDir"
+    exit 1
 }}
 
 $launchArgs = @()
@@ -1570,12 +1890,18 @@ if ($CliArgs) {{
     $launchArgs += $CliArgs
 }}
 
-& $baseScript @launchArgs
-exit $LASTEXITCODE
+Push-Location -LiteralPath $ResolvedProjectDir
+try {{
+    & claude @launchArgs
+    exit $LASTEXITCODE
+}} finally {{
+    Pop-Location
+}}
 '''
 
         # Generate Codex proxy configured script
         codex_ps1_content = f'''param(
+    [string]$ProjectDir = (Get-Location).Path,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$CliArgs
 )
@@ -1584,24 +1910,39 @@ exit $LASTEXITCODE
 #   .\\start_codex_proxy_configured.ps1
 $ConfiguredBaseUrl = "{base_url}"
 $ConfiguredModel = "{build_id}"
-$ConfiguredOpenAiApiKey = "{openai_api_key}"
+$ConfiguredOpenAiApiKey = "ChironAI"
 $ConfiguredExtraArgs = @()
-
-$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$baseScript = Join-Path $scriptRoot "start_codex_proxy.ps1"
-if (-not (Test-Path -LiteralPath $baseScript)) {{
-    Write-Error "Base script not found: $baseScript"
-    exit 1
-}}
 
 if (-not [string]::IsNullOrWhiteSpace($ConfiguredBaseUrl)) {{
     $env:CHIRON_PROXY_BASE_URL = $ConfiguredBaseUrl
 }}
+$env:OPENAI_BASE_URL = $env:CHIRON_PROXY_BASE_URL
+$env:OPENAI_API_BASE = $env:CHIRON_PROXY_BASE_URL
 if (-not [string]::IsNullOrWhiteSpace($ConfiguredOpenAiApiKey)) {{
     $env:OPENAI_API_KEY = $ConfiguredOpenAiApiKey
 }}
 
+if (-not (Get-Command codex -ErrorAction SilentlyContinue)) {{
+    Write-Error "codex CLI was not found in PATH. Install Codex CLI first."
+    exit 1
+}}
+
+Write-Host "Starting Codex via ChironAI proxy..."
+Write-Host "Base URL: $($env:OPENAI_BASE_URL)"
+Write-Host "Project dir: $ProjectDir"
+
+try {{
+    $ResolvedProjectDir = (Resolve-Path -LiteralPath $ProjectDir -ErrorAction Stop).Path
+}} catch {{
+    Write-Error "Project directory not found: $ProjectDir"
+    exit 1
+}}
+
 $launchArgs = @()
+if (-not [string]::IsNullOrWhiteSpace($ResolvedProjectDir)) {{
+    $launchArgs += "--cd"
+    $launchArgs += $ResolvedProjectDir
+}}
 if (-not [string]::IsNullOrWhiteSpace($ConfiguredModel)) {{
     $launchArgs += "--model"
     $launchArgs += $ConfiguredModel
@@ -1613,17 +1954,17 @@ if ($CliArgs) {{
     $launchArgs += $CliArgs
 }}
 
-& $baseScript @launchArgs
+& codex @launchArgs
 exit $LASTEXITCODE
 '''
 
         # Generate .bat wrappers
         claude_bat_content = '''@echo off
-powershell -ExecutionPolicy Bypass -File "%~dp0start_claude_proxy_configured.ps1" %*
+powershell -ExecutionPolicy Bypass -File "%~dp0start_claude_proxy_configured.ps1" -ProjectDir "%CD%" %*
 '''
 
         codex_bat_content = '''@echo off
-powershell -ExecutionPolicy Bypass -File "%~dp0start_codex_proxy_configured.ps1" %*
+powershell -ExecutionPolicy Bypass -File "%~dp0start_codex_proxy_configured.ps1" -ProjectDir "%CD%" %*
 '''
 
         # Write all files

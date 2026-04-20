@@ -565,6 +565,10 @@ def run_chat_completions(
     if not messages:
         return jsonify({"error": "messages is required"}), 400
     body["messages"] = messages
+    _proxy_trace_meta: dict[str, Any] | None = None
+    _raw_trace_meta = body.pop("_proxy_trace_meta", None)
+    if isinstance(_raw_trace_meta, dict):
+        _proxy_trace_meta = dict(_raw_trace_meta)
     w.set_proxy_status(w.status_rag_search)
 
     proxy_settings, proxy_model_setting = _load_proxy_settings_and_model(w.get_settings_repository)
@@ -925,6 +929,24 @@ def run_chat_completions(
         "testing_disable_rerank": bool(testing_disable_rerank),
         "client_request_id": str(body.get("client_request_id") or "").strip() or None,
     }
+    if _proxy_trace_meta:
+        for _k, _v in _proxy_trace_meta.items():
+            if _k in ("proxy_v1_route", "responses_client_stream"):
+                trace["request"][_k] = _v
+    if body.get("tools_count_raw") is not None:
+        trace["request"]["tools_count_raw"] = body.get("tools_count_raw")
+    if body.get("tools_count_normalized") is not None:
+        trace["request"]["tools_count_normalized"] = body.get("tools_count_normalized")
+    if isinstance(body.get("tools_types_raw"), list):
+        trace["request"]["tools_types_raw"] = body.get("tools_types_raw")
+    if isinstance(body.get("tools_types_dropped"), list):
+        trace["request"]["tools_types_dropped"] = body.get("tools_types_dropped")
+    if isinstance(body.get("tools_types_normalized"), list):
+        trace["request"]["tools_types_normalized"] = body.get("tools_types_normalized")
+    if body.get("tool_choice_raw") is not None:
+        trace["request"]["tool_choice_raw"] = body.get("tool_choice_raw")
+    if body.get("tool_choice_normalized") is not None:
+        trace["request"]["tool_choice_normalized"] = body.get("tool_choice_normalized")
 
     # IDE-independent mode: do not fail fast solely on schema checks.
     # Some clients expose incomplete tool schemas but still accept write payloads at runtime.
