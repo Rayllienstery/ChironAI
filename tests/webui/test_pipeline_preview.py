@@ -27,3 +27,37 @@ def test_pipeline_preview_returns_expected_keys() -> None:
     assert "ddg_news" in env_raw
     assert "fetch_page" in env_raw
     assert "wikipedia" in env_raw
+    pipeline_definition = data.get("pipeline_definition")
+    assert isinstance(pipeline_definition, dict)
+    rag_def = pipeline_definition.get("rag")
+    assert isinstance(rag_def, dict)
+    assert isinstance(rag_def.get("steps"), list)
+    assert len(rag_def["steps"]) >= 1
+    proxy_def = pipeline_definition.get("proxy")
+    assert isinstance(proxy_def, dict)
+    assert isinstance(proxy_def.get("steps"), list)
+    assert len(proxy_def["steps"]) >= 1
+    assert isinstance(data.get("proxy_last_executed_steps"), list)
+
+
+def test_pipeline_definition_endpoint_returns_steps() -> None:
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    client = app.test_client()
+    r = client.get("/api/webui/pipeline-definition")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert isinstance(data, dict)
+    assert "error" not in data
+    pd = data.get("pipeline_definition")
+    assert isinstance(pd, dict)
+    rag_def = pd.get("rag")
+    assert isinstance(rag_def, dict)
+    assert isinstance(rag_def.get("steps"), list)
+    assert len(rag_def["steps"]) >= 1
+    proxy_def = pd.get("proxy")
+    assert isinstance(proxy_def, dict)
+    assert isinstance(proxy_def.get("steps"), list)
+    assert len(proxy_def["steps"]) >= 1
+    assert isinstance(data.get("proxy_last_executed_steps"), list)

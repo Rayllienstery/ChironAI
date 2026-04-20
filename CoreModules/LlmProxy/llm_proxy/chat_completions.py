@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -44,6 +43,11 @@ from infrastructure.ollama.openai_ollama_tool_bridge import (
     openai_tool_choice_means_none,
 )
 from llm_proxy.contracts import LlmProxyWiring
+from llm_proxy.pipeline_steps import get_proxy_pipeline_step_meta
+from llm_proxy.pipeline_steps.merged_docs_step import run_merged_docs_step
+from llm_proxy.pipeline_steps.web_supplement_step import (
+    run_web_supplement_step,
+)
 from llm_proxy.tool_helpers import (
     _build_tool_arguments,
     _build_tool_json_instruction,
@@ -74,6 +78,32 @@ def _log_rag_error_private(stage: str, error: Exception, *, private_build: bool)
         _RAG_LOG.error("RAG stage=%s | %s", stage, type(error).__name__)
     else:
         _log_rag_error(stage, error)
+
+
+def _append_pipeline_step_trace(
+    trace: dict[str, Any],
+    *,
+    step_id: str,
+    status: str,
+    reason: str | None = None,
+) -> None:
+    meta = get_proxy_pipeline_step_meta(step_id) or {
+        "id": step_id,
+        "icon": "",
+        "title": step_id,
+        "description": "",
+    }
+    trace.setdefault("pipeline_steps", [])
+    trace["pipeline_steps"].append(
+        {
+            "id": meta["id"],
+            "icon": meta["icon"],
+            "title": meta["title"],
+            "description": meta["description"],
+            "status": status,
+            "reason": reason,
+        }
+    )
 
 
 def _proxy_settings_optional_int(
@@ -518,6 +548,7 @@ def run_chat_completions(
         "ollama": {},
         "response": {},
         "steps": [],
+        "pipeline_steps": [],
     }
     w.set_current_trace(trace)
 
@@ -1127,126 +1158,31 @@ def run_chat_completions(
         else:
             trace["rag"]["retrieval_skipped"] = False
 
+        merged_step_status = "disabled"
+        merged_step_reason: str | None = None
         if not skip_rag_retrieval:
-            use_merged = False
-            if (
-                fetch_web_knowledge
-                and not request_collection
-                and w.external_docs.available
-                and w.external_docs.load_rag_sources_config
-                and w.external_docs.resolve_rag_sources_for_request
-                and w.external_docs.build_merged_rag_context
-                and w.external_docs.qdrant_rag_search_adapter_cls is not None
-            ):
-                rag_sources_config = w.external_docs.load_rag_sources_config()
-                body_rag_sources = body.get("rag_sources")
-                if isinstance(body_rag_sources, list):
-                    body_rag_sources = [str(x) for x in body_rag_sources]
-                else:
-                    body_rag_sources = None
-                resolved = w.external_docs.resolve_rag_sources_for_request(last_user, messages, body_rag_sources, rag_sources_config)
-                # Use merged path whenever we have any resolved source: enables generic discovery
-                # (GitHub fetch for any framework name in the question) plus configured on-demand and RAG.
-                if len(resolved) >= 1:
-                    use_merged = True
-                    # Trigger full crawl for resolved sources that are missing or stale when repo is on GitHub
-                    try:
-                        _settings_repo = w.get_settings_repository()
-                        _ttl_days = w.get_framework_collection_ttl_days()
-                        _ttl_raw = _settings_repo.get_app_setting("framework_collection_ttl_days")
-                        if _ttl_raw is not None and str(_ttl_raw).strip() != "":
-                            try:
-                                _ttl_days = int(_ttl_raw)
-                            except (TypeError, ValueError):
-                                pass
-                    except Exception:
-                        _settings_repo = None
-                        _ttl_days = 90
-                    resolved_needs_refresh: list[tuple[str, str]] = []
-                    if _settings_repo:
-                        for cfg in resolved:
-                            meta = None
-                            try:
-                                meta = _settings_repo.get_collection_meta(cfg.collection_name)
-                            except Exception:
-                                pass
-                            if w.check_collection_freshness(meta, _ttl_days) != "fresh":
-                                fid = (cfg.external_source_id or cfg.collection_name or "").strip().lower() or cfg.collection_name.lower()
-                                resolved_needs_refresh.append((fid, cfg.collection_name))
-                    work_list = list(needs_refresh)
-                    for (fid, coll) in resolved_needs_refresh:
-                        if coll not in [c for _, c in work_list]:
-                            work_list.append((fid, coll))
-                    if work_list and w.external_docs.load_github_repos and w.external_docs.ingest_github_repo_markdown and w.external_docs.http_fetch_client_cls and w.external_docs.qdrant_chunk_sink_cls and w.external_docs.get_latest_release_tag:
-                        coll_to_framework_id = {}
-                        for cfg in rag_sources_config:
-                            fid = (cfg.external_source_id or cfg.collection_name or "").strip().lower()
-                            if fid:
-                                coll_to_framework_id[cfg.collection_name] = fid
-                        github_repos_list = w.external_docs.load_github_repos()
-                        by_framework_id = {(e.get("framework_id") or "").lower(): e for e in github_repos_list if e.get("framework_id")}
-
-                        def _run_refresh(work: list) -> None:
-                            try:
-                                qdrant_url = w.get_qdrant_url()
-                                fetch_client = w.external_docs.http_fetch_client_cls()
-                                chunk_sink = w.external_docs.qdrant_chunk_sink_cls(base_url=qdrant_url)
-                                repo = w.get_settings_repository()
-                                def on_indexed(cname: str, fid: str, ver: str | None, last_at: str) -> None:
-                                    repo.set_collection_meta(cname, fid, ver or "", last_at)
-                                for _name, coll in work:
-                                    fid = coll_to_framework_id.get(coll) or coll.lower()
-                                    entry = by_framework_id.get(fid)
-                                    if not entry:
-                                        continue
-                                    owner = entry.get("owner", "")
-                                    repo_name = entry.get("repo", "")
-                                    ref = entry.get("ref") or "main"
-                                    if ref in ("latest", ""):
-                                        tag = w.external_docs.get_latest_release_tag(f"{owner}/{repo_name}")
-                                        if tag:
-                                            ref = tag
-                                        else:
-                                            ref = "main"
-                                    w.external_docs.ingest_github_repo_markdown(
-                                        owner, repo_name, ref, coll, fid,
-                                        fetch_client, chunk_sink, effective_embed_provider,
-                                        max_depth=3,
-                                        on_indexed=on_indexed,
-                                    )
-                                    break
-                            except Exception as e:
-                                _RAG_LOG.warning("Background framework refresh failed: %s", e)
-
-                        background_refresh_started = True
-                        trace["internet"]["background_refresh_started"] = True
-                        threading.Thread(target=_run_refresh, args=(work_list,), daemon=True).start()
-
-                    try:
-                        qdrant_url = w.get_qdrant_url()
-                    except Exception:
-                        qdrant_url = "http://localhost:6333"
-                    rag_search_adapter = w.external_docs.qdrant_rag_search_adapter_cls(base_url=qdrant_url)
-                    fetch_client = w.external_docs.http_fetch_client_cls() if w.external_docs.http_fetch_client_cls is not None else None
-                    external_sources_list = w.external_docs.load_external_sources() if w.external_docs.load_external_sources else []
-                    merged_ctx, merged_timings = w.external_docs.build_merged_rag_context(
-                        last_user,
-                        resolved,
-                        rag_search_adapter,
-                        effective_embed_provider,
-                        effective_context_chunk_chars,
-                        effective_context_total_chars,
-                        fetch_client=fetch_client,
-                        external_sources=external_sources_list,
-                        fresh_collection_names=project_fresh_collection_names,
-                    )
-                    rag_ctx_for_log = w.rag_context_factory(
-                        context_text=merged_ctx.context_text,
-                        chunks_info=merged_ctx.chunks_info,
-                        max_score=merged_ctx.max_score,
-                    )
-                    rag_timings = merged_timings
-            if not use_merged or rag_ctx_for_log is None:
+            merged_step = run_merged_docs_step(
+                w=w,
+                last_user=last_user,
+                messages=messages,
+                body=body,
+                fetch_web_knowledge=bool(fetch_web_knowledge),
+                request_collection=request_collection,
+                effective_embed_provider=effective_embed_provider,
+                effective_context_chunk_chars=effective_context_chunk_chars,
+                effective_context_total_chars=effective_context_total_chars,
+                project_fresh_collection_names=project_fresh_collection_names,
+                needs_refresh=needs_refresh,
+                logger=_RAG_LOG,
+            )
+            merged_step_status = merged_step.status
+            merged_step_reason = merged_step.reason
+            background_refresh_started = bool(merged_step.background_refresh_started)
+            trace["internet"]["background_refresh_started"] = background_refresh_started
+            if merged_step.used and merged_step.rag_ctx_for_log is not None:
+                rag_ctx_for_log = merged_step.rag_ctx_for_log
+                rag_timings = merged_step.rag_timings
+            else:
                 rag_ctx_for_log, rag_timings = w.build_rag_context(
                     last_user,
                     effective_rag_repo,
@@ -1259,6 +1195,15 @@ def run_chat_completions(
                     trigger_threshold=None,
                     force_rag=force_rag,
                 )
+        else:
+            merged_step_status = "skipped"
+            merged_step_reason = "rag_retrieval_skipped"
+        _append_pipeline_step_trace(
+            trace,
+            step_id="merged_docs",
+            status=merged_step_status,
+            reason=merged_step_reason,
+        )
         if rag_timings:
             w.set_latest_request_rag_steps(rag_timings)
             if not private_build:
@@ -1347,32 +1292,17 @@ def run_chat_completions(
         "duration_ms": 0,
         "snippets_chars": 0,
     }
-    _bf = getattr(w, "build_web_supplement_for_proxy", None)
-    if callable(_bf) and not is_autocomplete:
-        if doc_refactor_skip:
-            web_sup_meta = {
-                **web_sup_meta,
-                "skip_reason": "workspace_doc_refactor",
-                "duration_ms": 0,
-            }
-        else:
-            try:
-                _tws = time.time()
-                _mx = float(rag_ctx_for_log.max_score) if rag_ctx_for_log is not None else 0.0
-                ps: dict[str, Any] = {str(k): v for k, v in (proxy_settings or {}).items()}
-                web_supplement_text, web_sup_meta = _bf(
-                    last_user or "",
-                    _mx,
-                    float(effective_confidence_threshold),
-                    ps,
-                )
-                web_sup_meta = {
-                    **web_sup_meta,
-                    "duration_ms": int((time.time() - _tws) * 1000),
-                }
-            except Exception as _wse:
-                web_sup_meta = {**web_sup_meta, "error": str(_wse)}
-                web_supplement_text = None
+    web_step = run_web_supplement_step(
+        w=w,
+        is_autocomplete=bool(is_autocomplete),
+        doc_refactor_skip=bool(doc_refactor_skip),
+        last_user=last_user or "",
+        rag_ctx_for_log=rag_ctx_for_log,
+        effective_confidence_threshold=float(effective_confidence_threshold),
+        proxy_settings={str(k): v for k, v in (proxy_settings or {}).items()},
+    )
+    web_supplement_text = web_step.text
+    web_sup_meta = dict(web_step.meta or {})
     trace["internet"]["web_supplement"] = {
         "used": bool(web_sup_meta.get("used")),
         "trigger": web_sup_meta.get("trigger"),
@@ -1389,6 +1319,12 @@ def run_chat_completions(
     }
     trace["internet"]["used"] = bool(
         trace["internet"].get("used") or trace["internet"]["web_supplement"].get("used")
+    )
+    _append_pipeline_step_trace(
+        trace,
+        step_id="web_supplement",
+        status=web_step.status,
+        reason=web_step.reason,
     )
     publish_trace(trace)
 

@@ -200,6 +200,96 @@ def _build_base_rag_core() -> RagCore:
     return RagCore(registry)
 
 
+_RAG_PIPELINE_DETAILS: dict[str, dict[str, str]] = {
+    "query_prep": {
+        "long_description": (
+            "Normalizes user input and computes retrieval filters/limits before any vector call. "
+            "This stage also uses intent hints (framework/symbol/section) to reduce noise."
+        ),
+        "why_it_matters": "Prevents broad, off-target retrieval and improves precision in every downstream step.",
+        "example": (
+            "Question: 'SwiftUI List swipe actions in settings screen'. "
+            "Step narrows scope to SwiftUI + relevant section instead of searching the whole corpus blindly."
+        ),
+    },
+    "embed_search_pass1": {
+        "long_description": (
+            "Builds dense embedding and runs primary retrieval against Qdrant. "
+            "When hybrid sparse is enabled, lexical signal is fused with dense similarity."
+        ),
+        "why_it_matters": "This is the main recall engine that finds candidate evidence for the answer.",
+        "example": (
+            "Question includes exact API name + paraphrase. Hybrid mode captures both keyword and semantic matches."
+        ),
+    },
+    "concept_expansion_pass2": {
+        "long_description": (
+            "Optional second-pass retrieval using expanded concepts/synonyms configured in retrieval settings."
+        ),
+        "why_it_matters": "Improves recall for near-miss wording and terminology variation.",
+        "example": "Query says 'auth token refresh'; expansion also searches related 're-auth', 'session renewal' terms.",
+    },
+    "metadata_rank": {
+        "long_description": (
+            "Reorders candidates with deterministic metadata rules (doc type priority, scope, intent alignment)."
+        ),
+        "why_it_matters": "Pushes the most useful documents to the top before expensive rerank and context assembly.",
+        "example": "For 'how-to' queries, guide/tutorial docs are ranked above low-level changelog snippets.",
+    },
+    "rerank": {
+        "long_description": (
+            "Optional cross-encoder rerank scores top candidates against the full query and reorders them."
+        ),
+        "why_it_matters": "Improves precision when initial vector recall returns many partially relevant chunks.",
+        "example": "Among similar chunks, rerank promotes the one that directly answers 'error cause + fix'.",
+    },
+    "coverage_gate": {
+        "long_description": (
+            "Computes concept coverage and can widen final context from existing rerank pool if coverage is low."
+        ),
+        "why_it_matters": "Reduces one-topic bias and increases chance that all required concepts are represented.",
+        "example": "Question asks for setup + migration; gate widens selection so both aspects appear in context.",
+    },
+    "coverage_supplemental": {
+        "long_description": (
+            "Optional fallback pass for still-missing concepts: runs targeted supplemental retrieval and re-finalizes."
+        ),
+        "why_it_matters": "Acts as recovery path when first retrieval misses important concepts.",
+        "example": "If 'rollback strategy' is missing after first pass, supplemental retrieval explicitly chases it.",
+    },
+    "context_assembly": {
+        "long_description": (
+            "Builds final prompt context block with truncation/budget control and emits RagContext + trace metadata."
+        ),
+        "why_it_matters": "Determines what evidence the model actually sees under token constraints.",
+        "example": (
+            "Top chunks are trimmed and structured into compact evidence sections, preserving highest-value snippets."
+        ),
+    },
+}
+
+
+def get_rag_pipeline_definition() -> list[dict[str, Any]]:
+    """Return UI-facing RAG pipeline definition from RagCore registry."""
+    core = _build_base_rag_core()
+    out: list[dict[str, Any]] = []
+    for step in core.get_pipeline_definition():
+        details = _RAG_PIPELINE_DETAILS.get(step.id, {})
+        out.append(
+            {
+                "id": step.id,
+                "icon": step.icon,
+                "title": step.title,
+                "description": step.description,
+                "long_description": str(details.get("long_description") or step.description),
+                "why_it_matters": str(details.get("why_it_matters") or ""),
+                "example": str(details.get("example") or ""),
+                "depends_on": list(step.depends_on or ()),
+            }
+        )
+    return out
+
+
 def build_rag_context(
     question: str,
     rag_repo: RagRepository,

@@ -1,25 +1,17 @@
 import { useMemo } from 'react';
 import '../styles/components/PipelineCiDiagram.css';
 
-const STEPS = [
-  { id: 'parse', label: 'Parse / gate', hint: 'User message prepared for retrieval and supplements.' },
-  { id: 'rag', label: 'Vector RAG', hint: 'Qdrant search for the selected collection.' },
-  { id: 'hybrid', label: 'Hybrid sparse', hint: 'Dense + sparse fusion when enabled in settings.' },
-  { id: 'rerank', label: 'LLM rerank', hint: 'Rerank retrieved chunks when enabled.' },
-  { id: 'context', label: 'Build context', hint: 'Assemble system context from RAG hits.' },
-  {
-    id: 'skills',
-    label: 'Agent skills',
-    hint: 'load_skill and related tools when skill packs are enabled in proxy settings.',
-  },
-  { id: 'github', label: 'Merged docs', hint: 'GitHub / external_docs_rag merge (fetch web knowledge).' },
-  { id: 'web', label: 'Web (DDG)', hint: 'DuckDuckGo snippet supplement.' },
-  { id: 'kw_trigger', label: 'Freshness trig.', hint: 'Run web supplement on release / version style questions.' },
-  { id: 'fw_trigger', label: 'Framework trig.', hint: 'Run web supplement when RAG score is low on framework names.' },
-  { id: 'news', label: '+ DDG news', hint: 'WEB_INTERACTION_DDG_NEWS merges news into the pool.' },
-  { id: 'excerpt', label: '+ Page excerpt', hint: 'WEB_INTERACTION_FETCH_PAGE allows one allowed-host excerpt.' },
-  { id: 'wiki', label: '+ Wikipedia', hint: 'WEB_INTERACTION_WIKIPEDIA fallback when DDG is empty.' },
-];
+function getProxyPipelineSteps(data) {
+  const defs = data?.pipeline_definition?.proxy?.steps;
+  if (!Array.isArray(defs)) return [];
+  return defs
+    .filter((s) => s && typeof s === 'object' && s.id)
+    .map((s) => ({
+      id: String(s.id),
+      label: String(s.title || s.label || s.id),
+      hint: String(s.description || s.hint || ''),
+    }));
+}
 
 /**
  * @param {Record<string, unknown>} data merged server snapshot + optional UI draft overrides
@@ -31,6 +23,7 @@ export function computePipelineActive(data) {
   const webMaster = Boolean(data.web_interaction_enabled) && globalWeb;
   const ragOn = Boolean(data.rag_collection_configured);
   const skillsActive = Boolean(data.skills_enabled !== false);
+  const mergedDocs = Boolean(data.fetch_web_knowledge);
 
   return {
     parse: true,
@@ -39,7 +32,9 @@ export function computePipelineActive(data) {
     rerank: ragOn && Boolean(data.rerank_for_rag),
     context: ragOn,
     skills: skillsActive,
-    github: Boolean(data.fetch_web_knowledge),
+    merged_docs: mergedDocs,
+    web_supplement: webMaster,
+    github: mergedDocs,
     web: webMaster,
     kw_trigger: webMaster && data.web_interaction_on_keywords !== false,
     fw_trigger: webMaster && data.web_interaction_on_low_confidence_framework !== false,
@@ -55,8 +50,8 @@ function JobPill({ step, isActive }) {
     : 'pipeline-ci__job pipeline-ci__job--catalog-inactive';
 
   return (
-    <div className={className} title={step.hint}>
-      {step.label}
+    <div className={className} title={step.hint || ''}>
+      {step.label || step.id}
     </div>
   );
 }
@@ -71,10 +66,7 @@ function JobPill({ step, isActive }) {
  */
 function PipelineCiDiagram({ data, title = 'LLM proxy pipeline', subtitle, compact }) {
   const activeMap = useMemo(() => (data ? computePipelineActive(data) : null), [data]);
-
-  const visibleSteps = useMemo(() => {
-    return STEPS;
-  }, [data]);
+  const visibleSteps = useMemo(() => getProxyPipelineSteps(data), [data]);
 
   const killSwitch =
     data &&
@@ -95,7 +87,9 @@ function PipelineCiDiagram({ data, title = 'LLM proxy pipeline', subtitle, compa
 
       <div className="pipeline-ci__row-label">Pipeline stages</div>
       {!data || !activeMap ? (
-        <p className="pipeline-ci__subtitle pipeline-ci__subtitle--inline">Loading pipeline…</p>
+        <p className="pipeline-ci__subtitle pipeline-ci__subtitle--inline">Loading pipeline...</p>
+      ) : visibleSteps.length < 1 ? (
+        <p className="pipeline-ci__subtitle pipeline-ci__subtitle--inline">Pipeline definition unavailable.</p>
       ) : (
         <div className="pipeline-ci__track">
           {visibleSteps.map((step, i) => (
@@ -127,7 +121,7 @@ function PipelineCiDiagram({ data, title = 'LLM proxy pipeline', subtitle, compa
               Turn on <strong>+ DDG news</strong>, <strong>+ Page excerpt</strong>, or <strong>+ Wikipedia</strong>{' '}
               under <strong>Free web snippets</strong> below and save, or set{' '}
               <code>WEB_INTERACTION_DDG_NEWS=1</code>, <code>WEB_INTERACTION_FETCH_PAGE=1</code>,{' '}
-              <code>WEB_INTERACTION_WIKIPEDIA=1</code> on the server process—either path enables the stage (restart only
+              <code>WEB_INTERACTION_WIKIPEDIA=1</code> on the server process; either path enables the stage (restart only
               needed after env changes).
             </p>
           ) : null}

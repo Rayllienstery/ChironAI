@@ -187,6 +187,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
     coverage_gate_enabled: false,
     coverage_retry_supplemental_search_enabled: false,
     structured_rag_context_enabled: false,
+    pipeline_definition: null,
   });
   const [ragModelDefaults, setRagModelDefaults] = useState({
     rag_embed_model: '',
@@ -292,6 +293,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
         coverage_gate_enabled: Boolean(ra.coverage_gate_enabled),
         coverage_retry_supplemental_search_enabled: Boolean(ra.coverage_retry_supplemental_search_enabled),
         structured_rag_context_enabled: Boolean(ra.structured_rag_context_enabled),
+        pipeline_definition: data?.pipeline_definition || null,
       });
     } catch (e) {
       setError(e.message);

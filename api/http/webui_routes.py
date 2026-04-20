@@ -47,6 +47,9 @@ if _MD_INGESTION not in sys.path:
 _RAG_SVC = os.path.join(_ROOT, "CoreModules", "RagService")
 if os.path.isdir(_RAG_SVC) and _RAG_SVC not in sys.path:
     sys.path.insert(0, _RAG_SVC)
+_LLM_PROXY = os.path.join(_ROOT, "CoreModules", "LlmProxy")
+if os.path.isdir(_LLM_PROXY) and _LLM_PROXY not in sys.path:
+    sys.path.insert(0, _LLM_PROXY)
 
 from application.llm_proxy_builds import (
     LLM_PROXY_BUILDS_APP_KEY,
@@ -2204,6 +2207,61 @@ def _retrieval_yaml_raw_bool(key: str) -> bool:
         return False
 
 
+def _get_rag_pipeline_definition_payload() -> list[dict[str, Any]]:
+    try:
+        from rag_service.application import get_rag_pipeline_definition
+
+        steps = get_rag_pipeline_definition()
+        if isinstance(steps, list):
+            return [dict(s) for s in steps if isinstance(s, dict)]
+    except Exception:
+        pass
+    return []
+
+
+def _get_proxy_pipeline_definition_payload() -> list[dict[str, Any]]:
+    try:
+        from llm_proxy.pipeline_steps import get_proxy_pipeline_definition
+
+        steps = get_proxy_pipeline_definition()
+        if isinstance(steps, list):
+            return [dict(s) for s in steps if isinstance(s, dict)]
+    except Exception:
+        pass
+    return []
+
+
+def _get_proxy_last_executed_steps_payload() -> list[dict[str, Any]]:
+    trace = get_current_trace()
+    if not isinstance(trace, dict):
+        return []
+    raw = trace.get("pipeline_steps")
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        sid = str(item.get("id") or "").strip()
+        if not sid:
+            continue
+        out.append(
+            {
+                "id": sid,
+                "status": str(item.get("status") or ""),
+                "reason": item.get("reason"),
+            }
+        )
+    return out
+
+
+def _build_pipeline_definition_payload() -> dict[str, Any]:
+    return {
+        "rag": {"steps": _get_rag_pipeline_definition_payload()},
+        "proxy": {"steps": _get_proxy_pipeline_definition_payload()},
+    }
+
+
 @webui_bp.route("/rag-model-settings", methods=["GET"])
 def get_rag_model_settings() -> Any:
     """Return embedding + rerank model settings for RAG/Qdrant UI."""
@@ -2252,6 +2310,9 @@ def get_rag_model_settings() -> Any:
                     "rerank_for_rag": (
                         "proxy_settings.rerank_for_rag" if "rerank_for_rag" in proxy_settings else "default.false"
                     ),
+                },
+                "pipeline_definition": {
+                    "rag": {"steps": _get_rag_pipeline_definition_payload()},
                 },
             }
         )
@@ -2340,10 +2401,27 @@ def get_pipeline_preview() -> Any:
                     "web_interaction_fetch_page": str(web_flags["web_interaction_fetch_page"]["source"]),
                     "web_interaction_wikipedia": str(web_flags["web_interaction_wikipedia"]["source"]),
                 },
+                "pipeline_definition": _build_pipeline_definition_payload(),
+                "proxy_last_executed_steps": _get_proxy_last_executed_steps_payload(),
             }
         )
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_pipeline_preview", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/pipeline-definition", methods=["GET"])
+def get_pipeline_definition() -> Any:
+    """Canonical pipeline step definitions for Web UI (RAG + LLM proxy)."""
+    try:
+        return jsonify(
+            {
+                "pipeline_definition": _build_pipeline_definition_payload(),
+                "proxy_last_executed_steps": _get_proxy_last_executed_steps_payload(),
+            }
+        )
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.get_pipeline_definition", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 

@@ -29,17 +29,58 @@ class TabErrorBoundary extends Component {
   }
 }
 
-const DashboardTab = lazy(() => import("./components/DashboardTab"));
-const LogsTab = lazy(() => import("./components/LogsTab"));
-const SettingsTab = lazy(() => import("./components/SettingsTab"));
-const LlmProxyTab = lazy(() => import("./components/LlmProxyTab"));
-const LlmProxyBuildsTab = lazy(() => import("./components/LlmProxyBuildsTab"));
-const RagTab = lazy(() => import("./components/RagTab"));
-const CrawlerTab = lazy(() => import("./components/CrawlerTab"));
-const TestingTab = lazy(() => import("./components/TestingTab"));
-const TemplateEditorTab = lazy(() => import("./components/TemplateEditorTab"));
-const OllamaTab = lazy(() => import("./components/OllamaTab"));
-const OpenWebUiTab = lazy(() => import("./components/OpenWebUiTab"));
+function isChunkLoadLikeError(error) {
+  const msg = String(error?.message || "").toLowerCase();
+  return (
+    msg.includes("failed to fetch dynamically imported module") ||
+    msg.includes("importing a module script failed") ||
+    msg.includes("chunkloaderror") ||
+    msg.includes("dynamically imported")
+  );
+}
+
+function lazyWithRetry(key, importer) {
+  const storageKey = `coreui-lazy-retried:${String(key)}`;
+  return lazy(() =>
+    importer()
+      .then((mod) => {
+        try {
+          window.sessionStorage.removeItem(storageKey);
+        } catch {
+          /* ignore */
+        }
+        return mod;
+      })
+      .catch((error) => {
+        if (isChunkLoadLikeError(error)) {
+          try {
+            const alreadyRetried = window.sessionStorage.getItem(storageKey) === "1";
+            if (!alreadyRetried) {
+              window.sessionStorage.setItem(storageKey, "1");
+              window.location.reload();
+              return new Promise(() => {});
+            }
+            window.sessionStorage.removeItem(storageKey);
+          } catch {
+            /* ignore */
+          }
+        }
+        throw error;
+      })
+  );
+}
+
+const DashboardTab = lazyWithRetry("DashboardTab", () => import("./components/DashboardTab"));
+const LogsTab = lazyWithRetry("LogsTab", () => import("./components/LogsTab"));
+const SettingsTab = lazyWithRetry("SettingsTab", () => import("./components/SettingsTab"));
+const LlmProxyTab = lazyWithRetry("LlmProxyTab", () => import("./components/LlmProxyTab"));
+const LlmProxyBuildsTab = lazyWithRetry("LlmProxyBuildsTab", () => import("./components/LlmProxyBuildsTab"));
+const RagTab = lazyWithRetry("RagTab", () => import("./components/RagTab"));
+const CrawlerTab = lazyWithRetry("CrawlerTab", () => import("./components/CrawlerTab"));
+const TestingTab = lazyWithRetry("TestingTab", () => import("./components/TestingTab"));
+const TemplateEditorTab = lazyWithRetry("TemplateEditorTab", () => import("./components/TemplateEditorTab"));
+const OllamaTab = lazyWithRetry("OllamaTab", () => import("./components/OllamaTab"));
+const OpenWebUiTab = lazyWithRetry("OpenWebUiTab", () => import("./components/OpenWebUiTab"));
 
 import Card from "./components/Card";
 import {
