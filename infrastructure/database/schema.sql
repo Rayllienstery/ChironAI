@@ -67,6 +67,22 @@ CREATE TABLE IF NOT EXISTS rag_collection_meta (
 
 CREATE INDEX IF NOT EXISTS idx_rag_collection_meta_framework_id ON rag_collection_meta(framework_id);
 
+-- Gemini tool-call state cache (internal resilience for thought_signature/name recovery)
+CREATE TABLE IF NOT EXISTS gemini_tool_call_state (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    call_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    function_name TEXT,
+    thought_signature TEXT,
+    trace_id TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(call_id, model)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gemini_tool_call_state_call_id ON gemini_tool_call_state(call_id);
+CREATE INDEX IF NOT EXISTS idx_gemini_tool_call_state_updated_at ON gemini_tool_call_state(updated_at);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id);
 CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);

@@ -3108,6 +3108,358 @@ def test_v1_responses_input_parses_function_call_output_id_aliases() -> None:
     assert msgs[1]["tool_call_id"] == "call_alias_2"
 
 
+def test_v1_responses_input_preserves_function_call_output_name_aliases() -> None:
+    import llm_proxy.v1_blueprint as v1_blueprint
+
+    msgs = v1_blueprint._responses_input_to_openai_messages(
+        [
+            {"type": "function_call_output", "call_id": "call_1", "name": "shell", "output": "ok"},
+            {"type": "function_call_output", "call_id": "call_2", "tool_name": "web_search", "output": "ok"},
+        ]
+    )
+    assert msgs[0]["role"] == "tool"
+    assert msgs[0]["tool_call_id"] == "call_1"
+    assert msgs[0]["name"] == "shell"
+    assert msgs[0]["tool_name"] == "shell"
+    assert msgs[1]["role"] == "tool"
+    assert msgs[1]["tool_call_id"] == "call_2"
+    assert msgs[1]["name"] == "web_search"
+    assert msgs[1]["tool_name"] == "web_search"
+
+
+def test_v1_responses_output_function_call_uses_stable_id_call_id_when_missing() -> None:
+    import llm_proxy.v1_blueprint as v1_blueprint
+
+    out, _text = v1_blueprint._chat_message_to_responses_output_items(
+        {
+            "role": "assistant",
+            "tool_calls": [{"type": "function", "function": {"name": "shell", "arguments": "{\"command\":\"dir\"}"}}],
+        }
+    )
+    assert out
+    fc = out[0]
+    assert fc["type"] == "function_call"
+    assert isinstance(fc.get("id"), str) and fc["id"].startswith("call_")
+    assert fc["call_id"] == fc["id"]
+
+
+def test_native_tools_preflight_recovers_tool_name_and_sets_name_alias() -> None:
+    import llm_proxy.chat_completions as cc
+
+    out, diag = cc._preflight_native_tool_messages(
+        [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {"id": "c1", "type": "function", "function": {"name": "shell", "arguments": "{}"}}
+                ],
+            },
+            {"role": "tool", "tool_call_id": "c1", "content": "ok"},
+        ]
+    )
+    tool_msg = out[1]
+    assert tool_msg["tool_name"] == "shell"
+    assert tool_msg["name"] == "shell"
+    assert diag.get("tool_message_name_recovered_heuristic_count") == 1
+    assert (diag.get("tool_message_name_recovered_heuristic_sources") or {}).get("call_id_map") == 1
+
+
+def test_sse_tool_calls_payload_preserves_thought_signature_aliases() -> None:
+    import llm_proxy.chat_completions as cc
+
+    payload = cc._sse_tool_calls_payload(
+        [
+            {
+                "id": "call_1",
+                "type": "function",
+                "extra_content": {"google": {"thought_signature": "sig_1"}},
+                "function": {"name": "glob", "arguments": "{\"pattern\":\"*\"}"},
+            }
+        ]
+    )
+    assert payload
+    tc = payload[0]
+    assert tc["id"] == "call_1"
+    assert tc["call_id"] == "call_1"
+    assert (tc.get("function") or {}).get("thought_signature") == "sig_1"
+    assert ((tc.get("extra_content") or {}).get("google") or {}).get("thought_signature") == "sig_1"
+
+
+def test_interpolate_native_tools_for_gemini_preserves_names_and_normalizes_schema() -> None:
+    import llm_proxy.chat_completions as cc
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "edit",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "nullable": True},
+                        "mode": {"type": "string", "enum": ["overwrite", {"bad": True}]},
+                        "body": {"oneOf": [{"type": "string"}, {"type": "null"}]},
+                    },
+                    "required": ["path", "missing", 7],
+                    "oneOf": [{"type": "object"}],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "name": "read",
+            "description": "Read file",
+            "parameters": {"type": "array", "items": [{"type": "string"}, {"type": "number"}]},
+        },
+        {"type": "web_search", "name": "web_search"},
+    ]
+    out, diag = cc._interpolate_native_tools_for_gemini(
+        tools,
+        model_name="gemini-3-flash-preview:cloud",
+    )
+
+    assert out
+    assert diag.get("gemini_tool_interpolation_enabled") is True
+    assert int(diag.get("gemini_tool_schema_normalized_count") or 0) >= 1
+    assert int(diag.get("gemini_tool_schema_relaxed_count") or 0) >= 1
+
+    by_name = {
+        str(((t.get("function") or {}).get("name")) or ""): t
+        for t in out
+        if isinstance(t, dict) and isinstance(t.get("function"), dict)
+    }
+    assert "edit" in by_name
+    assert "read" in by_name
+    edit_params = by_name["edit"]["function"]["parameters"]
+    assert edit_params["type"] == "object"
+    assert edit_params["required"] == ["path"]
+    assert "oneOf" not in edit_params
+    assert edit_params["properties"]["path"]["type"] == "string"
+    assert "nullable" not in edit_params["properties"]["path"]
+    read_params = by_name["read"]["function"]["parameters"]
+    assert read_params["type"] == "array"
+    assert read_params["items"]["type"] == "string"
+    assert any(isinstance(t, dict) and t.get("type") == "web_search" for t in out)
+
+
+def test_interpolate_native_tools_for_non_gemini_is_noop() -> None:
+    import llm_proxy.chat_completions as cc
+
+    tools = [{"type": "function", "function": {"name": "shell", "parameters": {"type": "object"}}}]
+    out, diag = cc._interpolate_native_tools_for_gemini(tools, model_name="qwen2.5-coder:latest")
+    assert out is tools
+    assert diag == {}
+
+
+def test_transfer_intent_and_result_helpers_detect_move_workflow() -> None:
+    import llm_proxy.chat_completions as cc
+
+    query = "Перенеси готовые пункты из TODO.md в TODO_COMPLETED.md"
+    result = "Moved 43 lines to C:\\Users\\Raylee\\AI\\TODO_COMPLETED.md"
+    assert cc._looks_like_transfer_intent_query(query) is True
+    assert cc._tool_result_looks_like_transfer_completed(result) is True
+
+
+def test_transfer_intent_helper_ignores_regular_edit_query() -> None:
+    import llm_proxy.chat_completions as cc
+
+    assert cc._looks_like_transfer_intent_query("Исправь импорт в файле main.py") is False
+    assert cc._tool_result_looks_like_transfer_completed("Edit applied successfully.") is False
+
+
+def test_extract_transfer_paths_from_query_russian_form() -> None:
+    import llm_proxy.chat_completions as cc
+
+    src, dst = cc._extract_transfer_paths_from_query("Перенеси готовые пункты из TODO.md в TODO_COMPLETED.md")
+    assert src == "TODO.md"
+    assert dst == "TODO_COMPLETED.md"
+
+
+def test_extract_transfer_paths_from_query_handles_todo_label_without_extension() -> None:
+    import llm_proxy.chat_completions as cc
+
+    src, dst = cc._extract_transfer_paths_from_query(
+        "Перенеси готовые пункты из Todo - [x] в TODO_COMPLETED.md"
+    )
+    assert src == "TODO.md"
+    assert dst == "TODO_COMPLETED.md"
+
+
+def test_tool_file_edit_counts_since_last_user_tracks_edit_targets() -> None:
+    import llm_proxy.chat_completions as cc
+
+    messages = [
+        {"role": "user", "content": "Перенеси из TODO.md в TODO_COMPLETED.md"},
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "c1",
+                    "type": "function",
+                    "function": {
+                        "name": "edit",
+                        "arguments": "{\"filePath\":\"C:/repo/TODO.md\",\"oldString\":\"x\",\"newString\":\"\"}",
+                    },
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "c1", "content": "Edit applied successfully."},
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "c2",
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "arguments": "{\"filePath\":\"C:/repo/TODO_COMPLETED.md\"}",
+                    },
+                }
+            ],
+        },
+    ]
+    counts = cc._tool_file_edit_counts_since_last_user(messages)
+    assert counts.get("c:/repo/todo.md") == 1
+    assert "c:/repo/todo_completed.md" not in counts
+
+
+def test_restrict_native_tools_for_oldstring_recovery_after_consecutive_misses() -> None:
+    import llm_proxy.chat_completions as cc
+
+    tools = [
+        {"type": "function", "function": {"name": "read", "parameters": {}}},
+        {"type": "function", "function": {"name": "glob", "parameters": {}}},
+        {"type": "function", "function": {"name": "edit", "parameters": {}}},
+        {"type": "function", "function": {"name": "write", "parameters": {}}},
+    ]
+    messages = [
+        {"role": "user", "content": "Перенеси из TODO.md в TODO_COMPLETED.md"},
+        {"role": "tool", "content": "Could not find oldString in the file. It must match exactly."},
+        {"role": "tool", "content": "Could not find oldString in the file. It must match exactly."},
+    ]
+    out, diag = cc._restrict_native_tools_for_oldstring_recovery(
+        tools,
+        user_text="Перенеси из TODO.md в TODO_COMPLETED.md",
+        messages=messages,
+    )
+    names = [(((t.get("function") or {}).get("name")) or t.get("name")) for t in out if isinstance(t, dict)]
+    assert "read" in names
+    assert "glob" in names
+    assert "edit" not in names
+    assert "write" not in names
+    assert diag.get("transfer_oldstring_recovery_mode") is True
+    assert int(diag.get("transfer_oldstring_recovery_miss_count") or 0) >= 2
+
+
+def test_restrict_native_tools_for_transfer_drops_bash_shell() -> None:
+    import llm_proxy.chat_completions as cc
+
+    tools = [
+        {"type": "function", "function": {"name": "read", "parameters": {}}},
+        {"type": "function", "function": {"name": "edit", "parameters": {}}},
+        {"type": "function", "function": {"name": "bash", "parameters": {}}},
+        {"type": "function", "function": {"name": "shell", "parameters": {}}},
+    ]
+    out, diag = cc._restrict_native_tools_for_transfer(
+        tools,
+        user_text="Перенеси готовые пункты из TODO.md в TODO_COMPLETED.md",
+    )
+    names = [(((t.get("function") or {}).get("name")) or t.get("name")) for t in out if isinstance(t, dict)]
+    assert "read" in names
+    assert "edit" in names
+    assert "bash" not in names
+    assert "shell" not in names
+    assert diag.get("transfer_tools_restricted") is True
+
+
+def test_tool_results_indicate_source_only_transfer_from_script_output() -> None:
+    import llm_proxy.chat_completions as cc
+
+    messages = [
+        {"role": "user", "content": "Перенеси из TODO.md в TODO_COMPLETED.md"},
+        {"role": "tool", "content": "No new items to add to TODO_COMPLETED.md\nRemoved 43 lines from TODO.md"},
+    ]
+    assert (
+        cc._tool_results_indicate_source_only_transfer(
+            messages,
+            transfer_src="TODO.md",
+            transfer_dst="TODO_COMPLETED.md",
+        )
+        is True
+    )
+    state = cc._transfer_invariant_violation_state(
+        messages,
+        user_text="Перенеси из TODO.md в TODO_COMPLETED.md",
+    )
+    assert state.get("source_only_result_evidence") is True
+
+
+def test_preflight_native_tool_messages_gemini_recovers_signature_and_name_from_db(
+    tmp_path: Path,
+) -> None:
+    import llm_proxy.chat_completions as cc
+
+    db_path = str(tmp_path / "webui.db")
+    upserted = cc._gemini_tool_state_upsert_many(
+        db_path,
+        rows=[
+            {
+                "call_id": "call_1",
+                "model": "gemini-3-flash-preview:cloud",
+                "function_name": "glob",
+                "thought_signature": "sig_db_1",
+                "trace_id": "trace-seed",
+            }
+        ],
+    )
+    assert upserted == 1
+
+    messages = [
+        {
+            "role": "assistant",
+            "tool_calls": [{"id": "call_1", "type": "function", "function": {"arguments": "{\"pattern\":\"*\"}"}}],
+        },
+        {"role": "tool", "tool_call_id": "call_1", "content": "ok"},
+    ]
+    out, diag = cc._preflight_native_tool_messages(
+        messages,
+        model_name="gemini-3-flash-preview:cloud",
+        trace_id="trace-1",
+        db_path=db_path,
+    )
+
+    tc = out[0]["tool_calls"][0]
+    fn = tc["function"]
+    assert fn["name"] == "glob"
+    assert fn["thought_signature"] == "sig_db_1"
+    assert ((tc.get("extra_content") or {}).get("google") or {}).get("thought_signature") == "sig_db_1"
+    assert out[1]["tool_name"] == "glob"
+    assert out[1]["name"] == "glob"
+    assert int(diag.get("gemini_signature_recovered_from_db_count") or 0) >= 1
+    assert int(diag.get("gemini_tool_name_recovered_from_db_count") or 0) >= 1
+
+
+def test_preflight_native_tool_messages_gemini_falls_back_to_sentinel_signature(
+    tmp_path: Path,
+) -> None:
+    import llm_proxy.chat_completions as cc
+
+    out, diag = cc._preflight_native_tool_messages(
+        [
+            {
+                "role": "assistant",
+                "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "glob", "arguments": "{}"}}],
+            }
+        ],
+        model_name="gemini-3-flash-preview:cloud",
+        trace_id="trace-2",
+        db_path=str(tmp_path / "webui.db"),
+    )
+    tc = out[0]["tool_calls"][0]
+    assert tc["function"]["thought_signature"] == "skip_thought_signature_validator"
+    assert int(diag.get("gemini_signature_fallback_sentinel_count") or 0) >= 1
+
+
 def test_shell_tool_call_sanitizer_adds_erroraction_for_recursive_get_childitem() -> None:
     import json
 

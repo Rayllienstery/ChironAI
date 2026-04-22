@@ -10,10 +10,73 @@ const WIND_DOWN_MS = 7_000;
 const LEGACY_LLM_LIVE_ID = 'llm-proxy-live';
 
 /** One live card per trace id so multiple runs stack vertically. */
-function proxyLiveSlotId(traceId) {
-  const raw = traceId != null && String(traceId).trim() !== '' ? String(traceId).trim() : 'unknown';
+function proxyLiveSlotId(slotKey) {
+  const raw = slotKey != null && String(slotKey).trim() !== '' ? String(slotKey).trim() : 'unknown';
   const safe = raw.replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 72);
   return `llm-proxy-live-${safe}`;
+}
+
+function nonEmptyString(value) {
+  if (value == null) return '';
+  const s = String(value).trim();
+  return s !== '' ? s : '';
+}
+
+function traceChainId(trace) {
+  const req = trace && typeof trace === 'object' && trace.request && typeof trace.request === 'object'
+    ? trace.request
+    : null;
+  return nonEmptyString(req?.trace_chain_id);
+}
+
+function traceSlotKey(trace) {
+  return traceChainId(trace) || nonEmptyString(trace?.trace_id) || 'unknown';
+}
+
+function traceShortId(value) {
+  const s = nonEmptyString(value);
+  return s ? s.slice(0, 12) : '';
+}
+
+function numOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function computeGenTokensPerSecond(trace) {
+  const response = trace && typeof trace === 'object' && trace.response && typeof trace.response === 'object'
+    ? trace.response
+    : {};
+  const ollama = trace && typeof trace === 'object' && trace.ollama && typeof trace.ollama === 'object'
+    ? trace.ollama
+    : {};
+  const tokensEst = ollama.tokens_estimates && typeof ollama.tokens_estimates === 'object'
+    ? ollama.tokens_estimates
+    : {};
+
+  const latencyMs = numOrNull(response.latency_ms);
+  const completionEstimated = numOrNull(tokensEst.completion_tokens_estimated);
+  if (latencyMs != null && latencyMs > 0 && completionEstimated != null && completionEstimated > 0) {
+    return (completionEstimated / latencyMs) * 1000;
+  }
+
+  const steps = Array.isArray(trace?.steps) ? trace.steps : [];
+  for (let i = steps.length - 1; i >= 0; i -= 1) {
+    const step = steps[i];
+    const name = nonEmptyString(step?.name);
+    if (!name.startsWith('ollama_chat')) continue;
+    const outTok = numOrNull(step?.tokens_out_est);
+    const durMs = numOrNull(step?.duration_ms);
+    if (outTok != null && outTok > 0 && durMs != null && durMs > 0) {
+      return (outTok / durMs) * 1000;
+    }
+  }
+
+  const evalCount = numOrNull(response.ollama_eval_count);
+  if (latencyMs != null && latencyMs > 0 && evalCount != null && evalCount > 0) {
+    return (evalCount / latencyMs) * 1000;
+  }
+  return null;
 }
 
 function pickLastStepName(steps) {
@@ -121,7 +184,7 @@ function WindDownLinearBar({ endsAt }) {
 }
 
 function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
-  const { endsAt, status, model, traceId, steps } = wd;
+  const { endsAt, status, model, traceId, chainId, steps } = wd;
   const stepCapsules = buildStepCapsules(steps);
   return (
     <div className="proxy-live-notification notification-proxy-embed notification-proxy-embed--winddown">
@@ -138,6 +201,12 @@ function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
         <div className="proxy-live-notification-row">
           <span className="proxy-live-notification-label">Track ID</span>
           <span className="proxy-live-notification-value proxy-live-notification-mono">{traceId}</span>
+        </div>
+      ) : null}
+      {chainId ? (
+        <div className="proxy-live-notification-row">
+          <span className="proxy-live-notification-label">Chain</span>
+          <span className="proxy-live-notification-value proxy-live-notification-mono">{chainId}</span>
         </div>
       ) : null}
       {stepCapsules.length ? (
@@ -166,15 +235,9 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
   const model = traceModelFields(trace).headerShort;
   const stepCapsules = buildStepCapsules(trace?.steps);
   const traceId = trace?.trace_id != null && trace.trace_id !== '' ? String(trace.trace_id) : '';
-  const tokensEst = trace?.ollama?.tokens_estimates;
-  const completionTokens = tokensEst?.completion_tokens_estimated ?? null;
-  const promptTokens = tokensEst?.prompt_tokens_estimated ?? null;
-  const latencyMs = trace?.response?.latency_ms ?? null;
-  let tpsDisplay = null;
-  if (completionTokens != null && promptTokens != null && latencyMs != null && latencyMs > 0) {
-    const tps = (completionTokens / latencyMs) * 1000;
-    tpsDisplay = `${tps.toFixed(2)} tok/s`;
-  }
+  const chainId = traceShortId(traceChainId(trace));
+  const genTps = computeGenTokensPerSecond(trace);
+  const tpsDisplay = genTps != null && genTps > 0 ? `${genTps.toFixed(2)} tok/s` : null;
   return (
     <div className="proxy-live-notification notification-proxy-embed">
       {busyLlm ? (
@@ -196,9 +259,15 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
           <span className="proxy-live-notification-value proxy-live-notification-mono">{traceId}</span>
         </div>
       ) : null}
+      {chainId ? (
+        <div className="proxy-live-notification-row">
+          <span className="proxy-live-notification-label">Chain</span>
+          <span className="proxy-live-notification-value proxy-live-notification-mono">{chainId}</span>
+        </div>
+      ) : null}
       {tpsDisplay ? (
         <div className="proxy-live-notification-row">
-          <span className="proxy-live-notification-label">TPS</span>
+          <span className="proxy-live-notification-label">Gen tok/s</span>
           <span className="proxy-live-notification-value proxy-live-notification-mono">{tpsDisplay}</span>
         </div>
       ) : null}
@@ -274,26 +343,40 @@ export default function ProxiesLiveNotificationBridge({
     const status = (p.status != null && p.status !== '' ? String(p.status) : 'Idle').trim();
     const busy = status !== 'Idle';
     const trace = p.trace;
-    const traceKey = trace && trace.trace_id != null ? String(trace.trace_id) : 'unknown';
+    const slotKey = traceSlotKey(trace);
 
     if (busy) {
-      clearLiveSuppression(proxyLiveSlotId(traceKey === 'unknown' ? null : traceKey));
+      clearLiveSuppression(proxyLiveSlotId(slotKey === 'unknown' ? null : slotKey));
+      if (llmWindDownsRef.current.has(slotKey)) {
+        llmWindDownsRef.current.delete(slotKey);
+        const scheduled = llmWindDownTimersRef.current;
+        const tid = scheduled.get(slotKey);
+        if (tid != null) {
+          clearTimeout(tid);
+          scheduled.delete(slotKey);
+        }
+        bumpLlmWindDowns();
+      }
       prevLlmBusyRef.current = true;
       return;
     }
 
-    if (prevLlmBusyRef.current && !busy && trace && !llmWindDownsRef.current.has(traceKey)) {
+    if (prevLlmBusyRef.current && !busy && trace) {
       const model = traceModelFields(trace).headerShort;
       const stepLine = pickLastStepName(trace?.steps);
+      const chainIdFull = traceChainId(trace);
+      const chainIdShort = traceShortId(chainIdFull);
       const gen = ++llmWindDownGenRef.current;
-      llmWindDownsRef.current.set(traceKey, {
+      llmWindDownsRef.current.set(slotKey, {
         gen,
         endsAt: Date.now() + WIND_DOWN_MS,
         status,
         model,
         stepLine,
-        traceIdShort: trace.trace_id != null ? String(trace.trace_id).slice(0, 12) : '',
-        traceId: trace.trace_id != null ? String(trace.trace_id) : '',
+        traceIdShort: traceShortId(trace?.trace_id),
+        traceId: nonEmptyString(trace?.trace_id),
+        chainIdShort,
+        chainId: chainIdShort,
         steps: Array.isArray(trace.steps) ? trace.steps : [],
       });
       bumpLlmWindDowns();
@@ -320,6 +403,7 @@ export default function ProxiesLiveNotificationBridge({
             if (!cur || cur.gen !== myGen || cur.endsAt !== myEndsAt) return;
             const parts = [wd.model && `Model: ${wd.model}`, wd.status && `Last status: ${wd.status}`].filter(Boolean);
             if (wd.stepLine) parts.push(`Step: ${wd.stepLine}`);
+            if (wd.chainIdShort) parts.push(`Chain: ${wd.chainIdShort}`);
             if (wd.traceIdShort) parts.push(`Trace: ${wd.traceIdShort}`);
             await persistNotification({
               kind: 'event',
@@ -374,7 +458,7 @@ export default function ProxiesLiveNotificationBridge({
     const llmWd = llmWindDownsRef.current;
 
     if (busyLlm && proxyPayload?.trace) {
-      const tk = proxyPayload.trace.trace_id != null ? String(proxyPayload.trace.trace_id) : 'unknown';
+      const tk = traceSlotKey(proxyPayload.trace);
       rows.push({
         id: proxyLiveSlotId(tk === 'unknown' ? null : tk),
         source: 'rag-fusion-proxy',

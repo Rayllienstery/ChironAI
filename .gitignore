@@ -80,16 +80,9 @@ logs/
 *.log.*
 
 # Fetched markdown files and documentation sources
-WebUI/rag_sources/**/*.md
 WebUI/rag_sources/**/meta.json
 WebUI/rag_sources/**/pages/
 Apple-Developer-Documentation-Offline-Archive-main/
-*.md
-!README.md
-!TODO.md
-!LLM_Code_Evaluation.md
-!ARCHITECTURE.md
-!CHANGELOG.md
 
 # Qdrant data
 qdrant_data/
@@ -155,3 +148,5 @@ htmlcov/
 dmypy.json
 
 .npm-cache
+.kilo
+prompts

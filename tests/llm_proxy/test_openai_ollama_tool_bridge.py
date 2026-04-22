@@ -39,7 +39,7 @@ def test_openai_messages_single_tool_roundtrip_shape() -> None:
     ollama = openai_messages_to_ollama(openai)
     assert ollama[1]["role"] == "assistant"
     assert ollama[1]["tool_calls"][0]["function"]["arguments"] == {"city": "NYC"}
-    assert ollama[2] == {"role": "tool", "tool_name": "get_temp", "content": "22C"}
+    assert ollama[2] == {"role": "tool", "tool_name": "get_temp", "name": "get_temp", "content": "22C"}
 
 
 def test_openai_tool_message_infers_name_from_tool_call_id() -> None:
@@ -58,6 +58,7 @@ def test_openai_tool_message_infers_name_from_tool_call_id() -> None:
     ]
     ollama = openai_messages_to_ollama(openai)
     assert ollama[1]["tool_name"] == "edit_file"
+    assert ollama[1]["name"] == "edit_file"
 
 
 def test_openai_tool_message_infers_name_from_call_id_alias() -> None:
@@ -76,6 +77,7 @@ def test_openai_tool_message_infers_name_from_call_id_alias() -> None:
     ]
     ollama = openai_messages_to_ollama(openai)
     assert ollama[1]["tool_name"] == "edit_file"
+    assert ollama[1]["name"] == "edit_file"
 
 
 def test_openai_tool_message_blank_name_falls_back_to_tool() -> None:
@@ -84,6 +86,7 @@ def test_openai_tool_message_blank_name_falls_back_to_tool() -> None:
     ]
     ollama = openai_messages_to_ollama(openai)
     assert ollama[0]["tool_name"] == "tool"
+    assert ollama[0]["name"] == "tool"
 
 
 def test_ollama_message_to_openai_assistant_tool_calls() -> None:
@@ -204,13 +207,36 @@ def test_openai_messages_preserve_thought_signature_on_tool_calls() -> None:
     ollama = openai_messages_to_ollama(openai)
     assert ollama[1]["role"] == "assistant"
     assert ollama[1]["signature"] == "msg-sig-1"
-    fn0 = ollama[1]["tool_calls"][0]["function"]
+    tc0 = ollama[1]["tool_calls"][0]
+    fn0 = tc0["function"]
     assert fn0["thought_signature"] == "Z2VtaW5pLXNpZw=="
+    assert ((tc0.get("extra_content") or {}).get("google") or {}).get("thought_signature") == "Z2VtaW5pLXNpZw=="
     assert fn0["name"] == "get_temp"
     assert fn0["arguments"] == {"city": "NYC"}
 
 
-def test_openai_messages_adds_synthetic_thought_signature_when_missing() -> None:
+def test_openai_messages_preserve_tool_call_id_for_ollama_roundtrip() -> None:
+    openai = [
+        {"role": "user", "content": "hi"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_abc",
+                    "type": "function",
+                    "function": {"name": "get_temp", "arguments": '{"city":"NYC"}'},
+                }
+            ],
+        },
+    ]
+    ollama = openai_messages_to_ollama(openai)
+    tc0 = ollama[1]["tool_calls"][0]
+    assert tc0["id"] == "call_abc"
+    assert tc0["call_id"] == "call_abc"
+
+
+def test_openai_messages_adds_validator_skip_thought_signature_when_missing() -> None:
     openai = [
         {"role": "user", "content": "hi"},
         {
@@ -229,9 +255,39 @@ def test_openai_messages_adds_synthetic_thought_signature_when_missing() -> None
         },
     ]
     ollama = openai_messages_to_ollama(openai)
-    fn0 = ollama[1]["tool_calls"][0]["function"]
-    assert isinstance(fn0.get("thought_signature"), str)
-    assert fn0["thought_signature"]
+    tc0 = ollama[1]["tool_calls"][0]
+    fn0 = tc0["function"]
+    assert fn0["thought_signature"] == "skip_thought_signature_validator"
+    assert ((tc0.get("extra_content") or {}).get("google") or {}).get(
+        "thought_signature"
+    ) == "skip_thought_signature_validator"
+
+
+def test_openai_messages_reads_thought_signature_from_extra_content_alias() -> None:
+    openai = [
+        {"role": "user", "content": "hi"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_abc",
+                    "type": "function",
+                    "extra_content": {"google": {"thought_signature": "sig_from_extra"}},
+                    "function": {
+                        "name": "get_temp",
+                        "arguments": '{"city":"NYC"}',
+                    },
+                }
+            ],
+        },
+    ]
+    ollama = openai_messages_to_ollama(openai)
+    tc0 = ollama[1]["tool_calls"][0]
+    assert tc0["function"]["thought_signature"] == "sig_from_extra"
+    assert ((tc0.get("extra_content") or {}).get("google") or {}).get(
+        "thought_signature"
+    ) == "sig_from_extra"
 
 
 def test_ollama_message_to_openai_preserves_thought_signature_and_message_signature() -> None:
@@ -254,8 +310,29 @@ def test_ollama_message_to_openai_preserves_thought_signature_and_message_signat
     assert oa["signature"] == "roundtrip-msg"
     assert oa["tool_calls"][0]["function"]["name"] == "rag_query"
     assert oa["tool_calls"][0]["function"]["thought_signature"] == "abc123"
+    assert ((oa["tool_calls"][0].get("extra_content") or {}).get("google") or {}).get(
+        "thought_signature"
+    ) == "abc123"
     args = json.loads(oa["tool_calls"][0]["function"]["arguments"])
     assert args == {"query": "x"}
+
+
+def test_ollama_message_to_openai_preserves_tool_call_id() -> None:
+    oa = ollama_message_to_openai_assistant(
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "id_from_ollama",
+                    "type": "function",
+                    "function": {"name": "x", "arguments": {"a": 1}},
+                }
+            ],
+        }
+    )
+    assert oa["tool_calls"][0]["id"] == "id_from_ollama"
+    assert oa["tool_calls"][0]["call_id"] == "id_from_ollama"
 
 
 def test_assistant_signature_preserved_without_tool_calls() -> None:

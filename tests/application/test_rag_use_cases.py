@@ -262,5 +262,5 @@ def test_prepare_ollama_messages_native_tools_preserves_roles() -> None:
     assert msgs[0]["role"] == "system"
     assert msgs[2]["role"] == "assistant" and msgs[2]["tool_calls"]
     assert msgs[2]["tool_calls"][0]["function"]["arguments"] == {"x": 1}
-    assert msgs[3] == {"role": "tool", "tool_name": "t", "content": "done"}
+    assert msgs[3] == {"role": "tool", "tool_name": "t", "name": "t", "content": "done"}
     assert model == "m"

@@ -69,6 +69,29 @@ _RESPONSES_HISTORY: dict[str, list[dict[str, Any]]] = {}
 _RESPONSES_HISTORY_MAX = 200
 
 
+def _inbound_request_id_from_headers() -> str:
+    return str(request.headers.get("x-trace-id") or request.headers.get("x-request-id") or "").strip()
+
+
+def _with_proxy_trace_meta(body: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+    out = dict(body)
+    existing = out.get("_proxy_trace_meta")
+    meta = dict(existing) if isinstance(existing, dict) else {}
+    for key, value in extra.items():
+        if value is None:
+            continue
+        if isinstance(value, str):
+            v = value.strip()
+            if not v:
+                continue
+            meta[key] = v
+            continue
+        meta[key] = value
+    if meta:
+        out["_proxy_trace_meta"] = meta
+    return out
+
+
 def _responses_content_to_text(content: Any) -> str:
     if isinstance(content, str):
         return content
@@ -114,6 +137,11 @@ def _responses_input_to_openai_messages(raw_input: Any) -> list[dict[str, Any]]:
             msg: dict[str, Any] = {"role": "tool", "content": tool_content}
             if call_id:
                 msg["tool_call_id"] = call_id
+            tool_name = str(item.get("name") or item.get("tool_name") or "").strip()
+            if tool_name:
+                # Preserve both aliases for downstream bridges that require one or the other.
+                msg["name"] = tool_name
+                msg["tool_name"] = tool_name
             out.append(msg)
             continue
         if itype == "message":
@@ -513,14 +541,18 @@ def _chat_message_to_responses_output_items(message: dict[str, Any]) -> tuple[li
             name = str(fn.get("name") or "").strip()
             if not name:
                 continue
+            tc_id = str(tc.get("id") or "").strip()
+            tc_call_id = str(tc.get("call_id") or "").strip()
+            stable_id = tc_id or tc_call_id or f"call_{uuid.uuid4().hex[:24]}"
+            stable_call_id = tc_call_id or stable_id
             output.append(
                 {
-                    "id": str(tc.get("id") or f"call_{uuid.uuid4().hex[:24]}"),
+                    "id": stable_id,
                     "type": "function_call",
                     "status": "completed",
                     "name": name,
                     "arguments": str(fn.get("arguments") or ""),
-                    "call_id": str(tc.get("id") or f"call_{uuid.uuid4().hex[:24]}"),
+                    "call_id": stable_call_id,
                 }
             )
     return output, merged_text
@@ -844,6 +876,7 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
     @bp.route("/v1/chat/completions", methods=["POST"])
     def chat_completions():
         raw = request.get_json(force=True, silent=True) or {}
+        inbound_request_id = _inbound_request_id_from_headers()
         if isinstance(raw, dict):
             tools = raw.get("tools")
             _V1_LOG.info(
@@ -854,16 +887,23 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
                     "tools_count": len(tools) if isinstance(tools, list) else 0,
                     "tool_choice": raw.get("tool_choice"),
                     "requested_model": raw.get("model"),
-                    "trace_id": request.headers.get("x-trace-id")
-                    or request.headers.get("x-request-id")
-                    or "",
+                    "trace_id": inbound_request_id,
                 },
             )
+            body = _with_proxy_trace_meta(
+                raw,
+                {
+                    "proxy_v1_route": "/v1/chat/completions",
+                    "incoming_request_id": inbound_request_id,
+                },
+            )
+            return run_chat_completions(wiring, body_override=body)
         return run_chat_completions(wiring)
 
     @bp.route("/v1/responses", methods=["POST"])
     def responses():
         raw = request.get_json(force=True, silent=True) or {}
+        inbound_request_id = _inbound_request_id_from_headers()
         if not isinstance(raw, dict):
             return jsonify({"error": {"message": "JSON body required", "type": "invalid_request_error"}}), 400
         _inp = raw.get("input")
@@ -887,12 +927,16 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
                 "tools_count": len(raw.get("tools")) if isinstance(raw.get("tools"), list) else 0,
                 "tool_choice": raw.get("tool_choice"),
                 "requested_model": raw.get("model"),
-                "trace_id": request.headers.get("x-trace-id") or request.headers.get("x-request-id") or "",
+                "trace_id": inbound_request_id,
                 "previous_response_id": raw.get("previous_response_id") or "",
                 **_input_summary,
             },
         )
         oa_body, wants_stream, diag = _responses_request_to_openai_chat_body(raw)
+        oa_body = _with_proxy_trace_meta(
+            oa_body,
+            {"incoming_request_id": inbound_request_id},
+        )
         _V1_LOG.info(
             "v1.responses.normalized_tools",
             extra={
@@ -904,7 +948,7 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
                 "tools_types_normalized": diag.get("tools_types_normalized"),
                 "tool_choice_raw": diag.get("tool_choice_raw"),
                 "tool_choice_normalized": diag.get("tool_choice_normalized"),
-                "trace_id": request.headers.get("x-trace-id") or request.headers.get("x-request-id") or "",
+                "trace_id": inbound_request_id,
             },
         )
         if int(diag.get("tools_count_raw") or 0) > 0 and int(diag.get("tools_count_normalized") or 0) == 0:

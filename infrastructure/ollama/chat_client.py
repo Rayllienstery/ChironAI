@@ -285,6 +285,161 @@ class OllamaChatClient:
                 yield ("error", data)
 
 
+def _non_empty_str(value: Any) -> str:
+    if isinstance(value, str):
+        s = value.strip()
+        if s:
+            return s
+    return ""
+
+
+def _tool_call_signature(call: dict[str, Any]) -> str:
+    fn = call.get("function") if isinstance(call.get("function"), dict) else {}
+    candidates = []
+    if isinstance(fn, dict):
+        candidates.extend((fn.get("thought_signature"), fn.get("thoughtSignature")))
+    candidates.extend((call.get("thought_signature"), call.get("thoughtSignature")))
+    extra = call.get("extra_content")
+    if isinstance(extra, dict):
+        google = extra.get("google")
+        if isinstance(google, dict):
+            candidates.extend((google.get("thought_signature"), google.get("thoughtSignature")))
+    for raw in candidates:
+        s = _non_empty_str(raw)
+        if s:
+            return s
+    return ""
+
+
+def _tool_call_key(call: dict[str, Any], idx: int) -> str:
+    cid = _non_empty_str(call.get("id")) or _non_empty_str(call.get("call_id"))
+    if cid:
+        return f"id:{cid}"
+    fn = call.get("function") if isinstance(call.get("function"), dict) else {}
+    name = _non_empty_str(fn.get("name") if isinstance(fn, dict) else None).lower()
+    fn_index = None
+    if isinstance(fn, dict):
+        fn_index = fn.get("index")
+    if fn_index is None:
+        fn_index = call.get("index")
+    if name and fn_index is not None:
+        try:
+            return f"idx_name:{int(fn_index)}:{name}"
+        except (TypeError, ValueError):
+            return f"idx_name:{fn_index}:{name}"
+    if name:
+        return f"name:{name}"
+    return f"pos:{idx}"
+
+
+def _tool_arguments_substantive(value: Any) -> bool:
+    if isinstance(value, dict):
+        return bool(value)
+    if isinstance(value, str):
+        return bool(value.strip())
+    return value is not None
+
+
+def _merge_single_tool_call(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    out = dict(existing)
+    for k, v in incoming.items():
+        if k in {"id", "call_id", "function", "extra_content"}:
+            continue
+        if v is not None:
+            out[k] = v
+
+    existing_fn = existing.get("function") if isinstance(existing.get("function"), dict) else {}
+    incoming_fn = incoming.get("function") if isinstance(incoming.get("function"), dict) else {}
+    fn_out = dict(existing_fn)
+    for k, v in incoming_fn.items():
+        if k == "arguments":
+            if _tool_arguments_substantive(v) or "arguments" not in fn_out:
+                fn_out["arguments"] = v
+            continue
+        if k in {"name", "thought_signature", "thoughtSignature"}:
+            s = _non_empty_str(v)
+            if s or k not in fn_out:
+                if s:
+                    target_key = "thought_signature" if "thought" in k.lower() else "name"
+                    fn_out[target_key] = s
+            continue
+        if v is not None:
+            fn_out[k] = v
+
+    name = _non_empty_str(fn_out.get("name")) or _non_empty_str(existing_fn.get("name")) or _non_empty_str(
+        incoming_fn.get("name")
+    )
+    if name:
+        fn_out["name"] = name
+
+    sig = _tool_call_signature(incoming) or _tool_call_signature(existing)
+    if sig:
+        fn_out["thought_signature"] = sig
+
+    out["function"] = fn_out
+
+    id_value = _non_empty_str(incoming.get("id")) or _non_empty_str(existing.get("id"))
+    call_id_value = _non_empty_str(incoming.get("call_id")) or _non_empty_str(existing.get("call_id"))
+    canonical = id_value or call_id_value
+    if canonical:
+        out["id"] = canonical
+        out["call_id"] = call_id_value or canonical
+
+    existing_extra = existing.get("extra_content") if isinstance(existing.get("extra_content"), dict) else {}
+    incoming_extra = incoming.get("extra_content") if isinstance(incoming.get("extra_content"), dict) else {}
+    extra_out = dict(existing_extra)
+    for k, v in incoming_extra.items():
+        if v is None:
+            continue
+        if k == "google" and isinstance(v, dict):
+            google_prev = extra_out.get("google")
+            google_out = dict(google_prev) if isinstance(google_prev, dict) else {}
+            for gk, gv in v.items():
+                if gv is not None:
+                    google_out[gk] = gv
+            extra_out["google"] = google_out
+            continue
+        extra_out[k] = v
+    if sig:
+        google_prev = extra_out.get("google")
+        google_out = dict(google_prev) if isinstance(google_prev, dict) else {}
+        google_out.setdefault("thought_signature", sig)
+        extra_out["google"] = google_out
+    if extra_out:
+        out["extra_content"] = extra_out
+
+    if not _non_empty_str(out.get("type")):
+        out["type"] = "function"
+    return out
+
+
+def _merge_tool_calls(existing_calls: list[Any], incoming_calls: list[Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    key_to_index: dict[str, int] = {}
+
+    for idx, raw in enumerate(existing_calls):
+        if not isinstance(raw, dict):
+            continue
+        item = _merge_single_tool_call({}, raw)
+        key = _tool_call_key(item, idx)
+        key_to_index[key] = len(out)
+        out.append(item)
+
+    for idx, raw in enumerate(incoming_calls):
+        if not isinstance(raw, dict):
+            continue
+        item = _merge_single_tool_call({}, raw)
+        key = _tool_call_key(item, idx)
+        existing_idx = key_to_index.get(key)
+        if existing_idx is None:
+            key_to_index[key] = len(out)
+            out.append(item)
+            continue
+        out[existing_idx] = _merge_single_tool_call(out[existing_idx], item)
+
+    return out
+
+
 def _merge_ollama_assistant_message_parts(acc: dict[str, Any], chunk: dict[str, Any]) -> dict[str, Any]:
     """Merge streamed assistant ``message`` fragments (later chunks override when non-empty)."""
     out = dict(acc)
@@ -301,8 +456,11 @@ def _merge_ollama_assistant_message_parts(acc: dict[str, Any], chunk: dict[str, 
             if isinstance(v, str) and not v.strip() and out.get("thinking"):
                 continue
             out[k] = v
-        elif k == "tool_calls" and v:
-            out[k] = v
+        elif k == "tool_calls":
+            if not isinstance(v, list) or not v:
+                continue
+            prev_calls = out.get("tool_calls") if isinstance(out.get("tool_calls"), list) else []
+            out["tool_calls"] = _merge_tool_calls(prev_calls, v)
         elif v is not None and k not in ("content", "tool_calls", "thinking"):
             out[k] = v
     return out

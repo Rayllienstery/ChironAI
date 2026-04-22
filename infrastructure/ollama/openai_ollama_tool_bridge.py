@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import uuid
 from typing import Any
@@ -32,9 +31,25 @@ def _message_tool_call_id(message: dict[str, Any]) -> str:
     return ""
 
 
-def _synthetic_thought_signature(name: str, call_id: str, idx: int) -> str:
-    payload = f"synthetic:{name}:{call_id}:{idx}".encode("utf-8")
-    return base64.b64encode(payload).decode("ascii")
+_THOUGHT_SIGNATURE_SKIP_VALIDATOR = "skip_thought_signature_validator"
+
+
+def _extract_thought_signature_from_tool_call(tool_call: dict[str, Any], fn: dict[str, Any]) -> str:
+    candidates: list[Any] = []
+    if isinstance(fn, dict):
+        candidates.extend((fn.get("thought_signature"), fn.get("thoughtSignature")))
+    candidates.extend((tool_call.get("thought_signature"), tool_call.get("thoughtSignature")))
+    extra = tool_call.get("extra_content")
+    if isinstance(extra, dict):
+        google = extra.get("google")
+        if isinstance(google, dict):
+            candidates.extend((google.get("thought_signature"), google.get("thoughtSignature")))
+    for raw in candidates:
+        if isinstance(raw, str):
+            s = raw.strip()
+            if s:
+                return s
+    return ""
 
 
 def arguments_to_ollama_object(raw: object | None) -> dict[str, Any]:
@@ -177,11 +192,30 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
                             ollama_fn["index"] = idx
                     else:
                         ollama_fn["index"] = idx
-                    if isinstance(fn, dict) and "thought_signature" in fn:
-                        ollama_fn["thought_signature"] = fn["thought_signature"]
+                    thought_signature = _extract_thought_signature_from_tool_call(c, fn)
+                    if not thought_signature:
+                        # Google-documented fallback to keep Gemini function-call validation permissive
+                        # when upstream adapters omit signatures.
+                        thought_signature = _THOUGHT_SIGNATURE_SKIP_VALIDATOR
+                    ollama_fn["thought_signature"] = thought_signature
+                    ollama_call: dict[str, Any] = {"type": "function", "function": ollama_fn}
+                    if call_id:
+                        ollama_call["id"] = call_id
+                        ollama_call["call_id"] = call_id
+                    extra_content = c.get("extra_content")
+                    if isinstance(extra_content, dict):
+                        extra_out = dict(extra_content)
                     else:
-                        ollama_fn["thought_signature"] = _synthetic_thought_signature(name, call_id or "call", idx)
-                    ollama_calls.append({"type": "function", "function": ollama_fn})
+                        extra_out = {}
+                    google = extra_out.get("google")
+                    if isinstance(google, dict):
+                        google_out = dict(google)
+                    else:
+                        google_out = {}
+                    google_out.setdefault("thought_signature", thought_signature)
+                    extra_out["google"] = google_out
+                    ollama_call["extra_content"] = extra_out
+                    ollama_calls.append(ollama_call)
                 out_msg: dict[str, Any] = {"role": "assistant", "content": text}
                 if ollama_calls:
                     out_msg["tool_calls"] = ollama_calls
@@ -206,7 +240,8 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
                     name = "tool"
             raw_c = m.get("content")
             content = raw_c if isinstance(raw_c, str) else json.dumps(raw_c, ensure_ascii=False)
-            ollama.append({"role": "tool", "tool_name": name, "content": content})
+            # Keep both aliases for broader backend compatibility (e.g. Gemini adapters expect `name`).
+            ollama.append({"role": "tool", "tool_name": name, "name": name, "content": content})
             continue
         if role == "function":
             name = m.get("name")
@@ -214,7 +249,7 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
                 name = "function"
             raw_c = m.get("content")
             content = raw_c if isinstance(raw_c, str) else json.dumps(raw_c, ensure_ascii=False)
-            ollama.append({"role": "tool", "tool_name": name, "content": content})
+            ollama.append({"role": "tool", "tool_name": name, "name": name, "content": content})
             continue
         extra = _openai_message_content_to_text(m.get("content"))
         label = str(role) if role not in (None, "") else "unknown"
@@ -320,15 +355,32 @@ def ollama_message_to_openai_assistant(ollama_msg: dict[str, Any]) -> dict[str, 
             args_raw = fn.get("arguments") if isinstance(fn, dict) else None
             arg_str = arguments_to_openai_string(args_raw)
             fn_out: dict[str, Any] = {"name": name, "arguments": arg_str}
-            if isinstance(fn, dict) and "thought_signature" in fn:
-                fn_out["thought_signature"] = fn["thought_signature"]
-            openai_calls.append(
-                {
-                    "id": _new_call_id(),
-                    "type": "function",
-                    "function": fn_out,
-                }
-            )
+            thought_signature = _extract_thought_signature_from_tool_call(c, fn)
+            if thought_signature:
+                fn_out["thought_signature"] = thought_signature
+            call_id = _message_tool_call_id(c) or _new_call_id()
+            call_out: dict[str, Any] = {
+                "id": call_id,
+                "call_id": call_id,
+                "type": "function",
+                "function": fn_out,
+            }
+            extra_content = c.get("extra_content")
+            if isinstance(extra_content, dict):
+                extra_out = dict(extra_content)
+            else:
+                extra_out = {}
+            if thought_signature:
+                google = extra_out.get("google")
+                if isinstance(google, dict):
+                    google_out = dict(google)
+                else:
+                    google_out = {}
+                google_out.setdefault("thought_signature", thought_signature)
+                extra_out["google"] = google_out
+            if extra_out:
+                call_out["extra_content"] = extra_out
+            openai_calls.append(call_out)
     thinking = ollama_msg.get("thinking")
     th = thinking.strip() if isinstance(thinking, str) else ""
     co = (content or "").strip() if content else ""

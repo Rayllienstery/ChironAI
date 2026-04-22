@@ -5,11 +5,15 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
+import sqlite3
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 try:
@@ -245,6 +249,18 @@ def _sanitize_tool_name(raw: object, *, fallback: str = "tool") -> str:
     return fallback
 
 
+def _non_empty_str(raw: object) -> str:
+    if isinstance(raw, str):
+        s = raw.strip()
+        if s:
+            return s
+        return ""
+    if raw is None:
+        return ""
+    s = str(raw).strip()
+    return s if s else ""
+
+
 def _message_tool_call_id(message: dict[str, Any]) -> str:
     for key in ("tool_call_id", "tool_callid", "call_id", "id"):
         value = message.get(key)
@@ -253,6 +269,201 @@ def _message_tool_call_id(message: dict[str, Any]) -> str:
             if value:
                 return value
     return ""
+
+
+def _resolve_trace_chain_id(
+    *,
+    client_request_id: object,
+    proxy_trace_meta: dict[str, Any] | None,
+) -> tuple[str, str]:
+    """
+    Resolve stable UI chain key for consecutive requests.
+
+    Priority:
+    1) explicit ``client_request_id`` from payload
+    2) inbound request id propagated via ``_proxy_trace_meta``
+    """
+    client_id = _non_empty_str(client_request_id)
+    if client_id:
+        return client_id, "client_request_id"
+
+    meta = proxy_trace_meta if isinstance(proxy_trace_meta, dict) else {}
+    for key in ("incoming_request_id", "x_trace_id", "x_request_id", "request_id", "trace_id"):
+        value = _non_empty_str(meta.get(key))
+        if value:
+            return value, "incoming_request_id"
+    return "", ""
+
+
+_THOUGHT_SIGNATURE_SKIP_VALIDATOR = "skip_thought_signature_validator"
+_GEMINI_TOOL_STATE_TTL_SECONDS = 7 * 24 * 60 * 60
+_GEMINI_TOOL_STATE_SCHEMA_INIT_LOCK = threading.Lock()
+_GEMINI_TOOL_STATE_SCHEMA_INIT_PATHS: set[str] = set()
+
+
+def _is_gemini_model_name(model_name: str | None) -> bool:
+    return "gemini" in str(model_name or "").strip().lower()
+
+
+def _resolve_default_webui_db_path() -> str:
+    env_path = os.getenv("WEBUI_DB_PATH")
+    if env_path:
+        return env_path
+    project_root = Path(__file__).resolve().parents[3]
+    return str(project_root / "logs" / "webui.db")
+
+
+def _resolve_proxy_db_path_from_wiring(w: LlmProxyWiring | None) -> str:
+    if w is not None:
+        try:
+            repo = w.get_logs_repository()
+            path = getattr(repo, "db_path", None)
+            if path:
+                return str(path)
+        except Exception:
+            pass
+    return _resolve_default_webui_db_path()
+
+
+def _ensure_gemini_tool_state_schema(db_path: str) -> None:
+    p = str(db_path or "").strip()
+    if not p:
+        return
+    with _GEMINI_TOOL_STATE_SCHEMA_INIT_LOCK:
+        if p in _GEMINI_TOOL_STATE_SCHEMA_INIT_PATHS:
+            return
+    try:
+        Path(p).parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(p) as conn:
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS gemini_tool_call_state (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    call_id TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    function_name TEXT,
+                    thought_signature TEXT,
+                    trace_id TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(call_id, model)
+                );
+                CREATE INDEX IF NOT EXISTS idx_gemini_tool_call_state_call_id
+                    ON gemini_tool_call_state(call_id);
+                CREATE INDEX IF NOT EXISTS idx_gemini_tool_call_state_updated_at
+                    ON gemini_tool_call_state(updated_at);
+                """
+            )
+            conn.commit()
+    except Exception:
+        return
+    with _GEMINI_TOOL_STATE_SCHEMA_INIT_LOCK:
+        _GEMINI_TOOL_STATE_SCHEMA_INIT_PATHS.add(p)
+
+
+def _gemini_tool_state_lookup(
+    db_path: str | None,
+    *,
+    call_id: str,
+    model_name: str | None,
+) -> dict[str, str]:
+    cid = str(call_id or "").strip()
+    path = str(db_path or "").strip()
+    if not cid or not path:
+        return {}
+    _ensure_gemini_tool_state_schema(path)
+    model = str(model_name or "").strip()
+    try:
+        with sqlite3.connect(path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = None
+            if model:
+                row = conn.execute(
+                    """
+                    SELECT function_name, thought_signature
+                    FROM gemini_tool_call_state
+                    WHERE call_id = ? AND model = ?
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                    """,
+                    (cid, model),
+                ).fetchone()
+            if row is None:
+                row = conn.execute(
+                    """
+                    SELECT function_name, thought_signature
+                    FROM gemini_tool_call_state
+                    WHERE call_id = ?
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                    """,
+                    (cid,),
+                ).fetchone()
+            if row is None:
+                return {}
+            out: dict[str, str] = {}
+            fn = row["function_name"]
+            sig = row["thought_signature"]
+            if isinstance(fn, str) and fn.strip():
+                out["function_name"] = fn.strip()
+            if isinstance(sig, str) and sig.strip():
+                out["thought_signature"] = sig.strip()
+            return out
+    except Exception:
+        return {}
+
+
+def _gemini_tool_state_upsert_many(
+    db_path: str | None,
+    *,
+    rows: list[dict[str, str]],
+    ttl_seconds: int = _GEMINI_TOOL_STATE_TTL_SECONDS,
+) -> int:
+    path = str(db_path or "").strip()
+    if not path or not rows:
+        return 0
+    _ensure_gemini_tool_state_schema(path)
+    payload: list[tuple[str, str, str, str, str]] = []
+    for row in rows:
+        call_id = str(row.get("call_id") or "").strip()
+        model = str(row.get("model") or "").strip()
+        if not call_id or not model:
+            continue
+        payload.append(
+            (
+                call_id,
+                model,
+                str(row.get("function_name") or "").strip(),
+                str(row.get("thought_signature") or "").strip(),
+                str(row.get("trace_id") or "").strip(),
+            )
+        )
+    if not payload:
+        return 0
+    try:
+        with sqlite3.connect(path) as conn:
+            conn.executemany(
+                """
+                INSERT INTO gemini_tool_call_state
+                    (call_id, model, function_name, thought_signature, trace_id, created_at, updated_at)
+                VALUES (?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT(call_id, model) DO UPDATE SET
+                    function_name = COALESCE(excluded.function_name, gemini_tool_call_state.function_name),
+                    thought_signature = COALESCE(excluded.thought_signature, gemini_tool_call_state.thought_signature),
+                    trace_id = COALESCE(excluded.trace_id, gemini_tool_call_state.trace_id),
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                payload,
+            )
+            ttl = max(int(ttl_seconds or 0), 60)
+            conn.execute(
+                "DELETE FROM gemini_tool_call_state WHERE updated_at < datetime('now', ?)",
+                (f"-{ttl} seconds",),
+            )
+            conn.commit()
+    except Exception:
+        return 0
+    return len(payload)
 
 
 def _build_tool_call_id_to_name(messages: list[Any]) -> dict[str, str]:
@@ -274,34 +485,468 @@ def _build_tool_call_id_to_name(messages: list[Any]) -> dict[str, str]:
     return out
 
 
-def _preflight_native_tool_messages(messages: list[Any]) -> tuple[list[Any], dict[str, Any]]:
+def _build_tool_call_id_to_signature(messages: list[Any]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for m in messages:
+        if not isinstance(m, dict) or m.get("role") != "assistant":
+            continue
+        tool_calls = m.get("tool_calls")
+        if not isinstance(tool_calls, list):
+            continue
+        for c in tool_calls:
+            if not isinstance(c, dict):
+                continue
+            call_id = _message_tool_call_id(c)
+            if not call_id:
+                continue
+            fn = c.get("function") if isinstance(c.get("function"), dict) else {}
+            sig = _extract_tool_call_thought_signature(c, fn if isinstance(fn, dict) else {})
+            if sig:
+                out[call_id] = sig
+    return out
+
+
+def _preflight_native_tool_messages(
+    messages: list[Any],
+    *,
+    model_name: str | None = None,
+    trace_id: str | None = None,
+    db_path: str | None = None,
+) -> tuple[list[Any], dict[str, Any]]:
     tool_call_id_to_name = _build_tool_call_id_to_name(messages)
+    tool_call_id_to_signature = _build_tool_call_id_to_signature(messages)
     corrected_indices: list[int] = []
+    heuristic_indices: list[int] = []
+    heuristic_source_counts: dict[str, int] = {"name_alias": 0, "call_id_map": 0, "fallback": 0}
+    is_gemini = _is_gemini_model_name(model_name)
+    effective_db_path = str(db_path or "").strip() or _resolve_default_webui_db_path()
+    gemini_model = str(model_name or "").strip() or "gemini"
+    gemini_signature_recovered_from_db = 0
+    gemini_signature_recovered_from_history = 0
+    gemini_signature_fallback_sentinel = 0
+    gemini_tool_name_recovered_from_db = 0
+    gemini_lookup_attempts = 0
+    gemini_lookup_hits = 0
+    gemini_lookup_cache: dict[str, dict[str, str]] = {}
+    assistant_tool_call_fixed_indices: list[int] = []
+    rows_to_upsert: list[dict[str, str]] = []
     out: list[Any] = []
     for idx, m in enumerate(messages):
-        if not isinstance(m, dict) or m.get("role") != "tool":
+        if not isinstance(m, dict):
+            out.append(m)
+            continue
+        role = m.get("role")
+        if role == "assistant":
+            tool_calls = m.get("tool_calls")
+            if not isinstance(tool_calls, list) or not tool_calls:
+                out.append(m)
+                continue
+            changed = False
+            new_calls: list[Any] = []
+            for tc in tool_calls:
+                if not isinstance(tc, dict):
+                    new_calls.append(tc)
+                    continue
+                tc2 = dict(tc)
+                fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+                fn2 = dict(fn) if isinstance(fn, dict) else {}
+                call_id = _message_tool_call_id(tc2)
+                if call_id:
+                    if str(tc2.get("id") or "").strip() != call_id:
+                        tc2["id"] = call_id
+                        changed = True
+                    if str(tc2.get("call_id") or "").strip() != call_id:
+                        tc2["call_id"] = call_id
+                        changed = True
+
+                fn_name = _sanitize_tool_name(fn2.get("name"), fallback="")
+                if not fn_name and call_id:
+                    mapped_name = _sanitize_tool_name(tool_call_id_to_name.get(call_id), fallback="")
+                    if mapped_name:
+                        fn_name = mapped_name
+                if not fn_name and is_gemini and call_id:
+                    if call_id in gemini_lookup_cache:
+                        rec = gemini_lookup_cache[call_id]
+                    else:
+                        gemini_lookup_attempts += 1
+                        rec = _gemini_tool_state_lookup(
+                            effective_db_path,
+                            call_id=call_id,
+                            model_name=gemini_model,
+                        )
+                        gemini_lookup_cache[call_id] = rec
+                        if rec:
+                            gemini_lookup_hits += 1
+                    rec_name = _sanitize_tool_name(rec.get("function_name"), fallback="")
+                    if rec_name:
+                        fn_name = rec_name
+                        gemini_tool_name_recovered_from_db += 1
+                if fn_name and fn2.get("name") != fn_name:
+                    fn2["name"] = fn_name
+                    changed = True
+                if call_id and fn_name:
+                    tool_call_id_to_name.setdefault(call_id, fn_name)
+
+                thought_signature = _extract_tool_call_thought_signature(tc2, fn2)
+                if not thought_signature and call_id:
+                    mapped_sig = str(tool_call_id_to_signature.get(call_id) or "").strip()
+                    if mapped_sig:
+                        thought_signature = mapped_sig
+                        gemini_signature_recovered_from_history += 1
+                if not thought_signature and is_gemini and call_id:
+                    if call_id in gemini_lookup_cache:
+                        rec = gemini_lookup_cache[call_id]
+                    else:
+                        gemini_lookup_attempts += 1
+                        rec = _gemini_tool_state_lookup(
+                            effective_db_path,
+                            call_id=call_id,
+                            model_name=gemini_model,
+                        )
+                        gemini_lookup_cache[call_id] = rec
+                        if rec:
+                            gemini_lookup_hits += 1
+                    rec_sig = str(rec.get("thought_signature") or "").strip()
+                    if rec_sig:
+                        thought_signature = rec_sig
+                        gemini_signature_recovered_from_db += 1
+                if not thought_signature and is_gemini:
+                    thought_signature = _THOUGHT_SIGNATURE_SKIP_VALIDATOR
+                    gemini_signature_fallback_sentinel += 1
+                if thought_signature:
+                    if fn2.get("thought_signature") != thought_signature:
+                        fn2["thought_signature"] = thought_signature
+                        changed = True
+                    extra = tc2.get("extra_content")
+                    extra_out = dict(extra) if isinstance(extra, dict) else {}
+                    google = extra_out.get("google")
+                    google_out = dict(google) if isinstance(google, dict) else {}
+                    if google_out.get("thought_signature") != thought_signature:
+                        google_out["thought_signature"] = thought_signature
+                        changed = True
+                    extra_out["google"] = google_out
+                    tc2["extra_content"] = extra_out
+                    if call_id:
+                        tool_call_id_to_signature.setdefault(call_id, thought_signature)
+
+                if fn2 != fn:
+                    tc2["function"] = fn2
+                    changed = True
+
+                if is_gemini and call_id:
+                    rows_to_upsert.append(
+                        {
+                            "call_id": call_id,
+                            "model": gemini_model,
+                            "function_name": fn_name,
+                            "thought_signature": thought_signature,
+                            "trace_id": str(trace_id or ""),
+                        }
+                    )
+                new_calls.append(tc2)
+
+            if changed:
+                m2 = dict(m)
+                m2["tool_calls"] = new_calls
+                out.append(m2)
+                assistant_tool_call_fixed_indices.append(idx)
+            else:
+                out.append(m)
+            continue
+
+        if role != "tool":
             out.append(m)
             continue
         name = _sanitize_tool_name(m.get("tool_name"), fallback="")
+        heuristic_source = ""
         if not name:
-            name = _sanitize_tool_name(m.get("name"), fallback="")
+            alias_name = _sanitize_tool_name(m.get("name"), fallback="")
+            if alias_name:
+                name = alias_name
+                heuristic_source = "name_alias"
         if not name:
             call_id = _message_tool_call_id(m)
             if call_id:
-                name = _sanitize_tool_name(tool_call_id_to_name.get(call_id))
-            else:
-                name = "tool"
-        if m.get("tool_name") != name:
+                mapped_name = _sanitize_tool_name(tool_call_id_to_name.get(call_id), fallback="")
+                if mapped_name:
+                    name = mapped_name
+                    heuristic_source = "call_id_map"
+                elif is_gemini:
+                    if call_id in gemini_lookup_cache:
+                        rec = gemini_lookup_cache[call_id]
+                    else:
+                        gemini_lookup_attempts += 1
+                        rec = _gemini_tool_state_lookup(
+                            effective_db_path,
+                            call_id=call_id,
+                            model_name=gemini_model,
+                        )
+                        gemini_lookup_cache[call_id] = rec
+                        if rec:
+                            gemini_lookup_hits += 1
+                    rec_name = _sanitize_tool_name(rec.get("function_name"), fallback="")
+                    if rec_name:
+                        name = rec_name
+                        heuristic_source = "call_id_map"
+                        gemini_tool_name_recovered_from_db += 1
+        if not name:
+            name = "tool"
+            heuristic_source = "fallback"
+
+        if heuristic_source:
+            heuristic_indices.append(idx)
+            heuristic_source_counts[heuristic_source] = int(heuristic_source_counts.get(heuristic_source) or 0) + 1
+
+        if m.get("tool_name") != name or m.get("name") != name:
             m2 = dict(m)
             m2["tool_name"] = name
+            m2["name"] = name
             out.append(m2)
             corrected_indices.append(idx)
         else:
             out.append(m)
     diag: dict[str, Any] = {}
+    if assistant_tool_call_fixed_indices:
+        diag["assistant_tool_call_fixes"] = len(assistant_tool_call_fixed_indices)
+        diag["assistant_tool_call_fixed_indices"] = assistant_tool_call_fixed_indices[:10]
     if corrected_indices:
         diag["tool_message_name_fixes"] = len(corrected_indices)
         diag["tool_message_name_fixed_indices"] = corrected_indices[:10]
+    if heuristic_indices:
+        diag["tool_message_name_recovered_heuristic_count"] = len(heuristic_indices)
+        diag["tool_message_name_recovered_heuristic_indices"] = heuristic_indices[:10]
+        diag["tool_message_name_recovered_heuristic_sources"] = {
+            k: v for k, v in heuristic_source_counts.items() if int(v) > 0
+        }
+    if is_gemini:
+        if gemini_lookup_attempts:
+            diag["gemini_tool_state_lookup_attempts"] = int(gemini_lookup_attempts)
+            diag["gemini_tool_state_lookup_hits"] = int(gemini_lookup_hits)
+        if gemini_signature_recovered_from_history:
+            diag["gemini_signature_recovered_from_history_count"] = int(
+                gemini_signature_recovered_from_history
+            )
+        if gemini_signature_recovered_from_db:
+            diag["gemini_signature_recovered_from_db_count"] = int(gemini_signature_recovered_from_db)
+        if gemini_signature_fallback_sentinel:
+            diag["gemini_signature_fallback_sentinel_count"] = int(gemini_signature_fallback_sentinel)
+        if gemini_tool_name_recovered_from_db:
+            diag["gemini_tool_name_recovered_from_db_count"] = int(gemini_tool_name_recovered_from_db)
+        if rows_to_upsert:
+            upserted = _gemini_tool_state_upsert_many(
+                effective_db_path,
+                rows=rows_to_upsert,
+            )
+            if upserted:
+                diag["gemini_tool_state_upserted_count"] = int(upserted)
+    return out, diag
+
+
+_GEMINI_SAFE_SCHEMA_TYPES = {"object", "array", "string", "number", "integer", "boolean", "null"}
+
+
+def _normalize_schema_for_gemini(raw_schema: Any) -> tuple[dict[str, Any], int]:
+    relaxed = 0
+
+    def _norm(node: Any) -> dict[str, Any]:
+        nonlocal relaxed
+        if not isinstance(node, dict):
+            relaxed += 1
+            return {"type": "object", "additionalProperties": True}
+
+        out: dict[str, Any] = {}
+        node_type = node.get("type")
+        if isinstance(node_type, str):
+            t = node_type.strip().lower()
+            if t in _GEMINI_SAFE_SCHEMA_TYPES:
+                out["type"] = t
+            elif t:
+                relaxed += 1
+        elif node_type is not None:
+            relaxed += 1
+
+        desc = node.get("description")
+        if isinstance(desc, str) and desc.strip():
+            out["description"] = desc.strip()
+        elif desc is not None:
+            relaxed += 1
+
+        enum_raw = node.get("enum")
+        if isinstance(enum_raw, list):
+            enum_values = [v for v in enum_raw if not isinstance(v, (dict, list))]
+            if enum_values:
+                out["enum"] = enum_values
+            elif enum_raw:
+                relaxed += 1
+        elif enum_raw is not None:
+            relaxed += 1
+
+        object_like = (
+            out.get("type") == "object"
+            or "properties" in node
+            or "required" in node
+            or "additionalProperties" in node
+        )
+        if object_like:
+            out.setdefault("type", "object")
+            props_in = node.get("properties")
+            props_out: dict[str, Any] = {}
+            if isinstance(props_in, dict):
+                for key, val in props_in.items():
+                    if not isinstance(key, str):
+                        relaxed += 1
+                        continue
+                    k = key.strip()
+                    if not k:
+                        relaxed += 1
+                        continue
+                    props_out[k] = _norm(val)
+            elif props_in is not None:
+                relaxed += 1
+            out["properties"] = props_out
+
+            required_in = node.get("required")
+            if isinstance(required_in, list):
+                required_out: list[str] = []
+                for raw in required_in:
+                    if not isinstance(raw, str):
+                        relaxed += 1
+                        continue
+                    r = raw.strip()
+                    if not r:
+                        relaxed += 1
+                        continue
+                    if props_out and r not in props_out:
+                        relaxed += 1
+                        continue
+                    if r not in required_out:
+                        required_out.append(r)
+                if required_out:
+                    out["required"] = required_out
+            elif required_in is not None:
+                relaxed += 1
+
+            addl = node.get("additionalProperties")
+            if isinstance(addl, bool):
+                out["additionalProperties"] = addl
+            elif isinstance(addl, dict):
+                out["additionalProperties"] = _norm(addl)
+            elif addl is not None:
+                relaxed += 1
+            elif not props_out:
+                out["additionalProperties"] = True
+
+        array_like = out.get("type") == "array" or "items" in node
+        if array_like:
+            out.setdefault("type", "array")
+            items_in = node.get("items")
+            if isinstance(items_in, dict):
+                out["items"] = _norm(items_in)
+            elif isinstance(items_in, list) and items_in:
+                head = items_in[0]
+                out["items"] = _norm(head if isinstance(head, dict) else {"type": "object"})
+                if len(items_in) > 1:
+                    relaxed += len(items_in) - 1
+            else:
+                out["items"] = {"type": "object", "additionalProperties": True}
+                if items_in is not None:
+                    relaxed += 1
+
+        if "type" not in out:
+            out["type"] = "object"
+            out.setdefault("additionalProperties", True)
+        return out
+
+    seed = raw_schema if isinstance(raw_schema, dict) else {"type": "object", "additionalProperties": True}
+    if raw_schema is not None and not isinstance(raw_schema, dict):
+        relaxed += 1
+    return _norm(seed), relaxed
+
+
+def _interpolate_native_tools_for_gemini(
+    tools: list[Any],
+    *,
+    model_name: str | None,
+) -> tuple[list[Any], dict[str, Any]]:
+    if not _is_gemini_model_name(model_name):
+        return tools, {}
+
+    changed = 0
+    relaxed_total = 0
+    normalized: list[tuple[int, Any]] = []
+
+    for idx, tool in enumerate(tools):
+        if not isinstance(tool, dict):
+            normalized.append((idx, tool))
+            continue
+        ttype = str(tool.get("type") or "").strip().lower()
+        fn = tool.get("function") if isinstance(tool.get("function"), dict) else {}
+        if ttype not in ("", "function") or not isinstance(fn, dict):
+            normalized.append((idx, tool))
+            continue
+
+        fn_name = _sanitize_tool_name(fn.get("name"), fallback="")
+        if not fn_name:
+            fn_name = _sanitize_tool_name(tool.get("name"), fallback="")
+        if not fn_name:
+            normalized.append((idx, tool))
+            continue
+
+        fn_out = dict(fn)
+        fn_out["name"] = fn_name
+        description = str(fn_out.get("description") or tool.get("description") or "").strip()
+        if not description:
+            description = f"IDE tool `{fn_name}`."
+        fn_out["description"] = description
+
+        raw_params = fn_out.get("parameters")
+        if not isinstance(raw_params, dict):
+            raw_params = tool.get("parameters")
+        params_out, relaxed = _normalize_schema_for_gemini(raw_params)
+        fn_out["parameters"] = params_out
+        relaxed_total += int(relaxed)
+
+        if not isinstance(fn_out.get("strict"), bool):
+            fn_out.pop("strict", None)
+
+        tool_out = dict(tool)
+        tool_out["type"] = "function"
+        tool_out["function"] = fn_out
+
+        if tool_out != tool:
+            changed += 1
+        normalized.append((idx, tool_out))
+
+    ordered = sorted(
+        normalized,
+        key=lambda pair: (
+            0
+            if isinstance(pair[1], dict)
+            and isinstance((pair[1].get("function") if isinstance(pair[1].get("function"), dict) else {}), dict)
+            and _sanitize_tool_name(
+                ((pair[1].get("function") if isinstance(pair[1].get("function"), dict) else {})).get("name"),
+                fallback="",
+            )
+            else 1,
+            _sanitize_tool_name(
+                (
+                    ((pair[1].get("function") if isinstance(pair[1], dict) and isinstance(pair[1].get("function"), dict) else {}))
+                    .get("name")
+                ),
+                fallback="\uffff",
+            ).lower(),
+            pair[0],
+        ),
+    )
+    out = [item for _, item in ordered]
+
+    diag: dict[str, Any] = {"gemini_tool_interpolation_enabled": True}
+    if changed:
+        diag["gemini_tool_schema_normalized_count"] = int(changed)
+    if relaxed_total:
+        diag["gemini_tool_schema_relaxed_count"] = int(relaxed_total)
+    if [idx for idx, _ in normalized] != [idx for idx, _ in ordered]:
+        diag["gemini_tool_order_stabilized"] = True
     return out, diag
 
 
@@ -390,6 +1035,385 @@ _POWERSHELL_COMMAND_WRAPPER_RE = re.compile(
 )
 
 
+_TRANSFER_INTENT_RE = re.compile(
+    r"(?i)\b(move|moved|transfer|перенеси|перенести|перемести|переместить|перенес[аио]?)\b"
+)
+_TRANSFER_RESULT_SUCCESS_RE = re.compile(
+    r"(?is)\b(moved\s+\d+\s+lines?\s+to|перенес\w*\s+\d+\s+строк\w*)\b"
+)
+_TRANSFER_PATH_PAIR_RE = re.compile(
+    r"(?is)(?:\bиз\b|\bfrom\b)\s+([A-Za-z0-9_./\\:-]+\.[A-Za-z0-9_+-]+)\s+(?:\bв\b|\bto\b)\s+([A-Za-z0-9_./\\:-]+\.[A-Za-z0-9_+-]+)"
+)
+_TRANSFER_PATH_TOKEN_RE = re.compile(r"(?i)[A-Za-z0-9_./\\:-]+\.(?:md|txt|json|ya?ml|csv|py|js|ts|tsx|jsx)")
+_TRANSFER_TO_PATH_RE = re.compile(
+    r"(?is)(?:\bв\b|\bto\b)\s+([A-Za-z0-9_./\\:-]+\.[A-Za-z0-9_+-]+)"
+)
+_TRANSFER_FROM_PATH_RE = re.compile(
+    r"(?is)(?:\bиз\b|\bfrom\b)\s+([A-Za-z0-9_./\\:-]+\.[A-Za-z0-9_+-]+)"
+)
+_FILE_EDIT_TOOL_NAMES = {
+    "edit",
+    "write",
+    "apply_patch",
+    "apply_file_edit",
+    "edit_file",
+    "str_replace_editor",
+}
+_TRANSFER_SAFE_TOOL_NAMES = {
+    "read",
+    "glob",
+    "grep",
+    "edit",
+    "write",
+    "edit_file",
+    "apply_file_edit",
+    "str_replace_editor",
+    "apply_patch",
+}
+_TRANSFER_SOURCE_REMOVED_RE = re.compile(r"(?is)\b(removed|удал(?:ил|ено|ены|ено))\s+\d+\s+(?:lines?|строк\w*)\b")
+_TRANSFER_DEST_NO_ADD_RE = re.compile(
+    r"(?is)\b(no\s+new\s+items\s+to\s+add|0\s+lines?\s+(?:added|to)|ничего\s+не\s+добав(?:лено|лять))\b"
+)
+_TRANSFER_DEST_ADDED_RE = re.compile(
+    r"(?is)\b(added\s+\d+\s+lines?|moved\s+\d+\s+lines?\s+to|добав(?:лено|ил)\w*\s+\d+\s+строк\w*|перенес\w*\s+\d+\s+строк\w*)\b"
+)
+_EDIT_OLDSTRING_MISS_RE = re.compile(r"(?is)\bcould\s+not\s+find\s+oldstring\b")
+
+
+def _looks_like_transfer_intent_query(text: str) -> bool:
+    if not isinstance(text, str):
+        return False
+    q = text.strip()
+    if not q:
+        return False
+    if not _TRANSFER_INTENT_RE.search(q):
+        return False
+    if "[x]" in q.lower():
+        return True
+    file_hits = re.findall(r"[A-Za-z0-9_\\/.:-]+\.(?:md|txt|json|ya?ml|py|js|ts|tsx|jsx)\b", q, flags=re.IGNORECASE)
+    return len(file_hits) >= 2
+
+
+def _tool_result_looks_like_transfer_completed(text: str) -> bool:
+    if not isinstance(text, str):
+        return False
+    s = text.strip()
+    if not s:
+        return False
+    return bool(_TRANSFER_RESULT_SUCCESS_RE.search(s))
+
+
+def _extract_transfer_paths_from_query(text: str) -> tuple[str, str]:
+    if not isinstance(text, str):
+        return "", ""
+    q = text.strip()
+    if not q:
+        return "", ""
+    m = _TRANSFER_PATH_PAIR_RE.search(q)
+    if m:
+        return (m.group(1).strip(), m.group(2).strip())
+    tokens = [t.strip() for t in _TRANSFER_PATH_TOKEN_RE.findall(q)]
+    uniq: list[str] = []
+    seen: set[str] = set()
+    for t in tokens:
+        k = t.lower()
+        if k in seen:
+            continue
+        seen.add(k)
+        uniq.append(t)
+    to_match = _TRANSFER_TO_PATH_RE.search(q)
+    from_match = _TRANSFER_FROM_PATH_RE.search(q)
+    dst = to_match.group(1).strip() if to_match else ""
+    src = ""
+    if from_match:
+        src = from_match.group(1).strip()
+    if dst:
+        dst_l = dst.lower()
+        if not src or src.lower() == dst_l:
+            for t in uniq:
+                tl = t.lower()
+                if tl == dst_l:
+                    continue
+                src = t
+                break
+        if (not src) and re.search(r"(?i)\btodo\b", q):
+            src = "TODO.md"
+        if src:
+            src_l = src.lower()
+            if "completed" in dst_l and "completed" in src_l:
+                alt = next((t for t in uniq if "completed" not in t.lower() and t.lower() != dst_l), "")
+                if alt:
+                    src = alt
+                    src_l = src.lower()
+            if (
+                "completed" not in dst_l
+                and "completed" in src_l
+                and ("[x]" in q.lower() or re.search(r"(?i)\bготов", q))
+            ):
+                alt = next((t for t in uniq if "completed" not in t.lower() and t.lower() != dst_l), "")
+                if alt:
+                    src = alt
+            return src, dst
+    if len(uniq) >= 2:
+        completed = next((t for t in uniq if "completed" in t.lower()), "")
+        non_completed = next((t for t in uniq if "completed" not in t.lower()), "")
+        if completed and non_completed and re.search(r"(?is)(?:\bиз\b|\bfrom\b).*(?:\bв\b|\bto\b)", q):
+            return non_completed, completed
+        return uniq[0], uniq[1]
+    return "", ""
+
+
+def _tool_result_is_oldstring_miss(text: str) -> bool:
+    if not isinstance(text, str):
+        return False
+    return bool(_EDIT_OLDSTRING_MISS_RE.search(text.strip()))
+
+
+def _consecutive_oldstring_miss_count(messages: list[Any]) -> int:
+    count = 0
+    for i in range(len(messages) - 1, -1, -1):
+        m = messages[i]
+        if not isinstance(m, dict):
+            continue
+        role = m.get("role")
+        if role == "user":
+            break
+        if role != "tool":
+            continue
+        content = _ollama_message_content_str(m.get("content"))
+        if _tool_result_is_oldstring_miss(content):
+            count += 1
+            continue
+        break
+    return count
+
+
+def _restrict_native_tools_for_oldstring_recovery(
+    tools: list[Any],
+    *,
+    user_text: str,
+    messages: list[Any],
+) -> tuple[list[Any], dict[str, Any]]:
+    if not _looks_like_transfer_intent_query(user_text):
+        return tools, {}
+    miss_count = _consecutive_oldstring_miss_count(messages)
+    if miss_count < 2:
+        return tools, {}
+    allowed = {"read", "glob", "grep"}
+    kept: list[Any] = []
+    dropped_names: list[str] = []
+    for t in tools:
+        if not isinstance(t, dict):
+            kept.append(t)
+            continue
+        fn = t.get("function") if isinstance(t.get("function"), dict) else {}
+        raw_name = ""
+        if isinstance(fn, dict):
+            raw_name = str(fn.get("name") or "").strip()
+        if not raw_name:
+            raw_name = str(t.get("name") or "").strip()
+        name_l = raw_name.lower()
+        if name_l and name_l not in allowed:
+            dropped_names.append(raw_name)
+            continue
+        kept.append(t)
+    if not kept:
+        return tools, {}
+    diag: dict[str, Any] = {
+        "transfer_oldstring_recovery_mode": True,
+        "transfer_oldstring_recovery_miss_count": int(miss_count),
+    }
+    if dropped_names:
+        diag["transfer_oldstring_recovery_dropped"] = dropped_names[:20]
+    return kept, diag
+
+
+def _restrict_native_tools_for_transfer(
+    tools: list[Any],
+    *,
+    user_text: str,
+) -> tuple[list[Any], dict[str, Any]]:
+    if not _looks_like_transfer_intent_query(user_text):
+        return tools, {}
+    src, dst = _extract_transfer_paths_from_query(user_text)
+    if not src or not dst:
+        return tools, {}
+    kept: list[Any] = []
+    dropped_names: list[str] = []
+    for t in tools:
+        if not isinstance(t, dict):
+            kept.append(t)
+            continue
+        fn = t.get("function") if isinstance(t.get("function"), dict) else {}
+        raw_name = ""
+        if isinstance(fn, dict):
+            raw_name = str(fn.get("name") or "").strip()
+        if not raw_name:
+            raw_name = str(t.get("name") or "").strip()
+        name_l = raw_name.lower()
+        if name_l and name_l not in _TRANSFER_SAFE_TOOL_NAMES:
+            dropped_names.append(raw_name)
+            continue
+        kept.append(t)
+    if not kept:
+        return tools, {}
+    diag: dict[str, Any] = {
+        "transfer_tools_restricted": True,
+        "transfer_tools_restricted_source": src,
+        "transfer_tools_restricted_destination": dst,
+    }
+    if dropped_names:
+        diag["transfer_tools_restricted_dropped"] = dropped_names[:20]
+    return kept, diag
+
+
+def _tool_call_arguments_object(tc: dict[str, Any]) -> dict[str, Any]:
+    fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+    if not isinstance(fn, dict):
+        return {}
+    args_raw = fn.get("arguments")
+    if isinstance(args_raw, dict):
+        return args_raw
+    if isinstance(args_raw, str):
+        s = args_raw.strip()
+        if not s:
+            return {}
+        try:
+            parsed = json.loads(s)
+        except Exception:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _extract_tool_call_file_path(tc: dict[str, Any]) -> str:
+    args = _tool_call_arguments_object(tc)
+    for k in ("filePath", "filepath", "file_path", "path", "targetPath", "target_path", "target"):
+        raw = args.get(k)
+        if isinstance(raw, str):
+            p = raw.strip()
+            if p:
+                return p
+    return ""
+
+
+def _tool_file_edit_counts_since_last_user(messages: list[Any]) -> dict[str, int]:
+    last_user_idx = -1
+    for i in range(len(messages) - 1, -1, -1):
+        m = messages[i]
+        if isinstance(m, dict) and m.get("role") == "user":
+            last_user_idx = i
+            break
+    counts: dict[str, int] = {}
+    for m in messages[last_user_idx + 1 :]:
+        if not isinstance(m, dict) or m.get("role") != "assistant":
+            continue
+        tool_calls = m.get("tool_calls")
+        if not isinstance(tool_calls, list):
+            continue
+        for tc in tool_calls:
+            if not isinstance(tc, dict):
+                continue
+            fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+            tool_name = str(fn.get("name") or "").strip().lower() if isinstance(fn, dict) else ""
+            if tool_name not in _FILE_EDIT_TOOL_NAMES:
+                continue
+            path = _extract_tool_call_file_path(tc)
+            if not path:
+                continue
+            norm = path.replace("\\", "/").strip().lower()
+            if not norm:
+                continue
+            counts[norm] = int(counts.get(norm) or 0) + 1
+    return counts
+
+
+def _path_matches_candidate(path_norm: str, candidate_norm: str) -> bool:
+    if not path_norm or not candidate_norm:
+        return False
+    if path_norm == candidate_norm:
+        return True
+    return path_norm.endswith("/" + candidate_norm) or candidate_norm.endswith("/" + path_norm)
+
+
+def _basename_norm(path: str) -> str:
+    p = str(path or "").replace("\\", "/").strip().lower()
+    if not p:
+        return ""
+    return p.rsplit("/", 1)[-1]
+
+
+def _text_mentions_path_candidate(text: str, candidate: str) -> bool:
+    c_full = str(candidate or "").replace("\\", "/").strip().lower()
+    c_base = _basename_norm(candidate)
+    s = str(text or "").replace("\\", "/").strip().lower()
+    if not s:
+        return False
+    return (c_full and c_full in s) or (c_base and c_base in s)
+
+
+def _tool_results_indicate_source_only_transfer(
+    messages: list[Any],
+    *,
+    transfer_src: str,
+    transfer_dst: str,
+) -> bool:
+    if not transfer_src or not transfer_dst:
+        return False
+    last_user_idx = -1
+    for i in range(len(messages) - 1, -1, -1):
+        m = messages[i]
+        if isinstance(m, dict) and m.get("role") == "user":
+            last_user_idx = i
+            break
+    source_removed = False
+    destination_no_add = False
+    destination_added = False
+    for m in messages[last_user_idx + 1 :]:
+        if not isinstance(m, dict) or m.get("role") != "tool":
+            continue
+        content = _ollama_message_content_str(m.get("content"))
+        if not content:
+            continue
+        if _text_mentions_path_candidate(content, transfer_src) and _TRANSFER_SOURCE_REMOVED_RE.search(content):
+            source_removed = True
+        if _text_mentions_path_candidate(content, transfer_dst) and _TRANSFER_DEST_NO_ADD_RE.search(content):
+            destination_no_add = True
+        if _text_mentions_path_candidate(content, transfer_dst) and _TRANSFER_DEST_ADDED_RE.search(content):
+            destination_added = True
+    return source_removed and destination_no_add and not destination_added
+
+
+def _transfer_invariant_violation_state(
+    messages: list[Any],
+    *,
+    user_text: str,
+) -> dict[str, Any]:
+    src, dst = _extract_transfer_paths_from_query(user_text)
+    if not src or not dst:
+        return {}
+    edit_counts = _tool_file_edit_counts_since_last_user(messages)
+    src_norm = src.replace("\\", "/").strip().lower()
+    dst_norm = dst.replace("\\", "/").strip().lower()
+    src_edits = sum(v for p, v in edit_counts.items() if _path_matches_candidate(p, src_norm))
+    dst_edits = sum(v for p, v in edit_counts.items() if _path_matches_candidate(p, dst_norm))
+    source_only_result_evidence = _tool_results_indicate_source_only_transfer(
+        messages,
+        transfer_src=src,
+        transfer_dst=dst,
+    )
+    violated = (src_edits > 0 and dst_edits == 0) or source_only_result_evidence
+    if not violated:
+        return {}
+    return {
+        "source": src,
+        "destination": dst,
+        "source_edits": int(src_edits),
+        "destination_edits": int(dst_edits),
+        "source_only_result_evidence": bool(source_only_result_evidence),
+    }
+
+
 def _looks_like_recursive_get_child_item(cmd: str) -> bool:
     c = cmd.lower()
     return ("get-childitem" in c or "\ngci " in f"\n{c}" or "\ndir " in f"\n{c}" or "\nls " in f"\n{c}") and (
@@ -460,6 +1484,101 @@ def _sanitize_outgoing_shell_tool_calls(tool_calls: list[dict[str, Any]]) -> tup
         out.append(tc2)
         fixed += 1
     return out, fixed
+
+
+def _extract_tool_call_thought_signature(tc: dict[str, Any], fn: dict[str, Any]) -> str:
+    candidates: list[Any] = []
+    if isinstance(fn, dict):
+        candidates.extend((fn.get("thought_signature"), fn.get("thoughtSignature")))
+    candidates.extend((tc.get("thought_signature"), tc.get("thoughtSignature")))
+    extra = tc.get("extra_content")
+    if isinstance(extra, dict):
+        google = extra.get("google")
+        if isinstance(google, dict):
+            candidates.extend((google.get("thought_signature"), google.get("thoughtSignature")))
+    for raw in candidates:
+        if isinstance(raw, str):
+            s = raw.strip()
+            if s:
+                return s
+    return ""
+
+
+def _extract_tool_call_function_name(tc: dict[str, Any]) -> str:
+    fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+    return _sanitize_tool_name(fn.get("name") if isinstance(fn, dict) else None, fallback="")
+
+
+def _persist_gemini_tool_calls_state(
+    *,
+    tool_calls: list[Any] | None,
+    model_name: str | None,
+    trace_id: str | None,
+    db_path: str | None,
+) -> int:
+    if not _is_gemini_model_name(model_name):
+        return 0
+    if not isinstance(tool_calls, list) or not tool_calls:
+        return 0
+    model = str(model_name or "").strip() or "gemini"
+    rows: list[dict[str, str]] = []
+    for tc in tool_calls:
+        if not isinstance(tc, dict):
+            continue
+        call_id = _message_tool_call_id(tc)
+        if not call_id:
+            continue
+        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+        name = _extract_tool_call_function_name(tc)
+        sig = _extract_tool_call_thought_signature(tc, fn if isinstance(fn, dict) else {})
+        rows.append(
+            {
+                "call_id": call_id,
+                "model": model,
+                "function_name": name,
+                "thought_signature": sig,
+                "trace_id": str(trace_id or ""),
+            }
+        )
+    if not rows:
+        return 0
+    return _gemini_tool_state_upsert_many(db_path or _resolve_default_webui_db_path(), rows=rows)
+
+
+def _sse_tool_calls_payload(tool_calls: list[Any]) -> list[dict[str, object]]:
+    payload_calls: list[dict[str, object]] = []
+    for i, tc in enumerate(tool_calls):
+        if not isinstance(tc, dict):
+            continue
+        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+        fn_payload: dict[str, object] = {
+            "name": fn.get("name"),
+            "arguments": fn.get("arguments"),
+        }
+        call_id = tc.get("id") if tc.get("id") is not None else tc.get("call_id")
+        call_payload: dict[str, object] = {
+            "index": i,
+            "id": call_id,
+            "call_id": call_id,
+            "type": "function",
+            "function": fn_payload,
+        }
+        thought_signature = _extract_tool_call_thought_signature(tc, fn)
+        extra = tc.get("extra_content")
+        extra_out = dict(extra) if isinstance(extra, dict) else {}
+        if thought_signature:
+            fn_payload["thought_signature"] = thought_signature
+            google = extra_out.get("google")
+            if isinstance(google, dict):
+                google_out = dict(google)
+            else:
+                google_out = {}
+            google_out.setdefault("thought_signature", thought_signature)
+            extra_out["google"] = google_out
+        if extra_out:
+            call_payload["extra_content"] = extra_out
+        payload_calls.append(call_payload)
+    return payload_calls
 
 
 def _merge_ollama_visible_text(thinking: str | None, content: str | None) -> str:
@@ -776,6 +1895,7 @@ def run_chat_completions(
         "steps": [],
         "pipeline_steps": [],
     }
+    proxy_db_path = _resolve_proxy_db_path_from_wiring(w)
     w.set_current_trace(trace)
 
     try:
@@ -1148,6 +2268,10 @@ def run_chat_completions(
         effective_ollama_model if dumb_build_pipeline or is_autocomplete else requested_model
     )
 
+    trace_chain_id, trace_chain_source = _resolve_trace_chain_id(
+        client_request_id=body.get("client_request_id"),
+        proxy_trace_meta=_proxy_trace_meta,
+    )
     trace["request"] = {
         "requested_model": requested_model,
         "actual_model": actual_model,
@@ -1185,11 +2309,14 @@ def run_chat_completions(
         "testing_disable_rerank": bool(testing_disable_rerank),
         "client_request_id": str(body.get("client_request_id") or "").strip() or None,
     }
+    if trace_chain_id:
+        trace["request"]["trace_chain_id"] = trace_chain_id
+        trace["request"]["trace_chain_source"] = trace_chain_source
     if tool_loop_stats is not None:
         trace["request"]["tool_loop_stats"] = tool_loop_stats
     if _proxy_trace_meta:
         for _k, _v in _proxy_trace_meta.items():
-            if _k in ("proxy_v1_route", "responses_client_stream"):
+            if _k in ("proxy_v1_route", "responses_client_stream", "incoming_request_id"):
                 trace["request"][_k] = _v
     if body.get("tools_count_raw") is not None:
         trace["request"]["tools_count_raw"] = body.get("tools_count_raw")
@@ -1658,13 +2785,32 @@ def run_chat_completions(
 
         trace["request"]["native_tools"] = True
         native_tools_diag: dict[str, Any] = {}
-        native_tools_payload, tools_diag = _preflight_native_tools_payload(tools)
+        native_tools_input = list(tools)
+        native_tools_input, interpolation_diag = _interpolate_native_tools_for_gemini(
+            native_tools_input,
+            model_name=use_model,
+        )
+        if interpolation_diag:
+            native_tools_diag.update(interpolation_diag)
+        native_tools_payload, tools_diag = _preflight_native_tools_payload(native_tools_input)
         if tools_diag:
             native_tools_diag.update(tools_diag)
         oll_tools = ollama_tools_from_openai(native_tools_payload)
-        native_ollama_messages, messages_diag = _preflight_native_tool_messages(ollama_messages)
+        native_ollama_messages, messages_diag = _preflight_native_tool_messages(
+            ollama_messages,
+            model_name=use_model,
+            trace_id=trace_id,
+            db_path=proxy_db_path,
+        )
         if messages_diag:
             native_tools_diag.update(messages_diag)
+        native_ollama_messages_for_upstream = (
+            ollama_messages_drop_images(native_ollama_messages)
+            if oll_tools
+            else native_ollama_messages
+        )
+        trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(native_ollama_messages_for_upstream)
+        trace["ollama"]["tools"] = list(oll_tools) if isinstance(oll_tools, list) else []
         if (
             has_tool_result
             and not tool_result_indicates_failure
@@ -1684,6 +2830,12 @@ def run_chat_completions(
                 },
             ]
             native_tools_diag["tool_loop_finalize_nudge"] = True
+            native_ollama_messages_for_upstream = (
+                ollama_messages_drop_images(native_ollama_messages)
+                if oll_tools
+                else native_ollama_messages
+            )
+            trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(native_ollama_messages_for_upstream)
         if native_tools_diag:
             trace["request"]["native_tools_preflight"] = native_tools_diag
 
@@ -1740,24 +2892,18 @@ def run_chat_completions(
                         fake_msg["content"] = full_content
                     openai_mapped = ollama_message_to_openai_assistant(fake_msg)
                     mapped_calls = openai_mapped.get("tool_calls") or []
+                    gemini_upserted = _persist_gemini_tool_calls_state(
+                        tool_calls=mapped_calls,
+                        model_name=use_model,
+                        trace_id=trace_id,
+                        db_path=proxy_db_path,
+                    )
                     finish_reason = "tool_calls"
                     if mapped_calls:
-                        payload_calls: list[dict[str, object]] = []
-                        for i, tc in enumerate(mapped_calls):
-                            if not isinstance(tc, dict):
-                                continue
-                            fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
-                            payload_calls.append({
-                                "index": i,
-                                "id": tc.get("id"),
-                                "type": "function",
-                                "function": {
-                                    "name": fn.get("name"),
-                                    "arguments": fn.get("arguments"),
-                                },
-                            })
+                        payload_calls = _sse_tool_calls_payload(mapped_calls)
                         yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'tool_calls': payload_calls}, 'finish_reason': None}]})}\n\n"
                 else:
+                    gemini_upserted = 0
                     finish_reason = openai_finish_reason_from_ollama(
                         {}, ollama_done_reason=ollama_done_reason,
                     )
@@ -1765,11 +2911,16 @@ def run_chat_completions(
                 yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}]})}\n\n"
                 yield "data: [DONE]\n\n"
 
-                _pt = max(1, int(len(json.dumps(native_ollama_messages, ensure_ascii=False)) / 4))
+                _pt = max(1, int(len(json.dumps(native_ollama_messages_for_upstream, ensure_ascii=False)) / 4))
                 _ct = max(1, int(len(full_content) / 4))
                 total_tokens_holder[0] = _pt + _ct
 
                 trace["ollama"]["chat_stream"] = True
+                trace["ollama"]["tokens_estimates"] = {
+                    "prompt_tokens_estimated": _pt,
+                    "completion_tokens_estimated": _ct,
+                    "total_tokens_estimated": total_tokens_holder[0],
+                }
                 trace["response"] = {
                     "content_preview": full_content[:log_preview],
                     "content_length_chars": len(full_content),
@@ -1778,6 +2929,8 @@ def run_chat_completions(
                     "native_tools": True,
                     **_trace_ollama_api_metrics(ollama_done_payload),
                 }
+                if gemini_upserted:
+                    trace["response"]["gemini_tool_state_upserted_count"] = int(gemini_upserted)
                 if tool_calls_raw:
                     trace["response"]["tool_calls_raw"] = tool_calls_raw
                 trace["steps"].append({
@@ -1842,11 +2995,7 @@ def run_chat_completions(
             _co.update(_oo)
         body_ollama: dict[str, object] = {
             "model": use_model,
-            "messages": (
-                ollama_messages_drop_images(native_ollama_messages)
-                if oll_tools
-                else native_ollama_messages
-            ),
+            "messages": native_ollama_messages_for_upstream,
             "stream": False,
             "options": dict(_co),
         }
@@ -1933,11 +3082,17 @@ def run_chat_completions(
         )
         tool_calls_out = openai_msg.get("tool_calls") if isinstance(openai_msg.get("tool_calls"), list) else []
         tool_calls_out, shell_sanitize_count = _sanitize_outgoing_shell_tool_calls(tool_calls_out)
+        gemini_tool_state_upserted = _persist_gemini_tool_calls_state(
+            tool_calls=tool_calls_out,
+            model_name=use_model,
+            trace_id=trace_id,
+            db_path=proxy_db_path,
+        )
         content_out = openai_msg.get("content")
         content_str = content_out if isinstance(content_out, str) else ("" if content_out is None else str(content_out))
 
         latency_ms = int((time.time() - start_time) * 1000)
-        _pt = max(1, int(len(json.dumps(ollama_messages, ensure_ascii=False)) / 4))
+        _pt = max(1, int(len(json.dumps(native_ollama_messages_for_upstream, ensure_ascii=False)) / 4))
         _ct = max(1, int(len(content_str or "") / 4))
         w.set_latest_request_total_tokens(_pt + _ct)
 
@@ -1984,6 +3139,8 @@ def run_chat_completions(
         }
         if tool_calls_out:
             trace["response"]["tool_calls"] = tool_calls_out
+        if gemini_tool_state_upserted:
+            trace["response"]["gemini_tool_state_upserted_count"] = int(gemini_tool_state_upserted)
         if shell_sanitize_count:
             trace["response"]["shell_tool_sanitized_count"] = int(shell_sanitize_count)
 
@@ -2054,20 +3211,7 @@ def run_chat_completions(
             if content_str:
                 yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': content_str}, 'finish_reason': None}]})}\n\n"
             if tool_calls_out:
-                payload_calls: list[dict[str, object]] = []
-                for i, tc in enumerate(tool_calls_out):
-                    if not isinstance(tc, dict):
-                        continue
-                    fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
-                    payload_calls.append({
-                        "index": i,
-                        "id": tc.get("id"),
-                        "type": "function",
-                        "function": {
-                            "name": fn.get("name"),
-                            "arguments": fn.get("arguments"),
-                        },
-                    })
+                payload_calls = _sse_tool_calls_payload(tool_calls_out)
                 yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'tool_calls': payload_calls}, 'finish_reason': None}]})}\n\n"
             yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish}]})}\n\n"
             yield "data: [DONE]\n\n"
@@ -2664,20 +3808,7 @@ def run_chat_completions(
             if content:
                 yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': content}, 'finish_reason': None}]})}\n\n"
             if tool_calls:
-                payload_tc: list[dict[str, object]] = []
-                for i, tc in enumerate(tool_calls):
-                    if not isinstance(tc, dict):
-                        continue
-                    fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
-                    payload_tc.append({
-                        "index": i,
-                        "id": tc.get("id"),
-                        "type": "function",
-                        "function": {
-                            "name": fn.get("name"),
-                            "arguments": fn.get("arguments"),
-                        },
-                    })
+                payload_tc = _sse_tool_calls_payload(tool_calls)
                 yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'tool_calls': payload_tc}, 'finish_reason': None}]})}\n\n"
             yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_sse}]})}\n\n"
             yield "data: [DONE]\n\n"
