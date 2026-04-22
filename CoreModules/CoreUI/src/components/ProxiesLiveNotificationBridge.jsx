@@ -166,6 +166,15 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
   const model = traceModelFields(trace).headerShort;
   const stepCapsules = buildStepCapsules(trace?.steps);
   const traceId = trace?.trace_id != null && trace.trace_id !== '' ? String(trace.trace_id) : '';
+  const tokensEst = trace?.ollama?.tokens_estimates;
+  const completionTokens = tokensEst?.completion_tokens_estimated ?? null;
+  const promptTokens = tokensEst?.prompt_tokens_estimated ?? null;
+  const latencyMs = trace?.response?.latency_ms ?? null;
+  let tpsDisplay = null;
+  if (completionTokens != null && promptTokens != null && latencyMs != null && latencyMs > 0) {
+    const tps = (completionTokens / latencyMs) * 1000;
+    tpsDisplay = `${tps.toFixed(2)} tok/s`;
+  }
   return (
     <div className="proxy-live-notification notification-proxy-embed">
       {busyLlm ? (
@@ -185,6 +194,12 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
         <div className="proxy-live-notification-row">
           <span className="proxy-live-notification-label">Track ID</span>
           <span className="proxy-live-notification-value proxy-live-notification-mono">{traceId}</span>
+        </div>
+      ) : null}
+      {tpsDisplay ? (
+        <div className="proxy-live-notification-row">
+          <span className="proxy-live-notification-label">TPS</span>
+          <span className="proxy-live-notification-value proxy-live-notification-mono">{tpsDisplay}</span>
         </div>
       ) : null}
       {stepCapsules.length ? (

@@ -335,16 +335,7 @@ def _preflight_native_tools_payload(tools: list[Any]) -> tuple[list[dict[str, An
     return valid, diag
 
 
-def _looks_like_explain_codebase_query(text: str) -> bool:
-    q = (text or "").strip().lower()
-    if not q:
-        return False
-    explain_tokens = ("explain", "describe", "overview", "архитект", "объясни", "опиши")
-    codebase_tokens = ("codebase", "project", "repo", "repository", "код", "проект", "репозитор")
-    return any(t in q for t in explain_tokens) and any(t in q for t in codebase_tokens)
-
-
-def _tool_round_stats_since_last_user(messages: list[Any]) -> dict[str, int]:
+def _tool_round_stats_since_last_user(messages: list[Any]) -> dict[str, Any]:
     last_user_idx = -1
     for i in range(len(messages) - 1, -1, -1):
         m = messages[i]
@@ -354,6 +345,8 @@ def _tool_round_stats_since_last_user(messages: list[Any]) -> dict[str, int]:
     rounds = 0
     shell_rounds = 0
     non_shell_rounds = 0
+    single_tool_rounds = 0
+    tool_name_counts: dict[str, int] = {}
     for m in messages[last_user_idx + 1 :]:
         if not isinstance(m, dict) or m.get("role") != "assistant":
             continue
@@ -368,11 +361,27 @@ def _tool_round_stats_since_last_user(messages: list[Any]) -> dict[str, int]:
             fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
             if isinstance(fn, dict):
                 names.append(str(fn.get("name") or "").strip().lower())
+        if len(names) == 1 and names[0]:
+            single_tool_rounds += 1
+            tool_name_counts[names[0]] = int(tool_name_counts.get(names[0]) or 0) + 1
         if names and all(n == "shell" for n in names):
             shell_rounds += 1
         else:
             non_shell_rounds += 1
-    return {"rounds": rounds, "shell_rounds": shell_rounds, "non_shell_rounds": non_shell_rounds}
+    dominant_tool = ""
+    dominant_count = 0
+    for name, count in tool_name_counts.items():
+        if count > dominant_count:
+            dominant_tool = name
+            dominant_count = count
+    return {
+        "rounds": rounds,
+        "shell_rounds": shell_rounds,
+        "non_shell_rounds": non_shell_rounds,
+        "single_tool_rounds": single_tool_rounds,
+        "dominant_tool": dominant_tool,
+        "dominant_tool_rounds": dominant_count,
+    }
 
 
 _POWERSHELL_COMMAND_WRAPPER_RE = re.compile(
@@ -1107,9 +1116,9 @@ def run_chat_completions(
             selected_edit_tool = None
             selected_tool_write_capable = True
     use_native_tools = bool(tools) and tool_choice_effective != "none"
-    explain_loop_stats: dict[str, int] | None = None
-    if use_native_tools and _looks_like_explain_codebase_query(user_query):
-        explain_loop_stats = _tool_round_stats_since_last_user(messages)
+    tool_loop_stats: dict[str, Any] | None = None
+    if use_native_tools:
+        tool_loop_stats = _tool_round_stats_since_last_user(messages)
     context_length = len(last_user.split())
     if system_prefix is not None:
         effective_prefix = prefix
@@ -1176,8 +1185,8 @@ def run_chat_completions(
         "testing_disable_rerank": bool(testing_disable_rerank),
         "client_request_id": str(body.get("client_request_id") or "").strip() or None,
     }
-    if explain_loop_stats is not None:
-        trace["request"]["explain_loop_stats"] = explain_loop_stats
+    if tool_loop_stats is not None:
+        trace["request"]["tool_loop_stats"] = tool_loop_stats
     if _proxy_trace_meta:
         for _k, _v in _proxy_trace_meta.items():
             if _k in ("proxy_v1_route", "responses_client_stream"):
@@ -1657,25 +1666,24 @@ def run_chat_completions(
         if messages_diag:
             native_tools_diag.update(messages_diag)
         if (
-            _looks_like_explain_codebase_query(user_query)
-            and has_tool_result
+            has_tool_result
             and not tool_result_indicates_failure
-            and isinstance(explain_loop_stats, dict)
-            and int(explain_loop_stats.get("shell_rounds") or 0) >= 3
-            and int(explain_loop_stats.get("non_shell_rounds") or 0) == 0
+            and isinstance(tool_loop_stats, dict)
+            and int(tool_loop_stats.get("single_tool_rounds") or 0) >= 3
+            and str(tool_loop_stats.get("dominant_tool") or "") in {"shell", "web_search", "file_search"}
+            and int(tool_loop_stats.get("dominant_tool_rounds") or 0) >= 3
         ):
             native_ollama_messages = [
                 *native_ollama_messages,
                 {
                     "role": "system",
                     "content": (
-                        "You already executed several shell inspection steps for this same request. "
-                        "Prioritize giving the final concise codebase explanation now. "
-                        "Call another tool only if a critical gap blocks the answer."
+                        "You have already completed multiple consecutive tool rounds of the same type. "
+                        "Prefer synthesizing the final answer now, and call another tool only if a concrete blocker remains."
                     ),
                 },
             ]
-            native_tools_diag["explain_finalize_nudge"] = True
+            native_tools_diag["tool_loop_finalize_nudge"] = True
         if native_tools_diag:
             trace["request"]["native_tools_preflight"] = native_tools_diag
 

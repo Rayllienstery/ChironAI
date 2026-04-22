@@ -3148,14 +3148,6 @@ def test_shell_tool_call_sanitizer_keeps_command_with_explicit_erroraction() -> 
     assert args["command"] == cmd
 
 
-def test_explain_codebase_loop_query_detector() -> None:
-    import llm_proxy.chat_completions as cc
-
-    assert cc._looks_like_explain_codebase_query("Explain this codebase")
-    assert cc._looks_like_explain_codebase_query("Опиши проект")
-    assert not cc._looks_like_explain_codebase_query("Fix failing tests in CI")
-
-
 def test_tool_round_stats_since_last_user_counts_shell_rounds() -> None:
     import llm_proxy.chat_completions as cc
 
@@ -3170,3 +3162,25 @@ def test_tool_round_stats_since_last_user_counts_shell_rounds() -> None:
     assert stats["rounds"] == 2
     assert stats["shell_rounds"] == 2
     assert stats["non_shell_rounds"] == 0
+    assert stats["single_tool_rounds"] == 2
+    assert stats["dominant_tool"] == "shell"
+    assert stats["dominant_tool_rounds"] == 2
+
+
+def test_tool_round_stats_since_last_user_tracks_dominant_tool() -> None:
+    import llm_proxy.chat_completions as cc
+
+    messages = [
+        {"role": "user", "content": "Investigate issue"},
+        {"role": "assistant", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "shell"}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": "ok"},
+        {"role": "assistant", "tool_calls": [{"id": "c2", "type": "function", "function": {"name": "shell"}}]},
+        {"role": "tool", "tool_call_id": "c2", "content": "ok"},
+        {"role": "assistant", "tool_calls": [{"id": "c3", "type": "function", "function": {"name": "web_search"}}]},
+        {"role": "tool", "tool_call_id": "c3", "content": "ok"},
+    ]
+    stats = cc._tool_round_stats_since_last_user(messages)
+    assert stats["rounds"] == 3
+    assert stats["single_tool_rounds"] == 3
+    assert stats["dominant_tool"] == "shell"
+    assert stats["dominant_tool_rounds"] == 2
