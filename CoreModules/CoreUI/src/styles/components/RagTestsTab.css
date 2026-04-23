@@ -606,6 +606,14 @@
   text-align: center;
 }
 
+.rag-tests-history-delete-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  flex-wrap: wrap;
+}
+
 .rag-tests-history-compare-actions {
   display: flex;
   align-items: center;

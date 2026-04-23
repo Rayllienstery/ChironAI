@@ -817,6 +817,19 @@ export async function getRagTestRuns(options = {}) {
   return response.json();
 }
 
+export async function deleteRagTestRuns(body) {
+  const response = await fetch(`${API_BASE}/rag-tests/runs`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to delete run history');
+  }
+  return response.json();
+}
+
 export async function getRagTestRunsSummary(options = {}) {
   const params = new URLSearchParams();
   if (options.limit != null) params.set('limit', String(options.limit));

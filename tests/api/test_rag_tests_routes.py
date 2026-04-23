@@ -69,3 +69,53 @@ def test_rag_tests_worker_uses_v1_chat_completions_payload_parity(
     assert captured.get("prompt_name") == "system_senior_ios_assistant_v1"
     assert captured.get("top_k") == 8.0
     assert captured.get("testing_disable_rerank") is True
+
+
+def test_rag_tests_runs_delete_selected_ids(tmp_path) -> None:
+    import api.http.rag_tests_routes as routes
+    from infrastructure.database.rag_test_runs_repository import RagTestRunsRepository
+
+    repo = RagTestRunsRepository(tmp_path / "webui.db")
+    repo.add_run("run-1", "m1", "completed", 4, 4, 0, [])
+    repo.add_run("run-2", "m1", "cancelled", 4, 0, 4, [])
+
+    app = Flask(__name__)
+    app.register_blueprint(routes.rag_tests_bp)
+
+    routes.get_rag_test_runs_repository = lambda: repo
+    client = app.test_client()
+
+    response = client.delete(
+        "/api/webui/rag-tests/runs",
+        json={"run_ids": ["run-2"]},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["deleted"] == 1
+    assert repo.get_run("run-2") is None
+    assert repo.get_run("run-1") is not None
+
+
+def test_rag_tests_runs_delete_low_pass(tmp_path) -> None:
+    import api.http.rag_tests_routes as routes
+    from infrastructure.database.rag_test_runs_repository import RagTestRunsRepository
+
+    repo = RagTestRunsRepository(tmp_path / "webui.db")
+    repo.add_run("run-1", "m1", "completed", 8, 1, 7, [])
+    repo.add_run("run-2", "m1", "completed", 8, 3, 5, [])
+
+    app = Flask(__name__)
+    app.register_blueprint(routes.rag_tests_bp)
+
+    routes.get_rag_test_runs_repository = lambda: repo
+    client = app.test_client()
+
+    response = client.delete(
+        "/api/webui/rag-tests/runs",
+        json={"delete_low_pass": True, "max_pass_rate_pct": 25},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["deleted"] == 1
+    assert repo.get_run("run-1") is None
+    assert repo.get_run("run-2") is not None

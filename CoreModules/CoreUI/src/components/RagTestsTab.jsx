@@ -14,6 +14,7 @@ import {
   getRagTestRuns,
   getRagTestRun,
   getRagTestRunsSummary,
+  deleteRagTestRuns,
   createRagTest,
   updateRagTest,
   deleteRagTest,
@@ -140,6 +141,7 @@ function RagTestsTab({
   const [historySectionOpen, setHistorySectionOpen] = useState(false);
   const [compareRunIds, setCompareRunIds] = useState([]);
   const [runCompareLoading, setRunCompareLoading] = useState(false);
+  const [runHistoryDeleteLoading, setRunHistoryDeleteLoading] = useState(false);
   const [runCompareModal, setRunCompareModal] = useState(null);
   const [compareOnlyDiff, setCompareOnlyDiff] = useState(false);
   const [compareFocus, setCompareFocus] = useState('status');
@@ -449,6 +451,81 @@ function RagTestsTab({
   }, []);
 
   const clearCompareRuns = useCallback(() => setCompareRunIds([]), []);
+
+  const refreshRunHistoryStateAfterDelete = useCallback(async (deletedIds = null) => {
+    await loadRunHistory(0);
+    if (historySectionOpen) {
+      await loadRunSummary();
+    }
+    if (Array.isArray(deletedIds) && deletedIds.length > 0) {
+      const deleted = new Set(deletedIds.map((id) => String(id)));
+      setCompareRunIds((prev) => prev.filter((id) => !deleted.has(String(id))));
+      if (runHistoryModal?.run?.id && deleted.has(String(runHistoryModal.run.id))) {
+        setRunHistoryModal(null);
+      }
+    }
+  }, [historySectionOpen, loadRunHistory, loadRunSummary, runHistoryModal]);
+
+  const handleDeleteCancelledRuns = useCallback(async () => {
+    if (runHistoryDeleteLoading) return;
+    const confirmed = window.confirm('Delete all cancelled runs from history?');
+    if (!confirmed) return;
+    setRunHistoryDeleteLoading(true);
+    setError(null);
+    try {
+      await deleteRagTestRuns({ delete_cancelled: true });
+      setCompareRunIds((prev) => prev.filter((id) => {
+        const run = runHistory.find((item) => String(item.id) === String(id));
+        return run?.status !== 'cancelled';
+      }));
+      await refreshRunHistoryStateAfterDelete();
+    } catch (e) {
+      setError(String(e?.message || 'Failed to delete cancelled runs'));
+    } finally {
+      setRunHistoryDeleteLoading(false);
+    }
+  }, [refreshRunHistoryStateAfterDelete, runHistoryDeleteLoading, runHistory]);
+
+  const handleDeleteLowPassRuns = useCallback(async () => {
+    if (runHistoryDeleteLoading) return;
+    const confirmed = window.confirm('Delete all runs with pass rate below 25%?');
+    if (!confirmed) return;
+    setRunHistoryDeleteLoading(true);
+    setError(null);
+    try {
+      await deleteRagTestRuns({ delete_low_pass: true, max_pass_rate_pct: 25 });
+      setCompareRunIds((prev) => prev.filter((id) => {
+        const run = runHistory.find((item) => String(item.id) === String(id));
+        if (!run) return true;
+        const total = Number(run.total || 0);
+        const passed = Number(run.passed || 0);
+        const passRate = total > 0 ? (passed / total) * 100 : 0;
+        return passRate >= 25;
+      }));
+      await refreshRunHistoryStateAfterDelete();
+    } catch (e) {
+      setError(String(e?.message || 'Failed to delete low-pass runs'));
+    } finally {
+      setRunHistoryDeleteLoading(false);
+    }
+  }, [refreshRunHistoryStateAfterDelete, runHistoryDeleteLoading, runHistory]);
+
+  const handleDeleteSelectedRuns = useCallback(async () => {
+    if (runHistoryDeleteLoading || compareRunIds.length === 0) return;
+    const confirmed = window.confirm(`Delete ${compareRunIds.length} selected run(s) from history?`);
+    if (!confirmed) return;
+    const idsToDelete = [...compareRunIds];
+    setRunHistoryDeleteLoading(true);
+    setError(null);
+    try {
+      await deleteRagTestRuns({ run_ids: idsToDelete });
+      await refreshRunHistoryStateAfterDelete(idsToDelete);
+    } catch (e) {
+      setError(String(e?.message || 'Failed to delete selected runs'));
+    } finally {
+      setRunHistoryDeleteLoading(false);
+    }
+  }, [compareRunIds, refreshRunHistoryStateAfterDelete, runHistoryDeleteLoading]);
 
   const handleOpenRunCompare = useCallback(async () => {
     if (compareRunIds.length !== 2) return;
@@ -1587,6 +1664,32 @@ function RagTestsTab({
                   <option value="cancelled">cancelled</option>
                 </select>
               </label>
+            </div>
+            <div className="rag-tests-history-delete-actions">
+              <button
+                type="button"
+                className="rag-tests-btn small"
+                disabled={runHistoryDeleteLoading}
+                onClick={() => void handleDeleteCancelledRuns()}
+              >
+                Delete cancelled
+              </button>
+              <button
+                type="button"
+                className="rag-tests-btn small"
+                disabled={runHistoryDeleteLoading}
+                onClick={() => void handleDeleteLowPassRuns()}
+              >
+                Delete &lt;25% passed
+              </button>
+              <button
+                type="button"
+                className="rag-tests-btn small"
+                disabled={runHistoryDeleteLoading || compareRunIds.length === 0}
+                onClick={() => void handleDeleteSelectedRuns()}
+              >
+                Delete selected
+              </button>
             </div>
             <div className="rag-tests-history-compare-actions">
               <span className="rag-tests-history-compare-selected">

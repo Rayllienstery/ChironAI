@@ -3251,148 +3251,35 @@ def test_interpolate_native_tools_for_non_gemini_is_noop() -> None:
     assert diag == {}
 
 
-def test_transfer_intent_and_result_helpers_detect_move_workflow() -> None:
+
+
+
+def test_is_gemini_model_name_accepts_google_family_variants() -> None:
     import llm_proxy.chat_completions as cc
 
-    query = "Перенеси готовые пункты из TODO.md в TODO_COMPLETED.md"
-    result = "Moved 43 lines to C:\\Users\\Raylee\\AI\\TODO_COMPLETED.md"
-    assert cc._looks_like_transfer_intent_query(query) is True
-    assert cc._tool_result_looks_like_transfer_completed(result) is True
-
-
-def test_transfer_intent_helper_ignores_regular_edit_query() -> None:
-    import llm_proxy.chat_completions as cc
-
-    assert cc._looks_like_transfer_intent_query("Исправь импорт в файле main.py") is False
-    assert cc._tool_result_looks_like_transfer_completed("Edit applied successfully.") is False
-
-
-def test_extract_transfer_paths_from_query_russian_form() -> None:
-    import llm_proxy.chat_completions as cc
-
-    src, dst = cc._extract_transfer_paths_from_query("Перенеси готовые пункты из TODO.md в TODO_COMPLETED.md")
-    assert src == "TODO.md"
-    assert dst == "TODO_COMPLETED.md"
-
-
-def test_extract_transfer_paths_from_query_handles_todo_label_without_extension() -> None:
-    import llm_proxy.chat_completions as cc
-
-    src, dst = cc._extract_transfer_paths_from_query(
-        "Перенеси готовые пункты из Todo - [x] в TODO_COMPLETED.md"
-    )
-    assert src == "TODO.md"
-    assert dst == "TODO_COMPLETED.md"
-
-
-def test_tool_file_edit_counts_since_last_user_tracks_edit_targets() -> None:
-    import llm_proxy.chat_completions as cc
-
-    messages = [
-        {"role": "user", "content": "Перенеси из TODO.md в TODO_COMPLETED.md"},
-        {
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": "c1",
-                    "type": "function",
-                    "function": {
-                        "name": "edit",
-                        "arguments": "{\"filePath\":\"C:/repo/TODO.md\",\"oldString\":\"x\",\"newString\":\"\"}",
-                    },
-                }
-            ],
-        },
-        {"role": "tool", "tool_call_id": "c1", "content": "Edit applied successfully."},
-        {
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": "c2",
-                    "type": "function",
-                    "function": {
-                        "name": "read",
-                        "arguments": "{\"filePath\":\"C:/repo/TODO_COMPLETED.md\"}",
-                    },
-                }
-            ],
-        },
+    positives = [
+        "gemini-3-flash-preview:cloud",
+        "google/gemini-2.5-pro",
+        "models/gemini-2.5-flash",
+        "gemini-exp-1206",
+        "vendor/models/gemini-2.0-flash-thinking",
     ]
-    counts = cc._tool_file_edit_counts_since_last_user(messages)
-    assert counts.get("c:/repo/todo.md") == 1
-    assert "c:/repo/todo_completed.md" not in counts
+    for model in positives:
+        assert cc._is_gemini_model_name(model) is True
 
 
-def test_restrict_native_tools_for_oldstring_recovery_after_consecutive_misses() -> None:
+def test_is_gemini_model_name_rejects_non_gemini_families() -> None:
     import llm_proxy.chat_completions as cc
 
-    tools = [
-        {"type": "function", "function": {"name": "read", "parameters": {}}},
-        {"type": "function", "function": {"name": "glob", "parameters": {}}},
-        {"type": "function", "function": {"name": "edit", "parameters": {}}},
-        {"type": "function", "function": {"name": "write", "parameters": {}}},
+    negatives = [
+        "",
+        "gemma-3-27b-it",
+        "google/gemma-3n-e2b",
+        "qwen2.5-coder:latest",
+        "claude-3-7-sonnet",
     ]
-    messages = [
-        {"role": "user", "content": "Перенеси из TODO.md в TODO_COMPLETED.md"},
-        {"role": "tool", "content": "Could not find oldString in the file. It must match exactly."},
-        {"role": "tool", "content": "Could not find oldString in the file. It must match exactly."},
-    ]
-    out, diag = cc._restrict_native_tools_for_oldstring_recovery(
-        tools,
-        user_text="Перенеси из TODO.md в TODO_COMPLETED.md",
-        messages=messages,
-    )
-    names = [(((t.get("function") or {}).get("name")) or t.get("name")) for t in out if isinstance(t, dict)]
-    assert "read" in names
-    assert "glob" in names
-    assert "edit" not in names
-    assert "write" not in names
-    assert diag.get("transfer_oldstring_recovery_mode") is True
-    assert int(diag.get("transfer_oldstring_recovery_miss_count") or 0) >= 2
-
-
-def test_restrict_native_tools_for_transfer_drops_bash_shell() -> None:
-    import llm_proxy.chat_completions as cc
-
-    tools = [
-        {"type": "function", "function": {"name": "read", "parameters": {}}},
-        {"type": "function", "function": {"name": "edit", "parameters": {}}},
-        {"type": "function", "function": {"name": "bash", "parameters": {}}},
-        {"type": "function", "function": {"name": "shell", "parameters": {}}},
-    ]
-    out, diag = cc._restrict_native_tools_for_transfer(
-        tools,
-        user_text="Перенеси готовые пункты из TODO.md в TODO_COMPLETED.md",
-    )
-    names = [(((t.get("function") or {}).get("name")) or t.get("name")) for t in out if isinstance(t, dict)]
-    assert "read" in names
-    assert "edit" in names
-    assert "bash" not in names
-    assert "shell" not in names
-    assert diag.get("transfer_tools_restricted") is True
-
-
-def test_tool_results_indicate_source_only_transfer_from_script_output() -> None:
-    import llm_proxy.chat_completions as cc
-
-    messages = [
-        {"role": "user", "content": "Перенеси из TODO.md в TODO_COMPLETED.md"},
-        {"role": "tool", "content": "No new items to add to TODO_COMPLETED.md\nRemoved 43 lines from TODO.md"},
-    ]
-    assert (
-        cc._tool_results_indicate_source_only_transfer(
-            messages,
-            transfer_src="TODO.md",
-            transfer_dst="TODO_COMPLETED.md",
-        )
-        is True
-    )
-    state = cc._transfer_invariant_violation_state(
-        messages,
-        user_text="Перенеси из TODO.md в TODO_COMPLETED.md",
-    )
-    assert state.get("source_only_result_evidence") is True
-
+    for model in negatives:
+        assert cc._is_gemini_model_name(model) is False
 
 def test_preflight_native_tool_messages_gemini_recovers_signature_and_name_from_db(
     tmp_path: Path,

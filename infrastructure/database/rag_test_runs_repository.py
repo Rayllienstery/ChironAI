@@ -313,6 +313,46 @@ class RagTestRunsRepository:
             "results": results,
         }
 
+    def delete_runs(
+        self,
+        *,
+        run_ids: list[str] | None = None,
+        status: str | None = None,
+        max_pass_rate_pct: float | None = None,
+    ) -> int:
+        """Delete runs by explicit ids and/or simple filters. Returns deleted row count."""
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        if run_ids:
+            ids = [str(run_id).strip() for run_id in run_ids if str(run_id).strip()]
+            if ids:
+                placeholders = ",".join("?" for _ in ids)
+                conditions.append(f"id IN ({placeholders})")
+                params.extend(ids)
+
+        if status and status.strip():
+            conditions.append("status = ?")
+            params.append(status.strip())
+
+        if max_pass_rate_pct is not None:
+            threshold = max(0.0, float(max_pass_rate_pct))
+            # Treat total=0 as 0% passed so empty/cancelled runs can be matched if needed.
+            conditions.append("(CASE WHEN total > 0 THEN (CAST(passed AS REAL) * 100.0 / total) ELSE 0.0 END) < ?")
+            params.append(threshold)
+
+        if not conditions:
+            return 0
+
+        where_sql = " AND ".join(f"({condition})" for condition in conditions)
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                f"DELETE FROM rag_test_runs WHERE {where_sql}",
+                params,
+            )
+            conn.commit()
+            return int(cursor.rowcount or 0)
+
 
 _rag_test_runs_repository: Optional[RagTestRunsRepository] = None
 

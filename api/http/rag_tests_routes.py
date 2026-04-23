@@ -234,6 +234,38 @@ def rag_tests_run_detail(run_id: str) -> Any:
         return jsonify({"error": str(e)}), 500
 
 
+@rag_tests_bp.route("/rag-tests/runs", methods=["DELETE"])
+def rag_tests_runs_delete() -> Any:
+    """Delete past RAG test runs by selected ids or history filter presets."""
+    try:
+        repo = get_rag_test_runs_repository()
+        body = request.get_json(silent=True) or {}
+        run_ids_raw = body.get("run_ids")
+        run_ids = [str(v).strip() for v in (run_ids_raw or []) if str(v).strip()] if isinstance(run_ids_raw, list) else []
+        delete_cancelled = bool(body.get("delete_cancelled"))
+        delete_low_pass = bool(body.get("delete_low_pass"))
+        max_pass_rate_pct_raw = body.get("max_pass_rate_pct", 25)
+        try:
+            max_pass_rate_pct = float(max_pass_rate_pct_raw)
+        except (TypeError, ValueError):
+            max_pass_rate_pct = 25.0
+
+        deleted = 0
+        if run_ids:
+            deleted = repo.delete_runs(run_ids=run_ids)
+        elif delete_cancelled:
+            deleted = repo.delete_runs(status="cancelled")
+        elif delete_low_pass:
+            deleted = repo.delete_runs(max_pass_rate_pct=max_pass_rate_pct)
+        else:
+            return jsonify({"error": "No delete criteria provided"}), 400
+
+        return jsonify({"status": "ok", "deleted": deleted})
+    except Exception as e:
+        _ERROR_LOG.exception("rag_tests_runs_delete")
+        return jsonify({"error": str(e)}), 500
+
+
 @rag_tests_bp.route("/rag-tests/runs/<run_id>/export", methods=["GET"])
 def rag_tests_run_export(run_id: str) -> Any:
     """Export run as JSON or CSV attachment. Query param format=csv|json (default json)."""
