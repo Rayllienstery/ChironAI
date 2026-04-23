@@ -1,5 +1,7 @@
 ﻿import { useState, useEffect, useCallback } from 'react';
 import Card from './Card';
+import CoreUIButton from './CoreUIButton';
+import CoreUISlider from './CoreUISlider';
 import {
   RagResultDetailModal,
   RagTestFormModal,
@@ -21,6 +23,7 @@ import {
   exportRagTestRun,
 } from '../services/api';
 import { isLogicalRagModelId } from '../constants/llmProxyModels';
+import '../styles/components/CoreUIButtons.css';
 import '../styles/components/RagTestsTab.css';
 
 /** Cloud/metered Ollama tags (e.g. qwen3.5:cloud, ...:397b-cloud) may bill tokens. */
@@ -180,6 +183,7 @@ function RagTestsTab({
   const [runTopK, setRunTopK] = useState(
     Number.isFinite(Number(lastUsed.top_k)) ? Number(lastUsed.top_k) : 0.1
   );
+  const [runStrictMode, setRunStrictMode] = useState(Boolean(lastUsed.strict_mode));
   const [runConcurrency, setRunConcurrency] = useState(1);
   const [liveMonitorOpen, setLiveMonitorOpen] = useState(true);
   const [liveMonitorDetailOpen, setLiveMonitorDetailOpen] = useState(false);
@@ -286,12 +290,13 @@ function RagTestsTab({
           prompt_name: selectedPromptName || '',
           temperature: runTemperature,
           top_k: runTopK,
+          strict_mode: runStrictMode,
         })
       );
     } catch {
       // ignore storage errors
     }
-  }, [selectedModel, selectedCollection, selectedPromptName, runTemperature, runTopK]);
+  }, [selectedModel, selectedCollection, selectedPromptName, runTemperature, runTopK, runStrictMode]);
 
   const HISTORY_PAGE_SIZE = 20;
 
@@ -435,20 +440,6 @@ function RagTestsTab({
       };
     });
   }, [running, runProgress?.sse_enabled, runProgress?.sse_preview]);
-
-  useEffect(() => {
-    const id = window.setTimeout(() => {
-      const nodes = document.querySelectorAll('.rag-tests-live-sse');
-      nodes.forEach((node) => {
-        try {
-          node.scrollTop = node.scrollHeight;
-        } catch {
-          // ignore
-        }
-      });
-    }, 0);
-    return () => window.clearTimeout(id);
-  }, [runProgress?.active_live, runProgress?.sse_preview, liveSse.text]);
 
   useEffect(() => {
     if (!resultDetailModal && !liveMonitorDetailOpen && !runHistoryModal && !historySectionOpen && !runCompareModal) return undefined;
@@ -615,10 +606,17 @@ function RagTestsTab({
     temperature: Number.isFinite(runTemperature) ? runTemperature : 0,
     top_k: Number.isFinite(runTopK) && runTopK > 0 ? runTopK : undefined,
     concurrency: Number(runConcurrency) || 1,
+    strict_mode: Boolean(runStrictMode),
     ...opts,
   });
 
   const canRun = collections.length > 0 && selectedCollection;
+  const hasActiveFilters = Boolean(filters.platform || filters.framework || filters.difficulty);
+  const hasSelectedTests = selectedTestIds.size > 0;
+  const baseRunDisabled = !selectedModel || !canRun;
+  const runAllDisabled = running || baseRunDisabled || hasSelectedTests || hasActiveFilters;
+  const runFilteredDisabled = running || baseRunDisabled || hasSelectedTests || !hasActiveFilters;
+  const runSelectedDisabled = running || baseRunDisabled || !hasSelectedTests;
 
   const handleRunAll = async () => {
     if (!selectedModel) {
@@ -632,7 +630,7 @@ function RagTestsTab({
     if (!confirmCloudRagRun(selectedModel)) return;
     setError(null);
     try {
-      await onStartRun(runBody({ filter: filters.platform || filters.framework || filters.difficulty ? filters : undefined }));
+      await onStartRun(runBody());
     } catch (e) {
       setError(e.message);
     }
@@ -645,6 +643,10 @@ function RagTestsTab({
     }
     if (!canRun) {
       setError('Select a Qdrant collection first');
+      return;
+    }
+    if (!hasActiveFilters) {
+      setError('Choose at least one filter first');
       return;
     }
     if (!confirmCloudRagRun(selectedModel)) return;
@@ -891,6 +893,7 @@ function RagTestsTab({
           started_at_ms: Number(x.started_at_ms) || null,
           sse_enabled: Boolean(x.sse_enabled),
           sse_preview: String(x.sse_preview || ''),
+          sse_tokens_generated_est: x.sse_tokens_generated_est,
           sse_token_tps_live: x.sse_token_tps_live,
           sse_token_tps_avg: x.sse_token_tps_avg,
           current_step_timings: x.current_step_timings && typeof x.current_step_timings === 'object'
@@ -906,6 +909,7 @@ function RagTestsTab({
         started_at_ms: currentStepStartedAt || null,
         sse_enabled: Boolean(runProgress?.sse_enabled),
         sse_preview: String(runProgress?.sse_preview || liveSse.text || ''),
+        sse_tokens_generated_est: runProgress?.sse_tokens_generated_est,
         sse_token_tps_live: runProgress?.sse_token_tps_live,
         sse_token_tps_avg: runProgress?.sse_token_tps_avg,
         current_step_timings: runProgress?.current_step_timings && typeof runProgress.current_step_timings === 'object'
@@ -913,12 +917,6 @@ function RagTestsTab({
           : null,
       }];
 
-  const formatDuration = (ms) => {
-    if (ms == null || Number.isNaN(Number(ms))) return '-';
-    const n = Math.max(0, Math.round(Number(ms)));
-    if (n < 1000) return `${n} ms`;
-    return `${(n / 1000).toFixed(1)} s`;
-  };
   const formatSeconds = (v) => {
     const n = Number(v);
     if (!Number.isFinite(n)) return '-';
@@ -932,8 +930,9 @@ function RagTestsTab({
     const timings = card?.current_step_timings && typeof card.current_step_timings === 'object'
       ? card.current_step_timings
       : null;
+    const liveTotalSeconds = cardElapsedMs != null ? Number(cardElapsedMs) / 1000.0 : timings?.latency_s_total;
     return [
-      { key: 'total', value: timings?.latency_s_total ?? (cardElapsedMs != null ? Number(cardElapsedMs) / 1000.0 : null) },
+      { key: 'total', value: liveTotalSeconds },
       { key: 'embed', value: timings?.embed_s },
       { key: 'search', value: timings?.search_s },
       { key: 'rerank', value: timings?.rerank_s },
@@ -946,6 +945,26 @@ function RagTestsTab({
       },
     ];
   };
+  const timingLabel = (key) => ({
+    total: 'Total',
+    embed: 'Embed',
+    search: 'Search',
+    rerank: 'Rerank',
+    rag: 'RAG',
+    chat: 'Chat',
+  }[key] || key);
+  const renderTimingCards = (rows, keyPrefix = 'timing') => (
+    <div className="rag-tests-timing-cards">
+      {rows.map((row) => (
+        <div key={`${keyPrefix}-${row.key || row.label}`} className="rag-tests-timing-card">
+          <span className="rag-tests-timing-card-label">{timingLabel(row.key || row.label)}</span>
+          <span className="rag-tests-timing-card-value">
+            {row.value != null ? formatSeconds(row.value) : '-'}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
   const selectedLiveDetailCard = liveCards.find((x) => x.index === liveDetailCardIndex) || liveCards[0] || null;
   const selectedLiveStepRows = selectedLiveDetailCard ? getLiveStepRows(selectedLiveDetailCard) : [];
 
@@ -1363,144 +1382,166 @@ function RagTestsTab({
     <div className="rag-tests-tab">
       <div className="rag-tests-header">
         <h2>RAG Tests</h2>
-        <div className="rag-tests-actions">
-          <label className="rag-tests-model-label">
-            Model
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              disabled={running}
-              className="rag-tests-select"
-              aria-label="Select model"
-            >
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name || m.id}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="rag-tests-model-label">
-            Collection
-            <select
-              value={selectedCollection}
-              onChange={(e) => setSelectedCollection(e.target.value)}
-              disabled={running || collections.length === 0}
-              className="rag-tests-select"
-              aria-label="Select Qdrant collection"
-            >
-              {collections.length === 0 ? (
-                <option value="">-- No collections --</option>
-              ) : (
-                collections.map((col) => (
-                  <option key={col.name} value={col.name}>
-                    {col.name} ({(col.points_count ?? 0)} vectors)
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
-          <label className="rag-tests-model-label">
-            Prompt template
-            <select
-              value={selectedPromptName}
-              onChange={(e) => setSelectedPromptName(e.target.value)}
-              disabled={running}
-              className="rag-tests-select"
-              aria-label="Select prompt template"
-            >
-              <option value="">-- Default --</option>
-              {prompts.map((p) => (
-                <option key={p.id || p.name} value={p.name}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="rag-tests-model-label rag-tests-concurrency-label">
-            Parallel tests
-            <select
-              value={runConcurrency}
-              onChange={(e) => setRunConcurrency(Number(e.target.value) || 1)}
-              disabled={running}
-              className="rag-tests-select rag-tests-concurrency-select"
-              aria-label="Number of tests to run in parallel"
-            >
-              {[1, 2, 3, 4, 5, 6].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <span className="rag-tests-concurrency-hint">Cloud tip: usually best up to 3 at once.</span>
-          </label>
-          <label className="rag-tests-model-label rag-tests-slider-label">
-            Temperature: {Number(runTemperature).toFixed(1)}
-            <input
-              type="range"
-              min="0"
-              max="2"
-              step="0.1"
-              value={runTemperature}
-              onChange={(e) => setRunTemperature(Number(e.target.value))}
-              disabled={running}
-              className="rag-tests-range"
-              aria-label="RAG tests temperature"
-            />
-          </label>
-          <label className="rag-tests-model-label rag-tests-slider-label">
-            Top K: {Number(runTopK).toFixed(1)}
-            <input
-              type="range"
-              min="0.1"
-              max="30"
-              step="0.1"
-              value={runTopK}
-              onChange={(e) => setRunTopK(Number(e.target.value))}
-              disabled={running}
-              className="rag-tests-range"
-              aria-label="RAG tests top k"
-            />
-          </label>
-          {collections.length === 0 && (
-            <span className="rag-tests-no-collections-hint">
-              No collections. Create one in Crawler / RAG then come back.
-            </span>
-          )}
-          <button
-            type="button"
-            className="rag-tests-btn primary"
-            onClick={handleRunAll}
-            disabled={running || !selectedModel || !canRun}
-          >
-            Run all
-          </button>
-          <button
-            type="button"
-            className="rag-tests-btn"
-            onClick={handleRunFiltered}
-            disabled={running || !selectedModel || !canRun}
-          >
-            Run filtered
-          </button>
-          <button
-            type="button"
-            className="rag-tests-btn"
-            onClick={handleRunSelected}
-            disabled={running || !selectedModel || !canRun || selectedTestIds.size === 0}
-          >
-            Run selected
-          </button>
-          <button
-            type="button"
-            className="rag-tests-btn"
-            onClick={() => setCreateOpen(true)}
-            disabled={running}
-          >
+        {!running && (
+          <CoreUIButton variant="primary" onClick={() => setCreateOpen(true)}>
             Create test
-          </button>
-        </div>
+          </CoreUIButton>
+        )}
       </div>
+
+      {!running && (
+        <div className="rag-tests-run-controls">
+          <Card className="rag-tests-control-card rag-tests-control-card-wide">
+            <div className="rag-tests-control-card-copy">
+              <h3>Model & collection</h3>
+              <p>Select the answering model, the RAG collection used for retrieval, and the prompt/concurrency for this run.</p>
+            </div>
+            <div className="rag-tests-control-grid">
+              <label className="rag-tests-model-label">
+                Model
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="rag-tests-select"
+                  aria-label="Select model"
+                >
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name || m.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="rag-tests-model-label">
+                Collection
+                <select
+                  value={selectedCollection}
+                  onChange={(e) => setSelectedCollection(e.target.value)}
+                  disabled={collections.length === 0}
+                  className="rag-tests-select"
+                  aria-label="Select Qdrant collection"
+                >
+                  {collections.length === 0 ? (
+                    <option value="">-- No collections --</option>
+                  ) : (
+                    collections.map((col) => (
+                      <option key={col.name} value={col.name}>
+                        {col.name} ({(col.points_count ?? 0)} vectors)
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+              <label className="rag-tests-model-label">
+                Prompt template
+                <select
+                  value={selectedPromptName}
+                  onChange={(e) => setSelectedPromptName(e.target.value)}
+                  className="rag-tests-select"
+                  aria-label="Select prompt template"
+                >
+                  <option value="">-- Default --</option>
+                  {prompts.map((p) => (
+                    <option key={p.id || p.name} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="rag-tests-model-label rag-tests-concurrency-label">
+                Parallel tests
+                <select
+                  value={runConcurrency}
+                  onChange={(e) => setRunConcurrency(Number(e.target.value) || 1)}
+                  className="rag-tests-select rag-tests-concurrency-select"
+                  aria-label="Number of tests to run in parallel"
+                >
+                  {[1, 2, 3, 4, 5, 6].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+                <span className="rag-tests-concurrency-hint">Cloud tip: usually best up to 3 at once.</span>
+              </label>
+            </div>
+            {collections.length === 0 && (
+              <span className="rag-tests-no-collections-hint">
+                No collections. Create one in Crawler / RAG then come back.
+              </span>
+            )}
+          </Card>
+
+          <Card className="rag-tests-control-card rag-tests-strict-card">
+            <div className="rag-tests-control-card-copy">
+              <h3>Strict Mode</h3>
+              <p>Requires an exact <code>RAG QUOTE</code> from retrieved context. Use it to test grounding/retrieval, not general answer quality.</p>
+            </div>
+            <label className="rag-tests-checkbox-label rag-tests-strict-toggle">
+              <input
+                type="checkbox"
+                checked={runStrictMode}
+                onChange={(e) => setRunStrictMode(e.target.checked)}
+              />
+              Strict Mode
+            </label>
+          </Card>
+
+          <Card className="rag-tests-control-card rag-tests-tuning-card">
+            <div className="rag-tests-control-card-copy">
+              <h3>Generation tuning</h3>
+              <p>Temperature changes answer variability. Top K controls how many retrieved chunks are offered to the model.</p>
+            </div>
+            <div className="rag-tests-slider-row">
+              <CoreUISlider
+                label="Temperature"
+                valueText={Number(runTemperature).toFixed(1)}
+                min="0"
+                max="2"
+                step="0.1"
+                value={runTemperature}
+                onChange={(e) => setRunTemperature(Number(e.target.value))}
+                aria-label="RAG tests temperature"
+              />
+              <CoreUISlider
+                label="Top K"
+                valueText={Number(runTopK).toFixed(1)}
+                min="0.1"
+                max="30"
+                step="0.1"
+                value={runTopK}
+                onChange={(e) => setRunTopK(Number(e.target.value))}
+                aria-label="RAG tests top k"
+              />
+            </div>
+          </Card>
+
+          <div className="rag-tests-run-actions">
+            <CoreUIButton
+              variant="primary"
+              onClick={handleRunAll}
+              disabled={runAllDisabled}
+              title={hasSelectedTests ? 'Clear selected tests to run all' : hasActiveFilters ? 'Clear filters to run all' : undefined}
+            >
+              Run all
+            </CoreUIButton>
+            <CoreUIButton
+              onClick={handleRunFiltered}
+              disabled={runFilteredDisabled}
+              title={hasSelectedTests ? 'Clear selected tests to run filtered' : !hasActiveFilters ? 'Choose a filter first' : undefined}
+            >
+              Run filtered
+            </CoreUIButton>
+            <CoreUIButton
+              onClick={handleRunSelected}
+              disabled={runSelectedDisabled}
+              title={!hasSelectedTests ? 'Select one or more tests first' : undefined}
+            >
+              Run selected
+            </CoreUIButton>
+          </div>
+        </div>
+      )}
 
       {running && runProgress && (
         <Card className="rag-tests-progress-panel" role="status" aria-live="polite">
@@ -1852,48 +1893,27 @@ function RagTestsTab({
             <div className="rag-tests-live-monitor-scroll">
               {liveCards.map((card) => {
                 const stepRows = getLiveStepRows(card);
-                const cardElapsedMs = card?.started_at_ms
-                  ? Math.max(0, liveNowMs - Number(card.started_at_ms))
-                  : currentStepElapsedMs;
-                const hasSse = Boolean(card?.sse_enabled || String(card?.sse_preview || '').trim());
-                const sseLabel = !hasSse
-                  ? 'not available for this request'
-                  : String(card?.sse_preview || '').trim()
-                    ? 'streaming'
-                    : 'enabled (no chunks yet)';
                 return (
                   <section key={`live-card-${card.index}`} className="rag-tests-live-card">
                     <p className="rag-tests-live-line">
                       <strong>Current step:</strong> {card.name || 'idle'}
                     </p>
                     <p className="rag-tests-live-line">
-                      <strong>Timer:</strong> {formatDuration(cardElapsedMs)}
-                    </p>
-                    <p className="rag-tests-live-line">
-                      <strong>SSE:</strong> {sseLabel}
-                    </p>
-                    <p className="rag-tests-live-line">
                       <strong>Tokens/s:</strong>{' '}
                       live {card?.sse_token_tps_live != null ? `${Number(card.sse_token_tps_live).toFixed(2)}` : '-'} | avg {card?.sse_token_tps_avg != null ? `${Number(card.sse_token_tps_avg).toFixed(2)}` : '-'}
                     </p>
-                    {card?.sse_preview ? (
-                      <pre className="rag-tests-live-sse">{card.sse_preview}</pre>
-                    ) : null}
+                    <p className="rag-tests-live-line">
+                      <strong>Generated tokens:</strong>{' '}
+                      {card?.sse_tokens_generated_est != null ? Number(card.sse_tokens_generated_est).toLocaleString() : '-'}
+                    </p>
                     <p className="rag-tests-live-line">
                       <strong>Current test timings:</strong>
                     </p>
-                    <ul className="rag-tests-live-current-steps">
-                      {stepRows.map((row) => (
-                        <li key={`card-${card.index}-${row.key}`} className="rag-tests-live-current-step">
-                          <span className="rag-tests-live-current-step-name">{row.key}</span>
-                          <span className="rag-tests-live-current-step-value">{formatSeconds(row.value)}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    {renderTimingCards(stepRows, `card-${card.index}`)}
                     <div className="rag-tests-live-actions">
                       <button
                         type="button"
-                        className="rag-tests-btn small"
+                        className="coreui-btn coreui-btn-primary coreui-btn-small"
                         onClick={(e) => {
                           e.stopPropagation();
                           setLiveDetailCardIndex(card.index);
@@ -1939,14 +1959,7 @@ function RagTestsTab({
             </p>
             <section className="rag-tests-result-section">
               <h4>Current stage timings</h4>
-              <ul className="rag-tests-live-current-steps">
-                {selectedLiveStepRows.map((row) => (
-                  <li key={`modal-${row.key}`} className="rag-tests-live-current-step">
-                    <span className="rag-tests-live-current-step-name">{row.key}</span>
-                    <span className="rag-tests-live-current-step-value">{formatSeconds(row.value)}</span>
-                  </li>
-                ))}
-              </ul>
+              {renderTimingCards(selectedLiveStepRows, 'modal')}
             </section>
             <section className="rag-tests-result-section">
               <h4>SSE streaming</h4>
@@ -1990,56 +2003,58 @@ function RagTestsTab({
         </div>
       )}
 
-      <div className="rag-tests-filters">
-        <label>
-          Platform
-          <select
-            value={filters.platform}
-            onChange={(e) => setFilters((f) => ({ ...f, platform: e.target.value }))}
-            className="rag-tests-select"
-            aria-label="Filter by platform"
-          >
-            <option value="">All</option>
-            {(filterOptions.platform || []).map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Framework
-          <select
-            value={filters.framework}
-            onChange={(e) => setFilters((f) => ({ ...f, framework: e.target.value }))}
-            className="rag-tests-select"
-            aria-label="Filter by framework"
-          >
-            <option value="">All</option>
-            {(filterOptions.framework || []).map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Difficulty
-          <select
-            value={filters.difficulty}
-            onChange={(e) => setFilters((f) => ({ ...f, difficulty: e.target.value }))}
-            className="rag-tests-select"
-            aria-label="Filter by difficulty"
-          >
-            <option value="">All</option>
-            {(filterOptions.difficulty || []).map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      {!running && (
+        <div className="rag-tests-filters">
+          <label>
+            Platform
+            <select
+              value={filters.platform}
+              onChange={(e) => setFilters((f) => ({ ...f, platform: e.target.value }))}
+              className="rag-tests-select"
+              aria-label="Filter by platform"
+            >
+              <option value="">All</option>
+              {(filterOptions.platform || []).map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Framework
+            <select
+              value={filters.framework}
+              onChange={(e) => setFilters((f) => ({ ...f, framework: e.target.value }))}
+              className="rag-tests-select"
+              aria-label="Filter by framework"
+            >
+              <option value="">All</option>
+              {(filterOptions.framework || []).map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Difficulty
+            <select
+              value={filters.difficulty}
+              onChange={(e) => setFilters((f) => ({ ...f, difficulty: e.target.value }))}
+              className="rag-tests-select"
+              aria-label="Filter by difficulty"
+            >
+              <option value="">All</option>
+              {(filterOptions.difficulty || []).map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
 
       <Card className="rag-tests-table-wrap" elevation="var(--md-sys-elevation-level1)">
         <table className="rag-tests-table" role="table">
@@ -2113,7 +2128,7 @@ function RagTestsTab({
                   <td onClick={(ev) => ev.stopPropagation()}>
                     <button
                       type="button"
-                      className="rag-tests-btn small"
+                      className="coreui-btn coreui-btn-primary coreui-btn-small"
                       onClick={openDetails}
                       aria-label={`Details for ${t.name || t.id}`}
                     >
@@ -2243,14 +2258,10 @@ function RagTestsTab({
                   ) : (
                     <p className="rag-tests-result-empty">No timing data.</p>
                   )}
-                  <div className="rag-tests-summary-bars">
-                    {timingAverages.map((item) => (
-                      <div key={item.label} className="rag-tests-summary-bar-row">
-                        <span>{item.label}</span>
-                        <span>{item.value != null ? `${item.value.toFixed(2)} s` : '-'}</span>
-                      </div>
-                    ))}
-                  </div>
+                  {renderTimingCards(
+                    timingAverages.map((item) => ({ key: item.label, value: item.value })),
+                    'history-timing'
+                  )}
                 </section>
 
                 <section className="rag-tests-result-section">
@@ -2351,6 +2362,8 @@ function RagTestsTab({
                     <th>Tok/s</th>
                     <th>RAG retrieved</th>
                     <th>Grounding</th>
+                    <th>Strict</th>
+                    <th>Quote</th>
                     <th>Confidence</th>
                     <th>Details</th>
                   </tr>
@@ -2372,11 +2385,13 @@ function RagTestsTab({
                       </td>
                       <td>{yesNo(ragRetrieved(row))}</td>
                       <td>{yesNo(row.grounding_overlap)}</td>
+                      <td>{yesNo(row.strict_mode)}</td>
+                      <td>{yesNo(row.strict_quote_ok)}</td>
                       <td>{row.confidence_label || '-'}</td>
                       <td>
                         <button
                           type="button"
-                          className="rag-tests-btn small"
+                          className="coreui-btn coreui-btn-primary coreui-btn-small"
                           onClick={() => setResultDetailModal({
                             test: {
                               id: row.test_id,
@@ -2649,6 +2664,7 @@ function RagTestsTab({
                     <th>Difficulty</th>
                     <th>RAG retrieved</th>
                     <th>Grounding</th>
+                    <th>Strict quote</th>
                     <th>Confidence</th>
                     <th>Missing concepts</th>
                     <th>Failure reason</th>
@@ -2660,7 +2676,7 @@ function RagTestsTab({
                       const framework = (r.framework || '').toLowerCase();
                       const difficulty = (r.difficulty || '').toLowerCase();
                       const retrieved = ragRetrieved(r);
-                      const ragStrict = !!r.rag_strict;
+                      const ragStrict = !!r.strict_mode || r.strict_rag_ok != null;
                       if (failFilters.domain === 'SwiftUI' && framework !== 'swiftui') return false;
                       if (failFilters.domain === 'UIKit' && framework !== 'uikit') return false;
                       if (failFilters.domain === 'Swift' && framework && framework !== 'swift' && framework !== 'swiftui' && framework !== 'uikit') return false;
@@ -2678,6 +2694,7 @@ function RagTestsTab({
                         <td>{r.difficulty || '-'}</td>
                         <td>{yesNo(ragRetrieved(r))}</td>
                         <td>{yesNo(r.grounding_overlap)}</td>
+                        <td>{yesNo(r.strict_quote_ok)}</td>
                         <td>{r.confidence_label || '-'}</td>
                         <td>{(r.missing_concepts || []).join(', ') || 'none'}</td>
                         <td>{r.failure_reason || '-'}</td>

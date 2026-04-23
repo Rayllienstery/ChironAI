@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getLlmProxyStatus, getProxyTraces, clearProxyTraces } from '../services/api';
 import '../styles/components/DashboardTab.css';
+import CoreUIButton from './CoreUIButton';
 import { summarizeAgentTraceMeta } from '../utils/agentTraceSummary';
 import AgentTraceSummaryCards from './AgentTraceSummaryCards';
 
@@ -108,12 +109,12 @@ export default function ProxyTracesTab() {
         <div className="dashboard-card-header">
           <h2 id={mainHeadingId}>Traces</h2>
           <div className="dashboard-card-actions">
-            <button type="button" className="dashboard-primary-btn" onClick={doClearTraces} disabled={busy}>
+            <CoreUIButton variant="primary" onClick={doClearTraces} disabled={busy}>
               Clear trace buffer
-            </button>
-            <button type="button" className="dashboard-primary-btn" onClick={loadDetailTraces} disabled={busy}>
+            </CoreUIButton>
+            <CoreUIButton variant="primary" onClick={loadDetailTraces} disabled={busy}>
               Refresh
-            </button>
+            </CoreUIButton>
           </div>
         </div>
         <p className="dashboard-card-muted">{intro}</p>

@@ -192,10 +192,59 @@ def _response_overlaps_chunks(response: str, chunks_info: list[dict[str, Any]], 
     return False
 
 
+def _extract_strict_quote(response: str) -> str | None:
+    """Extract the first RAG QUOTE value from a model response."""
+    if not response:
+        return None
+    patterns = [
+        r"RAG\s+QUOTE\s*:\s*\"(?P<quote>.+?)\"",
+        r"RAG\s+QUOTE\s*:\s*“(?P<quote>.+?)”",
+        r"RAG\s+QUOTE\s*:\s*'(?P<quote>.+?)'",
+        r"RAG\s+QUOTE\s*:\s*(?P<quote>[^\n\r]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, response, re.IGNORECASE | re.DOTALL)
+        if not match:
+            continue
+        quote = (match.group("quote") or "").strip()
+        quote = quote.strip("\"'“”")
+        if quote:
+            return quote
+    return None
+
+
+def _chunk_texts(chunks_info: list[dict[str, Any]]) -> list[str]:
+    texts: list[str] = []
+    for chunk in chunks_info or []:
+        if not isinstance(chunk, dict):
+            continue
+        for key in ("text", "text_preview", "content", "preview"):
+            value = chunk.get(key)
+            if isinstance(value, str) and value.strip():
+                texts.append(value)
+    return texts
+
+
+def _quote_in_chunks(quote: str, chunks_info: list[dict[str, Any]], min_len: int = 20) -> bool:
+    """Strict quote check: quoted text must be a non-trivial substring of retrieved chunk text."""
+    q = (quote or "").strip()
+    if len(q) < min_len:
+        return False
+    norm_quote = _normalize_whitespace(q)
+    for text in _chunk_texts(chunks_info):
+        if q in text:
+            return True
+        if norm_quote and norm_quote in _normalize_whitespace(text):
+            return True
+    return False
+
+
 def validate_result(
     test: dict[str, Any],
     response_content: str,
     rag_metadata: dict[str, Any] | None,
+    *,
+    strict_mode: bool | None = None,
 ) -> dict[str, Any]:
     """
     Validate a single test run.
@@ -222,7 +271,11 @@ def validate_result(
     if concept_mode not in ("any", "all"):
         concept_mode = "all"
     require_rag = test.get("rag_requirement", True)
-    require_rag_overlap = bool(test.get("rag_strict", False))
+    # Backward compatibility: direct callers that don't pass strict_mode keep
+    # the legacy per-test RAG Strict overlap behavior. New runners pass the
+    # run-level flag explicitly; only strict_mode=True enables quote validation.
+    run_strict_mode = bool(strict_mode) if strict_mode is not None else False
+    require_rag_overlap = bool(test.get("rag_strict", False)) if strict_mode is None else bool(strict_mode)
     validation_mode = str(os.getenv("RAG_TESTS_VALIDATION_MODE", "strict") or "strict").strip().lower()
     if validation_mode not in ("balanced", "strict"):
         validation_mode = "balanced"
@@ -241,7 +294,27 @@ def validate_result(
     chunks_count = (rag_metadata or {}).get("chunks_count", len(chunks_info))
     rag_retrieved = chunks_count > 0
     rag_overlap = True
-    if require_rag_overlap and rag_retrieved and chunks_info:
+    strict_quote = _extract_strict_quote(response_content or "") if run_strict_mode else None
+    strict_quote_ok: bool | None = None
+    strict_quote_reason: str | None = None
+    if run_strict_mode:
+        if not rag_retrieved:
+            rag_overlap = False
+            strict_quote_ok = False
+            strict_quote_reason = "RAG not retrieved; no chunk can validate the strict quote"
+        elif not strict_quote:
+            rag_overlap = False
+            strict_quote_ok = False
+            strict_quote_reason = "Missing RAG QUOTE block"
+        elif not _quote_in_chunks(strict_quote, chunks_info):
+            rag_overlap = False
+            strict_quote_ok = False
+            strict_quote_reason = "RAG QUOTE was not found verbatim in retrieved chunks"
+        else:
+            rag_overlap = True
+            strict_quote_ok = True
+            strict_quote_reason = "RAG QUOTE matched retrieved chunk text"
+    elif require_rag_overlap and rag_retrieved and chunks_info:
         rag_overlap = _response_overlaps_chunks(response_content or "", chunks_info)
 
     empty = not (response_content or "").strip()
@@ -285,6 +358,8 @@ def validate_result(
         if not rag_ok:
             if chunks_count == 0:
                 reasons.append("RAG not triggered (no matching context found)")
+            elif run_strict_mode and strict_quote_reason:
+                reasons.append(strict_quote_reason)
             elif require_rag_overlap and chunks_info and not overlap_waived:
                 reasons.append("RAG chunks did not overlap response")
             else:
@@ -305,6 +380,10 @@ def validate_result(
         "retrieval_used": retrieval_used,
         "grounding_overlap": grounding_overlap,
         "strict_rag_ok": strict_rag_ok,
+        "strict_mode": run_strict_mode,
+        "strict_quote": strict_quote,
+        "strict_quote_ok": strict_quote_ok,
+        "strict_quote_reason": strict_quote_reason,
         "metrics_version": CURRENT_RAG_TESTS_METRICS_VERSION,
         "evaluation_method_version": CURRENT_RAG_TESTS_EVALUATION_METHOD_VERSION,
         "confidence_label": confidence_label,

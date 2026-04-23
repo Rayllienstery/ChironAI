@@ -1334,6 +1334,17 @@ export async function getCreateCollectionStatus(jobId) {
   return response.json();
 }
 
+export async function cancelCreateCollection(jobId) {
+  const response = await fetch(`${API_BASE}/crawler/create-collection-cancel/${encodeURIComponent(jobId)}`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to cancel collection creation');
+  }
+  return response.json();
+}
+
 export async function crawlSource(sourceId) {
   const response = await fetch(`${API_BASE}/crawler/sources/${encodeURIComponent(sourceId)}/crawl`, {
     method: 'POST',

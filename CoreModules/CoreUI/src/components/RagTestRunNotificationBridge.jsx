@@ -56,7 +56,6 @@ export default function RagTestRunNotificationBridge({
     } else {
       clearLiveActivity('rag-tests-run');
     }
-    return () => clearLiveActivity('rag-tests-run');
   }, [
     ragTestRunning,
     ragTestRunJobId,
@@ -68,6 +67,10 @@ export default function RagTestRunNotificationBridge({
     clearLiveActivity,
     clearLiveSuppression,
   ]);
+
+  useEffect(() => (
+    () => clearLiveActivity('rag-tests-run')
+  ), [clearLiveActivity]);
 
   useEffect(() => {
     const active = !!(ragTestRunning || ragTestRunJobId);

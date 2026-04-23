@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import CoreUIButton from './CoreUIButton';
 import PipelineCiDiagram from './PipelineCiDiagram';
 import { useMergedPipelinePreview } from '../hooks/useMergedPipelinePreview';
 import {
@@ -86,9 +87,9 @@ function DashboardLlmProxyCard({ onNavigate, onOpenLogs, onOpenLlmProxyAutocompl
               View Logs
             </button>
           )}
-          <button type="button" className="dashboard-primary-btn" onClick={() => onNavigate('rag-fusion-proxy')}>
+          <CoreUIButton variant="primary" onClick={() => onNavigate('rag-fusion-proxy')}>
             Open RAG Fusion Proxy
-          </button>
+          </CoreUIButton>
         </div>
       </div>
       {loading && <div className="dashboard-card-muted">Loading…</div>}
@@ -174,12 +175,12 @@ function DashboardRagCard({ onNavigate }) {
       <div className="dashboard-card-header">
         <h2 id="dashboard-rag-heading">RAG / Qdrant</h2>
         <div className="dashboard-card-actions">
-          <button type="button" className="dashboard-secondary-btn" onClick={refreshAll}>
+          <CoreUIButton onClick={refreshAll}>
             Refresh
-          </button>
-          <button type="button" className="dashboard-primary-btn" onClick={() => onNavigate('rag')}>
+          </CoreUIButton>
+          <CoreUIButton variant="primary" onClick={() => onNavigate('rag')}>
             Open RAG / Qdrant
-          </button>
+          </CoreUIButton>
         </div>
       </div>
       {statusLoading && <div className="dashboard-card-muted">Loading status…</div>}
@@ -908,22 +909,19 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                       {globalInstallStatus?.actionable_hint || 'Global command not configured yet'}
                     </span>
                   )}
-                  <button
-                    type="button"
-                    className="dashboard-primary-btn"
+                  <CoreUIButton
+                    variant="primary"
                     onClick={globalInstallStatus?.is_global ? refreshGlobalInstallStatus : handleInstallGlobal}
                     disabled={globalInstallBusy}
                   >
                     {globalInstallBusy ? 'Installing...' : (globalInstallStatus?.is_global ? 'Re-check' : 'Install Chiron global')}
-                  </button>
-                  <button
-                    type="button"
-                    className="dashboard-secondary-btn"
+                  </CoreUIButton>
+                  <CoreUIButton
                     onClick={handleInstallGlobal}
                     disabled={globalInstallBusy}
                   >
                     Reinstall
-                  </button>
+                  </CoreUIButton>
                 </div>
                 {globalInstallMessage && (
                   <div className={`coreui-msg ${globalInstallMessage.type === 'error' ? 'error' : 'success'}`}>
@@ -936,21 +934,20 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                   </div>
                 )}
 
-                {/* Configured scripts action bar - pill capsule at bottom right of card */}
+                {/* Configured scripts action bar. */}
                 <div className="dashboard-configured-action-bar">
                   {generationMessage && (
                     <span className={`coreui-msg ${generationMessage.type === 'error' ? 'error' : 'success'}`}>
                       {generationMessage.text}
                     </span>
                   )}
-                  <button
-                    type="button"
-                    className="dashboard-primary-btn"
+                  <CoreUIButton
+                    variant="primary"
                     onClick={handleGenerateConfiguredScripts}
                     disabled={!showGenerateButton || isGeneratingScripts}
                   >
                     {isGeneratingScripts ? 'Generating...' : (configuredScriptsExist ? 'Update' : 'Generate')}
-                  </button>
+                  </CoreUIButton>
                 </div>
               </div>
             )}

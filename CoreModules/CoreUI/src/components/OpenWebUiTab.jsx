@@ -6,6 +6,7 @@ import {
   startOpenWebUi,
   stopOpenWebUi,
 } from '../services/api';
+import CoreUIButton from './CoreUIButton';
 import '../styles/components/DashboardTab.css';
 import '../styles/components/OpenWebUiTab.css';
 
@@ -185,22 +186,19 @@ function OpenWebUiTab({ onErrorStateChange }) {
         <div className="dashboard-card-header">
           <h2 id="openwebui-status-heading">Service</h2>
           <div className="dashboard-card-actions">
-            <button
-              type="button"
-              className="dashboard-secondary-btn"
+            <CoreUIButton
               onClick={refreshStatus}
               disabled={statusBusy}
             >
               Refresh
-            </button>
-            <button
-              type="button"
-              className="dashboard-primary-btn"
+            </CoreUIButton>
+            <CoreUIButton
+              variant="primary"
               onClick={handleStartStop}
               disabled={statusBusy}
             >
               {running ? 'Stop service' : 'Start service'}
-            </button>
+            </CoreUIButton>
           </div>
         </div>
 
@@ -234,14 +232,12 @@ function OpenWebUiTab({ onErrorStateChange }) {
         </div>
 
         <div className="openwebui-tab__actions-row">
-          <button
-            type="button"
-            className="dashboard-secondary-btn"
+          <CoreUIButton
             onClick={openInBrowser}
             disabled={!running || !url}
           >
             Open in browser
-          </button>
+          </CoreUIButton>
         </div>
 
         {lastActionOutput ? (
@@ -255,30 +251,25 @@ function OpenWebUiTab({ onErrorStateChange }) {
         <div className="dashboard-card-header">
           <h2 id="openwebui-backend-heading">Chat backend (Ollama-compatible)</h2>
           <div className="dashboard-card-actions">
-            <button
-              type="button"
-              className="dashboard-secondary-btn"
+            <CoreUIButton
               onClick={applyLlmProxyHint}
               disabled={configLoading || !backendHint}
             >
               Use LLM Proxy default
-            </button>
-            <button
-              type="button"
-              className="dashboard-secondary-btn"
+            </CoreUIButton>
+            <CoreUIButton
               onClick={resetBackendToDefault}
               disabled={configLoading || backendSaveBusy}
             >
               Clear saved (env/default)
-            </button>
-            <button
-              type="button"
-              className="dashboard-primary-btn"
+            </CoreUIButton>
+            <CoreUIButton
+              variant="primary"
               onClick={saveBackend}
               disabled={configLoading || backendSaveBusy}
             >
               Save backend
-            </button>
+            </CoreUIButton>
           </div>
         </div>
         <p className="openwebui-tab__config-hint">
@@ -343,14 +334,12 @@ function OpenWebUiTab({ onErrorStateChange }) {
         <div className="dashboard-card-header">
           <h2 id="openwebui-config-heading">Configuration</h2>
           <div className="dashboard-card-actions">
-            <button
-              type="button"
-              className="dashboard-secondary-btn"
+            <CoreUIButton
               onClick={refreshConfig}
               disabled={configLoading}
             >
               Refresh
-            </button>
+            </CoreUIButton>
           </div>
         </div>
 

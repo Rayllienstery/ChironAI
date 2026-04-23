@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import LlmProxyWebInteractionPanel from './LlmProxyWebInteractionPanel';
+import CoreUIButton from './CoreUIButton';
 import ProxyTracesTab from './ProxyTracesTab';
 import ProxyJournalTab from './ProxyJournalTab';
 import { getLlmProxyStatus } from '../services/api';
@@ -105,9 +106,9 @@ function LlmProxyTab({
             <div className="dashboard-card-header">
               <h2 id="llm-proxy-status-heading">Status</h2>
               <div className="dashboard-card-actions">
-                <button type="button" className="dashboard-primary-btn" onClick={refreshStatus} disabled={statusBusy}>
+                <CoreUIButton variant="primary" onClick={refreshStatus} disabled={statusBusy}>
                   Refresh
-                </button>
+                </CoreUIButton>
               </div>
             </div>
             {!proxyStatus && !statusErr && <p className="dashboard-card-muted">Loading…</p>}
@@ -235,18 +236,17 @@ function LlmProxyTab({
             </p>
             {typeof onNavigateToRag === 'function' && (
               <div className="dashboard-card-actions" style={{ marginTop: 8 }}>
-                <button type="button" className="dashboard-primary-btn" onClick={onNavigateToRag}>
+                <CoreUIButton variant="primary" onClick={onNavigateToRag}>
                   Open RAG / Qdrant
-                </button>
+                </CoreUIButton>
                 {typeof onOpenRagModels === 'function' && (
-                  <button
-                    type="button"
-                    className="dashboard-primary-btn"
+                  <CoreUIButton
+                    variant="primary"
                     style={{ marginLeft: 8 }}
                     onClick={onOpenRagModels}
                   >
                     Jump to RAG models
-                  </button>
+                  </CoreUIButton>
                 )}
               </div>
             )}

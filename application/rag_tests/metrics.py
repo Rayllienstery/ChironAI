@@ -49,11 +49,26 @@ def normalize_rag_test_result(result: dict[str, Any] | None) -> dict[str, Any]:
     if strict_rag_ok is not None:
         strict_rag_ok = bool(strict_rag_ok)
 
+    strict_mode = bool(out.get("strict_mode", False))
+    strict_quote = out.get("strict_quote")
+    if strict_quote is not None:
+        strict_quote = str(strict_quote)
+    strict_quote_ok = out.get("strict_quote_ok")
+    if strict_quote_ok is not None:
+        strict_quote_ok = bool(strict_quote_ok)
+    strict_quote_reason = out.get("strict_quote_reason")
+    if strict_quote_reason is not None:
+        strict_quote_reason = str(strict_quote_reason)
+
     out["metrics_version"] = metrics_version
     out["evaluation_method_version"] = evaluation_method_version
     out["retrieval_used"] = retrieval_used
     out["grounding_overlap"] = grounding_overlap
     out["strict_rag_ok"] = strict_rag_ok
+    out["strict_mode"] = strict_mode
+    out["strict_quote"] = strict_quote
+    out["strict_quote_ok"] = strict_quote_ok
+    out["strict_quote_reason"] = strict_quote_reason
 
     # Compatibility alias: new runs use rag_used == retrieval_used.
     if metrics_version != LEGACY_RAG_TESTS_METRICS_VERSION or "rag_used" not in out:

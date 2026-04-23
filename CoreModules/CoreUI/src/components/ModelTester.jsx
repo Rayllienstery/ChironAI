@@ -9,6 +9,7 @@ import {
   getRagCollections,
 } from '../services/api';
 import { CHIRONAI_RAG_TRACE_EVENT, CHIRONAI_RAG_TRACE_STORAGE_KEY } from './RagTraceTimeline';
+import CoreUISlider from './CoreUISlider';
 import { renderTesterMarkdown } from '../utils/modelTesterMarkdown';
 import { buildTesterRunLogCards } from '../utils/testerRunLog';
 import '../styles/components/ModelTester.css';
@@ -352,33 +353,29 @@ function ModelTester({ sessionId }) {
                 )}
               </div>
 
-              <div className="form-group">
-                <label>
-                  Temperature: {settings.temperature.toFixed(1)}
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="20"
-                  step="0.1"
-                  value={settings.temperature * 10}
-                  onChange={(e) => handleSettingChange('temperature', parseFloat(e.target.value) / 10)}
-                />
-              </div>
+              <CoreUISlider
+                className="model-tester-slider"
+                label="Temperature"
+                valueText={settings.temperature.toFixed(1)}
+                min="0"
+                max="20"
+                step="0.1"
+                value={settings.temperature * 10}
+                onChange={(e) => handleSettingChange('temperature', parseFloat(e.target.value) / 10)}
+                aria-label="Model tester temperature"
+              />
 
-              <div className="form-group">
-                <label>
-                  Top-p: {settings.top_p.toFixed(1)}
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="10"
-                  step="0.1"
-                  value={settings.top_p * 10}
-                  onChange={(e) => handleSettingChange('top_p', parseFloat(e.target.value) / 10)}
-                />
-              </div>
+              <CoreUISlider
+                className="model-tester-slider"
+                label="Top-p"
+                valueText={settings.top_p.toFixed(1)}
+                min="0"
+                max="10"
+                step="0.1"
+                value={settings.top_p * 10}
+                onChange={(e) => handleSettingChange('top_p', parseFloat(e.target.value) / 10)}
+                aria-label="Model tester top p"
+              />
 
               <div className="form-group">
                 <label htmlFor="tester-fusion-reasoning">Reasoning level</label>
@@ -407,17 +404,16 @@ function ModelTester({ sessionId }) {
 
               {settings.use_rag && (
                 <>
-                  <div className="form-group">
-                    <label>
-                      Top K (retrieval): {settings.top_k}
-                    </label>
-                    <input
-                      type="range"
+                  <div className="model-tester-slider-group">
+                    <CoreUISlider
+                      label="Top K (retrieval)"
+                      valueText={settings.top_k}
                       min="1"
                       max="20"
                       step="1"
                       value={settings.top_k}
                       onChange={(e) => handleSettingChange('top_k', parseInt(e.target.value, 10))}
+                      aria-label="Model tester RAG top k"
                     />
                     <div className="form-hint">Number of RAG chunks to retrieve (1–20) for this tester path.</div>
                   </div>

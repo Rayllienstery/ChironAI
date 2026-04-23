@@ -105,7 +105,7 @@ function TestFormFields({
             onFormChange((f) => ({ ...f, rag_strict: e.target.checked }))
           }
         />
-        RAG Strict (response must overlap retrieved chunks)
+        RAG Strict metadata (run Strict Mode controls enforcement)
       </label>
       <label>
         Min OS (optional)
@@ -193,6 +193,22 @@ export function RagResultDetailModal({ detail, onClose }) {
     if (!Number.isFinite(n)) return '-';
     return `${n.toFixed(2)} s`;
   };
+  const timingLabel = (key) => ({
+    latency_s_total: 'Total',
+    embed_s: 'Embed',
+    search_s: 'Search',
+    rerank_s: 'Rerank',
+    total_rag_s: 'RAG',
+    chat_s_estimated: 'Chat',
+  }[key] || key);
+  const timingCards = ragTimings ? [
+    { key: 'latency_s_total', value: ragTimings.latency_s_total },
+    { key: 'embed_s', value: ragTimings.embed_s },
+    { key: 'search_s', value: ragTimings.search_s },
+    { key: 'rerank_s', value: ragTimings.rerank_s },
+    { key: 'total_rag_s', value: ragTimings.total_rag_s },
+    { key: 'chat_s_estimated', value: ragTimings.chat_s_estimated },
+  ] : [];
   const yesNo = (value) => {
     if (value == null) return '-';
     return value ? 'Yes' : 'No';
@@ -266,14 +282,26 @@ export function RagResultDetailModal({ detail, onClose }) {
         {ragTimings && (
           <section className="rag-tests-result-section">
             <h4>Pipeline timings</h4>
+            <div className="rag-tests-timing-cards">
+              {timingCards.map((item) => (
+                <div key={`detail-timing-${item.key}`} className="rag-tests-timing-card">
+                  <span className="rag-tests-timing-card-label">{timingLabel(item.key)}</span>
+                  <span className="rag-tests-timing-card-value">{fmtSec(item.value)}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+        {lm?.strict_mode && (
+          <section className="rag-tests-result-section">
+            <h4>Strict quote</h4>
             <p className="rag-tests-detail-metrics">
-              embed: {fmtSec(ragTimings.embed_s)}
-              {' | '}search: {fmtSec(ragTimings.search_s)}
-              {' | '}rerank: {fmtSec(ragTimings.rerank_s)}
-              {' | '}rag_total: {fmtSec(ragTimings.total_rag_s)}
-              {' | '}chat_estimated: {fmtSec(ragTimings.chat_s_estimated)}
-              {' | '}latency_total: {fmtSec(ragTimings.latency_s_total)}
+              Quote match: {yesNo(lm.strict_quote_ok)}
+              {lm.strict_quote_reason && ` | ${lm.strict_quote_reason}`}
             </p>
+            {lm.strict_quote ? (
+              <pre className="rag-tests-pre rag-tests-pre-tight">{lm.strict_quote}</pre>
+            ) : null}
           </section>
         )}
         {traceSteps.length > 0 && (

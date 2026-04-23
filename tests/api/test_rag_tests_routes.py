@@ -26,7 +26,7 @@ def test_rag_tests_worker_uses_v1_chat_completions_payload_parity(
 
         return Response(_gen(), mimetype="text/event-stream")
 
-    def _validate_result(_test, _content, _metadata):
+    def _validate_result(_test, _content, _metadata, **_kwargs):
         return {
             "status": "PASS",
             "rag_used": True,
@@ -62,6 +62,7 @@ def test_rag_tests_worker_uses_v1_chat_completions_payload_parity(
             top_k=8,
             concurrency=1,
             testing_disable_rerank=True,
+            strict_mode=True,
         )
 
     assert captured.get("model") == "llama3"
@@ -69,6 +70,8 @@ def test_rag_tests_worker_uses_v1_chat_completions_payload_parity(
     assert captured.get("prompt_name") == "system_senior_ios_assistant_v1"
     assert captured.get("top_k") == 8.0
     assert captured.get("testing_disable_rerank") is True
+    assert captured.get("strict_mode") is True
+    assert "RAG QUOTE" in captured.get("messages", [{}])[0].get("content", "")
 
 
 def test_rag_tests_runs_delete_selected_ids(tmp_path) -> None:
@@ -144,6 +147,9 @@ def test_rag_tests_run_export_includes_split_rag_metrics(tmp_path) -> None:
             "retrieval_used": True,
             "grounding_overlap": False,
             "strict_rag_ok": False,
+            "strict_mode": True,
+            "strict_quote_ok": False,
+            "strict_quote_reason": "Missing RAG QUOTE block",
             "metrics_version": "v2_retrieval_grounding_split_2026_04_23",
             "evaluation_method_version": "v2_retrieval_grounding_split_2026_04_23",
             "confidence_label": "1/1 concepts found",
@@ -164,6 +170,9 @@ def test_rag_tests_run_export_includes_split_rag_metrics(tmp_path) -> None:
     assert "retrieval_used" in text
     assert "grounding_overlap" in text
     assert "strict_rag_ok" in text
+    assert "strict_mode" in text
+    assert "strict_quote_ok" in text
+    assert "strict_quote_reason" in text
     assert "metrics_version" in text
 
 

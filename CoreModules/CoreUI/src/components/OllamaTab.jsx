@@ -9,6 +9,7 @@ import {
   startOllama,
   stopOllama,
 } from '../services/api';
+import CoreUIButton from './CoreUIButton';
 import '../styles/components/DashboardTab.css';
 import '../styles/components/OllamaTab.css';
 import {
@@ -337,9 +338,7 @@ function OllamaTab({ onErrorStateChange }) {
         <div className="dashboard-card-header">
           <h2 id="ollama-status-heading">Service</h2>
           <div className="dashboard-card-actions">
-            <button
-              type="button"
-              className="dashboard-secondary-btn"
+            <CoreUIButton
               onClick={() => {
                 refreshStatus();
                 refreshLibrary();
@@ -347,15 +346,14 @@ function OllamaTab({ onErrorStateChange }) {
               disabled={libraryLoading}
             >
               Refresh
-            </button>
-            <button
-              type="button"
-              className="dashboard-primary-btn"
+            </CoreUIButton>
+            <CoreUIButton
+              variant="primary"
               onClick={handleStartStop}
               disabled={statusBusy}
             >
               {running ? 'Stop service' : 'Start service'}
-            </button>
+            </CoreUIButton>
           </div>
         </div>
 
@@ -384,18 +382,17 @@ function OllamaTab({ onErrorStateChange }) {
         <div className="dashboard-card-header">
           <h2 id="ollama-pull-heading">Pull model</h2>
           <div className="dashboard-card-actions">
-            <button
-              type="button"
-              className="dashboard-primary-btn"
+            <CoreUIButton
+              variant="primary"
               disabled={pulling}
               onClick={handlePull}
             >
               Pull
-            </button>
+            </CoreUIButton>
             {pulling ? (
-              <button type="button" className="dashboard-secondary-btn" onClick={cancelPull}>
+              <CoreUIButton onClick={cancelPull}>
                 Cancel
-              </button>
+              </CoreUIButton>
             ) : null}
           </div>
         </div>
@@ -432,14 +429,12 @@ function OllamaTab({ onErrorStateChange }) {
         <div className="dashboard-card-header">
           <h2 id="ollama-models-heading">Models</h2>
           <div className="dashboard-card-actions">
-            <button
-              type="button"
-              className="dashboard-secondary-btn"
+            <CoreUIButton
               onClick={refreshLibrary}
               disabled={libraryLoading}
             >
               Refresh list
-            </button>
+            </CoreUIButton>
           </div>
         </div>
 

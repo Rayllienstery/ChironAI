@@ -807,8 +807,7 @@
   color: var(--md-sys-color-on-surface);
 }
 
-.form-group select,
-.form-group input[type="range"] {
+.form-group select {
   padding: var(--md-sys-spacing-sm);
   border: 1px solid var(--md-sys-color-outline);
   border-radius: var(--md-sys-shape-corner-small);
@@ -817,8 +816,16 @@
   font: var(--md-sys-typescale-body-medium-font);
 }
 
-.form-group input[type="range"] {
+.model-tester-slider,
+.model-tester-slider-group {
   width: 100%;
+  margin-bottom: var(--md-sys-spacing-md);
+}
+
+.model-tester-slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-xs);
 }
 
 .checkbox-group label {

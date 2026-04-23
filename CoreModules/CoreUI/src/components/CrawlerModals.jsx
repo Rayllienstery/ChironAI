@@ -1,6 +1,9 @@
-function ModalShell({ title, onClose, className = "", children, footer }) {
+function ModalShell({ title, onClose, className = "", children, footer, closeDisabled = false }) {
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div
+      className="modal-overlay"
+      onClick={closeDisabled ? undefined : onClose}
+    >
       <div
         className={className ? `modal-content ${className}` : "modal-content"}
         onClick={(e) => e.stopPropagation()}
@@ -12,6 +15,7 @@ function ModalShell({ title, onClose, className = "", children, footer }) {
             className="modal-close"
             onClick={onClose}
             aria-label="Close"
+            disabled={closeDisabled}
           >
             &times;
           </button>
@@ -28,6 +32,8 @@ const INDEXING_PHASE_LABELS = {
   chunking: "Chunking markdown",
   embedding: "Embedding vectors",
   saving: "Writing to Qdrant",
+  cancelling: "Cancelling",
+  cancelled: "Cancelled",
   idle: "",
   complete: "Complete",
 };
@@ -51,6 +57,7 @@ export function CreateCollectionIndexProgress({
   if (!progress) return null;
   const isRunning = progress.status === "running";
   const isSuccess = progress.status === "success";
+  const isCancelled = progress.status === "cancelled";
   const sr = progress.skip_reasons || {};
   const skipEntries = Object.entries(sr).filter(([, n]) => n > 0);
   const phaseKey = progress.current_phase || "";
@@ -73,11 +80,23 @@ export function CreateCollectionIndexProgress({
     >
       {isRunning && (
         <div className="create-collection-index-progress__hero">
-          <div
+          <span
             className="create-collection-activity-ring"
             aria-hidden="true"
             title="Indexing in progress"
-          />
+          >
+            <svg
+              className="create-collection-activity-ring__svg"
+              viewBox="0 0 48 48"
+            >
+              <circle
+                className="create-collection-activity-ring__circle"
+                cx="24"
+                cy="24"
+                r="18"
+              />
+            </svg>
+          </span>
           <div className="create-collection-index-progress__hero-text">
             {variant === "modal" && (
               <div className="create-collection-index-progress__collection">
@@ -164,6 +183,12 @@ export function CreateCollectionIndexProgress({
           Done: {progress.indexed_pages ?? 0} pages indexed into Qdrant,{" "}
           {progress.skipped_pages ?? 0} skipped, {progress.total_chunks ?? 0}{" "}
           chunks total.
+        </div>
+      )}
+
+      {isCancelled && (
+        <div className="create-collection-index-done">
+          Cancelled after {processed} / {total || "..."} pages.
         </div>
       )}
 
@@ -302,33 +327,46 @@ export function CreateCollectionModal({
   sources,
   toggleSourceInForm,
   creating,
+  createCanceling = false,
   onCreate,
+  onCancelCreate,
   onClose,
 }) {
   if (!open) return null;
+  const isRunning = Boolean(creating || createProgress?.status === "running");
   return (
     <ModalShell
       title="Create New Collection"
       onClose={onClose}
+      closeDisabled={isRunning}
       footer={
-        <>
+        isRunning ? (
           <button
             type="button"
             className="crawler-button"
-            onClick={onClose}
-            disabled={creating}
+            onClick={onCancelCreate}
+            disabled={createCanceling}
           >
-            Cancel
+            {createCanceling ? "Cancelling..." : "Cancel indexing"}
           </button>
-          <button
-            type="button"
-            className="crawler-button primary"
-            onClick={onCreate}
-            disabled={creating}
-          >
-            {creating ? "Creating..." : "Create Collection"}
-          </button>
-        </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="crawler-button"
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="crawler-button primary"
+              onClick={onCreate}
+            >
+              Create Collection
+            </button>
+          </>
+        )
       }
     >
       {createProgress && (
@@ -346,6 +384,8 @@ export function CreateCollectionModal({
           />
         </div>
       )}
+      {isRunning ? null : (
+        <>
       <div className="form-group">
         <label>Collection Name *</label>
         <input
@@ -391,6 +431,36 @@ export function CreateCollectionModal({
         <p className="create-collection-embed-hint">
           Same pool as in RAG / Qdrant. Choose a model for this indexing run, or
           leave Server default to use the saved RAG embedding model.
+        </p>
+      </div>
+      <div className="form-group">
+        <label htmlFor="create-collection-parallel-workers">
+          Parallel embedding requests
+        </label>
+        <input
+          id="create-collection-parallel-workers"
+          type="number"
+          value={createForm.parallel_embed_workers ?? 2}
+          onChange={(e) =>
+            onFormChange((prev) => {
+              const parsed = parseInt(e.target.value, 10);
+              const workers = Number.isFinite(parsed)
+                ? Math.min(4, Math.max(1, parsed))
+                : 2;
+              return {
+                ...prev,
+                parallel_embed_workers: workers,
+              };
+            })
+          }
+          min="1"
+          max="4"
+          step="1"
+          disabled={creating}
+        />
+        <p className="create-collection-embed-hint">
+          Higher values can speed up indexing, but may increase Ollama timeouts
+          on limited GPU/VRAM.
         </p>
       </div>
       <div className="form-group">
@@ -475,6 +545,8 @@ export function CreateCollectionModal({
           />
         </div>
       </div>
+        </>
+      )}
     </ModalShell>
   );
 }

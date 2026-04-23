@@ -3727,6 +3727,7 @@ def _create_collection_from_sources(
     on_progress: Callable[[int, int, dict[str, Any]], None] | None = None,
     *,
     embed_model: str | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     """
     Create a Qdrant collection by indexing pages from specified sources.
@@ -3759,6 +3760,7 @@ def _create_collection_from_sources(
         "current_filename": "",
         "current_phase": "",
         "last_skip_reason": "",
+        "cancelled": False,
     }
 
     hybrid_cfg = is_hybrid_sparse_enabled()
@@ -3798,6 +3800,13 @@ def _create_collection_from_sources(
 
     # Process each page
     for source_id, filename, entry, pages_dir, source_meta in candidates:
+        if should_cancel and should_cancel():
+            stats["cancelled"] = True
+            stats["current_phase"] = "cancelled"
+            if on_progress:
+                on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
+            break
+
         page_path = os.path.join(pages_dir, filename)
         stats["current_source_id"] = source_id
         stats["current_filename"] = filename
@@ -3884,6 +3893,13 @@ def _create_collection_from_sources(
                 on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
             continue
 
+        if should_cancel and should_cancel():
+            stats["cancelled"] = True
+            stats["current_phase"] = "cancelled"
+            if on_progress:
+                on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
+            break
+
         if not embeddings:
             _record_page_skip(
                 stats,
@@ -3919,6 +3935,13 @@ def _create_collection_from_sources(
         stats["current_phase"] = "saving"
         if on_progress:
             on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
+
+        if should_cancel and should_cancel():
+            stats["cancelled"] = True
+            stats["current_phase"] = "cancelled"
+            if on_progress:
+                on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
+            break
         
         # Create points
         url_for_meta = page_meta.get("url") or entry.get("url")
@@ -5229,6 +5252,11 @@ def _run_create_collection_job(
     embed_model: str | None = None,
 ) -> None:
     """Background task: run indexing and update job progress."""
+    def should_cancel() -> bool:
+        with _collection_jobs_lock:
+            job = _collection_jobs.get(job_id)
+            return bool(job and job.get("cancel_requested"))
+
     def on_progress(processed: int, total: int, st: dict[str, Any]) -> None:
         with _collection_jobs_lock:
             if job_id in _collection_jobs:
@@ -5244,6 +5272,7 @@ def _run_create_collection_job(
                 _collection_jobs[job_id]["current_filename"] = st.get("current_filename", "")
                 _collection_jobs[job_id]["current_phase"] = st.get("current_phase", "")
                 _collection_jobs[job_id]["last_skip_reason"] = st.get("last_skip_reason", "")
+                _collection_jobs[job_id]["cancelled"] = bool(st.get("cancelled", False))
 
     try:
         stats = _create_collection_from_sources(
@@ -5253,19 +5282,26 @@ def _run_create_collection_job(
             chunk_min_size=chunk_min_size,
             on_progress=on_progress,
             embed_model=embed_model,
+            should_cancel=should_cancel,
         )
         with _collection_jobs_lock:
             if job_id in _collection_jobs:
-                _collection_jobs[job_id]["status"] = "success"
+                cancelled = bool(stats.get("cancelled")) or bool(_collection_jobs[job_id].get("cancel_requested"))
+                _collection_jobs[job_id]["status"] = "cancelled" if cancelled else "success"
                 _collection_jobs[job_id]["statistics"] = stats
-                _collection_jobs[job_id]["processed_pages"] = stats.get("total_pages", 0)
+                _collection_jobs[job_id]["processed_pages"] = (
+                    _collection_jobs[job_id].get("processed_pages", 0)
+                    if cancelled
+                    else stats.get("total_pages", 0)
+                )
                 _collection_jobs[job_id]["indexed_pages"] = stats.get("indexed_pages", 0)
                 _collection_jobs[job_id]["total_chunks"] = stats.get("total_chunks", 0)
                 _collection_jobs[job_id]["skipped_pages"] = stats.get("skipped_pages", 0)
                 _collection_jobs[job_id]["skip_reasons"] = dict(stats.get("skip_reasons") or {})
-                _collection_jobs[job_id]["current_phase"] = "complete"
+                _collection_jobs[job_id]["current_phase"] = "cancelled" if cancelled else "complete"
                 _collection_jobs[job_id]["current_source_id"] = ""
                 _collection_jobs[job_id]["current_filename"] = ""
+                _collection_jobs[job_id]["cancelled"] = cancelled
     except Exception as e:
         _ERROR_LOG.error("webui_routes.create_collection job", exc_info=True)
         with _collection_jobs_lock:
@@ -5296,9 +5332,34 @@ def get_create_collection_status(job_id: str) -> Any:
         "current_filename": job.get("current_filename", ""),
         "current_phase": job.get("current_phase", ""),
         "last_skip_reason": job.get("last_skip_reason", ""),
+        "cancel_requested": bool(job.get("cancel_requested", False)),
+        "cancelled": bool(job.get("cancelled", False)),
         "errors": job.get("errors", []),
         "statistics": job.get("statistics"),
         "error": job.get("error"),
+    })
+
+
+@webui_bp.route("/crawler/create-collection-cancel/<job_id>", methods=["POST"])
+def cancel_create_collection(job_id: str) -> Any:
+    """Request cooperative cancellation for a running create-collection job."""
+    with _collection_jobs_lock:
+        job = _collection_jobs.get(job_id)
+        if not job:
+            return jsonify({"error": "Job not found", "job_id": job_id}), 404
+        status = job.get("status", "running")
+        if status != "running":
+            return jsonify({
+                "job_id": job_id,
+                "status": status,
+                "cancel_requested": bool(job.get("cancel_requested", False)),
+            })
+        job["cancel_requested"] = True
+        job["current_phase"] = "cancelling"
+    return jsonify({
+        "job_id": job_id,
+        "status": "running",
+        "cancel_requested": True,
     })
 
 
@@ -5381,6 +5442,8 @@ def create_collection() -> Any:
                 "current_filename": "",
                 "current_phase": "",
                 "last_skip_reason": "",
+                "cancel_requested": False,
+                "cancelled": False,
             }
 
         thread = threading.Thread(

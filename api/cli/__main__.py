@@ -259,7 +259,7 @@ def cmd_rag_tests_run(ns: argparse.Namespace) -> int:
     def on_progress(current: int, total: int, name: str) -> None:
         print(f"  [{current}/{total}] {name}", file=sys.stderr)
 
-    results = run_tests_sync(tests, model, on_progress=on_progress)
+    results = run_tests_sync(tests, model, strict_mode=bool(getattr(ns, "strict_mode", False)), on_progress=on_progress)
     passed = sum(1 for r in results if r.get("status") == "PASS")
     failed = len(results) - passed
     for r in results:
@@ -400,6 +400,7 @@ def main() -> None:
     p_rag_run.add_argument("--filter-framework", dest="filter_framework", help="Filter tests by framework")
     p_rag_run.add_argument("--filter-difficulty", dest="filter_difficulty", help="Filter tests by difficulty")
     p_rag_run.add_argument("--test-id", dest="test_id", action="append", default=[], metavar="ID", help="Run specific test(s) by id (repeatable)")
+    p_rag_run.add_argument("--strict-mode", action="store_true", help="Require a verbatim RAG QUOTE from retrieved context")
     p_rag_run.set_defaults(_run=cmd_rag_tests_run)
     p_rag_lint = p_rag_sub.add_parser("lint", help="Lint RAG tests (Expected Concepts hygiene)")
     p_rag_lint.set_defaults(_run=cmd_rag_tests_lint)

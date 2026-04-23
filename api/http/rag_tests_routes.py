@@ -21,12 +21,15 @@ from flask import Blueprint, Response, current_app, jsonify, request
 
 from application.rag.proxy_settings_contract import load_proxy_settings, resolve_rag_collection
 from application.rag_tests.metrics import (
-    CURRENT_RAG_TESTS_EVALUATION_METHOD_VERSION,
-    CURRENT_RAG_TESTS_METRICS_VERSION,
     normalize_rag_test_result,
     normalize_rag_test_run,
 )
-from application.rag_tests.runner import build_proxy_chat_payload, rag_tests_retrieval_preset
+from application.rag_tests.runner import (
+    build_proxy_chat_payload,
+    build_rag_test_error_result,
+    build_rag_test_result,
+    rag_tests_retrieval_preset,
+)
 from config import get_qdrant_url
 from core.contracts.webui_api import WEBUI_URL_PREFIX
 from api.http.proxy_trace import get_current_trace, recent_proxy_traces
@@ -58,31 +61,6 @@ def _get_qdrant_collection_names() -> list[str]:
     except Exception:
         return []
 
-
-def _result_metric_fields(validation: dict[str, Any] | None) -> dict[str, Any]:
-    validation = validation or {}
-    return {
-        "rag_used": bool(validation.get("rag_used", False)),
-        "retrieval_used": bool(validation.get("retrieval_used", False)),
-        "grounding_overlap": validation.get("grounding_overlap"),
-        "strict_rag_ok": validation.get("strict_rag_ok"),
-        "metrics_version": validation.get("metrics_version", CURRENT_RAG_TESTS_METRICS_VERSION),
-        "evaluation_method_version": validation.get(
-            "evaluation_method_version",
-            CURRENT_RAG_TESTS_EVALUATION_METHOD_VERSION,
-        ),
-    }
-
-
-def _error_metric_fields() -> dict[str, Any]:
-    return {
-        "rag_used": False,
-        "retrieval_used": False,
-        "grounding_overlap": None,
-        "strict_rag_ok": None,
-        "metrics_version": CURRENT_RAG_TESTS_METRICS_VERSION,
-        "evaluation_method_version": CURRENT_RAG_TESTS_EVALUATION_METHOD_VERSION,
-    }
 
 # ----- RAG Tests (Markdown-defined tests, run against proxy, validate concepts + RAG) -----
 # In-memory job store for async run with progress and cancel
@@ -335,6 +313,9 @@ def _rag_tests_export_run(run_id: str, export_format: str) -> Any:
             "retrieval_used",
             "grounding_overlap",
             "strict_rag_ok",
+            "strict_mode",
+            "strict_quote_ok",
+            "strict_quote_reason",
             "metrics_version",
             "evaluation_method_version",
             "confidence_label",
@@ -354,6 +335,9 @@ def _rag_tests_export_run(run_id: str, export_format: str) -> Any:
                 "yes" if r.get("retrieval_used") else "no",
                 "" if r.get("grounding_overlap") is None else ("yes" if r.get("grounding_overlap") else "no"),
                 "" if r.get("strict_rag_ok") is None else ("yes" if r.get("strict_rag_ok") else "no"),
+                "yes" if r.get("strict_mode") else "no",
+                "" if r.get("strict_quote_ok") is None else ("yes" if r.get("strict_quote_ok") else "no"),
+                r.get("strict_quote_reason") or "",
                 r.get("metrics_version") or "",
                 r.get("evaluation_method_version") or "",
                 r.get("confidence_label") or "",
@@ -570,6 +554,7 @@ def _rag_tests_run_worker(
     top_k: float | None = None,
     concurrency: int = 1,
     testing_disable_rerank: bool = False,
+    strict_mode: bool = False,
 ) -> None:
     """Background worker: run tests concurrently, update progress, respect cancel."""
     with app_context:
@@ -678,6 +663,7 @@ def _rag_tests_run_worker(
                         temperature=temperature,
                         top_k=top_k,
                         testing_disable_rerank=testing_disable_rerank,
+                        strict_mode=strict_mode,
                     )
                     with rag_tests_retrieval_preset():
                         resp = client.post("/v1/chat/completions", json=chat_payload, buffered=False)
@@ -697,33 +683,14 @@ def _rag_tests_run_worker(
                     if resp.status_code != 200:
                         data = resp.get_json(silent=True) or {}
                         err = data.get("error", resp.get_data(as_text=True))
-                        return {
-                            "_order": idx,
-                            "test_id": test.get("id"),
-                            "test_name": test.get("name"),
-                            "platform": test.get("platform"),
-                            "framework": test.get("framework"),
-                            "difficulty": test.get("difficulty"),
-                            "model": model,
-                            "status": "FAIL",
-                            "response_time_ms": elapsed_ms,
-                            "latency_ms": elapsed_ms,
-                            **_error_metric_fields(),
-                            "confidence_label": "0/0",
-                            "missing_concepts": test.get("expected_concepts") or [],
-                            "found_concepts": [],
-                            "full_response": None,
-                            "chunks_info": [],
-                            "rag_queries": [],
-                            "retrieved_chunks": None,
-                            "question": question,
-                            "prompt_tokens": None,
-                            "completion_tokens": None,
-                            "total_tokens": None,
-                            "context_chars": None,
-                            "failure_reason": str(err),
-                            "error": str(err),
-                        }
+                        return build_rag_test_error_result(
+                            test=test,
+                            model=model,
+                            error=err,
+                            response_time_ms=elapsed_ms,
+                            order=idx,
+                            strict_mode=strict_mode,
+                        )
 
                     sse_buf = ""
                     sse_full = ""
@@ -858,69 +825,37 @@ def _rag_tests_run_worker(
                         (float(total_tokens_final) / latency_s) if total_tokens_final is not None else None
                     )
                     rag_timings = rag_metadata.get("rag_timings") if isinstance(rag_metadata.get("rag_timings"), dict) else None
-                    validation = validate_result(test, content, rag_metadata)
-                    result = {
-                        "_order": idx,
-                        "test_id": test.get("id"),
-                        "test_name": test.get("name"),
-                        "platform": test.get("platform"),
-                        "framework": test.get("framework"),
-                        "difficulty": test.get("difficulty"),
-                        "model": model,
-                        "status": validation.get("status", "FAIL"),
-                        "response_time_ms": latency_ms if latency_ms > 0 else elapsed_total_ms,
-                        "latency_ms": latency_ms,
-                        **_result_metric_fields(validation),
-                        "confidence_label": validation.get("confidence_label", ""),
-                        "missing_concepts": validation.get("missing_concepts") or [],
-                        "found_concepts": validation.get("found_concepts") or [],
-                        "full_response": content or None,
-                        "chunks_info": rag_metadata.get("chunks_info") or [],
-                        "rag_queries": rag_metadata.get("rag_queries") or [],
-                        "retrieved_chunks": validation.get("retrieved_chunks"),
-                        "question": question,
-                        "prompt_tokens": usage.get("prompt_tokens"),
-                        "completion_tokens": usage.get("completion_tokens"),
-                        "total_tokens": usage.get("total_tokens"),
-                        "tokens_per_second_generated": tokens_per_second_generated,
-                        "tokens_per_second_total": tokens_per_second_total,
-                        "context_chars": rag_metadata.get("context_chars"),
-                        "rag_timings": rag_timings,
-                        "trace_steps": trace_steps,
-                    }
-                    if validation.get("failure_reason") is not None:
-                        result["failure_reason"] = validation["failure_reason"]
+                    validation = validate_result(test, content, rag_metadata, strict_mode=strict_mode)
+                    result = build_rag_test_result(
+                        test=test,
+                        model=model,
+                        content=content,
+                        rag_metadata=rag_metadata,
+                        validation=validation,
+                        response_time_ms=latency_ms if latency_ms > 0 else elapsed_total_ms,
+                        latency_ms=latency_ms,
+                        prompt_tokens=usage.get("prompt_tokens"),
+                        completion_tokens=usage.get("completion_tokens"),
+                        total_tokens=usage.get("total_tokens"),
+                        tokens_per_second_generated=tokens_per_second_generated,
+                        tokens_per_second_total=tokens_per_second_total,
+                        context_chars=rag_metadata.get("context_chars"),
+                        rag_timings=rag_timings,
+                        trace_steps=trace_steps,
+                        order=idx,
+                    )
                     return normalize_rag_test_result(result)
                 except Exception as e:
                     _ERROR_LOG.exception("rag_tests_run single test")
                     _elapsed = int((time.time() - start_time) * 1000)
-                    return {
-                        "_order": idx,
-                        "test_id": test.get("id"),
-                        "test_name": test.get("name"),
-                        "platform": test.get("platform"),
-                        "framework": test.get("framework"),
-                        "difficulty": test.get("difficulty"),
-                        "model": model,
-                        "status": "FAIL",
-                        "response_time_ms": _elapsed,
-                        "latency_ms": _elapsed,
-                        **_error_metric_fields(),
-                        "confidence_label": "0/0",
-                        "missing_concepts": test.get("expected_concepts") or [],
-                        "found_concepts": [],
-                        "full_response": None,
-                        "chunks_info": [],
-                        "rag_queries": [],
-                        "retrieved_chunks": None,
-                        "question": question,
-                        "prompt_tokens": None,
-                        "completion_tokens": None,
-                        "total_tokens": None,
-                        "context_chars": None,
-                        "failure_reason": str(e),
-                        "error": str(e),
-                    }
+                    return build_rag_test_error_result(
+                        test=test,
+                        model=model,
+                        error=e,
+                        response_time_ms=_elapsed,
+                        order=idx,
+                        strict_mode=strict_mode,
+                    )
 
         with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="rag-tests") as pool:
             futures: dict[Future[dict[str, Any]], int] = {}
@@ -970,33 +905,14 @@ def _rag_tests_run_worker(
                     except Exception as e:
                         _ERROR_LOG.exception("rag_tests_run future failed")
                         test = tests_to_run[idx]
-                        result = {
-                            "_order": idx,
-                            "test_id": test.get("id"),
-                            "test_name": test.get("name"),
-                            "platform": test.get("platform"),
-                            "framework": test.get("framework"),
-                            "difficulty": test.get("difficulty"),
-                            "model": model,
-                            "status": "FAIL",
-                            "response_time_ms": 0,
-                            "latency_ms": 0,
-                            **_error_metric_fields(),
-                            "confidence_label": "0/0",
-                            "missing_concepts": test.get("expected_concepts") or [],
-                            "found_concepts": [],
-                            "full_response": None,
-                            "chunks_info": [],
-                            "rag_queries": [],
-                            "retrieved_chunks": None,
-                            "question": test.get("question") or "",
-                            "prompt_tokens": None,
-                            "completion_tokens": None,
-                            "total_tokens": None,
-                            "context_chars": None,
-                            "failure_reason": str(e),
-                            "error": str(e),
-                        }
+                        result = build_rag_test_error_result(
+                            test=test,
+                            model=model,
+                            error=e,
+                            response_time_ms=0,
+                            order=idx,
+                            strict_mode=strict_mode,
+                        )
                     results.append(result)
                     completed += 1
                     if str(result.get("status") or "").upper() == "PASS":
@@ -1113,6 +1029,7 @@ def rag_tests_run() -> Any:
     except (TypeError, ValueError):
         top_k = None
     testing_disable_rerank = bool(body.get("testing_disable_rerank", False))
+    strict_mode = bool(body.get("strict_mode", False))
     job_id = str(uuid.uuid4())[:12]
     with _rag_test_jobs_lock:
         _rag_test_jobs[job_id] = {
@@ -1145,6 +1062,7 @@ def rag_tests_run() -> Any:
             },
             "results": [],
             "error": None,
+            "strict_mode": strict_mode,
         }
     thread = threading.Thread(
         target=_rag_tests_run_worker,
@@ -1159,6 +1077,7 @@ def rag_tests_run() -> Any:
             top_k,
             concurrency,
             testing_disable_rerank,
+            strict_mode,
         ),
         daemon=True,
     )
@@ -1172,6 +1091,7 @@ def rag_tests_run() -> Any:
         "concurrency": concurrency,
         "collection_source": collection_source,
         "testing_disable_rerank": testing_disable_rerank,
+        "strict_mode": strict_mode,
     }), 202
 
 

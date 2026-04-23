@@ -43,6 +43,7 @@ const TAB_MATERIAL_ICONS = {
   crawler: "travel_explore",
   "template-editor": "edit_note",
   testing: "science",
+  "coreui-showcase": "widgets",
 };
 
 function TabIcon({ tabId }) {

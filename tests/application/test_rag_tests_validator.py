@@ -183,6 +183,80 @@ class TestValidateResult:
         assert out["grounding_overlap"] is True
         assert out["strict_rag_ok"] is True
 
+    def test_strict_mode_quote_passes_when_verbatim_chunk_text_matches(self) -> None:
+        test = {
+            "expected_concepts": ["SwiftUI"],
+            "concept_mode": "all",
+            "rag_requirement": True,
+            "rag_strict": False,
+        }
+        quote = "SwiftUI is a declarative framework for building user interfaces."
+        out = validate_result(
+            test,
+            f'RAG QUOTE: "{quote}"\n\nSwiftUI uses declarative views.',
+            {"chunks_count": 1, "chunks_info": [{"text": f"Intro. {quote} More text."}]},
+            strict_mode=True,
+        )
+        assert out["status"] == "PASS"
+        assert out["strict_mode"] is True
+        assert out["strict_quote"] == quote
+        assert out["strict_quote_ok"] is True
+        assert out["grounding_overlap"] is True
+        assert out["strict_rag_ok"] is True
+
+    def test_strict_mode_fails_without_rag_quote(self) -> None:
+        test = {
+            "expected_concepts": ["SwiftUI"],
+            "concept_mode": "all",
+            "rag_requirement": True,
+            "rag_strict": False,
+        }
+        out = validate_result(
+            test,
+            "SwiftUI is a declarative framework for building user interfaces.",
+            {"chunks_count": 1, "chunks_info": [{"text": "SwiftUI is a declarative framework for building user interfaces."}]},
+            strict_mode=True,
+        )
+        assert out["status"] == "FAIL"
+        assert out["strict_quote_ok"] is False
+        assert "Missing RAG QUOTE" in out["failure_reason"]
+
+    def test_strict_mode_fails_when_quote_is_not_verbatim(self) -> None:
+        test = {
+            "expected_concepts": ["SwiftUI"],
+            "concept_mode": "all",
+            "rag_requirement": True,
+            "rag_strict": False,
+        }
+        out = validate_result(
+            test,
+            'RAG QUOTE: "SwiftUI declaratively builds interfaces."\n\nSwiftUI answer.',
+            {"chunks_count": 1, "chunks_info": [{"text": "SwiftUI is a declarative framework for building user interfaces."}]},
+            strict_mode=True,
+        )
+        assert out["status"] == "FAIL"
+        assert out["strict_quote_ok"] is False
+        assert "not found verbatim" in out["failure_reason"]
+
+    def test_non_strict_mode_does_not_require_quote_or_overlap(self) -> None:
+        test = {
+            "expected_concepts": ["SwiftUI"],
+            "concept_mode": "all",
+            "rag_requirement": True,
+            "rag_strict": True,
+        }
+        out = validate_result(
+            test,
+            "SwiftUI is covered well without a copied quote.",
+            {"chunks_count": 1, "chunks_info": [{"text": "Some unrelated documentation snippet long enough."}]},
+            strict_mode=False,
+        )
+        assert out["status"] == "PASS"
+        assert out["strict_mode"] is False
+        assert out["strict_quote_ok"] is None
+        assert out["grounding_overlap"] is None
+        assert out["strict_rag_ok"] is None
+
     def test_confidence_label_format(self) -> None:
         test = {"expected_concepts": ["A", "B", "C"], "concept_mode": "all", "rag_requirement": False}
         out = validate_result(test, "Only A and B here.", None)

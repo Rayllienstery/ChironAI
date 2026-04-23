@@ -296,32 +296,44 @@ input.dashboard-card-field {
 
 .dashboard-primary-btn {
   appearance: none;
-  border: none;
-  border-radius: var(--md-sys-shape-corner-full);
-  padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-lg);
+  border: 1px solid var(--md-sys-color-primary);
+  border-radius: var(--md-sys-shape-corner-small);
+  padding: 6px 12px;
   background: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
-  font: var(--md-sys-typescale-label-large-font);
+  font: var(--md-sys-typescale-label-medium-font);
   cursor: pointer;
 }
 
 .dashboard-primary-btn:hover {
-  filter: brightness(1.05);
+  filter: brightness(1.03);
 }
 
 .dashboard-secondary-btn {
   appearance: none;
-  border: 1px solid var(--md-sys-color-outline);
-  border-radius: var(--md-sys-shape-corner-full);
-  padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
-  background: transparent;
-  color: var(--md-sys-color-primary);
-  font: var(--md-sys-typescale-label-large-font);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  padding: 6px 12px;
+  background: var(--md-sys-color-surface-tint-neutral);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-medium-font);
   cursor: pointer;
 }
 
 .dashboard-secondary-btn:hover {
-  background: var(--md-sys-color-surface-tint-neutral);
+  filter: brightness(1.02);
+}
+
+.dashboard-primary-btn:disabled,
+.dashboard-secondary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dashboard-primary-btn:focus-visible,
+.dashboard-secondary-btn:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
 }
 
 .dashboard-text-btn {
@@ -1410,7 +1422,7 @@ input.dashboard-card-field {
   background: var(--md-sys-color-surface-container-high);
 }
 
-/* Configured scripts action bar - pill capsule at bottom right of card */
+/* Configured scripts action bar */
 .dashboard-configured-action-bar {
   display: flex;
   justify-content: flex-end;

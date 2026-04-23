@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getProxyJournal, clearProxyJournal } from '../services/api';
 import '../styles/components/DashboardTab.css';
+import CoreUIButton from './CoreUIButton';
 import ProxyTraceDetailModal from './ProxyTraceDetailModal';
 
 const JOURNAL_LIMIT = 2000;
@@ -176,12 +177,12 @@ export default function ProxyJournalTab() {
         <div className="dashboard-card-header">
           <h2 id={journalHeadingId}>Journal</h2>
           <div className="dashboard-card-actions">
-            <button type="button" className="dashboard-primary-btn" onClick={() => loadJournal()} disabled={loading}>
+            <CoreUIButton variant="primary" onClick={() => loadJournal()} disabled={loading}>
               Refresh
-            </button>
-            <button type="button" className="dashboard-primary-btn" onClick={clearDb}>
+            </CoreUIButton>
+            <CoreUIButton variant="primary" onClick={clearDb}>
               Clear DB history
-            </button>
+            </CoreUIButton>
           </div>
         </div>
         <p className="dashboard-card-muted">{blurb}</p>

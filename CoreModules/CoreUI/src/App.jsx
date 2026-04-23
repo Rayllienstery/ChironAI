@@ -81,6 +81,7 @@ const TestingTab = lazyWithRetry("TestingTab", () => import("./components/Testin
 const TemplateEditorTab = lazyWithRetry("TemplateEditorTab", () => import("./components/TemplateEditorTab"));
 const OllamaTab = lazyWithRetry("OllamaTab", () => import("./components/OllamaTab"));
 const OpenWebUiTab = lazyWithRetry("OpenWebUiTab", () => import("./components/OpenWebUiTab"));
+const CoreUIShowcaseTab = lazyWithRetry("CoreUIShowcaseTab", () => import("./components/CoreUIShowcaseTab"));
 
 import Card from "./components/Card";
 import {
@@ -454,6 +455,7 @@ function App() {
     { id: "crawler", label: "Crawler / Indexer" },
     { id: "template-editor", label: "Template Editor" },
     { id: "testing", label: "Testing" },
+    { id: "coreui-showcase", label: "CoreUI Showcase" },
   ];
 
   const renderTabContent = () => {
@@ -532,6 +534,8 @@ function App() {
         );
       case "template-editor":
         return <TemplateEditorTab />;
+      case "coreui-showcase":
+        return <CoreUIShowcaseTab />;
       case "settings":
         return (
           <SettingsTab

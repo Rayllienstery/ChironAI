@@ -13,6 +13,7 @@ import { mergePipelineSnapshot } from '../hooks/useMergedPipelinePreview';
 import PipelineCiDiagram from './PipelineCiDiagram';
 import PipelineVerticalDiagram from './PipelineVerticalDiagram';
 import LlmProxyAutocompletePanel from './LlmProxyAutocompletePanel';
+import CoreUIButton from './CoreUIButton';
 import '../styles/components/DashboardTab.css';
 import '../styles/components/SettingsTab.css';
 import '../styles/components/LlmProxyTab.css';
@@ -529,12 +530,12 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
       )}
 
       <div className="dashboard-card-actions" style={{ marginBottom: 16 }}>
-        <button type="button" className="dashboard-primary-btn" onClick={load} disabled={saving}>
+        <CoreUIButton variant="primary" onClick={load} disabled={saving}>
           Refresh
-        </button>
-        <button type="button" className="dashboard-primary-btn" onClick={openNew} disabled={saving || draft}>
+        </CoreUIButton>
+        <CoreUIButton variant="primary" onClick={openNew} disabled={saving || draft}>
           New build
-        </button>
+        </CoreUIButton>
       </div>
 
       <section className="app-default-card">
@@ -799,9 +800,9 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 </label>
 
                 <div className="dashboard-card-actions" style={{ flexWrap: 'wrap' }}>
-                  <button type="button" className="dashboard-primary-btn" disabled={previewBusy} onClick={runPreview}>
+                  <CoreUIButton variant="primary" disabled={previewBusy} onClick={runPreview}>
                     Check model (Ollama show)
-                  </button>
+                  </CoreUIButton>
                   {previewMsg && <span className="dashboard-card-muted">{previewMsg}</span>}
                 </div>
 
@@ -1423,49 +1424,45 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
             <div className="llm-proxy-wizard-nav">
               <div className="llm-proxy-wizard-nav-left">
                 {wizardStep > 0 && (
-                  <button
-                    type="button"
-                    className="dashboard-primary-btn"
+                  <CoreUIButton
+                    variant="primary"
                     onClick={() => { setWizardStep(wizardStep - 1); setWizardDirection('back'); }}
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: 18, marginRight: 4 }} aria-hidden="true">arrow_back</span>
                     Back
-                  </button>
+                  </CoreUIButton>
                 )}
               </div>
               <div className="llm-proxy-wizard-nav-center">
                 {wizardStep < WIZARD_STEPS.length - 1 && (
-                  <button
-                    type="button"
-                    className="dashboard-primary-btn"
+                  <CoreUIButton
+                    variant="primary"
                     disabled={saving}
                     onClick={saveForm}
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: 18, marginRight: 4 }} aria-hidden="true">save</span>
                     {saving ? 'Saving...' : 'Save build'}
-                  </button>
+                  </CoreUIButton>
                 )}
               </div>
               <div className="llm-proxy-wizard-nav-right">
                 {wizardStep < WIZARD_STEPS.length - 1 ? (
-                  <button
-                    type="button"
-                    className="dashboard-primary-btn"
+                  <CoreUIButton
+                    variant="primary"
                     onClick={() => { setWizardStep(wizardStep + 1); setWizardDirection('forward'); }}
                   >
                     Next
                     <span className="material-symbols-outlined" style={{ fontSize: 18, marginLeft: 4 }} aria-hidden="true">arrow_forward</span>
-                  </button>
+                  </CoreUIButton>
                 ) : (
-                  <button
-                    type="button"
-                    className="dashboard-primary-btn"
+                  <CoreUIButton
+                    variant="primary"
                     disabled={saving}
                     onClick={saveForm}
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: 18, marginRight: 4 }} aria-hidden="true">save</span>
                     {saving ? 'Saving...' : 'Save build'}
-                  </button>
+                  </CoreUIButton>
                 )}
               </div>
             </div>

@@ -33,3 +33,17 @@ def test_build_proxy_chat_payload_optional_rerank_policy_flag() -> None:
     assert payload["temperature"] == 0.2
     assert payload["top_k"] == 12.0
     assert payload["testing_disable_rerank"] is True
+
+
+def test_build_proxy_chat_payload_strict_mode_injects_quote_instruction() -> None:
+    payload = build_proxy_chat_payload(
+        question="Q",
+        model="m",
+        collection_name="c",
+        client_request_id="rid-3",
+        strict_mode=True,
+    )
+    assert payload["strict_mode"] is True
+    assert payload["messages"][0]["role"] == "system"
+    assert "RAG QUOTE" in payload["messages"][0]["content"]
+    assert payload["messages"][-1] == {"role": "user", "content": "Q"}

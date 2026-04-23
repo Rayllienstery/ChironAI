@@ -9,6 +9,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: var(--md-sys-spacing-md);
 }
 
@@ -22,6 +23,73 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--md-sys-spacing-sm);
+}
+
+.rag-tests-run-controls {
+  display: grid;
+  grid-template-columns: minmax(320px, 2fr) minmax(260px, 1fr);
+  gap: var(--md-sys-spacing-md, 12px);
+  align-items: stretch;
+}
+
+.rag-tests-control-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-md, 12px);
+  padding: var(--md-sys-spacing-md, 12px);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.rag-tests-control-card-wide {
+  min-width: 0;
+}
+
+.rag-tests-tuning-card,
+.rag-tests-run-actions {
+  grid-column: 1 / -1;
+}
+
+.rag-tests-control-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rag-tests-control-card-copy h3 {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-title-medium-font);
+}
+
+.rag-tests-control-card-copy p {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small-font);
+  line-height: 1.45;
+}
+
+.rag-tests-control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: var(--md-sys-spacing-sm, 8px) var(--md-sys-spacing-md, 12px);
+  min-width: 0;
+}
+
+.rag-tests-slider-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: var(--md-sys-spacing-md, 12px);
+  align-items: end;
+}
+
+.rag-tests-run-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--md-sys-spacing-sm, 8px);
 }
 
 .rag-tests-model-label,
@@ -50,15 +118,6 @@
 .rag-tests-concurrency-hint {
   font: var(--md-sys-typescale-label-small-font);
   color: var(--md-sys-color-on-surface-variant);
-}
-
-.rag-tests-slider-label {
-  min-width: 160px;
-}
-
-.rag-tests-range {
-  width: 170px;
-  accent-color: var(--md-sys-color-primary);
 }
 
 .rag-tests-select {
@@ -791,6 +850,38 @@
   font-variant-numeric: tabular-nums;
 }
 
+.rag-tests-timing-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.rag-tests-timing-card {
+  min-height: 58px;
+  padding: 8px 10px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-lowest);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+
+.rag-tests-timing-card-label {
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-small-font);
+  text-transform: uppercase;
+}
+
+.rag-tests-timing-card-value {
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-title-small-font);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
 .rag-tests-live-actions {
   display: flex;
   justify-content: flex-end;
@@ -1180,6 +1271,17 @@
 }
 
 @media (max-width: 980px) {
+  .rag-tests-run-controls,
+  .rag-tests-control-grid,
+  .rag-tests-slider-row {
+    grid-template-columns: 1fr;
+  }
+
+  .rag-tests-tuning-card,
+  .rag-tests-run-actions {
+    grid-column: auto;
+  }
+
   .rag-tests-compare-run-cards,
   .rag-tests-compare-row,
   .rag-tests-compare-test-row {

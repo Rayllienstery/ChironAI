@@ -16,6 +16,7 @@ import {
   getRagModelSettings,
   createCollection,
   getCreateCollectionStatus,
+  cancelCreateCollection,
   crawlSource,
   getCrawlStatus,
   addCrawlerSource,
@@ -129,6 +130,8 @@ const INDEXING_PHASE_LABELS = {
   chunking: "Chunking markdown",
   embedding: "Embedding vectors",
   saving: "Writing to Qdrant",
+  cancelling: "Cancelling",
+  cancelled: "Cancelled",
   idle: "",
   complete: "Complete",
 };
@@ -153,6 +156,7 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
   if (!progress) return null;
   const isRunning = progress.status === "running";
   const isSuccess = progress.status === "success";
+  const isCancelled = progress.status === "cancelled";
   const sr = progress.skip_reasons || {};
   const skipEntries = Object.entries(sr).filter(([, n]) => n > 0);
   const phaseKey = progress.current_phase || "";
@@ -169,17 +173,113 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
       "",
     );
 
+  if (variant === "toast") {
+    const sourceCount = (progress.source_ids || []).length;
+    const topSkip = [...skipEntries].sort((a, b) => b[1] - a[1])[0];
+    const errorsCount = progress.errors?.length || 0;
+
+    return (
+      <div className="create-collection-index-progress create-collection-index-progress--toast">
+        {isRunning && (
+          <div className="create-collection-toast-compact-status">
+            <div
+              className="create-collection-toast-spinner"
+              aria-hidden="true"
+              title="Indexing in progress"
+            />
+            <div className="create-collection-toast-compact-status-text">
+              <span>{phaseLabel || "Indexing"}</span>
+              {sourceCount > 0 && (
+                <span className="create-collection-toast-compact-muted">
+                  {sourceCount} sources
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="create-collection-toast-metrics" aria-label="Indexing progress">
+          <span>
+            <strong>{progress.indexed_pages ?? 0}</strong> indexed
+          </span>
+          <span>
+            <strong>{progress.skipped_pages ?? 0}</strong> skipped
+          </span>
+          <span>
+            <strong>{progress.total_chunks ?? 0}</strong> chunks
+          </span>
+          <span>
+            <strong>{processed}</strong>/{total || "..."} pages
+          </span>
+        </div>
+
+        {isRunning && currentFile && (
+          <div className="create-collection-toast-current" title={currentFile}>
+            {currentFile}
+          </div>
+        )}
+
+        {topSkip && (
+          <div className="create-collection-toast-skip">
+            {SKIP_REASON_LABELS[topSkip[0]] || topSkip[0]}:{" "}
+            <strong>{topSkip[1]}</strong>
+          </div>
+        )}
+
+        {total > 0 && isRunning && (
+          <div className="create-collection-toast-progress-bar-wrap create-collection-index-progress__bar">
+            <div
+              className="create-collection-toast-progress-bar-fill"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        )}
+
+        {isSuccess && (
+          <div className="create-collection-toast-text">
+            Indexed {progress.indexed_pages ?? 0} pages,{" "}
+            {progress.total_chunks ?? 0} chunks.
+          </div>
+        )}
+
+        {isCancelled && (
+          <div className="create-collection-toast-text">
+            Cancelled after {processed} / {total || "..."} pages.
+          </div>
+        )}
+
+        {errorsCount > 0 && (
+          <div className="create-collection-toast-errors">
+            Recent errors: {errorsCount}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       className={`create-collection-index-progress create-collection-index-progress--${variant}`}
     >
       {isRunning && (
         <div className="create-collection-index-progress__hero">
-          <div
+          <span
             className="create-collection-activity-ring"
             aria-hidden="true"
             title="Indexing in progress"
-          />
+          >
+            <svg
+              className="create-collection-activity-ring__svg"
+              viewBox="0 0 48 48"
+            >
+              <circle
+                className="create-collection-activity-ring__circle"
+                cx="24"
+                cy="24"
+                r="18"
+              />
+            </svg>
+          </span>
           <div className="create-collection-index-progress__hero-text">
             {variant === "modal" && (
               <div className="create-collection-index-progress__collection">
@@ -303,6 +403,7 @@ function CrawlerTab() {
     confidence_threshold: 0.75,
     top_k: 4,
     rag_embed_model: "",
+    parallel_embed_workers: 2,
   });
   const [createEmbedModels, setCreateEmbedModels] = useState([]);
   const [createEmbedDefaults, setCreateEmbedDefaults] = useState({
@@ -311,6 +412,7 @@ function CrawlerTab() {
   const [creating, setCreating] = useState(false);
   const [createJobId, setCreateJobId] = useState(null);
   const [createProgress, setCreateProgress] = useState(null);
+  const [createCanceling, setCreateCanceling] = useState(false);
   const [showCreateToast, setShowCreateToast] = useState(false);
   const [createCollectionName, setCreateCollectionName] = useState("");
   const createToastTimeoutRef = useRef(null);
@@ -453,6 +555,8 @@ function CrawlerTab() {
           current_filename: job.current_filename ?? "",
           current_phase: job.current_phase ?? "",
           last_skip_reason: job.last_skip_reason ?? "",
+          cancel_requested: job.cancel_requested ?? false,
+          cancelled: job.cancelled ?? false,
           errors: job.errors ?? [],
           error: job.error,
           statistics: job.statistics,
@@ -460,6 +564,7 @@ function CrawlerTab() {
         if (job.status === "success") {
           setCreateJobId(null);
           setCreating(false);
+          setCreateCanceling(false);
           setShowCreateModal(false);
           setCreateForm({
             collection_name: "",
@@ -469,6 +574,7 @@ function CrawlerTab() {
             confidence_threshold: 0.75,
             top_k: 4,
             rag_embed_model: "",
+            parallel_embed_workers: 2,
           });
           setShowCreateToast(true);
           await loadCollections();
@@ -478,11 +584,19 @@ function CrawlerTab() {
         } else if (job.status === "failed") {
           setCreateJobId(null);
           setCreating(false);
+          setCreateCanceling(false);
           setError(job.error || "Collection creation failed");
+        } else if (job.status === "cancelled") {
+          setCreateJobId(null);
+          setCreating(false);
+          setCreateCanceling(false);
+          setShowCreateModal(false);
+          setShowCreateToast(true);
         }
       } catch (e) {
         setCreateJobId(null);
         setCreating(false);
+        setCreateCanceling(false);
         setError(e.message);
       }
     }, 1000);
@@ -496,7 +610,7 @@ function CrawlerTab() {
     }
 
     const status = createProgress.status;
-    if (status !== "success" && status !== "failed") {
+    if (status !== "success" && status !== "failed" && status !== "cancelled") {
       return undefined;
     }
 
@@ -1013,6 +1127,7 @@ function CrawlerTab() {
       const result = await createCollection(createForm);
       if (result.job_id) {
         setCreateJobId(result.job_id);
+        setCreateCanceling(false);
         setCreateProgress({
           status: "running",
           processed_pages: 0,
@@ -1030,6 +1145,7 @@ function CrawlerTab() {
           confidence_threshold: 0.75,
           top_k: 4,
           rag_embed_model: "",
+          parallel_embed_workers: 2,
         });
         await loadCollections();
         alert("Collection created successfully!");
@@ -1040,7 +1156,25 @@ function CrawlerTab() {
     } catch (e) {
       setError(e.message);
       setCreating(false);
+      setCreateCanceling(false);
       setShowCreateToast(false);
+    }
+  };
+
+  const handleCancelCreateCollection = async () => {
+    if (!createJobId || createCanceling) return;
+    setCreateCanceling(true);
+    setCreateProgress((prev) => ({
+      ...(prev || {}),
+      status: "running",
+      current_phase: "cancelling",
+      cancel_requested: true,
+    }));
+    try {
+      await cancelCreateCollection(createJobId);
+    } catch (e) {
+      setCreateCanceling(false);
+      setError(e.message);
     }
   };
 
@@ -1074,7 +1208,9 @@ function CrawlerTab() {
               ? "Collection created"
               : createProgress.status === "failed"
                 ? "Collection failed"
-                : "Creating collectionâ€¦"}
+                : createProgress.status === "cancelled"
+                  ? "Collection cancelled"
+                  : "Creating collection..."}
           </div>
           <button
             type="button"
@@ -2252,7 +2388,9 @@ function CrawlerTab() {
         sources={sources}
         toggleSourceInForm={toggleSourceInForm}
         creating={creating}
+        createCanceling={createCanceling}
         onCreate={handleCreateCollection}
+        onCancelCreate={handleCancelCreateCollection}
         onClose={() => setShowCreateModal(false)}
       />
       <SourceModal
