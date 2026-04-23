@@ -9,7 +9,7 @@ const WIND_DOWN_MS = 7_000;
 
 const LEGACY_LLM_LIVE_ID = 'llm-proxy-live';
 
-/** One live card per trace id so multiple runs stack vertically. */
+/** One live card per explicit chain key (fallback: trace id). */
 function proxyLiveSlotId(slotKey) {
   const raw = slotKey != null && String(slotKey).trim() !== '' ? String(slotKey).trim() : 'unknown';
   const safe = raw.replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 72);
@@ -57,7 +57,7 @@ function computeGenTokensPerSecond(trace) {
   const latencyMs = numOrNull(response.latency_ms);
   const completionEstimated = numOrNull(tokensEst.completion_tokens_estimated);
   if (latencyMs != null && latencyMs > 0 && completionEstimated != null && completionEstimated > 0) {
-    return (completionEstimated / latencyMs) * 1000;
+    return { value: (completionEstimated / latencyMs) * 1000, source: 'tokens_estimates' };
   }
 
   const steps = Array.isArray(trace?.steps) ? trace.steps : [];
@@ -68,15 +68,22 @@ function computeGenTokensPerSecond(trace) {
     const outTok = numOrNull(step?.tokens_out_est);
     const durMs = numOrNull(step?.duration_ms);
     if (outTok != null && outTok > 0 && durMs != null && durMs > 0) {
-      return (outTok / durMs) * 1000;
+      return { value: (outTok / durMs) * 1000, source: 'step_tokens_out_est' };
     }
   }
 
   const evalCount = numOrNull(response.ollama_eval_count);
   if (latencyMs != null && latencyMs > 0 && evalCount != null && evalCount > 0) {
-    return (evalCount / latencyMs) * 1000;
+    return { value: (evalCount / latencyMs) * 1000, source: 'ollama_eval_count' };
   }
   return null;
+}
+
+function genTpsSourceTitle(source) {
+  if (source === 'tokens_estimates') return 'Source: trace.ollama.tokens_estimates.completion_tokens_estimated';
+  if (source === 'step_tokens_out_est') return 'Source: last ollama_chat* step.tokens_out_est / step.duration_ms';
+  if (source === 'ollama_eval_count') return 'Source: trace.response.ollama_eval_count';
+  return 'Source: unknown';
 }
 
 function pickLastStepName(steps) {
@@ -237,7 +244,8 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
   const traceId = trace?.trace_id != null && trace.trace_id !== '' ? String(trace.trace_id) : '';
   const chainId = traceShortId(traceChainId(trace));
   const genTps = computeGenTokensPerSecond(trace);
-  const tpsDisplay = genTps != null && genTps > 0 ? `${genTps.toFixed(2)} tok/s` : null;
+  const tpsDisplay = genTps != null && genTps.value > 0 ? `${genTps.value.toFixed(2)} tok/s` : null;
+  const tpsTitle = genTps != null ? genTpsSourceTitle(genTps.source) : null;
   return (
     <div className="proxy-live-notification notification-proxy-embed">
       {busyLlm ? (
@@ -268,7 +276,12 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
       {tpsDisplay ? (
         <div className="proxy-live-notification-row">
           <span className="proxy-live-notification-label">Gen tok/s</span>
-          <span className="proxy-live-notification-value proxy-live-notification-mono">{tpsDisplay}</span>
+          <span
+            className="proxy-live-notification-value proxy-live-notification-mono"
+            title={tpsTitle || undefined}
+          >
+            {tpsDisplay}
+          </span>
         </div>
       ) : null}
       {stepCapsules.length ? (

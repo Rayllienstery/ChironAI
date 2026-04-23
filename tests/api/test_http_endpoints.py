@@ -2637,7 +2637,7 @@ def test_v1_blueprint_unhandled_exception_is_logged_for_notifications(
 
     monkeypatch.setattr(rag_routes, "log_webui_error", fake_log_webui_error)
 
-    def raising_chat_completions(_wiring):
+    def raising_chat_completions(_wiring, body_override=None):
         raise RuntimeError("forced crash")
 
     monkeypatch.setattr(v1_blueprint, "run_chat_completions", raising_chat_completions)
@@ -3458,6 +3458,182 @@ def test_preflight_native_tool_messages_gemini_falls_back_to_sentinel_signature(
     tc = out[0]["tool_calls"][0]
     assert tc["function"]["thought_signature"] == "skip_thought_signature_validator"
     assert int(diag.get("gemini_signature_fallback_sentinel_count") or 0) >= 1
+
+
+def test_resolve_trace_chain_id_prefers_client_request_id() -> None:
+    import llm_proxy.chat_completions as cc
+
+    chain_id, source = cc._resolve_trace_chain_id(
+        client_request_id="client-chain-1",
+        proxy_trace_meta={"incoming_request_id": "header-chain-1"},
+    )
+    assert chain_id == "client-chain-1"
+    assert source == "client_request_id"
+
+
+def test_resolve_trace_chain_id_uses_incoming_meta_when_client_id_missing() -> None:
+    import llm_proxy.chat_completions as cc
+
+    chain_id, source = cc._resolve_trace_chain_id(
+        client_request_id="",
+        proxy_trace_meta={"incoming_request_id": "header-chain-1"},
+    )
+    assert chain_id == "header-chain-1"
+    assert source == "incoming_request_id"
+
+
+def test_v1_chat_completions_route_injects_incoming_request_id_into_proxy_trace_meta(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+    import llm_proxy.v1_blueprint as v1_blueprint
+    from flask import jsonify
+
+    captured: dict[str, Any] = {}
+
+    def fake_chat_completions(_wiring, body_override=None):
+        captured["body_override"] = dict(body_override or {})
+        return jsonify(
+            {
+                "id": "chatcmpl_trace_meta",
+                "object": "chat.completion",
+                "created": 10,
+                "model": "Hard-worker",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            }
+        )
+
+    monkeypatch.setattr(v1_blueprint, "run_chat_completions", fake_chat_completions)
+
+    app = rag_routes.create_app()
+    r = app.test_client().post(
+        "/v1/chat/completions",
+        headers={"x-request-id": "hdr-chain-xyz"},
+        json={
+            "model": "Hard-worker",
+            "messages": [{"role": "user", "content": "hi"}],
+        },
+    )
+    assert r.status_code == 200
+    meta = (captured.get("body_override") or {}).get("_proxy_trace_meta") or {}
+    assert meta.get("proxy_v1_route") == "/v1/chat/completions"
+    assert meta.get("incoming_request_id") == "hdr-chain-xyz"
+
+
+def test_v1_responses_route_injects_incoming_request_id_into_proxy_trace_meta(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+    import llm_proxy.v1_blueprint as v1_blueprint
+    from flask import jsonify
+
+    captured: dict[str, Any] = {}
+
+    def fake_chat_completions(_wiring, body_override=None):
+        captured["body_override"] = dict(body_override or {})
+        return jsonify(
+            {
+                "id": "chatcmpl_trace_meta",
+                "object": "chat.completion",
+                "created": 10,
+                "model": "Hard-worker",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            }
+        )
+
+    monkeypatch.setattr(v1_blueprint, "run_chat_completions", fake_chat_completions)
+
+    app = rag_routes.create_app()
+    r = app.test_client().post(
+        "/v1/responses",
+        headers={"x-trace-id": "trace-chain-abc"},
+        json={
+            "model": "Hard-worker",
+            "input": "hi",
+        },
+    )
+    assert r.status_code == 200
+    meta = (captured.get("body_override") or {}).get("_proxy_trace_meta") or {}
+    assert meta.get("proxy_v1_route") == "/v1/responses"
+    assert meta.get("incoming_request_id") == "trace-chain-abc"
+
+
+def test_native_tools_stream_trace_includes_tokens_estimates_and_latency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+
+    class NativeStreamChatClient:
+        def iter_chat_api_stream_events(self, _payload: dict[str, Any]):
+            yield ("content_delta", "done")
+            yield ("done", {"done_reason": "stop", "eval_count": 12, "prompt_eval_count": 4})
+
+        def chat(self, *_a: Any, **_k: Any) -> str:
+            return ""
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fake-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=NativeStreamChatClient(),
+    )
+
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+
+    def _prepare_native(request: Any, *_a: Any, **kw: Any) -> tuple[list[dict[str, Any]], str]:
+        from infrastructure.ollama.openai_ollama_tool_bridge import openai_messages_to_ollama
+
+        if kw.get("native_tools"):
+            oll = openai_messages_to_ollama([m for m in request.messages if isinstance(m, dict)])
+            return [{"role": "system", "content": "system"}] + oll, "fake-model"
+        return ([{"role": "user", "content": "x"}], "fake-model")
+
+    monkeypatch.setattr(rag_routes, "prepare_ollama_messages", _prepare_native)
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-proxy-ollama-model",
+            "stream": True,
+            "messages": [{"role": "user", "content": "hi"}],
+            "tools": [{"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}}],
+            "tool_choice": "auto",
+        },
+    )
+    assert r.status_code == 200
+    _ = r.get_data(as_text=True)
+
+    cur = client.get("/api/webui/proxy-trace/current")
+    assert cur.status_code == 200
+    trace = (cur.get_json() or {}).get("trace") or {}
+    oll_tok = ((trace.get("ollama") or {}).get("tokens_estimates") or {})
+    resp = trace.get("response") or {}
+    assert int(oll_tok.get("prompt_tokens_estimated") or 0) >= 1
+    assert int(oll_tok.get("completion_tokens_estimated") or 0) >= 1
+    assert int(oll_tok.get("total_tokens_estimated") or 0) >= 1
+    assert int(resp.get("latency_ms") or 0) >= 0
 
 
 def test_shell_tool_call_sanitizer_adds_erroraction_for_recursive_get_childitem() -> None:
