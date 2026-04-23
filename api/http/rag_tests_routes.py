@@ -20,7 +20,13 @@ import requests
 from flask import Blueprint, Response, current_app, jsonify, request
 
 from application.rag.proxy_settings_contract import load_proxy_settings, resolve_rag_collection
-from application.rag_tests.runner import build_proxy_chat_payload
+from application.rag_tests.metrics import (
+    CURRENT_RAG_TESTS_EVALUATION_METHOD_VERSION,
+    CURRENT_RAG_TESTS_METRICS_VERSION,
+    normalize_rag_test_result,
+    normalize_rag_test_run,
+)
+from application.rag_tests.runner import build_proxy_chat_payload, rag_tests_retrieval_preset
 from config import get_qdrant_url
 from core.contracts.webui_api import WEBUI_URL_PREFIX
 from api.http.proxy_trace import get_current_trace, recent_proxy_traces
@@ -51,6 +57,32 @@ def _get_qdrant_collection_names() -> list[str]:
         return names
     except Exception:
         return []
+
+
+def _result_metric_fields(validation: dict[str, Any] | None) -> dict[str, Any]:
+    validation = validation or {}
+    return {
+        "rag_used": bool(validation.get("rag_used", False)),
+        "retrieval_used": bool(validation.get("retrieval_used", False)),
+        "grounding_overlap": validation.get("grounding_overlap"),
+        "strict_rag_ok": validation.get("strict_rag_ok"),
+        "metrics_version": validation.get("metrics_version", CURRENT_RAG_TESTS_METRICS_VERSION),
+        "evaluation_method_version": validation.get(
+            "evaluation_method_version",
+            CURRENT_RAG_TESTS_EVALUATION_METHOD_VERSION,
+        ),
+    }
+
+
+def _error_metric_fields() -> dict[str, Any]:
+    return {
+        "rag_used": False,
+        "retrieval_used": False,
+        "grounding_overlap": None,
+        "strict_rag_ok": None,
+        "metrics_version": CURRENT_RAG_TESTS_METRICS_VERSION,
+        "evaluation_method_version": CURRENT_RAG_TESTS_EVALUATION_METHOD_VERSION,
+    }
 
 # ----- RAG Tests (Markdown-defined tests, run against proxy, validate concepts + RAG) -----
 # In-memory job store for async run with progress and cancel
@@ -228,7 +260,7 @@ def rag_tests_run_detail(run_id: str) -> Any:
         run = repo.get_run(run_id)
         if not run:
             return jsonify({"error": "Run not found"}), 404
-        return jsonify(run)
+        return jsonify(normalize_rag_test_run(run))
     except Exception as e:
         _ERROR_LOG.exception("rag_tests_run_detail")
         return jsonify({"error": str(e)}), 500
@@ -282,6 +314,7 @@ def _rag_tests_export_run(run_id: str, export_format: str) -> Any:
         run = repo.get_run(run_id)
         if not run:
             return jsonify({"error": "Run not found"}), 404
+        run = normalize_rag_test_run(run)
     except Exception as e:
         _ERROR_LOG.exception("rag_tests_export_run")
         return jsonify({"error": str(e)}), 500
@@ -291,8 +324,25 @@ def _rag_tests_export_run(run_id: str, export_format: str) -> Any:
     if export_format == "csv":
         import csv
         import io
-        rows = [["test_id", "test_name", "platform", "framework", "status", "response_time_ms", "rag_used", "confidence_label", "question", "error"]]
+        rows = [[
+            "test_id",
+            "test_name",
+            "platform",
+            "framework",
+            "status",
+            "response_time_ms",
+            "rag_used",
+            "retrieval_used",
+            "grounding_overlap",
+            "strict_rag_ok",
+            "metrics_version",
+            "evaluation_method_version",
+            "confidence_label",
+            "question",
+            "error",
+        ]]
         for r in (run.get("results") or []):
+            r = normalize_rag_test_result(r)
             rows.append([
                 r.get("test_id") or "",
                 r.get("test_name") or "",
@@ -301,6 +351,11 @@ def _rag_tests_export_run(run_id: str, export_format: str) -> Any:
                 r.get("status") or "",
                 str(r.get("response_time_ms") or ""),
                 "yes" if r.get("rag_used") else "no",
+                "yes" if r.get("retrieval_used") else "no",
+                "" if r.get("grounding_overlap") is None else ("yes" if r.get("grounding_overlap") else "no"),
+                "" if r.get("strict_rag_ok") is None else ("yes" if r.get("strict_rag_ok") else "no"),
+                r.get("metrics_version") or "",
+                r.get("evaluation_method_version") or "",
                 r.get("confidence_label") or "",
                 (r.get("question") or "").replace("\r", " ").replace("\n", " "),
                 r.get("error") or "",
@@ -624,7 +679,8 @@ def _rag_tests_run_worker(
                         top_k=top_k,
                         testing_disable_rerank=testing_disable_rerank,
                     )
-                    resp = client.post("/v1/chat/completions", json=chat_payload, buffered=False)
+                    with rag_tests_retrieval_preset():
+                        resp = client.post("/v1/chat/completions", json=chat_payload, buffered=False)
                     content_type = str(resp.headers.get("Content-Type") or "")
                     is_sse_response = "text/event-stream" in content_type.lower()
                     with active_tests_lock:
@@ -652,7 +708,7 @@ def _rag_tests_run_worker(
                             "status": "FAIL",
                             "response_time_ms": elapsed_ms,
                             "latency_ms": elapsed_ms,
-                            "rag_used": False,
+                            **_error_metric_fields(),
                             "confidence_label": "0/0",
                             "missing_concepts": test.get("expected_concepts") or [],
                             "found_concepts": [],
@@ -814,7 +870,7 @@ def _rag_tests_run_worker(
                         "status": validation.get("status", "FAIL"),
                         "response_time_ms": latency_ms if latency_ms > 0 else elapsed_total_ms,
                         "latency_ms": latency_ms,
-                        "rag_used": validation.get("rag_used", False),
+                        **_result_metric_fields(validation),
                         "confidence_label": validation.get("confidence_label", ""),
                         "missing_concepts": validation.get("missing_concepts") or [],
                         "found_concepts": validation.get("found_concepts") or [],
@@ -834,7 +890,7 @@ def _rag_tests_run_worker(
                     }
                     if validation.get("failure_reason") is not None:
                         result["failure_reason"] = validation["failure_reason"]
-                    return result
+                    return normalize_rag_test_result(result)
                 except Exception as e:
                     _ERROR_LOG.exception("rag_tests_run single test")
                     _elapsed = int((time.time() - start_time) * 1000)
@@ -849,7 +905,7 @@ def _rag_tests_run_worker(
                         "status": "FAIL",
                         "response_time_ms": _elapsed,
                         "latency_ms": _elapsed,
-                        "rag_used": False,
+                        **_error_metric_fields(),
                         "confidence_label": "0/0",
                         "missing_concepts": test.get("expected_concepts") or [],
                         "found_concepts": [],
@@ -925,7 +981,7 @@ def _rag_tests_run_worker(
                             "status": "FAIL",
                             "response_time_ms": 0,
                             "latency_ms": 0,
-                            "rag_used": False,
+                            **_error_metric_fields(),
                             "confidence_label": "0/0",
                             "missing_concepts": test.get("expected_concepts") or [],
                             "found_concepts": [],
@@ -955,7 +1011,7 @@ def _rag_tests_run_worker(
                     if job:
                         job["status"] = "cancelled"
 
-        sorted_results = sorted(results, key=lambda r: int(r.get("_order", 0)))
+        sorted_results = [normalize_rag_test_result(r) for r in sorted(results, key=lambda r: int(r.get("_order", 0)))]
         for r in sorted_results:
             r.pop("_order", None)
 
@@ -1045,7 +1101,7 @@ def rag_tests_run() -> Any:
                 }), 400
             collection_name = names[0]
             collection_source = "qdrant.first_collection"
-    prompt_name = (body.get("prompt_name") or "").strip() or None
+    prompt_name = (body.get("prompt_name") or "").strip() or "system_senior_ios_assistant_rag_tests"
     temperature_raw = body.get("temperature")
     top_k_raw = body.get("top_k")
     try:

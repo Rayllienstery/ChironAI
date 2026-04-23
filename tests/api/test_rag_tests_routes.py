@@ -119,3 +119,82 @@ def test_rag_tests_runs_delete_low_pass(tmp_path) -> None:
     assert response.get_json()["deleted"] == 1
     assert repo.get_run("run-1") is None
     assert repo.get_run("run-2") is not None
+
+
+def test_rag_tests_run_export_includes_split_rag_metrics(tmp_path) -> None:
+    import api.http.rag_tests_routes as routes
+    from infrastructure.database.rag_test_runs_repository import RagTestRunsRepository
+
+    repo = RagTestRunsRepository(tmp_path / "webui.db")
+    repo.add_run(
+        "run-1",
+        "m1",
+        "completed",
+        1,
+        0,
+        1,
+        [{
+            "test_id": "t1",
+            "test_name": "T1",
+            "platform": "iOS",
+            "framework": "Swift",
+            "status": "FAIL",
+            "response_time_ms": 12,
+            "rag_used": True,
+            "retrieval_used": True,
+            "grounding_overlap": False,
+            "strict_rag_ok": False,
+            "metrics_version": "v2_retrieval_grounding_split_2026_04_23",
+            "evaluation_method_version": "v2_retrieval_grounding_split_2026_04_23",
+            "confidence_label": "1/1 concepts found",
+            "question": "Q",
+        }],
+    )
+
+    app = Flask(__name__)
+    app.register_blueprint(routes.rag_tests_bp)
+
+    routes.get_rag_test_runs_repository = lambda: repo
+    client = app.test_client()
+
+    response = client.get("/api/webui/rag-tests/runs/run-1/export?format=csv")
+
+    assert response.status_code == 200
+    text = response.get_data(as_text=True)
+    assert "retrieval_used" in text
+    assert "grounding_overlap" in text
+    assert "strict_rag_ok" in text
+    assert "metrics_version" in text
+
+
+def test_rag_tests_runs_summary_includes_split_rag_metrics(tmp_path) -> None:
+    from infrastructure.database.rag_test_runs_repository import RagTestRunsRepository
+
+    repo = RagTestRunsRepository(tmp_path / "webui.db")
+    repo.add_run(
+        "run-1",
+        "m1",
+        "completed",
+        2,
+        1,
+        1,
+        [
+            {"test_id": "t1", "status": "PASS", "framework": "Swift", "retrieval_used": True},
+            {
+                "test_id": "t2",
+                "status": "FAIL",
+                "framework": "Swift",
+                "retrieval_used": True,
+                "grounding_overlap": False,
+                "strict_rag_ok": False,
+            },
+        ],
+    )
+
+    summary = repo.get_runs_summary(limit=10)
+
+    assert summary["retrieval_used"] == 2
+    assert summary["retrieval_rate_pct"] == 100.0
+    assert summary["grounding_overlap"] == 0
+    assert summary["strict_rag_total"] == 1
+    assert summary["strict_rag_ok"] == 0

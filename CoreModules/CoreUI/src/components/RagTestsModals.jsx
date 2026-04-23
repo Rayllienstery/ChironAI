@@ -193,6 +193,11 @@ export function RagResultDetailModal({ detail, onClose }) {
     if (!Number.isFinite(n)) return '-';
     return `${n.toFixed(2)} s`;
   };
+  const yesNo = (value) => {
+    if (value == null) return '-';
+    return value ? 'Yes' : 'No';
+  };
+  const retrieved = lm?.retrieval_used != null ? Boolean(lm.retrieval_used) : Boolean(lm?.rag_used);
 
   return (
     <div
@@ -248,6 +253,9 @@ export function RagResultDetailModal({ detail, onClose }) {
                 {lm.context_chars != null &&
                   lm.context_chars > 0 &&
                   ` | Context chars: ${lm.context_chars}`}
+                {` | RAG retrieved: ${yesNo(retrieved)}`}
+                {` | Grounding overlap: ${yesNo(lm.grounding_overlap)}`}
+                {lm.metrics_version && ` | Metrics: ${lm.metrics_version}`}
                 {lm.tokens_per_second_generated != null &&
                   ` | Gen speed: ${Number(lm.tokens_per_second_generated).toFixed(2)} tok/s`}
                 {lm.tokens_per_second_total != null &&

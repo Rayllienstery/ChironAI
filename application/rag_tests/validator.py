@@ -8,6 +8,11 @@ import os
 import re
 from typing import Any
 
+from application.rag_tests.metrics import (
+    CURRENT_RAG_TESTS_EVALUATION_METHOD_VERSION,
+    CURRENT_RAG_TESTS_METRICS_VERSION,
+)
+
 
 def _normalize_whitespace(text: str) -> str:
     return " ".join((text or "").split())
@@ -264,7 +269,10 @@ def validate_result(
             rag_ok = True
             overlap_waived = True
     status = "PASS" if (concepts_ok and rag_ok and not empty and min_length_ok) else "FAIL"
-    rag_used = bool(rag_retrieved and (rag_overlap if require_rag_overlap else True))
+    retrieval_used = bool(rag_retrieved)
+    grounding_overlap = bool(rag_overlap) if require_rag_overlap and rag_retrieved else None
+    strict_rag_ok = bool(rag_ok) if require_rag_overlap else None
+    rag_used = retrieval_used
 
     response_norm = response_content or ""
     found_concepts = _found_flat_concepts(response_norm, [c for c in concepts if isinstance(c, str)])
@@ -294,6 +302,11 @@ def validate_result(
         "missing_concepts": missing if status == "FAIL" else [],
         "found_concepts": found_concepts,
         "rag_used": rag_used,
+        "retrieval_used": retrieval_used,
+        "grounding_overlap": grounding_overlap,
+        "strict_rag_ok": strict_rag_ok,
+        "metrics_version": CURRENT_RAG_TESTS_METRICS_VERSION,
+        "evaluation_method_version": CURRENT_RAG_TESTS_EVALUATION_METHOD_VERSION,
         "confidence_label": confidence_label,
         "full_response": response_content if status == "FAIL" else None,
         "retrieved_chunks": chunks_info if status == "FAIL" and chunks_info else None,

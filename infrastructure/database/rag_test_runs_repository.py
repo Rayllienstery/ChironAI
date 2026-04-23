@@ -11,6 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from application.rag_tests.metrics import normalize_rag_test_result, normalize_rag_test_run
+
 
 class RagTestRunsRepository:
     """Repository for storing and retrieving RAG test run history."""
@@ -194,28 +196,42 @@ class RagTestRunsRepository:
             })
         per_model.sort(key=lambda x: -x["run_count"])
 
-        # Domain-level aggregation requires inspecting stored per-test results JSON
+        # Result-level aggregation requires inspecting stored per-test results JSON
         domain_agg: dict[str, dict[str, Any]] = {}
+        retrieval_used = 0
+        grounding_overlap = 0
+        strict_rag_total = 0
+        strict_rag_ok = 0
         # Helper to load results for a given run id
         if rows:
-            run_ids = [r["id"] for r in rows]
-            placeholders = ",".join("?" for _ in run_ids)
-            cursor = conn.execute(
-                f"SELECT id, results FROM rag_test_runs WHERE id IN ({placeholders})",
-                run_ids,
-            )
-            result_rows = cursor.fetchall()
-            results_by_id = {rr["id"]: rr["results"] for rr in result_rows}
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                run_ids = [r["id"] for r in rows]
+                placeholders = ",".join("?" for _ in run_ids)
+                cursor = conn.execute(
+                    f"SELECT id, results FROM rag_test_runs WHERE id IN ({placeholders})",
+                    run_ids,
+                )
+                result_rows = cursor.fetchall()
+                results_by_id = {rr["id"]: rr["results"] for rr in result_rows}
 
             for r in rows:
                 raw_results = results_by_id.get(r["id"])
                 if not raw_results:
                     continue
                 try:
-                    tests = json.loads(raw_results)
+                    tests = [normalize_rag_test_result(t) for t in json.loads(raw_results)]
                 except (json.JSONDecodeError, TypeError):
                     continue
                 for t in tests:
+                    if t.get("retrieval_used"):
+                        retrieval_used += 1
+                    if t.get("grounding_overlap") is True:
+                        grounding_overlap += 1
+                    if t.get("strict_rag_ok") is not None:
+                        strict_rag_total += 1
+                        if t.get("strict_rag_ok") is True:
+                            strict_rag_ok += 1
                     framework = (t.get("framework") or "").strip()
                     difficulty = (t.get("difficulty") or "").strip() or "unknown"
                     status = (t.get("status") or "").upper()
@@ -280,6 +296,13 @@ class RagTestRunsRepository:
             "total_passed": total_passed,
             "total_failed": total_failed,
             "pass_rate_pct": pass_rate_pct,
+            "retrieval_used": retrieval_used,
+            "retrieval_rate_pct": round((retrieval_used / total_tests * 100), 1) if total_tests else 0.0,
+            "grounding_overlap": grounding_overlap,
+            "grounding_overlap_rate_pct": round((grounding_overlap / total_tests * 100), 1) if total_tests else 0.0,
+            "strict_rag_total": strict_rag_total,
+            "strict_rag_ok": strict_rag_ok,
+            "strict_rag_ok_rate_pct": round((strict_rag_ok / strict_rag_total * 100), 1) if strict_rag_total else 0.0,
             "per_model": per_model,
             "domains": domains,
         }
@@ -298,10 +321,10 @@ class RagTestRunsRepository:
         results = []
         if row["results"]:
             try:
-                results = json.loads(row["results"])
+                results = [normalize_rag_test_result(t) for t in json.loads(row["results"])]
             except (json.JSONDecodeError, TypeError):
                 pass
-        return {
+        return normalize_rag_test_run({
             "id": row["id"],
             "model": row["model"],
             "status": row["status"],
@@ -311,7 +334,7 @@ class RagTestRunsRepository:
             "created_at": row["created_at"],
             "completed_at": row["completed_at"],
             "results": results,
-        }
+        })
 
     def delete_runs(
         self,

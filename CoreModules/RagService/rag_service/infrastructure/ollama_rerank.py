@@ -17,12 +17,19 @@ from rag_service.domain.services.rerank import (
 from rag_service.infrastructure.cli_runner import OllamaInteractorCliError, invoke_generate, invoke_rerank
 
 _rerank_log = logging.getLogger("trag.rerank")
+_disabled_missing_models: set[str] = set()
 
 
 def _looks_like_http_404(exc: BaseException) -> bool:
     """True when the failure is almost certainly a missing REST route (common for /api/rerank)."""
     s = str(exc).lower()
     return "404" in s and ("not found" in s or "client error" in s)
+
+
+def _looks_like_missing_model(exc: BaseException, model: str) -> bool:
+    s = str(exc).lower()
+    m = (model or "").strip().lower()
+    return bool(m and "model" in s and m in s and "not found" in s)
 
 
 class OllamaRerankClient:
@@ -34,6 +41,12 @@ class OllamaRerankClient:
 
     def rerank(self, question: str, prompt_text: str) -> str | None:
         """Return JSON array string (e.g. "[3,1,2]") or None on failure."""
+        if not self._model:
+            _rerank_log.info("Rerank skipped: no rerank model configured")
+            return None
+        if self._model in _disabled_missing_models:
+            _rerank_log.debug("Rerank skipped: model %r was previously reported missing", self._model)
+            return None
 
         try:
             native_url = self._url.replace("/api/generate", "/api/rerank")
@@ -73,6 +86,14 @@ class OllamaRerankClient:
             data = invoke_generate(stdin_obj, default_timeout=120)
             return (data.get("response") or "").strip()
         except OllamaInteractorCliError as e:
+            if _looks_like_missing_model(e, self._model):
+                _disabled_missing_models.add(self._model)
+                _rerank_log.warning(
+                    "Rerank disabled for this process: Ollama model %r is not installed. "
+                    "Install/pull it or choose an available rerank model; subsequent rerank calls will be skipped.",
+                    self._model,
+                )
+                return None
             if _looks_like_http_404(e):
                 _rerank_log.warning(
                     "Rerank generate fallback failed (%s): %s — check OLLAMA_URL / config "

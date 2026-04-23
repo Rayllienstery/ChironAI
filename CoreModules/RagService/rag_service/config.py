@@ -10,6 +10,8 @@ Configuration sources, in order:
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -201,6 +203,11 @@ _DEFAULT_PROMPTS: dict[str, dict[str, str]] = {
     }
 }
 
+_retrieval_overrides_var: ContextVar[dict[str, Any] | None] = ContextVar(
+    "rag_service_retrieval_overrides",
+    default=None,
+)
+
 
 def _merge_dict(dst: dict[str, Any], src: dict[str, Any]) -> dict[str, Any]:
     for key, value in src.items():
@@ -309,7 +316,31 @@ def _bool_env(name: str) -> bool | None:
     return value.lower() in {"1", "true", "yes", "on"}
 
 
+def _retrieval_override_value(key: str) -> Any:
+    overrides = _retrieval_overrides_var.get() or {}
+    return overrides.get(key)
+
+
+@contextmanager
+def override_retrieval_settings(overrides: dict[str, Any] | None):
+    current = dict(_retrieval_overrides_var.get() or {})
+    merged = dict(current)
+    for key, value in (overrides or {}).items():
+        merged[str(key)] = value
+    token = _retrieval_overrides_var.set(merged)
+    try:
+        yield
+    finally:
+        _retrieval_overrides_var.reset(token)
+
+
 def get_retrieval_int(key: str, default: int) -> int:
+    override = _retrieval_override_value(key)
+    if override is not None:
+        try:
+            return int(override)
+        except (TypeError, ValueError):
+            return default
     raw = _env(f"RAG_RETRIEVAL_{key.upper()}")
     if raw is not None:
         try:
@@ -323,6 +354,13 @@ def get_retrieval_int(key: str, default: int) -> int:
 
 
 def get_retrieval_bool(key: str, default: bool = False) -> bool:
+    override = _retrieval_override_value(key)
+    if override is not None:
+        if isinstance(override, bool):
+            return override
+        if isinstance(override, str):
+            return override.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(override)
     raw = _bool_env(f"RAG_RETRIEVAL_{key.upper()}")
     if raw is not None:
         return raw
@@ -424,7 +462,13 @@ def get_ollama_embed_model() -> str:
 
 
 def get_ollama_rerank_model() -> str:
-    return _env("OLLAMA_RERANK_MODEL") or str(_section("ollama").get("rerank_model", ""))
+    env_value = _env("OLLAMA_RERANK_MODEL")
+    if env_value:
+        return env_value
+    ollama_value = str(_section("ollama").get("rerank_model", "") or "").strip()
+    if ollama_value:
+        return ollama_value
+    return str(_section("ollama").get("rerank_model_last_resort", "") or "").strip()
 
 
 def get_ollama_embed_timeout_seconds() -> float:

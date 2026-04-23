@@ -96,6 +96,10 @@ class TestValidateResult:
         )
         assert out["status"] == "PASS"
         assert out["rag_used"] is True
+        assert out["retrieval_used"] is True
+        assert out["grounding_overlap"] is None
+        assert out["strict_rag_ok"] is None
+        assert out["metrics_version"]
         assert out["confidence_label"] == "1/1 concepts found"
         assert out.get("full_response") is None
         assert out.get("retrieved_chunks") is None
@@ -154,7 +158,10 @@ class TestValidateResult:
             {"chunks_count": 1, "chunks_info": chunks},
         )
         assert out["status"] == "FAIL"
-        assert out["rag_used"] is False
+        assert out["rag_used"] is True
+        assert out["retrieval_used"] is True
+        assert out["grounding_overlap"] is False
+        assert out["strict_rag_ok"] is False
 
     def test_rag_strict_true_with_overlap_passes(self) -> None:
         test = {
@@ -172,6 +179,9 @@ class TestValidateResult:
         )
         assert out["status"] == "PASS"
         assert out["rag_used"] is True
+        assert out["retrieval_used"] is True
+        assert out["grounding_overlap"] is True
+        assert out["strict_rag_ok"] is True
 
     def test_confidence_label_format(self) -> None:
         test = {"expected_concepts": ["A", "B", "C"], "concept_mode": "all", "rag_requirement": False}
@@ -282,3 +292,7 @@ class TestValidateResult:
         assert out["status"] == "FAIL"
         assert "failure_reason" in out
         assert "RAG chunks did not overlap" in out["failure_reason"]
+        assert out["rag_used"] is True
+        assert out["retrieval_used"] is True
+        assert out["grounding_overlap"] is False
+        assert out["strict_rag_ok"] is False

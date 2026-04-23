@@ -8,14 +8,34 @@ prepare_ollama_messages, chat_client.chat. Returns result dicts compatible with 
 from __future__ import annotations
 
 import time
+from contextlib import contextmanager
 from collections.abc import Callable
 from typing import Any
 
 from application.rag.params import get_rag_answer_params
+from application.rag_tests.metrics import (
+    CURRENT_RAG_TESTS_EVALUATION_METHOD_VERSION,
+    CURRENT_RAG_TESTS_METRICS_VERSION,
+)
 from application.rag.use_cases import build_rag_context, prepare_ollama_messages
 from domain.entities.rag import RagQuestionRequest
+from rag_service.config import override_retrieval_settings
 
 from application.rag_tests.validator import validate_result
+
+
+RAG_TESTS_RETRIEVAL_PRESET: dict[str, Any] = {
+    "coverage_gate_enabled": True,
+    "coverage_gate_boost_final_k": 4,
+    "coverage_retry_supplemental_search_enabled": True,
+    "coverage_retry_final_k": 12,
+}
+
+
+@contextmanager
+def rag_tests_retrieval_preset():
+    with override_retrieval_settings(RAG_TESTS_RETRIEVAL_PRESET):
+        yield
 
 
 def build_proxy_chat_payload(
@@ -101,17 +121,18 @@ def run_one_test(
             collection_name=collection_name,
             prompt_name="system_senior_ios_assistant_rag_tests",
         )
-        ctx, _ = build_rag_context(
-            retrieval_query,
-            deps.rag_repo,
-            deps.embed_provider,
-            deps.rerank_client,
-            params.context_chunk_chars,
-            params.context_total_chars,
-            rag_required_keywords=None,
-            trigger_threshold=None,
-            force_rag=True,
-        )
+        with rag_tests_retrieval_preset():
+            ctx, _ = build_rag_context(
+                retrieval_query,
+                deps.rag_repo,
+                deps.embed_provider,
+                deps.rerank_client,
+                params.context_chunk_chars,
+                params.context_total_chars,
+                rag_required_keywords=None,
+                trigger_threshold=None,
+                force_rag=True,
+            )
         rag_metadata: dict[str, Any] = {
             "chunks_info": ctx.chunks_info,
             "chunks_count": len(ctx.chunks_info),
@@ -162,6 +183,14 @@ def run_one_test(
             "response_time_ms": elapsed_ms,
             "latency_ms": elapsed_ms,
             "rag_used": validation.get("rag_used", False),
+            "retrieval_used": validation.get("retrieval_used", False),
+            "grounding_overlap": validation.get("grounding_overlap"),
+            "strict_rag_ok": validation.get("strict_rag_ok"),
+            "metrics_version": validation.get("metrics_version", CURRENT_RAG_TESTS_METRICS_VERSION),
+            "evaluation_method_version": validation.get(
+                "evaluation_method_version",
+                CURRENT_RAG_TESTS_EVALUATION_METHOD_VERSION,
+            ),
             "confidence_label": validation.get("confidence_label", ""),
             "missing_concepts": validation.get("missing_concepts") or [],
             "found_concepts": validation.get("found_concepts") or [],
@@ -190,6 +219,11 @@ def run_one_test(
             "response_time_ms": elapsed_ms,
             "latency_ms": elapsed_ms,
             "rag_used": False,
+            "retrieval_used": False,
+            "grounding_overlap": None,
+            "strict_rag_ok": None,
+            "metrics_version": CURRENT_RAG_TESTS_METRICS_VERSION,
+            "evaluation_method_version": CURRENT_RAG_TESTS_EVALUATION_METHOD_VERSION,
             "confidence_label": "0/0",
             "missing_concepts": test.get("expected_concepts") or [],
             "found_concepts": [],

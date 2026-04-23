@@ -229,8 +229,7 @@ def get_ollama_rerank_model() -> str:
     Resolution order (first non-empty wins):
     1. ``OLLAMA_RERANK_MODEL``
     2. ``config/models.yaml`` → ``ollama.rerank_model``
-    3. ``config/retrieval.yaml`` → ``retrieval.rerank_model``
-    4. ``config/models.yaml`` → ``ollama.rerank_model_last_resort`` (no Python literals)
+    3. ``config/models.yaml`` -> ``ollama.rerank_model_last_resort`` (no Python literals)
 
     Empty strings are skipped so ``ollama.rerank_model: ""`` does not yield
     ``model: ""`` (404).
@@ -246,9 +245,6 @@ def get_ollama_rerank_model() -> str:
     ollama_v = OLLAMA_CONFIG.get("rerank_model")
     if ollama_v is not None and str(ollama_v).strip() != "":
         return str(ollama_v).strip()
-    ret_v = RETRIEVAL_CONFIG.get("rerank_model")
-    if ret_v is not None and str(ret_v).strip() != "":
-        return str(ret_v).strip()
     fb = OLLAMA_CONFIG.get("rerank_model_last_resort")
     if fb is not None and str(fb).strip() != "":
         return str(fb).strip()

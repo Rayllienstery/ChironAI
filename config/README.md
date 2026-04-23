@@ -91,7 +91,6 @@ Controls query processing and vector search:
 - `doc_type_weight`: Scoring weights by document type
 - `multi_chunk_keywords`: Keywords triggering multi-chunk retrieval
 - `retrieval_stop_words`: Words stripped from queries
-- `rerank_model`: LLM model for reranking
 - `coverage_aware_selection`: When true, final chunk list after rerank favors covering distinct target concepts (symbols + `concept_aliases` matches + optional `coverage_extra_terms`) instead of only the top‑K by relevance order
 - `coverage_extra_terms`: List of phrases (matched as substrings in the question) added as coverage targets when `coverage_aware_selection` is enabled
 - `concept_expansion_enabled`: When true, runs a second vector search after pass 1 using seeds from the question + top hit texts, expanded via `concept_expansion_map`, then merges new hits before rerank

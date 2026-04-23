@@ -34,8 +34,18 @@ The answer must reference retrieved documentation or RAG context.
 Optional notes (e.g. what this test verifies).
 ```
 
-- **RAG Strict** is optional. When `true`, the test passes only if the model’s response overlaps with retrieved chunk text (not just that RAG was used).
+- **RAG Strict** is optional. When `true`, the test passes only if the model's response overlaps with retrieved chunk text (not just that RAG retrieval happened).
 - **MinOS** and **Notes** are optional.
+
+## Metrics methodology
+
+Current runs use `metrics_version: v2_retrieval_grounding_split_2026_04_23`.
+
+- `retrieval_used` / UI **RAG retrieved** means the pipeline returned at least one retrieved chunk.
+- `rag_used` is kept as a compatibility alias for `retrieval_used` in new runs.
+- `grounding_overlap` means the strict overlap heuristic found response text grounded in retrieved chunk text.
+- `strict_rag_ok` means the `RAG Strict: true` requirement passed for that result.
+- Runs created before April 20, 2026 may have legacy `rag_used` semantics and should not be compared directly against current `RAG retrieved` / `Grounding overlap` metrics without version-aware normalization.
 
 ## Field reference
 

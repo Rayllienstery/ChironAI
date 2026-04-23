@@ -38,6 +38,30 @@ function confirmCloudRagRun(modelId) {
 }
 
 const RAG_TESTS_LAST_USED_KEY = 'coreui.rag_tests.last_used.v1';
+const LIVE_MONITOR_CLOCK_MS = 167; // ~6Hz visual refresh; backend polling stays slower.
+
+function ragRetrieved(row) {
+  if (!row) return false;
+  if (row.retrieval_used != null) return Boolean(row.retrieval_used);
+  return Boolean(row.rag_used);
+}
+
+function groundingOverlap(row) {
+  return row?.grounding_overlap === true;
+}
+
+function strictRagOk(row) {
+  return row?.strict_rag_ok === true;
+}
+
+function yesNo(value) {
+  if (value == null) return '-';
+  return value ? 'Yes' : 'No';
+}
+
+function metricVersionLabel(runOrRow) {
+  return String(runOrRow?.metrics_version || 'legacy_unknown');
+}
 
 function loadLastUsedRagTestsSettings() {
   if (typeof window === 'undefined') return {};
@@ -348,7 +372,7 @@ function RagTestsTab({
 
   useEffect(() => {
     if (!running || !liveMonitorOpen) return undefined;
-    const id = setInterval(() => setLiveNowMs(Date.now()), 500);
+    const id = setInterval(() => setLiveNowMs(Date.now()), LIVE_MONITOR_CLOCK_MS);
     return () => clearInterval(id);
   }, [running, liveMonitorOpen]);
 
@@ -1041,13 +1065,17 @@ function RagTestsTab({
 
   const passCount = runHistoryResults.filter((r) => String(r.status || '').toUpperCase() === 'PASS').length;
   const failCount = runHistoryResults.filter((r) => String(r.status || '').toUpperCase() === 'FAIL').length;
-  const ragUsedCount = runHistoryResults.filter((r) => r.rag_used).length;
+  const ragRetrievedCount = runHistoryResults.filter((r) => ragRetrieved(r)).length;
+  const groundingOverlapCount = runHistoryResults.filter((r) => groundingOverlap(r)).length;
+  const strictRagOkCount = runHistoryResults.filter((r) => strictRagOk(r)).length;
+  const strictRagTotal = runHistoryResults.filter((r) => r?.strict_rag_ok != null).length;
   const totalCount = runHistoryResults.length;
 
   const summaryBars = [
     { label: 'PASS', value: passCount },
     { label: 'FAIL', value: failCount },
-    { label: 'RAG used', value: ragUsedCount },
+    { label: 'RAG retrieved', value: ragRetrievedCount },
+    { label: 'Grounding overlap', value: groundingOverlapCount },
   ];
   const summaryBarMax = summaryBars.reduce((m, x) => Math.max(m, x.value), 1);
 
@@ -1076,7 +1104,8 @@ function RagTestsTab({
 
   const compareCountByStatus = (rows, status) =>
     rows.filter((r) => String(r?.status || '').toUpperCase() === String(status || '').toUpperCase()).length;
-  const compareRagUsedCount = (rows) => rows.filter((r) => Boolean(r?.rag_used)).length;
+  const compareRagRetrievedCount = (rows) => rows.filter((r) => ragRetrieved(r)).length;
+  const compareGroundingOverlapCount = (rows) => rows.filter((r) => groundingOverlap(r)).length;
   const compareMeanLatency = (rows) => {
     const vals = rows
       .map((r) => Number(r?.latency_ms ?? r?.response_time_ms))
@@ -1125,10 +1154,17 @@ function RagTestsTab({
       higherIsBetter: true,
     },
     {
-      key: 'rag_used',
-      label: 'RAG used',
-      left: compareRagUsedCount(compareLeftResults),
-      right: compareRagUsedCount(compareRightResults),
+      key: 'rag_retrieved',
+      label: 'RAG retrieved',
+      left: compareRagRetrievedCount(compareLeftResults),
+      right: compareRagRetrievedCount(compareRightResults),
+      higherIsBetter: true,
+    },
+    {
+      key: 'grounding_overlap',
+      label: 'Grounding overlap',
+      left: compareGroundingOverlapCount(compareLeftResults),
+      right: compareGroundingOverlapCount(compareRightResults),
       higherIsBetter: true,
     },
     {
@@ -1562,6 +1598,11 @@ function RagTestsTab({
                 <p className="rag-tests-summary-line">
                   Last {runSummary.total_runs} runs: {runSummary.total_tests} total tests, {runSummary.pass_rate_pct}% pass rate
                 </p>
+                {runSummary.retrieval_rate_pct != null && (
+                  <p className="rag-tests-summary-line">
+                    RAG retrieved: {runSummary.retrieval_rate_pct}% | Grounding overlap: {runSummary.grounding_overlap_rate_pct ?? 0}%
+                  </p>
+                )}
                 {runSummary.per_model?.length > 0 && (
                   <p className="rag-tests-summary-line">
                     By model: {runSummary.per_model.map((m) => `${m.model} ${m.pass_rate_pct}%`).join(', ')}
@@ -2019,7 +2060,7 @@ function RagTestsTab({
               <th>Status</th>
               <th>Time (ms)</th>
               <th>Tok/s</th>
-              <th>RAG</th>
+              <th>RAG retrieved</th>
               <th>Confidence</th>
               <th>Details</th>
               <th>Run</th>
@@ -2067,7 +2108,7 @@ function RagTestsTab({
                       ? Number(last.tokens_per_second_generated).toFixed(2)
                       : '-'}
                   </td>
-                  <td>{last ? (last.rag_used ? 'Yes' : 'No') : '-'}</td>
+                  <td>{last ? yesNo(ragRetrieved(last)) : '-'}</td>
                   <td>{last?.confidence_label || '-'}</td>
                   <td onClick={(ev) => ev.stopPropagation()}>
                     <button
@@ -2141,6 +2182,9 @@ function RagTestsTab({
             <p className="rag-tests-result-modal-meta">
               {formatRunDate(runHistoryModal.run?.created_at)} | Model: {runHistoryModal.run?.model} | Passed: {runHistoryModal.run?.passed} | Failed: {runHistoryModal.run?.failed}
             </p>
+            <p className="rag-tests-detail-metrics">
+              Metrics: {metricVersionLabel(runHistoryModal.run)}
+            </p>
             <div className="rag-tests-run-tabs">
               <button
                 type="button"
@@ -2181,7 +2225,9 @@ function RagTestsTab({
                   <div className="rag-tests-summary-kpi"><strong>Total:</strong> {totalCount}</div>
                   <div className="rag-tests-summary-kpi"><strong>Pass rate:</strong> {totalCount ? `${Math.round((passCount / totalCount) * 100)}%` : '-'}</div>
                   <div className="rag-tests-summary-kpi"><strong>Fail rate:</strong> {totalCount ? `${Math.round((failCount / totalCount) * 100)}%` : '-'}</div>
-                  <div className="rag-tests-summary-kpi"><strong>RAG used:</strong> {totalCount ? `${Math.round((ragUsedCount / totalCount) * 100)}%` : '-'}</div>
+                  <div className="rag-tests-summary-kpi"><strong>RAG retrieved:</strong> {totalCount ? `${Math.round((ragRetrievedCount / totalCount) * 100)}%` : '-'}</div>
+                  <div className="rag-tests-summary-kpi"><strong>Grounding overlap:</strong> {totalCount ? `${Math.round((groundingOverlapCount / totalCount) * 100)}%` : '-'}</div>
+                  <div className="rag-tests-summary-kpi"><strong>Strict RAG OK:</strong> {strictRagTotal ? `${Math.round((strictRagOkCount / strictRagTotal) * 100)}%` : '-'}</div>
                 </div>
 
                 <section className="rag-tests-result-section">
@@ -2303,7 +2349,8 @@ function RagTestsTab({
                     <th>Status</th>
                     <th>Time (ms)</th>
                     <th>Tok/s</th>
-                    <th>RAG</th>
+                    <th>RAG retrieved</th>
+                    <th>Grounding</th>
                     <th>Confidence</th>
                     <th>Details</th>
                   </tr>
@@ -2323,7 +2370,8 @@ function RagTestsTab({
                           ? Number(row.tokens_per_second_generated).toFixed(2)
                           : '-'}
                       </td>
-                      <td>{row.rag_used ? 'Yes' : 'No'}</td>
+                      <td>{yesNo(ragRetrieved(row))}</td>
+                      <td>{yesNo(row.grounding_overlap)}</td>
                       <td>{row.confidence_label || '-'}</td>
                       <td>
                         <button
@@ -2383,6 +2431,7 @@ function RagTestsTab({
                   {formatRunDate(compareLeftRun?.created_at)} | Model: {compareLeftRun?.model || '-'}
                 </p>
                 <p className="rag-tests-detail-metrics">id: {String(runCompareModal.left?.id || '-')}</p>
+                <p className="rag-tests-detail-metrics">metrics: {metricVersionLabel(compareLeftRun)}</p>
               </section>
               <section className="rag-tests-compare-vs">+ / -</section>
               <section className="rag-tests-compare-run-card">
@@ -2391,6 +2440,7 @@ function RagTestsTab({
                   {formatRunDate(compareRightRun?.created_at)} | Model: {compareRightRun?.model || '-'}
                 </p>
                 <p className="rag-tests-detail-metrics">id: {String(runCompareModal.right?.id || '-')}</p>
+                <p className="rag-tests-detail-metrics">metrics: {metricVersionLabel(compareRightRun)}</p>
               </section>
             </div>
 
@@ -2498,7 +2548,7 @@ function RagTestsTab({
                       <div className="rag-tests-compare-cell">
                         <p className="rag-tests-rag-query-meta">{title}</p>
                         <p className="rag-tests-detail-metrics">
-                          status: {leftStatus} | latency: {Number.isFinite(leftLatency) ? `${Math.round(leftLatency)} ms` : '-'} | tok/s: {left?.tokens_per_second_generated != null ? Number(left.tokens_per_second_generated).toFixed(2) : '-'} | rag: {left?.rag_used ? 'Yes' : 'No'}
+                          status: {leftStatus} | latency: {Number.isFinite(leftLatency) ? `${Math.round(leftLatency)} ms` : '-'} | tok/s: {left?.tokens_per_second_generated != null ? Number(left.tokens_per_second_generated).toFixed(2) : '-'} | retrieved: {yesNo(ragRetrieved(left))} | grounded: {yesNo(left?.grounding_overlap)}
                         </p>
                         <p className="rag-tests-detail-metrics">
                           confidence: {left?.confidence_label || '-'} | reason: {left?.failure_reason || left?.error || '-'}
@@ -2512,7 +2562,7 @@ function RagTestsTab({
                       <div className="rag-tests-compare-cell">
                         <p className="rag-tests-rag-query-meta">{title}</p>
                         <p className="rag-tests-detail-metrics">
-                          status: {rightStatus} | latency: {Number.isFinite(rightLatency) ? `${Math.round(rightLatency)} ms` : '-'} | tok/s: {right?.tokens_per_second_generated != null ? Number(right.tokens_per_second_generated).toFixed(2) : '-'} | rag: {right?.rag_used ? 'Yes' : 'No'}
+                          status: {rightStatus} | latency: {Number.isFinite(rightLatency) ? `${Math.round(rightLatency)} ms` : '-'} | tok/s: {right?.tokens_per_second_generated != null ? Number(right.tokens_per_second_generated).toFixed(2) : '-'} | retrieved: {yesNo(ragRetrieved(right))} | grounded: {yesNo(right?.grounding_overlap)}
                         </p>
                         <p className="rag-tests-detail-metrics">
                           confidence: {right?.confidence_label || '-'} | reason: {right?.failure_reason || right?.error || '-'}
@@ -2569,16 +2619,16 @@ function RagTestsTab({
                   </select>
                 </label>
                 <label>
-                  RAG used
+                  RAG retrieved
                   <select
                     value={failFilters.ragUsed}
                     onChange={(e) => setFailFilters((f) => ({ ...f, ragUsed: e.target.value }))}
                     className="rag-tests-select"
-                    aria-label="Filter failed tests by RAG usage"
+                    aria-label="Filter failed tests by RAG retrieval"
                   >
                     <option value="">All</option>
-                    <option value="yes">Only rag_used = true</option>
-                    <option value="no">Only rag_used = false</option>
+                    <option value="yes">Only retrieval_used = true</option>
+                    <option value="no">Only retrieval_used = false</option>
                   </select>
                 </label>
                 <label className="rag-tests-checkbox-label">
@@ -2597,7 +2647,8 @@ function RagTestsTab({
                     <th>Platform</th>
                     <th>Framework</th>
                     <th>Difficulty</th>
-                    <th>RAG used</th>
+                    <th>RAG retrieved</th>
+                    <th>Grounding</th>
                     <th>Confidence</th>
                     <th>Missing concepts</th>
                     <th>Failure reason</th>
@@ -2608,14 +2659,14 @@ function RagTestsTab({
                     .filter((r) => {
                       const framework = (r.framework || '').toLowerCase();
                       const difficulty = (r.difficulty || '').toLowerCase();
-                      const ragUsed = !!r.rag_used;
+                      const retrieved = ragRetrieved(r);
                       const ragStrict = !!r.rag_strict;
                       if (failFilters.domain === 'SwiftUI' && framework !== 'swiftui') return false;
                       if (failFilters.domain === 'UIKit' && framework !== 'uikit') return false;
                       if (failFilters.domain === 'Swift' && framework && framework !== 'swift' && framework !== 'swiftui' && framework !== 'uikit') return false;
                       if (failFilters.difficulty && difficulty !== failFilters.difficulty) return false;
-                      if (failFilters.ragUsed === 'yes' && !ragUsed) return false;
-                      if (failFilters.ragUsed === 'no' && ragUsed) return false;
+                      if (failFilters.ragUsed === 'yes' && !retrieved) return false;
+                      if (failFilters.ragUsed === 'no' && retrieved) return false;
                       if (failFilters.ragStrictOnly && !ragStrict) return false;
                       return true;
                     })
@@ -2625,7 +2676,8 @@ function RagTestsTab({
                         <td>{r.platform || '-'}</td>
                         <td>{r.framework || '-'}</td>
                         <td>{r.difficulty || '-'}</td>
-                        <td>{r.rag_used ? 'Yes' : 'No'}</td>
+                        <td>{yesNo(ragRetrieved(r))}</td>
+                        <td>{yesNo(r.grounding_overlap)}</td>
                         <td>{r.confidence_label || '-'}</td>
                         <td>{(r.missing_concepts || []).join(', ') || 'none'}</td>
                         <td>{r.failure_reason || '-'}</td>

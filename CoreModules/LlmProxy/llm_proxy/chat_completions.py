@@ -145,6 +145,35 @@ def _load_proxy_settings_and_model(get_settings_repository: Any) -> tuple[dict[s
     return proxy_settings, proxy_model_setting
 
 
+def _apply_selected_rerank_model(
+    rerank_client: Any,
+    proxy_settings: dict[str, object],
+    trace: dict[str, Any],
+) -> Any:
+    selected = str(proxy_settings.get("rerank_model") or "").strip()
+    if not selected or rerank_client is None:
+        return rerank_client
+
+    current = str(
+        getattr(rerank_client, "_model", None)
+        or getattr(rerank_client, "model", None)
+        or ""
+    ).strip()
+    if hasattr(rerank_client, "_model"):
+        setattr(rerank_client, "_model", selected)
+    elif hasattr(rerank_client, "model"):
+        setattr(rerank_client, "model", selected)
+    else:
+        return rerank_client
+
+    req_trace = trace.setdefault("request", {})
+    req_trace["rerank_model"] = selected
+    req_trace["rerank_model_source"] = "proxy_settings.rerank_model"
+    if selected != current:
+        req_trace["rerank_model_override"] = selected
+    return rerank_client
+
+
 def _web_supplement_used_from_trace(trace: dict[str, Any]) -> bool:
     internet = trace.get("internet")
     if not isinstance(internet, dict):
@@ -2141,6 +2170,12 @@ def run_chat_completions(
     if _ollama_caps is not None:
         trace["request"]["ollama_capabilities"] = sorted(_ollama_caps)
     trace["request"]["use_native_tools"] = use_native_tools
+
+    effective_base_rerank_client = _apply_selected_rerank_model(
+        effective_base_rerank_client,
+        proxy_settings,
+        trace,
+    )
 
     # Proxy: do not read settings from DB; rerank is configurable via proxy_rerank_enabled.
     effective_rerank_client = (
