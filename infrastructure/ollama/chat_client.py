@@ -191,7 +191,8 @@ class OllamaChatClient:
         """
         Stream /api/chat over HTTP; yield structured events:
 
-        - ``("content_delta", str)`` -- thinking or content text delta
+        - ``("thinking_delta", str)`` -- thinking text delta
+        - ``("content_delta", str)`` -- final answer text delta
         - ``("tool_calls", list)``   -- tool calls from Ollama (at end of stream)
         - ``("done", dict)``         -- final metrics (eval_count, eval_duration, etc.)
         - ``("error", str)``         -- error message
@@ -242,11 +243,11 @@ class OllamaChatClient:
                 if th.startswith(prev_th) and len(th) >= len(prev_th):
                     suffix = th[len(prev_th):]
                     if suffix:
-                        yield ("content_delta", suffix)
+                        yield ("thinking_delta", suffix)
                     prev_th = th
                 elif th != prev_th:
                     if th:
-                        yield ("content_delta", th)
+                        yield ("thinking_delta", th)
                     prev_th = th
                 if co.startswith(prev_co) and len(co) >= len(prev_co):
                     suffix_c = co[len(prev_co):]
@@ -275,11 +276,11 @@ class OllamaChatClient:
         body: dict[str, Any],
     ) -> Iterator[tuple[Literal["content", "error"], str]]:
         """
-        Stream /api/chat over HTTP; yield (\"content\", delta) for both thinking and content suffixes
-        (single visible stream). Delegates to ``iter_chat_api_stream_events``.
+        Stream /api/chat over HTTP; yield a single visible text stream with thinking first and
+        final answer second. Delegates to ``iter_chat_api_stream_events``.
         """
         for kind, data in self.iter_chat_api_stream_events(body):
-            if kind == "content_delta":
+            if kind in ("thinking_delta", "content_delta"):
                 yield ("content", data)
             elif kind == "error":
                 yield ("error", data)

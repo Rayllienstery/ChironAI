@@ -7,11 +7,14 @@
 .tester-layout {
   display: grid;
   grid-template-columns: 300px 1fr;
+  align-items: start;
   gap: var(--md-sys-spacing-lg);
   height: 100%;
 }
 
 .tester-settings-panel {
+  align-self: start;
+  max-height: 100%;
   background: var(--md-sys-color-surface);
   border: none;
   border-radius: var(--md-sys-shape-corner-large);
@@ -892,4 +895,25 @@
   margin: 0 0 var(--md-sys-spacing-sm);
   font: var(--md-sys-typescale-title-small-font);
   color: var(--md-sys-color-on-surface);
+}
+
+.tester-settings-separator {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-sm);
+  margin: var(--md-sys-spacing-md) 0 var(--md-sys-spacing-sm);
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium-font);
+  text-transform: uppercase;
+}
+
+.tester-settings-separator:first-of-type {
+  margin-top: 0;
+}
+
+.tester-settings-separator::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--md-sys-color-outline-variant);
 }

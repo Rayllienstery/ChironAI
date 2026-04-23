@@ -3523,6 +3523,172 @@ def test_native_tools_stream_trace_includes_tokens_estimates_and_latency(
     assert int(resp.get("latency_ms") or 0) >= 0
 
 
+def test_stream_trace_separates_reasoning_and_final_content_without_changing_sse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+    from api.http.proxy_trace import get_response_artifacts
+
+    class StreamingChatClient:
+        def iter_chat_api_stream_events(self, _payload: dict[str, Any]):
+            yield ("thinking_delta", "Plan: ")
+            yield ("content_delta", "Answer")
+            yield ("done", {"done_reason": "stop", "eval_count": 8, "prompt_eval_count": 4})
+
+        def chat(self, *_a: Any, **_k: Any) -> str:
+            return ""
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fake-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=StreamingChatClient(),
+    )
+
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda request, *_a, **_k: ([{"role": "user", "content": request.messages[-1]["content"]}], "fake-model"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    request_id = "stream-artifacts-1"
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-proxy-ollama-model",
+            "stream": True,
+            "client_request_id": request_id,
+            "messages": [{"role": "user", "content": "hi"}],
+        },
+    )
+    assert r.status_code == 200
+    body = r.get_data(as_text=True)
+    assert "Plan: " in body
+    assert "Answer" in body
+
+    cur = client.get("/api/webui/proxy-trace/current")
+    assert cur.status_code == 200
+    trace = (cur.get_json() or {}).get("trace") or {}
+    resp = trace.get("response") or {}
+    assert resp.get("has_reasoning") is True
+    assert resp.get("final_content_preview") == "Answer"
+    artifacts = get_response_artifacts(request_id) or {}
+    assert artifacts.get("reasoning_content") == "Plan: "
+    assert artifacts.get("final_content") == "Answer"
+    assert artifacts.get("visible_content") == "Plan: Answer"
+
+
+def test_non_stream_logs_store_only_previews_for_reasoning_and_final_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+
+    captured_log: dict[str, Any] = {}
+
+    class NonStreamingChatClient:
+        def chat_api(self, _payload: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "message": {
+                    "role": "assistant",
+                    "thinking": "Internal reasoning that should stay preview-only.",
+                    "content": "Final answer.",
+                },
+                "done_reason": "stop",
+            }
+
+        def chat(self, *_a: Any, **_k: Any) -> str:
+            return ""
+
+    class FakeSessionManager:
+        def get_or_create_session(self, _session_id: str) -> None:
+            return None
+
+    class FakeLogsRepo:
+        def add_log(self, **kwargs: Any) -> int:
+            captured_log.clear()
+            captured_log.update(kwargs)
+            return 1
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fake-model",
+        log_preview_chars=80,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=NonStreamingChatClient(),
+    )
+
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda request, *_a, **_k: ([{"role": "user", "content": request.messages[-1]["content"]}], "fake-model"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+    monkeypatch.setattr(rag_routes, "get_session_manager", lambda: FakeSessionManager())
+    monkeypatch.setattr(rag_routes, "get_logs_repository", lambda: FakeLogsRepo())
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-proxy-ollama-model",
+            "messages": [{"role": "user", "content": "hi"}],
+        },
+    )
+    assert r.status_code == 200
+    data = r.get_json() or {}
+    content = (((data.get("choices") or [{}])[0]).get("message") or {}).get("content") or ""
+    assert "Internal reasoning" in content
+    assert "Final answer." in content
+
+    metadata = captured_log.get("metadata") or {}
+    trace = metadata.get("trace") or {}
+    response = trace.get("response") or {}
+    assert response.get("has_reasoning") is True
+    assert response.get("reasoning_preview") == "Internal reasoning that should stay preview-only."
+    assert response.get("final_content_preview") == "Final answer."
+    assert "reasoning_content" not in response
+    assert "final_content" not in response
+
+
 def test_shell_tool_call_sanitizer_adds_erroraction_for_recursive_get_childitem() -> None:
     import json
 

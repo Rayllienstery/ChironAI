@@ -22,6 +22,7 @@ except ImportError:
     RAG_COLLECTION_APP_SETTING = "rag_collection"
 
 from flask import Response, jsonify, request
+from api.http.proxy_trace import set_response_artifacts
 
 from infrastructure.metrics import increment, histogram, gauge
 from application.rag.proxy_settings_contract import (
@@ -1250,6 +1251,51 @@ def _merge_ollama_visible_text(thinking: str | None, content: str | None) -> str
     return c or t
 
 
+def _assistant_text_parts(
+    thinking: str | None,
+    content: str | None,
+) -> dict[str, str]:
+    reasoning_content = (thinking or "").strip()
+    final_content = (content or "").strip()
+    return {
+        "visible_content": _merge_ollama_visible_text(reasoning_content, final_content),
+        "reasoning_content": reasoning_content,
+        "final_content": final_content,
+    }
+
+
+def _assistant_text_parts_from_ollama_message(ollama_msg: dict[str, Any]) -> dict[str, str]:
+    content = ollama_msg.get("content") if isinstance(ollama_msg.get("content"), str) else ""
+    thinking = ollama_msg.get("thinking") if isinstance(ollama_msg.get("thinking"), str) else ""
+    return _assistant_text_parts(thinking, content)
+
+
+def _text_preview(text: str, max_chars: int) -> str:
+    if max_chars <= 0:
+        return ""
+    text = str(text or "")
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "..."
+
+
+def _apply_trace_response_text_fields(
+    response: dict[str, Any],
+    *,
+    visible_content: str,
+    reasoning_content: str,
+    final_content: str,
+    log_preview: int,
+) -> None:
+    response["content_preview"] = _text_preview(visible_content, log_preview)
+    response["content_length_chars"] = len(visible_content)
+    response["has_reasoning"] = bool(reasoning_content.strip())
+    response["reasoning_preview"] = _text_preview(reasoning_content, log_preview)
+    response["final_content_preview"] = _text_preview(final_content, log_preview)
+    response["reasoning_chars"] = len(reasoning_content)
+    response["final_content_chars"] = len(final_content)
+
+
 def passthrough_think_from_body(body: dict[str, Any]) -> bool | str | None:
     """Pass Ollama ``think`` only when the client included the key (mediator; no derived mapping)."""
     if "think" not in body:
@@ -1349,15 +1395,15 @@ def _trace_ollama_api_metrics(src: dict[str, Any] | None) -> dict[str, Any]:
     return out
 
 
-def _proxy_ollama_chat_text(
+def _proxy_ollama_chat_text_parts(
     chat_client: Any,
     messages: list[dict[str, Any]],
     model: str,
     think: bool | str | None,
     *,
     options_overlay: dict[str, Any] | None = None,
-) -> str:
-    """Non-stream /api/chat; returns merged visible assistant text (thinking + content)."""
+) -> dict[str, str]:
+    """Non-stream /api/chat; returns separated text parts plus merged visible content."""
     _co = dict(getattr(chat_client, "_default_options", None) or {})
     if options_overlay:
         _co.update(options_overlay)
@@ -1373,14 +1419,34 @@ def _proxy_ollama_chat_text(
     if callable(chat_fn):
         data = chat_fn(payload)
         msg = data.get("message") if isinstance(data.get("message"), dict) else {}
-        content = (msg.get("content") or "").strip() if isinstance(msg, dict) else ""
-        th = msg.get("thinking") if isinstance(msg, dict) else None
-        thinking_out = th.strip() if isinstance(th, str) else None
-        return _merge_ollama_visible_text(thinking_out, content)
+        return _assistant_text_parts_from_ollama_message(msg if isinstance(msg, dict) else {})
     text = chat_client.chat(
         messages, model, stream=False, options=options_overlay if options_overlay else None, think=think
     )
-    return (text or "").strip()
+    visible = (text or "").strip()
+    return {
+        "visible_content": visible,
+        "reasoning_content": "",
+        "final_content": visible,
+    }
+
+
+def _proxy_ollama_chat_text(
+    chat_client: Any,
+    messages: list[dict[str, Any]],
+    model: str,
+    think: bool | str | None,
+    *,
+    options_overlay: dict[str, Any] | None = None,
+) -> str:
+    """Non-stream /api/chat; returns merged visible assistant text (thinking + content)."""
+    return _proxy_ollama_chat_text_parts(
+        chat_client,
+        messages,
+        model,
+        think,
+        options_overlay=options_overlay,
+    )["visible_content"]
 
 
 def _iter_proxy_ollama_chat_stream(
@@ -1396,7 +1462,7 @@ def _iter_proxy_ollama_chat_stream(
     """Stream /api/chat; yield event tuples from ``iter_chat_api_stream_events``.
 
     Mirrors ``_proxy_ollama_chat_text`` but streaming.  Falls back to a single
-    ``("content_delta", full_text)`` when the client has no streaming support.
+    visible turn when the client has no streaming support.
     """
     _co = dict(getattr(chat_client, "_default_options", None) or {})
     if options_overlay:
@@ -1424,22 +1490,25 @@ def _iter_proxy_ollama_chat_stream(
         if callable(chat_api_fn):
             data = chat_api_fn(payload)
             msg = data.get("message") if isinstance(data.get("message"), dict) else {}
-            content = (msg.get("content") or "").strip() if isinstance(msg, dict) else ""
-            th_raw = msg.get("thinking") if isinstance(msg, dict) else None
-            th = th_raw.strip() if isinstance(th_raw, str) else None
-            visible = _merge_ollama_visible_text(th, content)
-            if visible:
-                yield ("content_delta", visible)
+            parts = _assistant_text_parts_from_ollama_message(msg if isinstance(msg, dict) else {})
+            if parts["reasoning_content"]:
+                yield ("thinking_delta", parts["reasoning_content"])
+            if parts["final_content"]:
+                yield ("content_delta", parts["final_content"])
             tc = msg.get("tool_calls") if isinstance(msg, dict) else None
             if isinstance(tc, list) and tc:
                 yield ("tool_calls", tc)
             yield ("done", data if isinstance(data, dict) else {})
         else:
-            text = _proxy_ollama_chat_text(
+            parts = _proxy_ollama_chat_text_parts(
                 chat_client, messages, model, think, options_overlay=options_overlay,
             )
-            if text:
-                yield ("content_delta", text)
+            if parts["reasoning_content"]:
+                yield ("thinking_delta", parts["reasoning_content"])
+            if parts["final_content"]:
+                yield ("content_delta", parts["final_content"])
+            elif parts["visible_content"]:
+                yield ("content_delta", parts["visible_content"])
             yield ("done", {})
 
 
@@ -1664,6 +1733,23 @@ def run_chat_completions(
             w.set_current_trace(None)
         else:
             w.set_current_trace(tr)
+
+    def publish_response_artifacts(
+        *,
+        visible_content: str,
+        reasoning_content: str = "",
+        final_content: str = "",
+    ) -> None:
+        if private_build:
+            return
+        req = trace.get("request") if isinstance(trace.get("request"), dict) else {}
+        set_response_artifacts(
+            trace_id=str(trace.get("trace_id") or "").strip() or None,
+            client_request_id=str(req.get("client_request_id") or "").strip() or None,
+            visible_content=visible_content,
+            reasoning_content=reasoning_content,
+            final_content=final_content,
+        )
 
     autocomplete_id = rt.autocomplete_model_logical_id
     is_autocomplete = requested_model == autocomplete_id
@@ -2514,7 +2600,9 @@ def run_chat_completions(
             def generate_sse_native():
                 oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
                 stream_start_time = time.time()
-                accumulated_content: list[str] = []
+                visible_content_parts: list[str] = []
+                reasoning_content_parts: list[str] = []
+                final_content_parts: list[str] = []
                 tool_calls_raw: list[dict[str, Any]] = []
                 ollama_done_reason: str | None = None
                 ollama_done_payload: dict[str, Any] | None = None
@@ -2529,8 +2617,13 @@ def run_chat_completions(
                         tools=oll_tools,
                         tool_choice=tool_choice_effective,
                     ):
-                        if kind == "content_delta" and data:
-                            accumulated_content.append(data)
+                        if kind in ("thinking_delta", "content_delta") and data:
+                            text_part = str(data)
+                            visible_content_parts.append(text_part)
+                            if kind == "thinking_delta":
+                                reasoning_content_parts.append(text_part)
+                            else:
+                                final_content_parts.append(text_part)
                             yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': data}, 'finish_reason': None}]})}\n\n"
                         elif kind == "tool_calls" and data:
                             tool_calls_raw = data
@@ -2538,18 +2631,23 @@ def run_chat_completions(
                             ollama_done_payload = data
                             ollama_done_reason = data.get("done_reason")
                         elif kind == "error":
-                            accumulated_content.append(f"[Error: {data}]")
-                            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': f'[Error: {data}]'}, 'finish_reason': None}]})}\n\n"
+                            err_text = f"[Error: {data}]"
+                            visible_content_parts.append(err_text)
+                            final_content_parts.append(err_text)
+                            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': err_text}, 'finish_reason': None}]})}\n\n"
                             break
                 except Exception as exc:
                     if not private_build:
                         w.log_webui_error("rag_routes.chat_completions", exc, {"stage": "native_tools_stream"})
                     _log_rag_error_private("native_tools_stream", exc, private_build=private_build)
                     err_text = f"[Error: {exc}]"
-                    accumulated_content.append(err_text)
+                    visible_content_parts.append(err_text)
+                    final_content_parts.append(err_text)
                     yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': err_text}, 'finish_reason': None}]})}\n\n"
 
-                full_content = "".join(accumulated_content)
+                full_content = "".join(visible_content_parts)
+                reasoning_content = "".join(reasoning_content_parts)
+                final_content = "".join(final_content_parts)
                 stream_latency_ms = int((time.time() - stream_start_time) * 1000)
 
                 if tool_calls_raw:
@@ -2588,13 +2686,18 @@ def run_chat_completions(
                     "total_tokens_estimated": total_tokens_holder[0],
                 }
                 trace["response"] = {
-                    "content_preview": full_content[:log_preview],
-                    "content_length_chars": len(full_content),
                     "latency_ms": stream_latency_ms,
                     "tool_calls_count": len(tool_calls_raw),
                     "native_tools": True,
                     **_trace_ollama_api_metrics(ollama_done_payload),
                 }
+                _apply_trace_response_text_fields(
+                    trace["response"],
+                    visible_content=full_content,
+                    reasoning_content=reasoning_content,
+                    final_content=final_content,
+                    log_preview=log_preview,
+                )
                 if gemini_upserted:
                     trace["response"]["gemini_tool_state_upserted_count"] = int(gemini_upserted)
                 if tool_calls_raw:
@@ -2605,6 +2708,11 @@ def run_chat_completions(
                     "tokens_in_est": _pt,
                     "tokens_out_est": _ct,
                 })
+                publish_response_artifacts(
+                    visible_content=full_content,
+                    reasoning_content=reasoning_content,
+                    final_content=final_content,
+                )
                 publish_trace(trace)
 
                 if not private_build:
@@ -2754,6 +2862,7 @@ def run_chat_completions(
             trace_id=trace_id,
             db_path=proxy_db_path,
         )
+        content_parts = _assistant_text_parts_from_ollama_message(oll_msg)
         content_out = openai_msg.get("content")
         content_str = content_out if isinstance(content_out, str) else ("" if content_out is None else str(content_out))
 
@@ -2796,13 +2905,18 @@ def run_chat_completions(
                 )
             )
         trace["response"] = {
-            "content_preview": (content_str or "")[:log_preview],
-            "content_length_chars": len(content_str or ""),
             "latency_ms": latency_ms,
             "tool_calls_count": len(tool_calls_out),
             "native_tools": True,
             **_trace_ollama_api_metrics(data if isinstance(data, dict) else None),
         }
+        _apply_trace_response_text_fields(
+            trace["response"],
+            visible_content=content_parts["visible_content"] or content_str,
+            reasoning_content=content_parts["reasoning_content"],
+            final_content=content_parts["final_content"],
+            log_preview=log_preview,
+        )
         if tool_calls_out:
             trace["response"]["tool_calls"] = tool_calls_out
         if gemini_tool_state_upserted:
@@ -2855,6 +2969,11 @@ def run_chat_completions(
                     "tokens_out_est": _ct,
                 }
             )
+            publish_response_artifacts(
+                visible_content=content_parts["visible_content"] or content_str,
+                reasoning_content=content_parts["reasoning_content"],
+                final_content=content_parts["final_content"],
+            )
             publish_trace(trace)
             if not private_build:
                 persist_proxy_request_log(
@@ -2890,6 +3009,11 @@ def run_chat_completions(
                     "tokens_in_est": _pt,
                     "tokens_out_est": _ct,
                 }
+            )
+            publish_response_artifacts(
+                visible_content=content_parts["visible_content"] or content_str,
+                reasoning_content=content_parts["reasoning_content"],
+                final_content=content_parts["final_content"],
             )
             publish_trace(trace)
             if not private_build:
@@ -3081,11 +3205,21 @@ def run_chat_completions(
         if (not stream_tool_error) and tool_plain_fallback:
             # If tool JSON was not produced, do not drop content: return plain assistant text via SSE.
             trace["response"] = {
-                "content_preview": tool_plain_fallback[:log_preview],
-                "content_length_chars": len(tool_plain_fallback),
                 "latency_ms": int((time.time() - stream_start_time) * 1000),
                 "tool_calls_count": 0,
             }
+            _apply_trace_response_text_fields(
+                trace["response"],
+                visible_content=tool_plain_fallback,
+                reasoning_content="",
+                final_content=tool_plain_fallback,
+                log_preview=log_preview,
+            )
+            publish_response_artifacts(
+                visible_content=tool_plain_fallback,
+                reasoning_content="",
+                final_content=tool_plain_fallback,
+            )
             publish_trace(trace)
 
             _stm_lat_pt = int((time.time() - stream_start_time) * 1000)
@@ -3160,7 +3294,9 @@ def run_chat_completions(
         def generate_sse():
             oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
             stream_start_time = time.time()
-            accumulated_content: list[str] = []
+            visible_content_parts: list[str] = []
+            reasoning_content_parts: list[str] = []
+            final_content_parts: list[str] = []
             ollama_done_reason: str | None = None
             ollama_done_payload: dict[str, Any] | None = None
             total_tokens_holder = [0]
@@ -3172,30 +3308,41 @@ def run_chat_completions(
                     chat_client, ollama_messages, use_model, ollama_think,
                     options_overlay=ollama_options_overlay(),
                 ):
-                    if kind == "content_delta" and data:
-                        accumulated_content.append(data)
+                    if kind in ("thinking_delta", "content_delta") and data:
+                        text_part = str(data)
+                        visible_content_parts.append(text_part)
+                        if kind == "thinking_delta":
+                            reasoning_content_parts.append(text_part)
+                        else:
+                            final_content_parts.append(text_part)
                         yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': data}, 'finish_reason': None}]})}\n\n"
                     elif kind == "done" and isinstance(data, dict):
                         ollama_done_payload = data
                         ollama_done_reason = data.get("done_reason")
                     elif kind == "error":
-                        accumulated_content.append(f"[Error: {data}]")
-                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': f'[Error: {data}]'}, 'finish_reason': None}]})}\n\n"
+                        err_text = f"[Error: {data}]"
+                        visible_content_parts.append(err_text)
+                        final_content_parts.append(err_text)
+                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': err_text}, 'finish_reason': None}]})}\n\n"
                         break
             except Exception as e:
                 if not private_build:
                     w.log_webui_error("rag_routes.chat_completions", e, {"stage": "stream_chat"})
                 _log_rag_error_private("stream_chat", e, private_build=private_build)
                 err_text = f"[Error: {e}]"
-                accumulated_content.append(err_text)
+                visible_content_parts.append(err_text)
+                final_content_parts.append(err_text)
                 yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': err_text}, 'finish_reason': None}]})}\n\n"
 
-            full_response = "".join(accumulated_content)
+            full_response = "".join(visible_content_parts)
+            reasoning_content = "".join(reasoning_content_parts)
+            final_content = "".join(final_content_parts)
 
             if not full_response.strip():
                 fallback = "Model returned an empty response. Please retry."
                 yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': fallback}, 'finish_reason': None}]})}\n\n"
                 full_response = fallback
+                final_content = fallback
 
             finish_reason = openai_finish_reason_from_ollama(
                 {}, ollama_done_reason=ollama_done_reason,
@@ -3227,18 +3374,27 @@ def run_chat_completions(
                 "total_tokens_estimated": total_tokens_approx,
             }
             trace["response"] = {
-                "content_preview": full_response[:log_preview]
-                + ("..." if len(full_response) > log_preview else ""),
-                "content_length_chars": len(full_response),
                 "latency_ms": stream_latency_ms,
                 **_trace_ollama_api_metrics(ollama_done_payload),
             }
+            _apply_trace_response_text_fields(
+                trace["response"],
+                visible_content=full_response,
+                reasoning_content=reasoning_content,
+                final_content=final_content,
+                log_preview=log_preview,
+            )
             trace["steps"].append({
                 "name": "ollama_chat_stream",
                 "duration_ms": stream_latency_ms,
                 "tokens_in_est": prompt_tokens_approx,
                 "tokens_out_est": completion_tokens_approx,
             })
+            publish_response_artifacts(
+                visible_content=full_response,
+                reasoning_content=reasoning_content,
+                final_content=final_content,
+            )
             publish_trace(trace)
 
             if not private_build:
@@ -3294,15 +3450,21 @@ def run_chat_completions(
         )
     try:
         w.set_proxy_status(w.status_response)
-        content = _proxy_ollama_chat_text(
+        content_parts = _proxy_ollama_chat_text_parts(
             chat_client,
             ollama_messages,
             use_model,
             ollama_think,
             options_overlay=ollama_options_overlay(),
         )
+        content = content_parts["visible_content"]
         if _degenerate_assistant_reply(content):
             content = _PLACEHOLDER_REPLY_FALLBACK_EN
+            content_parts = {
+                "visible_content": content,
+                "reasoning_content": "",
+                "final_content": content,
+            }
     except Exception as e:
         if not private_build:
             w.log_webui_error("rag_routes.chat_completions", e, {"stage": "chat"})
@@ -3358,9 +3520,7 @@ def run_chat_completions(
         )
 
     content_len = len(content or "")
-    content_preview = (content or "")[:log_preview]
-    if content_len > log_preview:
-        content_preview += "..."
+    content_preview = _text_preview(content or "", log_preview)
     if not private_build:
         _RAG_LOG.debug(
             "RAG response model=%s len=%s preview=%s",
@@ -3374,10 +3534,15 @@ def run_chat_completions(
         "total_tokens_estimated": _total_tokens_approx,
     }
     trace["response"] = {
-        "content_preview": content_preview,
-        "content_length_chars": content_len,
         "latency_ms": latency_ms,
     }
+    _apply_trace_response_text_fields(
+        trace["response"],
+        visible_content=content_parts["visible_content"],
+        reasoning_content=content_parts["reasoning_content"],
+        final_content=content_parts["final_content"],
+        log_preview=log_preview,
+    )
     trace["steps"].append(
         {
             "name": "ollama_chat",
@@ -3385,6 +3550,11 @@ def run_chat_completions(
             "tokens_in_est": prompt_tokens_approx,
             "tokens_out_est": completion_tokens_approx,
         }
+    )
+    publish_response_artifacts(
+        visible_content=content_parts["visible_content"],
+        reasoning_content=content_parts["reasoning_content"],
+        final_content=content_parts["final_content"],
     )
     publish_trace(trace)
     tool_calls: list[dict[str, object]] = []

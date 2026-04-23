@@ -1,5 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getProxyTraceCurrent } from '../services/api';
+import {
+  getOllamaModelBrandKey,
+  OLLAMA_BRAND_ICON_URL,
+} from '../utils/ollamaModelBrandIcons';
 import { traceModelFields } from '../utils/proxyTraceModel';
 import CoreUIButton from './CoreUIButton';
 import { useNotificationCenter } from './NotificationCenterContext';
@@ -30,7 +34,7 @@ function traceChainId(trace) {
 }
 
 function traceSlotKey(trace) {
-  return traceChainId(trace) || nonEmptyString(trace?.trace_id) || 'unknown';
+  return nonEmptyString(trace?.trace_id) || traceChainId(trace) || 'unknown';
 }
 
 function traceShortId(value) {
@@ -84,6 +88,28 @@ function genTpsSourceTitle(source) {
   if (source === 'step_tokens_out_est') return 'Source: last ollama_chat* step.tokens_out_est / step.duration_ms';
   if (source === 'ollama_eval_count') return 'Source: trace.response.ollama_eval_count';
   return 'Source: unknown';
+}
+
+function ModelValue({ model }) {
+  const brandKey = getOllamaModelBrandKey(model);
+  const brandIconUrl = brandKey ? OLLAMA_BRAND_ICON_URL[brandKey] : null;
+  return (
+    <span className="proxy-live-notification-model-value">
+      {brandIconUrl ? (
+        <img
+          className="proxy-live-notification-model-icon"
+          src={brandIconUrl}
+          alt=""
+          width={16}
+          height={16}
+          loading="lazy"
+          decoding="async"
+          title={`Provider: ${brandKey}`}
+        />
+      ) : null}
+      <span className="proxy-live-notification-value proxy-live-notification-mono">{model}</span>
+    </span>
+  );
 }
 
 function pickLastStepName(steps) {
@@ -202,7 +228,7 @@ function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
       </div>
       <div className="proxy-live-notification-row">
         <span className="proxy-live-notification-label">Model</span>
-        <span className="proxy-live-notification-value proxy-live-notification-mono">{model}</span>
+        <ModelValue model={model} />
       </div>
       {traceId ? (
         <div className="proxy-live-notification-row">
@@ -242,7 +268,7 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
   const model = traceModelFields(trace).headerShort;
   const stepCapsules = buildStepCapsules(trace?.steps);
   const traceId = trace?.trace_id != null && trace.trace_id !== '' ? String(trace.trace_id) : '';
-  const chainId = traceShortId(traceChainId(trace));
+  const chainId = traceChainId(trace);
   const genTps = computeGenTokensPerSecond(trace);
   const tpsDisplay = genTps != null && genTps.value > 0 ? `${genTps.value.toFixed(2)} tok/s` : null;
   const tpsTitle = genTps != null ? genTpsSourceTitle(genTps.source) : null;
@@ -259,7 +285,7 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
       </div>
       <div className="proxy-live-notification-row">
         <span className="proxy-live-notification-label">Model</span>
-        <span className="proxy-live-notification-value proxy-live-notification-mono">{model}</span>
+        <ModelValue model={model} />
       </div>
       {traceId ? (
         <div className="proxy-live-notification-row">
@@ -302,6 +328,27 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
   );
 }
 
+function payloadStatus(proxyPayload) {
+  return (
+    proxyPayload?.status != null && proxyPayload.status !== '' ? String(proxyPayload.status) : 'Idle'
+  ).trim();
+}
+
+function payloadBusy(proxyPayload) {
+  return payloadStatus(proxyPayload) !== 'Idle';
+}
+
+function payloadActiveTraces(proxyPayload) {
+  if (!proxyPayload) return [];
+  if (Array.isArray(proxyPayload.active_traces) && proxyPayload.active_traces.length) {
+    return proxyPayload.active_traces.filter((trace) => trace && typeof trace === 'object');
+  }
+  if (payloadBusy(proxyPayload) && proxyPayload.trace && typeof proxyPayload.trace === 'object') {
+    return [proxyPayload.trace];
+  }
+  return [];
+}
+
 /**
  * Polls LLM proxy trace; live card while busy, 7s wind-down then persist to History.
  */
@@ -324,7 +371,7 @@ export default function ProxiesLiveNotificationBridge({
 
   const bumpLlmWindDowns = useCallback(() => setLlmWindDownsTick((t) => t + 1), []);
 
-  const prevLlmBusyRef = useRef(false);
+  const prevActiveProxyTracesRef = useRef(new Map());
   const llmWindDownGenRef = useRef(0);
   const prevProxySlotIdsRef = useRef(new Set());
   const llmWindDownTimersRef = useRef(new Map());
@@ -353,12 +400,12 @@ export default function ProxiesLiveNotificationBridge({
     const p = proxyPayload;
     if (!p) return;
 
-    const status = (p.status != null && p.status !== '' ? String(p.status) : 'Idle').trim();
-    const busy = status !== 'Idle';
-    const trace = p.trace;
-    const slotKey = traceSlotKey(trace);
-
-    if (busy) {
+    const status = payloadStatus(p);
+    const activeTraces = payloadActiveTraces(p);
+    const nextActive = new Map();
+    activeTraces.forEach((trace) => {
+      const slotKey = traceSlotKey(trace);
+      nextActive.set(slotKey, trace);
       clearLiveSuppression(proxyLiveSlotId(slotKey === 'unknown' ? null : slotKey));
       if (llmWindDownsRef.current.has(slotKey)) {
         llmWindDownsRef.current.delete(slotKey);
@@ -370,11 +417,10 @@ export default function ProxiesLiveNotificationBridge({
         }
         bumpLlmWindDowns();
       }
-      prevLlmBusyRef.current = true;
-      return;
-    }
+    });
 
-    if (prevLlmBusyRef.current && !busy && trace) {
+    prevActiveProxyTracesRef.current.forEach((trace, slotKey) => {
+      if (nextActive.has(slotKey)) return;
       const model = traceModelFields(trace).headerShort;
       const stepLine = pickLastStepName(trace?.steps);
       const chainIdFull = traceChainId(trace);
@@ -389,13 +435,13 @@ export default function ProxiesLiveNotificationBridge({
         traceIdShort: traceShortId(trace?.trace_id),
         traceId: nonEmptyString(trace?.trace_id),
         chainIdShort,
-        chainId: chainIdShort,
+        chainId: chainIdFull,
         steps: Array.isArray(trace.steps) ? trace.steps : [],
       });
       bumpLlmWindDowns();
-    }
+    });
 
-    prevLlmBusyRef.current = busy;
+    prevActiveProxyTracesRef.current = nextActive;
   }, [proxyPayload, bumpLlmWindDowns, clearLiveSuppression]);
 
   useEffect(() => {
@@ -455,10 +501,7 @@ export default function ProxiesLiveNotificationBridge({
   );
 
   const busyLlm = useMemo(() => {
-    const p = proxyPayload;
-    if (!p) return false;
-    const status = (p.status != null && p.status !== '' ? String(p.status) : 'Idle').trim();
-    return status !== 'Idle';
+    return payloadActiveTraces(proxyPayload).length > 0 || payloadBusy(proxyPayload);
   }, [proxyPayload]);
 
   useEffect(() => {
@@ -470,14 +513,15 @@ export default function ProxiesLiveNotificationBridge({
     const rows = [];
     const llmWd = llmWindDownsRef.current;
 
-    if (busyLlm && proxyPayload?.trace) {
-      const tk = traceSlotKey(proxyPayload.trace);
+    const activeTraces = payloadActiveTraces(proxyPayload);
+    activeTraces.forEach((trace) => {
+      const tk = traceSlotKey(trace);
       rows.push({
         id: proxyLiveSlotId(tk === 'unknown' ? null : tk),
         source: 'rag-fusion-proxy',
-        node: renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace),
+        node: renderLlmBusyCard({ ...proxyPayload, trace }, true, onOpenLlmProxyTrace),
       });
-    }
+    });
     llmWd.forEach((wd, traceKey) => {
       rows.push({
         id: proxyLiveSlotId(traceKey === 'unknown' ? null : traceKey),

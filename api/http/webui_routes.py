@@ -210,6 +210,7 @@ from api.http.proxy_status import (
 from api.http.proxy_trace import (
     annotate_proxy_trace_for_ui,
     clear_proxy_trace_buffer,
+    get_active_traces,
     get_current_trace,
     get_current_trace_updated_at,
     recent_proxy_traces,
@@ -1003,10 +1004,12 @@ def get_proxy_trace_current() -> Any:
     """Return the latest live trace from in-memory store."""
     try:
         trace = get_current_trace()
+        active_traces = get_active_traces()
         updated_at = get_current_trace_updated_at()
         return jsonify(
             {
                 "trace": trace,
+                "active_traces": active_traces,
                 "status": get_proxy_status_label(),
                 "updated_at": updated_at,
             }

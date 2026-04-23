@@ -32,7 +32,7 @@ from application.rag_tests.runner import (
 )
 from config import get_qdrant_url
 from core.contracts.webui_api import WEBUI_URL_PREFIX
-from api.http.proxy_trace import get_current_trace, recent_proxy_traces
+from api.http.proxy_trace import get_current_trace, get_response_artifacts, recent_proxy_traces
 from infrastructure.database import get_rag_test_runs_repository, get_settings_repository
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
 
@@ -101,6 +101,22 @@ def _find_trace_by_client_request_id(request_id: str) -> dict[str, Any] | None:
         req = tr.get("request") if isinstance(tr.get("request"), dict) else {}
         if str(req.get("client_request_id") or "") == rid:
             return tr
+    return None
+
+
+def _find_response_artifacts_for_request_id(request_id: str) -> dict[str, Any] | None:
+    rid = str(request_id or "").strip()
+    if not rid:
+        return None
+    artifacts = get_response_artifacts(rid)
+    if isinstance(artifacts, dict):
+        return artifacts
+    trace = _find_trace_by_client_request_id(rid) or {}
+    trace_id = str(trace.get("trace_id") or "").strip() if isinstance(trace, dict) else ""
+    if trace_id:
+        artifacts = get_response_artifacts(trace_id)
+        if isinstance(artifacts, dict):
+            return artifacts
     return None
 
 
@@ -746,6 +762,10 @@ def _rag_tests_run_worker(
 
                     elapsed_total_ms = int((time.time() - start_time) * 1000)
                     content = sse_full
+                    response_artifacts = _find_response_artifacts_for_request_id(request_id) or {}
+                    final_content = str(response_artifacts.get("final_content") or "")
+                    if final_content.strip():
+                        content = final_content
                     trace = _find_trace_by_client_request_id(request_id) or {}
                     trace_ok = bool(trace)
                     trace_rag = trace.get("rag") if trace_ok and isinstance(trace.get("rag"), dict) else {}

@@ -74,6 +74,132 @@ def test_rag_tests_worker_uses_v1_chat_completions_payload_parity(
     assert "RAG QUOTE" in captured.get("messages", [{}])[0].get("content", "")
 
 
+def test_rag_tests_worker_prefers_final_content_from_response_artifacts(
+    monkeypatch,
+) -> None:
+    import api.http.rag_tests_routes as routes
+
+    observed: dict[str, object] = {}
+    app = Flask(__name__)
+
+    @app.route("/v1/chat/completions", methods=["POST"])
+    def _v1_chat() -> Response:
+        def _gen():
+            yield f"data: {json.dumps({'choices': [{'delta': {'content': 'thinking text'}}]})}\n\n"
+            yield f"data: {json.dumps({'choices': [{'delta': {'content': ' final answer'}}]})}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return Response(_gen(), mimetype="text/event-stream")
+
+    def _validate_result(_test, content, _metadata, **_kwargs):
+        observed["content"] = content
+        return {
+            "status": "PASS",
+            "rag_used": True,
+            "confidence_label": "1/1 concepts found",
+            "missing_concepts": [],
+            "found_concepts": ["x"],
+        }
+
+    monkeypatch.setattr(
+        routes,
+        "_get_rag_tests_module",
+        lambda: (lambda: "", None, None, None, _validate_result),
+    )
+    monkeypatch.setattr(
+        routes,
+        "_find_response_artifacts_for_request_id",
+        lambda _rid: {"final_content": "final answer"},
+    )
+
+    job_id = "job-final-content"
+    routes._rag_test_jobs[job_id] = {
+        "status": "running",
+        "cancel_requested": False,
+        "progress": {},
+        "results": [],
+        "error": None,
+    }
+
+    with app.app_context():
+        routes._rag_tests_run_worker(
+            job_id=job_id,
+            app_context=app.app_context(),
+            tests_to_run=[{"id": "t1", "name": "T1", "question": "Q1", "expected_concepts": []}],
+            model="llama3",
+            collection_name="ios-docs",
+            prompt_name="system_senior_ios_assistant_v1",
+            temperature=0.0,
+            top_k=8,
+            concurrency=1,
+            testing_disable_rerank=True,
+            strict_mode=False,
+        )
+
+    assert observed["content"] == "final answer"
+
+
+def test_rag_tests_worker_falls_back_to_merged_sse_content_without_response_artifacts(
+    monkeypatch,
+) -> None:
+    import api.http.rag_tests_routes as routes
+
+    observed: dict[str, object] = {}
+    app = Flask(__name__)
+
+    @app.route("/v1/chat/completions", methods=["POST"])
+    def _v1_chat() -> Response:
+        def _gen():
+            yield f"data: {json.dumps({'choices': [{'delta': {'content': 'thinking text'}}]})}\n\n"
+            yield f"data: {json.dumps({'choices': [{'delta': {'content': ' final answer'}}]})}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return Response(_gen(), mimetype="text/event-stream")
+
+    def _validate_result(_test, content, _metadata, **_kwargs):
+        observed["content"] = content
+        return {
+            "status": "PASS",
+            "rag_used": True,
+            "confidence_label": "1/1 concepts found",
+            "missing_concepts": [],
+            "found_concepts": ["x"],
+        }
+
+    monkeypatch.setattr(
+        routes,
+        "_get_rag_tests_module",
+        lambda: (lambda: "", None, None, None, _validate_result),
+    )
+    monkeypatch.setattr(routes, "_find_response_artifacts_for_request_id", lambda _rid: None)
+
+    job_id = "job-merged-fallback"
+    routes._rag_test_jobs[job_id] = {
+        "status": "running",
+        "cancel_requested": False,
+        "progress": {},
+        "results": [],
+        "error": None,
+    }
+
+    with app.app_context():
+        routes._rag_tests_run_worker(
+            job_id=job_id,
+            app_context=app.app_context(),
+            tests_to_run=[{"id": "t1", "name": "T1", "question": "Q1", "expected_concepts": []}],
+            model="llama3",
+            collection_name="ios-docs",
+            prompt_name="system_senior_ios_assistant_v1",
+            temperature=0.0,
+            top_k=8,
+            concurrency=1,
+            testing_disable_rerank=True,
+            strict_mode=False,
+        )
+
+    assert observed["content"] == "thinking text final answer"
+
+
 def test_rag_tests_runs_delete_selected_ids(tmp_path) -> None:
     import api.http.rag_tests_routes as routes
     from infrastructure.database.rag_test_runs_repository import RagTestRunsRepository

@@ -311,6 +311,8 @@ function ModelTester({ sessionId }) {
           <div className="tester-mode-section tester-mode-section--fusion">
             <h4 className="tester-mode-section-title">RAG Fusion</h4>
 
+              <div className="tester-settings-separator">Model</div>
+
               <div className="form-group">
                 <label htmlFor="tester-fusion-model">Model</label>
                 <select
@@ -353,6 +355,8 @@ function ModelTester({ sessionId }) {
                 )}
               </div>
 
+              <div className="tester-settings-separator">Generation</div>
+
               <CoreUISlider
                 className="model-tester-slider"
                 label="Temperature"
@@ -391,6 +395,8 @@ function ModelTester({ sessionId }) {
                 </select>
               </div>
 
+              <div className="tester-settings-separator">Retrieval</div>
+
               <div className="form-group checkbox-group">
                 <label>
                   <input
@@ -417,6 +423,8 @@ function ModelTester({ sessionId }) {
                     />
                     <div className="form-hint">Number of RAG chunks to retrieve (1–20) for this tester path.</div>
                   </div>
+
+                  <div className="tester-settings-separator">Sources</div>
 
                   <div className="form-group checkbox-group">
                     <label>

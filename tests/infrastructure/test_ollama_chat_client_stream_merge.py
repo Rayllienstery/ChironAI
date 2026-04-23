@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from infrastructure.ollama.chat_client import _merge_ollama_assistant_message_parts
+import json
+
+import pytest
+
+import infrastructure.ollama.chat_client as chat_client_module
+from infrastructure.ollama.chat_client import OllamaChatClient, _merge_ollama_assistant_message_parts
 
 
 def test_merge_tool_calls_preserves_thought_signature_across_chunks() -> None:
@@ -65,3 +70,67 @@ def test_merge_tool_calls_keeps_existing_when_later_chunk_empty() -> None:
     assert merged2["tool_calls"][0]["id"] == "call_2"
     assert merged2["tool_calls"][0]["function"]["name"] == "read"
 
+
+def test_iter_chat_api_stream_events_separates_thinking_and_final_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def iter_lines(self, decode_unicode: bool = True):  # noqa: ARG002
+            rows = [
+                {"message": {"thinking": "Plan"}},
+                {"message": {"thinking": "Plan more", "content": "Answer"}},
+                {"done": True, "message": {"thinking": "Plan more", "content": "Answer done"}},
+            ]
+            for row in rows:
+                yield json.dumps(row)
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(chat_client_module.requests, "post", lambda *args, **kwargs: FakeResponse())
+
+    client = OllamaChatClient(base_url="http://example.test/api/chat", model="fake")
+    events = list(client.iter_chat_api_stream_events({"model": "fake", "messages": []}))
+
+    assert [item for item in events if item[0] in {"thinking_delta", "content_delta"}] == [
+        ("thinking_delta", "Plan"),
+        ("thinking_delta", " more"),
+        ("content_delta", "Answer"),
+        ("content_delta", " done"),
+    ]
+    assert events[-1][0] == "done"
+
+
+def test_iter_chat_api_stream_openai_parts_keeps_visible_stream_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def iter_lines(self, decode_unicode: bool = True):  # noqa: ARG002
+            rows = [
+                {"message": {"thinking": "Plan"}},
+                {"message": {"thinking": "Plan more", "content": "Answer"}},
+                {"done": True, "message": {"thinking": "Plan more", "content": "Answer done"}},
+            ]
+            for row in rows:
+                yield json.dumps(row)
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(chat_client_module.requests, "post", lambda *args, **kwargs: FakeResponse())
+
+    client = OllamaChatClient(base_url="http://example.test/api/chat", model="fake")
+    parts = list(client.iter_chat_api_stream_openai_parts({"model": "fake", "messages": []}))
+
+    assert parts == [
+        ("content", "Plan"),
+        ("content", " more"),
+        ("content", "Answer"),
+        ("content", " done"),
+    ]
