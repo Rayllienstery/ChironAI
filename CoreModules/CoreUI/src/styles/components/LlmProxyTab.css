@@ -66,7 +66,7 @@
   font-weight: 600;
   letter-spacing: 0.02em;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--coreui-shadow-panel);
   transition:
     background 0.2s ease,
     box-shadow 0.2s ease,
@@ -77,13 +77,13 @@
 .llm-proxy-open-logs-btn:hover {
   border-color: var(--md-sys-color-primary);
   background: var(--md-sys-color-surface-container-highest);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--coreui-shadow-popover);
   transform: translateY(-1px);
 }
 
 .llm-proxy-open-logs-btn:active {
   transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--coreui-shadow-panel);
 }
 
 .llm-proxy-open-logs-btn:focus-visible {
@@ -130,6 +130,18 @@
   margin: var(--md-sys-spacing-md) 0 var(--md-sys-spacing-xs) 0;
   font: var(--md-sys-typescale-title-small-font);
   color: var(--md-sys-color-on-surface);
+}
+
+.llm-proxy-section-gap {
+  margin-bottom: var(--md-sys-spacing-md);
+}
+
+.llm-proxy-section-gap-sm {
+  margin-top: var(--md-sys-spacing-sm);
+}
+
+.llm-proxy-instructions-list {
+  margin: 0;
 }
 /* LLM Proxy Builds list - OllamaTab-inspired card design */
 .llm-proxy-builds-list {
@@ -629,6 +641,35 @@
   line-height: 1.55;
   margin: 0;
   padding-left: 30px;
+}
+
+.llm-proxy-toggle-explanation--emphasis {
+  margin-top: var(--md-sys-spacing-sm);
+  color: var(--md-sys-color-on-tertiary-container);
+}
+
+.llm-proxy-toggle-with-explanation--primary {
+  border-left: 3px solid var(--md-sys-color-primary);
+}
+
+.llm-proxy-toggle-with-explanation--tertiary {
+  border-left: 3px solid var(--md-sys-color-tertiary);
+}
+
+.llm-proxy-toggle-row--sub {
+  margin-top: 4px;
+}
+
+.llm-proxy-toggle-label--sub {
+  font-size: 0.8125rem;
+}
+
+.llm-proxy-info-card--dimmed {
+  opacity: 0.6;
+}
+
+.llm-proxy-info-card-title--compact {
+  font-size: 1rem;
 }
 
 /* Modal Header - Material Design 3 Dialog style */

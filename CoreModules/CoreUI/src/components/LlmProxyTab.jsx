@@ -235,16 +235,12 @@ function LlmProxyTab({
               <strong>Web Interaction</strong> for global web-supplement toggles.
             </p>
             {typeof onNavigateToRag === 'function' && (
-              <div className="dashboard-card-actions" style={{ marginTop: 8 }}>
+              <div className="dashboard-card-actions coreui-mt-sm">
                 <CoreUIButton variant="primary" onClick={onNavigateToRag}>
                   Open RAG / Qdrant
                 </CoreUIButton>
                 {typeof onOpenRagModels === 'function' && (
-                  <CoreUIButton
-                    variant="primary"
-                    style={{ marginLeft: 8 }}
-                    onClick={onOpenRagModels}
-                  >
+                  <CoreUIButton variant="primary" onClick={onOpenRagModels}>
                     Jump to RAG models
                   </CoreUIButton>
                 )}

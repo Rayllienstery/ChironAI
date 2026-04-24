@@ -101,20 +101,20 @@
 }
 
 .rag-pipeline-legend--core {
-  border-left-color: #43a047;
-  background: rgba(67, 160, 71, 0.1);
-  color: var(--md-sys-color-on-surface-variant);
+  border-left-color: var(--coreui-color-success);
+  background: var(--coreui-color-success-container);
+  color: var(--coreui-color-on-success-container);
 }
 
 .rag-pipeline-legend--on {
-  border-left-color: #1e88e5;
-  background: rgba(30, 136, 229, 0.1);
-  color: var(--md-sys-color-on-surface-variant);
+  border-left-color: var(--coreui-color-info);
+  background: var(--coreui-color-info-container);
+  color: var(--coreui-color-on-info-container);
 }
 
 .rag-pipeline-legend--off {
-  border-left-color: rgba(0, 0, 0, 0.2);
-  background: rgba(0, 0, 0, 0.04);
+  border-left-color: var(--coreui-border-subtle);
+  background: var(--coreui-surface-panel-alt);
   color: var(--md-sys-color-on-surface-variant);
   opacity: 0.85;
 }
@@ -163,15 +163,15 @@
 }
 
 .rag-pipeline-step-card--core {
-  border-left-color: #43a047;
+  border-left-color: var(--coreui-color-success);
 }
 
 .rag-pipeline-step-card--option_on {
-  border-left-color: #1e88e5;
+  border-left-color: var(--coreui-color-info);
 }
 
 .rag-pipeline-step-card--option_off {
-  border-left-color: rgba(0, 0, 0, 0.24);
+  border-left-color: var(--coreui-border-strong);
   opacity: 0.86;
 }
 
@@ -219,12 +219,6 @@
 .rag-pipeline-step-card__badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 6px;
-  border-radius: var(--md-sys-shape-corner-small);
-  border: 1px solid rgba(30, 136, 229, 0.35);
-  background: rgba(30, 136, 229, 0.1);
-  color: #1565c0;
-  font: var(--md-sys-typescale-label-small-font);
   letter-spacing: 0.02em;
 }
 
@@ -246,7 +240,7 @@
   position: fixed;
   inset: 0;
   z-index: 10010;
-  background: rgba(0, 0, 0, 0.42);
+  background: var(--coreui-color-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -259,10 +253,10 @@
   max-height: min(88vh, 860px);
   display: flex;
   flex-direction: column;
-  background: var(--md-sys-color-surface);
+  background: var(--coreui-surface-modal);
   color: var(--md-sys-color-on-surface);
-  border-radius: var(--md-sys-shape-corner-large);
-  box-shadow: var(--md-sys-elevation-level3);
+  border-radius: var(--coreui-radius-modal);
+  box-shadow: var(--coreui-shadow-modal);
   border: 1px solid var(--md-sys-color-outline-variant);
   min-height: 0;
 }
@@ -291,7 +285,7 @@
   border: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface-container-high);
   color: var(--md-sys-color-on-surface);
-  border-radius: 999px;
+  border-radius: var(--coreui-radius-pill);
   padding: 6px 14px;
   cursor: pointer;
   font: var(--md-sys-typescale-label-large-font);
@@ -318,12 +312,12 @@
 }
 
 .rag-pipeline-step-arrow--core .material-symbols-outlined {
-  color: #2e7d32;
+  color: var(--coreui-color-success);
   opacity: 0.8;
 }
 
 .rag-pipeline-step-arrow--option_on .material-symbols-outlined {
-  color: #1565c0;
+  color: var(--coreui-color-info);
   opacity: 0.8;
 }
 
@@ -583,7 +577,7 @@
 .rag-sheet-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--coreui-color-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -593,9 +587,9 @@
 .rag-sheet {
   position: relative;
   z-index: 1001;
-  background: var(--md-sys-color-surface);
-  border-radius: var(--md-sys-shape-corner-large);
-  box-shadow: var(--md-sys-elevation-level3);
+  background: var(--coreui-surface-modal);
+  border-radius: var(--coreui-radius-modal);
+  box-shadow: var(--coreui-shadow-modal);
   max-width: 90vw;
   max-height: 85vh;
   display: flex;
@@ -1012,6 +1006,47 @@
   font: var(--md-sys-typescale-body-small-font);
   color: var(--md-sys-color-on-surface-variant);
   line-height: 1.45;
+}
+
+.rag-trigger-test--first {
+  border-top: none;
+  padding-top: 0;
+}
+
+.rag-trigger-test-title--compact {
+  margin-bottom: 8px;
+}
+
+.rag-trigger-hint--tight {
+  margin-top: 0;
+}
+
+.rag-trigger-hint--offset {
+  margin-top: 8px;
+}
+
+.rag-trigger-spacer {
+  height: 12px;
+}
+
+.rag-trigger-spacer--lg {
+  height: 20px;
+}
+
+.rag-trigger-inline-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.rag-adv-option-line {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.rag-trigger-actions {
+  margin-top: 12px;
 }
 
 .rag-adv-option-body strong {

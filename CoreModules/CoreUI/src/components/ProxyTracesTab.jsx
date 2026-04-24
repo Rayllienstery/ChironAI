@@ -129,9 +129,9 @@ export default function ProxyTracesTab() {
                 {t.error ? ` · error: ${t.error}` : ''}
               </summary>
               <AgentTraceSummaryCards summary={summarizeAgentTraceMeta(t)} />
-              <details className="dashboard-trace-item" style={{ marginTop: 12 }}>
+              <details className="dashboard-trace-item coreui-section-block">
                 <summary>Full JSON</summary>
-                <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(t, null, 2)}</pre>
+                <pre className="coreui-mono-block">{JSON.stringify(t, null, 2)}</pre>
               </details>
             </details>
           ))}
@@ -139,13 +139,13 @@ export default function ProxyTracesTab() {
       </section>
 
       <section className="app-default-card" aria-labelledby={liveHeadingId}>
-        <h3 id={liveHeadingId} className="dashboard-card-header" style={{ margin: 0 }}>
+        <h3 id={liveHeadingId} className="dashboard-card-header">
           Live buffer (RAM)
         </h3>
-        <p className="dashboard-card-muted" style={{ marginTop: 8 }}>
+        <p className="dashboard-card-muted">
           In-memory runs only until process restart; polled every few seconds while this tab is open.
         </p>
-        <div className="dashboard-card-scroll" style={{ maxHeight: 200 }}>
+        <div className="dashboard-card-scroll coreui-mono-block--compact">
           {liveTraces.length === 0 && <p className="dashboard-card-muted">No in-memory traces.</p>}
           {liveTraces.map((t, i) => (
             <div key={`${t.trace_id || 'trace'}-l-${i}`} className="dashboard-kv-row">

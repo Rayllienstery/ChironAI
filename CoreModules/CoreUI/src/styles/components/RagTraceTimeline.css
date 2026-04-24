@@ -1,11 +1,11 @@
 /* Material Dashboard–style vertical timeline (Orders overview inspired) */
 .rag-trace-card {
-  background: var(--dashboard-card-bg, #fff);
-  border-radius: 12px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  padding: 1rem 1.25rem 1.25rem;
-  margin-bottom: 1rem;
-  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.06));
+  background: var(--coreui-surface-panel);
+  border-radius: var(--coreui-radius-card);
+  box-shadow: var(--coreui-shadow-panel);
+  padding: var(--md-sys-spacing-md) calc(var(--md-sys-spacing-lg) - 4px) calc(var(--md-sys-spacing-lg) - 4px);
+  margin-bottom: var(--md-sys-spacing-md);
+  border: 1px solid var(--coreui-border-subtle);
 }
 
 .rag-trace-card-header {
@@ -14,20 +14,20 @@
 
 .rag-trace-card-title {
   margin: 0;
-  font-size: 1rem;
+  font: var(--md-sys-typescale-title-medium-font);
   font-weight: 700;
-  color: var(--text-primary, #1a1a1a);
+  color: var(--md-sys-color-on-surface);
   letter-spacing: -0.01em;
 }
 
 .rag-trace-card-subtitle {
   margin: 0.2rem 0 0;
-  font-size: 0.8125rem;
-  color: var(--text-muted, #7b809a);
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 .rag-trace-card-subtitle strong {
-  color: var(--text-primary, #344767);
+  color: var(--md-sys-color-on-surface);
   font-weight: 700;
 }
 
@@ -45,7 +45,7 @@
   top: 8px;
   bottom: 8px;
   width: 2px;
-  background: var(--border-timeline, #e9ecef);
+  background: var(--coreui-border-subtle);
   border-radius: 1px;
 }
 
@@ -62,74 +62,74 @@
   flex-shrink: 0;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--md-sys-shape-corner-small);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
   z-index: 1;
-  background: #f8f9fa;
-  color: #344767;
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
 }
 
 .rag-trace-icon--prep {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: var(--coreui-color-success-container);
+  color: var(--coreui-color-success);
 }
 
 .rag-trace-icon--search {
-  background: #e3f2fd;
-  color: #1565c0;
+  background: var(--coreui-color-info-container);
+  color: var(--coreui-color-info);
 }
 
 .rag-trace-icon--expand {
-  background: #fff3e0;
-  color: #ef6c00;
+  background: var(--coreui-color-warning-container);
+  color: var(--coreui-color-warning);
 }
 
 .rag-trace-icon--meta {
-  background: #f3e5f5;
-  color: #7b1fa2;
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-tertiary);
 }
 
 .rag-trace-icon--rerank {
-  background: #fce4ec;
-  color: #c2185b;
+  background: color-mix(in srgb, var(--md-sys-color-tertiary) 14%, var(--md-sys-color-surface));
+  color: var(--md-sys-color-tertiary);
 }
 
 .rag-trace-icon--context {
-  background: #eceff1;
-  color: #455a64;
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 .rag-trace-icon--coverage {
-  background: #e0f7fa;
-  color: #00838f;
+  background: color-mix(in srgb, var(--coreui-color-info) 10%, var(--md-sys-color-surface));
+  color: var(--coreui-color-info);
 }
 
 .rag-trace-icon--chat {
-  background: #e8eaf6;
-  color: #3949ab;
+  background: var(--coreui-surface-primary-soft-12);
+  color: var(--md-sys-color-primary);
 }
 
 .rag-trace-icon--metrics {
-  background: #ece7f3;
-  color: #5e35b1;
+  background: var(--coreui-surface-primary-soft-14);
+  color: var(--md-sys-color-primary);
 }
 
 .rag-trace-icon--gate {
-  background: #fff8e1;
-  color: #f57f17;
+  background: var(--coreui-color-warning-container);
+  color: var(--coreui-color-warning);
 }
 
 .rag-trace-icon--supplemental {
-  background: #fbe9e7;
-  color: #bf360c;
+  background: var(--coreui-surface-warning-soft-12);
+  color: var(--coreui-color-warning);
 }
 
 .rag-trace-card--overview {
   border-style: dashed;
-  border-color: var(--border-subtle, rgba(0, 0, 0, 0.12));
+  border-color: var(--coreui-border-strong);
 }
 
 /* Pipeline map: core path vs optional toggles (RagTab overview only) */
@@ -143,18 +143,18 @@
 }
 
 .rag-trace-item--overview-core {
-  border-left-color: #43a047;
-  background: rgba(67, 160, 71, 0.06);
+  border-left-color: var(--coreui-color-success);
+  background: color-mix(in srgb, var(--coreui-color-success) 8%, transparent);
 }
 
 .rag-trace-item--overview-option_on {
-  border-left-color: #1e88e5;
-  background: rgba(30, 136, 229, 0.08);
+  border-left-color: var(--coreui-color-info);
+  background: color-mix(in srgb, var(--coreui-color-info) 10%, transparent);
 }
 
 .rag-trace-item--overview-option_off {
-  border-left-color: rgba(0, 0, 0, 0.12);
-  background: rgba(0, 0, 0, 0.02);
+  border-left-color: var(--coreui-border-strong);
+  background: var(--coreui-color-overlay);
   opacity: 0.72;
 }
 
@@ -171,10 +171,10 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(30, 136, 229, 0.14);
-  color: #1565c0;
-  border: 1px solid rgba(30, 136, 229, 0.35);
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: color-mix(in srgb, var(--coreui-color-info) 14%, transparent);
+  color: var(--coreui-color-info);
+  border: 1px solid color-mix(in srgb, var(--coreui-color-info) 35%, transparent);
 }
 
 .rag-trace-icon--optional.rag-trace-icon--skip {
@@ -183,8 +183,8 @@
 }
 
 .rag-trace-icon--skip {
-  background: #fafafa;
-  color: #9e9e9e;
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-outline);
 }
 
 .rag-trace-body {
@@ -196,124 +196,13 @@
 .rag-trace-title {
   font-size: 0.875rem;
   font-weight: 700;
-  color: var(--text-primary, #344767);
+  color: var(--md-sys-color-on-surface);
   line-height: 1.3;
 }
 
 .rag-trace-subtitle {
   font-size: 0.75rem;
-  color: var(--text-muted, #7b809a);
+  color: var(--md-sys-color-on-surface-variant);
   margin-top: 0.15rem;
   line-height: 1.35;
-}
-
-@media (prefers-color-scheme: dark) {
-  .rag-trace-card {
-    background: var(--dashboard-card-bg, #1e1e1e);
-    border-color: rgba(255, 255, 255, 0.08);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-  }
-
-  .rag-trace-card-title {
-    color: var(--text-primary, #e8e8e8);
-  }
-
-  .rag-trace-list::before {
-    background: rgba(255, 255, 255, 0.12);
-  }
-
-  .rag-trace-title {
-    color: var(--text-primary, #e8e8e8);
-  }
-
-  .rag-trace-subtitle {
-    color: var(--text-muted, #a0a0a0);
-  }
-
-  .rag-trace-icon {
-    background: #2a2a2a;
-    color: #ccc;
-  }
-
-  .rag-trace-icon--prep {
-    background: #1b3d1f;
-    color: #81c784;
-  }
-
-  .rag-trace-icon--search {
-    background: #1a2f4a;
-    color: #64b5f6;
-  }
-
-  .rag-trace-icon--expand {
-    background: #3d2e1a;
-    color: #ffb74d;
-  }
-
-  .rag-trace-icon--meta {
-    background: #2d1f3d;
-    color: #ce93d8;
-  }
-
-  .rag-trace-icon--rerank {
-    background: #3d1f2a;
-    color: #f48fb1;
-  }
-
-  .rag-trace-icon--context {
-    background: #2a3033;
-    color: #90a4ae;
-  }
-
-  .rag-trace-icon--coverage {
-    background: #1a3336;
-    color: #4dd0e1;
-  }
-
-  .rag-trace-icon--chat {
-    background: #252838;
-    color: #9fa8da;
-  }
-
-  .rag-trace-icon--metrics {
-    background: #2a2440;
-    color: #b39ddb;
-  }
-
-  .rag-trace-icon--gate {
-    background: #3d3518;
-    color: #ffd54f;
-  }
-
-  .rag-trace-icon--supplemental {
-    background: #3d241f;
-    color: #ffab91;
-  }
-
-  .rag-trace-icon--skip {
-    background: #2a2a2a;
-    color: #888;
-  }
-
-  .rag-trace-item--overview-core {
-    border-left-color: #66bb6a;
-    background: rgba(102, 187, 106, 0.12);
-  }
-
-  .rag-trace-item--overview-option_on {
-    border-left-color: #64b5f6;
-    background: rgba(100, 181, 246, 0.1);
-  }
-
-  .rag-trace-item--overview-option_off {
-    border-left-color: rgba(255, 255, 255, 0.15);
-    background: rgba(255, 255, 255, 0.03);
-    opacity: 0.65;
-  }
-
-  .rag-trace-overview-badge {
-    background: rgba(100, 181, 246, 0.18);
-    color: #90caf9;
-    border-color: rgba(100, 181, 246, 0.35);
-  }
 }

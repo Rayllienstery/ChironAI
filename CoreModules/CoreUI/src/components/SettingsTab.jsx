@@ -225,7 +225,7 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
 
           <div className="form-group">
             <label>Service status poll interval (seconds)</label>
-            <p style={{ margin: '0 0 4px 0', fontSize: '0.875rem', opacity: 0.85 }}>
+            <p className="settings-form-hint coreui-text-muted-sm">
               How often the app refreshes Ollama, Open WebUI, and RAG/Qdrant status (sidebar dots and polling).
             </p>
             <input

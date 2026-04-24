@@ -306,9 +306,8 @@ export function DeletePipelineConfirmModal({
         </button>
         <button
           type="button"
-          className="crawler-button primary"
+          className="crawler-button primary danger"
           onClick={onConfirm}
-          style={{ background: "var(--md-sys-color-error, #b3261e)" }}
         >
           Delete
         </button>
@@ -602,7 +601,7 @@ export function SourceModal({
             type="text"
             value={form.id}
             disabled
-            style={{ opacity: 0.6, cursor: "not-allowed" }}
+            className="crawler-input-disabled"
           />
           <div className="form-hint">Source ID cannot be changed</div>
         </div>

@@ -78,6 +78,39 @@
   --md-sys-color-on-error: #ffffff;
   --md-sys-color-error-container: #ffdad6;
   --md-sys-color-on-error-container: #410002;
+  --coreui-color-success: #2e7d32;
+  --coreui-color-on-success: #ffffff;
+  --coreui-color-success-container: color-mix(in srgb, var(--coreui-color-success) 12%, var(--md-sys-color-surface));
+  --coreui-color-on-success-container: #143116;
+  --coreui-color-warning: #b26a00;
+  --coreui-color-on-warning: #ffffff;
+  --coreui-color-warning-container: color-mix(in srgb, #ffc107 22%, var(--md-sys-color-surface));
+  --coreui-color-on-warning-container: #5d3b00;
+  --coreui-color-info: #1565c0;
+  --coreui-color-on-info: #ffffff;
+  --coreui-color-info-container: color-mix(in srgb, var(--coreui-color-info) 14%, var(--md-sys-color-surface));
+  --coreui-color-on-info-container: #0c3c72;
+  --coreui-color-scrim: rgba(0, 0, 0, 0.48);
+  --coreui-color-scrim-strong: rgba(0, 0, 0, 0.62);
+  --coreui-color-overlay: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+  --coreui-border-subtle: color-mix(in srgb, var(--md-sys-color-outline) 32%, transparent);
+  --coreui-border-strong: color-mix(in srgb, var(--md-sys-color-outline) 52%, transparent);
+  --coreui-focus-ring: color-mix(in srgb, var(--md-sys-color-primary) 34%, transparent);
+  --coreui-interactive-hover-bg: color-mix(in srgb, var(--md-sys-color-on-surface) 7%, transparent);
+  --coreui-interactive-active-bg: color-mix(in srgb, var(--md-sys-color-on-surface) 11%, transparent);
+  --coreui-interactive-disabled-opacity: 0.5;
+  --coreui-surface-panel: var(--md-sys-color-surface);
+  --coreui-surface-panel-alt: var(--md-sys-color-surface-container-low);
+  --coreui-surface-panel-raised: var(--md-sys-color-surface-container);
+  --coreui-surface-code: var(--md-sys-color-surface-container-low);
+  --coreui-surface-modal: var(--md-sys-color-surface);
+  --coreui-shadow-panel: var(--md-sys-elevation-level1);
+  --coreui-shadow-popover: var(--md-sys-elevation-level3);
+  --coreui-shadow-modal: var(--md-sys-elevation-level4);
+  --coreui-radius-card: var(--md-sys-shape-corner-medium);
+  --coreui-radius-panel: var(--md-sys-shape-corner-large);
+  --coreui-radius-pill: var(--md-sys-shape-corner-full);
+  --coreui-radius-modal: var(--md-sys-shape-corner-large);
   
   /* Elevation */
   --md-sys-elevation-level0: none;
@@ -159,9 +192,36 @@
   --app-tab-error-badge-color: var(--md-sys-color-error);
 
   /* Semi-transparent accents (follow current primary / tertiary — no fixed purple) */
+  --md-sys-color-primary-tint-8: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+  --md-sys-color-primary-tint-10: color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent);
   --md-sys-color-primary-tint-12: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+  --md-sys-color-primary-tint-14: color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
   --md-sys-color-primary-tint-15: color-mix(in srgb, var(--md-sys-color-primary) 15%, transparent);
+  --md-sys-color-primary-tint-16: color-mix(in srgb, var(--md-sys-color-primary) 16%, transparent);
+  --md-sys-color-primary-tint-18: color-mix(in srgb, var(--md-sys-color-primary) 18%, transparent);
+  --md-sys-color-primary-tint-25: color-mix(in srgb, var(--md-sys-color-primary) 25%, transparent);
+  --md-sys-color-primary-tint-35: color-mix(in srgb, var(--md-sys-color-primary) 35%, transparent);
+  --md-sys-color-primary-outline-40: color-mix(in srgb, var(--md-sys-color-primary) 40%, var(--md-sys-color-outline-variant));
+  --coreui-button-primary-hover: color-mix(in srgb, var(--md-sys-color-primary) 88%, black);
+  --coreui-button-danger-hover: color-mix(in srgb, var(--md-sys-color-error-container) 86%, black);
   --md-sys-color-tertiary-tint-12: color-mix(in srgb, var(--md-sys-color-tertiary) 12%, transparent);
+  --coreui-surface-primary-soft-12: color-mix(in srgb, var(--md-sys-color-primary) 12%, var(--md-sys-color-surface));
+  --coreui-surface-primary-soft-14: color-mix(in srgb, var(--md-sys-color-primary) 14%, var(--md-sys-color-surface));
+  --coreui-surface-info-soft-10: color-mix(in srgb, var(--coreui-color-info) 10%, var(--md-sys-color-surface));
+  --coreui-surface-warning-soft-12: color-mix(in srgb, var(--coreui-color-warning) 12%, var(--md-sys-color-surface));
+  --coreui-surface-primary-container-soft: color-mix(in srgb, var(--md-sys-color-primary-container) 35%, transparent);
+  --coreui-surface-error-container-soft: color-mix(in srgb, var(--md-sys-color-error-container) 45%, transparent);
+  --coreui-pulse-primary-40: color-mix(in srgb, var(--md-sys-color-primary) 40%, transparent);
+  --coreui-pulse-primary-45: color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent);
+  --coreui-chart-1: var(--md-sys-color-primary);
+  --coreui-chart-2: var(--md-sys-color-tertiary);
+  --coreui-chart-3: var(--md-sys-color-secondary);
+  --coreui-chart-4: var(--md-sys-color-primary-container);
+  --coreui-chart-5: var(--md-sys-color-secondary-container);
+  --coreui-chart-6: var(--md-sys-color-on-surface-variant);
+  --coreui-chart-7: var(--md-sys-color-outline);
+  --coreui-chart-8: var(--md-sys-color-on-primary-container);
+  --coreui-chart-9: var(--md-sys-color-surface-tint-neutral);
 
   /* CoreUI sidebar: active pill + collapsed rail follow current accent */
   --coreui-sidenav-active-bg: var(--md-sys-color-primary);
@@ -175,6 +235,21 @@
   /* Collapsed rail is always dark-tinted; keep icons readable (not --on-primary). */
   --coreui-sidenav-rail-fg: #ffffff;
   --coreui-sidenav-rail-fg-muted: rgba(255, 255, 255, 0.82);
+  --coreui-sidenav-rail-border: rgba(255, 255, 255, 0.08);
+  --coreui-sidenav-rail-divider: rgba(255, 255, 255, 0.1);
+  --coreui-sidenav-rail-hover: rgba(255, 255, 255, 0.08);
+  --coreui-sidenav-rail-hover-strong: rgba(255, 255, 255, 0.12);
+  --coreui-sidenav-rail-logo-bg: rgba(255, 255, 255, 0.15);
+  --coreui-sidenav-rail-active-outline: rgba(255, 255, 255, 0.25);
+  --coreui-sidenav-rail-active-outline-strong: rgba(255, 255, 255, 0.35);
+  --coreui-sidenav-rail-active-outline-stronger: rgba(255, 255, 255, 0.65);
+  --coreui-sidenav-rail-stop-bg: rgba(255, 255, 255, 0.14);
+  --coreui-sidenav-rail-stop-bg-hover: rgba(255, 255, 255, 0.22);
+  --coreui-shadow-sidebar: 0 0.25rem 1.25rem color-mix(in srgb, var(--md-sys-color-shadow, #000) 8%, transparent);
+  --coreui-shadow-sidebar-strong: 0 0.25rem 1.25rem color-mix(in srgb, var(--md-sys-color-shadow, #000) 20%, transparent);
+  --coreui-shadow-sidebar-dock:
+    0 -1px 0 var(--md-sys-color-outline-variant),
+    0 -10px 24px -10px color-mix(in srgb, var(--md-sys-color-shadow, #000) 10%, transparent);
   --coreui-sidebar-width-expanded: 260px;
   --coreui-sidebar-width-collapsed: 72px;
 }
@@ -242,6 +317,39 @@
   --md-sys-color-on-error: #690005;
   --md-sys-color-error-container: #93000a;
   --md-sys-color-on-error-container: #ffdad6;
+  --coreui-color-success: #81c784;
+  --coreui-color-on-success: #143116;
+  --coreui-color-success-container: color-mix(in srgb, var(--coreui-color-success) 16%, var(--md-sys-color-surface));
+  --coreui-color-on-success-container: #d8f4d9;
+  --coreui-color-warning: #ffd54f;
+  --coreui-color-on-warning: #5d3b00;
+  --coreui-color-warning-container: color-mix(in srgb, var(--coreui-color-warning) 16%, var(--md-sys-color-surface));
+  --coreui-color-on-warning-container: #fff0c2;
+  --coreui-color-info: #64b5f6;
+  --coreui-color-on-info: #0c3c72;
+  --coreui-color-info-container: color-mix(in srgb, var(--coreui-color-info) 16%, var(--md-sys-color-surface));
+  --coreui-color-on-info-container: #d7ecff;
+  --coreui-color-scrim: rgba(0, 0, 0, 0.56);
+  --coreui-color-scrim-strong: rgba(0, 0, 0, 0.72);
+  --coreui-color-overlay: color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
+  --coreui-border-subtle: color-mix(in srgb, var(--md-sys-color-outline) 36%, transparent);
+  --coreui-border-strong: color-mix(in srgb, var(--md-sys-color-outline) 56%, transparent);
+  --coreui-focus-ring: color-mix(in srgb, var(--md-sys-color-primary) 46%, transparent);
+  --coreui-interactive-hover-bg: color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
+  --coreui-interactive-active-bg: color-mix(in srgb, var(--md-sys-color-on-surface) 14%, transparent);
+  --coreui-surface-panel: var(--md-sys-color-surface);
+  --coreui-surface-panel-alt: var(--md-sys-color-surface-container-low);
+  --coreui-surface-panel-raised: var(--md-sys-color-surface-container);
+  --coreui-shadow-sidebar: 0 0.25rem 1.25rem color-mix(in srgb, var(--md-sys-color-shadow, #000) 35%, transparent);
+  --coreui-shadow-sidebar-strong: 0 0.25rem 1.25rem color-mix(in srgb, var(--md-sys-color-shadow, #000) 45%, transparent);
+  --coreui-shadow-sidebar-dock:
+    0 -1px 0 var(--coreui-sidenav-rail-border),
+    0 -10px 24px -10px color-mix(in srgb, var(--md-sys-color-shadow, #000) 45%, transparent);
+  --coreui-surface-code: var(--md-sys-color-surface-container-low);
+  --coreui-surface-modal: var(--md-sys-color-surface);
+  --coreui-shadow-panel: var(--md-sys-elevation-level1);
+  --coreui-shadow-popover: var(--md-sys-elevation-level3);
+  --coreui-shadow-modal: var(--md-sys-elevation-level4);
   
   --md-sys-elevation-level1: 0px 1px 3px 0px rgba(0, 0, 0, 0.3), 0px 4px 8px 3px rgba(0, 0, 0, 0.15);
   --md-sys-elevation-level2: 0px 2px 3px 0px rgba(0, 0, 0, 0.3), 0px 6px 10px 4px rgba(0, 0, 0, 0.15);

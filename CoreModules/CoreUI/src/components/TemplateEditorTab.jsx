@@ -812,7 +812,7 @@ function TemplateEditorTab() {
                     </div>
                   )}
                   {readmePrompts.length > 0 && regularPrompts.length > 0 && (
-                    <div style={{ height: 'var(--md-sys-spacing-lg)' }} />
+                    <div className="template-section-spacer" />
                   )}
                   {regularPrompts.length > 0 && (
                     <div className="template-section">

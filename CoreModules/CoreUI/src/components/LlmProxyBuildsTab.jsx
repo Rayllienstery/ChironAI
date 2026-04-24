@@ -505,11 +505,11 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
         on <code>GET /v1/models</code> on the main server and on the build proxy port (default 8087).
       </p>
       {(urls.main || urls.build_proxy) && (
-        <section className="app-default-card" style={{ marginBottom: 16 }}>
+        <section className="app-default-card llm-proxy-section-gap">
           <div className="dashboard-card-header">
             <h3>OpenAI list endpoints</h3>
           </div>
-          <ul className="settings-instructions" style={{ margin: 0 }}>
+          <ul className="settings-instructions llm-proxy-instructions-list">
             {urls.main && (
               <li>
                 Main: <code>{urls.main}</code>
@@ -525,12 +525,12 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
       )}
 
       {err && (
-        <div className="dashboard-card-error" role="alert" style={{ marginBottom: 12 }}>
+        <div className="dashboard-card-error llm-proxy-section-gap-sm" role="alert">
           {err}
         </div>
       )}
 
-      <div className="dashboard-card-actions" style={{ marginBottom: 16 }}>
+      <div className="dashboard-card-actions llm-proxy-section-gap">
         <CoreUIButton variant="primary" onClick={load} disabled={saving}>
           Refresh
         </CoreUIButton>
@@ -685,7 +685,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                         aria-labelledby={`llm-proxy-details-title-${name}`}
                       >
                         {hasIssues && (
-                          <div className="dashboard-card-error" style={{ marginBottom: 12 }}>
+                          <div className="dashboard-card-error llm-proxy-section-gap-sm">
                             {b.issues.map((i) => (
                               <div key={i}>{i}</div>
                             ))}
@@ -746,7 +746,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   </div>
                 </div>
 
-                <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label className="coreui-form-field">
                   Build id (API model name)
                   <input
                     className="dashboard-card-field"
@@ -758,7 +758,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   <span className="llm-proxy-param-card-hint">This is the <code>model</code> value clients send in API requests. Must be unique. Lowercase, hyphens ok.</span>
                 </label>
 
-                <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label className="coreui-form-field">
                   Display name
                   <input
                     className="dashboard-card-field"
@@ -780,7 +780,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   </div>
                 </div>
 
-                <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label className="coreui-form-field">
                   Ollama model
                   <select
                     className="dashboard-card-field"
@@ -800,7 +800,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   </select>
                 </label>
 
-                <div className="dashboard-card-actions" style={{ flexWrap: 'wrap' }}>
+                <div className="dashboard-card-actions">
                   <CoreUIButton variant="primary" disabled={previewBusy} onClick={runPreview}>
                     Check model (Ollama show)
                   </CoreUIButton>
@@ -868,7 +868,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   </div>
                 </div>
 
-                <div className="llm-proxy-toggle-with-explanation" style={{ borderLeft: '3px solid var(--md-sys-color-primary)' }}>
+                <div className="llm-proxy-toggle-with-explanation llm-proxy-toggle-with-explanation--primary">
                   <div className="llm-proxy-toggle-row">
                     <span className="llm-proxy-toggle-label">
                       <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">search</span>
@@ -907,7 +907,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                       </div>
                     </div>
 
-                    <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+                    <label className="coreui-form-field llm-proxy-section-gap-sm">
                       RAG collection override
                       <input
                         className="dashboard-card-field"
@@ -918,8 +918,8 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                       <span className="llm-proxy-param-card-hint">Leave empty to use the server's default collection. Set a name to search a specific Qdrant collection for this build.</span>
                     </label>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-                      <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div className="coreui-form-grid-3">
+                      <label className="coreui-form-field">
                         Context chunk chars
                         <input
                           className="dashboard-card-field"
@@ -930,7 +930,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                         />
                         <span className="llm-proxy-param-card-hint">Max characters per retrieved chunk sent to the model.</span>
                       </label>
-                      <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <label className="coreui-form-field">
                         Context total chars
                         <input
                           className="dashboard-card-field"
@@ -941,7 +941,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                         />
                         <span className="llm-proxy-param-card-hint">Total RAG context budget across all chunks.</span>
                       </label>
-                      <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <label className="coreui-form-field">
                         RAG top_k
                         <input
                           className="dashboard-card-field"
@@ -1011,7 +1011,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   </div>
                 </div>
 
-                <div className="llm-proxy-toggle-with-explanation" style={{ borderLeft: '3px solid var(--md-sys-color-tertiary)' }}>
+                <div className="llm-proxy-toggle-with-explanation llm-proxy-toggle-with-explanation--tertiary">
                   <div className="llm-proxy-toggle-row">
                     <span className="llm-proxy-toggle-label">
                       <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">visibility_off</span>
@@ -1028,7 +1028,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     entries in Notifications. Does not affect Ollama or OS-level logging.
                   </p>
                   {draft.private && (
-                    <p className="llm-proxy-toggle-explanation" style={{ marginTop: 8, color: 'var(--md-sys-color-on-tertiary-container)' }}>
+                    <p className="llm-proxy-toggle-explanation llm-proxy-toggle-explanation--emphasis">
                       <strong>⚠ Cloud models:</strong> if your client or pipeline sends traffic to hosted or third-party model
                       APIs, read those providers' privacy policies and terms — they govern how your data is stored and
                       processed; Private here only limits traces and logs inside this app.
@@ -1036,8 +1036,8 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   )}
                 </div>
 
-                <div className="llm-proxy-info-card" style={{ opacity: draft.private ? 0.6 : 1 }}>
-                  <h3 className="llm-proxy-info-card-title" style={{ fontSize: '1rem' }}>
+                <div className={`llm-proxy-info-card${draft.private ? ' llm-proxy-info-card--dimmed' : ''}`}>
+                  <h3 className="llm-proxy-info-card-title llm-proxy-info-card-title--compact">
                     <span className="llm-proxy-info-card-title-icon material-symbols-outlined" aria-hidden="true">visibility</span>
                     What gets logged when Private is off
                   </h3>
@@ -1084,7 +1084,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 </div>
 
                 {draft.use_prompt_template !== false && (
-                  <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label className="coreui-form-field">
                     Prompt template
                     <select
                       className="dashboard-card-field"
@@ -1220,7 +1220,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   </div>
                 </div>
 
-                <div className="llm-proxy-toggle-with-explanation" style={{ borderLeft: '3px solid var(--md-sys-color-tertiary)' }}>
+                <div className="llm-proxy-toggle-with-explanation llm-proxy-toggle-with-explanation--tertiary">
                   <div className="llm-proxy-toggle-row">
                     <span className="llm-proxy-toggle-label">
                       <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">public</span>
@@ -1243,15 +1243,15 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     <div className="llm-proxy-web-features">
                       <div className="llm-proxy-web-feature-item">
                         <span className="llm-proxy-web-feature-title">
-                          <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 18, color: 'var(--md-sys-color-tertiary)' }}>travel_explore</span>
+                          <span className="material-symbols-outlined coreui-icon--sm coreui-icon--tertiary" aria-hidden="true">travel_explore</span>
                           DuckDuckGo search snippets
                         </span>
                         <p className="llm-proxy-web-feature-desc">
                           Fetches short text snippets from DuckDuckGo search results. Free, no API key needed.
                           Great for quick facts, version numbers, and recent announcements.
                         </p>
-                        <div className="llm-proxy-toggle-row" style={{ marginTop: 4 }}>
-                          <span className="llm-proxy-toggle-label" style={{ fontSize: '0.8125rem' }}>Enable DDG news</span>
+                        <div className="llm-proxy-toggle-row llm-proxy-toggle-row--sub">
+                          <span className="llm-proxy-toggle-label llm-proxy-toggle-label--sub">Enable DDG news</span>
                           <input
                             type="checkbox"
                             checked={!!draft.web_interaction_ddg_news}
@@ -1262,15 +1262,15 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
 
                       <div className="llm-proxy-web-feature-item">
                         <span className="llm-proxy-web-feature-title">
-                          <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 18, color: 'var(--md-sys-color-tertiary)' }}>web</span>
+                          <span className="material-symbols-outlined coreui-icon--sm coreui-icon--tertiary" aria-hidden="true">web</span>
                           Fetch web pages
                         </span>
                         <p className="llm-proxy-web-feature-desc">
                           When a search result looks promising, the proxy can fetch and extract the full page content
                           for deeper context. Uses more tokens but provides much richer information.
                         </p>
-                        <div className="llm-proxy-toggle-row" style={{ marginTop: 4 }}>
-                          <span className="llm-proxy-toggle-label" style={{ fontSize: '0.8125rem' }}>Enable page fetching</span>
+                        <div className="llm-proxy-toggle-row llm-proxy-toggle-row--sub">
+                          <span className="llm-proxy-toggle-label llm-proxy-toggle-label--sub">Enable page fetching</span>
                           <input
                             type="checkbox"
                             checked={!!draft.web_interaction_fetch_page}
@@ -1281,15 +1281,15 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
 
                       <div className="llm-proxy-web-feature-item">
                         <span className="llm-proxy-web-feature-title">
-                          <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 18, color: 'var(--md-sys-color-tertiary)' }}>menu_book</span>
+                          <span className="material-symbols-outlined coreui-icon--sm coreui-icon--tertiary" aria-hidden="true">menu_book</span>
                           Wikipedia lookup
                         </span>
                         <p className="llm-proxy-web-feature-desc">
                           Searches Wikipedia for encyclopedic background on topics. Useful for general knowledge,
                           definitions, and historical context.
                         </p>
-                        <div className="llm-proxy-toggle-row" style={{ marginTop: 4 }}>
-                          <span className="llm-proxy-toggle-label" style={{ fontSize: '0.8125rem' }}>Enable Wikipedia</span>
+                        <div className="llm-proxy-toggle-row llm-proxy-toggle-row--sub">
+                          <span className="llm-proxy-toggle-label llm-proxy-toggle-label--sub">Enable Wikipedia</span>
                           <input
                             type="checkbox"
                             checked={!!draft.web_interaction_wikipedia}
@@ -1299,7 +1299,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                       </div>
                     </div>
 
-                    <div className="llm-proxy-toggle-with-explanation" style={{ marginTop: 8 }}>
+                    <div className="llm-proxy-toggle-with-explanation llm-proxy-section-gap-sm">
                       <div className="llm-proxy-toggle-row">
                         <span className="llm-proxy-toggle-label">
                           <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">cloud_download</span>
@@ -1443,7 +1443,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     variant="primary"
                     onClick={() => { setWizardStep(wizardStep - 1); setWizardDirection('back'); }}
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }} aria-hidden="true">arrow_back</span>
+                    <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">arrow_back</span>
                     Back
                   </CoreUIButton>
                 )}
@@ -1455,7 +1455,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     disabled={saving}
                     onClick={saveForm}
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }} aria-hidden="true">save</span>
+                    <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">save</span>
                     {saving ? 'Saving...' : 'Save build'}
                   </CoreUIButton>
                 )}
@@ -1467,7 +1467,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     onClick={() => { setWizardStep(wizardStep + 1); setWizardDirection('forward'); }}
                   >
                     Next
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }} aria-hidden="true">arrow_forward</span>
+                    <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">arrow_forward</span>
                   </CoreUIButton>
                 ) : (
                   <CoreUIButton
@@ -1475,7 +1475,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     disabled={saving}
                     onClick={saveForm}
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }} aria-hidden="true">save</span>
+                    <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">save</span>
                     {saving ? 'Saving...' : 'Save build'}
                   </CoreUIButton>
                 )}

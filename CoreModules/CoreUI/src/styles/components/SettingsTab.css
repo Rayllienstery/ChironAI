@@ -13,7 +13,7 @@
 .coreui-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--coreui-color-scrim);
   backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
@@ -38,10 +38,10 @@
   width: min(980px, 100%);
   max-height: calc(100vh - 48px);
   overflow: hidden;
-  background: var(--md-sys-color-surface);
+  background: var(--coreui-surface-modal);
   color: var(--md-sys-color-on-surface);
-  border-radius: var(--md-sys-shape-corner-large);
-  box-shadow: var(--md-sys-elevation-level4);
+  border-radius: var(--coreui-radius-modal);
+  box-shadow: var(--coreui-shadow-modal);
   border: 1px solid var(--md-sys-color-outline-variant);
   animation: modalSlideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -93,13 +93,13 @@
   border: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface-container-high);
   color: var(--md-sys-color-on-surface);
-  border-radius: 999px;
+  border-radius: var(--coreui-radius-pill);
   padding: 6px 10px;
   cursor: pointer;
 }
 
 .coreui-modal-close-btn:hover {
-  opacity: 0.9;
+  background: var(--coreui-interactive-hover-bg);
 }
 
 .settings-tab-header {
@@ -163,6 +163,10 @@
   font: var(--md-sys-typescale-label-large-font);
   color: var(--md-sys-color-on-surface);
   font-weight: 500;
+}
+
+.settings-form-hint {
+  margin: 0 0 4px;
 }
 
 .form-group input {

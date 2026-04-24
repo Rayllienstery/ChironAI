@@ -6,10 +6,10 @@
 .settings-infra-banner {
   margin-bottom: var(--md-sys-spacing-md);
   padding: var(--md-sys-spacing-md);
-  border: 2px solid #e65100;
+  border: 2px solid color-mix(in srgb, var(--coreui-color-warning) 70%, transparent);
   border-radius: var(--md-sys-shape-corner-small);
-  background: #fff3e0;
-  color: #4e342e;
+  background: var(--coreui-color-warning-container);
+  color: var(--coreui-color-on-warning-container);
 }
 
 .settings-infra-banner strong {
@@ -25,10 +25,10 @@
 .settings-error-banner {
   margin-bottom: var(--md-sys-spacing-md);
   padding: var(--md-sys-spacing-md);
-  border: 2px solid #b00020;
+  border: 2px solid color-mix(in srgb, var(--md-sys-color-error) 70%, transparent);
   border-radius: var(--md-sys-shape-corner-small);
-  background: #ffebee;
-  color: #5c0010;
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
 }
 
 .settings-error-banner strong {
@@ -44,7 +44,7 @@
 .settings-stale-value {
   margin: var(--md-sys-spacing-xs) 0 0 0;
   font-size: 0.875rem;
-  color: #b00020;
+  color: var(--md-sys-color-error);
 }
 
 .settings-form {

@@ -1,4 +1,5 @@
 import Card from "./Card";
+import CoreUIBadge from "./CoreUIBadge";
 import CoreUIButton from "./CoreUIButton";
 import CoreUIPillTabs from "./CoreUIPillTabs";
 import CoreUISlider from "./CoreUISlider";
@@ -101,6 +102,25 @@ function CoreUIShowcaseTab() {
         </ShowcaseItem>
 
         <ShowcaseItem
+          name="Semantic state tokens"
+          classes={[
+            "--coreui-color-success",
+            "--coreui-color-warning",
+            "--coreui-color-info",
+            "--coreui-color-scrim",
+          ]}
+          source={`${sourceRoot}/styles/tokens.css`}
+          description="Shared semantic tokens for success, warning, info, error-adjacent feedback, and overlay scrims."
+        >
+          <div className="coreui-showcase-token-grid">
+            <TokenSwatch label="Success" token="--coreui-color-success-container" />
+            <TokenSwatch label="Warning" token="--coreui-color-warning-container" />
+            <TokenSwatch label="Info" token="--coreui-color-info-container" />
+            <TokenSwatch label="Scrim" token="--coreui-color-scrim" className="coreui-showcase-token--scrim" />
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
           name="Font registry"
           classes={["--coreui-font-family-base", "--coreui-font-family-mono", "--coreui-font-family-icon"]}
           source={`${sourceRoot}/styles/tokens.css, index.html`}
@@ -178,15 +198,19 @@ function CoreUIShowcaseTab() {
 
         <ShowcaseItem
           name="CoreUIButton"
-          classes={[".coreui-btn", ".coreui-btn-primary", ".coreui-btn-ghost", ".coreui-btn-small"]}
+          classes={[".coreui-btn", ".coreui-btn-primary", ".coreui-btn-danger", ".coreui-btn-ghost", ".coreui-btn-small", ".coreui-btn-icon"]}
           source={`${sourceRoot}/components/CoreUIButton.jsx`}
-          description="Shared button primitive for toolbar and panel actions."
+          description="Shared button primitive for toolbar, modal, and panel actions."
         >
           <div className="coreui-showcase-button-row">
             <CoreUIButton variant="primary">Primary</CoreUIButton>
             <CoreUIButton>Default</CoreUIButton>
+            <CoreUIButton variant="danger">Danger</CoreUIButton>
             <CoreUIButton variant="ghost">Ghost</CoreUIButton>
             <CoreUIButton size="sm">Small</CoreUIButton>
+            <CoreUIButton size="icon" aria-label="Icon button">
+              <span className="material-symbols-outlined" aria-hidden="true">more_horiz</span>
+            </CoreUIButton>
           </div>
         </ShowcaseItem>
 
@@ -233,6 +257,21 @@ function CoreUIShowcaseTab() {
           description="Dashed neutral panel for missing data, unavailable integrations, and empty results."
         >
           <EmptyState>No records available for this filter.</EmptyState>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Main card patterns"
+          classes={[".app-card", ".app-default-card", ".coreui-card-shell", ".coreui-card-shell--raised", ".coreui-panel-note"]}
+          source={`${sourceRoot}/components/Card.jsx, ${sourceRoot}/styles/default-card.css, ${sourceRoot}/styles/coreui-system.css`}
+          description="Approved surface hierarchy: compact card, full section card, raised utility card, and semantic note panel."
+        >
+          <div className="coreui-showcase-card-grid">
+            <Card className="coreui-showcase-demo-card">Compact app card</Card>
+            <section className="app-default-card coreui-showcase-demo-section">Primary section card</section>
+            <section className="coreui-card-shell coreui-p-md">Utility shell card</section>
+            <section className="coreui-card-shell coreui-card-shell--raised coreui-p-md">Raised emphasis card</section>
+            <section className="coreui-panel-note coreui-panel-note--info">Semantic note card</section>
+          </div>
         </ShowcaseItem>
       </ShowcaseSection>
 
@@ -283,42 +322,44 @@ function CoreUIShowcaseTab() {
       <ShowcaseSection title="Forms & Controls">
         <ShowcaseItem
           name="Text fields"
-          classes={[".coreui-showcase-field", "input", "textarea"]}
-          source={`${sourceRoot}/styles/components/CoreUIShowcaseTab.css`}
-          description="Theme-aware text inputs for form previews and future shared control extraction."
+          classes={[".coreui-form-field", ".coreui-input", ".coreui-textarea", ".coreui-field-hint"]}
+          source={`${sourceRoot}/styles/coreui-system.css`}
+          description="Approved form field contract for settings screens, editors, and setup wizards."
         >
           <div className="coreui-showcase-form-grid">
-            <label className="coreui-showcase-field">
+            <label className="coreui-form-field">
               <span>Model name</span>
-              <input value="qwen2.5-coder" readOnly />
+              <input className="coreui-input" value="qwen2.5-coder" readOnly />
+              <span className="coreui-field-hint">Saved as the API-visible model id.</span>
             </label>
-            <label className="coreui-showcase-field">
+            <label className="coreui-form-field">
               <span>Prompt note</span>
-              <textarea value="Reusable form surface." readOnly />
+              <textarea className="coreui-textarea" value="Reusable form surface." readOnly />
+              <span className="coreui-field-hint">Uses the same contract in modal and page forms.</span>
             </label>
           </div>
         </ShowcaseItem>
 
         <ShowcaseItem
           name="Select and boolean controls"
-          classes={["select:not([multiple]):not([size])", ".coreui-showcase-check", ".coreui-showcase-switch"]}
-          source={`${sourceRoot}/styles/layout.css, ${sourceRoot}/styles/components/CoreUIShowcaseTab.css`}
-          description="Native select inherits the global chevron; checkbox and switch previews use showcase-local styling."
+          classes={[".coreui-select", ".coreui-checkbox", ".coreui-switch"]}
+          source={`${sourceRoot}/styles/coreui-system.css`}
+          description="Unified select, checkbox, and switch patterns for settings and wizard-style screens."
         >
           <div className="coreui-showcase-control-row">
-            <label className="coreui-showcase-field coreui-showcase-select-field">
+            <label className="coreui-form-field coreui-showcase-select-field">
               <span>Mode</span>
-              <select value="system" onChange={() => {}} aria-label="Mode preview">
+              <select className="coreui-select" value="system" onChange={() => {}} aria-label="Mode preview">
                 <option value="system">System</option>
                 <option value="light">Light</option>
                 <option value="dark">Dark</option>
               </select>
             </label>
-            <label className="coreui-showcase-check">
+            <label className="coreui-checkbox">
               <input type="checkbox" checked readOnly />
               <span>Enabled</span>
             </label>
-            <label className="coreui-showcase-switch">
+            <label className="coreui-switch">
               <input type="checkbox" checked readOnly />
               <span aria-hidden="true" />
               <strong>Live</strong>
@@ -380,27 +421,128 @@ function CoreUIShowcaseTab() {
             <div className="coreui-showcase-data-row" role="row">
               <span role="cell">rag.retrieval</span>
               <span role="cell">128 ms</span>
-              <span role="cell"><span className="coreui-showcase-badge">cached</span></span>
+              <span role="cell"><CoreUIBadge>cached</CoreUIBadge></span>
             </div>
             <div className="coreui-showcase-data-row" role="row">
               <span role="cell">proxy.trace</span>
               <span role="cell">2.4 s</span>
-              <span role="cell"><span className="coreui-showcase-badge coreui-showcase-badge-warning">slow</span></span>
+              <span role="cell"><CoreUIBadge tone="warning">slow</CoreUIBadge></span>
             </div>
           </div>
         </ShowcaseItem>
 
         <ShowcaseItem
           name="Feedback badges"
-          classes={[".coreui-showcase-badge", ".coreui-showcase-feedback"]}
-          source={`${sourceRoot}/styles/components/CoreUIShowcaseTab.css`}
-          description="Neutral, success, warning, and error feedback tokens for inline state display."
+          classes={[".coreui-badge", ".coreui-badge--success", ".coreui-badge--warning", ".coreui-badge--error", ".coreui-badge--info"]}
+          source={`${sourceRoot}/components/CoreUIBadge.jsx, ${sourceRoot}/styles/coreui-system.css`}
+          description="Shared badge and status pill semantics for inline state display."
         >
           <div className="coreui-showcase-feedback-row">
-            <span className="coreui-showcase-badge">neutral</span>
-            <span className="coreui-showcase-badge coreui-showcase-badge-success">success</span>
-            <span className="coreui-showcase-badge coreui-showcase-badge-warning">warning</span>
-            <span className="coreui-showcase-badge coreui-showcase-badge-error">error</span>
+            <CoreUIBadge>neutral</CoreUIBadge>
+            <CoreUIBadge tone="success">success</CoreUIBadge>
+            <CoreUIBadge tone="warning">warning</CoreUIBadge>
+            <CoreUIBadge tone="error">error</CoreUIBadge>
+            <CoreUIBadge tone="info">info</CoreUIBadge>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Code and JSON surfaces"
+          classes={[".coreui-mono-block", ".coreui-text-muted-sm", ".coreui-text-break"]}
+          source={`${sourceRoot}/styles/coreui-system.css`}
+          description="Approved mono surface for logs, request snapshots, trace payloads, and diagnostics."
+        >
+          <div className="coreui-showcase-mono-stack">
+            <pre className="coreui-mono-block">{`{\n  "trace_id": "7f2c1b9a",\n  "latency_ms": 128,\n  "status": "ok"\n}`}</pre>
+            <p className="coreui-text-muted-sm">Use for JSON, logs, request snapshots, and diagnostic output.</p>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Alerts and explanation panels"
+          classes={[".coreui-panel-note", ".coreui-panel-note--info", ".coreui-panel-note--warning", ".coreui-panel-note--success"]}
+          source={`${sourceRoot}/styles/coreui-system.css`}
+          description="Standardized explanation and feedback panels replacing one-off tinted boxes and border-left callouts."
+        >
+          <div className="coreui-showcase-panel-grid">
+            <div className="coreui-panel-note coreui-panel-note--info">RAG searches your indexed documents before the model call.</div>
+            <div className="coreui-panel-note coreui-panel-note--warning">Private mode disables traces and notifications for this build.</div>
+            <div className="coreui-panel-note coreui-panel-note--success">Settings saved and applied to the active pipeline.</div>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Modal and overlay pattern"
+          classes={[".coreui-modal-overlay", ".coreui-modal", ".coreui-modal-header", ".coreui-modal-close-btn"]}
+          source={`${sourceRoot}/styles/coreui-system.css`}
+          description="Shared modal surface, scrim, header, and close control used across settings and trace dialogs."
+        >
+          <div className="coreui-showcase-modal-preview">
+            <div className="coreui-showcase-modal-scrim">
+              <div className="coreui-showcase-modal-card">
+                <div className="coreui-showcase-modal-card-header">
+                  <strong>Dialog title</strong>
+                  <button type="button" className="coreui-modal-close-btn" aria-label="Close modal preview">
+                    <span className="material-symbols-outlined" aria-hidden="true">close</span>
+                  </button>
+                </div>
+                <div className="coreui-showcase-modal-card-body">
+                  <p className="coreui-text-muted-sm">Shared dialog shell for build configuration, trace detail, and settings overlays.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Layout and utility patterns"
+          classes={[".coreui-card-actions", ".coreui-inline-cluster", ".coreui-stack-sm", ".coreui-meta-grid"]}
+          source={`${sourceRoot}/styles/coreui-system.css`}
+          description="Reusable layout helpers for action rows, compact stacks, metadata chips, and dense panel composition."
+        >
+          <div className="coreui-showcase-utility-stack">
+            <div className="coreui-card-actions">
+              <CoreUIButton>Refresh</CoreUIButton>
+              <CoreUIButton variant="primary">Save</CoreUIButton>
+            </div>
+            <div className="coreui-meta-grid">
+              <span><strong>Model:</strong> qwen2.5-coder</span>
+              <span><strong>Latency:</strong> 128 ms</span>
+              <span><strong>Tokens:</strong> 912</span>
+            </div>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Spacing and margins"
+          classes={[".coreui-gap-*", ".coreui-mt-*", ".coreui-mb-*", ".coreui-p-*", ".coreui-section-block"]}
+          source={`${sourceRoot}/styles/coreui-system.css`}
+          description="Approved spacing utilities for margins, internal padding, section rhythm, and compact layout composition."
+        >
+          <div className="coreui-showcase-spacing-demo">
+            <div className="coreui-card-shell coreui-p-md coreui-stack-sm">
+              <div className="coreui-showcase-spacing-row">
+                <CodePill>.coreui-p-md</CodePill>
+                <span>Use on cards and note panels for default inner padding.</span>
+              </div>
+              <div className="coreui-showcase-spacing-row coreui-mt-sm">
+                <CodePill>.coreui-mt-sm</CodePill>
+                <span>Use for a small top separation between related controls.</span>
+              </div>
+              <div className="coreui-showcase-spacing-row coreui-mb-md">
+                <CodePill>.coreui-mb-md</CodePill>
+                <span>Use under headings or alert blocks before the next section.</span>
+              </div>
+              <div className="coreui-inline-cluster coreui-gap-md">
+                <CodePill>.coreui-inline-cluster</CodePill>
+                <CodePill>.coreui-gap-md</CodePill>
+                <span>Use for action rows and metadata groups.</span>
+              </div>
+              <div className="coreui-section-block">
+                <CodePill>.coreui-section-block</CodePill>
+                <span>Use to separate stacked content blocks with default vertical rhythm.</span>
+              </div>
+            </div>
           </div>
         </ShowcaseItem>
       </ShowcaseSection>

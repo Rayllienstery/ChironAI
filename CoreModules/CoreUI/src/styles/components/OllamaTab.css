@@ -5,18 +5,20 @@
   margin-bottom: var(--md-sys-spacing-md);
 }
 
-.ollama-tab__status-pill {
+.ollama-tab__status-pill,
+.coreui-status-card {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
-  background: var(--md-sys-color-surface-tint-neutral);
+  background: var(--coreui-surface-panel-alt);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-medium);
+  border-radius: var(--coreui-radius-card);
   min-width: 120px;
 }
 
-.ollama-tab__status-pill--wide {
+.ollama-tab__status-pill--wide,
+.coreui-status-card--wide {
   flex: 1 1 280px;
   min-width: 200px;
 }

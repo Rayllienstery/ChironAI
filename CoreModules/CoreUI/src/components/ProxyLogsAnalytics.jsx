@@ -347,8 +347,8 @@ function ProxyLogsAnalytics({
   );
 
   const chartTooltipStyle = {
-    background: 'var(--md-sys-color-surface-container-high, #fff)',
-    border: '1px solid var(--md-sys-color-outline-variant, #ccc)',
+    background: 'var(--md-sys-color-surface-container-high)',
+    border: '1px solid var(--md-sys-color-outline-variant)',
     borderRadius: 8,
     fontSize: 12,
   };
@@ -415,7 +415,7 @@ function ProxyLogsAnalytics({
             <h3 className="proxy-logs-chart-title">Models used</h3>
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={agg.autocompleteModelBars} margin={{ top: 8, right: 16, left: 0, bottom: 64 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant, #ccc)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant)" />
                 <XAxis dataKey="name" angle={-35} textAnchor="end" height={70} tick={{ fontSize: 10 }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip
@@ -433,7 +433,7 @@ function ProxyLogsAnalytics({
               <h3 className="proxy-logs-chart-title">Models used (RAG vs no RAG)</h3>
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={agg.modelDiverging} margin={{ top: 8, right: 16, left: 8, bottom: 72 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant, #ccc)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant)" />
                   <XAxis dataKey="name" angle={-35} textAnchor="end" height={80} tick={{ fontSize: 10 }} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                   <Tooltip
@@ -453,7 +453,7 @@ function ProxyLogsAnalytics({
               {agg.docTypeBars.length > 0 ? (
                 <ResponsiveContainer width="100%" height={280}>
                   <BarChart data={agg.docTypeBars} margin={{ top: 8, right: 16, left: 8, bottom: 72 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant, #ccc)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant)" />
                     <XAxis dataKey="name" angle={-30} textAnchor="end" height={72} tick={{ fontSize: 10 }} />
                     <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                     <Tooltip
@@ -474,7 +474,7 @@ function ProxyLogsAnalytics({
               {agg.hasTimeSeriesData ? (
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={agg.timeSeries} margin={{ top: 8, right: 16, left: 8, bottom: period === 'day' ? 48 : 32 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant, #ccc)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant)" />
                     <XAxis dataKey="tick" tick={{ fontSize: 9 }} interval="preserveStartEnd" />
                     <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                     <Tooltip contentStyle={chartTooltipStyle} />
@@ -493,7 +493,7 @@ function ProxyLogsAnalytics({
               {agg.hasTimeSeriesData ? (
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={agg.timeSeries} margin={{ top: 8, right: 16, left: 8, bottom: period === 'day' ? 48 : 32 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant, #ccc)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant)" />
                     <XAxis dataKey="tick" tick={{ fontSize: 9 }} interval="preserveStartEnd" />
                     <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                     <Tooltip contentStyle={chartTooltipStyle} />
@@ -511,7 +511,7 @@ function ProxyLogsAnalytics({
               {agg.hasTimeSeriesData ? (
                 <ResponsiveContainer width="100%" height={260}>
                   <LineChart data={agg.timeSeries} margin={{ top: 8, right: 16, left: 8, bottom: period === 'day' ? 48 : 32 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant, #ccc)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant)" />
                     <XAxis dataKey="tick" tick={{ fontSize: 9 }} interval="preserveStartEnd" />
                     <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                     <Tooltip contentStyle={chartTooltipStyle} />
@@ -521,19 +521,19 @@ function ProxyLogsAnalytics({
                       type="monotone"
                       dataKey="cloud"
                       name="Ends with cloud"
-                      stroke={colors[0] || '#1a73e8'}
+                      stroke={colors[0]}
                       strokeWidth={2.5}
-                      dot={{ r: 3, strokeWidth: 2, fill: colors[0] || '#1a73e8', stroke: colors[0] || '#1a73e8' }}
+                      dot={{ r: 3, strokeWidth: 2, fill: colors[0], stroke: colors[0] }}
                       activeDot={{ r: 5 }}
                     />
                     <Line
                       type="monotone"
                       dataKey="nonCloud"
                       name="Other models"
-                      stroke={colors[1] || '#7b2cbf'}
+                      stroke={colors[1]}
                       strokeWidth={2.5}
                       strokeDasharray="7 5"
-                      dot={{ r: 3, strokeWidth: 2, fill: 'var(--md-sys-color-surface, #fff)', stroke: colors[1] || '#7b2cbf' }}
+                      dot={{ r: 3, strokeWidth: 2, fill: 'var(--md-sys-color-surface)', stroke: colors[1] }}
                       activeDot={{ r: 5 }}
                     />
                   </LineChart>

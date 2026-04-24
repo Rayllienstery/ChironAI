@@ -2,15 +2,15 @@ import { useEffect, useState } from 'react';
 
 /** Resolved M3 tokens for pie / chart fills (updates when accent or light/dark theme changes). */
 const THEME_PIE_VAR_NAMES = [
-  '--md-sys-color-primary',
-  '--md-sys-color-tertiary',
-  '--md-sys-color-secondary',
-  '--md-sys-color-primary-container',
-  '--md-sys-color-secondary-container',
-  '--md-sys-color-on-surface-variant',
-  '--md-sys-color-outline',
-  '--md-sys-color-on-primary-container',
-  '--md-sys-color-surface-tint-neutral',
+  '--coreui-chart-1',
+  '--coreui-chart-2',
+  '--coreui-chart-3',
+  '--coreui-chart-4',
+  '--coreui-chart-5',
+  '--coreui-chart-6',
+  '--coreui-chart-7',
+  '--coreui-chart-8',
+  '--coreui-chart-9',
 ];
 
 const FALLBACK_HEX = [

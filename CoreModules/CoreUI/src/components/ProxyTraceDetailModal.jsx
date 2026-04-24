@@ -31,13 +31,13 @@ function AgentTraceStepBlock({ step, index }) {
     kind ||
     (step.name != null && String(step.name).trim() !== '' ? String(step.name) : 'unknown');
   return (
-    <details className="dashboard-trace-item" style={{ marginBottom: 8 }}>
+    <details className="dashboard-trace-item coreui-section-block">
       <summary>
         Step {index + 1}: <code>{label}</code>
         {step.step != null ? ` (agent step ${step.step})` : ''}
         {step.ok === false ? ' · failed' : ''}
       </summary>
-      <div className="dashboard-card-muted" style={{ marginTop: 8 }}>
+      <div className="dashboard-card-muted coreui-stack-sm">
         {kind === 'model_call' && (
           <>
             {step.model != null && (
@@ -46,7 +46,7 @@ function AgentTraceStepBlock({ step, index }) {
               </p>
             )}
             {(step.prompt_tokens_est != null || step.completion_tokens_est != null) && (
-              <p className="dashboard-card-muted" style={{ fontSize: 12 }}>
+              <p className="coreui-text-muted-sm">
                 Token est.: prompt {step.prompt_tokens_est ?? '—'} · completion {step.completion_tokens_est ?? '—'}
               </p>
             )}
@@ -56,33 +56,33 @@ function AgentTraceStepBlock({ step, index }) {
               </p>
             )}
             {step.thinking_raw != null && String(step.thinking_raw).trim() !== '' && (
-              <div style={{ marginTop: 8 }}>
+              <div className="coreui-stack-xs">
                 <strong>Thinking (raw)</strong>
-                <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 280, overflow: 'auto', fontSize: 12 }}>
+                <pre className="coreui-mono-block">
                   {step.thinking_raw}
                 </pre>
               </div>
             )}
             {step.assistant_content_raw != null && String(step.assistant_content_raw).trim() !== '' && (
-              <div style={{ marginTop: 8 }}>
+              <div className="coreui-stack-xs">
                 <strong>Assistant content (raw)</strong>
-                <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto', fontSize: 12 }}>
+                <pre className="coreui-mono-block">
                   {step.assistant_content_raw}
                 </pre>
               </div>
             )}
             {step.assistant_visible != null && String(step.assistant_visible).trim() !== '' && (
-              <div style={{ marginTop: 8 }}>
+              <div className="coreui-stack-xs">
                 <strong>Assistant (merged visible)</strong>
-                <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto', fontSize: 12 }}>
+                <pre className="coreui-mono-block">
                   {step.assistant_visible}
                 </pre>
               </div>
             )}
             {Array.isArray(step.tool_calls) && step.tool_calls.length > 0 && (
-              <div style={{ marginTop: 8 }}>
+              <div className="coreui-stack-xs">
                 <strong>Tool calls</strong>
-                <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto', fontSize: 12 }}>
+                <pre className="coreui-mono-block">
                   {JSON.stringify(step.tool_calls, null, 2)}
                 </pre>
               </div>
@@ -100,7 +100,7 @@ function AgentTraceStepBlock({ step, index }) {
             </p>
             {step.error != null && <p className="dashboard-card-error">{String(step.error)}</p>}
             {Array.isArray(step.chunks_info) && step.chunks_info.length > 0 && (
-              <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 240, overflow: 'auto', fontSize: 12 }}>
+              <pre className="coreui-mono-block">
                 {JSON.stringify(step.chunks_info, null, 2)}
               </pre>
             )}
@@ -128,14 +128,14 @@ function AgentTraceStepBlock({ step, index }) {
               <strong>Tools returned to IDE:</strong>{' '}
               {Array.isArray(step.names) && step.names.length > 0 ? step.names.join(', ') : '—'}
             </p>
-            <details className="dashboard-trace-item" style={{ marginTop: 8 }}>
+            <details className="dashboard-trace-item coreui-section-block">
               <summary>Raw step JSON</summary>
-              <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(step, null, 2)}</pre>
+              <pre className="coreui-mono-block">{JSON.stringify(step, null, 2)}</pre>
             </details>
           </>
         )}
         {(kind === 'tool_unhandled' || kind === 'config_error') && (
-          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(step, null, 2)}</pre>
+          <pre className="coreui-mono-block">{JSON.stringify(step, null, 2)}</pre>
         )}
         {!kind && step.name != null && String(step.name).trim() !== '' && (
           <>
@@ -143,11 +143,11 @@ function AgentTraceStepBlock({ step, index }) {
               <strong>Duration:</strong> {step.duration_ms != null ? `${step.duration_ms} ms` : '—'}
             </p>
             {(step.tokens_in_est != null || step.tokens_out_est != null) && (
-              <p className="dashboard-card-muted" style={{ fontSize: 12 }}>
+              <p className="coreui-text-muted-sm">
                 Token est.: in {step.tokens_in_est ?? '—'} · out {step.tokens_out_est ?? '—'}
               </p>
             )}
-            <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, marginTop: 8 }}>{JSON.stringify(step, null, 2)}</pre>
+            <pre className="coreui-mono-block">{JSON.stringify(step, null, 2)}</pre>
           </>
         )}
         {kind !== 'model_call' &&
@@ -157,7 +157,7 @@ function AgentTraceStepBlock({ step, index }) {
           kind !== 'tool_unhandled' &&
           kind !== 'config_error' &&
           !(step.name != null && String(step.name).trim() !== '' && !kind) && (
-            <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(step, null, 2)}</pre>
+            <pre className="coreui-mono-block">{JSON.stringify(step, null, 2)}</pre>
           )}
       </div>
     </details>
@@ -177,31 +177,23 @@ function ProxyRequestStructuredBody({ log, meta }) {
 
   return (
     <div className="proxy-trace-detail-body">
-      <p className="dashboard-card-muted" style={{ marginBottom: 12, fontSize: 13 }}>
+      <p className="coreui-text-muted-sm">
         <strong>Pipeline:</strong> {pipelineLabel}
         {isAc ? ' · Autocomplete' : ''}
       </p>
-      <div style={{ marginBottom: 12 }}>
+      <div className="coreui-section-block">
         <strong>User query</strong>
-        <div className="dashboard-card-muted" style={{ marginTop: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+        <div className="dashboard-card-muted coreui-text-break">
           {meta.user_query || '—'}
         </div>
       </div>
-      <div style={{ marginBottom: 12 }}>
+      <div className="coreui-section-block">
         <strong>Response preview</strong>
-        <div className="dashboard-card-muted" style={{ marginTop: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+        <div className="dashboard-card-muted coreui-text-break">
           {meta.response_preview || '—'}
         </div>
       </div>
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 12,
-          marginBottom: 12,
-          fontSize: 13,
-        }}
-      >
+      <div className="coreui-meta-grid">
         <span>
           <strong>Model:</strong> {meta.model || 'N/A'}
         </span>
@@ -219,9 +211,9 @@ function ProxyRequestStructuredBody({ log, meta }) {
         </span>
       </div>
       {meta.rag_steps && (
-        <div style={{ marginBottom: 12 }}>
+        <div className="coreui-section-block">
           <strong>RAG steps (time)</strong>
-          <p className="dashboard-card-muted" style={{ marginTop: 6, fontSize: 12 }}>
+          <p className="coreui-text-muted-sm">
             embed {Number(meta.rag_steps.embed_s ?? 0).toFixed(2)}s · search {Number(meta.rag_steps.search_s ?? 0).toFixed(2)}s ·
             rerank {Number(meta.rag_steps.rerank_s ?? 0).toFixed(2)}s
             {meta.rag_steps.total_rag_s != null && <> (total RAG {Number(meta.rag_steps.total_rag_s).toFixed(2)}s)</>}
@@ -229,20 +221,20 @@ function ProxyRequestStructuredBody({ log, meta }) {
         </div>
       )}
       {chunksCount > 0 && (
-        <div style={{ marginBottom: 12 }}>
+        <div className="coreui-section-block">
           <strong>RAG context</strong>
-          <p className="dashboard-card-muted" style={{ marginTop: 6, fontSize: 12 }}>
+          <p className="coreui-text-muted-sm">
             Chunks: {chunksCount} · Max score: {typeof maxScore === 'number' ? maxScore.toFixed(3) : maxScore || 'N/A'} · Context
             length: {ragContext.context_length || 0} chars
           </p>
           {chunksInfo.length > 0 && (
-            <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 12 }} className="dashboard-card-muted">
+            <ul className="coreui-list-tight">
               {chunksInfo.slice(0, 12).map((chunk, idx) => (
-                <li key={idx} style={{ marginBottom: 6 }}>
+                <li key={idx}>
                   <strong>#{idx + 1}</strong> {chunk?.doc_type || 'N/A'}
                   {typeof chunk?.score === 'number' ? ` · score ${chunk.score.toFixed(4)}` : ''}
                   {chunk?.url ? (
-                    <div style={{ wordBreak: 'break-all', opacity: 0.9 }}>{chunk.url}</div>
+                    <div className="coreui-text-break-all">{chunk.url}</div>
                   ) : null}
                 </li>
               ))}
@@ -252,7 +244,7 @@ function ProxyRequestStructuredBody({ log, meta }) {
         </div>
       )}
       {log?.timestamp && (
-        <p className="dashboard-card-muted" style={{ fontSize: 12, marginTop: 16 }}>
+        <p className="coreui-text-muted-sm coreui-section-block">
           Log time: {log.timestamp}
         </p>
       )}
@@ -306,7 +298,7 @@ export default function ProxyTraceDetailModal({ log, isOpen, onClose }) {
             )}
           </div>
           <div className="proxy-journal-modal-header-actions">
-            <label className="dashboard-card-muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label className="coreui-checkbox dashboard-card-muted">
               <input type="checkbox" checked={showRaw} onChange={(e) => setShowRaw(e.target.checked)} />
               Raw JSON
             </label>
@@ -317,7 +309,7 @@ export default function ProxyTraceDetailModal({ log, isOpen, onClose }) {
         </div>
         <div className="proxy-journal-modal-body">
           {showRaw && (
-            <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, margin: 0 }}>
+            <pre className="coreui-mono-block">
               {JSON.stringify(meta || log, null, 2)}
             </pre>
           )}
@@ -337,11 +329,11 @@ export default function ProxyTraceDetailModal({ log, isOpen, onClose }) {
                       ? ` · merge_client_tools: ${meta.request.merge_client_tools ? 'yes' : 'no'}`
                       : ''}
                   </summary>
-                  <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(meta.request, null, 2)}</pre>
+                  <pre className="coreui-mono-block">{JSON.stringify(meta.request, null, 2)}</pre>
                 </details>
               )}
               {Array.isArray(meta.steps) && meta.steps.length > 0 && (
-                <div style={{ marginTop: 12 }}>
+                <div className="coreui-section-block">
                   <strong>Steps</strong>
                   {meta.steps.map((s, i) => (
                     <AgentTraceStepBlock key={i} step={s} index={i} />
@@ -349,9 +341,9 @@ export default function ProxyTraceDetailModal({ log, isOpen, onClose }) {
                 </div>
               )}
               {meta.final_message != null && (
-                <div style={{ marginTop: 16 }}>
+                <div className="coreui-section-block coreui-stack-sm">
                   <strong>Final answer</strong>
-                  <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8, fontSize: 12 }}>
+                  <pre className="coreui-mono-block">
                     {meta.final_message.content != null && meta.final_message.content !== ''
                       ? meta.final_message.content
                       : '(no text content)'}

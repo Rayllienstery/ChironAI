@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import CoreUIBadge from './CoreUIBadge';
 
 /**
  * @typedef {'core' | 'option_on' | 'option_off'} OverviewBand
@@ -117,9 +118,9 @@ export default function RagPipelineOverview({ pipelineSettings = {} }) {
                 {Array.isArray(step.overviewBadges) && step.overviewBadges.length > 0 ? (
                   <div className="rag-pipeline-step-card__badges" aria-label="Step options">
                     {step.overviewBadges.map((b) => (
-                      <span key={b} className="rag-pipeline-step-card__badge">
+                      <CoreUIBadge key={b} tone="info">
                         {String(b).toUpperCase()}
-                      </span>
+                      </CoreUIBadge>
                     ))}
                   </div>
                 ) : null}

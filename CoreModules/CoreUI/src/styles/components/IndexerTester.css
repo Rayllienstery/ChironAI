@@ -51,7 +51,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--coreui-color-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -59,9 +59,9 @@
 }
 
 .indexer-modal-content {
-  background: var(--md-sys-color-surface);
-  border-radius: var(--md-sys-shape-corner-large);
-  box-shadow: var(--md-sys-elevation-level5);
+  background: var(--coreui-surface-modal);
+  border-radius: var(--coreui-radius-modal);
+  box-shadow: var(--coreui-shadow-modal);
   max-width: 600px;
   width: 90%;
   max-height: 90vh;

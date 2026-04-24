@@ -110,9 +110,8 @@ export default function TemplateEditorHelpModal({
               )}
               <button
                 type="button"
-                className="template-button primary"
+                className="template-button primary coreui-mt-md"
                 onClick={handleLintPrompt}
-                style={{ marginTop: 'var(--md-sys-spacing-md)' }}
               >
                 <span className="material-symbols-outlined">refresh</span>
                 Re-check Prompt
@@ -136,12 +135,11 @@ export default function TemplateEditorHelpModal({
               </div>
               <button
                 type="button"
-                className="template-button primary"
+                className="template-button primary coreui-mt-md"
                 onClick={() => {
                   handleStructurePrompt();
                   onClose();
                 }}
-                style={{ marginTop: 'var(--md-sys-spacing-md)' }}
               >
                 <span className="material-symbols-outlined">auto_fix_high</span>
                 Apply Structure

@@ -30,6 +30,11 @@
   color: var(--md-sys-color-on-error-container);
 }
 
+.crawler-input-disabled {
+  opacity: var(--coreui-interactive-disabled-opacity);
+  cursor: not-allowed;
+}
+
 /* Progress panel (bottom-right) */
 .crawler-progress-panel {
   padding: 16px;
@@ -316,7 +321,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--coreui-color-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -324,9 +329,9 @@
 }
 
 .modal-content {
-  background: var(--md-sys-color-surface);
-  border-radius: var(--md-sys-shape-corner-large);
-  box-shadow: var(--md-sys-elevation-level5);
+  background: var(--coreui-surface-modal);
+  border-radius: var(--coreui-radius-modal);
+  box-shadow: var(--coreui-shadow-modal);
   max-width: 600px;
   width: 90%;
   max-height: 90vh;
@@ -946,7 +951,7 @@
   height: 8px;
   border-radius: 50%;
   background: var(--md-sys-color-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-primary) 35%, transparent);
+  box-shadow: 0 0 0 3px var(--md-sys-color-primary-tint-35);
   animation: create-collection-phase-pulse 1.2s ease-in-out infinite;
 }
 

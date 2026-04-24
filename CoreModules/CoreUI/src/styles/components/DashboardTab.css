@@ -420,7 +420,7 @@ input.dashboard-card-field {
 }
 
 .dashboard-vendor-row-active {
-  background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+  background: var(--md-sys-color-primary-tint-8);
 }
 
 .dashboard-vendor-col-select {
@@ -461,7 +461,7 @@ input.dashboard-card-field {
 }
 
 .dashboard-vendor-badge-active {
-  background: color-mix(in srgb, var(--md-sys-color-primary) 18%, transparent);
+  background: var(--md-sys-color-primary-tint-18);
   color: var(--md-sys-color-primary);
 }
 
@@ -1324,7 +1324,7 @@ input.dashboard-card-field {
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: rgba(0, 0, 0, 0.48);
+  background: var(--coreui-color-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1337,10 +1337,10 @@ input.dashboard-card-field {
   max-height: min(90vh, 920px);
   display: flex;
   flex-direction: column;
-  background: var(--md-sys-color-surface);
+  background: var(--coreui-surface-modal);
   color: var(--md-sys-color-on-surface);
-  border-radius: var(--md-sys-shape-corner-large);
-  box-shadow: var(--md-sys-elevation-level3);
+  border-radius: var(--coreui-radius-modal);
+  box-shadow: var(--coreui-shadow-modal);
   border: 1px solid var(--md-sys-color-outline-variant);
   min-height: 0;
 }
@@ -1383,14 +1383,14 @@ input.dashboard-card-field {
   border: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface-container-high);
   color: var(--md-sys-color-on-surface);
-  border-radius: 999px;
+  border-radius: var(--coreui-radius-pill);
   padding: 6px 14px;
   cursor: pointer;
   font: var(--md-sys-typescale-label-large-font);
 }
 
 .proxy-journal-modal-close:hover {
-  opacity: 0.92;
+  background: var(--coreui-interactive-hover-bg);
 }
 
 .proxy-journal-modal-body {

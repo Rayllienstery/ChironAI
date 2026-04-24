@@ -63,7 +63,7 @@ export default function AgentTraceSummaryCards({ summary }) {
           Overview
         </h4>
         {summary.traceId ? (
-          <p style={{ margin: '0 0 8px 0', wordBreak: 'break-all' }}>
+          <p className="coreui-text-break-all">
             <strong>trace_id</strong> <code>{summary.traceId}</code>
           </p>
         ) : null}
@@ -78,7 +78,7 @@ export default function AgentTraceSummaryCards({ summary }) {
         {kv('Messages in request', summary.requestMessageCount, 'msg')}
         {kv('merge_client_tools', mergeLabel, 'mct')}
         {summary.error != null && (
-          <p className="dashboard-card-error" style={{ marginTop: 8 }}>
+          <p className="dashboard-card-error">
             {summary.error}
           </p>
         )}
@@ -94,13 +94,13 @@ export default function AgentTraceSummaryCards({ summary }) {
           {pill('Prompt + completion', summary.totalPromptTokensEst + summary.totalCompletionTokensEst)}
         </div>
         {tokenMismatch && (
-          <p className="dashboard-card-muted" style={{ fontSize: 12, marginTop: 8 }}>
+          <p className="coreui-text-muted-sm">
             Sum of per-step model estimates (prompt {summary.sumPromptFromSteps}, completion{' '}
             {summary.sumCompletionFromSteps}) differs from trace totals — partial run or legacy trace.
           </p>
         )}
         {perRows.length > 0 && (
-          <details className="dashboard-trace-item" style={{ marginTop: 10 }}>
+          <details className="dashboard-trace-item coreui-section-block">
             <summary>Per model_call step</summary>
             <table className="agent-trace-summary-table">
               <thead>
@@ -177,10 +177,10 @@ export default function AgentTraceSummaryCards({ summary }) {
           Skills
         </h4>
         {skillsSnap && (
-          <div className="dashboard-card-muted" style={{ marginBottom: 8 }}>
+          <div className="dashboard-card-muted">
             Enabled: {skillsSnap.enabledCount} · Loaded invocations: {skillsSnap.loadedCount}
             {skillsSnap.loadedInvocations.length > 0 ? (
-              <div style={{ marginTop: 6 }}>{chipList(skillsSnap.loadedInvocations)}</div>
+              <div className="coreui-section-block">{chipList(skillsSnap.loadedInvocations)}</div>
             ) : null}
           </div>
         )}
@@ -212,13 +212,13 @@ export default function AgentTraceSummaryCards({ summary }) {
         <h4 id="agent-sum-tools" className="dashboard-proxy-block-title">
           Server tools (assistant requested)
         </h4>
-        <p className="dashboard-card-muted" style={{ fontSize: 12, marginBottom: 8 }}>
+        <p className="coreui-text-muted-sm">
           Order of tool_calls across all model turns (includes rag_query / load_skill when the model asked for them).
         </p>
         {chipList(summary.serverToolCallsOrdered)}
         {summary.serverToolCallsUnique && summary.serverToolCallsUnique.length > 0 && (
-          <div style={{ marginTop: 10 }}>
-            <span className="dashboard-card-muted" style={{ fontSize: 12 }}>
+          <div className="coreui-section-block">
+            <span className="coreui-text-muted-sm">
               Unique:{' '}
             </span>
             {chipList(summary.serverToolCallsUnique)}
@@ -231,7 +231,7 @@ export default function AgentTraceSummaryCards({ summary }) {
           <h4 id="agent-sum-pt" className="dashboard-proxy-block-title">
             IDE pass-through
           </h4>
-          <p className="dashboard-card-muted" style={{ fontSize: 12, marginBottom: 8 }}>
+          <p className="coreui-text-muted-sm">
             Tool batch returned to the client for execution outside the proxy process.
           </p>
           <ul className="agent-trace-summary-list">
@@ -253,10 +253,10 @@ export default function AgentTraceSummaryCards({ summary }) {
           {summary.clientToolNamesPreview && summary.clientToolNamesPreview.length > 0 ? ':' : '.'}
         </p>
         {summary.clientToolNamesPreview && summary.clientToolNamesPreview.length > 0 && (
-          <div style={{ marginTop: 6 }}>{chipList(summary.clientToolNamesPreview)}</div>
+          <div className="coreui-section-block">{chipList(summary.clientToolNamesPreview)}</div>
         )}
         {summary.clientToolNamesCount > (summary.clientToolNamesPreview || []).length && (
-          <p className="dashboard-card-muted" style={{ fontSize: 12, marginTop: 6 }}>
+          <p className="coreui-text-muted-sm">
             …and {summary.clientToolNamesCount - summary.clientToolNamesPreview.length} more (see request JSON).
           </p>
         )}

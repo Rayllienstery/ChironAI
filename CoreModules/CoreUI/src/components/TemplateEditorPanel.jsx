@@ -418,12 +418,11 @@ export default function TemplateEditorPanel(props) {
               {linterWarnings.length > 3 && (
                 <button
                   type="button"
-                  className="template-button ghost"
+                  className="template-button ghost template-button--compact"
                   onClick={() => {
                     setHelpModalTab('linter');
                     setShowHelpModal(true);
                   }}
-                  style={{ fontSize: '0.875rem', padding: '4px 8px' }}
                 >
                   View all {linterWarnings.length} issues
                 </button>

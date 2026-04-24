@@ -145,7 +145,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--md-sys-spacing-lg);
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--coreui-color-scrim);
 }
 
 .model-tester-modal {
@@ -153,10 +153,10 @@
   max-height: min(85vh, 100%);
   display: flex;
   flex-direction: column;
-  background: var(--md-sys-color-surface);
+  background: var(--coreui-surface-modal);
   color: var(--md-sys-color-on-surface);
-  border-radius: var(--md-sys-shape-corner-large);
-  box-shadow: var(--md-sys-elevation-level3);
+  border-radius: var(--coreui-radius-modal);
+  box-shadow: var(--coreui-shadow-modal);
   overflow: hidden;
 }
 
@@ -733,8 +733,8 @@
   font-size: 0.8125rem;
   line-height: 1.55;
   border-radius: 8px;
-  border: 1px solid #d0d7de;
-  box-shadow: 0 1px 0 rgba(27, 31, 35, 0.04);
+  border: 1px solid var(--coreui-border-subtle);
+  box-shadow: var(--coreui-shadow-panel);
 }
 
 .markdown-prose.markdown-prose--preview :not(pre) > code {
@@ -744,7 +744,7 @@
   border-radius: 4px;
   border: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface-container-high);
-  color: #0969da;
+  color: var(--coreui-color-info);
 }
 
 .markdown-prose.markdown-prose--preview table {
@@ -785,17 +785,6 @@
 .markdown-prose.markdown-prose--preview hr {
   margin: 1.5em 0;
   border-top: 1px solid var(--md-sys-color-outline-variant);
-}
-
-@media (prefers-color-scheme: dark) {
-  .markdown-prose.markdown-prose--preview pre code.hljs {
-    border-color: #30363d;
-    box-shadow: none;
-  }
-
-  .markdown-prose.markdown-prose--preview :not(pre) > code {
-    color: #79c0ff;
-  }
 }
 
 .form-group {

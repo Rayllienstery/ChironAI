@@ -155,8 +155,8 @@
 }
 
 .proxy-log-pipeline-badge--rag {
-  background: var(--md-sys-color-secondary-container, #e3e8ef);
-  color: var(--md-sys-color-on-secondary-container, #1d1b20);
+  background: var(--coreui-color-info-container);
+  color: var(--coreui-color-on-info-container);
 }
 
 .proxy-log-ac-badge {
@@ -535,7 +535,7 @@ button.proxy-logs-top-row {
 }
 
 button.proxy-logs-top-row:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-sys-color-primary, #6750a4) 8%, transparent);
+  background: var(--md-sys-color-primary-tint-12);
   border-radius: var(--md-sys-shape-corner-extra-small);
 }
 
@@ -686,7 +686,7 @@ button.proxy-logs-top-row:disabled {
   align-items: center;
   justify-content: center;
   padding: var(--md-sys-spacing-md);
-  background: color-mix(in srgb, var(--md-sys-color-scrim, #000) 45%, transparent);
+  background: var(--coreui-color-scrim);
 }
 
 .logs-tab-modal {
@@ -695,11 +695,11 @@ button.proxy-logs-top-row:disabled {
   max-width: min(920px, 100%);
   max-height: min(85vh, 900px);
   width: 100%;
-  background: var(--md-sys-color-surface, #fff);
+  background: var(--coreui-surface-modal);
   color: var(--md-sys-color-on-surface);
-  border-radius: var(--md-sys-shape-corner-medium, 12px);
+  border-radius: var(--coreui-radius-modal);
   border: 1px solid var(--md-sys-color-outline-variant);
-  box-shadow: 0 8px 32px color-mix(in srgb, var(--md-sys-color-shadow, #000) 24%, transparent);
+  box-shadow: var(--coreui-shadow-modal);
 }
 
 .logs-tab-modal-header {

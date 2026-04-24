@@ -34,7 +34,7 @@
 .pipeline-vert__item--active .pipeline-vert__icon-wrap {
   background: var(--md-sys-color-primary-container);
   border-color: var(--md-sys-color-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-primary) 16%, transparent);
+  box-shadow: 0 0 0 3px var(--md-sys-color-primary-tint-16);
 }
 
 .pipeline-vert__icon {

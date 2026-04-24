@@ -327,20 +327,20 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--md-sys-color-primary, #6750a4);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--md-sys-color-primary, #6750a4) 45%, transparent);
+  background: var(--md-sys-color-primary);
+  box-shadow: 0 0 0 0 var(--coreui-pulse-primary-45);
   animation: proxy-live-pulse 1.4s ease-out infinite;
 }
 
 @keyframes proxy-live-pulse {
   0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--md-sys-color-primary, #6750a4) 40%, transparent);
+    box-shadow: 0 0 0 0 var(--coreui-pulse-primary-40);
   }
   70% {
-    box-shadow: 0 0 0 8px color-mix(in srgb, var(--md-sys-color-primary, #6750a4) 0%, transparent);
+    box-shadow: 0 0 0 8px transparent;
   }
   100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--md-sys-color-primary, #6750a4) 0%, transparent);
+    box-shadow: 0 0 0 0 transparent;
   }
 }
 
@@ -421,15 +421,15 @@
 }
 
 .proxy-live-step-capsule--completed {
-  background: var(--md-sys-color-primary, var(--md-sys-color-secondary));
-  color: var(--md-sys-color-on-primary, #fff);
-  border-color: var(--md-sys-color-primary, var(--md-sys-color-secondary));
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border-color: var(--md-sys-color-primary);
 }
 
 .proxy-live-step-capsule--current {
   background: transparent;
-  color: var(--md-sys-color-primary, var(--md-sys-color-secondary));
-  border-color: var(--md-sys-color-primary, var(--md-sys-color-secondary));
+  color: var(--md-sys-color-primary);
+  border-color: var(--md-sys-color-primary);
 }
 
 .proxy-live-notification-error {

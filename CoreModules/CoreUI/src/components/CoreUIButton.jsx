@@ -16,8 +16,11 @@ export default function CoreUIButton({
   const classes = joinClasses([
     "coreui-btn",
     variant === "primary" && "coreui-btn-primary",
+    variant === "danger" && "coreui-btn-danger",
     variant === "ghost" && "coreui-btn-ghost",
+    variant === "icon" && "coreui-btn-icon",
     size === "sm" && "coreui-btn-small",
+    size === "icon" && "coreui-btn-icon",
     className,
   ]);
 

@@ -429,7 +429,7 @@
 .rag-tests-modal {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--coreui-color-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -437,14 +437,14 @@
 }
 
 .rag-tests-modal-content {
-  background: var(--md-sys-color-surface);
-  border-radius: var(--md-sys-shape-corner-large);
+  background: var(--coreui-surface-modal);
+  border-radius: var(--coreui-radius-modal);
   padding: 24px;
   max-width: 560px;
   width: 90%;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: var(--md-sys-elevation-level3);
+  box-shadow: var(--coreui-shadow-modal);
 }
 
 .rag-tests-modal-content h3 {
@@ -1244,14 +1244,14 @@
 
 .rag-tests-compare-delta.positive {
   color: var(--md-sys-color-primary);
-  border-color: color-mix(in srgb, var(--md-sys-color-primary) 40%, var(--md-sys-color-outline-variant));
-  background: color-mix(in srgb, var(--md-sys-color-primary-container) 35%, transparent);
+  border-color: var(--md-sys-color-primary-outline-40);
+  background: var(--coreui-surface-primary-container-soft);
 }
 
 .rag-tests-compare-delta.negative {
   color: var(--md-sys-color-error);
   border-color: color-mix(in srgb, var(--md-sys-color-error) 40%, var(--md-sys-color-outline-variant));
-  background: color-mix(in srgb, var(--md-sys-color-error-container) 45%, transparent);
+  background: var(--coreui-surface-error-container-soft);
 }
 
 .rag-tests-compare-delta.neutral {

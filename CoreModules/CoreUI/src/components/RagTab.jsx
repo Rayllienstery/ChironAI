@@ -1015,8 +1015,8 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
           before they go into the final prompt.
         </p>
 
-        <div className="rag-trigger-test" style={{ borderTop: 'none', paddingTop: 0 }}>
-          <h4 className="rag-trigger-test-title" style={{ marginBottom: 8 }}>Embedding model (index + query)</h4>
+        <div className="rag-trigger-test rag-trigger-test--first">
+          <h4 className="rag-trigger-test-title rag-trigger-test-title--compact">Embedding model (index + query)</h4>
           <div className="rag-trigger-threshold-row">
             <label className="rag-trigger-label" htmlFor="rag-embed-model">Model</label>
             <select
@@ -1040,18 +1040,18 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
               ))}
             </select>
           </div>
-          <p className="rag-trigger-hint" style={{ marginTop: 0 }}>
+          <p className="rag-trigger-hint rag-trigger-hint--tight">
             Empty selection uses the server default above (from env <code>RAG_EMBED_MODEL</code> or{' '}
             <code>config/models.yaml</code>).
             If you change the embedding model, you typically need to re-create Qdrant collections (vector dimension may
             differ).
           </p>
 
-          <div style={{ height: 12 }} />
+          <div className="rag-trigger-spacer" />
 
-          <h4 className="rag-trigger-test-title" style={{ marginBottom: 8 }}>Hybrid sparse (dense + keyword)</h4>
+          <h4 className="rag-trigger-test-title rag-trigger-test-title--compact">Hybrid sparse (dense + keyword)</h4>
           <div className="rag-trigger-threshold-row">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <label className="rag-trigger-inline-check">
               <input
                 type="checkbox"
                 id="rag-hybrid-sparse-enabled"
@@ -1063,18 +1063,18 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
               Enabled
             </label>
           </div>
-          <p className="rag-trigger-hint" style={{ marginTop: 0 }}>
+          <p className="rag-trigger-hint rag-trigger-hint--tight">
             One setting for both <strong>indexing new collections</strong> (writes dense + sparse vectors to Qdrant)
             and <strong>retrieval</strong> (RRF fusion when the collection has sparse data). Turn off for legacy
             dense-only collections or to skip sparse encoding. Config default:{' '}
             {ragModelDefaults.hybrid_sparse_enabled ? 'on' : 'off'} (from <code>retrieval.yaml</code> if never saved).
           </p>
 
-          <div style={{ height: 12 }} />
+          <div className="rag-trigger-spacer" />
 
-          <h4 className="rag-trigger-test-title" style={{ marginBottom: 8 }}>Rerank for RAG</h4>
+          <h4 className="rag-trigger-test-title rag-trigger-test-title--compact">Rerank for RAG</h4>
           <div className="rag-trigger-threshold-row">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <label className="rag-trigger-inline-check">
               <input
                 type="checkbox"
                 checked={ragModelSettings.rerank_for_rag}
@@ -1108,14 +1108,14 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
             </select>
           </div>
 
-          <p className="rag-trigger-hint" style={{ marginTop: 0 }}>
+          <p className="rag-trigger-hint rag-trigger-hint--tight">
             You can pick a rerank model even when Enabled is off; it is used only after you turn rerank on. Enabled
             rerank improves quality but slows down requests — prefer a dedicated (smaller) rerank model.
           </p>
 
-          <div style={{ height: 20 }} />
+          <div className="rag-trigger-spacer rag-trigger-spacer--lg" />
 
-          <h4 className="rag-trigger-test-title" style={{ marginBottom: 8 }}>
+          <h4 className="rag-trigger-test-title rag-trigger-test-title--compact">
             Retrieval quality &amp; coverage
           </h4>
           <p className="rag-adv-retrieval-intro">
@@ -1143,7 +1143,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
               </div>
               <div className="rag-adv-option-body">
                 {opt.lines.map((ln) => (
-                  <span key={ln.tag} style={{ display: 'block', marginBottom: 4 }}>
+                  <span key={ln.tag} className="rag-adv-option-line">
                     <strong>{ln.tag}:</strong> {ln.text}
                   </span>
                 ))}
@@ -1157,7 +1157,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
             </div>
           ))}
 
-          <div style={{ marginTop: 12 }}>
+          <div className="rag-trigger-actions">
             <button
               type="button"
               className="rag-button primary"
@@ -1253,7 +1253,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
                 })}
               </tbody>
             </table>
-            <p className="rag-trigger-hint" style={{ marginTop: '8px' }}>
+            <p className="rag-trigger-hint rag-trigger-hint--offset">
               Collections with a framework id come from external framework docs. Rows marked as
               {' '}
               <strong>Latest</strong>

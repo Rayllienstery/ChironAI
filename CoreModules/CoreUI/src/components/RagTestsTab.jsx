@@ -2094,7 +2094,6 @@ function RagTestsTab({
                     if (ev.target.closest('button, a, input, [role="checkbox"]')) return;
                     openDetails();
                   }}
-                  style={{ cursor: 'pointer' }}
                 >
                   <td onClick={(ev) => ev.stopPropagation()}>
                     <input
