@@ -1,6 +1,12 @@
-"""Compatibility wrapper to standalone rag_service retrieval helpers."""
+"""Compat wrapper for canonical ``rag_service.domain.services.retrieval``.
 
-from rag_service.config import get_retrieval_bool, get_retrieval_dict, get_retrieval_int, get_retrieval_list
+This module stays intentionally thin. The only local logic is
+``expand_query_variants`` for legacy tests that patch config access on the root
+package path.
+"""
+
+from rag_service.domain.services import retrieval as _canonical_retrieval
+from rag_service.config import get_retrieval_bool, get_retrieval_dict, get_retrieval_int
 from rag_service.domain.services.retrieval import *  # noqa: F401,F403
 
 
@@ -28,3 +34,6 @@ def expand_query_variants(question: str) -> list[str]:
         if len(variants) >= max_v:
             break
     return variants[:max_v]
+
+
+__all__ = list(_canonical_retrieval.__all__) + ["expand_query_variants"]

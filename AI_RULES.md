@@ -1,0 +1,134 @@
+# AI_RULES — working with the ChironAI repository
+
+For humans and AI assistants: terminology, module boundaries, what to keep in sync, and areas to touch only deliberately. Full architecture lives under `docs/`; this file is a cheat sheet with pointers to the source of truth.
+
+---
+
+## 1. Purpose
+
+- **Goal:** quickly locate the Web UI stack, how CoreUI talks to the backend, Python layer boundaries, and the fragile spots.
+- **Non-goal:** replace `docs/ARCHITECTURE.md` or per-module READMEs—when in doubt, open the references in section 8.
+
+---
+
+## 2. Project vocabulary (critical)
+
+| Term | What it is |
+|------|------------|
+| **CoreUI** | React/Vite SPA under `CoreModules/CoreUI/`. Talks to the backend **only over HTTP**—no direct RAG, crawler, or ingestion calls. See `CoreModules/CoreUI/README.md`. |
+| **`WebUI/` folder** | **Legacy** Python: crawl, index, helper scripts, `WebUI/app.py`. This is **not** the frontend. |
+| **Web UI (HTTP API)** | REST under the `/api/webui` prefix for dashboard, settings, logs, etc. **Today** the main route implementation is the monolith `api/http/webui_routes.py`. **Target** migration is the standalone service `modules/webui_backend/`. |
+| **Open WebUI** | A separate Docker product; status/start via `CoreModules/ServiceStarter`. Do not conflate with **CoreUI** (our React app) or call it “our WebUI” without qualification. |
+
+Ambiguous “WebUI” in conversation: clarify—**`WebUI/` folder**, **`/api/webui` HTTP API**, **CoreUI**, or **Open WebUI**.
+
+---
+
+## 3. CoreUI: how to change the UI
+
+### API and contract
+
+- The **`/api/webui`** prefix must match in three places:
+  1. `core/contracts/webui_api.py` — constant `WEBUI_URL_PREFIX`;
+  2. `CoreModules/CoreUI/src/services/api.js` — `API_BASE`;
+  3. Flask Web UI blueprint — `url_prefix` (today around `api/http/webui_routes.py` and related registration).
+- Any new endpoint: update the contract (types/DTOs in `webui_api.py` as needed), the client in `api.js`, and server routes. Otherwise you get **docs ↔ frontend ↔ backend** drift.
+
+### Code layout (as in the repo)
+
+- `CoreModules/CoreUI/src/components/` — screens, tabs, modals.
+- `CoreModules/CoreUI/src/services/` — HTTP (`api.js`, `logs.js`, etc.).
+- `CoreModules/CoreUI/src/styles/` — global styles, `tokens.css`, per-component CSS under `styles/components/`.
+- `CoreModules/CoreUI/src/hooks/`, `utils/`, `constants/` — as named.
+
+`CoreModules/CoreUI/README.md` mentions `src/features/` and `src/shared/`; most of the tree today lives under `components/` and `styles/`. Put new code in existing folders—do not introduce a parallel hierarchy without a reason.
+
+### Design
+
+- Token base: `CoreModules/CoreUI/src/styles/tokens.css` (Material 3: `--md-sys-*`, fonts `--coreui-font-*`).
+- Global imports: `CoreModules/CoreUI/src/main.jsx` (`tokens.css`, `coreui-system.css`).
+- Primitive pattern: component (e.g. `CoreUIButton.jsx`) + dedicated CSS in `styles/components/`. Prefer tokens and classes over long inline styles where the system is already wired.
+
+### Navigation and loading
+
+- `CoreModules/CoreUI/src/App.jsx`: lazy tab imports and chunk-load retry (`lazyWithRetry`). New tabs should follow the same pattern so deploy UX stays stable.
+
+---
+
+## 4. Python core (monolith)
+
+Layers (top to bottom): **`api/`** → **`application/`** → **`domain/`** → **`infrastructure/`**, plus `config/`, `utils/`. Details: `docs/ARCHITECTURE.md`.
+
+- **`domain/`** must not import `application`, `api`, or `infrastructure`. Enforcement: **import-linter** in `pyproject.toml` (contract `domain_is_inner_layer`). After changing layer boundaries, run `lint-imports` if your environment is set up for it.
+- Web UI responsibility split:
+  - **`api/http/service_control.py`** — lifecycle of external services (ServiceStarter, Qdrant, Open WebUI, Ollama, etc.);
+  - **`api/http/webui_routes.py`** — HTTP composition for the UI.
+  Do not merge them back without a strong reason—this split is intentional for tests and evolution.
+
+---
+
+## 5. Modular target state
+
+Target data flow:
+
+```mermaid
+flowchart LR
+  CoreUI[CoreUI_SPA]
+  WUB[webui_backend_HTTP]
+  RAG[rag_service]
+  MD[md_ingestion_service]
+  CR[crawler_service]
+  CoreUI -->|HTTP| WUB
+  WUB -->|HTTP_contracts| RAG
+  WUB -->|HTTP_contracts| MD
+  WUB -->|HTTP_contracts| CR
+```
+
+Modules must not import each other's **implementations**—only contracts and HTTP. Shared layer: `core/` (`core/contracts/`, `core/shared/`, `core/config/`). Read: `docs/MODULAR_STRUCTURE.md`, `core/README.md`.
+
+Until migration completes, the monolith (`api/`, `application/`, `domain/`, `infrastructure/`) and new modules coexist; state clearly in commits which path you changed.
+
+---
+
+## 6. High-risk areas
+
+Change carefully; if behavior shifts, document and align with team/repo norms.
+
+1. **LlmProxy / OpenAI compatibility** — `CoreModules/LlmProxy/`: canonical `/v1/chat/completions`, intentional legacy (`/v1/completions` and related). See `docs/ARCHITECTURE.md` (compatibility section), `CoreModules/LlmProxy/README.md`.
+2. **Web UI API sync** — `core/contracts/webui_api.py` ↔ `CoreModules/CoreUI/src/services/api.js` ↔ Flask routes.
+3. **Settings overlap** — `proxy_settings`, app fields, YAML/env; risk of silent divergence. Key files: `api/http/webui_routes.py`, `api/http/llm_proxy_wiring.py`, `CoreModules/LlmProxy/llm_proxy/chat_completions.py` (see `docs/legacy_map.md`).
+4. **Qdrant / retrieval** — multiple modes (dense, hybrid, name compatibility); edits to `CoreModules/RagService/.../qdrant_repository.py` and mirrors under `infrastructure/qdrant/` must stay aligned.
+5. **Service control** — `CoreModules/ServiceStarter` and Web UI call paths; keep a single source of truth for ports/status.
+
+Risk and “tail” summary: `docs/legacy_map.md`.
+
+---
+
+## 7. AI checklist before finishing a task
+
+- [ ] If the Web UI API changed: updated `webui_api.py`, `api.js` (and contract types/comments if needed), server routes.
+- [ ] No import-boundary violations for `domain/`?
+- [ ] If `config/*.yaml` or env vars changed: are they documented for users/deploy?
+- [ ] Did you add a new long-lived monolith “tail”—worth a line in `docs/legacy_map.md`?
+- [ ] For CoreUI: styles via tokens/existing classes; new tabs via the lazy pattern in `App.jsx`.
+
+---
+
+## 8. Further reading
+
+| Document / module | Purpose |
+|-------------------|---------|
+| `docs/ARCHITECTURE.md` | Layers, RAG/HTTP/CLI flows, tests, packaging |
+| `docs/MODULAR_STRUCTURE.md` | Target modular layout |
+| `docs/legacy_map.md` | Current risks and legacy wiring |
+| `docs/RAG_BEHAVIOR.md` | RAG behavior (retrieval/prompt work) |
+| `CoreModules/CoreUI/README.md` | Running the frontend, `VITE_API_URL` |
+| `modules/webui_backend/README.md` | Target Web UI backend |
+| `modules/README.md` | Module index |
+| `CoreModules/LlmProxy/README.md` | Proxy, endpoints, env |
+| `CoreModules/RagService/README.md` | RAG package |
+| `CoreModules/ServiceStarter/README.md` | Docker / Ollama / Open WebUI |
+
+---
+
+*File reflects repo state; after large migrations (e.g. extracting `webui_backend`), update sections 2 and 5.*

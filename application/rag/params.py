@@ -1,4 +1,8 @@
-"""Compatibility wrapper to standalone rag_service params."""
+"""Compat wrapper for canonical ``rag_service.application.params``.
+
+This module stays intentionally thin. The only local adapter is ``prompt_name``
+handling, which preserves the legacy root-package API shape.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +19,7 @@ def get_rag_answer_params(
     collection_name: str | None = None,
     prompt_name: str | None = None,
 ) -> tuple[RAGAnswerParams, RAGDependencies]:
-    """Thin adapter to standalone rag_service params."""
+    """Thin adapter over the canonical rag_service params loader."""
     params, deps = _get_rag_answer_params_impl(
         webui_dir=webui_dir,
         collection_name=collection_name,

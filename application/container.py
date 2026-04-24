@@ -1,91 +1,22 @@
-"""
-Application composition root.
+"""Compat wrapper for canonical ``rag_service.infrastructure.container``.
 
-Wires default infrastructure implementations to ports and exposes
-use-case dependencies (e.g. for RAG). Presentation layer imports from here
-or from use_cases with pre-wired dependencies.
+This module stays intentionally thin. The only local helpers are
+``default_markdown_store`` and ``wire_rag_use_cases`` for legacy root-package
+callers that still expect these convenience entry points.
 """
 
 from __future__ import annotations
 
-import os
+from os import path as os_path
 
 from domain.ports import ChatLLMClient, EmbeddingProvider, RagRepository, RerankClient
-
-try:
-    from config import (
-        get_ollama_chat_model,
-        get_ollama_chat_url,
-        get_ollama_embed_url,
-        get_ollama_generate_url,
-        get_ollama_rerank_model,
-        get_qdrant_url,
-    )
-except ImportError:
-    get_qdrant_url = lambda: "http://localhost:6333"  # type: ignore
-    get_ollama_embed_url = lambda: "http://localhost:11434/api/embed"  # type: ignore
-    get_ollama_generate_url = lambda: "http://localhost:11434/api/generate"  # type: ignore
-    get_ollama_chat_url = lambda: "http://localhost:11434/api/chat"  # type: ignore
-    get_ollama_chat_model = lambda: ""  # type: ignore
-    get_ollama_rerank_model = lambda: ""  # type: ignore  # no Ollama model id without project config
-
 from infrastructure.fs.markdown_store import FileMarkdownStore
-from infrastructure.ollama.chat_client import OllamaChatClient
-from infrastructure.ollama.embed_client import OllamaEmbeddingProvider
-from infrastructure.ollama.rerank_client import OllamaRerankClient
-from infrastructure.qdrant.rag_repository_impl import QdrantRagRepository
-
-
-def default_rag_repository(
-    collection_file: str | None = None,
-    qdrant_url: str | None = None,
-    default_collection: str | None = None,
-    collection_name: str | None = None,
-) -> QdrantRagRepository:
-    """Build default RagRepository (Qdrant). When collection_name is set, it is used as explicit_collection (overrides file)."""
-    from config import QDRANT_CONFIG  # local import to avoid circulars
-
-    default = default_collection or QDRANT_CONFIG.get("collection_name", "webcrawl")
-
-    return QdrantRagRepository(
-        base_url=qdrant_url or get_qdrant_url(),
-        collection_file=collection_file,
-        default_collection=default,
-        explicit_collection=collection_name,
-    )
-
-
-def default_embed_provider(
-    embed_url: str | None = None,
-    model: str | None = None,
-) -> OllamaEmbeddingProvider:
-    """Build default EmbeddingProvider (Ollama)."""
-    return OllamaEmbeddingProvider(
-        base_url=embed_url or get_ollama_embed_url(),
-        model=model,
-    )
-
-
-def default_rerank_client(
-    generate_url: str | None = None,
-    model: str | None = None,
-) -> OllamaRerankClient:
-    """Build default RerankClient (Ollama generate)."""
-    return OllamaRerankClient(
-        base_url=generate_url or get_ollama_generate_url(),
-        model=model or get_ollama_rerank_model(),
-    )
-
-
-def default_chat_client(
-    chat_url: str | None = None,
-    model: str | None = None,
-) -> OllamaChatClient:
-    """Build default ChatLLMClient (Ollama chat)."""
-    return OllamaChatClient(
-        base_url=chat_url or get_ollama_chat_url(),
-        model=model or get_ollama_chat_model(),
-    )
+from rag_service.infrastructure.container import (
+    default_chat_client,
+    default_embed_provider,
+    default_rag_repository,
+    default_rerank_client,
+)
 
 
 def default_markdown_store(base_dir: str) -> FileMarkdownStore:
@@ -98,13 +29,9 @@ def wire_rag_use_cases(
     webui_dir: str | None = None,
     collection_name: str | None = None,
 ) -> tuple[RagRepository, EmbeddingProvider, RerankClient, ChatLLMClient]:
-    """
-    Return (rag_repo, embed_provider, rerank_client, chat_client) for RAG use cases.
-    If collection_file is None and webui_dir is set, uses webui_dir/last_collection.txt.
-    collection_name: explicit collection name to use (overrides collection_file and default).
-    """
+    """Return pre-wired legacy root-package RAG dependencies."""
     if collection_file is None and webui_dir:
-        collection_file = os.path.join(webui_dir, "last_collection.txt")
+        collection_file = os_path.join(webui_dir, "last_collection.txt")
     rag_repo = default_rag_repository(collection_file=collection_file, collection_name=collection_name)
     embed_provider = default_embed_provider()
     rerank_client = default_rerank_client()

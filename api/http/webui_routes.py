@@ -17,9 +17,7 @@ import sys
 import threading
 import time
 import uuid
-from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from collections import deque
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
@@ -61,7 +59,6 @@ from application.llm_proxy_builds import (
     load_builds_json,
     validate_builds_list,
 )
-from application.rag.collection_freshness import check_collection_freshness
 from application.rag.proxy_settings_contract import (
     load_proxy_settings,
     resolve_hybrid_sparse_enabled,
@@ -126,18 +123,12 @@ from infrastructure.rag.qdrant_point_builder import build_named_vectors
 from domain.services.rag_trigger import compute_rag_trigger_score
 from config.rag_prompts import (
     get_rag_system_prompt,
-    list_rag_prompt_names,
     rag_prompt_file_exists,
     PROMPTS_DIR,
 )
 
 # Trash directory for deleted prompts
 TRASH_DIR = PROMPTS_DIR / ".trash"
-
-
-def is_readme_name(name: str) -> bool:
-    """Check if a prompt name is README (case-insensitive)."""
-    return name.lower() == "readme"
 def _get_rag_required_keywords_from_module() -> list[str] | None:
     """Return flat list of enabled keywords from rag_service module, or None to use config default."""
     if get_keyword_collections_repository is None:
@@ -189,23 +180,21 @@ from infrastructure.database import (
     get_logs_repository,
     get_notifications_repository,
     get_settings_repository,
-    get_rag_test_runs_repository,
 )
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
+from api.http.webui_crawler_helpers import is_safe_identifier
+from api.http.webui_crawler_source_routes import register_crawler_source_routes
+from api.http.webui_prompt_routes import register_prompt_routes
+from api.http.webui_prompts import is_readme_name
 from api.http.webui_session import log_to_database
 from api.http.proxy_status import (
     set_proxy_status,
     set_latest_request_seconds,
-    set_latest_request_total_tokens,
-    set_latest_request_rag_steps,
     get_proxy_status_label,
     get_latest_request_seconds,
     get_latest_request_total_tokens,
     get_latest_request_rag_steps,
     STATUS_IDLE,
-    STATUS_RAG_SEARCH,
-    STATUS_PREPARING_RESPONSE,
-    STATUS_RESPONSE,
 )
 from api.http.proxy_trace import (
     annotate_proxy_trace_for_ui,
@@ -290,7 +279,6 @@ except ImportError:
     save_pipeline = None  # type: ignore[assignment]
 
 import hashlib
-import re
 import subprocess
 try:
     import winreg  # type: ignore[import-not-found]
@@ -307,6 +295,21 @@ webui_bp = Blueprint("webui", __name__, url_prefix=WEBUI_URL_PREFIX)
 
 # Persisted Open WebUI → backend (Ollama-compatible base URL, e.g. LLM Proxy).
 OPEN_WEBUI_OLLAMA_BASE_URL_APP_KEY = "open_webui_ollama_base_url"
+
+register_prompt_routes(
+    webui_bp,
+    prompts_dir=PROMPTS_DIR,
+    trash_dir=TRASH_DIR,
+    error_log=_ERROR_LOG,
+)
+register_crawler_source_routes(
+    webui_bp,
+    error_log=_ERROR_LOG,
+    get_crawler_sources_dir=lambda: _get_crawler_sources_dir(),
+    load_source_meta=lambda source_id: _load_source_meta(source_id),
+    load_sources_config=lambda: _load_sources_config(),
+    save_sources_config=lambda sources: _save_sources_config(sources),
+)
 
 
 def _normalize_open_webui_ollama_base_url(raw: str) -> str:
@@ -449,331 +452,6 @@ def get_models() -> Any:
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_models", exc_info=True)
         log_to_database("ERROR", str(e), source="webui_routes.get_models", error_type=type(e).__name__)
-        return jsonify({"error": str(e)}), 500
-
-
-@webui_bp.route("/prompts", methods=["GET"])
-def get_prompts() -> Any:
-    """Return list of available prompt names."""
-    try:
-        names = list_rag_prompt_names()
-        return jsonify({
-            "prompts": [{"name": name, "id": name} for name in names],
-        })
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.get_prompts", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@webui_bp.route("/prompts/<name>", methods=["GET"])
-def get_prompt_content(name: str) -> Any:
-    """Get content of a specific prompt file."""
-    try:
-        if ".." in name or "/" in name or "\\" in name:
-            return jsonify({"error": "Invalid prompt name"}), 400
-        
-        path = PROMPTS_DIR / f"{name}.md"
-        if not path.is_file():
-            return jsonify({"error": "Prompt not found"}), 404
-        
-        content = path.read_text(encoding="utf-8")
-        return jsonify({
-            "name": name,
-            "content": content,
-        })
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.get_prompt_content", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@webui_bp.route("/prompts", methods=["POST"])
-def create_prompt() -> Any:
-    """Create a new prompt or duplicate an existing one."""
-    try:
-        body = request.get_json(force=True, silent=True) or {}
-        source_name = body.get("source_name")
-        name = body.get("name")
-        content = body.get("content")
-        
-        if not name:
-            return jsonify({"error": "name is required"}), 400
-        
-        if ".." in name or "/" in name or "\\" in name:
-            return jsonify({"error": "Invalid prompt name"}), 400
-        
-        # Prevent creating files named README
-        if is_readme_name(name):
-            return jsonify({"error": "Cannot create a file named README"}), 403
-        
-        path = PROMPTS_DIR / f"{name}.md"
-        if path.exists():
-            return jsonify({"error": "Prompt already exists"}), 409
-        
-        # If duplicating, load source content
-        if source_name and not content:
-            if ".." in source_name or "/" in source_name or "\\" in source_name:
-                return jsonify({"error": "Invalid source prompt name"}), 400
-            source_path = PROMPTS_DIR / f"{source_name}.md"
-            if not source_path.is_file():
-                return jsonify({"error": "Source prompt not found"}), 404
-            content = source_path.read_text(encoding="utf-8")
-        
-        if not content:
-            return jsonify({"error": "content is required"}), 400
-        
-        # Ensure prompts directory exists
-        PROMPTS_DIR.mkdir(parents=True, exist_ok=True)
-        
-        path.write_text(content, encoding="utf-8")
-        return jsonify({
-            "name": name,
-            "status": "created",
-        })
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.create_prompt", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@webui_bp.route("/prompts/<name>", methods=["PUT"])
-def update_prompt(name: str) -> Any:
-    """Update prompt content and/or rename it."""
-    try:
-        if ".." in name or "/" in name or "\\" in name:
-            return jsonify({"error": "Invalid prompt name"}), 400
-        
-        body = request.get_json(force=True, silent=True) or {}
-        new_name = body.get("new_name")
-        content = body.get("content")
-        
-        path = PROMPTS_DIR / f"{name}.md"
-        if not path.is_file():
-            return jsonify({"error": "Prompt not found"}), 404
-        
-        # Prevent editing README
-        if is_readme_name(name):
-            return jsonify({"error": "README cannot be edited"}), 403
-        
-        # Handle rename
-        if new_name and new_name != name:
-            if ".." in new_name or "/" in new_name or "\\" in new_name:
-                return jsonify({"error": "Invalid new prompt name"}), 400
-            
-            # Prevent renaming to README
-            if is_readme_name(new_name):
-                return jsonify({"error": "Cannot rename to README"}), 403
-            
-            new_path = PROMPTS_DIR / f"{new_name}.md"
-            if new_path.exists():
-                return jsonify({"error": "New prompt name already exists"}), 409
-            
-            # If content is provided, write to new file; otherwise move
-            if content is not None:
-                new_path.write_text(content, encoding="utf-8")
-                path.unlink()
-            else:
-                path.rename(new_path)
-            return jsonify({
-                "name": new_name,
-                "status": "renamed",
-            })
-        
-        # Handle content update
-        if content is not None:
-            path.write_text(content, encoding="utf-8")
-            return jsonify({
-                "name": name,
-                "status": "updated",
-            })
-        
-        return jsonify({"error": "No changes specified"}), 400
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.update_prompt", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@webui_bp.route("/prompts/<name>", methods=["DELETE"])
-def delete_prompt(name: str) -> Any:
-    """Move a prompt file to trash instead of deleting permanently."""
-    try:
-        if ".." in name or "/" in name or "\\" in name:
-            return jsonify({"error": "Invalid prompt name"}), 400
-        
-        # Prevent deleting README
-        if is_readme_name(name):
-            return jsonify({"error": "README cannot be deleted"}), 403
-        
-        path = PROMPTS_DIR / f"{name}.md"
-        if not path.is_file():
-            return jsonify({"error": "Prompt not found"}), 404
-        
-        # Ensure trash directory exists
-        TRASH_DIR.mkdir(parents=True, exist_ok=True)
-        
-        # Move to trash
-        trash_path = TRASH_DIR / f"{name}.md"
-        # If file already exists in trash, add timestamp
-        if trash_path.exists():
-            import time
-            timestamp = int(time.time())
-            trash_path = TRASH_DIR / f"{name}.{timestamp}.md"
-        
-        path.rename(trash_path)
-        return jsonify({
-            "name": name,
-            "status": "moved_to_trash",
-        })
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.delete_prompt", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@webui_bp.route("/prompts/trash", methods=["GET"])
-def get_trash_prompts() -> Any:
-    """Get list of prompts in trash."""
-    try:
-        if not TRASH_DIR.is_dir():
-            return jsonify({"prompts": []})
-        
-        prompts = []
-        for path in TRASH_DIR.iterdir():
-            if path.suffix.lower() == ".md" and path.name[0] != ".":
-                # Extract original name (remove timestamp if present)
-                name = path.stem
-                if "." in name:
-                    # Try to extract original name before timestamp
-                    parts = name.rsplit(".", 1)
-                    if parts[1].isdigit():
-                        name = parts[0]
-                prompts.append({
-                    "name": name,
-                    "trash_name": path.name,
-                    "trash_path": str(path.relative_to(TRASH_DIR)),
-                })
-        
-        return jsonify({"prompts": sorted(prompts, key=lambda x: x["name"])})
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.get_trash_prompts", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@webui_bp.route("/prompts/trash/<trash_name>", methods=["GET"])
-def get_trash_prompt_content(trash_name: str) -> Any:
-    """Get content of a prompt file from trash."""
-    try:
-        if ".." in trash_name or "/" in trash_name or "\\" in trash_name:
-            return jsonify({"error": "Invalid trash name"}), 400
-        
-        trash_path = TRASH_DIR / trash_name
-        if not trash_path.is_file():
-            return jsonify({"error": "Prompt not found in trash"}), 404
-        
-        content = trash_path.read_text(encoding="utf-8")
-        
-        # Extract original name
-        name = trash_path.stem
-        if "." in name:
-            parts = name.rsplit(".", 1)
-            if parts[1].isdigit():
-                name = parts[0]
-        
-        return jsonify({
-            "name": name,
-            "trash_name": trash_name,
-            "content": content,
-        })
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.get_trash_prompt_content", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@webui_bp.route("/prompts/trash/<trash_name>", methods=["PUT"])
-def update_trash_prompt(trash_name: str) -> Any:
-    """Update content of a prompt file in trash."""
-    try:
-        if ".." in trash_name or "/" in trash_name or "\\" in trash_name:
-            return jsonify({"error": "Invalid trash name"}), 400
-        
-        body = request.get_json(force=True, silent=True) or {}
-        content = body.get("content")
-        
-        if content is None:
-            return jsonify({"error": "content is required"}), 400
-        
-        trash_path = TRASH_DIR / trash_name
-        if not trash_path.is_file():
-            return jsonify({"error": "Prompt not found in trash"}), 404
-        
-        trash_path.write_text(content, encoding="utf-8")
-        
-        # Extract original name
-        name = trash_path.stem
-        if "." in name:
-            parts = name.rsplit(".", 1)
-            if parts[1].isdigit():
-                name = parts[0]
-        
-        return jsonify({
-            "name": name,
-            "trash_name": trash_name,
-            "status": "updated",
-        })
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.update_trash_prompt", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@webui_bp.route("/prompts/trash/<trash_name>/restore", methods=["POST"])
-def restore_prompt(trash_name: str) -> Any:
-    """Restore a prompt from trash."""
-    try:
-        if ".." in trash_name or "/" in trash_name or "\\" in trash_name:
-            return jsonify({"error": "Invalid trash name"}), 400
-        
-        trash_path = TRASH_DIR / trash_name
-        if not trash_path.is_file():
-            return jsonify({"error": "Prompt not found in trash"}), 404
-        
-        # Extract original name
-        name = trash_path.stem
-        if "." in name:
-            parts = name.rsplit(".", 1)
-            if parts[1].isdigit():
-                name = parts[0]
-        
-        restore_path = PROMPTS_DIR / f"{name}.md"
-        if restore_path.exists():
-            return jsonify({"error": "A prompt with this name already exists"}), 409
-        
-        # Move back from trash
-        trash_path.rename(restore_path)
-        return jsonify({
-            "name": name,
-            "status": "restored",
-        })
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.restore_prompt", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@webui_bp.route("/prompts/trash", methods=["DELETE"])
-def clear_trash() -> Any:
-    """Permanently delete all prompts from trash."""
-    try:
-        if not TRASH_DIR.is_dir():
-            return jsonify({"status": "cleared", "deleted_count": 0})
-        
-        deleted_count = 0
-        for path in TRASH_DIR.iterdir():
-            if path.suffix.lower() == ".md" and path.name[0] != ".":
-                path.unlink()
-                deleted_count += 1
-        
-        return jsonify({
-            "status": "cleared",
-            "deleted_count": deleted_count,
-        })
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.clear_trash", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
@@ -5104,148 +4782,6 @@ def _save_sources_config(sources: list[dict]) -> bool:
         return False
 
 
-@webui_bp.route("/crawler/sources", methods=["POST"])
-def add_crawler_source() -> Any:
-    """Add a new crawl source."""
-    try:
-        body = request.get_json(force=True, silent=True) or {}
-        source_id = body.get("id", "").strip()
-        url = body.get("url", "").strip()
-        max_depth = int(body.get("max_depth", 2))
-        crawler = body.get("crawler", "playwright")
-        doc_only = bool(body.get("doc_only", True))
-        seed_urls_raw = body.get("seed_urls", [])
-        # Filter out empty strings and normalize
-        seed_urls = [s.strip() for s in seed_urls_raw if s and s.strip()]
-        
-        if not source_id:
-            return jsonify({"error": "Source ID is required"}), 400
-        if not url:
-            return jsonify({"error": "URL is required"}), 400
-        
-        # Validate source_id format (alphanumeric, underscore, hyphen)
-        import re
-        if not re.match(r"^[a-zA-Z0-9_-]+$", source_id):
-            return jsonify({"error": "Source ID must contain only alphanumeric characters, underscores, and hyphens"}), 400
-        
-        # Load existing sources
-        sources = _load_sources_config()
-        
-        # Check if source already exists
-        if any(s.get("id") == source_id for s in sources):
-            return jsonify({"error": f"Source '{source_id}' already exists"}), 409
-        
-        # Add new source
-        new_source = {
-            "id": source_id,
-            "url": url,
-            "max_depth": max_depth,
-            "crawler": crawler,
-            "doc_only": doc_only,
-            "seed_urls": seed_urls,
-        }
-        sources.append(new_source)
-        
-        # Save to YAML
-        if not _save_sources_config(sources):
-            return jsonify({"error": "Failed to save source configuration"}), 500
-        
-        # Create source directory and initial meta.json
-        sources_dir = _get_crawler_sources_dir()
-        source_dir = os.path.join(sources_dir, source_id)
-        os.makedirs(source_dir, exist_ok=True)
-        
-        meta = {
-            "source_id": source_id,
-            "source_url": url,
-            "max_depth": max_depth,
-            "crawler": crawler,
-            "doc_only": doc_only,
-            "seed_urls": seed_urls,
-            "last_crawled": None,
-            "hash_algo": "sha256",
-            "pages": {},
-        }
-        
-        meta_path = os.path.join(source_dir, "meta.json")
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(meta, f, indent=2, ensure_ascii=False)
-        
-        return jsonify({
-            "status": "created",
-            "source_id": source_id,
-            "message": f"Source '{source_id}' created successfully.",
-        })
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.add_crawler_source", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@webui_bp.route("/crawler/sources/<source_id>", methods=["PUT"])
-def update_crawler_source(source_id: str) -> Any:
-    """Update an existing crawl source."""
-    try:
-        body = request.get_json(force=True, silent=True) or {}
-        url = body.get("url", "").strip()
-        max_depth = int(body.get("max_depth", 2))
-        crawler = body.get("crawler", "playwright")
-        doc_only = bool(body.get("doc_only", True))
-        seed_urls_raw = body.get("seed_urls", [])
-        # Filter out empty strings and normalize
-        seed_urls = [s.strip() for s in seed_urls_raw if s and s.strip()]
-        
-        if not url:
-            return jsonify({"error": "URL is required"}), 400
-        
-        # Load existing sources
-        sources = _load_sources_config()
-        
-        # Find and update source
-        source_found = False
-        for i, source in enumerate(sources):
-            if source.get("id") == source_id:
-                sources[i] = {
-                    "id": source_id,
-                    "url": url,
-                    "max_depth": max_depth,
-                    "crawler": crawler,
-                    "doc_only": doc_only,
-                    "seed_urls": seed_urls,
-                }
-                source_found = True
-                break
-        
-        if not source_found:
-            return jsonify({"error": f"Source '{source_id}' not found"}), 404
-        
-        # Save to YAML
-        if not _save_sources_config(sources):
-            return jsonify({"error": "Failed to save source configuration"}), 500
-        
-        # Update meta.json if it exists
-        meta = _load_source_meta(source_id)
-        if meta:
-            meta["source_url"] = url
-            meta["max_depth"] = max_depth
-            meta["crawler"] = crawler
-            meta["doc_only"] = doc_only
-            meta["seed_urls"] = seed_urls
-            
-            sources_dir = _get_crawler_sources_dir()
-            meta_path = os.path.join(sources_dir, source_id, "meta.json")
-            with open(meta_path, "w", encoding="utf-8") as f:
-                json.dump(meta, f, indent=2, ensure_ascii=False)
-        
-        return jsonify({
-            "status": "updated",
-            "source_id": source_id,
-            "message": f"Source '{source_id}' updated successfully.",
-        })
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.update_crawler_source", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
 def _run_create_collection_job(
     job_id: str,
     collection_name: str,
@@ -5384,8 +4920,7 @@ def create_collection() -> Any:
         if not source_ids:
             return jsonify({"error": "At least one source_id is required"}), 400
 
-        import re
-        if not re.match(r"^[a-zA-Z0-9_-]+$", collection_name):
+        if not is_safe_identifier(collection_name):
             return jsonify({"error": "Collection name must contain only alphanumeric characters, underscores, and hyphens"}), 400
 
         qdrant_url = get_qdrant_url().rstrip("/")

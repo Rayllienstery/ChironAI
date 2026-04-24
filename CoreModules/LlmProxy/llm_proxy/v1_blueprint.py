@@ -199,7 +199,7 @@ def _responses_responses_function_tool_to_chat_shape(tool: dict[str, Any]) -> di
     return {"type": "function", "function": fn}
 
 
-def _responses_shell_function_tool(*, source_type: str, description: str | None) -> dict[str, Any]:
+def _responses_shell_function_tool(*, description: str | None) -> dict[str, Any]:
     """OpenAI-chat ``function`` tool for shell execution (Codex harness runs locally)."""
     return {
         "type": "function",
@@ -276,7 +276,6 @@ def _responses_normalize_tools(tools: Any) -> tuple[list[dict[str, Any]], dict[s
             if name not in seen_names:
                 out.append(
                     _responses_shell_function_tool(
-                        source_type=t,
                         description=(
                             tool.get("description")
                             if isinstance(tool.get("description"), str)
@@ -698,7 +697,6 @@ def _responses_sse_payload(out: dict[str, Any]) -> Response:
             cid = str(item.get("id") or item.get("call_id") or f"call_{uuid.uuid4().hex[:24]}")
             call_id = str(item.get("call_id") or cid)
             name = str(item.get("name") or "")
-            arguments = str(item.get("arguments") or "")
             events.extend(
                 [
                     {

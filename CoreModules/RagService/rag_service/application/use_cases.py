@@ -41,7 +41,6 @@ from rag_service.domain.services.rag_trace import build_rag_trace_from_timings
 from rag_service.domain.services.rag_trigger import compute_rag_trigger_score
 from rag_service.domain.services.retrieval import (
     MULTI_CHUNK_TOP_K,
-    compute_concept_coverage_report,
     need_more_chunks,
     should_skip_rag_search,
 )

@@ -4,6 +4,7 @@ Light integration tests for HTTP endpoints (Flask test client).
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 

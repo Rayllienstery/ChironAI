@@ -1,4 +1,4 @@
-"""Compatibility wrapper to standalone rag_service entities."""
+"""Compat wrapper re-exporting canonical ``rag_service.domain.entities``."""
 
 from rag_service.domain.entities import QueryIntent, RagAnswerResponse, RagChunk, RagContext, RagQuestionRequest
 

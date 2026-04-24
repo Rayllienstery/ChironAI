@@ -94,6 +94,18 @@ temp/
 *.tmp
 .cache/
 reports/
+.tmp_test_local/
+tmp_test_runs/
+tmp-other-project/
+tmp-other-project
+pytest-basetemp/
+.pytest-basetemp/
+.pytest-tmp/
+pytest-cache-files-*/
+.import_linter_cache/
+.import_linter_cache
+.ruff_cache
+.pytest_cache
 
 # OS files
 Thumbs.db

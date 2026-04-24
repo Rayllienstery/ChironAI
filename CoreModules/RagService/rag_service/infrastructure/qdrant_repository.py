@@ -1,8 +1,4 @@
-"""
-Qdrant RAG repository implementing RagRepository.
-
-Uses HTTP API for search and hybrid query. Mirror of project infrastructure.qdrant.rag_repository_impl.
-"""
+"""Canonical Qdrant repository implementation for ``rag_service``."""
 
 from __future__ import annotations
 
