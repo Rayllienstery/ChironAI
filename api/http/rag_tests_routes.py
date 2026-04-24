@@ -20,11 +20,14 @@ import requests
 from flask import Blueprint, Response, current_app, jsonify, request
 
 from application.rag.proxy_settings_contract import load_proxy_settings, resolve_rag_collection
+from application.rag.params import get_rag_answer_params
+from application.rag.use_cases import build_rag_context
 from application.rag_tests.metrics import (
     normalize_rag_test_result,
     normalize_rag_test_run,
 )
 from application.rag_tests.runner import (
+    build_test_retrieval_query,
     build_proxy_chat_payload,
     build_rag_test_error_result,
     build_rag_test_result,
@@ -118,6 +121,56 @@ def _find_response_artifacts_for_request_id(request_id: str) -> dict[str, Any] |
         if isinstance(artifacts, dict):
             return artifacts
     return None
+
+
+def _select_tests_to_run(body: dict[str, Any]) -> tuple[list[dict[str, Any]], str | None]:
+    get_root, _, load_all, _, _ = _get_rag_tests_module()
+    if load_all is None or get_root is None:
+        return [], "RAG tests module not available"
+    test_ids = body.get("test_ids")
+    filter_obj = body.get("filter") or {}
+    root = get_root()
+    all_tests = load_all(root)
+    if test_ids:
+        by_id = {t["id"]: t for t in all_tests}
+        tests_to_run = [by_id[tid] for tid in test_ids if tid in by_id]
+    elif filter_obj:
+        tests_to_run = all_tests
+        if filter_obj.get("platform"):
+            tests_to_run = [t for t in tests_to_run if (t.get("platform") or "") == filter_obj["platform"]]
+        if filter_obj.get("framework"):
+            tests_to_run = [t for t in tests_to_run if (t.get("framework") or "") == filter_obj["framework"]]
+        if filter_obj.get("difficulty"):
+            tests_to_run = [t for t in tests_to_run if (t.get("difficulty") or "") == filter_obj["difficulty"]]
+    else:
+        tests_to_run = all_tests
+    return tests_to_run, None
+
+
+def _resolve_collection_name(requested_collection_name: str) -> tuple[str | None, str | None, str | None]:
+    collection_name = str(requested_collection_name or "").strip()
+    collection_source = "request"
+    if collection_name:
+        return collection_name, collection_source, None
+    try:
+        repo = get_settings_repository()
+        proxy_settings = load_proxy_settings(repo)
+        resolved, source = resolve_rag_collection(
+            request_collection=None,
+            settings_repo=repo,
+            proxy_settings=proxy_settings,
+            app_key="rag_collection",
+        )
+    except Exception:
+        resolved, source = None, "default"
+    collection_name = str(resolved or "").strip()
+    collection_source = source
+    if collection_name:
+        return collection_name, collection_source, None
+    names = _get_qdrant_collection_names()
+    if not names:
+        return None, None, "No Qdrant collections. Create one in Crawler / RAG then come back."
+    return names[0], "qdrant.first_collection", None
 
 
 def _live_rag_step_timings(trace: dict[str, Any] | None, elapsed_ms: int) -> dict[str, float]:
@@ -979,12 +1032,246 @@ def _rag_tests_run_worker(
             _ERROR_LOG.warning("Failed to persist RAG test run: %s", e)
 
 
+def _build_retrieval_v2_result(
+    *,
+    test: dict[str, Any],
+    retrieval_query: str,
+    ctx: Any,
+    rag_timings: dict[str, Any] | None,
+    elapsed_ms: int,
+    order: int,
+) -> dict[str, Any]:
+    chunks_info = list(getattr(ctx, "chunks_info", None) or [])
+    retrieval_skipped = bool(getattr(ctx, "retrieval_skipped", False))
+    chunks_count = len(chunks_info)
+    status = "skipped" if retrieval_skipped else ("retrieved" if chunks_count > 0 else "empty")
+    return {
+        "test_id": test.get("id"),
+        "test_name": test.get("name"),
+        "question": test.get("question") or "",
+        "platform": test.get("platform"),
+        "framework": test.get("framework"),
+        "difficulty": test.get("difficulty"),
+        "status": status,
+        "retrieval_query": retrieval_query[:2000],
+        "retrieval_used": chunks_count > 0,
+        "retrieval_skipped": retrieval_skipped,
+        "chunks_info": chunks_info,
+        "chunks_count": chunks_count,
+        "rag_timings": rag_timings or {},
+        "trace_steps": list(getattr(ctx, "rag_trace", None) or []),
+        "max_score": float(getattr(ctx, "max_score", 0.0) or 0.0),
+        "context_chars": len(getattr(ctx, "context_text", "") or ""),
+        "response_time_ms": elapsed_ms,
+        "latency_ms": elapsed_ms,
+        "_order": order,
+    }
+
+
+def _build_retrieval_v2_error_result(
+    *,
+    test: dict[str, Any],
+    retrieval_query: str,
+    error: Any,
+    elapsed_ms: int,
+    order: int,
+) -> dict[str, Any]:
+    return {
+        "test_id": test.get("id"),
+        "test_name": test.get("name"),
+        "question": test.get("question") or "",
+        "platform": test.get("platform"),
+        "framework": test.get("framework"),
+        "difficulty": test.get("difficulty"),
+        "status": "error",
+        "retrieval_query": retrieval_query[:2000],
+        "retrieval_used": False,
+        "retrieval_skipped": False,
+        "chunks_info": [],
+        "chunks_count": 0,
+        "rag_timings": {},
+        "trace_steps": [],
+        "max_score": 0.0,
+        "context_chars": 0,
+        "response_time_ms": elapsed_ms,
+        "latency_ms": elapsed_ms,
+        "failure_reason": str(error),
+        "error": str(error),
+        "_order": order,
+    }
+
+
+def _rag_tests_v2_run_worker(
+    job_id: str,
+    app_context: Any,
+    tests_to_run: list[dict[str, Any]],
+    collection_name: str,
+    *,
+    top_k: float | None = None,
+    concurrency: int = 1,
+    testing_disable_rerank: bool = False,
+) -> None:
+    with app_context:
+        max_workers = max(1, min(int(concurrency or 1), 8))
+        total = len(tests_to_run)
+        results: list[dict[str, Any]] = []
+        retrieved = 0
+        empty = 0
+        skipped = 0
+        errors = 0
+        completed = 0
+        launched = 0
+        active_tests: dict[int, str] = {}
+        active_tests_lock = threading.Lock()
+
+        def _set_progress() -> None:
+            with active_tests_lock:
+                active_snapshot = dict(active_tests)
+            with _rag_test_jobs_lock:
+                job = _rag_test_jobs.get(job_id)
+                if not job:
+                    return
+                active_count = len(active_snapshot)
+                job["progress"] = {
+                    "current_index": completed + active_count,
+                    "total": total,
+                    "current_test_name": next(iter(active_snapshot.values()), ""),
+                    "active_tests": list(active_snapshot.values()),
+                    "active_count": active_count,
+                    "max_concurrency": max_workers,
+                    "retrieved": retrieved,
+                    "empty": empty,
+                    "skipped": skipped,
+                    "errors": errors,
+                    "pending": max(0, total - completed - active_count),
+                }
+                job["results"] = [dict(r) for r in sorted(results, key=lambda r: int(r.get("_order", 0)))]
+
+        def _execute_single(idx: int, test: dict[str, Any]) -> dict[str, Any]:
+            start_time = time.time()
+            retrieval_query = build_test_retrieval_query(test)
+            try:
+                params, deps = get_rag_answer_params(
+                    collection_name=collection_name,
+                    prompt_name="system_senior_ios_assistant_rag_tests",
+                )
+                rerank_client = None if testing_disable_rerank else deps.rerank_client
+                with rag_tests_retrieval_preset():
+                    ctx, timings = build_rag_context(
+                        retrieval_query,
+                        deps.rag_repo,
+                        deps.embed_provider,
+                        rerank_client,
+                        params.context_chunk_chars,
+                        params.context_total_chars,
+                        top_k=max(1, int(round(float(top_k)))) if top_k is not None else None,
+                        rag_required_keywords=None,
+                        trigger_threshold=None,
+                        force_rag=True,
+                    )
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                return _build_retrieval_v2_result(
+                    test=test,
+                    retrieval_query=retrieval_query,
+                    ctx=ctx,
+                    rag_timings=timings,
+                    elapsed_ms=elapsed_ms,
+                    order=idx,
+                )
+            except Exception as e:
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                return _build_retrieval_v2_error_result(
+                    test=test,
+                    retrieval_query=retrieval_query,
+                    error=e,
+                    elapsed_ms=elapsed_ms,
+                    order=idx,
+                )
+
+        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="rag-tests-v2") as pool:
+            futures: dict[Future[dict[str, Any]], int] = {}
+            cancelled = False
+            while True:
+                with _rag_test_jobs_lock:
+                    cancel_requested = bool(_rag_test_jobs.get(job_id, {}).get("cancel_requested"))
+                if cancel_requested:
+                    cancelled = True
+                    for fut in list(futures.keys()):
+                        fut.cancel()
+                    break
+
+                while launched < total and len(futures) < max_workers:
+                    test = tests_to_run[launched]
+                    with active_tests_lock:
+                        active_tests[launched] = str(test.get("name") or test.get("id") or "")
+                    futures[pool.submit(_execute_single, launched, test)] = launched
+                    launched += 1
+                    _set_progress()
+
+                if not futures:
+                    break
+
+                done, _ = wait(list(futures.keys()), timeout=0.25, return_when=FIRST_COMPLETED)
+                if not done:
+                    _set_progress()
+                    continue
+                for fut in done:
+                    idx = futures.pop(fut, None)
+                    if idx is None:
+                        continue
+                    with active_tests_lock:
+                        active_tests.pop(idx, None)
+                    try:
+                        row = fut.result()
+                    except Exception as e:
+                        row = _build_retrieval_v2_error_result(
+                            test=tests_to_run[idx],
+                            retrieval_query=build_test_retrieval_query(tests_to_run[idx]),
+                            error=e,
+                            elapsed_ms=0,
+                            order=idx,
+                        )
+                    results.append(row)
+                    completed += 1
+                    status = str(row.get("status") or "")
+                    if status == "retrieved":
+                        retrieved += 1
+                    elif status == "empty":
+                        empty += 1
+                    elif status == "skipped":
+                        skipped += 1
+                    else:
+                        errors += 1
+                    _set_progress()
+
+            if cancelled:
+                with _rag_test_jobs_lock:
+                    job = _rag_test_jobs.get(job_id)
+                    if job:
+                        job["status"] = "cancelled"
+
+        sorted_results = [dict(r) for r in sorted(results, key=lambda r: int(r.get("_order", 0)))]
+        for r in sorted_results:
+            r.pop("_order", None)
+
+        with _rag_test_jobs_lock:
+            if job_id in _rag_test_jobs and _rag_test_jobs[job_id]["status"] == "running":
+                _rag_test_jobs[job_id]["status"] = "completed"
+            _rag_test_jobs[job_id]["progress"]["retrieved"] = retrieved
+            _rag_test_jobs[job_id]["progress"]["empty"] = empty
+            _rag_test_jobs[job_id]["progress"]["skipped"] = skipped
+            _rag_test_jobs[job_id]["progress"]["errors"] = errors
+            _rag_test_jobs[job_id]["progress"]["pending"] = max(0, total - len(sorted_results))
+            _rag_test_jobs[job_id]["progress"]["current_index"] = len(sorted_results)
+            _rag_test_jobs[job_id]["progress"]["active_tests"] = []
+            _rag_test_jobs[job_id]["progress"]["active_count"] = 0
+            _rag_test_jobs[job_id]["progress"]["current_test_name"] = ""
+            _rag_test_jobs[job_id]["results"] = sorted_results
+
+
 @rag_tests_bp.route("/rag-tests/run", methods=["POST"])
 def rag_tests_run() -> Any:
     """Start RAG test run in background. Returns 202 with job_id. Poll GET /rag-tests/run/status/<job_id> for progress."""
-    get_root, _, load_all, _, _ = _get_rag_tests_module()
-    if load_all is None:
-        return jsonify({"error": "RAG tests module not available"}), 500
     body = request.get_json(force=True, silent=True) or {}
     model = (body.get("model") or "").strip()
     if not model:
@@ -994,49 +1281,14 @@ def rag_tests_run() -> Any:
     except Exception:
         requested_concurrency = 1
     concurrency = max(1, min(requested_concurrency, 8))
-    test_ids = body.get("test_ids")
-    filter_obj = body.get("filter") or {}
-    root = get_root()
-    all_tests = load_all(root)
-    if test_ids:
-        by_id = {t["id"]: t for t in all_tests}
-        tests_to_run = [by_id[tid] for tid in test_ids if tid in by_id]
-    elif filter_obj:
-        tests_to_run = all_tests
-        if filter_obj.get("platform"):
-            tests_to_run = [t for t in tests_to_run if (t.get("platform") or "") == filter_obj["platform"]]
-        if filter_obj.get("framework"):
-            tests_to_run = [t for t in tests_to_run if (t.get("framework") or "") == filter_obj["framework"]]
-        if filter_obj.get("difficulty"):
-            tests_to_run = [t for t in tests_to_run if (t.get("difficulty") or "") == filter_obj["difficulty"]]
-    else:
-        tests_to_run = all_tests
+    tests_to_run, select_error = _select_tests_to_run(body)
+    if select_error:
+        return jsonify({"error": select_error}), 500
     if not tests_to_run:
         return jsonify({"results": [], "message": "No tests to run"})
-    collection_name = (body.get("collection_name") or "").strip()
-    collection_source = "request"
-    if not collection_name:
-        try:
-            repo = get_settings_repository()
-            proxy_settings = load_proxy_settings(repo)
-            resolved, source = resolve_rag_collection(
-                request_collection=None,
-                settings_repo=repo,
-                proxy_settings=proxy_settings,
-                app_key="rag_collection",
-            )
-        except Exception:
-            resolved, source = None, "default"
-        collection_name = str(resolved or "").strip()
-        collection_source = source
-        if not collection_name:
-            names = _get_qdrant_collection_names()
-            if not names:
-                return jsonify({
-                    "error": "No Qdrant collections. Create one in Crawler / RAG then come back.",
-                }), 400
-            collection_name = names[0]
-            collection_source = "qdrant.first_collection"
+    collection_name, collection_source, collection_error = _resolve_collection_name(body.get("collection_name") or "")
+    if collection_error:
+        return jsonify({"error": collection_error}), 400
     prompt_name = (body.get("prompt_name") or "").strip() or "system_senior_ios_assistant_rag_tests"
     temperature_raw = body.get("temperature")
     top_k_raw = body.get("top_k")
@@ -1115,6 +1367,78 @@ def rag_tests_run() -> Any:
     }), 202
 
 
+@rag_tests_bp.route("/rag-tests-v2/run", methods=["POST"])
+def rag_tests_v2_run() -> Any:
+    """Start retrieval-only RAG test run in background."""
+    body = request.get_json(force=True, silent=True) or {}
+    try:
+        requested_concurrency = int(body.get("concurrency") or 1)
+    except Exception:
+        requested_concurrency = 1
+    concurrency = max(1, min(requested_concurrency, 8))
+    tests_to_run, select_error = _select_tests_to_run(body)
+    if select_error:
+        return jsonify({"error": select_error}), 500
+    if not tests_to_run:
+        return jsonify({"results": [], "message": "No tests to run"})
+    collection_name, collection_source, collection_error = _resolve_collection_name(body.get("collection_name") or "")
+    if collection_error:
+        return jsonify({"error": collection_error}), 400
+    top_k_raw = body.get("top_k")
+    try:
+        top_k = float(top_k_raw) if top_k_raw is not None else None
+    except (TypeError, ValueError):
+        top_k = None
+    testing_disable_rerank = bool(body.get("testing_disable_rerank", False))
+    job_id = str(uuid.uuid4())[:12]
+    with _rag_test_jobs_lock:
+        _rag_test_jobs[job_id] = {
+            "status": "running",
+            "cancel_requested": False,
+            "progress": {
+                "current_index": 0,
+                "total": len(tests_to_run),
+                "current_test_name": "",
+                "active_tests": [],
+                "active_count": 0,
+                "max_concurrency": concurrency,
+                "retrieved": 0,
+                "empty": 0,
+                "skipped": 0,
+                "errors": 0,
+                "pending": len(tests_to_run),
+            },
+            "results": [],
+            "error": None,
+            "mode": "retrieval_only",
+        }
+    thread = threading.Thread(
+        target=_rag_tests_v2_run_worker,
+        args=(
+            job_id,
+            current_app.app_context(),
+            tests_to_run,
+            str(collection_name),
+        ),
+        kwargs={
+            "top_k": top_k,
+            "concurrency": concurrency,
+            "testing_disable_rerank": testing_disable_rerank,
+        },
+        daemon=True,
+    )
+    thread.start()
+    return jsonify({
+        "job_id": job_id,
+        "collection_name": collection_name,
+        "top_k": top_k,
+        "concurrency": concurrency,
+        "collection_source": collection_source,
+        "testing_disable_rerank": testing_disable_rerank,
+        "mode": "retrieval_only",
+    }), 202
+
+
 @rag_tests_bp.route("/rag-tests/run/status/<job_id>", methods=["GET"])
 def rag_tests_run_status(job_id: str) -> Any:
     """Get run progress and results. status: running | completed | cancelled."""
@@ -1134,6 +1458,35 @@ def rag_tests_run_status(job_id: str) -> Any:
 @rag_tests_bp.route("/rag-tests/run/cancel/<job_id>", methods=["POST"])
 def rag_tests_run_cancel(job_id: str) -> Any:
     """Request cancel; runner will stop after current test."""
+    with _rag_test_jobs_lock:
+        job = _rag_test_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    if job["status"] != "running":
+        return jsonify({"message": "Job not running", "status": job["status"]})
+    with _rag_test_jobs_lock:
+        _rag_test_jobs[job_id]["cancel_requested"] = True
+    return jsonify({"message": "Cancel requested", "job_id": job_id})
+
+
+@rag_tests_bp.route("/rag-tests-v2/run/status/<job_id>", methods=["GET"])
+def rag_tests_v2_run_status(job_id: str) -> Any:
+    with _rag_test_jobs_lock:
+        job = _rag_test_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify({
+        "job_id": job_id,
+        "status": job["status"],
+        "progress": job["progress"],
+        "results": job["results"],
+        "error": job.get("error"),
+        "mode": job.get("mode") or "retrieval_only",
+    })
+
+
+@rag_tests_bp.route("/rag-tests-v2/run/cancel/<job_id>", methods=["POST"])
+def rag_tests_v2_run_cancel(job_id: str) -> Any:
     with _rag_test_jobs_lock:
         job = _rag_test_jobs.get(job_id)
     if not job:

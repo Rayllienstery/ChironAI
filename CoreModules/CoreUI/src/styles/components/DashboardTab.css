@@ -143,7 +143,7 @@
   padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
   border-radius: var(--md-sys-shape-corner-medium);
   border: 1px solid var(--md-sys-color-outline-variant);
-  font-family: 'Courier New', monospace;
+  font-family: var(--coreui-font-family-mono);
   font-size: 0.9rem;
   margin: var(--md-sys-spacing-sm) 0;
   color: var(--md-sys-color-on-surface);
@@ -802,7 +802,7 @@ input.dashboard-card-field {
   background: var(--md-sys-color-surface-container-low);
   padding: 0.125rem 0.375rem;
   border-radius: var(--md-sys-shape-corner-small);
-  font-family: 'Courier New', monospace;
+  font-family: var(--coreui-font-family-mono);
   font-size: 0.85em;
 }
 
@@ -951,7 +951,7 @@ input.dashboard-card-field {
   background: var(--md-sys-color-surface-container-low);
   padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
   border-radius: var(--md-sys-shape-corner-medium);
-  font-family: 'Courier New', monospace;
+  font-family: var(--coreui-font-family-mono);
   font-size: 0.9em;
   color: var(--md-sys-color-on-surface);
   margin: var(--md-sys-spacing-sm) 0;
@@ -1019,7 +1019,7 @@ input.dashboard-card-field {
   background: var(--md-sys-color-surface-container);
   padding: 0.2rem 0.45rem;
   border-radius: var(--md-sys-shape-corner-small);
-  font-family: ui-monospace, 'Courier New', monospace;
+  font-family: var(--coreui-font-family-mono);
   font-weight: 500;
   font-size: 0.875rem;
   line-height: 1.45;
@@ -1135,7 +1135,7 @@ input.dashboard-card-field {
   background: var(--md-sys-color-surface-container);
   padding: var(--md-sys-spacing-xs) var(--md-sys-spacing-sm);
   border-radius: var(--md-sys-shape-corner-small);
-  font-family: ui-monospace, 'Courier New', monospace;
+  font-family: var(--coreui-font-family-mono);
   font-weight: 500;
   font-size: 0.875rem;
   color: var(--md-sys-color-on-surface);

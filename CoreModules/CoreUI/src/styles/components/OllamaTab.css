@@ -119,7 +119,7 @@
 
 .ollama-tab__model-title code {
   font: var(--md-sys-typescale-title-medium-font);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--coreui-font-family-mono);
   color: var(--md-sys-color-on-surface);
   word-break: break-all;
 }
@@ -139,7 +139,7 @@
 }
 
 .ollama-tab__model-quant {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--coreui-font-family-mono);
   letter-spacing: 0.01em;
 }
 

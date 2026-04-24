@@ -802,6 +802,43 @@ export async function cancelRagTestRun(jobId) {
   return response.json();
 }
 
+export async function runRagTesterV2(body) {
+  const response = await fetch(`${API_BASE}/rag-tests-v2/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to run Rag Tester V2');
+  }
+  const data = await response.json();
+  if (response.status === 202) {
+    return { job_id: data.job_id, ...data };
+  }
+  return data;
+}
+
+export async function getRagTesterV2RunStatus(jobId) {
+  const response = await fetch(`${API_BASE}/rag-tests-v2/run/status/${encodeURIComponent(jobId)}`);
+  if (!response.ok) {
+    if (response.status === 404) throw new Error('Job not found');
+    throw new Error('Failed to get Rag Tester V2 run status');
+  }
+  return response.json();
+}
+
+export async function cancelRagTesterV2Run(jobId) {
+  const response = await fetch(`${API_BASE}/rag-tests-v2/run/cancel/${encodeURIComponent(jobId)}`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to cancel Rag Tester V2 run');
+  }
+  return response.json();
+}
+
 export async function getRagTestRuns(options = {}) {
   const params = new URLSearchParams();
   if (options.limit != null) params.set('limit', String(options.limit));

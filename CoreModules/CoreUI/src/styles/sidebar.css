@@ -258,7 +258,7 @@
   font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
   line-height: 1;
   overflow: hidden;
-  font-family: "Material Symbols Outlined", sans-serif;
+  font-family: var(--coreui-font-family-icon);
   font-style: normal;
   font-weight: normal;
   letter-spacing: normal;
@@ -392,7 +392,7 @@
   justify-content: center;
   font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
   line-height: 1;
-  font-family: "Material Symbols Outlined", sans-serif;
+  font-family: var(--coreui-font-family-icon);
   -webkit-font-smoothing: antialiased;
 }
 

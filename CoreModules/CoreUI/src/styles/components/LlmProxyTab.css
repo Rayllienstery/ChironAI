@@ -189,7 +189,7 @@
 
 .llm-proxy-build-title code {
   font: var(--md-sys-typescale-title-medium-font);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--coreui-font-family-mono);
   color: var(--md-sys-color-on-surface);
   word-break: break-all;
 }
@@ -211,7 +211,7 @@
 
 .llm-proxy-build-backend code,
 .llm-proxy-build-meta code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--coreui-font-family-mono);
   font-size: 0.85em;
 }
 
@@ -357,7 +357,7 @@
   background: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface);
   border-radius: var(--md-sys-shape-corner-medium);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--coreui-font-family-mono);
 }
 
 /* Wizard steps: standard horizontal tabs (underline active state, no connector line) */
@@ -502,12 +502,16 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  line-height: 1;
 }
 
 .llm-proxy-info-card-title-icon {
   color: var(--md-sys-color-primary);
   font-size: 22px;
   font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .llm-proxy-info-card-body {
@@ -708,28 +712,33 @@
 /* Wizard Navigation - fixed footer at bottom of modal (flex layout keeps it at bottom) */
 .llm-proxy-wizard-nav {
   z-index: 10;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 16px 20px;
   background: var(--md-sys-color-surface-container-highest);
   border-top: 1px solid var(--md-sys-color-outline-variant);
   flex-shrink: 0;
 }
 
-.llm-proxy-wizard-nav-left {
+.llm-proxy-wizard-nav-left,
+.llm-proxy-wizard-nav-center,
+.llm-proxy-wizard-nav-right {
   display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.llm-proxy-wizard-nav-left {
   justify-content: flex-start;
 }
 
 .llm-proxy-wizard-nav-center {
-  display: flex;
   justify-content: center;
   gap: 8px;
 }
 
 .llm-proxy-wizard-nav-right {
-  display: flex;
   justify-content: flex-end;
   gap: 8px;
 }
@@ -884,7 +893,7 @@
 
 .llm-proxy-build-summary-val code,
 code.llm-proxy-build-summary-val {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--coreui-font-family-mono);
   font-size: 0.85em;
 }
 

@@ -119,7 +119,7 @@
   border: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface-container);
   color: var(--md-sys-color-on-surface);
-  font: 500 11px/16px ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font: 500 11px/16px var(--coreui-font-family-mono);
   overflow-wrap: anywhere;
 }
 
@@ -157,6 +157,57 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.coreui-showcase-font-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.coreui-showcase-font-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface);
+}
+
+.coreui-showcase-font-card h4 {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-title-small-font);
+}
+
+.coreui-showcase-font-card p {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small-font);
+}
+
+.coreui-showcase-font-card-sample {
+  color: var(--md-sys-color-on-surface);
+  font-size: 1rem;
+}
+
+.coreui-showcase-font-card-sample--base {
+  font-family: var(--coreui-font-family-base);
+}
+
+.coreui-showcase-font-card-sample--mono {
+  font-family: var(--coreui-font-family-mono);
+}
+
+.coreui-showcase-font-card-sample--icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--coreui-font-family-icon);
+  font-size: 20px;
 }
 
 .coreui-showcase-type-headline {
@@ -394,6 +445,7 @@
 
 @media (max-width: 560px) {
   .coreui-showcase-token-grid,
+  .coreui-showcase-font-grid,
   .coreui-showcase-form-grid,
   .coreui-showcase-icon-grid {
     grid-template-columns: 1fr;

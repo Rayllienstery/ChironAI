@@ -51,7 +51,7 @@
   border: none;
   border-radius: var(--md-sys-shape-corner-large);
   padding: var(--md-sys-spacing-md);
-  font-family: 'Courier New', monospace;
+  font-family: var(--coreui-font-family-mono);
   font-size: 13px;
   box-shadow: var(--md-sys-elevation-level1);
 }
@@ -341,7 +341,7 @@
   display: block;
   color: var(--md-sys-color-on-surface-variant);
   font-size: 11px;
-  font-family: 'Courier New', monospace;
+  font-family: var(--coreui-font-family-mono);
   word-break: break-all;
   white-space: normal;
   line-height: 1.4;
@@ -722,7 +722,7 @@ button.proxy-logs-top-row:disabled {
   margin-top: 4px;
   font-size: 12px;
   color: var(--md-sys-color-on-surface-variant);
-  font-family: ui-monospace, monospace;
+  font-family: var(--coreui-font-family-mono);
 }
 
 .logs-tab-modal-close {
@@ -764,7 +764,7 @@ button.proxy-logs-top-row:disabled {
 
 .logs-tab-modal-pre {
   margin: 0;
-  font-family: ui-monospace, monospace;
+  font-family: var(--coreui-font-family-mono);
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;

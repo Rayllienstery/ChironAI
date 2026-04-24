@@ -110,6 +110,7 @@ const WIZARD_STEPS = [
   { id: 'basic', label: 'Basic Info', icon: 'info' },
   { id: 'rag', label: 'RAG', icon: 'search' },
   { id: 'privacy', label: 'Privacy', icon: 'lock' },
+  { id: 'agent', label: 'Agent Proxy Mode', icon: 'terminal' },
   { id: 'parameters', label: 'Parameters', icon: 'tune' },
   { id: 'web', label: 'Web Knowledge', icon: 'language' },
   { id: 'preview', label: 'Pipeline', icon: 'flowchart' },
@@ -809,42 +810,6 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 <div className="llm-proxy-toggle-with-explanation">
                   <div className="llm-proxy-toggle-row">
                     <span className="llm-proxy-toggle-label">
-                      <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">description</span>
-                      Use Prompt Template
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={draft.use_prompt_template !== false}
-                      onChange={(e) => setDraft({ ...draft, use_prompt_template: e.target.checked })}
-                    />
-                  </div>
-                  <p className="llm-proxy-toggle-explanation">
-                    When enabled, the proxy wraps the conversation with a system prompt template (selected below).
-                    Templates define the AI's persona, tone, and instructions. Disable only if your client sends its own full system prompt.
-                  </p>
-                </div>
-
-                {draft.use_prompt_template !== false && (
-                  <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    Prompt template
-                    <select
-                      className="dashboard-card-field"
-                      value={draft.prompt_name}
-                      onChange={(e) => setDraft({ ...draft, prompt_name: e.target.value })}
-                    >
-                      <option value="">Select…</option>
-                      {prompts.map((p) => (
-                        <option key={p.id || p.name} value={p.name || p.id}>
-                          {p.name || p.id}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-
-                <div className="llm-proxy-toggle-with-explanation">
-                  <div className="llm-proxy-toggle-row">
-                    <span className="llm-proxy-toggle-label">
                       <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">psychology</span>
                       Ollama think mode
                     </span>
@@ -1088,8 +1053,58 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
               </div>
             )}
 
-            {/* ── Step 3: Parameters ── */}
+            {/* ── Step 3: Agent Proxy Mode ── */}
             {wizardStep === 3 && (
+              <div className="llm-proxy-wizard-step-panel">
+                <div className="llm-proxy-info-card">
+                  <h3 className="llm-proxy-info-card-title">
+                    <span className="llm-proxy-info-card-title-icon material-symbols-outlined" aria-hidden="true">terminal</span>
+                    Agent Proxy Mode
+                  </h3>
+                  <div className="llm-proxy-info-card-body">
+                    Configure how the model handles system prompts. When Proxy Mode is enabled, the app will not inject its own system prompts, allowing the agent to manage them entirely.
+                  </div>
+                </div>
+
+                <div className="llm-proxy-toggle-with-explanation">
+                  <div className="llm-proxy-toggle-row">
+                    <span className="llm-proxy-toggle-label">
+                      <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">description</span>
+                      Enable Agent Proxy Mode
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={draft.use_prompt_template === false}
+                      onChange={(e) => setDraft({ ...draft, use_prompt_template: !e.target.checked })}
+                    />
+                  </div>
+                  <p className="llm-proxy-toggle-explanation">
+                    If enabled, we won't use our system prompt templates because the agent is expected to provide its own instructions.
+                  </p>
+                </div>
+
+                {draft.use_prompt_template !== false && (
+                  <label className="dashboard-card-muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    Prompt template
+                    <select
+                      className="dashboard-card-field"
+                      value={draft.prompt_name}
+                      onChange={(e) => setDraft({ ...draft, prompt_name: e.target.value })}
+                    >
+                      <option value="">Select…</option>
+                      {prompts.map((p) => (
+                        <option key={p.id || p.name} value={p.name || p.id}>
+                          {p.name || p.id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+            )}
+
+            {/* ── Step 4: Parameters ── */}
+            {wizardStep === 4 && (
               <div className="llm-proxy-wizard-step-panel">
                 <div className="llm-proxy-info-card">
                   <h3 className="llm-proxy-info-card-title">
@@ -1189,8 +1204,8 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
               </div>
             )}
 
-            {/* ── Step 4: Web Knowledge ── */}
-            {wizardStep === 4 && (
+            {/* ── Step 5: Web Knowledge ── */}
+            {wizardStep === 5 && (
               <div className="llm-proxy-wizard-step-panel">
                 <div className="llm-proxy-info-card">
                   <h3 className="llm-proxy-info-card-title">
@@ -1344,8 +1359,8 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
               </div>
             )}
 
-            {/* ── Step 5: Pipeline Preview ── */}
-            {wizardStep === 5 && (
+            {/* ── Step 6: Pipeline Preview ── */}
+            {wizardStep === 6 && (
               <div className="llm-proxy-wizard-step-panel">
                 <div className="llm-proxy-info-card">
                   <h3 className="llm-proxy-info-card-title">
@@ -1428,7 +1443,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     variant="primary"
                     onClick={() => { setWizardStep(wizardStep - 1); setWizardDirection('back'); }}
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: 18, marginRight: 4 }} aria-hidden="true">arrow_back</span>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }} aria-hidden="true">arrow_back</span>
                     Back
                   </CoreUIButton>
                 )}
@@ -1440,7 +1455,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     disabled={saving}
                     onClick={saveForm}
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: 18, marginRight: 4 }} aria-hidden="true">save</span>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }} aria-hidden="true">save</span>
                     {saving ? 'Saving...' : 'Save build'}
                   </CoreUIButton>
                 )}
@@ -1452,7 +1467,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     onClick={() => { setWizardStep(wizardStep + 1); setWizardDirection('forward'); }}
                   >
                     Next
-                    <span className="material-symbols-outlined" style={{ fontSize: 18, marginLeft: 4 }} aria-hidden="true">arrow_forward</span>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }} aria-hidden="true">arrow_forward</span>
                   </CoreUIButton>
                 ) : (
                   <CoreUIButton
@@ -1460,7 +1475,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     disabled={saving}
                     onClick={saveForm}
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: 18, marginRight: 4 }} aria-hidden="true">save</span>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }} aria-hidden="true">save</span>
                     {saving ? 'Saving...' : 'Save build'}
                   </CoreUIButton>
                 )}

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from application.rag_tests.runner import build_proxy_chat_payload
+from application.rag_tests.runner import build_proxy_chat_payload, build_test_retrieval_query
 
 
 def test_build_proxy_chat_payload_includes_required_fields() -> None:
@@ -47,3 +47,20 @@ def test_build_proxy_chat_payload_strict_mode_injects_quote_instruction() -> Non
     assert payload["messages"][0]["role"] == "system"
     assert "RAG QUOTE" in payload["messages"][0]["content"]
     assert payload["messages"][-1] == {"role": "user", "content": "Q"}
+
+
+def test_build_test_retrieval_query_enriches_question_with_expected_terms() -> None:
+    query = build_test_retrieval_query(
+        {
+            "question": "How do I use Observation with SwiftUI?",
+            "platform": "iOS",
+            "framework": "SwiftUI",
+            "expected_concepts": ["@Observable", "observation tracking"],
+        }
+    )
+    assert "How do I use Observation with SwiftUI?" in query
+    assert "Relevant terms:" in query
+    assert "iOS" in query
+    assert "SwiftUI" in query
+    assert "@Observable" in query
+    assert "Observation framework" in query

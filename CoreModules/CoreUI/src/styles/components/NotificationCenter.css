@@ -386,7 +386,7 @@
 }
 
 .proxy-live-notification-mono {
-  font-family: ui-monospace, monospace;
+  font-family: var(--coreui-font-family-mono);
   font-size: 0.9em;
 }
 

@@ -1,0 +1,13 @@
+.rag-tester-v2-tab .rag-tester-v2-subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.rag-tester-v2-tab .rag-tester-v2-query-cell {
+  max-width: 320px;
+}
+
+.rag-tester-v2-tab .rag-tester-v2-checkbox {
+  align-self: end;
+  padding-bottom: 8px;
+}

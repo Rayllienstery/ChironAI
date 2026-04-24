@@ -4,12 +4,14 @@ import CoreUIPillTabs from './CoreUIPillTabs';
 
 const ModelTester = lazy(() => import('./ModelTester'));
 const RagTestsTab = lazy(() => import('./RagTestsTab'));
+const RagTesterV2Tab = lazy(() => import('./RagTesterV2Tab'));
 const IndexerTester = lazy(() => import('./IndexerTester'));
 const WebCallsTester = lazy(() => import('./WebCallsTester'));
 
 const SUB_TABS = [
   { id: 'model-tester', label: 'Model Tester' },
   { id: 'rag-tests', label: 'RAG Tests' },
+  { id: 'rag-tester-v2', label: 'Rag Tester V2' },
   { id: 'indexer-tester', label: 'Indexer Tester' },
   { id: 'web-calls', label: 'Web Calls' },
 ];
@@ -72,6 +74,7 @@ function TestingTab({
               onCancelRun={onCancelRun}
             />
           )}
+          {currentSubTab === 'rag-tester-v2' && <RagTesterV2Tab />}
           {currentSubTab === 'indexer-tester' && <IndexerTester />}
           {currentSubTab === 'web-calls' && <WebCallsTester />}
         </Suspense>

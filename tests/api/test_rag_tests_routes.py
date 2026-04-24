@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 from flask import Flask, Response, request
 
@@ -198,6 +199,201 @@ def test_rag_tests_worker_falls_back_to_merged_sse_content_without_response_arti
         )
 
     assert observed["content"] == "thinking text final answer"
+
+
+def test_rag_tests_v2_worker_uses_build_rag_context_without_chat_completion(
+    monkeypatch,
+) -> None:
+    import api.http.rag_tests_routes as routes
+
+    observed: dict[str, object] = {"chat_called": 0}
+    app = Flask(__name__)
+
+    @app.route("/v1/chat/completions", methods=["POST"])
+    def _v1_chat() -> Response:
+        observed["chat_called"] = int(observed["chat_called"]) + 1
+        return Response("unexpected", mimetype="text/plain")
+
+    monkeypatch.setattr(
+        routes,
+        "get_rag_answer_params",
+        lambda **_kwargs: (
+            SimpleNamespace(context_chunk_chars=4000, context_total_chars=12000),
+            SimpleNamespace(rag_repo=object(), embed_provider=object(), rerank_client="reranker"),
+        ),
+    )
+
+    def _fake_build_rag_context(
+        query,
+        _rag_repo,
+        _embed_provider,
+        rerank_client,
+        _context_chunk_chars,
+        _context_total_chars,
+        **_kwargs,
+    ):
+        observed["query"] = query
+        observed["rerank_client"] = rerank_client
+        return (
+            SimpleNamespace(
+                chunks_info=[{"text": "hit one", "score": 0.91}],
+                retrieval_skipped=False,
+                rag_trace=[{"label": "embed_search_pass1", "detail": "ok"}],
+                max_score=0.91,
+                context_text="hit one",
+            ),
+            {"embed_s": 0.01, "search_s": 0.02, "total_rag_s": 0.03},
+        )
+
+    monkeypatch.setattr(routes, "build_rag_context", _fake_build_rag_context)
+
+    job_id = "job-v2-worker"
+    routes._rag_test_jobs[job_id] = {
+        "status": "running",
+        "cancel_requested": False,
+        "progress": {},
+        "results": [],
+        "error": None,
+        "mode": "retrieval_only",
+    }
+
+    with app.app_context():
+        routes._rag_tests_v2_run_worker(
+            job_id,
+            app.app_context(),
+            [
+                {
+                    "id": "t1",
+                    "name": "Observation",
+                    "question": "How do I use Observation with SwiftUI?",
+                    "platform": "iOS",
+                    "framework": "SwiftUI",
+                    "expected_concepts": ["@Observable"],
+                }
+            ],
+            "ios-docs",
+            top_k=8,
+            concurrency=1,
+            testing_disable_rerank=False,
+        )
+
+    assert "Relevant terms:" in str(observed["query"])
+    assert "@Observable" in str(observed["query"])
+    assert observed["rerank_client"] == "reranker"
+    assert observed["chat_called"] == 0
+    assert routes._rag_test_jobs[job_id]["results"][0]["status"] == "retrieved"
+
+
+def test_rag_tests_v2_worker_applies_preset_and_can_disable_rerank(
+    monkeypatch,
+) -> None:
+    import api.http.rag_tests_routes as routes
+    from rag_service.config import get_retrieval_bool
+
+    observed: dict[str, object] = {}
+    app = Flask(__name__)
+
+    monkeypatch.setattr(
+        routes,
+        "get_rag_answer_params",
+        lambda **_kwargs: (
+            SimpleNamespace(context_chunk_chars=4000, context_total_chars=12000),
+            SimpleNamespace(rag_repo=object(), embed_provider=object(), rerank_client="reranker"),
+        ),
+    )
+
+    def _fake_build_rag_context(
+        _query,
+        _rag_repo,
+        _embed_provider,
+        rerank_client,
+        _context_chunk_chars,
+        _context_total_chars,
+        **_kwargs,
+    ):
+        observed["rerank_client"] = rerank_client
+        observed["coverage_gate_enabled"] = get_retrieval_bool("coverage_gate_enabled", False)
+        observed["coverage_retry_enabled"] = get_retrieval_bool(
+            "coverage_retry_supplemental_search_enabled", False
+        )
+        return (
+            SimpleNamespace(
+                chunks_info=[],
+                retrieval_skipped=False,
+                rag_trace=[],
+                max_score=0.0,
+                context_text="",
+            ),
+            {"total_rag_s": 0.01},
+        )
+
+    monkeypatch.setattr(routes, "build_rag_context", _fake_build_rag_context)
+
+    job_id = "job-v2-rerank"
+    routes._rag_test_jobs[job_id] = {
+        "status": "running",
+        "cancel_requested": False,
+        "progress": {},
+        "results": [],
+        "error": None,
+        "mode": "retrieval_only",
+    }
+
+    with app.app_context():
+        routes._rag_tests_v2_run_worker(
+            job_id,
+            app.app_context(),
+            [{"id": "t1", "name": "T1", "question": "Q1", "expected_concepts": []}],
+            "ios-docs",
+            top_k=8,
+            concurrency=1,
+            testing_disable_rerank=True,
+        )
+
+    assert observed["rerank_client"] is None
+    assert observed["coverage_gate_enabled"] is True
+    assert observed["coverage_retry_enabled"] is True
+    assert routes._rag_test_jobs[job_id]["results"][0]["status"] == "empty"
+
+
+def test_rag_tests_v2_run_route_uses_collection_resolution_and_status_endpoints(
+    monkeypatch,
+) -> None:
+    import api.http.rag_tests_routes as routes
+
+    class _FakeThread:
+        def __init__(self, target=None, args=None, kwargs=None, daemon=None):
+            self.target = target
+            self.args = args or ()
+            self.kwargs = kwargs or {}
+            self.daemon = daemon
+
+        def start(self):
+            return None
+
+    monkeypatch.setattr(routes, "_select_tests_to_run", lambda _body: ([{"id": "t1", "name": "T1"}], None))
+    monkeypatch.setattr(routes, "_resolve_collection_name", lambda _name: ("ios-docs", "qdrant.first_collection", None))
+    monkeypatch.setattr(routes.threading, "Thread", _FakeThread)
+
+    app = Flask(__name__)
+    app.register_blueprint(routes.rag_tests_bp)
+    client = app.test_client()
+
+    response = client.post("/api/webui/rag-tests-v2/run", json={"top_k": 7, "concurrency": 2})
+    assert response.status_code == 202
+    body = response.get_json()
+    assert body["collection_name"] == "ios-docs"
+    assert body["collection_source"] == "qdrant.first_collection"
+    assert body["mode"] == "retrieval_only"
+
+    job_id = body["job_id"]
+    status_response = client.get(f"/api/webui/rag-tests-v2/run/status/{job_id}")
+    assert status_response.status_code == 200
+    assert status_response.get_json()["mode"] == "retrieval_only"
+
+    cancel_response = client.post(f"/api/webui/rag-tests-v2/run/cancel/{job_id}")
+    assert cancel_response.status_code == 200
+    assert routes._rag_test_jobs[job_id]["cancel_requested"] is True
 
 
 def test_rag_tests_runs_delete_selected_ids(tmp_path) -> None:

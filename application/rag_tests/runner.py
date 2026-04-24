@@ -55,6 +55,42 @@ def build_test_messages(question: str, *, strict_mode: bool = False) -> list[dic
     return messages
 
 
+def build_test_retrieval_query(test: dict[str, Any]) -> str:
+    """Build the retrieval query used by RAG tests from a markdown test case."""
+    question = (test.get("question") or "").strip()
+
+    platform = (test.get("platform") or "").strip()
+    framework = (test.get("framework") or "").strip()
+    concepts = [c.strip() for c in (test.get("expected_concepts") or []) if c.strip()]
+
+    keywords: list[str] = []
+    if platform:
+        keywords.append(platform)
+    if framework:
+        keywords.append(framework)
+    keywords.extend(concepts)
+
+    lowered = " ".join(k.lower() for k in keywords)
+    extra_terms: list[str] = []
+    if "live activity" in lowered or "activitykit" in lowered:
+        extra_terms.extend(["ActivityKit", "Live Activities", "WidgetKit"])
+    if "swiftdata" in lowered:
+        extra_terms.extend(["SwiftData", "ModelContext", "ModelContainer"])
+    if "observation" in lowered or "@observation" in lowered:
+        extra_terms.extend(["Observation", "@Observable", "Observation framework"])
+    if "actor" in lowered or "sendable" in lowered:
+        extra_terms.extend(["Swift Concurrency", "Sendable", "actor"])
+
+    all_terms: list[str] = []
+    for term in keywords + extra_terms:
+        if term and term not in all_terms:
+            all_terms.append(term)
+
+    if all_terms:
+        return f"{question}\n\nRelevant terms: " + ", ".join(all_terms)
+    return question
+
+
 def build_proxy_chat_payload(
     *,
     question: str,
@@ -229,39 +265,7 @@ def run_one_test(
     Returns (content, rag_metadata, result_dict).
     """
     question = (test.get("question") or "").strip()
-
-    # Enrich retrieval query with platform/framework/expected concepts and simple synonyms
-    platform = (test.get("platform") or "").strip()
-    framework = (test.get("framework") or "").strip()
-    concepts = [c.strip() for c in (test.get("expected_concepts") or []) if c.strip()]
-
-    keywords: list[str] = []
-    if platform:
-        keywords.append(platform)
-    if framework:
-        keywords.append(framework)
-    keywords.extend(concepts)
-
-    # Simple query expansion for critical domains (Live Activity, Observation, SwiftData, etc.)
-    lowered = " ".join(k.lower() for k in keywords)
-    extra_terms: list[str] = []
-    if "live activity" in lowered or "activitykit" in lowered:
-        extra_terms.extend(["ActivityKit", "Live Activities", "WidgetKit"])
-    if "swiftdata" in lowered:
-        extra_terms.extend(["SwiftData", "ModelContext", "ModelContainer"])
-    if "observation" in lowered or "@observation" in lowered:
-        extra_terms.extend(["Observation", "@Observable", "Observation framework"])
-    if "actor" in lowered or "sendable" in lowered:
-        extra_terms.extend(["Swift Concurrency", "Sendable", "actor"])
-
-    all_terms: list[str] = []
-    for term in keywords + extra_terms:
-        if term and term not in all_terms:
-            all_terms.append(term)
-
-    retrieval_query = question
-    if all_terms:
-        retrieval_query = f"{question}\n\nRelevant terms: " + ", ".join(all_terms)
+    retrieval_query = build_test_retrieval_query(test)
     start_time = time.time()
     try:
         # Use a stricter, test-only system prompt to make answers

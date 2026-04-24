@@ -59,6 +59,19 @@ function TokenSwatch({ label, token, className = "" }) {
   );
 }
 
+function FontCard({ title, token, description, sampleClassName, sample }) {
+  return (
+    <article className="coreui-showcase-font-card">
+      <h4>{title}</h4>
+      <span className={["coreui-showcase-font-card-sample", sampleClassName].filter(Boolean).join(" ")}>
+        {sample}
+      </span>
+      <p>{description}</p>
+      <CodePill>{token}</CodePill>
+    </article>
+  );
+}
+
 function CoreUIShowcaseTab() {
   return (
     <div className="coreui-showcase tab-view">
@@ -84,6 +97,43 @@ function CoreUIShowcaseTab() {
             <TokenSwatch label="Surface" token="--md-sys-color-surface" />
             <TokenSwatch label="Container" token="--md-sys-color-surface-container" />
             <TokenSwatch label="Outline" token="--md-sys-color-outline-variant" />
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Font registry"
+          classes={["--coreui-font-family-base", "--coreui-font-family-mono", "--coreui-font-family-icon"]}
+          source={`${sourceRoot}/styles/tokens.css, index.html`}
+          description="Approved CoreUI font list. Application UI, code-like surfaces, and icon ligatures should use only these registry tokens."
+        >
+          <div className="coreui-showcase-font-grid">
+            <FontCard
+              title="CoreUI Sans"
+              token="--coreui-font-family-base"
+              description="Default UI font stack for page text, headings, form controls, tables, and navigation labels."
+              sampleClassName="coreui-showcase-font-card-sample--base"
+              sample="Interface text Aa 123"
+            />
+            <FontCard
+              title="CoreUI Mono"
+              token="--coreui-font-family-mono"
+              description="Single monospace stack for logs, code pills, IDs, model names, JSON, and technical diagnostics."
+              sampleClassName="coreui-showcase-font-card-sample--mono"
+              sample="trace_id=7f2c latency_ms=128"
+            />
+            <FontCard
+              title="CoreUI Icons"
+              token="--coreui-font-family-icon"
+              description="Central icon ligature font for Material Symbols. Load stays in the CoreUI shell and components only consume the shared class."
+              sampleClassName="coreui-showcase-font-card-sample--icon"
+              sample={(
+                <>
+                  <span className="material-symbols-outlined" aria-hidden="true">dashboard</span>
+                  <span className="material-symbols-outlined" aria-hidden="true">code</span>
+                  <span className="material-symbols-outlined" aria-hidden="true">settings</span>
+                </>
+              )}
+            />
           </div>
         </ShowcaseItem>
 

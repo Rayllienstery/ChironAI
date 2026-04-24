@@ -243,7 +243,7 @@
   color: var(--md-sys-color-on-surface);
   padding: 8px;
   border-radius: 4px;
-  font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-family: var(--coreui-font-family-mono);
   font-size: 0.8rem;
   white-space: pre;
 }
@@ -266,7 +266,7 @@
   color: var(--md-sys-color-on-surface);
   border-radius: 4px;
   border: 1px solid var(--md-sys-color-outline-variant);
-  font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-family: var(--coreui-font-family-mono);
   font-size: 0.8rem;
 }
 
@@ -292,7 +292,7 @@
 .indexer-llm-reply-text {
   max-height: 400px;
   overflow-y: auto;
-  font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-family: var(--coreui-font-family-mono);
   font-size: 0.8rem;
   white-space: pre-wrap;
   word-break: break-word;
