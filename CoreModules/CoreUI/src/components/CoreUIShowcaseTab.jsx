@@ -2,6 +2,7 @@ import Card from "./Card";
 import CoreUIBadge from "./CoreUIBadge";
 import CoreUIButton from "./CoreUIButton";
 import CoreUIPillTabs from "./CoreUIPillTabs";
+import CoreUISubtabs from "./CoreUISubtabs";
 import CoreUISlider from "./CoreUISlider";
 import EmptyState from "./EmptyState";
 import "../styles/components/CoreUIShowcaseTab.css";
@@ -247,6 +248,23 @@ function CoreUIShowcaseTab() {
             ]}
             value="traces"
             ariaLabel="Showcase tabs preview"
+          />
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="CoreUISubtabs"
+          classes={[".coreui-subtabs", ".coreui-subtab", ".coreui-subtab-active"]}
+          source={`${sourceRoot}/components/CoreUISubtabs.jsx`}
+          description="Standardized sub-navigation with a bottom border and tinted active state. Used for informational sections and onboarding guides."
+        >
+          <CoreUISubtabs
+            tabs={[
+              { id: "intro", label: "Intro" },
+              { id: "features", label: "Features" },
+              { id: "architecture", label: "Architecture" },
+            ]}
+            value="features"
+            ariaLabel="Showcase subtabs preview"
           />
         </ShowcaseItem>
 

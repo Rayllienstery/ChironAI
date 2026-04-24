@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import CoreUIButton from './CoreUIButton';
+import CoreUISubtabs from './CoreUISubtabs';
 import PipelineCiDiagram from './PipelineCiDiagram';
 import { useMergedPipelinePreview } from '../hooks/useMergedPipelinePreview';
 import {
@@ -370,20 +371,13 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
             <h2 className="dashboard-info-card-title">ChironAI</h2>
             <p className="dashboard-info-card-subtitle">Local, model-agnostic RAG layer for developers</p>
           </div>
-          <div className="dashboard-info-subtabs" role="tablist" aria-label="About sections">
-            {INFO_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                className={`dashboard-info-subtab ${infoSubTab === tab.id ? 'dashboard-info-subtab-active' : ''}`}
-                role="tab"
-                aria-selected={infoSubTab === tab.id}
-                onClick={() => setInfoSubTab(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <CoreUISubtabs
+            tabs={INFO_TABS}
+            value={infoSubTab}
+            onChange={(id) => setInfoSubTab(id)}
+            ariaLabel="About sections"
+            className="dashboard-info-subtabs"
+          />
           <div className="dashboard-info-panel" role="tabpanel">
             {infoSubTab === 'intro' && (
               <>
@@ -788,20 +782,13 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
               Run Claude Code and Codex through ChironAI for shared builds, RAG context, and proxy traces.
             </p>
           </div>
-          <div className="dashboard-info-subtabs" role="tablist" aria-label="Proxy onboarding sections">
-            {PROXY_GUIDE_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                className={`dashboard-info-subtab ${proxyGuideTab === tab.id ? 'dashboard-info-subtab-active' : ''}`}
-                role="tab"
-                aria-selected={proxyGuideTab === tab.id}
-                onClick={() => setProxyGuideTab(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <CoreUISubtabs
+            tabs={PROXY_GUIDE_TABS}
+            value={proxyGuideTab}
+            onChange={(id) => setProxyGuideTab(id)}
+            ariaLabel="Proxy onboarding sections"
+            className="dashboard-info-subtabs"
+          />
           <div className="dashboard-info-panel dashboard-proxy-guide-panel" role="tabpanel">
             {proxyGuideTab === 'why' && (
               <div className="dashboard-section-inner">

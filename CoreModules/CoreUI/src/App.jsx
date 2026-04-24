@@ -150,6 +150,7 @@ function App() {
   const ragTestStatusPollFailuresRef = useRef(0);
   const [llmProxyFocusSubTab, setLlmProxyFocusSubTab] = useState(null);
   const [llmProxyBuildsFocusSubTab, setLlmProxyBuildsFocusSubTab] = useState(null);
+  const [logsFocusSubTab, setLogsFocusSubTab] = useState(null);
   const [tabErrors, setTabErrors] = useState({});
   const [themeMode, setThemeMode] = useState("system");
   const [lightAccent, setLightAccent] = useState("purple");
@@ -381,8 +382,8 @@ function App() {
   };
 
   const handleOpenLlmProxyTrace = useCallback(() => {
-    setActiveTab("rag-fusion-proxy");
-    setLlmProxyFocusSubTab("traces");
+    setActiveTab("logs");
+    setLogsFocusSubTab("traces");
   }, []);
 
   const handleOpenLlmProxyAutocomplete = useCallback(() => {
@@ -396,6 +397,10 @@ function App() {
 
   const consumeLlmProxyBuildsFocusSubTab = useCallback(() => {
     setLlmProxyBuildsFocusSubTab(null);
+  }, []);
+
+  const consumeLogsFocusSubTab = useCallback(() => {
+    setLogsFocusSubTab(null);
   }, []);
 
   const loadThemeSettings = async () => {
@@ -469,7 +474,7 @@ function App() {
           />
         );
       case "logs":
-        return <LogsTab sessionId={sessionId} />;
+        return <LogsTab sessionId={sessionId} focusSubTab={logsFocusSubTab} onFocusSubTabConsumed={consumeLogsFocusSubTab} />;
       case "ollama":
         return (
           <OllamaTab

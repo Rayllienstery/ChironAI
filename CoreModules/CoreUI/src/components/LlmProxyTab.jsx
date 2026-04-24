@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import LlmProxyWebInteractionPanel from './LlmProxyWebInteractionPanel';
 import CoreUIButton from './CoreUIButton';
-import ProxyTracesTab from './ProxyTracesTab';
+
 import ProxyJournalTab from './ProxyJournalTab';
 import { getLlmProxyStatus } from '../services/api';
 import '../styles/components/SettingsTab.css';
@@ -20,7 +20,6 @@ function kvRow(label, value, key) {
 
 const SUB_TABS = [
   { id: 'overview', label: 'Overview' },
-  { id: 'traces', label: 'Traces' },
   { id: 'journal', label: 'Journal' },
   { id: 'web-interaction', label: 'Web Interaction' },
 ];
@@ -249,8 +248,6 @@ function LlmProxyTab({
           </div>
         </div>
       )}
-
-      {subTab === 'traces' && <ProxyTracesTab />}
 
       {subTab === 'journal' && <ProxyJournalTab />}
 

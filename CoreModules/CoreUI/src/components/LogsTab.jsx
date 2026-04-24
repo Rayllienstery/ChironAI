@@ -4,12 +4,14 @@ import { startLogPolling, stopLogPolling } from '../services/logs';
 import '../styles/components/LogsTab.css';
 import CoreUIButton from './CoreUIButton';
 import CoreUIPillTabs from './CoreUIPillTabs';
+import ProxyTracesTab from './ProxyTracesTab';
 import EmptyState from './EmptyState';
 
 const ProxyLogsAnalytics = lazy(() => import('./ProxyLogsAnalytics'));
 
 const PROXY_LOGS_ANALYTICS_LIMIT = 5000;
 const VIEW_MODE_TABS = [
+  { id: 'traces', label: 'Traces' },
   { id: 'logs', label: 'Logs' },
   { id: 'proxy', label: 'Proxy Logs' },
   { id: 'autocomplete', label: 'Autocomplete Logs' },
@@ -104,8 +106,8 @@ function sortLogsNewestFirst(items) {
   return [...(items || [])].sort(compareLogsNewestFirst);
 }
 
-function LogsTab({ sessionId }) {
-  const [viewMode, setViewMode] = useState('logs'); // 'logs' | 'proxy' | 'autocomplete'
+function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
+  const [viewMode, setViewMode] = useState(focusSubTab || 'traces'); // 'traces' | 'logs' | 'proxy' | 'autocomplete'
   const [logs, setLogs] = useState([]);
   const [levelFilter, setLevelFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
@@ -113,6 +115,14 @@ function LogsTab({ sessionId }) {
   const [period, setPeriod] = useState('day');
   const [selectedDate, setSelectedDate] = useState(null);
   const [pipelineFilter, setPipelineFilter] = useState('mixed');
+
+  useEffect(() => {
+    if (!focusSubTab) return;
+    setViewMode(focusSubTab);
+    if (typeof onFocusSubTabConsumed === 'function') {
+      onFocusSubTabConsumed();
+    }
+  }, [focusSubTab, onFocusSubTabConsumed]);
 
   const displayProxyLogs = useMemo(() => {
     if (viewMode !== 'proxy') return logs;
@@ -171,6 +181,7 @@ function LogsTab({ sessionId }) {
   }, [viewMode, sessionId, loadLogs]);
 
   useEffect(() => {
+    if (viewMode === 'traces') return;
     if (viewMode === 'logs' && !sessionId) return;
 
     loadLogs();
@@ -421,6 +432,7 @@ function LogsTab({ sessionId }) {
             ariaLabel="Log source"
           />
         </div>
+        {viewMode !== 'traces' && (
         <div className="logs-controls">
           {viewMode === 'logs' && (
             <>
@@ -451,6 +463,7 @@ function LogsTab({ sessionId }) {
             Refresh
           </CoreUIButton>
         </div>
+        )}
       </div>
 
       {(viewMode === 'proxy' || viewMode === 'autocomplete') && (
@@ -471,6 +484,9 @@ function LogsTab({ sessionId }) {
         </Suspense>
       )}
 
+      {viewMode === 'traces' && <ProxyTracesTab />}
+
+      {viewMode !== 'traces' && (
       <div className="logs-content">
         {viewMode === 'logs' && !sessionId ? (
           <div className="loading">No session available. Session is loading or could not be created.</div>
@@ -506,6 +522,7 @@ function LogsTab({ sessionId }) {
           )
         )}
       </div>
+      )}
 
     </div>
   );
