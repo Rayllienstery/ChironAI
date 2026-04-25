@@ -91,6 +91,11 @@ class LlmProxyWiring:
     get_autocomplete_ollama_model: Callable[[], str | None]
     """Resolved Ollama tag for autocomplete logical id (env / WebUI); None if unset."""
 
+    llm_runtime: Any | None = None
+    provider_registry: Any | None = None
+    extension_manager: Any | None = None
+    default_provider_id: str | None = None
+
     external_docs: LlmProxyExternalDocsBundle = field(default_factory=LlmProxyExternalDocsBundle)
 
     ingest_external_source: Callable[[str], tuple[dict[str, Any], int]] | None = None

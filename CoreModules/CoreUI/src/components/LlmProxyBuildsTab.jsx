@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getLlmProxyBuilds,
   putLlmProxyBuilds,
-  getModels,
+  getProviderCatalog,
   getPrompts,
   previewLlmProxyBuildModel,
   getModelSettings,
@@ -121,7 +121,8 @@ function emptyDraft() {
     id: '',
     display_name: '',
     backend: 'dumb',
-    ollama_model: '',
+    provider_id: '',
+    model: '',
     prompt_name: '',
     use_prompt_template: true,
     rag_enabled: true,
@@ -161,6 +162,8 @@ function buildToDraft(b) {
     }
   });
   if (b.backend) d.backend = String(b.backend);
+  if (!d.provider_id) d.provider_id = String(b.provider_id || '').trim();
+  if (!d.model) d.model = String(b.model || b.ollama_model || '').trim();
   return d;
 }
 
@@ -169,7 +172,9 @@ function draftToPayload(draft) {
   o.id = String(draft.id || '').trim();
   o.display_name = String(draft.display_name || '').trim() || o.id;
   o.backend = String(draft.backend || 'dumb').toLowerCase();
-  o.ollama_model = String(draft.ollama_model || '').trim();
+  o.provider_id = String(draft.provider_id || '').trim();
+  o.model = String(draft.model || '').trim();
+  delete o.ollama_model;
   o.prompt_name = String(draft.prompt_name || '').trim();
   o.use_prompt_template = draft.use_prompt_template !== false;
   o.rag_enabled = Boolean(draft.rag_enabled);
@@ -221,7 +226,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [models, setModels] = useState([]);
+  const [providerCatalog, setProviderCatalog] = useState({ providers: [], models: [] });
   const [prompts, setPrompts] = useState([]);
   const [proxyDefaults, setProxyDefaults] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -253,13 +258,20 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
       setLoading(false);
     }
 
-    const [modelsResult, promptsResult, settingsResult] = await Promise.allSettled([
-      getModels(),
+    const [catalogResult, promptsResult, settingsResult] = await Promise.allSettled([
+      getProviderCatalog('chat'),
       getPrompts(),
       getModelSettings(),
     ]);
 
-    setModels(modelsResult.status === 'fulfilled' && Array.isArray(modelsResult.value) ? modelsResult.value : []);
+    setProviderCatalog(
+      catalogResult.status === 'fulfilled'
+        ? {
+            providers: Array.isArray(catalogResult.value?.providers) ? catalogResult.value.providers : [],
+            models: Array.isArray(catalogResult.value?.models) ? catalogResult.value.models : [],
+          }
+        : { providers: [], models: [] },
+    );
     setPrompts(
       promptsResult.status === 'fulfilled' && Array.isArray(promptsResult.value?.prompts)
         ? promptsResult.value.prompts
@@ -297,6 +309,11 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
     }
   }, [focusSubTab, onFocusSubTabConsumed]);
 
+  useEffect(() => {
+    if (!draft || draft.provider_id || chatProviders.length === 0) return;
+    setDraft((prev) => (prev ? { ...prev, provider_id: String(chatProviders[0]?.provider_id || '') } : prev));
+  }, [chatProviders, draft]);
+
   const buildModalOpen = Boolean(draft);
 
   useEffect(() => {
@@ -333,9 +350,21 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
     [buildModalPipelineSnap, buildModalHybrid, buildModalRerank, draft],
   );
 
+  const chatProviders = useMemo(
+    () => (Array.isArray(providerCatalog.providers) ? providerCatalog.providers : []),
+    [providerCatalog],
+  );
+
+  const filteredModels = useMemo(() => {
+    const models = Array.isArray(providerCatalog.models) ? providerCatalog.models : [];
+    const providerId = String(draft?.provider_id || '').trim();
+    if (!providerId) return models;
+    return models.filter((model) => String(model.provider_id || '').trim() === providerId);
+  }, [providerCatalog, draft]);
+
   const isFormValid = useMemo(() => {
     if (!draft) return false;
-    return Boolean(draft.id?.trim()) && Boolean(draft.ollama_model?.trim());
+    return Boolean(draft.id?.trim()) && Boolean(draft.provider_id?.trim()) && Boolean(draft.model?.trim());
   }, [draft]);
 
   const detailBuild = useMemo(
@@ -423,14 +452,17 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
   };
 
   const runPreview = async () => {
-    if (!draft?.ollama_model?.trim()) {
-      setPreviewMsg('Choose an Ollama model first.');
+    if (!draft?.model?.trim()) {
+      setPreviewMsg('Choose a provider model first.');
       return;
     }
     setPreviewBusy(true);
     setPreviewMsg(null);
     try {
-      const r = await previewLlmProxyBuildModel(String(draft.ollama_model).trim());
+      const r = await previewLlmProxyBuildModel(
+        String(draft.model).trim(),
+        String(draft.provider_id || '').trim(),
+      );
       if (r.ok) {
         setPreviewMsg(
           `context_length: ${r.context_length ?? '—'} · thinking: ${r.supports_thinking ? 'yes' : 'no'}`,
@@ -444,19 +476,20 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
   };
 
   const applySelectedModelDefaults = useCallback(
-    async (modelId) => {
+    async (modelId, providerId) => {
       const mid = String(modelId || '').trim();
+      const pid = String(providerId || '').trim();
       if (!mid) return;
       setPreviewBusy(true);
       setPreviewMsg(null);
       try {
-        const r = await previewLlmProxyBuildModel(mid);
+        const r = await previewLlmProxyBuildModel(mid, pid);
         const ctxLen = r?.context_length ?? null;
         const thinking = Boolean(r?.supports_thinking);
         setPreviewMsg(`context_length: ${ctxLen ?? '—'} · thinking: ${thinking ? 'yes' : 'no'}`);
 
         setDraft((prev) => {
-          if (!prev || String(prev.ollama_model || '').trim() !== mid) return prev;
+          if (!prev || String(prev.model || '').trim() !== mid) return prev;
           const next = { ...prev };
           const t = proxyDefaults?.temperature;
           const tp = proxyDefaults?.top_p;
@@ -576,10 +609,13 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                         <span className="llm-proxy-build-backend">
                           Backend: <code>{b.backend || 'dumb'}</code>
                         </span>
-                        {b.ollama_model ? (
+                        {(b.model || b.ollama_model) ? (
                           <>
                             <span className="llm-proxy-dot" aria-hidden="true">·</span>
-                            <span>Ollama: <code>{b.ollama_model}</code></span>
+                            <span>
+                              Provider: <code>{b.provider_id || 'ollama'}</code> · Model:{' '}
+                              <code>{b.model || b.ollama_model}</code>
+                            </span>
                           </>
                         ) : null}
                         {b.rag_enabled ? (
@@ -741,7 +777,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   </h3>
                   <div className="llm-proxy-info-card-body">
                     A <strong>build</strong> is a named configuration that API clients reference by the <code>model</code> field.
-                    Think of it as a profile — each build wires up a specific Ollama model, RAG settings, and behaviour so
+                    Think of it as a profile — each build wires up a specific provider/model pair, RAG settings, and behaviour so
                     you can switch between them instantly without changing client code.
                   </div>
                 </div>
@@ -772,27 +808,46 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 <div className="llm-proxy-info-card">
                   <h3 className="llm-proxy-info-card-title">
                     <span className="llm-proxy-info-card-title-icon material-symbols-outlined" aria-hidden="true">smart_toy</span>
-                    Choose the Ollama model
+                    Choose the provider model
                   </h3>
                   <div className="llm-proxy-info-card-body">
-                    The Ollama model is the LLM that actually generates responses. The proxy sends it the assembled
-                    prompt (system + RAG context + conversation). Pick a model you have pulled locally via <code>ollama pull</code>.
+                    The selected provider model is the LLM that actually generates responses. The proxy sends it the assembled
+                    prompt (system + RAG context + conversation).
                   </div>
                 </div>
 
                 <label className="coreui-form-field">
-                  Ollama model
+                  Provider
                   <select
                     className="dashboard-card-field"
-                    value={draft.ollama_model}
+                    value={draft.provider_id}
+                    onChange={(e) => {
+                      const providerId = e.target.value;
+                      setDraft((prev) => ({ ...(prev || {}), provider_id: providerId, model: '' }));
+                    }}
+                  >
+                    <option value="">Select...</option>
+                    {chatProviders.map((provider) => (
+                      <option key={provider.provider_id} value={provider.provider_id}>
+                        {provider.title || provider.provider_id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="coreui-form-field">
+                  Model
+                  <select
+                    className="dashboard-card-field"
+                    value={draft.model}
                     onChange={(e) => {
                       const v = e.target.value;
-                      setDraft((prev) => ({ ...(prev || {}), ollama_model: v }));
-                      void applySelectedModelDefaults(v);
+                      setDraft((prev) => ({ ...(prev || {}), model: v }));
+                      void applySelectedModelDefaults(v, String(draft.provider_id || '').trim());
                     }}
                   >
                     <option value="">Select…</option>
-                    {models.map((m) => (
+                    {filteredModels.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.name || m.id}
                       </option>
@@ -802,7 +857,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
 
                 <div className="dashboard-card-actions">
                   <CoreUIButton variant="primary" disabled={previewBusy} onClick={runPreview}>
-                    Check model (Ollama show)
+                    Check model
                   </CoreUIButton>
                   {previewMsg && <span className="dashboard-card-muted">{previewMsg}</span>}
                 </div>
@@ -811,7 +866,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   <div className="llm-proxy-toggle-row">
                     <span className="llm-proxy-toggle-label">
                       <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">psychology</span>
-                      Ollama think mode
+                      Provider think mode
                     </span>
                     <input
                       type="checkbox"
@@ -882,7 +937,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   </div>
                   <p className="llm-proxy-toggle-explanation">
                     When enabled, every chat request will search your Qdrant collections for relevant context before
-                    calling the LLM. Disable if you want a pure passthrough to the Ollama model with no document retrieval.
+                    calling the LLM. Disable if you want a pure passthrough to the selected provider model with no document retrieval.
                   </p>
                 </div>
 
@@ -1177,7 +1232,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     placeholder="inherit (model default)"
                     inputMode="numeric"
                   />
-                  <p className="llm-proxy-param-card-hint">Example: 8192 for small models, 32768+ for large context models. Auto-filled when you select an Ollama model above.</p>
+                  <p className="llm-proxy-param-card-hint">Example: 8192 for small models, 32768+ for large context models. Auto-filled when you select a provider model above.</p>
                 </div>
 
                 <div className="llm-proxy-param-card">
@@ -1391,8 +1446,8 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                       <span className="llm-proxy-build-summary-val">{draft.display_name || '—'}</span>
                     </div>
                     <div className="llm-proxy-build-summary-row">
-                      <span className="llm-proxy-build-summary-key">Ollama model</span>
-                      <code className="llm-proxy-build-summary-val">{draft.ollama_model || '—'}</code>
+                      <span className="llm-proxy-build-summary-key">Provider / model</span>
+                      <code className="llm-proxy-build-summary-val">{`${draft.provider_id || '—'} / ${draft.model || '—'}`}</code>
                     </div>
                     <div className="llm-proxy-build-summary-row">
                       <span className="llm-proxy-build-summary-key">RAG</span>

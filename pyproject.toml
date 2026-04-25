@@ -67,6 +67,7 @@ pythonpath = [
     ".",
     "modules/crawler_service",
     "modules/html_md",
+    "CoreModules/LlmInteractor",
     "CoreModules/ServiceStarter",
     "CoreModules/LlmProxy",
     "CoreModules/RagService",
@@ -90,6 +91,7 @@ src = [
   "infrastructure",
   "utils",
   "tests",
+  "CoreModules/LlmInteractor/llm_interactor",
   "CoreModules/LlmProxy/llm_proxy",
   "CoreModules/RagService/chironai_rag",
   "CoreModules/RagService/rag_service",
@@ -150,5 +152,4 @@ ignore_decorators = [
   "@*.route",
   "@*.before_first_request",
 ]
-
 

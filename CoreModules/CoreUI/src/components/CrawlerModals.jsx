@@ -321,7 +321,7 @@ export function CreateCollectionModal({
   createProgress,
   createForm,
   onFormChange,
-  createEmbedModels,
+  createEmbedCatalog,
   createEmbedDefaults,
   sources,
   toggleSourceInForm,
@@ -333,6 +333,17 @@ export function CreateCollectionModal({
 }) {
   if (!open) return null;
   const isRunning = Boolean(creating || createProgress?.status === "running");
+  const embedProviders = Array.isArray(createEmbedCatalog?.providers)
+    ? createEmbedCatalog.providers
+    : [];
+  const embedModels = Array.isArray(createEmbedCatalog?.models)
+    ? createEmbedCatalog.models
+    : [];
+  const filteredEmbedModels = embedModels.filter(
+    (model) =>
+      String(model.provider_id || "").trim() ===
+      String(createForm.rag_embed_provider_id || "").trim(),
+  );
   return (
     <ModalShell
       title="Create New Collection"
@@ -400,7 +411,31 @@ export function CreateCollectionModal({
         />
       </div>
       <div className="form-group">
-        <label htmlFor="create-collection-embed-model">Embedding model (Ollama)</label>
+        <label htmlFor="create-collection-embed-provider">Embedding provider</label>
+        <select
+          id="create-collection-embed-provider"
+          value={createForm.rag_embed_provider_id}
+          onChange={(e) =>
+            onFormChange((prev) => ({
+              ...prev,
+              rag_embed_provider_id: e.target.value,
+              rag_embed_model: "",
+            }))
+          }
+          disabled={!embedProviders.length}
+        >
+          <option value="">
+            Server default provider ({createEmbedDefaults.rag_embed_provider_id || "not configured"})
+          </option>
+          {embedProviders.map((provider) => (
+            <option key={provider.provider_id} value={provider.provider_id}>
+              {provider.title || provider.provider_id}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="form-group">
+        <label htmlFor="create-collection-embed-model">Embedding model</label>
         <select
           id="create-collection-embed-model"
           value={createForm.rag_embed_model}
@@ -410,18 +445,18 @@ export function CreateCollectionModal({
               rag_embed_model: e.target.value,
             }))
           }
-          disabled={!createEmbedModels.length}
+          disabled={!filteredEmbedModels.length}
         >
           <option value="">
             Server default ({createEmbedDefaults.rag_embed_model || "not configured"})
           </option>
           {createForm.rag_embed_model &&
-            !createEmbedModels.some((m) => m.id === createForm.rag_embed_model) && (
+            !filteredEmbedModels.some((m) => m.id === createForm.rag_embed_model) && (
               <option value={createForm.rag_embed_model}>
-                {createForm.rag_embed_model} (saved - not in current Ollama list)
+                {createForm.rag_embed_model} (saved - not in current provider list)
               </option>
             )}
-          {createEmbedModels.map((m) => (
+          {filteredEmbedModels.map((m) => (
             <option key={m.id} value={m.id}>
               {m.name || m.id}
             </option>

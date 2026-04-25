@@ -6,7 +6,6 @@ import {
   useState,
 } from "react";
 import Card from "./Card";
-import OllamaSidebarIcon from "./OllamaSidebarIcon";
 import OpenWebUiSidebarIcon from "./OpenWebUiSidebarIcon";
 
 const LS_WIDTH = "coreui.sidebar.width";
@@ -43,17 +42,15 @@ const TAB_MATERIAL_ICONS = {
   crawler: "travel_explore",
   "template-editor": "edit_note",
   testing: "science",
+  extensions: "extension",
   "coreui-showcase": "widgets",
 };
 
-function TabIcon({ tabId }) {
-  if (tabId === "ollama") {
-    return <OllamaSidebarIcon />;
-  }
+function TabIcon({ tabId, icon }) {
   if (tabId === "open-webui") {
     return <OpenWebUiSidebarIcon />;
   }
-  const ligature = TAB_MATERIAL_ICONS[tabId] ?? "widgets";
+  const ligature = String(icon || "").trim() || (TAB_MATERIAL_ICONS[tabId] ?? "widgets");
   return (
     <span className="material-symbols-outlined coreui-sidebar__icon" aria-hidden="true">
       {ligature}
@@ -85,16 +82,16 @@ function CollapseIcon({ expanded }) {
 
 /**
  * @param {{
- *   tabs: { id: string, label: string }[],
+ *   tabs: { id: string, label: string, icon?: string }[],
  *   activeTab: string,
  *   onTabChange: (id: string) => void,
  *   tabErrors?: Record<string, boolean>,
  *   onSettings?: () => void,
  *   onStopWebUi?: () => void,
  *   settingsActive?: boolean,
- *   ollamaStatus?: { running: boolean | null, url: string | null },
  *   ragStatus?: { running: boolean | null, url: string | null },
  *   openWebUiStatus?: { running: boolean | null, url: string | null },
+ *   serviceStatusByTabId?: Record<string, { running: boolean | null, title?: string, message?: string }>,
  *   statusLoading?: boolean,
  * }} props
  */
@@ -106,9 +103,9 @@ function SidebarNav({
   onSettings,
   onStopWebUi,
   settingsActive,
-  ollamaStatus,
   ragStatus,
   openWebUiStatus,
+  serviceStatusByTabId,
   statusLoading = false,
 }) {
   const asideRef = useRef(null);
@@ -221,30 +218,30 @@ function SidebarNav({
           {tabs.map((tab) => {
             const active = activeTab === tab.id;
             const hasError = Boolean(tabErrors && tabErrors[tab.id]);
-            const isOllama = tab.id === "ollama";
             const isOpenWebUi = tab.id === "open-webui";
             const isRag = tab.id === "rag";
+            const tabServiceStatus = serviceStatusByTabId?.[tab.id] || null;
             return (
               <button
                 key={tab.id}
                 type="button"
-                className={`coreui-sidebar__link${active ? " coreui-sidebar__link--active" : ""}${isOllama ? " coreui-sidebar__link--ollama" : ""}${isOpenWebUi ? " coreui-sidebar__link--openwebui" : ""}${isRag ? " coreui-sidebar__link--rag" : ""}`}
+                className={`coreui-sidebar__link${active ? " coreui-sidebar__link--active" : ""}${isOpenWebUi ? " coreui-sidebar__link--openwebui" : ""}${isRag ? " coreui-sidebar__link--rag" : ""}`}
                 onClick={() => onTabChange(tab.id)}
                 aria-current={active ? "page" : undefined}
                 title={collapsed ? tab.label : undefined}
               >
-                <TabIcon tabId={tab.id} />
+                <TabIcon tabId={tab.id} icon={tab.icon} />
                 <span className="coreui-sidebar__link-label">{tab.label}</span>
-                {isOllama ? (
+                {tabServiceStatus ? (
                   <span
-                    className={`coreui-sidebar__service-dot coreui-sidebar__link-ollama-dot ${statusLoading ? "updating" : ollamaStatus?.running ? "running" : "stopped"}`}
+                    className={`coreui-sidebar__service-dot ${statusLoading ? "updating" : tabServiceStatus?.running ? "running" : "stopped"}`}
                     aria-hidden="true"
                     title={
                       statusLoading
-                        ? "Checking Ollama status…"
-                        : ollamaStatus?.running
-                          ? "Ollama reachable"
-                          : "Ollama not reachable"
+                        ? `Checking ${tabServiceStatus?.title || tab.label} status...`
+                        : tabServiceStatus?.running
+                          ? `${tabServiceStatus?.title || tab.label} available`
+                          : tabServiceStatus?.message || `${tabServiceStatus?.title || tab.label} unavailable`
                     }
                   />
                 ) : null}

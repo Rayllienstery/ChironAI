@@ -51,9 +51,17 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
     if backend != "dumb":
         errors.append("backend must be 'dumb'")
 
-    ollama_model = str(build.get("ollama_model") or "").strip()
-    if backend == "dumb" and not ollama_model:
-        errors.append("dumb builds require ollama_model")
+    provider_id = str(build.get("provider_id") or "").strip()
+    model = str(build.get("model") or "").strip()
+    legacy_ollama_model = str(build.get("ollama_model") or "").strip()
+    if not provider_id and legacy_ollama_model:
+        provider_id = "ollama"
+    if not model and legacy_ollama_model:
+        model = legacy_ollama_model
+    if backend == "dumb" and not provider_id:
+        errors.append("dumb builds require provider_id")
+    if backend == "dumb" and not model:
+        errors.append("dumb builds require model")
 
     use_prompt_template = build.get("use_prompt_template", True) is not False
     prompt_name = str(build.get("prompt_name") or "").strip()
@@ -108,7 +116,8 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
         "id": bid,
         "display_name": str(build.get("display_name") or bid).strip() or bid,
         "backend": backend,
-        "ollama_model": ollama_model,
+        "provider_id": provider_id,
+        "model": model,
         "prompt_name": prompt_name,
         "use_prompt_template": use_prompt_template,
         "rag_enabled": bool(build.get("rag_enabled", True)),
@@ -284,9 +293,10 @@ def diagnose_build(
 ) -> tuple[list[str], bool]:
     """Return (issues, healthy) for WebUI list/detail."""
     issues: list[str] = []
-    om = str(build.get("ollama_model") or "").strip()
-    if om and ollama_tag_names and om not in ollama_tag_names:
-        issues.append(f'Ollama model "{om}" is not in the current tag list (removed or renamed?)')
+    provider_id = str(build.get("provider_id") or "").strip() or ("ollama" if str(build.get("ollama_model") or "").strip() else "")
+    model = str(build.get("model") or "").strip() or str(build.get("ollama_model") or "").strip()
+    if provider_id == "ollama" and model and ollama_tag_names and model not in ollama_tag_names:
+        issues.append(f'Ollama model "{model}" is not in the current tag list (removed or renamed?)')
     use_prompt_template = build.get("use_prompt_template", True) is not False
     pn = str(build.get("prompt_name") or "").strip()
     if use_prompt_template and pn and not prompt_exists:

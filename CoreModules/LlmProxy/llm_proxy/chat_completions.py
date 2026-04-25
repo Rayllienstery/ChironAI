@@ -1693,7 +1693,7 @@ def run_chat_completions(
 
     if active_build and str(active_build.get("backend") or "").strip().lower() == "dumb":
         proxy_settings = merge_build_into_proxy_settings(proxy_settings, active_build)
-        _om_b = str(active_build.get("ollama_model") or "").strip()
+        _om_b = str(active_build.get("model") or "").strip() or str(active_build.get("ollama_model") or "").strip()
         if _om_b:
             proxy_model_setting = _om_b
         build_extra_options = build_ollama_options(active_build)
@@ -1964,7 +1964,7 @@ def run_chat_completions(
             w.set_proxy_status(w.status_idle)
             return jsonify(
                 {
-                    "error": "Dumb build is missing ollama_model; edit the build in LLM Proxy (builds).",
+                    "error": "Dumb build is missing model; edit the build in LLM Proxy (builds).",
                 }
             ), 400
 

@@ -50,6 +50,9 @@ if _MODULES_EXT_RAG not in sys.path:
 _WEBINTERACTION = os.path.join(_ROOT, "CoreModules", "WebInteraction")
 if _WEBINTERACTION not in sys.path:
     sys.path.insert(0, _WEBINTERACTION)
+_LLM_INTERACTOR = os.path.join(_ROOT, "CoreModules", "LlmInteractor")
+if os.path.isdir(_LLM_INTERACTOR) and _LLM_INTERACTOR not in sys.path:
+    sys.path.insert(0, _LLM_INTERACTOR)
 
 try:
     from external_docs_rag.application.use_cases import (
@@ -85,8 +88,6 @@ except ImportError:
     get_keyword_collections_repository = None  # type: ignore[assignment,misc]
 
 _RAG_LOG = logging.getLogger("trag.rag")
-
-
 def _get_proxy_rerank_enabled_for_proxy() -> bool:
     """
     Single contract for /v1 rerank toggle.
@@ -270,8 +271,8 @@ def _ingest_external_source(source_id: str) -> tuple[dict[str, Any], int]:
         return {"error": str(e)}, 500
 
 
-def _get_autocomplete_ollama_model() -> str | None:
-    """Ollama model tag for ChironAI-Autocomplete logical id: env overrides WebUI."""
+def _get_autocomplete_provider_model() -> str | None:
+    """Resolved provider model for ChironAI-Autocomplete logical id: env overrides WebUI."""
     env_m = (os.getenv("LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL") or "").strip()
     if env_m:
         return env_m
@@ -280,6 +281,60 @@ def _get_autocomplete_ollama_model() -> str | None:
         return (repo.get_app_setting("proxy_autocomplete_model") or "").strip() or None
     except Exception:
         return None
+
+
+def _build_extension_manager(
+    *,
+    deps: RAGDependencies,
+) -> tuple[Any | None, Any | None, Any | None, Any | None, str | None]:
+    try:
+        from llm_interactor import (
+            ExtensionManager,
+            ExtensionRegistryClient,
+            ProviderHostContext,
+            RuntimeBackedChatClient,
+        )
+    except Exception as e:
+        _RAG_LOG.warning("LlmInteractor unavailable; falling back to direct chat client: %s", e)
+        return None, None, None, None, None
+
+    try:
+        settings_repo = get_settings_repository()
+    except Exception as e:
+        _RAG_LOG.warning("settings repository unavailable for LlmInteractor: %s", e)
+        return None, None, None, None, None
+
+    host_context = ProviderHostContext(
+        project_root=_workspace_root(),
+        get_settings_repository=get_settings_repository,
+        chat_client=deps.chat_client,
+        metadata={
+            "source": "api.http.llm_proxy_wiring",
+        },
+    )
+    manager = ExtensionManager(
+        project_root=_workspace_root(),
+        host_context=host_context,
+        settings_repo=settings_repo,
+        registry_client=ExtensionRegistryClient(project_root=_workspace_root()),
+        default_provider_id=None,
+    )
+    bootstrap = manager.bootstrap_runtime()
+    descriptors = bootstrap.registry.descriptors()
+    default_provider_id = descriptors[0].id if descriptors else None
+    if not default_provider_id:
+        _RAG_LOG.warning("No default LLM provider loaded; proxy will fall back to direct chat client")
+        return manager, bootstrap.runtime, bootstrap.registry, None, None
+    upstream_url = getattr(deps.chat_client, "_url", None) if deps.chat_client is not None else None
+    default_options = getattr(deps.chat_client, "_default_options", None) if deps.chat_client is not None else None
+    runtime_chat_client = RuntimeBackedChatClient(
+        bootstrap.runtime,
+        provider_id=default_provider_id,
+        upstream_url=str(upstream_url or "") or None,
+        default_options=dict(default_options or {}),
+        delegate=deps.chat_client,
+    )
+    return manager, bootstrap.runtime, bootstrap.registry, runtime_chat_client, default_provider_id
 
 
 def build_llm_proxy_wiring(
@@ -294,6 +349,12 @@ def build_llm_proxy_wiring(
 
     prefix = system_prefix if system_prefix is not None else params.system_prefix
     suffix = system_suffix if system_suffix is not None else params.system_suffix
+    extension_manager = None
+    llm_runtime = None
+    provider_registry = None
+    runtime_chat_client = None
+    default_provider_id = None
+    extension_manager, llm_runtime, provider_registry, runtime_chat_client, default_provider_id = _build_extension_manager(deps=deps)
     return LlmProxyWiring(
         runtime=LlmProxyRuntimeConfig.from_env(),
         base=LlmProxyBaseContext(
@@ -310,7 +371,7 @@ def build_llm_proxy_wiring(
             rag_repo=deps.rag_repo,
             embed_provider=deps.embed_provider,
             rerank_client=deps.rerank_client,
-            chat_client=deps.chat_client,
+            chat_client=runtime_chat_client or deps.chat_client,
         ),
         workspace_root=_workspace_root,
         log_webui_error=rr.log_webui_error,
@@ -340,7 +401,11 @@ def build_llm_proxy_wiring(
         last_user_content=rr.last_user_content,
         rag_context_factory=rr.RagContext,
         rag_question_request_factory=rr.RagQuestionRequest,
-        get_autocomplete_ollama_model=_get_autocomplete_ollama_model,
+        get_autocomplete_ollama_model=_get_autocomplete_provider_model,
+        llm_runtime=llm_runtime,
+        provider_registry=provider_registry,
+        extension_manager=extension_manager,
+        default_provider_id=default_provider_id,
         external_docs=_external_docs_bundle(),
         ingest_external_source=_ingest_external_source,
         build_web_supplement_for_proxy=build_web_supplement_for_proxy,

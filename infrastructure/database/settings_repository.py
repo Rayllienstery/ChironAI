@@ -48,6 +48,8 @@ class SettingsRepository:
             # Handle optional fields that may not exist in older schemas
             if "model" in row:
                 settings["model"] = row.get("model")
+            if "provider_id" in row:
+                settings["provider_id"] = row.get("provider_id")
             if "top_k" in row:
                 settings["top_k"] = row.get("top_k")
             
@@ -78,11 +80,12 @@ class SettingsRepository:
             cursor = conn.execute(
                 """
                 INSERT INTO model_tester_settings 
-                (session_id, model, prompt_name, swift_mode, temperature, top_p, reasoning_level, use_rag, top_k, rag_config)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (session_id, provider_id, model, prompt_name, swift_mode, temperature, top_p, reasoning_level, use_rag, top_k, rag_config)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
+                    settings.get("provider_id"),
                     settings.get("model"),
                     settings.get("prompt_name"),
                     None,
@@ -109,6 +112,13 @@ class SettingsRepository:
             if "model" not in columns:
                 try:
                     conn.execute("ALTER TABLE model_tester_settings ADD COLUMN model TEXT")
+                    conn.commit()
+                except sqlite3.OperationalError:
+                    pass  # Column might already exist
+
+            if "provider_id" not in columns:
+                try:
+                    conn.execute("ALTER TABLE model_tester_settings ADD COLUMN provider_id TEXT")
                     conn.commit()
                 except sqlite3.OperationalError:
                     pass  # Column might already exist

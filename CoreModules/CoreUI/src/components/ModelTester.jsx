@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  getModels,
+  getProviderCatalog,
   getPrompts,
   getTesterSettings,
   updateTesterSettings,
@@ -15,10 +15,11 @@ import { buildTesterRunLogCards } from '../utils/testerRunLog';
 import '../styles/components/ModelTester.css';
 
 function ModelTester({ sessionId }) {
-  const [models, setModels] = useState([]);
+  const [providerCatalog, setProviderCatalog] = useState({ providers: [], models: [] });
   const [prompts, setPrompts] = useState([]);
   const [collections, setCollections] = useState([]);
   const [settings, setSettings] = useState({
+    provider_id: '',
     model: '',
     prompt_name: '',
     temperature: 0.0,
@@ -73,12 +74,15 @@ function ModelTester({ sessionId }) {
 
   const loadData = async () => {
     try {
-      const [modelsData, promptsData, collectionsData] = await Promise.all([
-        getModels(),
+      const [catalogData, promptsData, collectionsData] = await Promise.all([
+        getProviderCatalog('chat'),
         getPrompts(),
         getRagCollections().catch(() => ({ collections: [] })),
       ]);
-      setModels(modelsData);
+      setProviderCatalog({
+        providers: Array.isArray(catalogData?.providers) ? catalogData.providers : [],
+        models: Array.isArray(catalogData?.models) ? catalogData.models : [],
+      });
       const promptsList = promptsData?.prompts || [];
       setPrompts(promptsList);
       setCollections(collectionsData?.collections || []);
@@ -105,6 +109,36 @@ function ModelTester({ sessionId }) {
   const handleSettingChange = (field, value) => {
     setSettings((prev) => ({ ...prev, [field]: value }));
   };
+
+  const chatProviders = useMemo(
+    () => (Array.isArray(providerCatalog.providers) ? providerCatalog.providers : []),
+    [providerCatalog],
+  );
+
+  const selectedProviderId = String(settings.provider_id || '').trim();
+
+  const filteredModels = useMemo(() => {
+    const models = Array.isArray(providerCatalog.models) ? providerCatalog.models : [];
+    if (!selectedProviderId) return models;
+    return models.filter((model) => String(model.provider_id || '').trim() === selectedProviderId);
+  }, [providerCatalog, selectedProviderId]);
+
+  useEffect(() => {
+    if (!settings.provider_id) {
+      const fallbackProviderId = String(chatProviders[0]?.provider_id || '').trim();
+      if (fallbackProviderId) {
+        setSettings((prev) => ({ ...prev, provider_id: fallbackProviderId }));
+      }
+    }
+  }, [chatProviders, settings.provider_id]);
+
+  useEffect(() => {
+    if (!settings.model) return;
+    const exists = filteredModels.some((model) => (model.id || model.name) === settings.model);
+    if (!exists && selectedProviderId) {
+      setSettings((prev) => ({ ...prev, model: '' }));
+    }
+  }, [filteredModels, selectedProviderId, settings.model]);
 
   const handleSaveSettings = async () => {
     if (!sessionId) return;
@@ -158,6 +192,7 @@ function ModelTester({ sessionId }) {
         sessionId,
         [{ role: 'user', content: query }],
         {
+          provider_id: settings.provider_id || undefined,
           model: settings.model || undefined,
           prompt_name: settings.prompt_name || undefined,
           temperature: settings.temperature > 0 ? settings.temperature : undefined,
@@ -314,14 +349,41 @@ function ModelTester({ sessionId }) {
               <div className="tester-settings-separator">Model</div>
 
               <div className="form-group">
+                <label htmlFor="tester-fusion-provider">Provider</label>
+                <select
+                  id="tester-fusion-provider"
+                  value={settings.provider_id || ''}
+                  onChange={(e) =>
+                    setSettings((prev) => ({
+                      ...prev,
+                      provider_id: e.target.value,
+                      model: '',
+                    }))
+                  }
+                >
+                  <option value="">Select provider…</option>
+                  {chatProviders.map((provider) => (
+                    <option key={provider.provider_id} value={provider.provider_id}>
+                      {provider.title || provider.provider_id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
                 <label htmlFor="tester-fusion-model">Model</label>
                 <select
                   id="tester-fusion-model"
-                  value={models.some((m) => (m.id || m.name) === settings.model) ? settings.model : ''}
+                  value={
+                    filteredModels.some((m) => (m.id || m.name) === settings.model)
+                      ? settings.model
+                      : ''
+                  }
                   onChange={(e) => handleSettingChange('model', e.target.value)}
+                  disabled={!filteredModels.length}
                 >
                   <option value="">Select model…</option>
-                  {models.map((model) => (
+                  {filteredModels.map((model) => (
                     <option key={model.id || model.name} value={model.id || model.name}>
                       {model.name}
                     </option>

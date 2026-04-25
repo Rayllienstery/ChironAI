@@ -49,6 +49,9 @@ if os.path.isdir(_RAG_SVC) and _RAG_SVC not in sys.path:
 _LLM_PROXY = os.path.join(_ROOT, "CoreModules", "LlmProxy")
 if os.path.isdir(_LLM_PROXY) and _LLM_PROXY not in sys.path:
     sys.path.insert(0, _LLM_PROXY)
+_LLM_INTERACTOR = os.path.join(_ROOT, "CoreModules", "LlmInteractor")
+if os.path.isdir(_LLM_INTERACTOR) and _LLM_INTERACTOR not in sys.path:
+    sys.path.insert(0, _LLM_INTERACTOR)
 
 from application.llm_proxy_builds import (
     LLM_PROXY_BUILDS_APP_KEY,
@@ -106,9 +109,6 @@ from config import (
     get_build_proxy_port,
     get_default_rag_top_k,
     get_framework_collection_ttl_days,
-    get_ollama_chat_model,
-    get_ollama_embed_model,
-    get_ollama_rerank_model,
     get_qdrant_url,
     get_rag_float,
     get_rag_int,
@@ -184,6 +184,7 @@ from infrastructure.database import (
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
 from api.http.webui_crawler_helpers import is_safe_identifier
 from api.http.webui_crawler_source_routes import register_crawler_source_routes
+from api.http.webui_extensions_routes import register_extension_routes
 from api.http.webui_prompt_routes import register_prompt_routes
 from api.http.webui_prompts import is_readme_name
 from api.http.webui_session import log_to_database
@@ -207,10 +208,8 @@ from api.http.proxy_trace import (
 from api.http.service_control import (
     get_open_webui_config,
     open_webui_status_snapshot,
-    start_ollama as start_ollama_service,
     start_open_webui as start_open_webui_service,
     start_qdrant as start_qdrant_service,
-    stop_ollama as stop_ollama_service,
     stop_open_webui as stop_open_webui_service,
     stop_qdrant as stop_qdrant_service,
 )
@@ -218,18 +217,8 @@ from api.http.service_control import (
 import requests
 
 from infrastructure.ollama.cli_runner import (
-    OllamaInteractorCliError,
-    invoke_delete,
-    invoke_embed,
     invoke_ping,
-    invoke_show,
     invoke_tags,
-    iter_pull_objects,
-)
-from infrastructure.ollama.ollama_model_visibility import (
-    filter_ollama_tag_entries_for_editors,
-    get_hidden_ollama_model_ids,
-    patch_hidden_ollama_model_ids,
 )
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import (
@@ -253,12 +242,6 @@ from domain.services.metadata_inference import (
     infer_chunk_display_meta,
     infer_metadata,
 )
-
-# Import config for embeddings
-try:
-    from config import get_ollama_embed_url
-except ImportError:
-    get_ollama_embed_url = lambda: "http://localhost:11434/api/embed"  # type: ignore
 
 # MD indexer pipeline (config-driven markdown cleanup for RAG)
 try:
@@ -309,6 +292,10 @@ register_crawler_source_routes(
     load_source_meta=lambda source_id: _load_source_meta(source_id),
     load_sources_config=lambda: _load_sources_config(),
     save_sources_config=lambda sources: _save_sources_config(sources),
+)
+register_extension_routes(
+    webui_bp,
+    error_log=_ERROR_LOG,
 )
 
 
@@ -391,6 +378,42 @@ def _get_ollama_url() -> str:
         return (os.getenv("OLLAMA_BASE_URL") or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
 
 
+def _legacy_default_chat_model() -> str:
+    try:
+        from config import get_ollama_chat_model
+
+        return str(get_ollama_chat_model() or "").strip()
+    except Exception:
+        return ""
+
+
+def _legacy_default_embed_model() -> str:
+    try:
+        from config import get_ollama_embed_model
+
+        return str(get_ollama_embed_model() or "").strip()
+    except Exception:
+        return ""
+
+
+def _legacy_default_rerank_model() -> str:
+    try:
+        from config import get_ollama_rerank_model
+
+        return str(get_ollama_rerank_model() or "").strip()
+    except Exception:
+        return ""
+
+
+def _legacy_embed_url() -> str:
+    try:
+        from config import get_ollama_embed_url
+
+        return str(get_ollama_embed_url() or "").strip()
+    except Exception:
+        return "http://localhost:11434/api/embed"
+
+
 def _run_unified_proxy_chat(body: dict[str, Any]) -> Any:
     """Delegate chat handling to /v1 chat_completions core to avoid duplicate RAG logic."""
     wiring = current_app.extensions.get("llm_proxy_wiring")
@@ -404,38 +427,39 @@ def _run_unified_proxy_chat(body: dict[str, Any]) -> Any:
 
 @webui_bp.route("/models", methods=["GET"])
 def get_models() -> Any:
-    """Return list of available models from Ollama."""
+    """Return flattened chat-capable provider models for WebUI selectors."""
     try:
-        ollama_url = _get_ollama_url()
-        models_list = []
-        
-        # Ollama model list: OllamaInteractor ollama_http.get_tags (in-process), CLI fallback
-        try:
-            data = invoke_tags(base_url=ollama_url.rstrip("/"), timeout=5.0)
-            raw_models = [m for m in (data.get("models") or []) if isinstance(m, dict)]
-            ollama_models = filter_ollama_tag_entries_for_editors(
-                raw_models,
-                get_hidden_ollama_model_ids(),
+        catalog = _provider_catalog_payload(capability="chat")
+        models_list: list[dict[str, Any]] = []
+        for model in catalog.get("models") or []:
+            if not isinstance(model, dict):
+                continue
+            model_id = str(model.get("id") or "").strip()
+            provider_id = str(model.get("provider_id") or "").strip()
+            if not model_id:
+                continue
+            models_list.append(
+                {
+                    "id": model_id,
+                    "name": model.get("label") or model_id,
+                    "description": model.get("description") or f"{provider_id} model: {model_id}",
+                    "provider_id": provider_id,
+                    "provider_title": model.get("provider_title") or provider_id,
+                    "size": (model.get("metadata") or {}).get("size", 0),
+                    "modified_at": (model.get("metadata") or {}).get("modified_at", ""),
+                }
             )
-            for model in ollama_models:
-                model_name = (model.get("name") or model.get("model") or "").strip()
-                if model_name:
-                    models_list.append({
-                        "id": model_name,
-                        "name": model_name,
-                        "description": f"Ollama model: {model_name}",
-                        "size": model.get("size", 0),
-                        "modified_at": model.get("modified_at", ""),
-                    })
-        except Exception as e:
-            _WEBUI_LOG.warning(f"Failed to fetch Ollama models: {e}")
-            # Fallback to config model if Ollama is not available
-            model_name = get_ollama_chat_model()
-            models_list.append({
-                "id": model_name,
-                "name": model_name,
-                "description": f"Ollama chat model: {model_name} (from config)",
-            })
+        if not models_list:
+            model_name = _legacy_default_chat_model()
+            models_list.append(
+                {
+                    "id": model_name,
+                    "name": model_name,
+                    "description": f"Default model: {model_name}",
+                    "provider_id": _default_llm_provider_id(),
+                    "provider_title": _default_llm_provider_id(),
+                }
+            )
 
         try:
             settings_repo = get_settings_repository()
@@ -443,7 +467,9 @@ def get_models() -> Any:
                 models_list.insert(0, {
                     "id": AUTOCOMPLETE_MODEL_ID,
                     "name": AUTOCOMPLETE_MODEL_ID,
-                    "description": "Autocomplete (maps to LLM Proxy → Autocomplete Ollama model)",
+                    "description": "Autocomplete (maps to LLM Proxy → Autocomplete provider/model)",
+                    "provider_id": str(settings_repo.get_app_setting("proxy_autocomplete_provider_id") or "").strip()
+                    or _default_llm_provider_id(),
                 })
         except Exception:
             pass
@@ -464,7 +490,7 @@ def get_config() -> Any:
             "context_total_chars": get_rag_int("context_total_chars", 7000),
             "top_k": get_rag_int("top_k", 4),
             "confidence_threshold": get_rag_float("confidence_threshold", 0.75),
-            "model_name": get_ollama_chat_model(),
+            "model_name": _legacy_default_chat_model(),
         })
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_config", exc_info=True)
@@ -900,13 +926,26 @@ def get_model_settings() -> Any:
     try:
         settings_repo = get_settings_repository()
 
-        stored_model = (settings_repo.get_app_setting("proxy_model") or "").strip()
+        default_provider_id = _default_llm_provider_id()
+        stored_provider_id, stored_model = _read_app_provider_model_ref(
+            settings_repo,
+            provider_key="proxy_provider_id",
+            model_key="proxy_model",
+            fallback_provider=default_provider_id,
+        )
         stored_settings_json = settings_repo.get_app_setting("proxy_settings")
         stored_rag_col = (settings_repo.get_app_setting(RAG_COLLECTION_APP_SETTING) or "").strip()
-        stored_autocomplete = (settings_repo.get_app_setting("proxy_autocomplete_model") or "").strip()
+        stored_autocomplete_provider_id, stored_autocomplete = _read_app_provider_model_ref(
+            settings_repo,
+            provider_key="proxy_autocomplete_provider_id",
+            model_key="proxy_autocomplete_model",
+            fallback_provider=default_provider_id,
+        )
 
         out: dict[str, Any] = {
+            "provider_id": stored_provider_id,
             "model": stored_model,
+            "autocomplete_provider_id": stored_autocomplete_provider_id,
             "prompt_name": "",
             "temperature": get_rag_float("temperature", 0.0),
             "top_p": get_rag_float("top_p", 0.1),
@@ -932,6 +971,10 @@ def get_model_settings() -> Any:
                         out[key] = val
                     elif key == "model" and not out["model"]:
                         out["model"] = str(val or "").strip()
+                if not out["provider_id"] and out["model"]:
+                    out["provider_id"] = default_provider_id
+                if not out["autocomplete_provider_id"] and out["autocomplete_model"]:
+                    out["autocomplete_provider_id"] = default_provider_id
             except json.JSONDecodeError:
                 pass
 
@@ -977,8 +1020,15 @@ def update_model_settings() -> Any:
     try:
         body = request.get_json(force=True, silent=True) or {}
         settings_repo = get_settings_repository()
+        if body.get("provider_id") is not None:
+            settings_repo.set_app_setting("proxy_provider_id", str(body.get("provider_id") or "").strip())
         if body.get("model") is not None:
             settings_repo.set_app_setting("proxy_model", str(body["model"]))
+        if body.get("autocomplete_provider_id") is not None:
+            settings_repo.set_app_setting(
+                "proxy_autocomplete_provider_id",
+                str(body.get("autocomplete_provider_id") or "").strip(),
+            )
         if body.get("autocomplete_model") is not None:
             settings_repo.set_app_setting("proxy_autocomplete_model", str(body.get("autocomplete_model") or "").strip())
         if body.get("rag_collection") is not None:
@@ -994,7 +1044,14 @@ def update_model_settings() -> Any:
                     existing_blob = {}
         except (json.JSONDecodeError, TypeError):
             existing_blob = {}
-        merged = {**existing_blob, **body}
+        merged = {
+            **existing_blob,
+            **{
+                k: v
+                for k, v in body.items()
+                if k not in {"provider_id", "autocomplete_provider_id"}
+            },
+        }
         settings_repo.set_app_setting("proxy_settings", json.dumps(merged))
         return jsonify({"status": "ok", "settings": merged})
     except Exception as e:
@@ -1116,13 +1173,14 @@ def get_llm_proxy_build_one(build_id: str) -> Any:
 def llm_proxy_build_preview_model() -> Any:
     """Ollama show: context_length + thinking support for form helpers."""
     body = request.get_json(force=True, silent=True) or {}
+    provider_id = str(body.get("provider_id") or "").strip() or _default_llm_provider_id()
     model = (body.get("model") or "").strip()
     if not model:
         return jsonify({"ok": False, "error": "model is required"}), 400
-    url = _get_ollama_url().rstrip("/")
     try:
-        details = invoke_show(base_url=url, name=model, timeout=60.0)
-    except OllamaInteractorCliError as e:
+        result = _run_provider_extension_action(provider_id, "show_model", {"selected_model": model})
+        details = result.get("details") if isinstance(result, dict) else {}
+    except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
     ctx_len = extract_context_length_from_show(details if isinstance(details, dict) else None)
     caps = None
@@ -1733,6 +1791,7 @@ def tester_chat() -> Any:
         messages = body.get("messages") or []
         use_rag = body.get("use_rag", True)
         fetch_web_knowledge = body.get("fetch_web_knowledge", False)
+        provider_id = str(body.get("provider_id") or "").strip()
         model = body.get("model")
         prompt_name = body.get("prompt_name")
         temperature = body.get("temperature")
@@ -1750,6 +1809,7 @@ def tester_chat() -> Any:
         settings_repo = get_settings_repository()
         tester_settings = settings_repo.get_tester_settings(session_id) if session_id else None
         if tester_settings:
+            provider_id = provider_id or str(tester_settings.get("provider_id") or "").strip()
             model = model or tester_settings.get("model")
             prompt_name = prompt_name or tester_settings.get("prompt_name")
             temperature = temperature if temperature is not None else tester_settings.get("temperature")
@@ -1788,7 +1848,25 @@ def tester_chat() -> Any:
                     options["top_p"] = float(top_p)
                 except (TypeError, ValueError):
                     pass
-            content = deps.chat_client.chat(messages, use_model, stream=False, options=(options or None)) or ""
+            runtime = current_app.extensions.get("llm_interactor_runtime")
+            # Preserve the legacy direct-chat path when no provider is selected so
+            # older tests and monkeypatch-based integrations still hit deps.chat_client.
+            if runtime is not None and provider_id:
+                from llm_interactor.contracts import LLMRequest
+
+                resp = runtime.invoke(
+                    LLMRequest(
+                        provider_id=provider_id or _default_llm_provider_id(),
+                        model=use_model,
+                        operation="chat",
+                        messages=[m for m in messages if isinstance(m, dict)],
+                        stream=False,
+                        options=(options or None),
+                    )
+                )
+                content = resp.text or ""
+            else:
+                content = deps.chat_client.chat(messages, use_model, stream=False, options=(options or None)) or ""
             return jsonify(
                 {
                     "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
@@ -1815,6 +1893,8 @@ def tester_chat() -> Any:
         }
         if model_req:
             proxy_body["model"] = model_req
+        if provider_id:
+            proxy_body["provider_id"] = provider_id
         if collection_name:
             proxy_body["collection_name"] = collection_name
         if prompt_name:
@@ -1988,7 +2068,7 @@ def tester_prompt_preview() -> Any:
         except Exception:
             confidence_threshold = 0.75
         try:
-            model_name = get_ollama_chat_model()
+            model_name = _legacy_default_chat_model()
         except Exception:
             model_name = ""
 
@@ -2277,6 +2357,177 @@ def _get_proxy_last_executed_steps_payload() -> list[dict[str, Any]]:
     return out
 
 
+def _default_llm_provider_id() -> str:
+    wiring = current_app.extensions.get("llm_proxy_wiring")
+    provider_id = getattr(wiring, "default_provider_id", None)
+    if isinstance(provider_id, str) and provider_id.strip():
+        return provider_id.strip()
+    runtime = current_app.extensions.get("llm_interactor_runtime")
+    try:
+        descriptors = runtime.registry.descriptors() if runtime is not None else []
+    except Exception:
+        descriptors = []
+    if descriptors:
+        first_id = str(descriptors[0].id or "").strip()
+        if first_id:
+            return first_id
+    return "ollama"
+
+
+def _provider_catalog_payload(*, capability: str | None = None) -> dict[str, Any]:
+    svc = current_app.extensions.get("llm_extensions_service")
+    runtime = current_app.extensions.get("llm_interactor_runtime")
+    if svc is None or runtime is None:
+        return {"providers": [], "models": []}
+    try:
+        return svc.provider_catalog(runtime=runtime, capability=capability)
+    except Exception:
+        return {"providers": [], "models": []}
+
+
+def _provider_row(provider_id: str | None = None) -> dict[str, Any] | None:
+    svc = current_app.extensions.get("llm_extensions_service")
+    runtime = current_app.extensions.get("llm_interactor_runtime")
+    if svc is None or runtime is None:
+        return None
+    try:
+        rows = svc.provider_rows(runtime)
+    except Exception:
+        return None
+    resolved_provider_id = str(provider_id or _default_llm_provider_id()).strip()
+    if resolved_provider_id:
+        for row in rows:
+            if str(row.get("provider_id") or "").strip() == resolved_provider_id:
+                return row
+    return rows[0] if rows else None
+
+
+def _default_provider_row() -> dict[str, Any] | None:
+    return _provider_row()
+
+
+def _run_provider_extension_action(
+    provider_id: str | None,
+    action_id: str,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    svc = current_app.extensions.get("llm_extensions_service")
+    runtime = current_app.extensions.get("llm_interactor_runtime")
+    row = _provider_row(provider_id)
+    if svc is None or runtime is None or row is None:
+        raise RuntimeError("No provider extension is available")
+    extension_id = str(row.get("extension_id") or "").strip()
+    if not extension_id:
+        raise RuntimeError("Provider extension is missing extension_id")
+    return svc.run_extension_action(
+        extension_id,
+        action_id,
+        payload=dict(payload or {}),
+        runtime=runtime,
+    )
+
+
+def _run_default_provider_extension_action(action_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    return _run_provider_extension_action(_default_llm_provider_id(), action_id, payload)
+
+
+def _default_provider_tab_payload() -> dict[str, Any]:
+    svc = current_app.extensions.get("llm_extensions_service")
+    runtime = current_app.extensions.get("llm_interactor_runtime")
+    row = _default_provider_row()
+    if svc is None or runtime is None or row is None:
+        raise RuntimeError("No default provider extension is available")
+    extension_id = str(row.get("extension_id") or "").strip()
+    if not extension_id:
+        raise RuntimeError("Default provider extension is missing extension_id")
+    return svc.extension_tab_payload(extension_id, runtime=runtime)
+
+
+def _invoke_runtime_chat(
+    *,
+    provider_id: str,
+    model: str,
+    messages: list[dict[str, Any]],
+    options: dict[str, Any] | None = None,
+) -> str:
+    runtime = current_app.extensions.get("llm_interactor_runtime")
+    if runtime is None:
+        raise RuntimeError("LLM runtime is unavailable")
+    from llm_interactor.contracts import LLMRequest
+
+    response = runtime.invoke(
+        LLMRequest(
+            provider_id=provider_id,
+            model=model,
+            operation="chat",
+            messages=[m for m in messages if isinstance(m, dict)],
+            stream=False,
+            options=(options or None),
+        )
+    )
+    return str(response.text or "")
+
+
+def _invoke_runtime_embed(
+    *,
+    provider_id: str,
+    model: str,
+    texts: list[str],
+) -> list[list[float]]:
+    runtime = current_app.extensions.get("llm_interactor_runtime")
+    if runtime is None:
+        raise RuntimeError("LLM runtime is unavailable")
+    from llm_interactor.contracts import LLMRequest
+
+    response = runtime.invoke(
+        LLMRequest(
+            provider_id=provider_id,
+            model=model,
+            operation="embed",
+            input_texts=[str(text) for text in texts],
+        )
+    )
+    raw = response.raw if isinstance(response.raw, dict) else {}
+    embeddings = raw.get("embeddings")
+    if not isinstance(embeddings, list):
+        raise RuntimeError("Provider returned invalid embeddings payload")
+    out: list[list[float]] = []
+    for item in embeddings:
+        if isinstance(item, list):
+            out.append([float(v) for v in item])
+    if len(out) != len(texts):
+        raise RuntimeError(f"Expected {len(texts)} embeddings, got {len(out)}")
+    return out
+
+
+def _read_app_provider_model_ref(
+    settings_repo: Any,
+    *,
+    provider_key: str,
+    model_key: str,
+    fallback_provider: str | None = None,
+) -> tuple[str, str]:
+    provider_id = str(settings_repo.get_app_setting(provider_key) or "").strip()
+    model = str(settings_repo.get_app_setting(model_key) or "").strip()
+    if model and not provider_id:
+        provider_id = str(fallback_provider or _default_llm_provider_id()).strip()
+    return provider_id, model
+
+
+def _read_dict_provider_model_ref(
+    blob: dict[str, Any],
+    *,
+    provider_key: str,
+    model_key: str,
+    fallback_provider: str | None = None,
+) -> tuple[str, str]:
+    provider_id = str(blob.get(provider_key) or "").strip()
+    model = str(blob.get(model_key) or "").strip()
+    if model and not provider_id:
+        provider_id = str(fallback_provider or _default_llm_provider_id()).strip()
+    return provider_id, model
+
+
 def _build_pipeline_definition_payload() -> dict[str, Any]:
     return {
         "rag": {"steps": _get_rag_pipeline_definition_payload()},
@@ -2291,19 +2542,31 @@ def get_rag_model_settings() -> Any:
         from application.rag.retrieval_ui_overrides import RETRIEVAL_UI_BOOL_KEYS, retrieval_bool_with_ui_override
 
         settings_repo = get_settings_repository()
+        default_provider_id = _default_llm_provider_id()
 
-        default_embed_model = get_ollama_embed_model()
-        default_rerank_model = get_ollama_rerank_model()
+        default_embed_model = _legacy_default_embed_model()
+        default_rerank_model = _legacy_default_rerank_model()
 
-        raw_embed_model = settings_repo.get_app_setting("rag_embed_model")
-        rag_embed_model = (raw_embed_model or "").strip()
+        rag_embed_provider_id, rag_embed_model = _read_app_provider_model_ref(
+            settings_repo,
+            provider_key="rag_embed_provider_id",
+            model_key="rag_embed_model",
+            fallback_provider=default_provider_id,
+        )
 
         proxy_settings = load_proxy_settings(settings_repo)
 
         rerank_for_rag = bool(proxy_settings.get("rerank_for_rag", False))
-        raw_rerank_model = (proxy_settings.get("rerank_model") or "").strip()
+        rag_rerank_provider_id, raw_rerank_model = _read_dict_provider_model_ref(
+            proxy_settings,
+            provider_key="rag_rerank_provider_id",
+            model_key="rerank_model",
+            fallback_provider=default_provider_id,
+        )
         # For UI convenience, if rerank is enabled but model missing, show default.
         rerank_model = raw_rerank_model if raw_rerank_model else (default_rerank_model if rerank_for_rag else "")
+        if rerank_model and not rag_rerank_provider_id:
+            rag_rerank_provider_id = default_provider_id
 
         yaml_hybrid = get_retrieval_bool("hybrid_sparse_enabled", True)
         hybrid_sparse_enabled, hybrid_source = resolve_hybrid_sparse_enabled(
@@ -2316,14 +2579,18 @@ def get_rag_model_settings() -> Any:
 
         return jsonify(
             {
+                "rag_embed_provider_id": rag_embed_provider_id,
                 "rag_embed_model": rag_embed_model,
+                "rag_rerank_provider_id": rag_rerank_provider_id,
                 "rerank_for_rag": rerank_for_rag,
                 "rerank_model": rerank_model,
                 "hybrid_sparse_enabled": hybrid_sparse_enabled,
                 "retrieval_advanced": retrieval_advanced,
                 "retrieval_yaml_defaults": retrieval_yaml_defaults,
                 "defaults": {
+                    "rag_embed_provider_id": default_provider_id,
                     "rag_embed_model": default_embed_model,
+                    "rag_rerank_provider_id": default_provider_id,
                     "rerank_model": default_rerank_model,
                     "hybrid_sparse_enabled": yaml_hybrid,
                 },
@@ -2455,12 +2722,16 @@ def update_rag_model_settings() -> Any:
 
         body = request.get_json(force=True, silent=True) or {}
         settings_repo = get_settings_repository()
+        default_provider_id = _default_llm_provider_id()
 
-        default_rerank_model = get_ollama_rerank_model()
+        default_rerank_model = _legacy_default_rerank_model()
 
+        rag_embed_provider_id = str(body.get("rag_embed_provider_id") or "").strip() or default_provider_id
         rag_embed_model = str(body.get("rag_embed_model") or "").strip()
+        settings_repo.set_app_setting("rag_embed_provider_id", rag_embed_provider_id)
         settings_repo.set_app_setting("rag_embed_model", rag_embed_model)
 
+        rag_rerank_provider_id = str(body.get("rag_rerank_provider_id") or "").strip() or default_provider_id
         rerank_for_rag = bool(body.get("rerank_for_rag", False))
         rerank_model = str(body.get("rerank_model") or "").strip()
         yaml_hybrid = get_retrieval_bool("hybrid_sparse_enabled", True)
@@ -2476,6 +2747,7 @@ def update_rag_model_settings() -> Any:
 
         proxy_settings["rerank_for_rag"] = rerank_for_rag
         proxy_settings["hybrid_sparse_enabled"] = hybrid_sparse_enabled
+        proxy_settings["rag_rerank_provider_id"] = rag_rerank_provider_id
 
         for rk in RETRIEVAL_UI_BOOL_KEYS:
             if rk in body:
@@ -2491,20 +2763,24 @@ def update_rag_model_settings() -> Any:
 
         settings_repo.set_app_setting("proxy_settings", json.dumps(proxy_settings))
 
-        default_embed_model = get_ollama_embed_model()
+        default_embed_model = _legacy_default_embed_model()
         retrieval_advanced = {k: retrieval_bool_with_ui_override(k) for k in sorted(RETRIEVAL_UI_BOOL_KEYS)}
         retrieval_yaml_defaults = {k: _retrieval_yaml_raw_bool(k) for k in sorted(RETRIEVAL_UI_BOOL_KEYS)}
         return jsonify(
             {
                 "status": "ok",
+                "rag_embed_provider_id": rag_embed_provider_id,
                 "rag_embed_model": rag_embed_model,
+                "rag_rerank_provider_id": rag_rerank_provider_id,
                 "rerank_for_rag": rerank_for_rag,
                 "rerank_model": proxy_settings.get("rerank_model") or "",
                 "hybrid_sparse_enabled": hybrid_sparse_enabled,
                 "retrieval_advanced": retrieval_advanced,
                 "retrieval_yaml_defaults": retrieval_yaml_defaults,
                 "defaults": {
+                    "rag_embed_provider_id": default_provider_id,
                     "rag_embed_model": default_embed_model,
+                    "rag_rerank_provider_id": default_provider_id,
                     "rerank_model": default_rerank_model,
                     "hybrid_sparse_enabled": yaml_hybrid,
                 },
@@ -2953,51 +3229,39 @@ def open_webui_config() -> Any:
 
 @webui_bp.route("/ollama/status", methods=["GET"])
 def ollama_status() -> Any:
-    """Check if Ollama is reachable at the same base URL as RAG/chat (default http://localhost:11434).
-
-    Not ServiceStarter's OLLAMA_PORT (11343): the header reflects where models and proxy actually talk.
-    """
-    url = _get_ollama_url().rstrip("/")
-    status: dict[str, Any] = {"url": url, "running": False}
-    try:
-        ping_o = invoke_ping(base_url=url, timeout=3.0)
-        status["http_status"] = int(ping_o.get("status_code") or 0)
-        if ping_o.get("ok"):
-            status["running"] = True
-        err = ping_o.get("error")
-        if err:
-            status["error"] = str(err)
-    except Exception as e:
-        status["error"] = str(e)
-    return jsonify(status)
+    """Legacy compatibility route backed by the default provider extension."""
+    row = _default_provider_row()
+    if row is None:
+        return jsonify({"running": False, "error": "No default provider extension loaded"}), 503
+    health = row.get("health") if isinstance(row.get("health"), dict) else {}
+    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    return jsonify(
+        {
+            "url": metadata.get("base_url") or metadata.get("chat_url") or None,
+            "running": bool(health.get("ok")),
+            "http_status": health.get("details", {}).get("status_code") if isinstance(health.get("details"), dict) else None,
+            "error": health.get("message") or "",
+        }
+    )
 
 
 @webui_bp.route("/ollama/start", methods=["POST"])
 def ollama_start() -> Any:
-    """Try to start Ollama server (best-effort install on Windows, then ollama serve)."""
     try:
-        ok, output = start_ollama_service()
-        status = 200 if ok else 500
-        return jsonify({"ok": ok, "output": output}), status
+        result = _run_default_provider_extension_action("start_service")
+        status = 200 if bool(result.get("ok")) else 500
+        return jsonify({"ok": bool(result.get("ok")), "output": result.get("message") or ""}), status
     except Exception as e:
-        # If ServiceStarter import/setup failed but Ollama is already alive, report success.
-        try:
-            ping_o = invoke_ping(base_url=_get_ollama_url().rstrip("/"), timeout=3.0)
-            if ping_o.get("ok"):
-                return jsonify({"ok": True, "output": "Ollama already running"}), 200
-        except Exception:
-            pass
         _WEBUI_LOG.error("ollama_start: %s", e, exc_info=True)
         return jsonify({"ok": False, "output": str(e)}), 500
 
 
 @webui_bp.route("/ollama/stop", methods=["POST"])
 def ollama_stop() -> Any:
-    """Stop Ollama using the same port as WebUI/RAG (e.g. 11434), not only ServiceStarter defaults."""
     try:
-        ok, output = stop_ollama_service(base_url=_get_ollama_url(), default_port=11434)
-        status = 200 if ok else 500
-        return jsonify({"ok": ok, "output": output}), status
+        result = _run_default_provider_extension_action("stop_service")
+        status = 200 if bool(result.get("ok")) else 500
+        return jsonify({"ok": bool(result.get("ok")), "output": result.get("message") or ""}), status
     except Exception as e:
         _WEBUI_LOG.error("ollama_stop: %s", e, exc_info=True)
         return jsonify({"ok": False, "output": str(e)}), 500
@@ -3005,37 +3269,47 @@ def ollama_stop() -> Any:
 
 @webui_bp.route("/ollama/library", methods=["GET"])
 def ollama_library() -> Any:
-    """Full Ollama tag list for the Ollama tab (includes hidden flags; not filtered like GET /models)."""
-    url = _get_ollama_url().rstrip("/")
-    hidden_set = get_hidden_ollama_model_ids()
-    hidden_ids = sorted(hidden_set)
     try:
-        data = invoke_tags(base_url=url, timeout=30.0)
-        models: list[dict[str, Any]] = []
-        for m in data.get("models") or []:
-            if not isinstance(m, dict):
+        payload = _default_provider_tab_payload()
+        schema = payload.get("schema") if isinstance(payload.get("schema"), dict) else {}
+        rows: list[dict[str, Any]] = []
+        hidden_ids: list[str] = []
+        diagnostics = {}
+        for page in schema.get("pages") or []:
+            if not isinstance(page, dict):
                 continue
-            name = (m.get("name") or m.get("model") or "").strip()
-            if not name:
-                continue
-            models.append(
-                {
-                    "name": name,
-                    "size": m.get("size", 0),
-                    "modified_at": m.get("modified_at", ""),
-                    "digest": m.get("digest"),
-                    "hidden": name in hidden_set,
-                }
-            )
-        return jsonify({"ok": True, "url": url, "models": models, "hidden_ids": hidden_ids})
+            for section in page.get("sections") or []:
+                if not isinstance(section, dict):
+                    continue
+                for component in section.get("components") or []:
+                    if not isinstance(component, dict):
+                        continue
+                    if component.get("type") == "table" and component.get("key") == "provider_models":
+                        rows = [dict(item) for item in component.get("rows") or [] if isinstance(item, dict)]
+                    if component.get("type") == "diagnostics":
+                        diagnostics = dict(component.get("value") or {})
+        if isinstance(diagnostics.get("hidden_model_ids"), list):
+            hidden_ids = [str(x) for x in diagnostics.get("hidden_model_ids") if str(x).strip()]
+        models = [
+            {
+                "name": str(row.get("id") or ""),
+                "size": row.get("size", 0),
+                "modified_at": row.get("modified_at", ""),
+                "digest": row.get("digest"),
+                "hidden": bool(row.get("hidden")),
+            }
+            for row in rows
+            if str(row.get("id") or "").strip()
+        ]
+        return jsonify({"ok": True, "url": diagnostics.get("base_url"), "models": models, "hidden_ids": hidden_ids})
     except Exception as e:
         _WEBUI_LOG.warning("ollama_library: %s", e)
         return jsonify(
             {
                 "ok": False,
-                "url": url,
+                "url": None,
                 "models": [],
-                "hidden_ids": hidden_ids,
+                "hidden_ids": [],
                 "error": str(e),
             }
         )
@@ -3043,14 +3317,21 @@ def ollama_library() -> Any:
 
 @webui_bp.route("/ollama/hidden", methods=["PATCH"])
 def ollama_hidden_patch() -> Any:
-    """Add/remove model names from the editor deny-list."""
     body = request.get_json(silent=True) or {}
     raw_add = body.get("add")
     raw_remove = body.get("remove")
     add = raw_add if isinstance(raw_add, list) else []
     remove = raw_remove if isinstance(raw_remove, list) else []
     try:
-        updated = patch_hidden_ollama_model_ids(add=add, remove=remove)
+        updated: list[str] = []
+        for model_name in add:
+            result = _run_default_provider_extension_action("hide_model", {"selected_model": str(model_name)})
+            if isinstance(result.get("hidden_model_ids"), list):
+                updated = [str(x) for x in result.get("hidden_model_ids") if str(x).strip()]
+        for model_name in remove:
+            result = _run_default_provider_extension_action("unhide_model", {"selected_model": str(model_name)})
+            if isinstance(result.get("hidden_model_ids"), list):
+                updated = [str(x) for x in result.get("hidden_model_ids") if str(x).strip()]
         return jsonify({"ok": True, "hidden_ids": updated})
     except Exception as e:
         _WEBUI_LOG.error("ollama_hidden_patch: %s", e, exc_info=True)
@@ -3063,11 +3344,10 @@ def ollama_show_model() -> Any:
     model = (body.get("model") or "").strip()
     if not model:
         return jsonify({"ok": False, "error": "model is required"}), 400
-    url = _get_ollama_url().rstrip("/")
     try:
-        details = invoke_show(base_url=url, name=model, timeout=120.0)
-        return jsonify({"ok": True, "details": details})
-    except OllamaInteractorCliError as e:
+        result = _run_default_provider_extension_action("show_model", {"selected_model": model})
+        return jsonify({"ok": bool(result.get("ok", True)), "details": result.get("details") or {}})
+    except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
 
 
@@ -3077,37 +3357,24 @@ def ollama_delete_model() -> Any:
     model = (body.get("model") or "").strip()
     if not model:
         return jsonify({"ok": False, "error": "model is required"}), 400
-    url = _get_ollama_url().rstrip("/")
     try:
-        result = invoke_delete(base_url=url, name=model, timeout=120.0)
-        return jsonify({"ok": True, "result": result})
-    except OllamaInteractorCliError as e:
+        result = _run_default_provider_extension_action("delete_model", {"selected_model": model})
+        return jsonify({"ok": bool(result.get("ok", True)), "result": result.get("details") or result.get("result") or {}})
+    except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
 
 
 @webui_bp.route("/ollama/pull", methods=["POST"])
 def ollama_pull_stream() -> Any:
-    """Stream Ollama pull progress as NDJSON."""
     body = request.get_json(silent=True) or {}
     model = (body.get("model") or "").strip()
     if not model:
         return jsonify({"error": "model is required"}), 400
-    insecure = bool(body.get("insecure"))
-    url = _get_ollama_url().rstrip("/")
-    read_timeout = float(body.get("timeout", 86400.0) or 86400.0)
-    read_timeout = max(60.0, min(read_timeout, 86400.0 * 2))
 
     def generate():
         try:
-            for obj in iter_pull_objects(
-                base_url=url,
-                name=model,
-                insecure=insecure,
-                read_timeout=read_timeout,
-            ):
-                yield json.dumps(obj, ensure_ascii=False) + "\n"
-        except OllamaInteractorCliError as e:
-            yield json.dumps({"error": str(e)}) + "\n"
+            result = _run_default_provider_extension_action("pull_model", {"pull_model_name": model})
+            yield json.dumps(result, ensure_ascii=False) + "\n"
         except Exception as e:
             _WEBUI_LOG.error("ollama_pull_stream: %s", e, exc_info=True)
             yield json.dumps({"error": str(e)}) + "\n"
@@ -3233,9 +3500,10 @@ def _point_id_from_hash(h: str) -> int:
 def _get_embeddings_simple(
     texts: list[str],
     *,
+    embed_provider_id: str | None = None,
     embed_model_override: str | None = None,
 ) -> list[list[float]]:
-    """Simple embedding function using Ollama.
+    """Simple embedding function using the configured blind runtime provider.
 
     When ``embed_model_override`` is non-empty, it is used for this call only
     (e.g. create-collection job). Otherwise: app_settings, then env, then default.
@@ -3243,7 +3511,16 @@ def _get_embeddings_simple(
     if not texts:
         return []
 
-    embed_url = get_ollama_embed_url()
+    resolved_provider_id = str(embed_provider_id or "").strip()
+    if not resolved_provider_id:
+        try:
+            settings_repo = get_settings_repository()
+            resolved_provider_id = str(settings_repo.get_app_setting("rag_embed_provider_id") or "").strip()
+        except Exception:
+            resolved_provider_id = ""
+    if not resolved_provider_id:
+        resolved_provider_id = _default_llm_provider_id()
+
     override = (embed_model_override or "").strip()
     if override:
         embed_model = override
@@ -3257,22 +3534,15 @@ def _get_embeddings_simple(
 
         # Fallback order:
         # 1) app_settings.rag_embed_model (set from WebUI)
-        # 2) get_ollama_embed_model() (env RAG_EMBED_MODEL + config/models.yaml)
-        embed_model = rag_embed_model or get_ollama_embed_model()
+        # 2) legacy default embed model from config/env
+        embed_model = rag_embed_model or _legacy_default_embed_model()
     
     try:
-        data = invoke_embed(
-            {
-                "url": embed_url,
-                "json": {"model": embed_model, "input": texts},
-                "timeout": 300,
-            },
-            default_timeout=300,
+        return _invoke_runtime_embed(
+            provider_id=resolved_provider_id,
+            model=embed_model,
+            texts=texts,
         )
-        embeddings = data.get("embeddings", [])
-        if len(embeddings) != len(texts):
-            raise ValueError(f"Expected {len(texts)} embeddings, got {len(embeddings)}")
-        return embeddings
     except Exception as e:
         _WEBUI_LOG.error(f"Failed to get embeddings: {e}")
         raise
@@ -3407,6 +3677,7 @@ def _create_collection_from_sources(
     chunk_min_size: int,
     on_progress: Callable[[int, int, dict[str, Any]], None] | None = None,
     *,
+    embed_provider_id: str | None = None,
     embed_model: str | None = None,
     should_cancel: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
@@ -3561,7 +3832,9 @@ def _create_collection_from_sources(
             on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
         try:
             embeddings = _get_embeddings_simple(
-                embed_texts, embed_model_override=embed_model
+                embed_texts,
+                embed_provider_id=embed_provider_id,
+                embed_model_override=embed_model,
             )
         except Exception as e:
             _record_page_skip(
@@ -4107,6 +4380,7 @@ def _format_parsed_metadata(parsed_metadata: dict[str, Any]) -> str:
 def _run_one_indexer_evaluate(
     source_md: str,
     processed_md: str,
+    provider_id: str | None,
     model: str | None,
     chat_client: Any,
     params: Any,
@@ -4154,10 +4428,24 @@ def _run_one_indexer_evaluate(
         {"role": "user", "content": user_content},
     ]
     options = {"temperature": 0.0}
+    resolved_provider_id = str(provider_id or "").strip()
+    if resolved_provider_id:
+        return _invoke_runtime_chat(
+            provider_id=resolved_provider_id,
+            model=use_model,
+            messages=ollama_messages,
+            options=options,
+        )
     return chat_client.chat(ollama_messages, use_model, stream=False, options=options) or ""
 
 
-def _batch_eval_worker(job_id: str, source_id: str, model: str | None, count: int) -> None:
+def _batch_eval_worker(
+    job_id: str,
+    source_id: str,
+    provider_id: str | None,
+    model: str | None,
+    count: int,
+) -> None:
     sources_dir = _get_crawler_sources_dir()
     pages_dir = os.path.join(sources_dir, source_id, "pages")
     with _batch_eval_lock:
@@ -4264,6 +4552,7 @@ def _batch_eval_worker(job_id: str, source_id: str, model: str | None, count: in
                             reply = _run_one_indexer_evaluate(
                                 source_md,
                                 processed_md,
+                                provider_id,
                                 model,
                                 chat_client,
                                 params,
@@ -4301,6 +4590,7 @@ def indexer_tester_evaluate() -> Any:
         body = request.get_json(force=True, silent=True) or {}
         source_md = body.get("source_md") or ""
         processed_md = body.get("processed_md") or ""
+        provider_id = (body.get("provider_id") or "").strip() or None
         model = (body.get("model") or "").strip() or None
         page_meta = body.get("page_meta") if isinstance(body.get("page_meta"), dict) else None
         try:
@@ -4332,6 +4622,7 @@ def indexer_tester_evaluate() -> Any:
         content = _run_one_indexer_evaluate(
             source_md,
             processed_md,
+            provider_id,
             model,
             chat_client,
             params,
@@ -4354,6 +4645,7 @@ def start_indexer_tester_evaluate_batch() -> Any:
     try:
         body = request.get_json(force=True, silent=True) or {}
         source_id = (body.get("source_id") or "").strip()
+        provider_id = (body.get("provider_id") or "").strip() or None
         count = body.get("count")
         model = (body.get("model") or "").strip() or None
         if not source_id:
@@ -4394,7 +4686,7 @@ def start_indexer_tester_evaluate_batch() -> Any:
             }
         thread = threading.Thread(
             target=_batch_eval_worker,
-            args=(job_id, source_id, model, count),
+            args=(job_id, source_id, provider_id, model, count),
             daemon=True,
         )
         thread.start()
@@ -4443,6 +4735,7 @@ def detect_batch_eval_patterns() -> Any:
     try:
         body = request.get_json(force=True, silent=True) or {}
         results = body.get("results") or []
+        provider_id = (body.get("provider_id") or "").strip() or None
         model = (body.get("model") or "").strip() or None
         if not results or not isinstance(results, list):
             return jsonify({"error": "results array is required"}), 400
@@ -4482,7 +4775,15 @@ def detect_batch_eval_patterns() -> Any:
             {"role": "user", "content": user_content},
         ]
         options = {"temperature": 0.0}
-        patterns = chat_client.chat(ollama_messages, use_model, stream=False, options=options) or ""
+        if provider_id:
+            patterns = _invoke_runtime_chat(
+                provider_id=provider_id,
+                model=use_model,
+                messages=ollama_messages,
+                options=options,
+            )
+        else:
+            patterns = chat_client.chat(ollama_messages, use_model, stream=False, options=options) or ""
         return jsonify({"patterns": (patterns or "").strip()})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.detect_batch_eval_patterns", exc_info=True)
@@ -4820,6 +5121,7 @@ def _run_create_collection_job(
             chunk_max_size=chunk_max_size,
             chunk_min_size=chunk_min_size,
             on_progress=on_progress,
+            embed_provider_id=embed_provider_id,
             embed_model=embed_model,
             should_cancel=should_cancel,
         )
@@ -4911,6 +5213,7 @@ def create_collection() -> Any:
         source_ids = body.get("source_ids", [])
         chunk_max_size = int(body.get("chunk_max_size", 1200))
         chunk_min_size = int(body.get("chunk_min_size", 300))
+        embed_provider_id = str(body.get("rag_embed_provider_id") or "").strip()
         embed_model_raw = str(body.get("rag_embed_model") or "").strip()
         embed_model = embed_model_raw or None
 

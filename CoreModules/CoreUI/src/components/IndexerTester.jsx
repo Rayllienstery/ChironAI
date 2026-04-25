@@ -7,7 +7,7 @@ import {
   startIndexerTesterEvaluateBatch,
   getIndexerTesterEvaluateBatchStatus,
   detectBatchEvalPatterns,
-  getModels,
+  getProviderCatalog,
 } from '../services/api';
 import { isLogicalRagModelId } from '../constants/llmProxyModels';
 import '../styles/components/IndexerTester.css';
@@ -76,7 +76,8 @@ function IndexerTester() {
     processed: true,
     llm: false,
   });
-  const [llmModels, setLlmModels] = useState([]);
+  const [llmCatalog, setLlmCatalog] = useState({ providers: [], models: [] });
+  const [llmSelectedProviderId, setLlmSelectedProviderId] = useState('');
   const [llmSelectedModel, setLlmSelectedModel] = useState('');
   const [llmEvaluateReply, setLlmEvaluateReply] = useState(null);
   const [llmEvaluateError, setLlmEvaluateError] = useState(null);
@@ -87,11 +88,18 @@ function IndexerTester() {
   const [batchEvalCount, setBatchEvalCount] = useState(5);
   const [batchEvalJobId, setBatchEvalJobId] = useState(null);
   const [batchEvalStatus, setBatchEvalStatus] = useState(null);
-  const [batchEvalModels, setBatchEvalModels] = useState([]);
+  const [batchEvalCatalog, setBatchEvalCatalog] = useState({ providers: [], models: [] });
+  const [batchEvalProviderId, setBatchEvalProviderId] = useState('');
   const [batchEvalPatterns, setBatchEvalPatterns] = useState(null);
   const [batchEvalPatternsLoading, setBatchEvalPatternsLoading] = useState(false);
   const [batchEvalViewProcessed, setBatchEvalViewProcessed] = useState(null);
   const batchEvalPollingRef = useRef(null);
+  const llmModels = (llmCatalog.models || []).filter(
+    (m) => !llmSelectedProviderId || m.provider_id === llmSelectedProviderId,
+  );
+  const batchEvalModels = (batchEvalCatalog.models || []).filter(
+    (m) => !batchEvalProviderId || m.provider_id === batchEvalProviderId,
+  );
 
   const [evalLimits, setEvalLimits] = useState(() => {
     try {
@@ -216,19 +224,21 @@ function IndexerTester() {
   };
 
   useEffect(() => {
-    if (!indexerSectionOpen.llm || !showIndexerDetailModal || llmModels.length > 0) return;
-    getModels()
-      .then((list) => {
-        const models = list || [];
-        setLlmModels(models);
+    if (!indexerSectionOpen.llm || !showIndexerDetailModal || (llmCatalog.models || []).length > 0) return;
+    getProviderCatalog('chat')
+      .then((catalog) => {
+        const providers = catalog?.providers || [];
+        const models = catalog?.models || [];
+        setLlmCatalog({ providers, models });
         if (models.length > 0 && !llmSelectedModel) {
           const preferred =
             models.find((m) => m.id && !isLogicalRagModelId(m.id)) || models[0];
+          setLlmSelectedProviderId(preferred.provider_id || '');
           setLlmSelectedModel(preferred.id || preferred.name || '');
         }
       })
-      .catch(() => setLlmModels([]));
-  }, [indexerSectionOpen.llm, showIndexerDetailModal]); // eslint-disable-line react-hooks/exhaustive-deps
+      .catch(() => setLlmCatalog({ providers: [], models: [] }));
+  }, [indexerSectionOpen.llm, showIndexerDetailModal, llmCatalog.models, llmSelectedModel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAskLlm = async () => {
     if (!testerFileDetail) return;
@@ -239,6 +249,7 @@ function IndexerTester() {
       const data = await evaluateIndexerWithLlm(
         testerFileDetail.source_md,
         testerFileDetail.processed_md,
+        llmSelectedProviderId || undefined,
         llmSelectedModel || undefined,
         testerFileDetail.page_meta ?? undefined,
         evalLimits,
@@ -261,6 +272,7 @@ function IndexerTester() {
     try {
       const data = await startIndexerTesterEvaluateBatch({
         sourceId,
+        providerId: batchEvalProviderId || undefined,
         model: batchEvalModel || undefined,
         count,
         original_max_chars: evalLimits.original_max_chars,
@@ -326,7 +338,11 @@ function IndexerTester() {
     setBatchEvalPatternsLoading(true);
     setBatchEvalPatterns(null);
     try {
-      const data = await detectBatchEvalPatterns(results, batchEvalModel || undefined);
+      const data = await detectBatchEvalPatterns(
+        results,
+        batchEvalProviderId || undefined,
+        batchEvalModel || undefined,
+      );
       setBatchEvalPatterns(data.patterns ?? '');
     } catch (e) {
       setBatchEvalPatterns(`Error: ${e.message}`);
@@ -367,9 +383,17 @@ function IndexerTester() {
     setBatchEvalJobId(null);
     setBatchEvalStatus(null);
     setShowBatchEvalModal(true);
-    getModels()
-      .then((list) => setBatchEvalModels(list || []))
-      .catch(() => setBatchEvalModels([]));
+    getProviderCatalog('chat')
+      .then((catalog) => {
+        const providers = catalog?.providers || [];
+        const models = catalog?.models || [];
+        setBatchEvalCatalog({ providers, models });
+        const preferred =
+          models.find((m) => m.id && !isLogicalRagModelId(m.id)) || models[0] || null;
+        setBatchEvalProviderId(preferred?.provider_id || '');
+        setBatchEvalModel(preferred?.id || preferred?.name || '');
+      })
+      .catch(() => setBatchEvalCatalog({ providers: [], models: [] }));
   };
 
   return (
@@ -553,6 +577,30 @@ function IndexerTester() {
                     </button>
                     {indexerSectionOpen.llm && (
                       <div id="indexer-section-llm" className="indexer-panel-body">
+                        {llmCatalog.providers.length > 0 && (
+                          <label className="indexer-select-label">
+                            Provider:
+                            <select
+                              value={llmSelectedProviderId}
+                              onChange={(e) => {
+                                const nextProviderId = e.target.value;
+                                setLlmSelectedProviderId(nextProviderId);
+                                const nextModels = (llmCatalog.models || []).filter(
+                                  (m) => m.provider_id === nextProviderId,
+                                );
+                                setLlmSelectedModel(nextModels[0]?.id || nextModels[0]?.name || '');
+                              }}
+                              aria-label="Provider for evaluation"
+                              disabled={llmEvaluateLoading}
+                            >
+                              {llmCatalog.providers.map((provider) => (
+                                <option key={provider.provider_id} value={provider.provider_id}>
+                                  {provider.title || provider.provider_id}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
                         {llmModels.length > 0 && (
                           <label className="indexer-select-label">
                             Model:
@@ -611,6 +659,27 @@ function IndexerTester() {
                     <select value={batchEvalSourceId} onChange={(e) => setBatchEvalSourceId(e.target.value)} aria-label="Source for batch evaluation">
                       {testerSources.map((s) => (
                         <option key={s.id} value={s.id}>{s.id} ({s.page_count} pages)</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="indexer-select-label">
+                    Provider:
+                    <select
+                      value={batchEvalProviderId}
+                      onChange={(e) => {
+                        const nextProviderId = e.target.value;
+                        setBatchEvalProviderId(nextProviderId);
+                        const nextModels = (batchEvalCatalog.models || []).filter(
+                          (m) => m.provider_id === nextProviderId,
+                        );
+                        setBatchEvalModel(nextModels[0]?.id || nextModels[0]?.name || '');
+                      }}
+                      aria-label="Provider for batch evaluation"
+                    >
+                      {batchEvalCatalog.providers.map((provider) => (
+                        <option key={provider.provider_id} value={provider.provider_id}>
+                          {provider.title || provider.provider_id}
+                        </option>
                       ))}
                     </select>
                   </label>

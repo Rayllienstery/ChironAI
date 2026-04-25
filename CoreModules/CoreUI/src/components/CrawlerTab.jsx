@@ -12,7 +12,7 @@ import {
   getCrawlerSources,
   getCrawlerSourcePages,
   getRagCollections,
-  getModels,
+  getProviderCatalog,
   getRagModelSettings,
   createCollection,
   getCreateCollectionStatus,
@@ -402,11 +402,13 @@ function CrawlerTab() {
     chunk_min_size: 300,
     confidence_threshold: 0.75,
     top_k: 4,
+    rag_embed_provider_id: "",
     rag_embed_model: "",
     parallel_embed_workers: 2,
   });
-  const [createEmbedModels, setCreateEmbedModels] = useState([]);
+  const [createEmbedCatalog, setCreateEmbedCatalog] = useState({ providers: [], models: [] });
   const [createEmbedDefaults, setCreateEmbedDefaults] = useState({
+    rag_embed_provider_id: "",
     rag_embed_model: "",
   });
   const [creating, setCreating] = useState(false);
@@ -514,17 +516,26 @@ function CrawlerTab() {
     let cancelled = false;
     (async () => {
       try {
-        const [list, settings] = await Promise.all([
-          getModels(),
+        const [catalog, settings] = await Promise.all([
+          getProviderCatalog("embed"),
           getRagModelSettings(),
         ]);
         if (cancelled) return;
-        setCreateEmbedModels(Array.isArray(list) ? list : []);
+        setCreateEmbedCatalog({
+          providers: Array.isArray(catalog?.providers) ? catalog.providers : [],
+          models: Array.isArray(catalog?.models) ? catalog.models : [],
+        });
+        const defProvider = (settings?.defaults?.rag_embed_provider_id || "").trim();
         const def = (settings?.defaults?.rag_embed_model || "").trim();
+        const savedProvider = (settings?.rag_embed_provider_id || "").trim();
         const saved = (settings?.rag_embed_model || "").trim();
-        setCreateEmbedDefaults({ rag_embed_model: def });
+        setCreateEmbedDefaults({
+          rag_embed_provider_id: defProvider,
+          rag_embed_model: def,
+        });
         setCreateForm((prev) => ({
           ...prev,
+          rag_embed_provider_id: prev.rag_embed_provider_id || savedProvider || defProvider,
           rag_embed_model: prev.rag_embed_model || saved || def,
         }));
       } catch (e) {
@@ -573,6 +584,7 @@ function CrawlerTab() {
             chunk_min_size: 300,
             confidence_threshold: 0.75,
             top_k: 4,
+            rag_embed_provider_id: "",
             rag_embed_model: "",
             parallel_embed_workers: 2,
           });
@@ -1144,6 +1156,7 @@ function CrawlerTab() {
           chunk_min_size: 300,
           confidence_threshold: 0.75,
           top_k: 4,
+          rag_embed_provider_id: "",
           rag_embed_model: "",
           parallel_embed_workers: 2,
         });
@@ -2383,7 +2396,7 @@ function CrawlerTab() {
         createProgress={createProgress}
         createForm={createForm}
         onFormChange={setCreateForm}
-        createEmbedModels={createEmbedModels}
+        createEmbedCatalog={createEmbedCatalog}
         createEmbedDefaults={createEmbedDefaults}
         sources={sources}
         toggleSourceInForm={toggleSourceInForm}

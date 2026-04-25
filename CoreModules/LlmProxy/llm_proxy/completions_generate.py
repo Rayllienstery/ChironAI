@@ -67,10 +67,15 @@ def _resolve_ollama_model(w: LlmProxyWiring, requested: str) -> tuple[str | None
         if bd:
             backend = str(bd.get("backend") or "").strip().lower()
             if backend == "dumb":
-                om = str(bd.get("ollama_model") or "").strip()
+                provider_id = str(bd.get("provider_id") or "").strip() or (
+                    "ollama" if str(bd.get("ollama_model") or "").strip() else ""
+                )
+                if provider_id and provider_id != "ollama":
+                    return None, f"build provider '{provider_id}' does not support /v1/completions"
+                om = str(bd.get("model") or "").strip() or str(bd.get("ollama_model") or "").strip()
                 if om:
                     return om, None
-                return None, "build has no ollama_model configured"
+                return None, "build has no model configured"
     except Exception:
         pass
     return req, None

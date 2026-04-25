@@ -23,6 +23,9 @@ if _MODULES_EXT_RAG not in sys.path:
 _RAG_SVC = os.path.join(_ROOT, "CoreModules", "RagService")
 if os.path.isdir(_RAG_SVC) and _RAG_SVC not in sys.path:
     sys.path.insert(0, _RAG_SVC)
+_LLM_INTERACTOR = os.path.join(_ROOT, "CoreModules", "LlmInteractor")
+if os.path.isdir(_LLM_INTERACTOR) and _LLM_INTERACTOR not in sys.path:
+    sys.path.insert(0, _LLM_INTERACTOR)
 
 from application.rag.collection_freshness import check_collection_freshness
 from application.rag.params import get_rag_answer_params
@@ -65,6 +68,12 @@ def create_app(
         system_suffix=system_suffix,
     )
     app.extensions["llm_proxy_wiring"] = wiring
+    if getattr(wiring, "llm_runtime", None) is not None:
+        app.extensions["llm_interactor_runtime"] = wiring.llm_runtime
+    if getattr(wiring, "provider_registry", None) is not None:
+        app.extensions["llm_provider_registry"] = wiring.provider_registry
+    if getattr(wiring, "extension_manager", None) is not None:
+        app.extensions["llm_extensions_service"] = wiring.extension_manager
     app.register_blueprint(create_v1_blueprint(wiring))
 
     @app.route("/")

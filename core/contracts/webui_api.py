@@ -142,6 +142,41 @@ class LlmProxyBuildsPutOkResponse(TypedDict):
     builds: list[LlmProxyBuildRow]
 
 
+class ExtensionCardDTO(TypedDict, total=False):
+    id: str
+    title: str
+    description: str
+    icon: str
+    latest_version: str
+    visibility: str
+
+
+class InstalledExtensionDTO(TypedDict, total=False):
+    id: str
+    version: str
+    enabled: bool
+    installed: bool
+    restart_required: bool
+    status: str
+    error: str
+
+
+class ProviderHealthDTO(TypedDict, total=False):
+    ok: bool
+    status: str
+    message: str
+    details: dict[str, Any]
+
+
+class ExtensionUiSchemaDTO(TypedDict, total=False):
+    id: str
+    title: str
+    description: str
+    icon: str
+    settings_schema: dict[str, Any]
+    ui_schema: dict[str, Any]
+
+
 def webui_abs_path(suffix: str) -> str:
     """``suffix`` starts with ``/`` (e.g. ``/models``)."""
     if not suffix.startswith("/"):
@@ -166,5 +201,9 @@ __all__ = [
     "LlmProxyBuildRow",
     "LlmProxyBuildsGetResponse",
     "LlmProxyBuildsPutOkResponse",
+    "ExtensionCardDTO",
+    "InstalledExtensionDTO",
+    "ProviderHealthDTO",
+    "ExtensionUiSchemaDTO",
     "webui_abs_path",
 ]

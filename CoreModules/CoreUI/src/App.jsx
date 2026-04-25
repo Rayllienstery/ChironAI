@@ -79,17 +79,19 @@ const RagTab = lazyWithRetry("RagTab", () => import("./components/RagTab"));
 const CrawlerTab = lazyWithRetry("CrawlerTab", () => import("./components/CrawlerTab"));
 const TestingTab = lazyWithRetry("TestingTab", () => import("./components/TestingTab"));
 const TemplateEditorTab = lazyWithRetry("TemplateEditorTab", () => import("./components/TemplateEditorTab"));
-const OllamaTab = lazyWithRetry("OllamaTab", () => import("./components/OllamaTab"));
 const OpenWebUiTab = lazyWithRetry("OpenWebUiTab", () => import("./components/OpenWebUiTab"));
 const CoreUIShowcaseTab = lazyWithRetry("CoreUIShowcaseTab", () => import("./components/CoreUIShowcaseTab"));
+const ExtensionsTab = lazyWithRetry("ExtensionsTab", () => import("./components/ExtensionsTab"));
+const ExtensionRuntimeTab = lazyWithRetry("ExtensionRuntimeTab", () => import("./components/ExtensionRuntimeTab"));
 
 import Card from "./components/Card";
 import {
   getSession,
   getSettings,
   getRagStatus,
-  getOllamaStatus,
   getOpenWebUiStatus,
+  getExtensionTabs,
+  getExtensionProviders,
   getDashboardMetrics,
   stopServer,
   runRagTests,
@@ -155,10 +157,6 @@ function App() {
   const [themeMode, setThemeMode] = useState("system");
   const [lightAccent, setLightAccent] = useState("purple");
   const [darkAccent, setDarkAccent] = useState("cyan");
-  const [ollamaStatus, setOllamaStatus] = useState({
-    running: null,
-    url: null,
-  });
   const [ragStatusInfo, setRagStatusInfo] = useState({
     running: null,
     url: null,
@@ -171,6 +169,8 @@ function App() {
   const [serviceStatusPollIntervalSec, setServiceStatusPollIntervalSec] = useState(5);
   const serviceStatusPollGenRef = useRef(0);
   const [dashboardMetrics, setDashboardMetrics] = useState(null);
+  const [extensionTabs, setExtensionTabs] = useState([]);
+  const [extensionServiceStatusByTabId, setExtensionServiceStatusByTabId] = useState({});
   const [metricsHistory, setMetricsHistory] = useState({
     gpu_util: [],
     gpu_mem_used: [],
@@ -205,20 +205,49 @@ function App() {
     };
   }, [themeMode, lightAccent, darkAccent]);
 
+  const loadExtensionSurface = useCallback(async () => {
+    try {
+      const [tabsData, providersData] = await Promise.all([
+        getExtensionTabs().catch(() => ({ tabs: [] })),
+        getExtensionProviders().catch(() => ({ providers: [] })),
+      ]);
+      const tabs = Array.isArray(tabsData?.tabs) ? tabsData.tabs : [];
+      const providers = Array.isArray(providersData?.providers) ? providersData.providers : [];
+      const serviceStatusByTabId = {};
+      tabs.forEach((tab) => {
+        const providerRow = providers.find((row) => row.extension_id === tab.extension_id);
+        if (!providerRow?.health) return;
+        serviceStatusByTabId[tab.id] = {
+          running: Boolean(providerRow.health.ok),
+          title: providerRow.title || tab.title || tab.id,
+          message: providerRow.health.message || "",
+        };
+      });
+      setExtensionTabs(tabs);
+      setExtensionServiceStatusByTabId(serviceStatusByTabId);
+    } catch {
+      setExtensionTabs([]);
+      setExtensionServiceStatusByTabId({});
+    }
+  }, []);
+
+  useEffect(() => {
+    loadExtensionSurface();
+  }, [loadExtensionSurface]);
+
   useEffect(() => {
     const gen = ++serviceStatusPollGenRef.current;
     const loadStatuses = async (isInitial) => {
       if (isInitial) setStatusLoading(true);
       try {
-        const [ollama, rag, openWebUi] = await Promise.all([
-          getOllamaStatus().catch(() => ({ running: false })),
+        const [rag, openWebUi] = await Promise.all([
           getRagStatus().catch(() => ({ running: false })),
           getOpenWebUiStatus().catch(() => ({ running: false })),
         ]);
         if (serviceStatusPollGenRef.current !== gen) return;
-        setOllamaStatus(ollama);
         setRagStatusInfo(rag);
         setOpenWebUiStatus(openWebUi);
+        loadExtensionSurface().catch(() => {});
       } catch {
         // ignore
       } finally {
@@ -233,7 +262,7 @@ function App() {
     return () => {
       clearInterval(id);
     };
-  }, [serviceStatusPollIntervalSec]);
+  }, [serviceStatusPollIntervalSec, loadExtensionSurface]);
 
   useEffect(() => {
     const poll = async () => {
@@ -454,8 +483,13 @@ function App() {
     { id: "llm-proxy", label: "LLM Proxy" },
     { id: "rag-fusion-proxy", label: "RAG Fusion Proxy" },
     { id: "logs", label: "Logs" },
-    { id: "ollama", label: "Ollama" },
+    ...extensionTabs.map((tab) => ({
+      id: tab.id,
+      label: tab.title || tab.id,
+      icon: tab.icon || "",
+    })),
     { id: "open-webui", label: "Open WebUI" },
+    { id: "extensions", label: "Extensions" },
     { id: "rag", label: "RAG / Qdrant" },
     { id: "crawler", label: "Crawler / Indexer" },
     { id: "template-editor", label: "Template Editor" },
@@ -464,6 +498,18 @@ function App() {
   ];
 
   const renderTabContent = () => {
+    const activeExtensionTab = extensionTabs.find((tab) => tab.id === activeTab);
+    if (activeExtensionTab) {
+      return (
+        <ExtensionRuntimeTab
+          extensionId={activeExtensionTab.extension_id}
+          title={activeExtensionTab.title}
+          onErrorStateChange={(hasError) =>
+            setTabErrors((prev) => ({ ...prev, [activeExtensionTab.id]: hasError }))
+          }
+        />
+      );
+    }
     switch (activeTab) {
       case "dashboard":
         return (
@@ -475,19 +521,19 @@ function App() {
         );
       case "logs":
         return <LogsTab sessionId={sessionId} focusSubTab={logsFocusSubTab} onFocusSubTabConsumed={consumeLogsFocusSubTab} />;
-      case "ollama":
-        return (
-          <OllamaTab
-            onErrorStateChange={(hasError) =>
-              setTabErrors((prev) => ({ ...prev, ollama: hasError }))
-            }
-          />
-        );
       case "open-webui":
         return (
           <OpenWebUiTab
             onErrorStateChange={(hasError) =>
               setTabErrors((prev) => ({ ...prev, "open-webui": hasError }))
+            }
+          />
+        );
+      case "extensions":
+        return (
+          <ExtensionsTab
+            onErrorStateChange={(hasError) =>
+              setTabErrors((prev) => ({ ...prev, extensions: hasError }))
             }
           />
         );
@@ -587,9 +633,9 @@ function App() {
         onSettings={() => setActiveTab("settings")}
         onStopWebUi={handleServerStop}
         settingsActive={activeTab === "settings"}
-        ollamaStatus={ollamaStatus}
         ragStatus={ragStatusInfo}
         openWebUiStatus={openWebUiStatus}
+        serviceStatusByTabId={extensionServiceStatusByTabId}
         statusLoading={statusLoading}
       />
       <div className="app-main-column">

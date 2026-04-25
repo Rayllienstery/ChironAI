@@ -13,7 +13,7 @@ import {
   checkRagTrigger,
   getRagFrameworkSettings,
   updateRagFrameworkSettings,
-  getModels,
+  getProviderCatalog,
   getRagModelSettings,
   updateRagModelSettings,
   getModelSettings,
@@ -176,11 +176,14 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
   const [frameworkTtlDraft, setFrameworkTtlDraft] = useState('');
   const [frameworkSettingsSaving, setFrameworkSettingsSaving] = useState(false);
 
-  const [models, setModels] = useState([]);
+  const [embedCatalog, setEmbedCatalog] = useState({ providers: [], models: [] });
+  const [rerankCatalog, setRerankCatalog] = useState({ providers: [], models: [] });
   const [ragModelSettings, setRagModelSettings] = useState({
+    rag_embed_provider_id: '',
     rag_embed_model: '',
     hybrid_sparse_enabled: true,
     rerank_for_rag: false,
+    rag_rerank_provider_id: '',
     rerank_model: '',
     coverage_aware_selection: false,
     concept_expansion_enabled: false,
@@ -190,8 +193,10 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
     pipeline_definition: null,
   });
   const [ragModelDefaults, setRagModelDefaults] = useState({
+    rag_embed_provider_id: '',
     rag_embed_model: '',
     hybrid_sparse_enabled: true,
+    rag_rerank_provider_id: '',
     rerank_model: '',
   });
   const [retrievalYamlDefaults, setRetrievalYamlDefaults] = useState({
@@ -246,11 +251,20 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
     return () => window.clearTimeout(id);
   }, [scrollToModelsSection, onModelsSectionScrolled]);
 
-  const loadModels = useCallback(async () => {
+  const loadProviderCatalogs = useCallback(async () => {
     try {
-      // getModels() returns the models array directly (not { models: [...] })
-      const list = await getModels();
-      setModels(Array.isArray(list) ? list : []);
+      const [embedData, rerankData] = await Promise.all([
+        getProviderCatalog('embed'),
+        getProviderCatalog('rerank'),
+      ]);
+      setEmbedCatalog({
+        providers: Array.isArray(embedData?.providers) ? embedData.providers : [],
+        models: Array.isArray(embedData?.models) ? embedData.models : [],
+      });
+      setRerankCatalog({
+        providers: Array.isArray(rerankData?.providers) ? rerankData.providers : [],
+        models: Array.isArray(rerankData?.models) ? rerankData.models : [],
+      });
     } catch (e) {
       setError(e.message);
     }
@@ -270,8 +284,10 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
     try {
       const data = await getRagModelSettings();
       setRagModelDefaults({
+        rag_embed_provider_id: (data?.defaults?.rag_embed_provider_id || '').trim(),
         rag_embed_model: (data?.defaults?.rag_embed_model || '').trim(),
         hybrid_sparse_enabled: data?.defaults?.hybrid_sparse_enabled !== false,
+        rag_rerank_provider_id: (data?.defaults?.rag_rerank_provider_id || '').trim(),
         rerank_model: (data?.defaults?.rerank_model || '').trim(),
       });
       const ra = data?.retrieval_advanced || {};
@@ -284,9 +300,11 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
         structured_rag_context_enabled: Boolean(ryd.structured_rag_context_enabled),
       });
       setRagModelSettings({
+        rag_embed_provider_id: data?.rag_embed_provider_id || '',
         rag_embed_model: data?.rag_embed_model || '',
         hybrid_sparse_enabled: data?.hybrid_sparse_enabled !== false,
         rerank_for_rag: Boolean(data?.rerank_for_rag),
+        rag_rerank_provider_id: data?.rag_rerank_provider_id || '',
         rerank_model: data?.rerank_model || '',
         coverage_aware_selection: Boolean(ra.coverage_aware_selection),
         concept_expansion_enabled: Boolean(ra.concept_expansion_enabled),
@@ -357,17 +375,32 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
     loadKeywordCollections();
     loadTriggerSettings();
     loadFrameworkSettings();
-    loadModels();
+    loadProviderCatalogs();
     loadRagModelSettings();
     loadConsumerBindings();
   }, [
     loadKeywordCollections,
     loadTriggerSettings,
     loadFrameworkSettings,
-    loadModels,
+    loadProviderCatalogs,
     loadRagModelSettings,
     loadConsumerBindings,
   ]);
+
+  const embedProviders = embedCatalog.providers || [];
+  const embedModels = embedCatalog.models || [];
+  const rerankProviders = rerankCatalog.providers || [];
+  const rerankModels = rerankCatalog.models || [];
+  const filteredEmbedModels = embedModels.filter(
+    (model) =>
+      String(model.provider_id || '').trim() ===
+      String(ragModelSettings.rag_embed_provider_id || '').trim(),
+  );
+  const filteredRerankModels = rerankModels.filter(
+    (model) =>
+      String(model.provider_id || '').trim() ===
+      String(ragModelSettings.rag_rerank_provider_id || '').trim(),
+  );
 
   const handleStart = async () => {
     setBusy(true);
@@ -472,9 +505,11 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
     setError(null);
     try {
       await updateRagModelSettings({
+        rag_embed_provider_id: ragModelSettings.rag_embed_provider_id || '',
         rag_embed_model: ragModelSettings.rag_embed_model || '',
         hybrid_sparse_enabled: Boolean(ragModelSettings.hybrid_sparse_enabled),
         rerank_for_rag: Boolean(ragModelSettings.rerank_for_rag),
+        rag_rerank_provider_id: ragModelSettings.rag_rerank_provider_id || '',
         rerank_model: ragModelSettings.rerank_model || '',
         coverage_aware_selection: Boolean(ragModelSettings.coverage_aware_selection),
         concept_expansion_enabled: Boolean(ragModelSettings.concept_expansion_enabled),
@@ -1018,24 +1053,49 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
         <div className="rag-trigger-test rag-trigger-test--first">
           <h4 className="rag-trigger-test-title rag-trigger-test-title--compact">Embedding model (index + query)</h4>
           <div className="rag-trigger-threshold-row">
+            <label className="rag-trigger-label" htmlFor="rag-embed-provider">Provider</label>
+            <select
+              id="rag-embed-provider"
+              className="rag-trigger-input"
+              value={ragModelSettings.rag_embed_provider_id}
+              onChange={(e) =>
+                setRagModelSettings((prev) => ({
+                  ...prev,
+                  rag_embed_provider_id: e.target.value,
+                  rag_embed_model: '',
+                }))
+              }
+              disabled={!embedProviders.length}
+            >
+              <option value="">
+                Server default provider ({ragModelDefaults.rag_embed_provider_id || 'not configured'})
+              </option>
+              {embedProviders.map((provider) => (
+                <option key={provider.provider_id} value={provider.provider_id}>
+                  {provider.title || provider.provider_id}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="rag-trigger-threshold-row">
             <label className="rag-trigger-label" htmlFor="rag-embed-model">Model</label>
             <select
               id="rag-embed-model"
               className="rag-trigger-input"
               value={ragModelSettings.rag_embed_model}
               onChange={(e) => setRagModelSettings((prev) => ({ ...prev, rag_embed_model: e.target.value }))}
-              disabled={!models.length}
+              disabled={!filteredEmbedModels.length}
             >
               <option value="">
                 Server default ({ragModelDefaults.rag_embed_model || 'not configured'})
               </option>
               {ragModelSettings.rag_embed_model &&
-                !models.some((m) => m.id === ragModelSettings.rag_embed_model) && (
+                !filteredEmbedModels.some((m) => m.id === ragModelSettings.rag_embed_model) && (
                   <option value={ragModelSettings.rag_embed_model}>
-                    {ragModelSettings.rag_embed_model} (saved — not in current Ollama list)
+                    {ragModelSettings.rag_embed_model} (saved — not in current provider list)
                   </option>
                 )}
-              {models.map((m) => (
+              {filteredEmbedModels.map((m) => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </select>
@@ -1085,24 +1145,50 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
           </div>
 
           <div className="rag-trigger-threshold-row">
+            <label className="rag-trigger-label" htmlFor="rag-rerank-provider">Rerank provider</label>
+            <select
+              id="rag-rerank-provider"
+              className="rag-trigger-input"
+              value={ragModelSettings.rag_rerank_provider_id}
+              onChange={(e) =>
+                setRagModelSettings((prev) => ({
+                  ...prev,
+                  rag_rerank_provider_id: e.target.value,
+                  rerank_model: '',
+                }))
+              }
+              disabled={!rerankProviders.length}
+            >
+              <option value="">
+                Server default provider ({ragModelDefaults.rag_rerank_provider_id || 'not configured'})
+              </option>
+              {rerankProviders.map((provider) => (
+                <option key={provider.provider_id} value={provider.provider_id}>
+                  {provider.title || provider.provider_id}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="rag-trigger-threshold-row">
             <label className="rag-trigger-label" htmlFor="rag-rerank-model">Rerank model</label>
             <select
               id="rag-rerank-model"
               className="rag-trigger-input"
               value={ragModelSettings.rerank_model}
               onChange={(e) => setRagModelSettings((prev) => ({ ...prev, rerank_model: e.target.value }))}
-              disabled={!models.length}
+              disabled={!filteredRerankModels.length}
             >
               <option value="">
                 Server default ({ragModelDefaults.rerank_model || 'not configured'}) — used when rerank is enabled and no model is chosen
               </option>
               {ragModelSettings.rerank_model &&
-                !models.some((m) => m.id === ragModelSettings.rerank_model) && (
+                !filteredRerankModels.some((m) => m.id === ragModelSettings.rerank_model) && (
                   <option value={ragModelSettings.rerank_model}>
-                    {ragModelSettings.rerank_model} (saved — not in current Ollama list)
+                    {ragModelSettings.rerank_model} (saved — not in current provider list)
                   </option>
                 )}
-              {models.map((m) => (
+              {filteredRerankModels.map((m) => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </select>

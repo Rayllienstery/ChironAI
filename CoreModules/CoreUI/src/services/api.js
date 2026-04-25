@@ -41,6 +41,53 @@ export async function getModels() {
   return data.models ?? [];
 }
 
+export async function getProviderCatalog(capability = '') {
+  const params = new URLSearchParams();
+  if (capability) params.set('capability', capability);
+  const response = await fetch(
+    `${API_BASE}/providers/catalog${params.toString() ? `?${params}` : ''}`,
+  );
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to get provider catalog');
+  }
+  return data;
+}
+
+export async function getExtensionTabs() {
+  const response = await fetch(`${API_BASE}/extensions/tabs`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to load extension tabs');
+  }
+  return data;
+}
+
+export async function getExtensionTab(extensionId) {
+  const response = await fetch(`${API_BASE}/extensions/${encodeURIComponent(extensionId)}/tab`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to load extension tab');
+  }
+  return data;
+}
+
+export async function runExtensionTabAction(extensionId, actionId, payload = {}) {
+  const response = await fetch(
+    `${API_BASE}/extensions/${encodeURIComponent(extensionId)}/actions/${encodeURIComponent(actionId)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {}),
+    },
+  );
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Extension action failed');
+  }
+  return data;
+}
+
 export async function getPrompts() {
   const response = await fetch(`${API_BASE}/prompts`);
   if (!response.ok) {
@@ -90,11 +137,14 @@ export async function putLlmProxyBuilds(builds) {
   return data;
 }
 
-export async function previewLlmProxyBuildModel(model) {
+export async function previewLlmProxyBuildModel(model, providerId = null) {
   const response = await fetch(`${API_BASE}/llm-proxy/builds/preview-model`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model }),
+    body: JSON.stringify({
+      model,
+      ...(providerId ? { provider_id: providerId } : {}),
+    }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -555,10 +605,18 @@ export async function getIndexerTesterFileDetail(sourceId, filename) {
   return response.json();
 }
 
-export async function evaluateIndexerWithLlm(sourceMd, processedMd, model, pageMeta = null, limits = null) {
+export async function evaluateIndexerWithLlm(
+  sourceMd,
+  processedMd,
+  providerId,
+  model,
+  pageMeta = null,
+  limits = null,
+) {
   const body = {
     source_md: sourceMd,
     processed_md: processedMd,
+    provider_id: providerId || undefined,
     model: model || undefined,
   };
   if (pageMeta != null && typeof pageMeta === 'object') {
@@ -589,6 +647,7 @@ export async function evaluateIndexerWithLlm(sourceMd, processedMd, model, pageM
 
 export async function startIndexerTesterEvaluateBatch({
   sourceId,
+  providerId,
   model,
   count,
   original_max_chars,
@@ -597,6 +656,7 @@ export async function startIndexerTesterEvaluateBatch({
 }) {
   const body = {
     source_id: sourceId,
+    provider_id: providerId || undefined,
     model: model || undefined,
     count: Number(count) || 0,
   };
@@ -626,7 +686,7 @@ export async function getIndexerTesterEvaluateBatchStatus(jobId) {
   return response.json();
 }
 
-export async function detectBatchEvalPatterns(results, model) {
+export async function detectBatchEvalPatterns(results, providerId, model) {
   const response = await fetch(
     `${API_BASE}/crawler/indexer-tester/evaluate-batch/detect-patterns`,
     {
@@ -634,6 +694,7 @@ export async function detectBatchEvalPatterns(results, model) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         results: results || [],
+        provider_id: providerId || undefined,
         model: model || undefined,
       }),
     },
@@ -1006,137 +1067,12 @@ export async function stopRag() {
   return response.json();
 }
 
-export async function getOllamaStatus() {
-  const response = await fetch(`${API_BASE}/ollama/status`);
-  if (!response.ok) {
-    throw new Error('Failed to get Ollama status');
-  }
-  return response.json();
-}
-
 export async function getDashboardMetrics() {
   const response = await fetch(`${API_BASE}/dashboard-metrics`);
   if (!response.ok) {
     throw new Error('Failed to get dashboard metrics');
   }
   return response.json();
-}
-
-export async function startOllama() {
-  const response = await fetch(`${API_BASE}/ollama/start`, {
-    method: 'POST',
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to start Ollama server');
-  }
-  return response.json();
-}
-
-export async function stopOllama() {
-  const response = await fetch(`${API_BASE}/ollama/stop`, {
-    method: 'POST',
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to stop Ollama server');
-  }
-  return response.json();
-}
-
-export async function getOllamaLibrary() {
-  const response = await fetch(`${API_BASE}/ollama/library`);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error || 'Failed to load Ollama library');
-  }
-  return data;
-}
-
-export async function patchOllamaHidden({ add = [], remove = [] } = {}) {
-  const response = await fetch(`${API_BASE}/ollama/hidden`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ add, remove }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error || 'Failed to update hidden models');
-  }
-  return data;
-}
-
-export async function showOllamaModel(model) {
-  const response = await fetch(`${API_BASE}/ollama/show`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error || 'Failed to load model details');
-  }
-  return data;
-}
-
-export async function deleteOllamaModel(model) {
-  const response = await fetch(`${API_BASE}/ollama/delete`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error || 'Failed to delete model');
-  }
-  return data;
-}
-
-/**
- * Stream NDJSON progress from POST /ollama/pull.
- * @param {{ model: string, insecure?: boolean, onLine: (obj: object) => void, signal?: AbortSignal }} opts
- */
-export async function pullOllamaModel({ model, insecure = false, onLine, signal }) {
-  const response = await fetch(`${API_BASE}/ollama/pull`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, insecure: Boolean(insecure) }),
-    signal,
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Pull request failed');
-  }
-  const reader = response.body?.getReader();
-  if (!reader) {
-    throw new Error('No response body');
-  }
-  const dec = new TextDecoder();
-  let buf = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let idx;
-    while ((idx = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, idx).trim();
-      buf = buf.slice(idx + 1);
-      if (!line) continue;
-      try {
-        onLine(JSON.parse(line));
-      } catch {
-        /* ignore malformed line */
-      }
-    }
-  }
-  const tail = buf.trim();
-  if (tail) {
-    try {
-      onLine(JSON.parse(tail));
-    } catch {
-      /* ignore */
-    }
-  }
 }
 
 export async function getOpenWebUiStatus() {
@@ -1369,6 +1305,71 @@ export async function getCreateCollectionStatus(jobId) {
     throw new Error(err.error || 'Failed to get job status');
   }
   return response.json();
+}
+
+export async function getExtensionRegistry() {
+  const response = await fetch(`${API_BASE}/extensions/registry`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to load extension registry');
+  }
+  return response.json();
+}
+
+export async function getExtensionInstalled() {
+  const response = await fetch(`${API_BASE}/extensions/installed`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to load installed extensions');
+  }
+  return response.json();
+}
+
+export async function getExtensionProviders() {
+  const response = await fetch(`${API_BASE}/extensions/providers`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to load extension providers');
+  }
+  return response.json();
+}
+
+export async function getExtensionUiPayload() {
+  const response = await fetch(`${API_BASE}/extensions/ui`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to load extension UI payload');
+  }
+  return response.json();
+}
+
+async function postExtensionAction(path, body) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Extension action failed');
+  }
+  return data;
+}
+
+export async function installExtension(extensionId, version = null) {
+  return postExtensionAction('/extensions/install', { extension_id: extensionId, version });
+}
+
+export async function removeExtension(extensionId) {
+  return postExtensionAction('/extensions/remove', { extension_id: extensionId });
+}
+
+export async function enableExtension(extensionId) {
+  return postExtensionAction('/extensions/enable', { extension_id: extensionId });
+}
+
+export async function disableExtension(extensionId) {
+  return postExtensionAction('/extensions/disable', { extension_id: extensionId });
 }
 
 export async function cancelCreateCollection(jobId) {
