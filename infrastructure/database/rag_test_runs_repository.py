@@ -30,6 +30,7 @@ class RagTestRunsRepository:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS rag_test_runs (
                     id TEXT PRIMARY KEY,
+                    provider_id TEXT,
                     model TEXT NOT NULL,
                     status TEXT NOT NULL,
                     total INTEGER NOT NULL DEFAULT 0,
@@ -43,6 +44,12 @@ class RagTestRunsRepository:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_rag_test_runs_created_at ON rag_test_runs(created_at)"
             )
+            columns = {
+                str(row[1])
+                for row in conn.execute("PRAGMA table_info(rag_test_runs)").fetchall()
+            }
+            if "provider_id" not in columns:
+                conn.execute("ALTER TABLE rag_test_runs ADD COLUMN provider_id TEXT")
             conn.commit()
 
     def add_run(
@@ -55,16 +62,18 @@ class RagTestRunsRepository:
         failed: int,
         results: list[dict[str, Any]],
         completed_at: str | None = None,
+        provider_id: str | None = None,
     ) -> None:
         """Persist a completed or cancelled run."""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 """
-                INSERT INTO rag_test_runs (id, model, status, total, passed, failed, completed_at, results)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO rag_test_runs (id, provider_id, model, status, total, passed, failed, completed_at, results)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
+                    (provider_id or "").strip() or None,
                     model,
                     status,
                     total,
@@ -80,6 +89,7 @@ class RagTestRunsRepository:
         self,
         limit: int = 50,
         offset: int = 0,
+        provider_id: str | None = None,
         model: str | None = None,
         from_date: str | None = None,
         to_date: str | None = None,
@@ -88,6 +98,9 @@ class RagTestRunsRepository:
         """List recent runs (newest first). Optional filters: model, from_date, to_date, status."""
         conditions: list[str] = []
         params: list[Any] = []
+        if provider_id and provider_id.strip():
+            conditions.append("provider_id = ?")
+            params.append(provider_id.strip())
         if model and model.strip():
             conditions.append("model = ?")
             params.append(model.strip())
@@ -106,7 +119,7 @@ class RagTestRunsRepository:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 f"""
-                SELECT id, model, status, total, passed, failed, created_at, completed_at
+                SELECT id, provider_id, model, status, total, passed, failed, created_at, completed_at
                 FROM rag_test_runs
                 WHERE {where_sql}
                 ORDER BY created_at DESC
@@ -118,6 +131,7 @@ class RagTestRunsRepository:
         return [
             {
                 "id": row["id"],
+                "provider_id": row["provider_id"],
                 "model": row["model"],
                 "status": row["status"],
                 "total": row["total"],
@@ -132,6 +146,7 @@ class RagTestRunsRepository:
     def get_runs_summary(
         self,
         limit: int = 50,
+        provider_id: str | None = None,
         model: str | None = None,
         from_date: str | None = None,
         to_date: str | None = None,
@@ -144,6 +159,9 @@ class RagTestRunsRepository:
         """
         conditions: list[str] = []
         params: list[Any] = []
+        if provider_id and provider_id.strip():
+            conditions.append("provider_id = ?")
+            params.append(provider_id.strip())
         if model and model.strip():
             conditions.append("model = ?")
             params.append(model.strip())
@@ -159,9 +177,9 @@ class RagTestRunsRepository:
             # Subquery to limit runs then aggregate
             cursor = conn.execute(
                 f"""
-                SELECT id, model, total, passed, failed
+                SELECT id, provider_id, model, total, passed, failed
                 FROM (
-                    SELECT id, model, total, passed, failed, created_at
+                    SELECT id, provider_id, model, total, passed, failed, created_at
                     FROM rag_test_runs
                     WHERE {where_sql}
                     ORDER BY created_at DESC
@@ -178,16 +196,25 @@ class RagTestRunsRepository:
         pass_rate_pct = round((total_passed / total_tests * 100), 1) if total_tests else 0.0
         by_model: dict[str, dict[str, Any]] = {}
         for r in rows:
-            m = r["model"] or "unknown"
-            if m not in by_model:
-                by_model[m] = {"model": m, "run_count": 0, "total_passed": 0, "total_failed": 0}
-            by_model[m]["run_count"] += 1
-            by_model[m]["total_passed"] += r["passed"]
-            by_model[m]["total_failed"] += r["failed"]
+            provider = str(r["provider_id"] or "").strip()
+            model_name = r["model"] or "unknown"
+            key = f"{provider}:{model_name}" if provider else str(model_name)
+            if key not in by_model:
+                by_model[key] = {
+                    "provider_id": provider or None,
+                    "model": model_name,
+                    "run_count": 0,
+                    "total_passed": 0,
+                    "total_failed": 0,
+                }
+            by_model[key]["run_count"] += 1
+            by_model[key]["total_passed"] += r["passed"]
+            by_model[key]["total_failed"] += r["failed"]
         per_model = []
-        for m, data in by_model.items():
+        for _key, data in by_model.items():
             t = data["total_passed"] + data["total_failed"]
             per_model.append({
+                "provider_id": data["provider_id"],
                 "model": data["model"],
                 "run_count": data["run_count"],
                 "total_passed": data["total_passed"],
@@ -326,6 +353,7 @@ class RagTestRunsRepository:
                 pass
         return normalize_rag_test_run({
             "id": row["id"],
+            "provider_id": row["provider_id"],
             "model": row["model"],
             "status": row["status"],
             "total": row["total"],

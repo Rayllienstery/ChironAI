@@ -64,8 +64,10 @@ def test_rag_tests_worker_uses_v1_chat_completions_payload_parity(
             concurrency=1,
             testing_disable_rerank=True,
             strict_mode=True,
+            provider_id="ollama",
         )
 
+    assert captured.get("provider_id") == "ollama"
     assert captured.get("model") == "llama3"
     assert captured.get("collection_name") == "ios-docs"
     assert captured.get("prompt_name") == "system_senior_ios_assistant_v1"
@@ -529,3 +531,17 @@ def test_rag_tests_runs_summary_includes_split_rag_metrics(tmp_path) -> None:
     assert summary["grounding_overlap"] == 0
     assert summary["strict_rag_total"] == 1
     assert summary["strict_rag_ok"] == 0
+
+
+def test_rag_test_runs_repository_persists_provider_id(tmp_path) -> None:
+    from infrastructure.database.rag_test_runs_repository import RagTestRunsRepository
+
+    repo = RagTestRunsRepository(tmp_path / "webui.db")
+    repo.add_run("run-1", "m1", "completed", 1, 1, 0, [], provider_id="ollama")
+
+    runs = repo.get_runs(limit=10, provider_id="ollama")
+    run = repo.get_run("run-1")
+
+    assert runs[0]["provider_id"] == "ollama"
+    assert run is not None
+    assert run["provider_id"] == "ollama"

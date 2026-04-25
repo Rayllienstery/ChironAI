@@ -7,7 +7,7 @@ import {
   RagTestFormModal,
 } from './RagTestsModals';
 import {
-  getModels,
+  getProviderCatalog,
   getPrompts,
   getRagCollections,
   getProxyTraceCurrent,
@@ -118,7 +118,8 @@ function RagTestsTab({
   onCancelRun,
 }) {
   const lastUsed = loadLastUsedRagTestsSettings();
-  const [models, setModels] = useState([]);
+  const [providerCatalog, setProviderCatalog] = useState({ providers: [], models: [] });
+  const [selectedProviderId, setSelectedProviderId] = useState(String(lastUsed.provider_id || ''));
   const [selectedModel, setSelectedModel] = useState(String(lastUsed.model || ''));
   const [tests, setTests] = useState([]);
   const [filters, setFilters] = useState({ platform: '', framework: '', difficulty: '' });
@@ -161,7 +162,7 @@ function RagTestsTab({
   const [runHistoryLoading, setRunHistoryLoading] = useState(false);
   const [runHistoryLoadingMore, setRunHistoryLoadingMore] = useState(false);
   const [runHistoryHasMore, setRunHistoryHasMore] = useState(true);
-  const [historyFilters, setHistoryFilters] = useState({ model: '', from_date: '', to_date: '', status: '' });
+  const [historyFilters, setHistoryFilters] = useState({ provider_id: '', model: '', from_date: '', to_date: '', status: '' });
   const [runSummary, setRunSummary] = useState(null);
   const [runHistoryModal, setRunHistoryModal] = useState(null);
   const [runHistoryModalTab, setRunHistoryModalTab] = useState('summary');
@@ -197,6 +198,11 @@ function RagTestsTab({
     text: '',
     updatedAt: '',
   });
+  const models = sortModelsCloudFirst(
+    (providerCatalog.models || []).filter(
+      (m) => !selectedProviderId || m.provider_id === selectedProviderId,
+    ),
+  );
 
   const loadCollections = useCallback(async () => {
     try {
@@ -232,18 +238,29 @@ function RagTestsTab({
 
   const loadModels = useCallback(async () => {
     try {
-      const list = await getModels();
-      const sorted = sortModelsCloudFirst(list || []);
-      setModels(sorted);
-      if (sorted?.length && (!selectedModel || !sorted.some((m) => m.id === selectedModel))) {
-        const pick = sorted.find((m) => m.id && !isLogicalRagModelId(m.id)) || sorted[0];
+      const catalog = await getProviderCatalog('chat');
+      const providers = catalog?.providers || [];
+      const allModels = catalog?.models || [];
+      setProviderCatalog({ providers, models: allModels });
+      const resolvedProviderId =
+        selectedProviderId && providers.some((p) => p.provider_id === selectedProviderId)
+          ? selectedProviderId
+          : (providers[0]?.provider_id || '');
+      if (resolvedProviderId !== selectedProviderId) {
+        setSelectedProviderId(resolvedProviderId);
+      }
+      const scoped = sortModelsCloudFirst(
+        allModels.filter((m) => !resolvedProviderId || m.provider_id === resolvedProviderId),
+      );
+      if (scoped?.length && (!selectedModel || !scoped.some((m) => m.id === selectedModel))) {
+        const pick = scoped.find((m) => m.id && !isLogicalRagModelId(m.id)) || scoped[0];
         setSelectedModel(pick.id || '');
       }
     } catch (e) {
       const msg = String(e?.message || '');
       if (!isTransientFetchLikeError(msg)) setError(msg);
     }
-  }, [selectedModel]);
+  }, [selectedModel, selectedProviderId]);
 
   const loadTests = useCallback(async () => {
     setError(null);
@@ -285,6 +302,7 @@ function RagTestsTab({
       window.localStorage.setItem(
         RAG_TESTS_LAST_USED_KEY,
         JSON.stringify({
+          provider_id: selectedProviderId || '',
           model: selectedModel || '',
           collection_name: selectedCollection || '',
           prompt_name: selectedPromptName || '',
@@ -296,7 +314,7 @@ function RagTestsTab({
     } catch {
       // ignore storage errors
     }
-  }, [selectedModel, selectedCollection, selectedPromptName, runTemperature, runTopK, runStrictMode]);
+  }, [selectedProviderId, selectedModel, selectedCollection, selectedPromptName, runTemperature, runTopK, runStrictMode]);
 
   const HISTORY_PAGE_SIZE = 20;
 
@@ -312,6 +330,7 @@ function RagTestsTab({
       const opts = {
         limit: HISTORY_PAGE_SIZE,
         offset,
+        provider_id: historyFilters.provider_id || undefined,
         model: historyFilters.model || undefined,
         from_date: historyFilters.from_date || undefined,
         to_date: historyFilters.to_date || undefined,
@@ -332,7 +351,7 @@ function RagTestsTab({
       setRunHistoryLoading(false);
       setRunHistoryLoadingMore(false);
     }
-  }, [historyFilters.model, historyFilters.from_date, historyFilters.to_date, historyFilters.status]);
+  }, [historyFilters.provider_id, historyFilters.model, historyFilters.from_date, historyFilters.to_date, historyFilters.status]);
 
   useEffect(() => {
     loadRunHistory(0);
@@ -342,6 +361,7 @@ function RagTestsTab({
     try {
       const summary = await getRagTestRunsSummary({
         limit: 50,
+        provider_id: historyFilters.provider_id || undefined,
         model: historyFilters.model || undefined,
         from_date: historyFilters.from_date || undefined,
         to_date: historyFilters.to_date || undefined,
@@ -350,7 +370,7 @@ function RagTestsTab({
     } catch {
       setRunSummary(null);
     }
-  }, [historyFilters.model, historyFilters.from_date, historyFilters.to_date]);
+  }, [historyFilters.provider_id, historyFilters.model, historyFilters.from_date, historyFilters.to_date]);
 
   useEffect(() => {
     if (historySectionOpen) {
@@ -600,6 +620,7 @@ function RagTestsTab({
   const filteredTests = tests;
 
   const runBody = (opts = {}) => ({
+    provider_id: selectedProviderId,
     model: selectedModel,
     collection_name: selectedCollection || undefined,
     prompt_name: selectedPromptName || undefined,
@@ -1398,6 +1419,30 @@ function RagTestsTab({
             </div>
             <div className="rag-tests-control-grid">
               <label className="rag-tests-model-label">
+                Provider
+                <select
+                  value={selectedProviderId}
+                  onChange={(e) => {
+                    const nextProviderId = e.target.value;
+                    setSelectedProviderId(nextProviderId);
+                    const nextModels = sortModelsCloudFirst(
+                      (providerCatalog.models || []).filter(
+                        (m) => m.provider_id === nextProviderId,
+                      ),
+                    );
+                    setSelectedModel(nextModels[0]?.id || '');
+                  }}
+                  className="rag-tests-select"
+                  aria-label="Select provider"
+                >
+                  {providerCatalog.providers.map((provider) => (
+                    <option key={provider.provider_id} value={provider.provider_id}>
+                      {provider.title || provider.provider_id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="rag-tests-model-label">
                 Model
                 <select
                   value={selectedModel}
@@ -1646,7 +1691,7 @@ function RagTestsTab({
                 )}
                 {runSummary.per_model?.length > 0 && (
                   <p className="rag-tests-summary-line">
-                    By model: {runSummary.per_model.map((m) => `${m.model} ${m.pass_rate_pct}%`).join(', ')}
+                    By model: {runSummary.per_model.map((m) => `${m.provider_id ? `${m.provider_id} / ` : ''}${m.model} ${m.pass_rate_pct}%`).join(', ')}
                   </p>
                 )}
                 {runSummary.domains?.length > 0 && (
@@ -1699,6 +1744,20 @@ function RagTestsTab({
               </div>
             )}
             <div className="rag-tests-history-filters">
+              <label>
+                Provider
+                <select
+                  value={historyFilters.provider_id}
+                  onChange={(e) => setHistoryFilters((f) => ({ ...f, provider_id: e.target.value }))}
+                  className="rag-tests-select"
+                  aria-label="Filter by provider"
+                >
+                  <option value="">All</option>
+                  {[...new Set(runHistory.map((r) => r.provider_id).filter(Boolean))].sort().map((providerId) => (
+                    <option key={providerId} value={providerId}>{providerId}</option>
+                  ))}
+                </select>
+              </label>
               <label>
                 Model
                 <select
@@ -1829,7 +1888,7 @@ function RagTestsTab({
                         />
                       </td>
                       <td>{formatRunDate(run.created_at)}</td>
-                      <td>{run.model}</td>
+                      <td>{run.provider_id ? `${run.provider_id} / ${run.model}` : run.model}</td>
                       <td>{run.total}</td>
                       <td className="rag-tests-stat-passed">{run.passed}</td>
                       <td className="rag-tests-stat-failed">{run.failed}</td>
@@ -2194,7 +2253,7 @@ function RagTestsTab({
               </button>
             </div>
             <p className="rag-tests-result-modal-meta">
-              {formatRunDate(runHistoryModal.run?.created_at)} | Model: {runHistoryModal.run?.model} | Passed: {runHistoryModal.run?.passed} | Failed: {runHistoryModal.run?.failed}
+              {formatRunDate(runHistoryModal.run?.created_at)} | Model: {runHistoryModal.run?.provider_id ? `${runHistoryModal.run?.provider_id} / ${runHistoryModal.run?.model}` : runHistoryModal.run?.model} | Passed: {runHistoryModal.run?.passed} | Failed: {runHistoryModal.run?.failed}
             </p>
             <p className="rag-tests-detail-metrics">
               Metrics: {metricVersionLabel(runHistoryModal.run)}
@@ -2442,7 +2501,7 @@ function RagTestsTab({
               <section className="rag-tests-compare-run-card">
                 <h4>Left run</h4>
                 <p className="rag-tests-result-modal-meta">
-                  {formatRunDate(compareLeftRun?.created_at)} | Model: {compareLeftRun?.model || '-'}
+                  {formatRunDate(compareLeftRun?.created_at)} | Model: {compareLeftRun?.provider_id ? `${compareLeftRun?.provider_id} / ${compareLeftRun?.model}` : (compareLeftRun?.model || '-')}
                 </p>
                 <p className="rag-tests-detail-metrics">id: {String(runCompareModal.left?.id || '-')}</p>
                 <p className="rag-tests-detail-metrics">metrics: {metricVersionLabel(compareLeftRun)}</p>
@@ -2451,7 +2510,7 @@ function RagTestsTab({
               <section className="rag-tests-compare-run-card">
                 <h4>Right run</h4>
                 <p className="rag-tests-result-modal-meta">
-                  {formatRunDate(compareRightRun?.created_at)} | Model: {compareRightRun?.model || '-'}
+                  {formatRunDate(compareRightRun?.created_at)} | Model: {compareRightRun?.provider_id ? `${compareRightRun?.provider_id} / ${compareRightRun?.model}` : (compareRightRun?.model || '-')}
                 </p>
                 <p className="rag-tests-detail-metrics">id: {String(runCompareModal.right?.id || '-')}</p>
                 <p className="rag-tests-detail-metrics">metrics: {metricVersionLabel(compareRightRun)}</p>

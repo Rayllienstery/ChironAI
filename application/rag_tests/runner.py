@@ -95,6 +95,7 @@ def build_proxy_chat_payload(
     *,
     question: str,
     model: str,
+    provider_id: str | None = None,
     collection_name: str,
     client_request_id: str,
     prompt_name: str | None = None,
@@ -113,6 +114,8 @@ def build_proxy_chat_payload(
         "client_request_id": client_request_id,
         "strict_mode": bool(strict_mode),
     }
+    if provider_id:
+        payload["provider_id"] = provider_id
     if prompt_name:
         payload["prompt_name"] = prompt_name
     if temperature is not None:
@@ -147,6 +150,7 @@ def build_rag_test_result(
     *,
     test: dict[str, Any],
     model: str,
+    provider_id: str | None = None,
     content: str,
     rag_metadata: dict[str, Any] | None,
     validation: dict[str, Any],
@@ -171,6 +175,7 @@ def build_rag_test_result(
         "framework": test.get("framework"),
         "difficulty": test.get("difficulty"),
         "model": model,
+        "provider_id": str(provider_id or "").strip() or None,
         "status": validation.get("status", "FAIL"),
         "response_time_ms": response_time_ms,
         "latency_ms": latency_ms if latency_ms is not None else response_time_ms,
@@ -203,6 +208,7 @@ def build_rag_test_error_result(
     *,
     test: dict[str, Any],
     model: str,
+    provider_id: str | None = None,
     error: Any,
     response_time_ms: int = 0,
     order: int | None = None,
@@ -216,6 +222,7 @@ def build_rag_test_error_result(
         "framework": test.get("framework"),
         "difficulty": test.get("difficulty"),
         "model": model,
+        "provider_id": str(provider_id or "").strip() or None,
         "status": "FAIL",
         "response_time_ms": response_time_ms,
         "latency_ms": response_time_ms,

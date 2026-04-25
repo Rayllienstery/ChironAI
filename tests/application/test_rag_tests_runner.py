@@ -22,6 +22,7 @@ def test_build_proxy_chat_payload_optional_rerank_policy_flag() -> None:
     payload = build_proxy_chat_payload(
         question="Q",
         model="m",
+        provider_id="ollama",
         collection_name="c",
         client_request_id="rid-2",
         prompt_name="system_senior_ios_assistant_v1",
@@ -29,6 +30,7 @@ def test_build_proxy_chat_payload_optional_rerank_policy_flag() -> None:
         top_k=12,
         testing_disable_rerank=True,
     )
+    assert payload["provider_id"] == "ollama"
     assert payload["prompt_name"] == "system_senior_ios_assistant_v1"
     assert payload["temperature"] == 0.2
     assert payload["top_k"] == 12.0

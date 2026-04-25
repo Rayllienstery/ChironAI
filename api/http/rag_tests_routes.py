@@ -257,6 +257,7 @@ def rag_tests_runs_list() -> Any:
         repo = get_rag_test_runs_repository()
         limit = min(int(request.args.get("limit", 50)), 100)
         offset = max(0, int(request.args.get("offset", 0)))
+        provider_id = (request.args.get("provider_id") or "").strip() or None
         model = (request.args.get("model") or "").strip() or None
         from_date = (request.args.get("from_date") or "").strip() or None
         to_date = (request.args.get("to_date") or "").strip() or None
@@ -264,6 +265,7 @@ def rag_tests_runs_list() -> Any:
         runs = repo.get_runs(
             limit=limit,
             offset=offset,
+            provider_id=provider_id,
             model=model,
             from_date=from_date,
             to_date=to_date,
@@ -281,11 +283,13 @@ def rag_tests_runs_summary() -> Any:
     try:
         repo = get_rag_test_runs_repository()
         limit = min(int(request.args.get("limit", 50)), 200)
+        provider_id = (request.args.get("provider_id") or "").strip() or None
         model = (request.args.get("model") or "").strip() or None
         from_date = (request.args.get("from_date") or "").strip() or None
         to_date = (request.args.get("to_date") or "").strip() or None
         summary = repo.get_runs_summary(
             limit=limit,
+            provider_id=provider_id,
             model=model,
             from_date=from_date,
             to_date=to_date,
@@ -624,6 +628,7 @@ def _rag_tests_run_worker(
     concurrency: int = 1,
     testing_disable_rerank: bool = False,
     strict_mode: bool = False,
+    provider_id: str | None = None,
 ) -> None:
     """Background worker: run tests concurrently, update progress, respect cancel."""
     with app_context:
@@ -726,6 +731,7 @@ def _rag_tests_run_worker(
                     chat_payload = build_proxy_chat_payload(
                         question=question,
                         model=model,
+                        provider_id=provider_id,
                         collection_name=collection_name,
                         client_request_id=request_id,
                         prompt_name=prompt_name,
@@ -755,6 +761,7 @@ def _rag_tests_run_worker(
                         return build_rag_test_error_result(
                             test=test,
                             model=model,
+                            provider_id=provider_id,
                             error=err,
                             response_time_ms=elapsed_ms,
                             order=idx,
@@ -902,6 +909,7 @@ def _rag_tests_run_worker(
                     result = build_rag_test_result(
                         test=test,
                         model=model,
+                        provider_id=provider_id,
                         content=content,
                         rag_metadata=rag_metadata,
                         validation=validation,
@@ -924,6 +932,7 @@ def _rag_tests_run_worker(
                     return build_rag_test_error_result(
                         test=test,
                         model=model,
+                        provider_id=provider_id,
                         error=e,
                         response_time_ms=_elapsed,
                         order=idx,
@@ -981,6 +990,7 @@ def _rag_tests_run_worker(
                         result = build_rag_test_error_result(
                             test=test,
                             model=model,
+                            provider_id=provider_id,
                             error=e,
                             response_time_ms=0,
                             order=idx,
@@ -1021,6 +1031,7 @@ def _rag_tests_run_worker(
             status = _rag_test_jobs.get(job_id, {}).get("status", "completed")
             runs_repo.add_run(
                 run_id=job_id,
+                provider_id=provider_id,
                 model=model,
                 status=status,
                 total=total,
@@ -1273,6 +1284,7 @@ def _rag_tests_v2_run_worker(
 def rag_tests_run() -> Any:
     """Start RAG test run in background. Returns 202 with job_id. Poll GET /rag-tests/run/status/<job_id> for progress."""
     body = request.get_json(force=True, silent=True) or {}
+    provider_id = (body.get("provider_id") or "").strip() or None
     model = (body.get("model") or "").strip()
     if not model:
         return jsonify({"error": "model is required"}), 400
@@ -1351,12 +1363,14 @@ def rag_tests_run() -> Any:
             testing_disable_rerank,
             strict_mode,
         ),
+        kwargs={"provider_id": provider_id},
         daemon=True,
     )
     thread.start()
     return jsonify({
         "job_id": job_id,
         "collection_name": collection_name,
+        "provider_id": provider_id,
         "prompt_name": prompt_name,
         "temperature": temperature,
         "top_k": top_k,

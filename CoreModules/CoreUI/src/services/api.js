@@ -904,6 +904,7 @@ export async function getRagTestRuns(options = {}) {
   const params = new URLSearchParams();
   if (options.limit != null) params.set('limit', String(options.limit));
   if (options.offset != null) params.set('offset', String(options.offset));
+  if (options.provider_id) params.set('provider_id', options.provider_id);
   if (options.model) params.set('model', options.model);
   if (options.from_date) params.set('from_date', options.from_date);
   if (options.to_date) params.set('to_date', options.to_date);
@@ -931,6 +932,7 @@ export async function deleteRagTestRuns(body) {
 export async function getRagTestRunsSummary(options = {}) {
   const params = new URLSearchParams();
   if (options.limit != null) params.set('limit', String(options.limit));
+  if (options.provider_id) params.set('provider_id', options.provider_id);
   if (options.model) params.set('model', options.model);
   if (options.from_date) params.set('from_date', options.from_date);
   if (options.to_date) params.set('to_date', options.to_date);
