@@ -20,13 +20,6 @@ _DATA_URL_HEAD = re.compile(
     re.IGNORECASE,
 )
 
-# When False, allow inline `data:image/...;base64,...` inside string-only content.
-_STRIP_INLINE_DATA_URLS = str(os.getenv("LLM_PROXY_VISION_STRIP_INLINE_DATA_URLS", "1")).strip() not in {
-    "0",
-    "false",
-    "no",
-}
-
 # When True, allow server-side fetching of external http(s) image URLs.
 _FETCH_EXTERNAL_IMAGE_URLS = str(os.getenv("LLM_PROXY_VISION_FETCH_EXTERNAL_URLS", "0")).strip() in {
     "1",
@@ -130,22 +123,10 @@ def http_image_url_to_data_url(url: str) -> tuple[str | None, str | None]:
 
 
 def sanitize_openai_text_part(text: str, *, max_chars: int = 80_000) -> str:
-    """
-    Same rules as LLM Proxy message sanitization: strip huge inline data URLs and cap length.
-    """
+    """Cap plain-text length for proxy safety (inline data URLs are promoted upstream, not stripped here)."""
     s = (text or "").strip()
     if not s:
         return ""
-
-    if _STRIP_INLINE_DATA_URLS:
-        m = _DATA_IMAGE_INLINE_RE.search(s)
-        if m is not None:
-            prefix = s[: m.start()].rstrip()
-            note = (
-                "[Image omitted: inline data:image;base64 payload was removed because it exceeds the model context. "
-                "Please attach the image as a file/attachment or describe it in text.]"
-            )
-            s = (prefix + "\n\n" + note).strip() if prefix else note
 
     if len(s) > max_chars:
         s = s[:max_chars].rstrip() + "\n\n" + f"[Truncated: exceeded {max_chars} characters.]"
@@ -175,6 +156,99 @@ def data_url_to_ollama_image_b64(data_url: str) -> tuple[str | None, str | None]
     if len(raw) > VISION_MAX_DECODED_BYTES:
         return None, _NOTE_TOO_LARGE
     return b64, None
+
+
+def _promote_data_urls_in_plain_text(text: str) -> list[dict[str, Any]]:
+    """
+    Split ``text`` into OpenAI-style parts whenever a valid ``data:image/...;base64,...`` URL appears.
+
+    Invalid or oversized blobs become a short ``text`` note; scanning advances to avoid tight loops.
+    """
+    out: list[dict[str, Any]] = []
+    pos = 0
+    images_kept = 0
+    n = len(text)
+    while pos < n:
+        m = _DATA_IMAGE_INLINE_RE.search(text, pos)
+        if m is None:
+            tail = text[pos:]
+            if tail.strip():
+                out.append({"type": "text", "text": tail})
+            break
+        before = text[pos : m.start()]
+        if before.strip():
+            out.append({"type": "text", "text": before})
+        k = m.end()
+        while k < n and text[k] in " \t\n\r":
+            k += 1
+        b = k
+        while b < n and text[b] in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=":
+            b += 1
+        candidate_full = text[m.start() : b]
+        payload, err = data_url_to_ollama_image_b64(candidate_full)
+        if payload is None and b > m.end():
+            for end_idx in range(b, m.end(), -1):
+                trial = text[m.start() : end_idx]
+                p2, _e2 = data_url_to_ollama_image_b64(trial)
+                if p2 is not None:
+                    candidate_full = trial
+                    payload = p2
+                    b = end_idx
+                    err = None
+                    break
+        if payload is not None and images_kept < VISION_MAX_IMAGES_PER_MESSAGE:
+            out.append({"type": "image_url", "image_url": {"url": candidate_full}})
+            images_kept += 1
+            pos = b
+        else:
+            if images_kept >= VISION_MAX_IMAGES_PER_MESSAGE:
+                note = _NOTE_TOO_MANY
+            else:
+                note = err or _NOTE_INVALID
+            out.append({"type": "text", "text": note})
+            pos = b if b > m.end() else m.end()
+    return out
+
+
+def promote_inline_data_image_urls_in_content(content: Any) -> Any:
+    """
+    Rewrite string or multipart ``content`` so inline ``data:image/...;base64,...`` become ``image_url`` parts.
+
+    Returns the original value when there is nothing to promote. String input that yields a single
+    text-only part collapses back to a plain string for backward compatibility.
+    """
+    if isinstance(content, str):
+        if not content or _DATA_IMAGE_INLINE_RE.search(content) is None:
+            return content
+        parts = _promote_data_urls_in_plain_text(content)
+        if len(parts) == 1 and parts[0].get("type") == "text":
+            return str(parts[0].get("text") or "")
+        return parts
+    if not isinstance(content, list):
+        return content
+    out: list[dict[str, Any]] = []
+    for p in content:
+        if not isinstance(p, dict):
+            continue
+        typ = p.get("type")
+        if typ == "image_url":
+            out.append(dict(p))
+            continue
+        if typ == "text" or (typ is None and isinstance(p.get("text"), str)):
+            tx = str(p.get("text", ""))
+            if not tx:
+                continue
+            if _DATA_IMAGE_INLINE_RE.search(tx) is None:
+                out.append({"type": "text", "text": tx})
+                continue
+            out.extend(_promote_data_urls_in_plain_text(tx))
+            continue
+        try:
+            dumped = json.dumps(p, ensure_ascii=False)
+        except (TypeError, ValueError):
+            dumped = str(p)
+        out.append({"type": "text", "text": dumped})
+    return out if out else content
 
 
 def openai_parts_to_flat_text(parts: list[Any]) -> str:
@@ -293,15 +367,16 @@ def build_ollama_user_message_from_openai_content(content: Any) -> dict[str, Any
     Map OpenAI ``user`` ``content`` (string or multipart list) to an Ollama /api/chat message dict.
     Adds ``images`` when multipart contains valid ``data:image`` URLs.
     """
-    if isinstance(content, list):
-        text = openai_parts_to_flat_text(content)
-        images = collect_ollama_images_b64_from_parts(content)
-        msg: dict[str, Any] = {"role": "user", "content": text}
+    promoted = promote_inline_data_image_urls_in_content(content)
+    if isinstance(promoted, list):
+        text = openai_parts_to_flat_text(promoted)
+        images = collect_ollama_images_b64_from_parts(promoted)
+        msg: dict[str, Any] = {"role": "user", "content": sanitize_openai_text_part(text)}
         if images:
             msg["images"] = images
         return msg
-    if isinstance(content, str):
-        return {"role": "user", "content": sanitize_openai_text_part(content)}
+    if isinstance(promoted, str):
+        return {"role": "user", "content": sanitize_openai_text_part(promoted)}
     if content is None:
         return {"role": "user", "content": ""}
     try:
@@ -309,20 +384,3 @@ def build_ollama_user_message_from_openai_content(content: Any) -> dict[str, Any
     except (TypeError, ValueError):
         dumped = str(content)
     return {"role": "user", "content": sanitize_openai_text_part(dumped)}
-
-
-def ollama_messages_drop_images(messages: list[Any]) -> list[dict[str, Any]]:
-    """
-    Shallow-copy ``messages`` and drop ``images`` on each turn.
-
-    Some Ollama backends (especially cloud + tool calling) reject multimodal ``images`` in the same
-    ``/api/chat`` request as ``tools``; the proxy still keeps full messages in the trace.
-    """
-    out: list[dict[str, Any]] = []
-    for m in messages:
-        if not isinstance(m, dict):
-            continue
-        mm = dict(m)
-        mm.pop("images", None)
-        out.append(mm)
-    return out

@@ -267,7 +267,8 @@
   color: inherit;
 }
 
-.coreui-sidebar__icon--openwebui svg {
+.coreui-sidebar__icon--openwebui svg,
+.coreui-sidebar__icon--openwebui img {
   width: 22px;
   height: 22px;
   display: block;

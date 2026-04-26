@@ -42,7 +42,8 @@ from infrastructure.ollama.model_capabilities import (
     get_cached_ollama_capabilities,
 )
 from infrastructure.ollama.openai_multipart_vision import (
-    ollama_messages_drop_images,
+    openai_parts_to_flat_text,
+    promote_inline_data_image_urls_in_content,
     sanitize_openai_text_part,
     sanitize_proxy_content_parts,
     VISION_MAX_DECODED_BYTES,
@@ -340,22 +341,6 @@ _GEMINI_TOOL_STATE_SCHEMA_INIT_PATHS: set[str] = set()
 
 def _is_gemini_model_name(model_name: str | None) -> bool:
     return is_gemini_family_model_name(model_name)
-
-
-def _ollama_upstream_messages_for_tools(
-    messages: list[dict[str, Any]],
-    tools: list[dict[str, Any]] | None,
-    model_name: str | None,
-) -> list[dict[str, Any]]:
-    """
-    Some upstream adapters reject `images` when `tools` is present; historically we stripped
-    images in that case. Gemini supports vision, so keep images when routing to Gemini.
-    """
-    if not tools:
-        return messages
-    if _is_gemini_model_name(model_name):
-        return messages
-    return ollama_messages_drop_images(messages)
 
 
 def _resolve_default_webui_db_path() -> str:
@@ -1487,10 +1472,9 @@ def _iter_proxy_ollama_chat_stream(
     _co = dict(getattr(chat_client, "_default_options", None) or {})
     if options_overlay:
         _co.update(options_overlay)
-    msg_for_upstream = _ollama_upstream_messages_for_tools(messages, tools, model)
     payload: dict[str, Any] = {
         "model": model,
-        "messages": msg_for_upstream,
+        "messages": messages,
         "stream": True,
         "options": dict(_co),
     }
@@ -1579,7 +1563,6 @@ _VISION_ALLOW_ABS_PATHS = str(os.getenv("LLM_PROXY_VISION_ALLOW_ABS_PATHS", "0")
     "true",
     "yes",
 }
-
 _COPILOT_CANNOT_READ_IMAGE_RE = re.compile(
     r'(?is)\bERROR:\s*Cannot\s+read\s+"([^"]+\.(?:png|jpe?g|webp|gif))"\s*\(this model does not support image input\)\.',
 )
@@ -1665,6 +1648,23 @@ def _read_local_image_as_data_url(path: Path) -> str | None:
     return f"data:{mime};base64,{b64}"
 
 
+def _file_hint_and_cleaned_user_text(text: str) -> tuple[str | None, str]:
+    """Detect Copilot/Kilo image file hint or path; return (hint_or_none, text_after_stripping_error_line)."""
+    t = (text or "").strip()
+    if not t:
+        return None, ""
+    file_hint: str | None = None
+    m = _COPILOT_CANNOT_READ_IMAGE_RE.search(t)
+    if m:
+        file_hint = m.group(1).strip()
+        t = _COPILOT_CANNOT_READ_IMAGE_RE.sub("", t).strip()
+    if file_hint is None:
+        m2 = _IMAGE_PATH_HINT_RE.search(t)
+        if m2:
+            file_hint = m2.group(1).strip()
+    return file_hint, t
+
+
 def _maybe_inline_image_from_text_message(msg: dict[str, Any]) -> dict[str, Any]:
     if not _VISION_READ_LOCAL_FILES:
         return msg
@@ -1673,20 +1673,68 @@ def _maybe_inline_image_from_text_message(msg: dict[str, Any]) -> dict[str, Any]
     if str(msg.get("role") or "").strip() != "user":
         return msg
     content = msg.get("content")
-    if not isinstance(content, str) or not content.strip():
-        return msg
 
-    text = content.strip()
     file_hint: str | None = None
-    m = _COPILOT_CANNOT_READ_IMAGE_RE.search(text)
-    if m:
-        file_hint = m.group(1).strip()
-        # Remove the Copilot preamble so the model sees the actual user question.
-        text = _COPILOT_CANNOT_READ_IMAGE_RE.sub("", text).strip()
-    if file_hint is None:
-        m2 = _IMAGE_PATH_HINT_RE.search(text)
-        if m2:
-            file_hint = m2.group(1).strip()
+    text_for_sanitize: str = ""
+
+    if isinstance(content, str):
+        if not str(content).strip():
+            return msg
+        file_hint, text_for_sanitize = _file_hint_and_cleaned_user_text(content)
+    elif isinstance(content, list):
+        new_parts: list[dict[str, Any]] = []
+        hint_consumed = False
+        for p in content:
+            if not isinstance(p, dict):
+                continue
+            typ = p.get("type")
+            if typ == "image_url":
+                new_parts.append(dict(p))
+                continue
+            if typ == "text" or (typ is None and isinstance(p.get("text"), str)):
+                tx = str(p.get("text", ""))
+                if not hint_consumed:
+                    h, cleaned = _file_hint_and_cleaned_user_text(tx)
+                    if h:
+                        file_hint = h
+                        hint_consumed = True
+                        new_parts.append({"type": "text", "text": cleaned})
+                    else:
+                        new_parts.append({"type": "text", "text": tx})
+                else:
+                    new_parts.append({"type": "text", "text": tx})
+                continue
+            try:
+                dumped = json.dumps(p, ensure_ascii=False)
+            except (TypeError, ValueError):
+                dumped = str(p)
+            new_parts.append({"type": "text", "text": dumped})
+        if not file_hint:
+            return msg
+        p = _safe_resolve_local_image_path(file_hint)
+        if p is None:
+            return msg
+        data_url = _read_local_image_as_data_url(p)
+        if not data_url:
+            return msg
+        new_msg = dict(msg)
+        text_blocks: list[dict[str, Any]] = []
+        preserved_imgs: list[dict[str, Any]] = []
+        for block in new_parts:
+            if block.get("type") == "text" and str(block.get("text") or "").strip():
+                text_blocks.append(block)
+            elif block.get("type") == "image_url":
+                preserved_imgs.append(dict(block))
+        st = sanitize_openai_text_part(openai_parts_to_flat_text(text_blocks)) if text_blocks else ""
+        merged: list[dict[str, Any]] = []
+        if st:
+            merged.append({"type": "text", "text": st})
+        merged.extend(preserved_imgs)
+        merged.append({"type": "image_url", "image_url": {"url": data_url}})
+        new_msg["content"] = merged
+        return new_msg
+    else:
+        return msg
 
     if not file_hint:
         return msg
@@ -1699,18 +1747,14 @@ def _maybe_inline_image_from_text_message(msg: dict[str, Any]) -> dict[str, Any]
 
     new_msg = dict(msg)
     new_msg["content"] = [
-        {"type": "text", "text": sanitize_openai_text_part(text) if text else ""},
+        {"type": "text", "text": sanitize_openai_text_part(text_for_sanitize) if text_for_sanitize else ""},
         {"type": "image_url", "image_url": {"url": data_url}},
     ]
     return new_msg
 
 
 def _sanitize_message_text(text: str, *, max_chars: int = 80_000) -> str:
-    """
-    Prevent huge clipboard payloads (e.g. base64 images) from being sent to Ollama.
-    - Removes inline `data:image/...;base64,` payloads (common when pasting images into some chats)
-    - Hard caps message size to keep within model context budget
-    """
+    """Hard-cap user/system string message size (see ``sanitize_openai_text_part``)."""
     return sanitize_openai_text_part(text, max_chars=max_chars)
 
 
@@ -1718,7 +1762,10 @@ def _normalize_and_sanitize_messages(raw_messages: list[Any]) -> list[dict[str, 
     """
     Normalize OpenAI chat messages into a safe shape for the proxy pipeline.
 
-    - String ``content``: sanitize inline data URLs and cap length.
+    For ``user`` messages: optional local-file inlining runs **before** inline data-URL promotion,
+    then sanitization (so path/error hints still work when combined with pasted data URLs).
+
+    - String ``content``: cap length (inline data URLs are promoted for user turns earlier in the pipeline).
     - List ``content`` (OpenAI multimodal): keep validated ``data:image`` ``image_url`` parts for
       downstream mapping to Ollama ``images``; replace unsupported URLs with short text notes.
     """
@@ -1727,7 +1774,9 @@ def _normalize_and_sanitize_messages(raw_messages: list[Any]) -> list[dict[str, 
         if not isinstance(m, dict):
             continue
         nm: dict[str, Any] = dict(m)
-        nm = _maybe_inline_image_from_text_message(nm)
+        if str(m.get("role") or "").strip() == "user":
+            nm = _maybe_inline_image_from_text_message(nm)
+            nm["content"] = promote_inline_data_image_urls_in_content(nm.get("content"))
         nm["role"] = str(m.get("role") or "").strip() or "user"
 
         c = nm.get("content")
@@ -2713,11 +2762,7 @@ def run_chat_completions(
         )
         if messages_diag:
             native_tools_diag.update(messages_diag)
-        native_ollama_messages_for_upstream = (
-            _ollama_upstream_messages_for_tools(native_ollama_messages, native_tools_payload, use_model)
-            if oll_tools
-            else native_ollama_messages
-        )
+        native_ollama_messages_for_upstream = native_ollama_messages
         trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(native_ollama_messages_for_upstream)
         trace["ollama"]["tools"] = list(oll_tools) if isinstance(oll_tools, list) else []
         if (
@@ -2739,11 +2784,7 @@ def run_chat_completions(
                 },
             ]
             native_tools_diag["tool_loop_finalize_nudge"] = True
-            native_ollama_messages_for_upstream = (
-                _ollama_upstream_messages_for_tools(native_ollama_messages, native_tools_payload, use_model)
-                if oll_tools
-                else native_ollama_messages
-            )
+            native_ollama_messages_for_upstream = native_ollama_messages
             trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(native_ollama_messages_for_upstream)
         if native_tools_diag:
             trace["request"]["native_tools_preflight"] = native_tools_diag
