@@ -357,6 +357,8 @@ def test_models_endpoint() -> None:
     data = r.get_json()
     assert "data" in data
     assert isinstance(data["data"], list)
+    for m in data["data"]:
+        assert m.get("supports_vision") is True
 
 
 def test_models_endpoint_includes_chironai_autocomplete_when_backend_configured(
@@ -379,6 +381,8 @@ def test_models_endpoint_includes_chironai_autocomplete_when_backend_configured(
     data = r.get_json() or {}
     ids = [m.get("id") for m in data.get("data") or []]
     assert "ChironAI-Autocomplete" in ids
+    ac = next(m for m in (data.get("data") or []) if m.get("id") == "ChironAI-Autocomplete")
+    assert ac.get("supports_vision") is True
 
 
 def test_chat_completions_chironai_autocomplete_uses_same_prompt_template_as_worker(

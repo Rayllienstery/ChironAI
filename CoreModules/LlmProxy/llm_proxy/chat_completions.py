@@ -53,6 +53,7 @@ from infrastructure.ollama.openai_ollama_tool_bridge import (
     openai_finish_reason_from_ollama,
     openai_tool_choice_means_none,
 )
+from infrastructure.ollama.chat_client import get_ollama_chat_stream_guard_config
 from llm_proxy.contracts import LlmProxyWiring
 from llm_proxy.pipeline_steps import get_proxy_pipeline_step_meta
 from llm_proxy.pipeline_steps.merged_docs_step import run_merged_docs_step
@@ -2794,6 +2795,10 @@ def run_chat_completions(
         # ------------------------------------------------------------------ #
         if stream and build_sse_streaming:
             w.set_proxy_status(w.status_response)
+            _stream_guard_cfg = get_ollama_chat_stream_guard_config()
+            trace["request"]["ollama_stream_connect_timeout_s"] = _stream_guard_cfg["connect_timeout_s"]
+            trace["request"]["ollama_stream_read_timeout_s"] = _stream_guard_cfg["read_timeout_s"]
+            trace["request"]["ollama_stream_max_duration_s"] = _stream_guard_cfg["max_duration_s"]
 
             def generate_sse_native():
                 oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
@@ -2870,8 +2875,16 @@ def run_chat_completions(
                         {}, ollama_done_reason=ollama_done_reason,
                     )
 
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}]})}\n\n"
-                yield "data: [DONE]\n\n"
+                _finish_payload = f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}]})}\n\n"
+                try:
+                    yield _finish_payload
+                    yield "data: [DONE]\n\n"
+                except Exception:
+                    try:
+                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+                        yield "data: [DONE]\n\n"
+                    except Exception:
+                        pass
 
                 _pt = max(1, int(len(json.dumps(native_ollama_messages_for_upstream, ensure_ascii=False)) / 4))
                 _ct = max(1, int(len(full_content) / 4))

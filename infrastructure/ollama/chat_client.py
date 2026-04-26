@@ -7,6 +7,8 @@ Calls Ollama via ollama_interactor CLI (subprocess).
 from __future__ import annotations
 
 import json
+import os
+import time
 from collections.abc import Iterator
 from typing import Any, Literal
 
@@ -21,6 +23,46 @@ except ImportError:
 import requests
 
 from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_chat
+
+
+def _float_env_seconds(name: str, default: float, *, lo: float | None = None, hi: float | None = None) -> float:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        v = default
+    else:
+        try:
+            v = float(str(raw).strip())
+        except (TypeError, ValueError):
+            v = default
+    if lo is not None and v < lo:
+        v = lo
+    if hi is not None and v > hi:
+        v = hi
+    return v
+
+
+def get_ollama_chat_stream_guard_config() -> dict[str, float]:
+    """
+    HTTP streaming guards for ``/api/chat`` (NDJSON over ``iter_lines``).
+
+    - ``connect_timeout_s`` / ``read_timeout_s`` → ``requests`` ``timeout=(connect, read)`` per read.
+    - ``max_duration_s``: wall-clock cap between successful line reads; ``0`` disables.
+
+    Env: ``OLLAMA_CHAT_STREAM_CONNECT_TIMEOUT_S`` (default 10),
+    ``OLLAMA_CHAT_STREAM_READ_TIMEOUT_S`` (default 60),
+    ``OLLAMA_CHAT_STREAM_MAX_DURATION_S`` (default 900; ``0`` = no cap).
+    """
+    return {
+        "connect_timeout_s": _float_env_seconds(
+            "OLLAMA_CHAT_STREAM_CONNECT_TIMEOUT_S", 10.0, lo=1.0, hi=300.0
+        ),
+        "read_timeout_s": _float_env_seconds(
+            "OLLAMA_CHAT_STREAM_READ_TIMEOUT_S", 60.0, lo=5.0, hi=7200.0
+        ),
+        "max_duration_s": _float_env_seconds(
+            "OLLAMA_CHAT_STREAM_MAX_DURATION_S", 900.0, lo=0.0, hi=86400.0
+        ),
+    }
 
 
 def normalize_ollama_chat_options(options: dict[str, Any] | None) -> dict[str, Any]:
@@ -139,8 +181,10 @@ class OllamaChatClient:
             {**(self._default_options or {}), **(payload.get("options") or {})}
         )
         payload["options"] = opts
+        _guard = get_ollama_chat_stream_guard_config()
+        _http_timeout = (_guard["connect_timeout_s"], _guard["read_timeout_s"])
         try:
-            resp = requests.post(self._url, json=payload, timeout=600, stream=True)
+            resp = requests.post(self._url, json=payload, timeout=_http_timeout, stream=True)
             resp.raise_for_status()
         except requests.exceptions.HTTPError as e:
             snippet = ""
@@ -203,8 +247,11 @@ class OllamaChatClient:
             {**(self._default_options or {}), **(payload.get("options") or {})}
         )
         payload["options"] = opts
+        _guard = get_ollama_chat_stream_guard_config()
+        _http_timeout = (_guard["connect_timeout_s"], _guard["read_timeout_s"])
+        _max_wall_s = float(_guard["max_duration_s"])
         try:
-            resp = requests.post(self._url, json=payload, timeout=600, stream=True)
+            resp = requests.post(self._url, json=payload, timeout=_http_timeout, stream=True)
             resp.raise_for_status()
         except requests.exceptions.HTTPError as e:
             snippet = ""
@@ -222,54 +269,87 @@ class OllamaChatClient:
         merged: dict[str, Any] = {}
         prev_th = ""
         prev_co = ""
+        saw_done = False
+        stream_aborted = False
+        t0 = time.monotonic()
         try:
-            for line in resp.iter_lines(decode_unicode=True):
-                if not line or not str(line).strip():
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(obj, dict):
-                    continue
-                if obj.get("error") is not None:
-                    yield ("error", str(obj.get("error")))
-                    return
-                m = obj.get("message")
-                if isinstance(m, dict):
-                    merged = _merge_ollama_assistant_message_parts(merged, m)
-                th = merged.get("thinking") if isinstance(merged.get("thinking"), str) else ""
-                co = merged.get("content") if isinstance(merged.get("content"), str) else ""
-                if th.startswith(prev_th) and len(th) >= len(prev_th):
-                    suffix = th[len(prev_th):]
-                    if suffix:
-                        yield ("thinking_delta", suffix)
-                    prev_th = th
-                elif th != prev_th:
-                    if th:
-                        yield ("thinking_delta", th)
-                    prev_th = th
-                if co.startswith(prev_co) and len(co) >= len(prev_co):
-                    suffix_c = co[len(prev_co):]
-                    if suffix_c:
-                        yield ("content_delta", suffix_c)
-                    prev_co = co
-                elif co != prev_co:
-                    if co:
-                        yield ("content_delta", co)
-                    prev_co = co
-                if obj.get("done"):
-                    tc = merged.get("tool_calls")
-                    if isinstance(tc, list) and tc:
-                        yield ("tool_calls", tc)
-                    metrics = {
-                        k: v for k, v in obj.items()
-                        if k not in ("message", "model", "done", "created_at") and v is not None
-                    }
-                    metrics["_merged_message"] = dict(merged)
-                    yield ("done", metrics)
+            try:
+                for line in resp.iter_lines(decode_unicode=True):
+                    if _max_wall_s > 0.0 and (time.monotonic() - t0) > _max_wall_s:
+                        yield (
+                            "error",
+                            (
+                                f"Ollama chat stream exceeded max wall duration ({int(_max_wall_s)}s) "
+                                f"(model={use_model}, url={self._url})."
+                            ),
+                        )
+                        stream_aborted = True
+                        break
+                    if not line or not str(line).strip():
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(obj, dict):
+                        continue
+                    if obj.get("error") is not None:
+                        yield ("error", str(obj.get("error")))
+                        stream_aborted = True
+                        break
+                    m = obj.get("message")
+                    if isinstance(m, dict):
+                        merged = _merge_ollama_assistant_message_parts(merged, m)
+                    th = merged.get("thinking") if isinstance(merged.get("thinking"), str) else ""
+                    co = merged.get("content") if isinstance(merged.get("content"), str) else ""
+                    if th.startswith(prev_th) and len(th) >= len(prev_th):
+                        suffix = th[len(prev_th):]
+                        if suffix:
+                            yield ("thinking_delta", suffix)
+                        prev_th = th
+                    elif th != prev_th:
+                        if th:
+                            yield ("thinking_delta", th)
+                        prev_th = th
+                    if co.startswith(prev_co) and len(co) >= len(prev_co):
+                        suffix_c = co[len(prev_co):]
+                        if suffix_c:
+                            yield ("content_delta", suffix_c)
+                        prev_co = co
+                    elif co != prev_co:
+                        if co:
+                            yield ("content_delta", co)
+                        prev_co = co
+                    if obj.get("done"):
+                        saw_done = True
+                        tc = merged.get("tool_calls")
+                        if isinstance(tc, list) and tc:
+                            yield ("tool_calls", tc)
+                        metrics = {
+                            k: v for k, v in obj.items()
+                            if k not in ("message", "model", "done", "created_at") and v is not None
+                        }
+                        metrics["_merged_message"] = dict(merged)
+                        yield ("done", metrics)
+                        break
+            except requests.exceptions.ReadTimeout:
+                yield (
+                    "error",
+                    (
+                        f"Ollama chat stream read idle timeout (>{int(_guard['read_timeout_s'])}s without data) "
+                        f"(model={use_model}, url={self._url})."
+                    ),
+                )
+                stream_aborted = True
         finally:
             resp.close()
+        if not saw_done and not stream_aborted:
+            yield (
+                "error",
+                (
+                    f"Ollama chat stream ended without a terminal done chunk (model={use_model}, url={self._url})."
+                ),
+            )
 
     def iter_chat_api_stream_openai_parts(
         self,
@@ -503,4 +583,4 @@ def _aggregate_ollama_chat_stream_response(resp: Any) -> dict[str, Any]:
     return last_any or {}
 
 
-__all__ = ["OllamaChatClient"]
+__all__ = ["OllamaChatClient", "get_ollama_chat_stream_guard_config"]

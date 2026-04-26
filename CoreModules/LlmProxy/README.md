@@ -5,7 +5,7 @@ Installable package **`llm-proxy`**: **OpenAI-** and **Anthropic Messages–** c
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/v1` | API metadata |
-| GET | `/v1/models` | **OpenAI clients:** `object`/`data` list of **build ids** plus optional **ChironAI-Autocomplete** when configured. **Anthropic clients:** send header `anthropic-version` (any non-empty value, e.g. `2023-06-01`) for Anthropic-shaped `data` / `first_id` / `has_more`. |
+| GET | `/v1/models` | **OpenAI clients:** `object`/`data` list of **build ids** plus optional **ChironAI-Autocomplete** when configured. Each OpenAI-shaped row includes Chiron extension **`supports_vision`: always `true`** so clients (e.g. Kilo) do not hide image attachment; purely text-only upstream models may still reject or ignore images. **Anthropic clients:** send header `anthropic-version` (any non-empty value, e.g. `2023-06-01`) for Anthropic-shaped `data` / `first_id` / `has_more`. |
 | POST | `/v1/messages` | **Anthropic Messages API** — translated to the same pipeline as `POST /v1/chat/completions` (RAG, tools, streaming). Empty `x-api-key` is accepted for local use (e.g. Anthropic-style env with Ollama-compatible tokens). |
 | POST | `/v1/chat/completions` | Chat with optional RAG, tools, streaming |
 | POST | `/v1/completions` | OpenAI legacy completions (`choices[].text`) — implemented as transparent **`POST …/api/generate`** upstream (same as raw Ollama). No RAG, no WebUI prompt template, no web supplement. Optional `LLM_PROXY_COMPLETIONS_RAW` (`true` by default: sets Ollama `raw`). Zed **edit prediction** (`open_ai_compatible_api`): use `http://<host>:<port>/v1/completions`. |
@@ -79,6 +79,18 @@ Pytest adds `CoreModules/LlmProxy` to `pythonpath` in the root [`pyproject.toml`
 | `LLM_PROXY_AUTOCOMPLETE_MODEL_ID` | Logical id for fast inline completion (default `ChironAI-Autocomplete`) |
 | `LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL` | Concrete Ollama tag for autocomplete (overrides WebUI `proxy_autocomplete_model` when set) |
 | `LLM_PROXY_COMPLETIONS_RAW` | If not `0`/`false`/`no`, `/v1/completions` sets Ollama `raw: true` on `/api/generate` (default: on) |
+
+### Upstream `/api/chat` stream guards (hang protection)
+
+When the host uses HTTP streaming to Ollama ``/api/chat`` (NDJSON lines), the client applies **bounded** timeouts so the proxy can end an SSE stream with an error and ``[DONE]`` instead of waiting indefinitely if the upstream never sends a terminal ``{"done": true}`` chunk or goes silent mid-stream (common on long multi-tool runs).
+
+| Variable | Purpose |
+|----------|---------|
+| `OLLAMA_CHAT_STREAM_CONNECT_TIMEOUT_S` | Connect timeout in seconds (default `10`) |
+| `OLLAMA_CHAT_STREAM_READ_TIMEOUT_S` | Max seconds without receiving any bytes on the socket before aborting the stream (default `60`); raise for very slow models or long pauses between chunks |
+| `OLLAMA_CHAT_STREAM_MAX_DURATION_S` | Max wall-clock time **between** successful line reads; `0` disables the cap (default `900`) |
+
+For native-tools **token** streaming, proxy traces include ``ollama_stream_connect_timeout_s``, ``ollama_stream_read_timeout_s``, and ``ollama_stream_max_duration_s`` on ``trace.request``.
 
 Autocomplete is **additive**: same `/v1/chat/completions` endpoint; requests with `model` set to the autocomplete logical id skip RAG (and web supplement) and use the small Ollama model from WebUI or env. System prompt comes from the same WebUI **Prompt template** (`prompt_name`) as chat. The second entry appears in `/v1/models` only after that backend model is configured.
 

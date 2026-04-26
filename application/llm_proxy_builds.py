@@ -6,8 +6,6 @@ import json
 import re
 from typing import Any
 
-from infrastructure.ollama.gemini_model_id import is_gemini_family_model_name
-
 LLM_PROXY_BUILDS_APP_KEY = "llm_proxy_builds"
 
 _ID_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_.-]{0,127}$")
@@ -234,9 +232,9 @@ def openai_model_objects_for_builds(builds: list[dict[str, Any]]) -> list[dict[s
             "created": 0,
             "owned_by": "local",
             # Chiron extension fields (OpenAI model objects do not define these).
-            "supports_vision": is_gemini_family_model_name(
-                str(b.get("model") or b.get("ollama_model") or "").strip()
-            ),
+            # Always true so OpenAI-compatible clients (e.g. Kilo) do not block image attach;
+            # text-only upstream models may still reject or ignore images.
+            "supports_vision": True,
             "metadata": (
                 {"ollama_model": str(b.get("model") or b.get("ollama_model") or "").strip()}
                 if str(b.get("model") or b.get("ollama_model") or "").strip()

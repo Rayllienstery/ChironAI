@@ -677,63 +677,7 @@ function App() {
                 </Card>
               </>
             )}
-            <Card className="metric-card metric-card-combined">
-              <span className="metric-segment">
-                <span className="metric-label">Proxy</span>
-                <span className="metric-value">
-                  {dashboardMetrics?.proxy_status ?? "Idle"}
-                </span>
-              </span>
-              <span className="metric-sep" aria-hidden="true">
-                |
-              </span>
-              <span className="metric-segment">
-                <span className="metric-label">LATEST REQUEST TOOK</span>
-                <span className="metric-value">
-                  {dashboardMetrics?.latest_request_seconds != null
-                    ? `${Number(dashboardMetrics.latest_request_seconds).toFixed(1)} s`
-                    : "—"}
-                </span>
-              </span>
-              {dashboardMetrics?.latest_request_rag_steps != null && (
-                <>
-                  <span className="metric-sep" aria-hidden="true">
-                    |
-                  </span>
-                  <span className="metric-segment">
-                    <span className="metric-label">RAG steps</span>
-                    <span className="metric-value">
-                      embed{" "}
-                      {Number(
-                        dashboardMetrics.latest_request_rag_steps.embed_s ?? 0,
-                      ).toFixed(1)}
-                      s{" | "}
-                      search{" "}
-                      {Number(
-                        dashboardMetrics.latest_request_rag_steps.search_s ?? 0,
-                      ).toFixed(1)}
-                      s{" | "}
-                      rerank{" "}
-                      {Number(
-                        dashboardMetrics.latest_request_rag_steps.rerank_s ?? 0,
-                      ).toFixed(1)}
-                      s
-                    </span>
-                  </span>
-                </>
-              )}
-              <span className="metric-sep" aria-hidden="true">
-                |
-              </span>
-              <span className="metric-segment">
-                <span className="metric-label">Total Tokens</span>
-                <span className="metric-value">
-                  {dashboardMetrics?.latest_request_total_tokens != null
-                    ? String(dashboardMetrics.latest_request_total_tokens)
-                    : "—"}
-                </span>
-              </span>
-            </Card>
+
           </div>
           )}
         </header>

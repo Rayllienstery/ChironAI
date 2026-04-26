@@ -134,3 +134,48 @@ def test_iter_chat_api_stream_openai_parts_keeps_visible_stream_order(
         ("content", "Answer"),
         ("content", " done"),
     ]
+
+
+def test_iter_chat_api_stream_events_errors_when_stream_closes_without_done(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def iter_lines(self, decode_unicode: bool = True):  # noqa: ARG002
+            yield json.dumps({"message": {"content": "partial only"}})
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(chat_client_module.requests, "post", lambda *args, **kwargs: FakeResponse())
+
+    client = OllamaChatClient(base_url="http://example.test/api/chat", model="fake")
+    events = list(client.iter_chat_api_stream_events({"model": "fake", "messages": []}))
+
+    assert events[-1][0] == "error"
+    assert "without a terminal done chunk" in events[-1][1]
+
+
+def test_iter_chat_api_stream_events_read_timeout_yields_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def iter_lines(self, decode_unicode: bool = True):  # noqa: ARG002
+            yield json.dumps({"message": {"content": "a"}})
+            raise chat_client_module.requests.exceptions.ReadTimeout()
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(chat_client_module.requests, "post", lambda *args, **kwargs: FakeResponse())
+
+    client = OllamaChatClient(base_url="http://example.test/api/chat", model="fake")
+    events = list(client.iter_chat_api_stream_events({"model": "fake", "messages": []}))
+
+    assert events[-1][0] == "error"
+    assert "read idle timeout" in events[-1][1]
