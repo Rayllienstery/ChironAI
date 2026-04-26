@@ -225,6 +225,9 @@ function App() {
       });
       setExtensionTabs(tabs);
       setExtensionServiceStatusByTabId(serviceStatusByTabId);
+      if (tabs.length > 0) {
+        void import("./components/ExtensionRuntimeTab");
+      }
     } catch {
       setExtensionTabs([]);
       setExtensionServiceStatusByTabId({});

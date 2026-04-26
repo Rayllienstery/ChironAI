@@ -168,7 +168,7 @@ def _responses_responses_function_tool_to_chat_shape(tool: dict[str, Any]) -> di
     OpenAI documents that Responses uses **internally-tagged** function objects (``name``,
     ``description``, ``parameters``, ``strict`` on the same object as ``type``), while
     Chat Completions use **externally-tagged** nesting under ``function``.
-    Codex CLI (``wire_api = "responses"``) follows Responses. Our stack still calls
+    Clients using Responses-style tools (``wire_api = "responses"``) follow that shape. Our stack still calls
     ``run_chat_completions`` / Ollama with the Chat tool wire — so this mapping is required.
 
     See: https://developers.openai.com/docs/guides/migrate-to-responses (section *Update function definitions*).
@@ -200,7 +200,7 @@ def _responses_responses_function_tool_to_chat_shape(tool: dict[str, Any]) -> di
 
 
 def _responses_shell_function_tool(*, description: str | None) -> dict[str, Any]:
-    """OpenAI-chat ``function`` tool for shell execution (Codex harness runs locally)."""
+    """OpenAI-chat ``function`` tool for shell execution (local client harness)."""
     return {
         "type": "function",
         "function": {
@@ -297,7 +297,7 @@ def _responses_normalize_tools(tools: Any) -> tuple[list[dict[str, Any]], dict[s
                             "name": name,
                             "description": str(
                                 tool.get("description")
-                                or "Search the web for up-to-date information. The Codex CLI executes this tool locally; Chiron can inject supplementary web context when fetch_web_knowledge is enabled on the proxy."
+                                or "Search the web for up-to-date information. The client executes this tool locally; Chiron can inject supplementary web context when fetch_web_knowledge is enabled on the proxy."
                             ),
                             "parameters": {
                                 "type": "object",
@@ -330,7 +330,7 @@ def _responses_normalize_tools(tools: Any) -> tuple[list[dict[str, Any]], dict[s
                             "name": name,
                             "description": str(
                                 tool.get("description")
-                                or "Search files in the workspace. Executed by the Codex CLI / IDE harness."
+                                or "Search files in the workspace. Executed by the local client or IDE harness."
                             ),
                             "parameters": {
                                 "type": "object",
@@ -362,7 +362,7 @@ def _responses_normalize_tools(tools: Any) -> tuple[list[dict[str, Any]], dict[s
                             "name": name,
                             "description": str(
                                 tool.get("description")
-                                or "Computer-use UI automation. Executed by the Codex CLI when supported; otherwise the harness may decline."
+                                or "Computer-use UI automation. Executed by the local client when supported; otherwise the harness may decline."
                             ),
                             "parameters": {
                                 "type": "object",
@@ -688,7 +688,7 @@ def _responses_sse_payload(out: dict[str, Any]) -> Response:
                         "type": "response.output_item.done",
                         "response_id": rid,
                         "output_index": idx,
-                        # Full item (incl. content) — some Codex builds render from ``output_item.done`` only.
+                        # Full item (incl. content) — some Responses clients render from ``output_item.done`` only.
                         "item": item,
                     },
                 ]

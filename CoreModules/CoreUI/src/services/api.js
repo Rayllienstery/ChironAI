@@ -161,57 +161,6 @@ export async function previewLlmProxyBuildModel(model, providerId = null) {
   return data;
 }
 
-export async function getProxyConfiguredStatus() {
-  const response = await fetch(`${API_BASE}/proxy-configured/status`);
-  if (!response.ok) {
-    throw new Error('Failed to get proxy configured status');
-  }
-  return response.json();
-}
-
-export async function getProxyConfiguredCurrentValues() {
-  const response = await fetch(`${API_BASE}/proxy-configured/current-values`);
-  if (!response.ok) {
-    return null;
-  }
-  return response.json();
-}
-
-export async function generateProxyConfiguredScripts(config) {
-  const { baseUrl, buildId } = config;
-  const response = await fetch(`${API_BASE}/proxy-configured/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ baseUrl, buildId }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error || 'Failed to generate scripts');
-  }
-  return data;
-}
-
-export async function getChironGlobalStatus() {
-  const response = await fetch(`${API_BASE}/proxy-configured/chiron-global/status`);
-  if (!response.ok) {
-    throw new Error('Failed to get Chiron global status');
-  }
-  return response.json();
-}
-
-export async function installChironGlobal() {
-  const response = await fetch(`${API_BASE}/proxy-configured/chiron-global/install`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error || 'Failed to install Chiron globally');
-  }
-  return data;
-}
-
 export async function updateModelSettings(settings) {
   const response = await fetch(`${API_BASE}/model-settings`, {
     method: 'POST',

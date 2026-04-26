@@ -1651,21 +1651,23 @@ function CrawlerTab() {
                         </td>
                         <td>
                           <div className="source-actions">
-                            <button
-                              type="button"
-                              className="crawler-button small"
-                              onClick={() => handleSourceClick(source.id)}
-                            >
-                              {selectedSource === source.id ? "Hide" : "View"}{" "}
-                              Details
-                            </button>
+                             <button
+                               type="button"
+                               className="crawler-button small"
+                               onClick={() => handleSourceClick(source.id)}
+                             >
+                               <span className="material-symbols-outlined" style={{ fontSize: '16px', marginRight: '4px', verticalAlign: 'middle' }}>
+                                 {selectedSource === source.id ? "visibility_off" : "visibility"}
+                               </span>
+                               {selectedSource === source.id ? "Hide" : "View"} Details
+                             </button>
                             <button
                               type="button"
                               className="crawler-button small"
                               onClick={() => handleEditSource(source.id)}
                               title="Edit source configuration"
                             >
-                              ✍️ Edit
+                              <span className="material-symbols-outlined" style={{ fontSize: '16px', marginRight: '4px', verticalAlign: 'middle' }}>edit</span> Edit
                             </button>
                             <button
                               type="button"
@@ -1679,7 +1681,9 @@ function CrawlerTab() {
                                   <span className="spinner"></span> Crawling...
                                 </>
                                 ) : (
-                                  "🔄 Refresh"
+                                  <>
+                                    <span className="material-symbols-outlined" style={{ fontSize: '16px', marginRight: '4px', verticalAlign: 'middle' }}>refresh</span> Refresh
+                                  </>
                                 )}
                             </button>
                           </div>

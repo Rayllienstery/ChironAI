@@ -2911,17 +2911,17 @@ def test_v1_responses_tools_normalizer_drops_unsupported_types() -> None:
         [
             {"type": "mcp_server"},
             {"type": "image_generation"},
-            {"type": "unknown_codex_tool_xyz"},
+            {"type": "unknown_custom_tool_xyz"},
         ]
     )
     assert tools == []
     assert diag.get("tools_count_raw") == 3
     assert diag.get("tools_count_normalized") == 0
     dropped = set(diag.get("tools_types_dropped") or [])
-    assert {"mcp_server", "image_generation", "unknown_codex_tool_xyz"}.issubset(dropped)
+    assert {"mcp_server", "image_generation", "unknown_custom_tool_xyz"}.issubset(dropped)
 
 
-def test_v1_responses_tools_normalizer_maps_codex_builtin_tools_to_functions() -> None:
+def test_v1_responses_tools_normalizer_maps_responses_builtin_tools_to_functions() -> None:
     import llm_proxy.v1_blueprint as v1_blueprint
 
     tools, diag = v1_blueprint._responses_normalize_tools(
@@ -2938,8 +2938,8 @@ def test_v1_responses_tools_normalizer_maps_codex_builtin_tools_to_functions() -
     assert diag.get("tools_count_normalized") == 4
 
 
-def test_v1_responses_tools_normalizer_accepts_codex_flat_function_tools() -> None:
-    """Codex often sends ``type:function`` with ``name``/``parameters`` at top level (no ``function`` dict)."""
+def test_v1_responses_tools_normalizer_accepts_flat_function_tools() -> None:
+    """Some Responses clients send ``type:function`` with ``name``/``parameters`` at top level (no ``function`` dict)."""
     import llm_proxy.v1_blueprint as v1_blueprint
 
     tools, diag = v1_blueprint._responses_normalize_tools(
@@ -3015,10 +3015,10 @@ def test_responses_sse_payload_output_item_done_includes_full_message_item() -> 
                 "type": "message",
                 "role": "assistant",
                 "status": "completed",
-                "content": [{"type": "output_text", "text": "Hello codex", "annotations": []}],
+                "content": [{"type": "output_text", "text": "Hello assistant", "annotations": []}],
             }
         ],
-        "output_text": "Hello codex",
+        "output_text": "Hello assistant",
     }
     resp = v1_blueprint._responses_sse_payload(out)
     payload = resp.get_data(as_text=True)
@@ -3033,7 +3033,7 @@ def test_responses_sse_payload_output_item_done_includes_full_message_item() -> 
             if item.get("type") == "message":
                 assert item.get("id") == msg_id
                 assert item.get("content")
-                assert "Hello codex" in json.dumps(item)
+                assert "Hello assistant" in json.dumps(item)
                 return
     raise AssertionError("message output_item.done with content not found")
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
 from typing import Any
@@ -221,16 +222,29 @@ class OllamaProvider:
         }
 
     def get_tab_payload(self, *, runtime: Any | None = None) -> dict[str, Any]:
-        # UI should not block on slow/unreachable Ollama. Use short timeouts + TTL caching.
+        # UI should not block on slow/unreachable Ollama. Short timeouts + TTL cache; ping and
+        # model list run concurrently (same worst-case as one slow hop, not sequential).
         base_url = self._base_url()
-        health = self.health_check(timeout_sec=0.8, cache_ttl_sec=2.0)
-
         hidden_ids = self._hidden_model_ids()
-        all_models = self._all_model_entries(timeout_sec=1.2, cache_ttl_sec=30.0, allow_stale=True)
+        hidden_frozen = frozenset(hidden_ids)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            fut_health = pool.submit(
+                lambda: self.health_check(timeout_sec=0.75, cache_ttl_sec=2.0),
+            )
+            fut_models = pool.submit(
+                lambda: self._all_model_entries(
+                    timeout_sec=0.9,
+                    cache_ttl_sec=30.0,
+                    allow_stale=True,
+                ),
+            )
+            health = fut_health.result()
+            all_models = fut_models.result()
 
         from infrastructure.ollama.ollama_model_visibility import filter_ollama_tag_entries_for_editors
 
-        visible_models = filter_ollama_tag_entries_for_editors(all_models, list(hidden_ids))
+        visible_models = filter_ollama_tag_entries_for_editors(all_models, hidden_frozen)
         selected_model = visible_models[0] if visible_models else (all_models[0] if all_models else None)
         selected_model_name = str((selected_model or {}).get("name") or (selected_model or {}).get("model") or "").strip()
 
@@ -341,7 +355,7 @@ class OllamaProvider:
                                     "options": [
                                         {
                                             "value": str(item.get("name") or item.get("model") or ""),
-                                            "label": self._model_option_label(item),
+                                            "label": self._model_option_label(item, hidden_ids),
                                         }
                                         for item in all_models
                                     ],
@@ -646,11 +660,11 @@ class OllamaProvider:
 
         return set(get_hidden_ollama_model_ids())
 
-    def _model_option_label(self, item: dict[str, Any]) -> str:
+    def _model_option_label(self, item: dict[str, Any], hidden_ids: set[str]) -> str:
         model_id = str(item.get("name") or item.get("model") or "").strip()
         if not model_id:
             return ""
-        if model_id in self._hidden_model_ids():
+        if model_id in hidden_ids:
             return f"{model_id} (hidden)"
         return model_id
 

@@ -147,11 +147,11 @@ function LlmProxyTab({
                 proxy, and use your <strong>build id</strong> as the model.
               </li>
               <li>
-                <strong>Claude Code (Anthropic)</strong>: set <code>ANTHROPIC_BASE_URL</code> to this proxy&apos;s base URL
-                (no path suffix), <code>ANTHROPIC_API_KEY</code> empty, <code>ANTHROPIC_AUTH_TOKEN=ollama</code> (or your
-                token policy). Run <code>claude --model &lt;your-build-id&gt;</code> (list ids with{' '}
-                <code>GET /v1/models</code> and header <code>anthropic-version: 2023-06-01</code>). See{' '}
-                <code>CoreModules/LlmProxy/README.md</code>.
+                <strong>Anthropic Messages clients</strong>: set <code>ANTHROPIC_BASE_URL</code> to this proxy&apos;s base URL
+                (no path suffix), <code>ANTHROPIC_API_KEY</code> empty, <code>ANTHROPIC_AUTH_TOKEN</code> to your token policy
+                (e.g. <code>ollama</code> for local). Send requests to <code>POST /v1/messages</code> with{' '}
+                <code>model</code> set to a <strong>build id</strong>; list ids with <code>GET /v1/models</code> and header{' '}
+                <code>anthropic-version: 2023-06-01</code>. See <code>CoreModules/LlmProxy/README.md</code>.
               </li>
               <li>
                 Per-request behavior (Ollama model, prompts, RAG/web flags) is configured per <strong>build</strong> in the{' '}

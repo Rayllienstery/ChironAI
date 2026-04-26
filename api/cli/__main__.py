@@ -15,9 +15,7 @@ Or: python tmrag.py <command> ...
 from __future__ import annotations
 
 import argparse
-import json
 import os
-import shutil
 import subprocess
 import sys
 
@@ -33,133 +31,6 @@ def _app_py() -> str:
 def _run(args: list[str], cwd: str | None = None) -> int:
     cmd = [sys.executable] + args
     return subprocess.run(cmd, cwd=cwd or _root()).returncode
-
-
-def _default_codex_shim_path() -> str:
-    home = os.path.expanduser("~")
-    return os.path.join(home, ".chironai", "bin", "codex.cmd")
-
-
-def _norm_path(p: str) -> str:
-    return os.path.normcase(os.path.normpath((p or "").strip().strip('"')))
-
-
-def _is_launchable_binary(path: str) -> bool:
-    """
-    Best-effort probe for Windows launchability.
-    Returns False for non-Win32 / broken executables (e.g. WinError 193).
-    """
-    try:
-        res = subprocess.run(
-            [path, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=6,
-        )
-        # Any return code means process started; non-zero is still launchable.
-        return res.returncode in (0, 1, 2)
-    except OSError:
-        return False
-    except Exception:
-        # Timeout/other runtime issues still mean CreateProcess succeeded.
-        return True
-
-
-def _find_real_codex_executable(shim_path: str | None = None) -> str | None:
-    """
-    Resolve a real codex executable path, skipping the Chiron shim itself.
-    This prevents recursion when global `codex` is a wrapper to `chironai launch codex`.
-    """
-    shim_norm = _norm_path(shim_path or _default_codex_shim_path())
-    candidates: list[str] = []
-    if os.name == "nt":
-        for probe_name in ("codex.cmd", "codex"):
-            try:
-                out = subprocess.run(
-                    ["cmd", "/c", "where", probe_name],
-                    capture_output=True,
-                    text=True,
-                    timeout=8,
-                )
-                if out.returncode == 0:
-                    candidates.extend([ln.strip() for ln in (out.stdout or "").splitlines() if ln.strip()])
-            except Exception:
-                pass
-
-    if not candidates:
-        found = shutil.which("codex.cmd") or shutil.which("codex")
-        if found:
-            candidates = [found]
-
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for c in candidates:
-        key = _norm_path(c)
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(c)
-
-    for c in deduped:
-        if _norm_path(c) != shim_norm and _is_launchable_binary(c):
-            return c
-    return None
-
-
-def _resolve_default_codex_model() -> str:
-    """
-    Resolve default build/model for `chironai launch codex`.
-    Priority:
-    1) If llm_proxy_builds exists:
-       - app_settings.proxy_model when it matches a build id
-       - else first build id
-    2) Otherwise: empty (caller decides whether to error)
-    """
-    try:
-        from infrastructure.database.settings_repository import get_settings_repository
-
-        repo = get_settings_repository()
-        model = (repo.get_app_setting("proxy_model") or "").strip()
-
-        raw_builds = (repo.get_app_setting("llm_proxy_builds") or "").strip()
-        if raw_builds:
-            try:
-                builds = json.loads(raw_builds)
-                if isinstance(builds, list):
-                    build_ids = [str((b or {}).get("id") or "").strip() for b in builds if isinstance(b, dict)]
-                    build_ids = [x for x in build_ids if x]
-                    if build_ids:
-                        if model and model in build_ids:
-                            return model
-                        return build_ids[0]
-            except json.JSONDecodeError:
-                pass
-    except Exception:
-        pass
-    return ""
-
-
-def _build_codex_proxy_overrides(base_url: str) -> list[str]:
-    """
-    Runtime Codex config overrides that force custom provider routing through Chiron proxy.
-    """
-    base = (base_url or "").strip().rstrip("/")
-    v1_base = base if base.lower().endswith("/v1") else f"{base}/v1"
-    v1_base = f"{v1_base}/"
-    provider_id = "chironai-launch"
-    return [
-        "-c",
-        f'model_provider="{provider_id}"',
-        "-c",
-        # Keep provider shape aligned with Codex Ollama integration semantics.
-        f'model_providers.{provider_id}.name="Ollama"',
-        "-c",
-        f'model_providers.{provider_id}.base_url="{v1_base}"',
-        "-c",
-        f'model_providers.{provider_id}.wire_api="responses"',
-        "-c",
-        f'openai_base_url="{v1_base}"',
-    ]
 
 
 def cmd_start(_: argparse.Namespace) -> int:
@@ -305,63 +176,6 @@ def cmd_test_single(ns: argparse.Namespace) -> int:
     return _run(argv, cwd=os.path.join(_root(), "WebUI"))
 
 
-def cmd_launch_codex(ns: argparse.Namespace) -> int:
-    shim_path = (getattr(ns, "shim_path", None) or "").strip() or _default_codex_shim_path()
-    exe = _find_real_codex_executable(shim_path=shim_path)
-    if not exe:
-        print(
-            "A real codex CLI was not found in PATH (only shim or none). "
-            "Install with: npm install -g @openai/codex",
-            file=sys.stderr,
-        )
-        return 1
-
-    base_url = (getattr(ns, "base_url", None) or "").strip() or "http://127.0.0.1:8080"
-    env_base_url = base_url.rstrip("/")
-    if not env_base_url.lower().endswith("/v1"):
-        env_base_url = f"{env_base_url}/v1"
-    api_key = (getattr(ns, "api_key", None) or "").strip() or "ChironAI"
-    working_dir = (getattr(ns, "working_dir", None) or "").strip() or os.getcwd()
-    model = (getattr(ns, "model", None) or "").strip()
-    if not model:
-        model = _resolve_default_codex_model()
-    if not model:
-        print(
-            "No model resolved from llm_proxy_builds. Configure at least one LLM Proxy build id "
-            "or pass --model explicitly.",
-            file=sys.stderr,
-        )
-        return 1
-    profile = (getattr(ns, "profile", None) or "").strip()
-
-    resolved_dir = os.path.abspath(working_dir)
-    if not os.path.isdir(resolved_dir):
-        print(f"Project directory not found: {working_dir}", file=sys.stderr)
-        return 1
-
-    env = os.environ.copy()
-    env["OPENAI_BASE_URL"] = env_base_url
-    env["OPENAI_API_BASE"] = env_base_url
-    env["OPENAI_API_KEY"] = api_key
-
-    argv = [exe, "--cd", resolved_dir]
-    argv.extend(_build_codex_proxy_overrides(base_url))
-    if model:
-        argv.extend(["--model", model])
-    if profile:
-        argv.extend(["--profile", profile])
-
-    passthrough = list(getattr(ns, "codex_args", []) or [])
-    if passthrough and passthrough[0] == "--":
-        passthrough = passthrough[1:]
-    argv.extend(passthrough)
-
-    print(f"Launching Codex via ChironAI proxy: {base_url}", file=sys.stderr)
-    print(f"Workspace: {resolved_dir}", file=sys.stderr)
-    print(f"Model: {model}", file=sys.stderr)
-    return subprocess.run(argv, cwd=resolved_dir, env=env).returncode
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="tmrag",
@@ -404,39 +218,6 @@ def main() -> None:
     p_rag_run.set_defaults(_run=cmd_rag_tests_run)
     p_rag_lint = p_rag_sub.add_parser("lint", help="Lint RAG tests (Expected Concepts hygiene)")
     p_rag_lint.set_defaults(_run=cmd_rag_tests_lint)
-
-    p_launch = sub.add_parser("launch", help="Launch external coding CLIs via ChironAI proxy")
-    p_launch_sub = p_launch.add_subparsers(dest="launch_target", metavar="TARGET")
-    p_launch_codex = p_launch_sub.add_parser("codex", help="Launch Codex using ChironAI proxy settings")
-    p_launch_codex.add_argument(
-        "--base-url",
-        default=os.environ.get("CHIRON_PROXY_BASE_URL", "http://127.0.0.1:8080"),
-        help="Proxy base URL (default: CHIRON_PROXY_BASE_URL or http://127.0.0.1:8080)",
-    )
-    p_launch_codex.add_argument(
-        "--api-key",
-        default="ChironAI",
-        help="OPENAI_API_KEY value for proxy auth (default: ChironAI)",
-    )
-    p_launch_codex.add_argument("--model", default=None, help="Optional Codex model/build id")
-    p_launch_codex.add_argument("--profile", default=None, help="Optional Codex profile name")
-    p_launch_codex.add_argument(
-        "--cd",
-        dest="working_dir",
-        default=os.getcwd(),
-        help="Project directory to open in Codex (default: current directory)",
-    )
-    p_launch_codex.add_argument(
-        "codex_args",
-        nargs=argparse.REMAINDER,
-        help="Extra args forwarded to codex (use '--' before passthrough args)",
-    )
-    p_launch_codex.add_argument(
-        "--shim-path",
-        default=os.environ.get("CHIRON_CODEX_SHIM_PATH", _default_codex_shim_path()),
-        help="Path to codex shim (used to avoid recursive self-invocation).",
-    )
-    p_launch_codex.set_defaults(_run=cmd_launch_codex)
 
     args = parser.parse_args()
     if not args.command:

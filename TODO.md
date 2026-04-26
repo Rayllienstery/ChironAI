@@ -1,8 +1,6 @@
 # ChironAI
 
 ## First of the first
-- [ ] Codex start example
-- [ ] Claude code start example
 - [ ] Xcode example
 
 ## Быстрые заметки (из Notes)

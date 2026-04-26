@@ -1,18 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
-import CoreUIButton from './CoreUIButton';
+import { useState } from 'react';
 import CoreUISubtabs from './CoreUISubtabs';
-import PipelineCiDiagram from './PipelineCiDiagram';
-import { useMergedPipelinePreview } from '../hooks/useMergedPipelinePreview';
-import {
-  getLlmProxyBuilds,
-  getModelSettings,
-  getRagStatus,
-  getProxyConfiguredStatus,
-  getProxyConfiguredCurrentValues,
-  generateProxyConfiguredScripts,
-  getChironGlobalStatus,
-  installChironGlobal,
-} from '../services/api';
 import '../styles/components/DashboardTab.css';
 
 const INFO_TABS = [
@@ -23,344 +10,11 @@ const INFO_TABS = [
   { id: 'credits', label: 'Credits' },
 ];
 
-const PROXY_GUIDE_TABS = [
-  { id: 'why', label: 'Why' },
-  { id: 'configured', label: 'Configured' },
-];
-
-const PROXY_CUSTOM_PRESETS = [
-  {
-    id: 'local-default',
-    label: 'Local default (8080)',
-    baseUrl: 'http://127.0.0.1:8080',
-    buildId: 'your-build-id',
-  },
-  {
-    id: 'lan-machine',
-    label: 'Remote LAN machine',
-    baseUrl: 'http://192.168.1.10:8080',
-    buildId: 'team-shared-build',
-  },
-];
-
-function formatBool(v) {
-  return v ? 'On' : 'Off';
-}
-
-function DashboardLlmProxyCard({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
-  const [settings, setSettings] = useState(null);
-
-  const load = useCallback(async () => {
-    setLoadError(null);
-    try {
-      const data = await getModelSettings();
-      setSettings(data || {});
-    } catch (e) {
-      console.error(e);
-      setLoadError(e.message || 'Failed to load');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const row = (label, value, titleAttr) => (
-    <div className="dashboard-kv-row" key={label}>
-      <span className="dashboard-kv-label">{label}</span>
-      <span className="dashboard-kv-value" title={titleAttr || (typeof value === 'string' ? value : undefined)}>
-        {value === '' || value == null ? '—' : String(value)}
-      </span>
-    </div>
-  );
-
-  return (
-    <section className="app-default-card dashboard-proxy-card" aria-labelledby="dashboard-proxy-heading">
-      <div className="dashboard-card-header">
-        <h2 id="dashboard-proxy-heading">RAG Fusion Proxy</h2>
-        <div className="dashboard-card-actions">
-          {typeof onOpenLogs === 'function' && (
-            <button type="button" className="dashboard-text-btn" onClick={() => onOpenLogs()}>
-              View Logs
-            </button>
-          )}
-          <CoreUIButton variant="primary" onClick={() => onNavigate('rag-fusion-proxy')}>
-            Open RAG Fusion Proxy
-          </CoreUIButton>
-        </div>
-      </div>
-      {loading && <div className="dashboard-card-muted">Loading…</div>}
-      {loadError && (
-        <div className="dashboard-card-error">
-          {loadError}
-          <button type="button" className="dashboard-text-btn" onClick={load}>
-            Retry
-          </button>
-        </div>
-      )}
-      {!loading && !loadError && settings && (
-        <div className="dashboard-proxy-sections">
-          <div className="dashboard-proxy-block">
-            <h3 className="dashboard-proxy-block-title">Chat / RAG</h3>
-            {row('Model', settings.model)}
-            {row('Prompt', settings.prompt_name)}
-            {row('RAG collection', settings.rag_collection)}
-            {row('Temperature', settings.temperature)}
-            {row('Top P', settings.top_p)}
-            {row('Code only', formatBool(settings.code_only))}
-            {row('Include RAG metadata', formatBool(settings.include_rag_metadata))}
-            {row('Rerank for RAG', formatBool(settings.rerank_for_rag))}
-            {row('Rerank model', settings.rerank_model)}
-          </div>
-          <div className="dashboard-proxy-block">
-            <div className="dashboard-proxy-block-title-row">
-              <h3 className="dashboard-proxy-block-title">Autocomplete</h3>
-              {typeof onOpenLlmProxyAutocomplete === 'function' && (
-                <button type="button" className="dashboard-text-btn" onClick={() => onOpenLlmProxyAutocomplete()}>
-                  Configure in LLM Proxy
-                </button>
-              )}
-            </div>
-            {row('Autocomplete model', settings.autocomplete_model)}
-          </div>
-          <div className="dashboard-proxy-block">
-            <h3 className="dashboard-proxy-block-title">Web</h3>
-            {row('Fetch web knowledge', formatBool(settings.fetch_web_knowledge))}
-            {row('Web interaction', formatBool(settings.web_interaction_enabled))}
-            {row('On keywords', formatBool(settings.web_interaction_on_keywords))}
-            {row('On low confidence (framework)', formatBool(settings.web_interaction_on_low_confidence_framework))}
-            {row('DDG news', formatBool(settings.web_interaction_ddg_news))}
-            {row('Fetch page', formatBool(settings.web_interaction_fetch_page))}
-            {row('Wikipedia', formatBool(settings.web_interaction_wikipedia))}
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function DashboardRagCard({ onNavigate }) {
-  const { merged: pipelineMerged, reload: reloadPipeline } = useMergedPipelinePreview();
-  const [status, setStatus] = useState(null);
-  const [statusLoading, setStatusLoading] = useState(true);
-  const [statusError, setStatusError] = useState(null);
-
-  const loadStatus = useCallback(async () => {
-    setStatusError(null);
-    try {
-      const s = await getRagStatus();
-      setStatus(s);
-    } catch (e) {
-      console.error(e);
-      setStatusError(e.message || 'Failed to load status');
-    } finally {
-      setStatusLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadStatus();
-  }, [loadStatus]);
-
-  const refreshAll = () => {
-    loadStatus();
-    reloadPipeline();
-  };
-
-  return (
-    <section className="app-default-card dashboard-rag-card" aria-labelledby="dashboard-rag-heading">
-      <div className="dashboard-card-header">
-        <h2 id="dashboard-rag-heading">RAG / Qdrant</h2>
-        <div className="dashboard-card-actions">
-          <CoreUIButton onClick={refreshAll}>
-            Refresh
-          </CoreUIButton>
-          <CoreUIButton variant="primary" onClick={() => onNavigate('rag')}>
-            Open RAG / Qdrant
-          </CoreUIButton>
-        </div>
-      </div>
-      {statusLoading && <div className="dashboard-card-muted">Loading status…</div>}
-      {statusError && (
-        <div className="dashboard-card-error">
-          {statusError}
-          <button type="button" className="dashboard-text-btn" onClick={loadStatus}>
-            Retry
-          </button>
-        </div>
-      )}
-      {!statusLoading && !statusError && status && (
-        <div className="dashboard-rag-status-grid" role="group" aria-label="Qdrant status">
-          <div className="dashboard-rag-status-pill">
-            <span className="dashboard-rag-status-label">Running</span>
-            <span className="dashboard-rag-status-value">{status.running ? 'Yes' : 'No'}</span>
-          </div>
-          <div className="dashboard-rag-status-pill dashboard-rag-status-pill--wide">
-            <span className="dashboard-rag-status-label">Endpoint</span>
-            <span className="dashboard-rag-status-value" title={status.url || ''}>
-              {status.url || '—'}
-            </span>
-          </div>
-          <div className="dashboard-rag-status-pill">
-            <span className="dashboard-rag-status-label">Collections</span>
-            <span className="dashboard-rag-status-value">
-              {status.collections_count != null ? String(status.collections_count) : '—'}
-            </span>
-          </div>
-        </div>
-      )}
-      <div className="dashboard-rag-pipeline-wrap">
-        <PipelineCiDiagram
-          data={pipelineMerged}
-          title="LLM proxy pipeline (RAG + supplements)"
-          subtitle="Stages enabled with current server settings. Edit details on the RAG / Qdrant tab."
-          compact
-        />
-      </div>
-    </section>
-  );
-}
-
 function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
   const [infoSubTab, setInfoSubTab] = useState('intro');
-  const [proxyGuideTab, setProxyGuideTab] = useState('why');
-  const [proxyPresetId, setProxyPresetId] = useState(PROXY_CUSTOM_PRESETS[0].id);
-  const [configuredBaseUrl, setConfiguredBaseUrl] = useState(PROXY_CUSTOM_PRESETS[0].baseUrl);
-  const [configuredBuildId, setConfiguredBuildId] = useState(PROXY_CUSTOM_PRESETS[0].buildId);
-  const [configuredScriptsExist, setConfiguredScriptsExist] = useState(false);
-  const [isGeneratingScripts, setIsGeneratingScripts] = useState(false);
-  const [generationMessage, setGenerationMessage] = useState(null);
-  const [lastGeneratedConfig, setLastGeneratedConfig] = useState(null);
-  const [availableBuildIds, setAvailableBuildIds] = useState([]);
-  const [globalInstallStatus, setGlobalInstallStatus] = useState(null);
-  const [globalInstallBusy, setGlobalInstallBusy] = useState(false);
-  const [globalInstallMessage, setGlobalInstallMessage] = useState(null);
 
   const go = (tabId) => {
     if (typeof onNavigate === 'function') onNavigate(tabId);
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await getLlmProxyBuilds({ diagnostics: false });
-        if (cancelled) return;
-        const ids = Array.isArray(data?.builds)
-          ? data.builds
-              .map((x) => String(x?.id || '').trim())
-              .filter((x) => x.length > 0)
-          : [];
-        setAvailableBuildIds(ids);
-        if (ids.length > 0) {
-          setConfiguredBuildId((prev) => {
-            const normalizedPrev = String(prev || '').trim();
-            return ids.includes(normalizedPrev) ? prev : ids[0];
-          });
-        }
-      } catch {
-        if (!cancelled) setAvailableBuildIds([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Check if configured scripts exist and read current values
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const status = await getProxyConfiguredStatus();
-        if (!cancelled) {
-          const scriptsExist = status.claude_exists || status.codex_exists;
-          setConfiguredScriptsExist(scriptsExist);
-          if (scriptsExist) {
-            // Read current values from files
-            const values = await getProxyConfiguredCurrentValues();
-            if (!cancelled && values) {
-              setLastGeneratedConfig({
-                baseUrl: values.baseUrl || '',
-                buildId: values.buildId || '',
-              });
-            }
-          }
-        }
-      } catch {
-        // ignore - will default to Generate button
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const currentConfig = {
-    baseUrl: configuredBaseUrl,
-    buildId: configuredBuildId,
-  };
-
-  const configsMatch = lastGeneratedConfig &&
-    lastGeneratedConfig.baseUrl === configuredBaseUrl &&
-    lastGeneratedConfig.buildId === configuredBuildId;
-
-  const showGenerateButton = !configuredScriptsExist || !configsMatch;
-
-  const handleGenerateConfiguredScripts = async () => {
-    setIsGeneratingScripts(true);
-    setGenerationMessage(null);
-    try {
-      await generateProxyConfiguredScripts({
-        baseUrl: configuredBaseUrl,
-        buildId: configuredBuildId,
-      });
-      setConfiguredScriptsExist(true);
-      setLastGeneratedConfig({ ...currentConfig });
-      setGenerationMessage({ type: 'success', text: 'Scripts generated successfully!' });
-    } catch (err) {
-      setGenerationMessage({ type: 'error', text: err.message || 'Failed to generate scripts' });
-    } finally {
-      setIsGeneratingScripts(false);
-    }
-  };
-
-  const refreshGlobalInstallStatus = useCallback(async () => {
-    try {
-      const status = await getChironGlobalStatus();
-      setGlobalInstallStatus(status || null);
-    } catch (err) {
-      setGlobalInstallStatus(null);
-      setGlobalInstallMessage({ type: 'error', text: err.message || 'Failed to check global status' });
-    }
-  }, []);
-
-  useEffect(() => {
-    refreshGlobalInstallStatus();
-  }, [refreshGlobalInstallStatus]);
-
-  const handleInstallGlobal = async () => {
-    setGlobalInstallBusy(true);
-    setGlobalInstallMessage(null);
-    try {
-      const result = await installChironGlobal();
-      const isGlobal = Boolean(result?.global_status?.is_global);
-      setGlobalInstallStatus(result?.global_status || null);
-      setGlobalInstallMessage({
-        type: isGlobal ? 'success' : 'error',
-        text: isGlobal
-          ? 'ChironAI installed globally. Open a new CMD window if needed.'
-          : 'Install finished, but global check is still failing. Open a new CMD and click Re-check.',
-      });
-    } catch (err) {
-      setGlobalInstallMessage({ type: 'error', text: err.message || 'Failed to install globally' });
-    } finally {
-      setGlobalInstallBusy(false);
-    }
   };
 
   return (
@@ -453,7 +107,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                   </div>
                   <div className="feature-card">
                     <h4>Streaming Synthesis</h4>
-                    <p>SSE for OpenAI and Anthropic formats — streaming even when model doesn't support it</p>
+                    <p>SSE for OpenAI and Anthropic formats — streaming even when model doesn&apos;t support it</p>
                   </div>
                   <div className="feature-card">
                     <h4>Build Presets</h4>
@@ -493,7 +147,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                   ChironAI is built on a <strong>modular, domain-driven architecture</strong> with clear separation of concerns.
                   The system is designed for maintainability, testability, and domain flexibility—swap knowledge domains without touching core logic.
                 </p>
-                
+
                 <div className="architecture-section">
                   <h4>Core Layers (Hexagonal Design)</h4>
                   <div className="architecture-grid">
@@ -712,7 +366,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
               <div className="dashboard-section-inner">
                 <h3>Credits & Acknowledgments</h3>
                 <p className="credits-intro">
-                  ChironAI is built with contributions from multiple projects and technologies. 
+                  ChironAI is built with contributions from multiple projects and technologies.
                   We gratefully acknowledge the following:
                 </p>
 
@@ -775,169 +429,34 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
             )}
           </div>
         </section>
-        <section className="dashboard-info-card dashboard-proxy-guide-card" aria-label="CLI proxy onboarding">
+
+        <section className="dashboard-info-card dashboard-proxy-hint-card" aria-label="RAG Fusion Proxy HTTP clients">
           <div className="dashboard-info-card-header">
-            <h2 className="dashboard-info-card-title">CLI via RAG Fusion Proxy</h2>
+            <h2 className="dashboard-info-card-title">RAG Fusion Proxy</h2>
             <p className="dashboard-info-card-subtitle">
-              Run Claude Code and Codex through ChironAI for shared builds, RAG context, and proxy traces.
+              HTTP client setup (OpenAI and Anthropic-style endpoints, build ids, env vars) is on{' '}
+              <strong>RAG Fusion Proxy</strong> → <strong>Overview</strong>.
             </p>
           </div>
-          <CoreUISubtabs
-            tabs={PROXY_GUIDE_TABS}
-            value={proxyGuideTab}
-            onChange={(id) => setProxyGuideTab(id)}
-            ariaLabel="Proxy onboarding sections"
-            className="dashboard-info-subtabs"
-          />
-          <div className="dashboard-info-panel dashboard-proxy-guide-panel" role="tabpanel">
-            {proxyGuideTab === 'why' && (
-              <div className="dashboard-section-inner">
-                <h3>Why route CLI traffic through this proxy</h3>
-                <ul className="dashboard-proxy-guide-list">
-                  <li>
-                    <strong>Single build id contract:</strong> your CLI uses the same model ids configured in{' '}
-                    <strong>LLM Proxy</strong> builds.
-                  </li>
-                  <li>
-                    <strong>RAG + prompt policy:</strong> requests go through the same retrieval and prompt assembly as WebUI.
-                  </li>
-                  <li>
-                    <strong>Observability:</strong> requests appear in Logs, Traces, and Journal for faster debugging.
-                  </li>
-                  <li>
-                    <strong>One local endpoint:</strong> both OpenAI and Anthropic-style clients can point to the same proxy base URL.
-                  </li>
-                </ul>
-              </div>
-            )}
-            {proxyGuideTab === 'configured' && (
-              <div className="dashboard-section-inner">
-                <h3>Configured launch (no required arguments)</h3>
-                {configuredScriptsExist && (
-                  <>
-                    <p>
-                      Edit <code>start_claude_proxy_configured.ps1</code> and <code>start_codex_proxy_configured.ps1</code>{' '}
-                      once, then launch with:
-                    </p>
-                    <code className="dashboard-proxy-guide-code">.\start_claude_proxy_configured.bat</code>
-                    <code className="dashboard-proxy-guide-code">.\start_codex_proxy_configured.bat</code>
-                  </>
-                )}
-
-                <div className="dashboard-proxy-customizer">
-                  <label className="dashboard-proxy-customizer-field">
-                    Preset
-                    <select
-                      className="dashboard-card-field"
-                      value={proxyPresetId}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        const preset = PROXY_CUSTOM_PRESETS.find((x) => x.id === id);
-                        setProxyPresetId(id);
-                        if (!preset) return;
-                        setConfiguredBaseUrl(preset.baseUrl);
-                        setConfiguredBuildId(preset.buildId);
-                      }}
-                    >
-                      {PROXY_CUSTOM_PRESETS.map((preset) => (
-                        <option key={preset.id} value={preset.id}>
-                          {preset.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="dashboard-proxy-customizer-field">
-                    Proxy base URL
-                    <input
-                      className="dashboard-card-field"
-                      value={configuredBaseUrl}
-                      onChange={(e) => setConfiguredBaseUrl(e.target.value)}
-                    />
-                  </label>
-                  <label className="dashboard-proxy-customizer-field">
-                    Build id
-                    {availableBuildIds.length > 0 ? (
-                      <select
-                        className="dashboard-card-field"
-                        value={configuredBuildId}
-                        onChange={(e) => setConfiguredBuildId(e.target.value)}
-                      >
-                        {availableBuildIds.map((buildId) => (
-                          <option key={buildId} value={buildId}>
-                            {buildId}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        className="dashboard-card-field"
-                        value={configuredBuildId}
-                        onChange={(e) => setConfiguredBuildId(e.target.value)}
-                        placeholder="No builds found yet"
-                      />
-                    )}
-                  </label>
-                </div>
-                <p className="dashboard-proxy-guide-hint">
-                  Auth token and API key are hardcoded to <code>ChironAI</code> in generated scripts.
-                </p>
-                <p className="dashboard-proxy-guide-hint">
-                  Codex integration uses OpenAI-compatible <code>/v1/responses</code> wire API.
-                </p>
-                <p className="dashboard-proxy-guide-hint">
-                  Troubleshooting: verify trace has <code>tools_count_normalized &gt; 0</code> on Codex turns with tools.
-                </p>
-
-                <div className="dashboard-configured-action-bar">
-                  {globalInstallStatus?.is_global ? (
-                    <span className="coreui-msg success">ChironAI is Global</span>
-                  ) : (
-                    <span className="coreui-msg">
-                      {globalInstallStatus?.actionable_hint || 'Global command not configured yet'}
-                    </span>
-                  )}
-                  <CoreUIButton
-                    variant="primary"
-                    onClick={globalInstallStatus?.is_global ? refreshGlobalInstallStatus : handleInstallGlobal}
-                    disabled={globalInstallBusy}
-                  >
-                    {globalInstallBusy ? 'Installing...' : (globalInstallStatus?.is_global ? 'Re-check' : 'Install Chiron global')}
-                  </CoreUIButton>
-                  <CoreUIButton
-                    onClick={handleInstallGlobal}
-                    disabled={globalInstallBusy}
-                  >
-                    Reinstall
-                  </CoreUIButton>
-                </div>
-                {globalInstallMessage && (
-                  <div className={`coreui-msg ${globalInstallMessage.type === 'error' ? 'error' : 'success'}`}>
-                    {globalInstallMessage.text}
-                  </div>
-                )}
-                {!globalInstallStatus?.is_global && Array.isArray(globalInstallStatus?.mismatch_reasons) && globalInstallStatus.mismatch_reasons.length > 0 && (
-                  <div className="coreui-msg error">
-                    {globalInstallStatus.mismatch_reasons[0]}
-                  </div>
-                )}
-
-                {/* Configured scripts action bar. */}
-                <div className="dashboard-configured-action-bar">
-                  {generationMessage && (
-                    <span className={`coreui-msg ${generationMessage.type === 'error' ? 'error' : 'success'}`}>
-                      {generationMessage.text}
-                    </span>
-                  )}
-                  <CoreUIButton
-                    variant="primary"
-                    onClick={handleGenerateConfiguredScripts}
-                    disabled={!showGenerateButton || isGeneratingScripts}
-                  >
-                    {isGeneratingScripts ? 'Generating...' : (configuredScriptsExist ? 'Update' : 'Generate')}
-                  </CoreUIButton>
-                </div>
-              </div>
-            )}
+          <div className="dashboard-section-inner">
+            <p className="dashboard-card-muted">
+              Open the tab for base URL, models list, and integration notes. Logs and traces stay in their respective tabs.
+            </p>
+            <div className="dashboard-proxy-hint-actions">
+              <button type="button" className="dashboard-text-btn" onClick={() => go('rag-fusion-proxy')}>
+                Open RAG Fusion Proxy
+              </button>
+              {typeof onOpenLogs === 'function' && (
+                <button type="button" className="dashboard-text-btn" onClick={() => onOpenLogs()}>
+                  View Logs
+                </button>
+              )}
+              {typeof onOpenLlmProxyAutocomplete === 'function' && (
+                <button type="button" className="dashboard-text-btn" onClick={() => onOpenLlmProxyAutocomplete()}>
+                  Autocomplete settings
+                </button>
+              )}
+            </div>
           </div>
         </section>
       </div>

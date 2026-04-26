@@ -1,7 +1,7 @@
 """
 Anthropic Messages API <-> OpenAI chat completions (request/response/SSE).
 
-Used by LlmProxy so Claude Code (ANTHROPIC_BASE_URL) can share the same
+Used by LlmProxy so Anthropic Messages clients (via ``ANTHROPIC_BASE_URL``) share the same
 RAG/agent stack as OpenAI-compatible clients.
 
 Known limitations:
