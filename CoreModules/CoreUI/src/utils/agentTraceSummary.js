@@ -30,8 +30,8 @@ export function summarizeAgentTraceMeta(meta) {
     step: s.step,
     promptEst: num(s.prompt_tokens_est, 0),
     completionEst: num(s.completion_tokens_est, 0),
-    ollamaPec: s.ollama_prompt_eval_count != null ? num(s.ollama_prompt_eval_count, 0) : null,
-    ollamaEc: s.ollama_eval_count != null ? num(s.ollama_eval_count, 0) : null,
+    ollamaPec: s.prompt_eval_count != null ? num(s.prompt_eval_count, 0) : (s.ollama_prompt_eval_count != null ? num(s.ollama_prompt_eval_count, 0) : null),
+    ollamaEc: s.eval_count != null ? num(s.eval_count, 0) : (s.ollama_eval_count != null ? num(s.ollama_eval_count, 0) : null),
     ok: s.ok !== false,
   }));
 
@@ -119,7 +119,7 @@ export function summarizeAgentTraceMeta(meta) {
     totalCompletionTokensEst = num(ollTok.completion_tokens_estimated, 0);
   }
   if (totalPromptTokensEst === 0 && totalCompletionTokensEst === 0) {
-    const oc = steps.filter((s) => s && s.name === 'ollama_chat');
+    const oc = steps.filter((s) => s && (s.name === 'ollama_chat' || s.name === 'provider_chat_stream' || s.name === 'provider_chat_native_tools'));
     const lastOc = oc.length ? oc[oc.length - 1] : null;
     if (lastOc && typeof lastOc === 'object') {
       totalPromptTokensEst = num(lastOc.tokens_in_est, 0);

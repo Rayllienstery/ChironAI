@@ -839,12 +839,16 @@ def _rag_tests_run_worker(
                     output_tokens_exact = None
                     prompt_tokens_exact = None
                     try:
-                        if trace_resp.get("ollama_eval_count") is not None:
+                        if trace_resp.get("eval_count") is not None:
+                            output_tokens_exact = int(trace_resp.get("eval_count"))
+                        elif trace_resp.get("ollama_eval_count") is not None:
                             output_tokens_exact = int(trace_resp.get("ollama_eval_count"))
                     except Exception:
                         output_tokens_exact = None
                     try:
-                        if trace_resp.get("ollama_prompt_eval_count") is not None:
+                        if trace_resp.get("prompt_eval_count") is not None:
+                            prompt_tokens_exact = int(trace_resp.get("prompt_eval_count"))
+                        elif trace_resp.get("ollama_prompt_eval_count") is not None:
                             prompt_tokens_exact = int(trace_resp.get("ollama_prompt_eval_count"))
                     except Exception:
                         prompt_tokens_exact = None

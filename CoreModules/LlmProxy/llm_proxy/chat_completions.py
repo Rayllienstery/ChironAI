@@ -79,6 +79,9 @@ from llm_proxy.tool_helpers import (
 _RAG_LOG = logging.getLogger("llm_proxy")
 
 
+from infrastructure.ollama.model_brand import resolve_brand_key
+
+
 def _log_rag_error(stage: str, error: Exception) -> None:
     _RAG_LOG.error("RAG stage=%s | %s: %s", stage, type(error).__name__, error)
 
@@ -1394,7 +1397,7 @@ def _degenerate_assistant_reply(text: str | None) -> bool:
     return _is_placeholder_only_reply(text) or _is_micro_garbage_reply(text)
 
 
-def _trace_ollama_api_metrics(src: dict[str, Any] | None) -> dict[str, Any]:
+def _trace_ollama_api_metrics(src: dict[str, Any] | None, model_id: str | None = None) -> dict[str, Any]:
     """Top-level Ollama /api/chat fields useful for diagnosing stop vs length truncation."""
     if not isinstance(src, dict):
         return {}
@@ -1404,6 +1407,11 @@ def _trace_ollama_api_metrics(src: dict[str, Any] | None) -> dict[str, Any]:
     for k in ("eval_count", "prompt_eval_count"):
         if src.get(k) is not None:
             out[f"ollama_{k}"] = src[k]
+            out[k] = src[k]
+    if model_id:
+        brand_key = resolve_brand_key(model_id, show_payload=src)
+        if brand_key:
+            out["brand_key"] = brand_key
     return out
 
 
@@ -2838,7 +2846,7 @@ def run_chat_completions(
                     "latency_ms": stream_latency_ms,
                     "tool_calls_count": len(tool_calls_raw),
                     "native_tools": True,
-                    **_trace_ollama_api_metrics(ollama_done_payload),
+                    **_trace_ollama_api_metrics(ollama_done_payload, model_id=use_model),
                 }
                 _apply_trace_response_text_fields(
                     trace["response"],
@@ -2852,7 +2860,7 @@ def run_chat_completions(
                 if tool_calls_raw:
                     trace["response"]["tool_calls_raw"] = tool_calls_raw
                 trace["steps"].append({
-                    "name": "ollama_chat_native_tools_stream",
+                    "name": "provider_chat_native_tools_stream",
                     "duration_ms": stream_latency_ms,
                     "tokens_in_est": _pt,
                     "tokens_out_est": _ct,
@@ -3057,7 +3065,7 @@ def run_chat_completions(
             "latency_ms": latency_ms,
             "tool_calls_count": len(tool_calls_out),
             "native_tools": True,
-            **_trace_ollama_api_metrics(data if isinstance(data, dict) else None),
+            **_trace_ollama_api_metrics(data if isinstance(data, dict) else None, model_id=use_model),
         }
         _apply_trace_response_text_fields(
             trace["response"],
@@ -3112,7 +3120,7 @@ def run_chat_completions(
         if not stream:
             trace["steps"].append(
                 {
-                    "name": "ollama_chat_native_tools",
+                    "name": "provider_chat_native_tools",
                     "duration_ms": int(latency_ms),
                     "tokens_in_est": _pt,
                     "tokens_out_est": _ct,
@@ -3153,7 +3161,7 @@ def run_chat_completions(
             trace["ollama"]["chat_stream"] = False
             trace["steps"].append(
                 {
-                    "name": "ollama_chat_native_tools_sse_single",
+                    "name": "provider_chat_native_tools_sse_single",
                     "duration_ms": int(latency_ms),
                     "tokens_in_est": _pt,
                     "tokens_out_est": _ct,
@@ -3534,7 +3542,7 @@ def run_chat_completions(
                 log_preview=log_preview,
             )
             trace["steps"].append({
-                "name": "ollama_chat_stream",
+                "name": "provider_chat_stream",
                 "duration_ms": stream_latency_ms,
                 "tokens_in_est": prompt_tokens_approx,
                 "tokens_out_est": completion_tokens_approx,

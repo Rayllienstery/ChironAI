@@ -74,7 +74,7 @@ export default function AgentTraceSummaryCards({ summary }) {
         </div>
         {summary.clientModel != null && summary.clientModel !== '' && kv('Client model', summary.clientModel, 'cm')}
         {summary.thinkRequested != null &&
-          kv('Ollama think requested', summary.thinkRequested ? 'yes' : 'no', 'think')}
+          kv('Provider think requested', summary.thinkRequested ? 'yes' : 'no', 'think')}
         {kv('Messages in request', summary.requestMessageCount, 'msg')}
         {kv('merge_client_tools', mergeLabel, 'mct')}
         {summary.error != null && (
@@ -108,8 +108,8 @@ export default function AgentTraceSummaryCards({ summary }) {
                   <th>Agent step</th>
                   <th>Prompt est.</th>
                   <th>Completion est.</th>
-                  <th>Ollama prompt_eval</th>
-                  <th>Ollama eval</th>
+                  <th>Prompt eval</th>
+                  <th>Eval</th>
                 </tr>
               </thead>
               <tbody>

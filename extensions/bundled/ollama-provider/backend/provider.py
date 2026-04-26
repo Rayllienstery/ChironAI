@@ -48,6 +48,9 @@ def _cache_set(base_url: str, key: str, value: Any) -> None:
         bucket[key] = (time.monotonic(), value)
 
 
+from infrastructure.ollama.model_brand import resolve_brand_key
+
+
 class OllamaProvider:
     """Trusted provider and extension surface for Ollama-backed capabilities."""
 
@@ -103,6 +106,7 @@ class OllamaProvider:
                         "size": item.get("size"),
                         "modified_at": item.get("modified_at"),
                         "family": item.get("_family"),
+                        "brand_key": resolve_brand_key(model_id),
                         "hidden": False,
                     },
                 )

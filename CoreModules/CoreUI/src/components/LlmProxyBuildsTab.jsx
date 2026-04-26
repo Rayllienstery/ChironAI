@@ -605,7 +605,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                           <>
                             <span className="llm-proxy-dot" aria-hidden="true">·</span>
                             <span>
-                              Provider: <code>{b.provider_id || 'ollama'}</code> · Model:{' '}
+                              Provider: <code>{b.provider_id || '—'}</code> · Model:{' '}
                               <code>{b.model || b.ollama_model}</code>
                             </span>
                           </>
@@ -940,11 +940,11 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                       <span aria-hidden="true"></span>
                     </label>
                   </div>
-                  <p className="llm-proxy-toggle-explanation">
-                    When on, tokens stream from Ollama to the client one-by-one in real time. When off, the proxy
-                    collects the full response first, then sends it as a single SSE burst — useful if streaming causes
-                    incomplete tool calls or flaky clients.
-                  </p>
+                    <p className="llm-proxy-toggle-explanation">
+                      When on, tokens stream from the provider to the client one-by-one in real time. When off, the proxy
+                      collects the full response first, then sends it as a single SSE burst — useful if streaming causes
+                      incomplete tool calls or flaky clients.
+                    </p>
                 </div>
               </div>
             )}
@@ -1140,7 +1140,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   </div>
                   <p className="llm-proxy-toggle-explanation">
                     No proxy rows in the logs database, no live trace snapshot for this request, and no live or history
-                    entries in Notifications. Does not affect Ollama or OS-level logging.
+                    entries in Notifications. Does not affect provider or OS-level logging.
                   </p>
                   {draft.private && (
                     <p className="llm-proxy-toggle-explanation llm-proxy-toggle-explanation--emphasis">

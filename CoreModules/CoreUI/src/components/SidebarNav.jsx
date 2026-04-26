@@ -7,7 +7,6 @@ import {
 } from "react";
 import Card from "./Card";
 import OpenWebUiSidebarIcon from "./OpenWebUiSidebarIcon";
-import OllamaSidebarIcon from "./OllamaSidebarIcon";
 
 const LS_WIDTH = "coreui.sidebar.width";
 const LS_COLLAPSED = "coreui.sidebar.collapsed";
@@ -50,9 +49,6 @@ const TAB_MATERIAL_ICONS = {
 function TabIcon({ tabId, icon }) {
   if (tabId === "open-webui") {
     return <OpenWebUiSidebarIcon />;
-  }
-  if (tabId === "ollama-provider") {
-    return <OllamaSidebarIcon />;
   }
   const ligature = String(icon || "").trim() || (TAB_MATERIAL_ICONS[tabId] ?? "widgets");
   return (
@@ -247,14 +243,13 @@ function SidebarNav({
             const active = activeTab === tab.id;
             const hasError = Boolean(tabErrors && tabErrors[tab.id]);
             const isOpenWebUi = tab.id === "open-webui";
-            const isOllama = tab.id === "ollama-provider";
             const isRag = tab.id === "rag";
             const tabServiceStatus = serviceStatusByTabId?.[tab.id] || null;
             return (
               <button
                 key={tab.id}
                 type="button"
-                className={`coreui-sidebar__link${active ? " coreui-sidebar__link--active" : ""}${isOpenWebUi ? " coreui-sidebar__link--openwebui" : ""}${isOllama ? " coreui-sidebar__link--ollama" : ""}${isRag ? " coreui-sidebar__link--rag" : ""}`}
+                className={`coreui-sidebar__link${active ? " coreui-sidebar__link--active" : ""}${isOpenWebUi ? " coreui-sidebar__link--openwebui" : ""}${isRag ? " coreui-sidebar__link--rag" : ""}`}
                 onClick={() => onTabChange(tab.id)}
                 onMouseEnter={() => prefetchTab(tab.id)}
                 onFocus={() => prefetchTab(tab.id)}
@@ -263,19 +258,7 @@ function SidebarNav({
               >
                 <TabIcon tabId={tab.id} icon={tab.icon} />
                 <span className="coreui-sidebar__link-label">{tab.label}</span>
-                {isOllama ? (
-                  <span
-                    className={`coreui-sidebar__service-dot coreui-sidebar__link-ollama-dot ${statusLoading ? "updating" : tabServiceStatus?.running ? "running" : "stopped"}`}
-                    aria-hidden="true"
-                    title={
-                      statusLoading
-                        ? "Checking Ollama status…"
-                        : tabServiceStatus?.running
-                          ? "Ollama running"
-                          : "Ollama not running"
-                    }
-                  />
-                ) : tabServiceStatus ? (
+                {tabServiceStatus ? (
                   <span
                     className={`coreui-sidebar__service-dot ${statusLoading ? "updating" : tabServiceStatus?.running ? "running" : "stopped"}`}
                     aria-hidden="true"

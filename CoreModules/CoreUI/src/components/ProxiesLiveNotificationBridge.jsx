@@ -68,7 +68,7 @@ function computeGenTokensPerSecond(trace) {
   for (let i = steps.length - 1; i >= 0; i -= 1) {
     const step = steps[i];
     const name = nonEmptyString(step?.name);
-    if (!name.startsWith('ollama_chat')) continue;
+    if (!name.startsWith('ollama_chat') && !name.startsWith('provider_chat')) continue;
     const outTok = numOrNull(step?.tokens_out_est);
     const durMs = numOrNull(step?.duration_ms);
     if (outTok != null && outTok > 0 && durMs != null && durMs > 0) {
@@ -76,23 +76,23 @@ function computeGenTokensPerSecond(trace) {
     }
   }
 
-  const evalCount = numOrNull(response.ollama_eval_count);
+  const evalCount = numOrNull(response.eval_count) ?? numOrNull(response.ollama_eval_count);
   if (latencyMs != null && latencyMs > 0 && evalCount != null && evalCount > 0) {
-    return { value: (evalCount / latencyMs) * 1000, source: 'ollama_eval_count' };
+    return { value: (evalCount / latencyMs) * 1000, source: 'eval_count' };
   }
   return null;
 }
 
 function genTpsSourceTitle(source) {
   if (source === 'tokens_estimates') return 'Source: trace.ollama.tokens_estimates.completion_tokens_estimated';
-  if (source === 'step_tokens_out_est') return 'Source: last ollama_chat* step.tokens_out_est / step.duration_ms';
-  if (source === 'ollama_eval_count') return 'Source: trace.response.ollama_eval_count';
+  if (source === 'step_tokens_out_est') return 'Source: last provider_chat* step.tokens_out_est / step.duration_ms';
+  if (source === 'eval_count') return 'Source: trace.response.eval_count';
   return 'Source: unknown';
 }
 
-function ModelValue({ model }) {
-  const brandKey = getOllamaModelBrandKey(model);
-  const brandIconUrl = brandKey ? OLLAMA_BRAND_ICON_URL[brandKey] : null;
+function ModelValue({ model, brandKey }) {
+  const resolvedBrandKey = brandKey || getOllamaModelBrandKey(model);
+  const brandIconUrl = resolvedBrandKey ? OLLAMA_BRAND_ICON_URL[resolvedBrandKey] : null;
   return (
     <span className="proxy-live-notification-model-value">
       {brandIconUrl ? (
@@ -104,7 +104,7 @@ function ModelValue({ model }) {
           height={16}
           loading="lazy"
           decoding="async"
-          title={`Provider: ${brandKey}`}
+          title={`Provider: ${resolvedBrandKey}`}
         />
       ) : null}
       <span className="proxy-live-notification-value proxy-live-notification-mono">{model}</span>
@@ -217,7 +217,7 @@ function WindDownLinearBar({ endsAt }) {
 }
 
 function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
-  const { endsAt, status, model, traceId, chainId, steps } = wd;
+  const { endsAt, status, model, traceId, chainId, steps, brandKey } = wd;
   const stepCapsules = buildStepCapsules(steps);
   return (
     <div className="proxy-live-notification notification-proxy-embed notification-proxy-embed--winddown">
@@ -228,7 +228,7 @@ function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
       </div>
       <div className="proxy-live-notification-row">
         <span className="proxy-live-notification-label">Model</span>
-        <ModelValue model={model} />
+        <ModelValue model={model} brandKey={brandKey} />
       </div>
       {traceId ? (
         <div className="proxy-live-notification-row">
@@ -266,6 +266,7 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
   ).trim();
   const trace = proxyPayload.trace;
   const model = traceModelFields(trace).headerShort;
+  const brandKey = trace?.response?.brand_key;
   const stepCapsules = buildStepCapsules(trace?.steps);
   const traceId = trace?.trace_id != null && trace.trace_id !== '' ? String(trace.trace_id) : '';
   const chainId = traceChainId(trace);
@@ -285,7 +286,7 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
       </div>
       <div className="proxy-live-notification-row">
         <span className="proxy-live-notification-label">Model</span>
-        <ModelValue model={model} />
+        <ModelValue model={model} brandKey={brandKey} />
       </div>
       {traceId ? (
         <div className="proxy-live-notification-row">
@@ -431,6 +432,7 @@ export default function ProxiesLiveNotificationBridge({
         endsAt: Date.now() + WIND_DOWN_MS,
         status,
         model,
+        brandKey: trace?.response?.brand_key,
         stepLine,
         traceIdShort: traceShortId(trace?.trace_id),
         traceId: nonEmptyString(trace?.trace_id),
