@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import base64
 import sqlite3
 import threading
 import time
@@ -15,6 +16,8 @@ from datetime import datetime, timezone
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+
+from infrastructure.ollama.gemini_model_id import is_gemini_family_model_name
 
 try:
     from chironai_rag.consumers import RAG_COLLECTION_APP_SETTING
@@ -42,6 +45,7 @@ from infrastructure.ollama.openai_multipart_vision import (
     ollama_messages_drop_images,
     sanitize_openai_text_part,
     sanitize_proxy_content_parts,
+    VISION_MAX_DECODED_BYTES,
 )
 from infrastructure.ollama.openai_ollama_tool_bridge import (
     ollama_chat_tool_choice_payload_value,
@@ -332,15 +336,23 @@ _GEMINI_TOOL_STATE_SCHEMA_INIT_PATHS: set[str] = set()
 
 
 def _is_gemini_model_name(model_name: str | None) -> bool:
-    raw = str(model_name or "").strip().lower()
-    if not raw:
-        return False
-    # Match Google Gemini family across routing prefixes/suffixes:
-    #   gemini-*, google/gemini-*, models/gemini-*, *:cloud, etc.
-    tokens = [t for t in re.split(r"[^a-z0-9]+", raw) if t]
-    if not tokens:
-        return False
-    return any(tok.startswith("gemini") for tok in tokens)
+    return is_gemini_family_model_name(model_name)
+
+
+def _ollama_upstream_messages_for_tools(
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    model_name: str | None,
+) -> list[dict[str, Any]]:
+    """
+    Some upstream adapters reject `images` when `tools` is present; historically we stripped
+    images in that case. Gemini supports vision, so keep images when routing to Gemini.
+    """
+    if not tools:
+        return messages
+    if _is_gemini_model_name(model_name):
+        return messages
+    return ollama_messages_drop_images(messages)
 
 
 def _resolve_default_webui_db_path() -> str:
@@ -1467,7 +1479,7 @@ def _iter_proxy_ollama_chat_stream(
     _co = dict(getattr(chat_client, "_default_options", None) or {})
     if options_overlay:
         _co.update(options_overlay)
-    msg_for_upstream = ollama_messages_drop_images(messages) if tools else messages
+    msg_for_upstream = _ollama_upstream_messages_for_tools(messages, tools, model)
     payload: dict[str, Any] = {
         "model": model,
         "messages": msg_for_upstream,
@@ -1549,6 +1561,142 @@ def _normalize_request_messages(body: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+_VISION_READ_LOCAL_FILES = str(os.getenv("LLM_PROXY_VISION_READ_LOCAL_FILES", "0")).strip() in {
+    "1",
+    "true",
+    "yes",
+}
+_VISION_ALLOW_ABS_PATHS = str(os.getenv("LLM_PROXY_VISION_ALLOW_ABS_PATHS", "0")).strip() in {
+    "1",
+    "true",
+    "yes",
+}
+
+_COPILOT_CANNOT_READ_IMAGE_RE = re.compile(
+    r'(?is)\bERROR:\s*Cannot\s+read\s+"([^"]+\.(?:png|jpe?g|webp|gif))"\s*\(this model does not support image input\)\.',
+)
+_IMAGE_PATH_HINT_RE = re.compile(
+    r"(?is)\b(file:///[^\s\"'<>]+\.(?:png|jpe?g|webp|gif)|[A-Za-z]:[\\/][^\s\"'<>]+\.(?:png|jpe?g|webp|gif)|\./[^\s\"'<>]+\.(?:png|jpe?g|webp|gif)|\b[^\s\"'<>]+\.(?:png|jpe?g|webp|gif))\b"
+)
+
+
+def _mime_from_image_path(path: str) -> str | None:
+    low = (path or "").lower()
+    if low.endswith(".png"):
+        return "image/png"
+    if low.endswith(".jpg") or low.endswith(".jpeg"):
+        return "image/jpeg"
+    if low.endswith(".webp"):
+        return "image/webp"
+    if low.endswith(".gif"):
+        return "image/gif"
+    return None
+
+
+def _workspace_root_for_vision() -> Path | None:
+    try:
+        return Path(__file__).resolve().parents[3]
+    except Exception:
+        return None
+
+
+def _safe_resolve_local_image_path(hint: str) -> Path | None:
+    """
+    Resolve a path hint to an existing local file path.
+    - By default only allows workspace-relative paths.
+    - Absolute paths are allowed only when LLM_PROXY_VISION_ALLOW_ABS_PATHS=1.
+    """
+    h = str(hint or "").strip()
+    if not h:
+        return None
+    if h.lower().startswith("file:///"):
+        h = h[8:]  # strip file:///
+    h = h.strip().strip('"').strip("'")
+    if not h:
+        return None
+
+    p = Path(h)
+    ws = _workspace_root_for_vision()
+
+    candidates: list[Path] = []
+    if p.is_absolute():
+        if _VISION_ALLOW_ABS_PATHS:
+            candidates.append(p)
+    else:
+        if ws is not None:
+            candidates.append((ws / p).resolve())
+        candidates.append(Path.cwd() / p)
+
+    for c in candidates:
+        try:
+            rc = c.resolve()
+        except Exception:
+            continue
+        if not rc.exists() or not rc.is_file():
+            continue
+        if not _VISION_ALLOW_ABS_PATHS and ws is not None:
+            try:
+                rc.relative_to(ws)
+            except Exception:
+                continue
+        return rc
+    return None
+
+
+def _read_local_image_as_data_url(path: Path) -> str | None:
+    mime = _mime_from_image_path(str(path))
+    if not mime:
+        return None
+    try:
+        raw = path.read_bytes()
+    except Exception:
+        return None
+    if len(raw) > VISION_MAX_DECODED_BYTES:
+        return None
+    b64 = base64.b64encode(raw).decode("ascii")
+    return f"data:{mime};base64,{b64}"
+
+
+def _maybe_inline_image_from_text_message(msg: dict[str, Any]) -> dict[str, Any]:
+    if not _VISION_READ_LOCAL_FILES:
+        return msg
+    if not isinstance(msg, dict):
+        return msg
+    if str(msg.get("role") or "").strip() != "user":
+        return msg
+    content = msg.get("content")
+    if not isinstance(content, str) or not content.strip():
+        return msg
+
+    text = content.strip()
+    file_hint: str | None = None
+    m = _COPILOT_CANNOT_READ_IMAGE_RE.search(text)
+    if m:
+        file_hint = m.group(1).strip()
+        # Remove the Copilot preamble so the model sees the actual user question.
+        text = _COPILOT_CANNOT_READ_IMAGE_RE.sub("", text).strip()
+    if file_hint is None:
+        m2 = _IMAGE_PATH_HINT_RE.search(text)
+        if m2:
+            file_hint = m2.group(1).strip()
+
+    if not file_hint:
+        return msg
+    p = _safe_resolve_local_image_path(file_hint)
+    if p is None:
+        return msg
+    data_url = _read_local_image_as_data_url(p)
+    if not data_url:
+        return msg
+
+    new_msg = dict(msg)
+    new_msg["content"] = [
+        {"type": "text", "text": sanitize_openai_text_part(text) if text else ""},
+        {"type": "image_url", "image_url": {"url": data_url}},
+    ]
+    return new_msg
+
+
 def _sanitize_message_text(text: str, *, max_chars: int = 80_000) -> str:
     """
     Prevent huge clipboard payloads (e.g. base64 images) from being sent to Ollama.
@@ -1571,9 +1719,10 @@ def _normalize_and_sanitize_messages(raw_messages: list[Any]) -> list[dict[str, 
         if not isinstance(m, dict):
             continue
         nm: dict[str, Any] = dict(m)
+        nm = _maybe_inline_image_from_text_message(nm)
         nm["role"] = str(m.get("role") or "").strip() or "user"
 
-        c = m.get("content")
+        c = nm.get("content")
         if isinstance(c, list):
             nm["content"] = sanitize_proxy_content_parts(c)
         elif isinstance(c, str):
@@ -2557,7 +2706,7 @@ def run_chat_completions(
         if messages_diag:
             native_tools_diag.update(messages_diag)
         native_ollama_messages_for_upstream = (
-            ollama_messages_drop_images(native_ollama_messages)
+            _ollama_upstream_messages_for_tools(native_ollama_messages, native_tools_payload, use_model)
             if oll_tools
             else native_ollama_messages
         )
@@ -2583,7 +2732,7 @@ def run_chat_completions(
             ]
             native_tools_diag["tool_loop_finalize_nudge"] = True
             native_ollama_messages_for_upstream = (
-                ollama_messages_drop_images(native_ollama_messages)
+                _ollama_upstream_messages_for_tools(native_ollama_messages, native_tools_payload, use_model)
                 if oll_tools
                 else native_ollama_messages
             )

@@ -2,7 +2,6 @@
  * Map Ollama model ids to bundled Lobe Icons (@lobehub/icons-static-svg) for provider logos.
  * Rules are ordered: first match wins; Hugging Face is a fallback when the id looks like an HF path.
  */
-import anthropicUrl from '@lobehub/icons-static-svg/icons/anthropic.svg?url';
 import ayaUrl from '@lobehub/icons-static-svg/icons/aya.svg?url';
 import baichuanUrl from '@lobehub/icons-static-svg/icons/baichuan.svg?url';
 import cohereUrl from '@lobehub/icons-static-svg/icons/cohere.svg?url';
@@ -35,7 +34,6 @@ import zhipuUrl from '@lobehub/icons-static-svg/icons/zhipu.svg?url';
 
 /** @type {Record<string, string>} */
 export const OLLAMA_BRAND_ICON_URL = {
-  anthropic: anthropicUrl,
   aya: ayaUrl,
   baichuan: baichuanUrl,
   cohere: cohereUrl,
@@ -78,7 +76,6 @@ const PRIMARY_BRAND_RULES = [
   [/granite|ibm\//i, 'ibm'],
   [/phi[-_]?[34]|(^|[-_/])orca\b|wizardlm/i, 'microsoft'],
   [/gpt-oss|openai|gpt-4|gpt-3/i, 'openai'],
-  [/claude|anthropic/i, 'anthropic'],
   [/nous|hermes/i, 'nousresearch'],
   [/chatglm|glm[-._]?[0-9]|zhipu/i, 'zhipu'],
   [/baichuan/i, 'baichuan'],
@@ -183,7 +180,6 @@ const FAMILY_TO_BRAND_RULES = [
   [/stablelm|stable[-_]diffusion/i, 'stability'],
   [/nemotron|nvidia/i, 'nvidia'],
   [/gpt-oss|gpt2|gptneo|openai/i, 'openai'],
-  [/claude|anthropic/i, 'anthropic'],
   [/nous/i, 'nousresearch'],
   [/chatglm|glm/i, 'zhipu'],
   [/bert|roberta|distilbert/i, 'huggingface'],

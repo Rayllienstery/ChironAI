@@ -5,14 +5,38 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import os
 import re
+import socket
+import ipaddress
+from urllib.parse import urlparse
 from typing import Any
+
+import requests
 
 _DATA_IMAGE_INLINE_RE = re.compile(r"data:image/[a-z0-9.+-]+;base64,", re.IGNORECASE)
 _DATA_URL_HEAD = re.compile(
     r"^data:(image/[a-zA-Z0-9.+-]+);base64,",
     re.IGNORECASE,
 )
+
+# When False, allow inline `data:image/...;base64,...` inside string-only content.
+_STRIP_INLINE_DATA_URLS = str(os.getenv("LLM_PROXY_VISION_STRIP_INLINE_DATA_URLS", "1")).strip() not in {
+    "0",
+    "false",
+    "no",
+}
+
+# When True, allow server-side fetching of external http(s) image URLs.
+_FETCH_EXTERNAL_IMAGE_URLS = str(os.getenv("LLM_PROXY_VISION_FETCH_EXTERNAL_URLS", "0")).strip() in {
+    "1",
+    "true",
+    "yes",
+}
+
+# Guardrails for external fetch.
+_EXTERNAL_FETCH_TIMEOUT = (3.0, 10.0)  # (connect, read)
+_EXTERNAL_FETCH_MAX_REDIRECTS = 3
 
 # Ollama accepts large payloads; keep a sane server-side cap.
 VISION_MAX_DECODED_BYTES = 20 * 1024 * 1024
@@ -24,6 +48,86 @@ _NOTE_EXTERNAL = (
 _NOTE_TOO_LARGE = "[Image omitted: data URL exceeds the configured size limit.]"
 _NOTE_TOO_MANY = "[Image omitted: too many images in one message.]"
 _NOTE_INVALID = "[Image omitted: invalid or unsupported image data URL.]"
+_NOTE_FETCH_FAILED = "[Image omitted: failed to fetch external image URL.]"
+
+
+def _url_looks_safe_for_fetch(url: str) -> bool:
+    """
+    Best-effort SSRF guard: block private/loopback/link-local/etc.
+    This does not guarantee safety in all environments; keep behind an explicit flag.
+    """
+    u = (url or "").strip()
+    if not u:
+        return False
+    p = urlparse(u)
+    if p.scheme not in {"http", "https"}:
+        return False
+    host = (p.hostname or "").strip()
+    if not host:
+        return False
+    try:
+        infos = socket.getaddrinfo(host, p.port or (443 if p.scheme == "https" else 80), type=socket.SOCK_STREAM)
+    except Exception:
+        return False
+    for info in infos:
+        sockaddr = info[4]
+        ip_str = sockaddr[0] if isinstance(sockaddr, tuple) and sockaddr else ""
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            return False
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            return False
+    return True
+
+
+def http_image_url_to_data_url(url: str) -> tuple[str | None, str | None]:
+    """
+    Fetch an external http(s) image URL and convert to a data URL.
+    Returns (data_url, note). Note is a user-safe error string.
+    """
+    if not _FETCH_EXTERNAL_IMAGE_URLS:
+        return None, _NOTE_EXTERNAL
+    if not _url_looks_safe_for_fetch(url):
+        return None, _NOTE_FETCH_FAILED
+    try:
+        r = requests.get(
+            url,
+            timeout=_EXTERNAL_FETCH_TIMEOUT,
+            stream=True,
+            allow_redirects=True,
+            headers={"User-Agent": "llm-proxy-vision-fetch/1.0"},
+        )
+    except Exception:
+        return None, _NOTE_FETCH_FAILED
+    try:
+        # Reject too many redirects (requests follows automatically; we can still bound by history length).
+        if len(getattr(r, "history", []) or []) > _EXTERNAL_FETCH_MAX_REDIRECTS:
+            return None, _NOTE_FETCH_FAILED
+        ct = str(r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if not ct.startswith("image/"):
+            return None, _NOTE_FETCH_FAILED
+        buf = bytearray()
+        for chunk in r.iter_content(chunk_size=64 * 1024):
+            if not chunk:
+                continue
+            buf.extend(chunk)
+            if len(buf) > VISION_MAX_DECODED_BYTES:
+                return None, _NOTE_TOO_LARGE
+        b64 = base64.b64encode(bytes(buf)).decode("ascii")
+        return f"data:{ct};base64,{b64}", None
+    finally:
+        try:
+            r.close()
+        except Exception:
+            pass
 
 
 def sanitize_openai_text_part(text: str, *, max_chars: int = 80_000) -> str:
@@ -34,14 +138,15 @@ def sanitize_openai_text_part(text: str, *, max_chars: int = 80_000) -> str:
     if not s:
         return ""
 
-    m = _DATA_IMAGE_INLINE_RE.search(s)
-    if m is not None:
-        prefix = s[: m.start()].rstrip()
-        note = (
-            "[Image omitted: inline data:image;base64 payload was removed because it exceeds the model context. "
-            "Please attach the image as a file/attachment or describe it in text.]"
-        )
-        s = (prefix + "\n\n" + note).strip() if prefix else note
+    if _STRIP_INLINE_DATA_URLS:
+        m = _DATA_IMAGE_INLINE_RE.search(s)
+        if m is not None:
+            prefix = s[: m.start()].rstrip()
+            note = (
+                "[Image omitted: inline data:image;base64 payload was removed because it exceeds the model context. "
+                "Please attach the image as a file/attachment or describe it in text.]"
+            )
+            s = (prefix + "\n\n" + note).strip() if prefix else note
 
     if len(s) > max_chars:
         s = s[:max_chars].rstrip() + "\n\n" + f"[Truncated: exceeded {max_chars} characters.]"
@@ -151,7 +256,17 @@ def sanitize_proxy_content_parts(parts: list[Any]) -> str | list[dict[str, Any]]
                 out.append({"type": "image_url", "image_url": {"url": ul}})
                 continue
             if ul.lower().startswith("http://") or ul.lower().startswith("https://"):
-                sn = sanitize_openai_text_part(_NOTE_EXTERNAL)
+                fetched, note = http_image_url_to_data_url(ul)
+                if fetched and fetched.lower().startswith("data:image"):
+                    if kept_images >= VISION_MAX_IMAGES_PER_MESSAGE:
+                        sn = sanitize_openai_text_part(_NOTE_TOO_MANY)
+                        if sn:
+                            out.append({"type": "text", "text": sn})
+                        continue
+                    kept_images += 1
+                    out.append({"type": "image_url", "image_url": {"url": fetched}})
+                    continue
+                sn = sanitize_openai_text_part(note or _NOTE_EXTERNAL)
                 if sn:
                     out.append({"type": "text", "text": sn})
                 continue

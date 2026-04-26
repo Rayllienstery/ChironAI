@@ -3401,7 +3401,7 @@ def test_is_gemini_model_name_rejects_non_gemini_families() -> None:
         "gemma-3-27b-it",
         "google/gemma-3n-e2b",
         "qwen2.5-coder:latest",
-        "claude-3-7-sonnet",
+        "gpt-4o",
     ]
     for model in negatives:
         assert cc._is_gemini_model_name(model) is False

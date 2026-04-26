@@ -276,6 +276,20 @@ export default function ProxyTraceDetailModal({ log, isOpen, onClose }) {
   const agentTraceStyle = log && meta ? isAgentTraceDetailLog(log, meta) : false;
   const titleId = 'proxy-trace-detail-modal-title';
 
+  const handleExportJson = () => {
+    const data = meta || log;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const timestamp = log.timestamp ? log.timestamp.replace(/[: ]/g, '-') : Date.now();
+    a.download = `proxy-request-${log.id || timestamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   if (!isOpen || !log) return null;
 
   return (
@@ -289,8 +303,22 @@ export default function ProxyTraceDetailModal({ log, isOpen, onClose }) {
       >
         <div className="proxy-journal-modal-header">
           <div className="proxy-journal-modal-title-block">
-            <h2 id={titleId}>{agentTraceStyle ? 'Trace detail' : 'Request detail'}</h2>
-            <p className="proxy-journal-modal-meta">{log.timestamp}</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <h2 id={titleId} style={{ margin: 0 }}>{agentTraceStyle ? 'Trace detail' : 'Request detail'}</h2>
+              <button
+                type="button"
+                className="proxy-journal-modal-export-btn"
+                onClick={handleExportJson}
+                title="Export as JSON"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </button>
+            </div>
+            <p className="proxy-journal-modal-meta" style={{ marginTop: '4px' }}>{log.timestamp}</p>
             {meta?.trace_id != null && String(meta.trace_id).trim() !== '' && (
               <p className="proxy-journal-modal-meta">
                 <code>{String(meta.trace_id)}</code>

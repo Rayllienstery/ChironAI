@@ -34,13 +34,24 @@ The **`/api/tags`**, **`/api/show`**, **`/api/generate`**, and **`/api/chat`** r
 OpenAI-style user messages may use multipart `content`: an array of `{ "type": "text", "text": "..." }` and `{ "type": "image_url", "image_url": { "url": "..." } }`.
 
 - **Supported toward Ollama:** `image_url.url` values that are **`data:image/...;base64,...`** data URLs. The proxy validates and forwards them as Ollama’s native **`images`** array on the same user message (base64 payload after `base64,`), with adjacent text in **`content`**.
-- **Not loaded by the proxy:** plain **`http://` / `https://`** image URLs are replaced with a short in-band note (no server-side fetch; avoids SSRF). Use a data URL, call upstream **`POST /api/chat`** directly, or host a client that inlines the image as base64.
+- **Not loaded by the proxy (default):** plain **`http://` / `https://`** image URLs are replaced with a short in-band note (no server-side fetch; avoids SSRF). Use a data URL, call upstream **`POST /api/chat`** directly, or host a client that inlines the image as base64.\n+  - **Optional (unsafe-by-default):** set `LLM_PROXY_VISION_FETCH_EXTERNAL_URLS=1` to enable **server-side fetching** of `http(s)` image URLs and conversion to `data:image/...;base64,...` (guarded with best-effort SSRF checks + size limits).
 - **Limits:** decoded size per image, max images per message, and the usual text sanitiser for huge inline base64 pasted into **string-only** `content` are defined in [`infrastructure/ollama/openai_multipart_vision.py`](../../infrastructure/ollama/openai_multipart_vision.py).
 
 Proxy traces expose **`images_count`** per Ollama message when `images` is present; base64 blobs are not expanded into trace previews.
 
 - **`tool_choice`:** OpenAI allows object values (e.g. `{"type":"auto"}`). Ollama’s native **`/api/chat`** expects a small string or the field omitted; the proxy maps unsupported shapes to **omit** the field (default auto) and maps string **`none`** / dict **`{"type":"none"}`** to disabling tools for routing.
-- **Tools + vision:** when **`tools`** is sent to Ollama, the proxy **drops `images`** from outbound messages for that request only (trace still reflects the pre-strip list). Some backends (including several cloud models) return **400** if `images` and `tools` are combined.
+- **Tools + vision:** some backends (including several cloud models) return **400** if `images` and `tools` are combined. The proxy historically **drops `images`** from outbound messages whenever tools are present. **Exception:** when routing to **Gemini** models, the proxy keeps `images` even when tools are present (Gemini supports multimodal input); trace still reflects the upstream message list.
+
+#### Troubleshooting: `ERROR: Cannot read "image.png" (this model does not support image input)`
+
+If you see that string inside the **user message** (as opposed to an HTTP error response), it means the **client** failed to attach/read the local image before sending the request. The proxy cannot read `image.png` from the user’s machine via a file path in text. To send an image through `POST /v1/chat/completions`, the client must include multipart `content` with an `image_url.url` that is a `data:image/...;base64,...` data URL (or call upstream `POST /api/chat` directly with Ollama’s native `images` field).
+
+#### Vision flags
+
+- `LLM_PROXY_VISION_STRIP_INLINE_DATA_URLS` (default `1`): when enabled, strips inline `data:image/...;base64,...` payloads pasted into **string-only** `content` to avoid blowing up context. Set to `0` to pass such payloads through unchanged (useful for debugging upstream errors).
+- `LLM_PROXY_VISION_FETCH_EXTERNAL_URLS` (default `0`): when enabled, the proxy may fetch `http(s)` `image_url.url` server-side and inline it as a `data:image/...;base64,...` URL. This is guarded with best-effort SSRF checks and strict size limits, but should be enabled only in trusted environments.
+- `LLM_PROXY_VISION_READ_LOCAL_FILES` (default `0`): when enabled, the proxy attempts to detect image file path hints in **user text** (not attachments) and, if the file exists on the proxy host, inlines it as an OpenAI multipart `image_url` data URL. This is primarily a Copilot workaround for prompts that include `ERROR: Cannot read "image.png" ...`.
+- `LLM_PROXY_VISION_ALLOW_ABS_PATHS` (default `0`): when `LLM_PROXY_VISION_READ_LOCAL_FILES=1`, controls whether absolute paths are allowed. Default is workspace-only.
 
 **`POST /v1/completions`** is a separate legacy shape (OpenAI `prompt` / `input` → Ollama **`/api/generate`**); it is not merged into the same analytics semantics as chat completions.
 

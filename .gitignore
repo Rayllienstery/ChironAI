@@ -114,14 +114,6 @@ Thumbs.db
 # Project-specific
 last_collection.txt
 WebUI/last_collection.txt
-start_claude_proxy.bat
-start_claude_proxy.ps1
-start_claude_proxy_configured.bat
-start_claude_proxy_configured.ps1
-start_codex_proxy.bat
-start_codex_proxy.ps1
-start_codex_proxy_configured.bat
-start_codex_proxy_configured.ps1
 *.db
 *.sqlite
 *.sqlite3

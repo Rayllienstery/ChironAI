@@ -786,6 +786,8 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
 
     @bp.route("/v1/models", methods=["GET"])
     def list_models():
+        # Note: build rows are OpenAI-shaped model objects, with optional Chiron extension fields
+        # like `supports_vision` and `metadata` when present in the build definition.
         build_rows = _openai_build_model_rows(wiring)
         include_ac = get_v1_include_autocomplete_logical_model()
         if wants_anthropic_models_list(request.headers):

@@ -12,6 +12,7 @@ import {
 import { mergePipelineSnapshot } from '../hooks/useMergedPipelinePreview';
 import LlmProxyAutocompletePanel from './LlmProxyAutocompletePanel';
 import CoreUIButton from './CoreUIButton';
+import CoreUIModal from './CoreUIModal';
 import '../styles/components/DashboardTab.css';
 import '../styles/components/SettingsTab.css';
 import '../styles/components/LlmProxyTab.css';
@@ -52,59 +53,6 @@ function mergeBuildDraftIntoPipelinePreview(snapshot, hybridSparse, rerankForRag
     web_interaction_on_low_confidence_framework:
       draft.web_interaction_on_low_confidence_framework !== false,
   };
-}
-
-function CoreUiModal({ title, onClose, children }) {
-  const panelRef = useRef(null);
-
-  useEffect(() => {
-    const prev = document.activeElement;
-    const t = setTimeout(() => {
-      try {
-        panelRef.current?.querySelector?.('input,select,button,textarea,[tabindex]')?.focus?.();
-      } catch {
-        /* ignore */
-      }
-    }, 0);
-    return () => {
-      clearTimeout(t);
-      try {
-        prev?.focus?.();
-      } catch {
-        /* ignore */
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    const onKeyDown = (e) => {
-      if (e.key === 'Escape') onClose?.();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
-
-  return (
-    <div
-      className="coreui-modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
-      }}
-    >
-      <div className="coreui-modal" ref={panelRef}>
-        <div className="coreui-modal-header">
-          <h3>{title}</h3>
-          <button type="button" className="coreui-modal-close-btn" onClick={onClose} aria-label="Close dialog">
-            <span className="material-symbols-outlined" aria-hidden="true">close</span>
-          </button>
-        </div>
-        <div className="coreui-modal-body">{children}</div>
-      </div>
-    </div>
-  );
 }
 
 const WIZARD_STEPS = [
@@ -783,7 +731,57 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
       </section>
 
       {draft && (
-        <CoreUiModal title={editingId ? `Edit build: ${editingId}` : 'Create new build'} onClose={closeForm}>
+        <CoreUIModal
+          title={editingId ? `Edit build: ${editingId}` : 'Create new build'}
+          onClose={closeForm}
+          footer={
+            <div className="llm-proxy-wizard-nav">
+              <div className="llm-proxy-wizard-nav-left">
+                {wizardStep > 0 && (
+                  <CoreUIButton
+                    variant="primary"
+                    onClick={() => { setWizardStep(wizardStep - 1); setWizardDirection('back'); }}
+                  >
+                    <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">arrow_back</span>
+                    Back
+                  </CoreUIButton>
+                )}
+              </div>
+              <div className="llm-proxy-wizard-nav-center">
+                {wizardStep < WIZARD_STEPS.length - 1 && (
+                  <CoreUIButton
+                    variant="primary"
+                    disabled={saving}
+                    onClick={saveForm}
+                  >
+                    <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">save</span>
+                    {saving ? 'Saving...' : 'Save build'}
+                  </CoreUIButton>
+                )}
+              </div>
+              <div className="llm-proxy-wizard-nav-right">
+                {wizardStep < WIZARD_STEPS.length - 1 ? (
+                  <CoreUIButton
+                    variant="primary"
+                    onClick={() => { setWizardStep(wizardStep + 1); setWizardDirection('forward'); }}
+                  >
+                    Next
+                    <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">arrow_forward</span>
+                  </CoreUIButton>
+                ) : (
+                  <CoreUIButton
+                    variant="primary"
+                    disabled={saving}
+                    onClick={saveForm}
+                  >
+                    <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">save</span>
+                    {saving ? 'Saving...' : 'Save build'}
+                  </CoreUIButton>
+                )}
+              </div>
+            </div>
+          }
+        >
           {/* Wizard steps: standard underline tabs (not pill + connector) */}
           <div className="llm-proxy-wizard-steps" role="tablist" aria-label="Build configuration sections">
             {WIZARD_STEPS.map((step, idx) => (
@@ -829,7 +827,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 <label className="coreui-form-field">
                   Build id (API model name)
                   <input
-                    className="dashboard-card-field"
+                    className="coreui-input"
                     value={draft.id}
                     onChange={(e) => setDraft({ ...draft, id: e.target.value })}
                     disabled={!!editingId}
@@ -841,7 +839,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 <label className="coreui-form-field">
                   Display name
                   <input
-                    className="dashboard-card-field"
+                    className="coreui-input"
                     value={draft.display_name}
                     onChange={(e) => setDraft({ ...draft, display_name: e.target.value })}
                     placeholder="Human-friendly name shown in the UI"
@@ -863,7 +861,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 <label className="coreui-form-field">
                   Provider
                   <select
-                    className="dashboard-card-field"
+                    className="coreui-select"
                     value={draft.provider_id}
                     onChange={(e) => {
                       const providerId = e.target.value;
@@ -882,7 +880,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 <label className="coreui-form-field">
                   Model
                   <select
-                    className="dashboard-card-field"
+                    className="coreui-select"
                     value={draft.model}
                     onChange={(e) => {
                       const v = e.target.value;
@@ -912,11 +910,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                       <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">psychology</span>
                       Provider think mode
                     </span>
-                    <input
-                      type="checkbox"
-                      checked={!!draft.chat_think}
-                      onChange={(e) => setDraft({ ...draft, chat_think: e.target.checked })}
-                    />
+                    <label className="coreui-switch">
+                      <input
+                        type="checkbox"
+                        checked={!!draft.chat_think}
+                        onChange={(e) => setDraft({ ...draft, chat_think: e.target.checked })}
+                      />
+                      <span aria-hidden="true"></span>
+                    </label>
                   </div>
                   <p className="llm-proxy-toggle-explanation">
                     Enables extended "thinking" output for models that support it (e.g. DeepSeek-R1, QwQ). The model
@@ -930,11 +931,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                       <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">stream</span>
                       Token-by-token SSE streaming
                     </span>
-                    <input
-                      type="checkbox"
-                      checked={draft.sse_streaming !== false}
-                      onChange={(e) => setDraft({ ...draft, sse_streaming: e.target.checked })}
-                    />
+                    <label className="coreui-switch">
+                      <input
+                        type="checkbox"
+                        checked={draft.sse_streaming !== false}
+                        onChange={(e) => setDraft({ ...draft, sse_streaming: e.target.checked })}
+                      />
+                      <span aria-hidden="true"></span>
+                    </label>
                   </div>
                   <p className="llm-proxy-toggle-explanation">
                     When on, tokens stream from Ollama to the client one-by-one in real time. When off, the proxy
@@ -973,11 +977,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                       <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">search</span>
                       Enable RAG for this build
                     </span>
-                    <input
-                      type="checkbox"
-                      checked={!!draft.rag_enabled}
-                      onChange={(e) => setDraft({ ...draft, rag_enabled: e.target.checked })}
-                    />
+                    <label className="coreui-switch">
+                      <input
+                        type="checkbox"
+                        checked={!!draft.rag_enabled}
+                        onChange={(e) => setDraft({ ...draft, rag_enabled: e.target.checked })}
+                      />
+                      <span aria-hidden="true"></span>
+                    </label>
                   </div>
                   <p className="llm-proxy-toggle-explanation">
                     When enabled, every chat request will search your Qdrant collections for relevant context before
@@ -1009,7 +1016,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     <label className="coreui-form-field llm-proxy-section-gap-sm">
                       RAG collection override
                       <input
-                        className="dashboard-card-field"
+                        className="coreui-input"
                         value={draft.rag_collection}
                         onChange={(e) => setDraft({ ...draft, rag_collection: e.target.value })}
                         placeholder="empty = server default"
@@ -1021,7 +1028,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                       <label className="coreui-form-field">
                         Context chunk chars
                         <input
-                          className="dashboard-card-field"
+                          className="coreui-input"
                           inputMode="numeric"
                           value={draft.context_chunk_chars}
                           onChange={(e) => setDraft({ ...draft, context_chunk_chars: e.target.value })}
@@ -1032,7 +1039,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                       <label className="coreui-form-field">
                         Context total chars
                         <input
-                          className="dashboard-card-field"
+                          className="coreui-input"
                           inputMode="numeric"
                           value={draft.context_total_chars}
                           onChange={(e) => setDraft({ ...draft, context_total_chars: e.target.value })}
@@ -1043,7 +1050,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                       <label className="coreui-form-field">
                         RAG top_k
                         <input
-                          className="dashboard-card-field"
+                          className="coreui-input"
                           inputMode="numeric"
                           value={draft.rag_top_k}
                           onChange={(e) => setDraft({ ...draft, rag_top_k: e.target.value })}
@@ -1059,11 +1066,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                           <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">code</span>
                           Code only mode
                         </span>
-                        <input
-                          type="checkbox"
-                          checked={!!draft.code_only}
-                          onChange={(e) => setDraft({ ...draft, code_only: e.target.checked })}
-                        />
+                        <label className="coreui-switch">
+                          <input
+                            type="checkbox"
+                            checked={!!draft.code_only}
+                            onChange={(e) => setDraft({ ...draft, code_only: e.target.checked })}
+                          />
+                          <span aria-hidden="true"></span>
+                        </label>
                       </div>
                       <p className="llm-proxy-toggle-explanation">
                         Restricts RAG retrieval to code documents only (snippets, source files). Useful for coding assistants that shouldn't pull prose docs.
@@ -1076,11 +1086,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                           <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">metadata</span>
                           Include RAG metadata in response
                         </span>
-                        <input
-                          type="checkbox"
-                          checked={!!draft.include_rag_metadata}
-                          onChange={(e) => setDraft({ ...draft, include_rag_metadata: e.target.checked })}
-                        />
+                        <label className="coreui-switch">
+                          <input
+                            type="checkbox"
+                            checked={!!draft.include_rag_metadata}
+                            onChange={(e) => setDraft({ ...draft, include_rag_metadata: e.target.checked })}
+                          />
+                          <span aria-hidden="true"></span>
+                        </label>
                       </div>
                       <p className="llm-proxy-toggle-explanation">
                         Appends citation metadata (source file, chunk id, score) to the API response so clients can show where the answer came from.
@@ -1116,11 +1129,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                       <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">visibility_off</span>
                       Private mode
                     </span>
-                    <input
-                      type="checkbox"
-                      checked={!!draft.private}
-                      onChange={(e) => setDraft({ ...draft, private: e.target.checked })}
-                    />
+                    <label className="coreui-switch">
+                      <input
+                        type="checkbox"
+                        checked={!!draft.private}
+                        onChange={(e) => setDraft({ ...draft, private: e.target.checked })}
+                      />
+                      <span aria-hidden="true"></span>
+                    </label>
                   </div>
                   <p className="llm-proxy-toggle-explanation">
                     No proxy rows in the logs database, no live trace snapshot for this request, and no live or history
@@ -1171,11 +1187,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                       <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">description</span>
                       Enable Agent Proxy Mode
                     </span>
-                    <input
-                      type="checkbox"
-                      checked={draft.use_prompt_template === false}
-                      onChange={(e) => setDraft({ ...draft, use_prompt_template: !e.target.checked })}
-                    />
+                    <label className="coreui-switch">
+                      <input
+                        type="checkbox"
+                        checked={draft.use_prompt_template === false}
+                        onChange={(e) => setDraft({ ...draft, use_prompt_template: !e.target.checked })}
+                      />
+                      <span aria-hidden="true"></span>
+                    </label>
                   </div>
                   <p className="llm-proxy-toggle-explanation">
                     If enabled, we won't use our system prompt templates because the agent is expected to provide its own instructions.
@@ -1186,7 +1205,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   <label className="coreui-form-field">
                     Prompt template
                     <select
-                      className="dashboard-card-field"
+                      className="coreui-select"
                       value={draft.prompt_name}
                       onChange={(e) => setDraft({ ...draft, prompt_name: e.target.value })}
                     >
@@ -1228,7 +1247,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     "robot" and "poet".
                   </p>
                   <input
-                    className="dashboard-card-field llm-proxy-param-card-field"
+                    className="coreui-input llm-proxy-param-card-field"
                     value={draft.temperature}
                     onChange={(e) => setDraft({ ...draft, temperature: e.target.value })}
                     placeholder="inherit (server default)"
@@ -1249,7 +1268,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     considered. In practice, you usually adjust <em>either</em> Temperature <em>or</em> Top P, not both.
                   </p>
                   <input
-                    className="dashboard-card-field llm-proxy-param-card-field"
+                    className="coreui-input llm-proxy-param-card-field"
                     value={draft.top_p}
                     onChange={(e) => setDraft({ ...draft, top_p: e.target.value })}
                     placeholder="inherit (server default)"
@@ -1270,7 +1289,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     "Check model"). Setting this lower than the max saves resources for short conversations.
                   </p>
                   <input
-                    className="dashboard-card-field llm-proxy-param-card-field"
+                    className="coreui-input llm-proxy-param-card-field"
                     value={draft.num_ctx}
                     onChange={(e) => setDraft({ ...draft, num_ctx: e.target.value })}
                     placeholder="inherit (model default)"
@@ -1290,7 +1309,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     means no tool use at all (single-shot). Higher values allow multi-step reasoning chains.
                   </p>
                   <input
-                    className="dashboard-card-field llm-proxy-param-card-field"
+                    className="coreui-input llm-proxy-param-card-field"
                     value={draft.max_agent_steps}
                     onChange={(e) => setDraft({ ...draft, max_agent_steps: e.target.value })}
                     placeholder="inherit (1–256)"
@@ -1325,11 +1344,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                       <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">public</span>
                       Web supplement enabled
                     </span>
-                    <input
-                      type="checkbox"
-                      checked={!!draft.web_enabled}
-                      onChange={(e) => setDraft({ ...draft, web_enabled: e.target.checked })}
-                    />
+                    <label className="coreui-switch">
+                      <input
+                        type="checkbox"
+                        checked={!!draft.web_enabled}
+                        onChange={(e) => setDraft({ ...draft, web_enabled: e.target.checked })}
+                      />
+                      <span aria-hidden="true"></span>
+                    </label>
                   </div>
                   <p className="llm-proxy-toggle-explanation">
                     Master switch for all web-based features below. When off, no web data is fetched for this build —
@@ -1351,11 +1373,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                         </p>
                         <div className="llm-proxy-toggle-row llm-proxy-toggle-row--sub">
                           <span className="llm-proxy-toggle-label llm-proxy-toggle-label--sub">Enable DDG news</span>
-                          <input
-                            type="checkbox"
-                            checked={!!draft.web_interaction_ddg_news}
-                            onChange={(e) => setDraft({ ...draft, web_interaction_ddg_news: e.target.checked })}
-                          />
+                          <label className="coreui-switch">
+                            <input
+                              type="checkbox"
+                              checked={!!draft.web_interaction_ddg_news}
+                              onChange={(e) => setDraft({ ...draft, web_interaction_ddg_news: e.target.checked })}
+                            />
+                            <span aria-hidden="true"></span>
+                          </label>
                         </div>
                       </div>
 
@@ -1370,11 +1395,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                         </p>
                         <div className="llm-proxy-toggle-row llm-proxy-toggle-row--sub">
                           <span className="llm-proxy-toggle-label llm-proxy-toggle-label--sub">Enable page fetching</span>
-                          <input
-                            type="checkbox"
-                            checked={!!draft.web_interaction_fetch_page}
-                            onChange={(e) => setDraft({ ...draft, web_interaction_fetch_page: e.target.checked })}
-                          />
+                          <label className="coreui-switch">
+                            <input
+                              type="checkbox"
+                              checked={!!draft.web_interaction_fetch_page}
+                              onChange={(e) => setDraft({ ...draft, web_interaction_fetch_page: e.target.checked })}
+                            />
+                            <span aria-hidden="true"></span>
+                          </label>
                         </div>
                       </div>
 
@@ -1389,11 +1417,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                         </p>
                         <div className="llm-proxy-toggle-row llm-proxy-toggle-row--sub">
                           <span className="llm-proxy-toggle-label llm-proxy-toggle-label--sub">Enable Wikipedia</span>
-                          <input
-                            type="checkbox"
-                            checked={!!draft.web_interaction_wikipedia}
-                            onChange={(e) => setDraft({ ...draft, web_interaction_wikipedia: e.target.checked })}
-                          />
+                          <label className="coreui-switch">
+                            <input
+                              type="checkbox"
+                              checked={!!draft.web_interaction_wikipedia}
+                              onChange={(e) => setDraft({ ...draft, web_interaction_wikipedia: e.target.checked })}
+                            />
+                            <span aria-hidden="true"></span>
+                          </label>
                         </div>
                       </div>
                     </div>
@@ -1404,11 +1435,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                           <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">cloud_download</span>
                           Fetch web knowledge (GitHub docs)
                         </span>
-                        <input
-                          type="checkbox"
-                          checked={!!draft.fetch_web_knowledge}
-                          onChange={(e) => setDraft({ ...draft, fetch_web_knowledge: e.target.checked })}
-                        />
+                        <label className="coreui-switch">
+                          <input
+                            type="checkbox"
+                            checked={!!draft.fetch_web_knowledge}
+                            onChange={(e) => setDraft({ ...draft, fetch_web_knowledge: e.target.checked })}
+                          />
+                          <span aria-hidden="true"></span>
+                        </label>
                       </div>
                       <p className="llm-proxy-toggle-explanation">
                         Enables merged multi-collection retrieval and background GitHub markdown refresh via
@@ -1424,11 +1458,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                           <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">toggle_on</span>
                           Web on keyword triggers
                         </span>
-                        <input
-                          type="checkbox"
-                          checked={draft.web_interaction_on_keywords !== false}
-                          onChange={(e) => setDraft({ ...draft, web_interaction_on_keywords: e.target.checked })}
-                        />
+                        <label className="coreui-switch">
+                          <input
+                            type="checkbox"
+                            checked={draft.web_interaction_on_keywords !== false}
+                            onChange={(e) => setDraft({ ...draft, web_interaction_on_keywords: e.target.checked })}
+                          />
+                          <span aria-hidden="true"></span>
+                        </label>
                       </div>
                       <p className="llm-proxy-toggle-explanation">
                         Automatically triggers web search when the query contains keywords that suggest the user needs
@@ -1442,11 +1479,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                           <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">help</span>
                           Web on low-confidence framework questions
                         </span>
-                        <input
-                          type="checkbox"
-                          checked={draft.web_interaction_on_low_confidence_framework !== false}
-                          onChange={(e) => setDraft({ ...draft, web_interaction_on_low_confidence_framework: e.target.checked })}
-                        />
+                        <label className="coreui-switch">
+                          <input
+                            type="checkbox"
+                            checked={draft.web_interaction_on_low_confidence_framework !== false}
+                            onChange={(e) => setDraft({ ...draft, web_interaction_on_low_confidence_framework: e.target.checked })}
+                          />
+                          <span aria-hidden="true"></span>
+                        </label>
                       </div>
                       <p className="llm-proxy-toggle-explanation">
                         When RAG returns low-confidence results for framework-related questions, automatically supplements
@@ -1535,54 +1575,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
             )}
           </div>
           </div>
-
-          {/* Wizard Navigation - sticky footer */}
-            <div className="llm-proxy-wizard-nav">
-              <div className="llm-proxy-wizard-nav-left">
-                {wizardStep > 0 && (
-                  <CoreUIButton
-                    variant="primary"
-                    onClick={() => { setWizardStep(wizardStep - 1); setWizardDirection('back'); }}
-                  >
-                    <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">arrow_back</span>
-                    Back
-                  </CoreUIButton>
-                )}
-              </div>
-              <div className="llm-proxy-wizard-nav-center">
-                {wizardStep < WIZARD_STEPS.length - 1 && (
-                  <CoreUIButton
-                    variant="primary"
-                    disabled={saving}
-                    onClick={saveForm}
-                  >
-                    <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">save</span>
-                    {saving ? 'Saving...' : 'Save build'}
-                  </CoreUIButton>
-                )}
-              </div>
-              <div className="llm-proxy-wizard-nav-right">
-                {wizardStep < WIZARD_STEPS.length - 1 ? (
-                  <CoreUIButton
-                    variant="primary"
-                    onClick={() => { setWizardStep(wizardStep + 1); setWizardDirection('forward'); }}
-                  >
-                    Next
-                    <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">arrow_forward</span>
-                  </CoreUIButton>
-                ) : (
-                  <CoreUIButton
-                    variant="primary"
-                    disabled={saving}
-                    onClick={saveForm}
-                  >
-                    <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">save</span>
-                    {saving ? 'Saving...' : 'Save build'}
-                  </CoreUIButton>
-                )}
-              </div>
-            </div>
-        </CoreUiModal>
+        </CoreUIModal>
       )}
         </>
       )}

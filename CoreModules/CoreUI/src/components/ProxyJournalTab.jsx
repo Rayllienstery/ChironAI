@@ -42,6 +42,44 @@ function getDateRangeForJournal(period, selectedDate) {
   }
 }
 
+function readMetadata(log) {
+  if (!log || !log.metadata) return {};
+  if (typeof log.metadata === 'string') {
+    try {
+      return JSON.parse(log.metadata);
+    } catch {
+      return {};
+    }
+  }
+  return log.metadata;
+}
+
+function hasImage(meta) {
+  if (meta.has_image) return true;
+  const messages = meta.request?.messages;
+  if (Array.isArray(messages)) {
+    return messages.some((m) => {
+      if (Array.isArray(m.content)) {
+        return m.content.some((c) => c.type === 'image' || c.type === 'image_url');
+      }
+      return false;
+    });
+  }
+  return false;
+}
+
+function formatLogMessage(msg, meta) {
+  let text = meta?.user_query || '';
+  if (!text && msg) {
+    // Strip "Proxy request (...): " or "Proxy request: "
+    text = msg.replace(/^Proxy request\s*(\([^)]+\))?:\s*/, '');
+  }
+  if (!text) return '';
+
+  // Remove <environment_details>...</environment_details> tags and their content
+  return text.replace(/<environment_details>[\s\S]*?<\/environment_details>/g, '').trim();
+}
+
 export default function ProxyJournalTab() {
   const [period, setPeriod] = useState('week');
   const [selectedDate, setSelectedDate] = useState(null);
@@ -145,6 +183,28 @@ export default function ProxyJournalTab() {
     [displayLogs, logs, selectedId],
   );
 
+  const groupedLogs = useMemo(() => {
+    const groups = [];
+    let currentGroup = null;
+
+    for (const row of displayLogs) {
+      const meta = readMetadata(row);
+      const date = new Date(row.timestamp);
+      const dateStr = date.toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+
+      if (!currentGroup || currentGroup.dateStr !== dateStr) {
+        currentGroup = { dateStr, rows: [] };
+        groups.push(currentGroup);
+      }
+      currentGroup.rows.push({ ...row, meta });
+    }
+    return groups;
+  }, [displayLogs]);
+
   const clearDb = async () => {
     const msg = 'Delete all persisted RAG Fusion Proxy journal entries from the database?';
     if (!window.confirm(msg)) return;
@@ -226,23 +286,43 @@ export default function ProxyJournalTab() {
 
         {loading && <p className="dashboard-card-muted">Loading…</p>}
         {!loading && logs.length === 0 && <p className="dashboard-card-muted">No journal entries.</p>}
-        {!loading && displayLogs.length > 0 && (
-          <ul className="proxy-journal-list" aria-busy={loading}>
-            {displayLogs.map((row) => (
-              <li key={row.id}>
-                <button
-                  type="button"
-                  onClick={() => openEntry(row.id)}
-                  className={`proxy-journal-list-item${
-                    detailModalOpen && selectedId === row.id ? ' proxy-journal-list-item--active' : ''
-                  }`}
-                >
-                  <span className="proxy-journal-list-item-time">{row.timestamp}</span>
-                  <span className="proxy-journal-list-item-msg">{row.message}</span>
-                </button>
-              </li>
+        {!loading && groupedLogs.length > 0 && (
+          <div className="proxy-journal-groups" aria-busy={loading}>
+            {groupedLogs.map((group) => (
+              <div key={group.dateStr} className="proxy-journal-group">
+                <h3 className="proxy-journal-group-title">{group.dateStr}</h3>
+                <ul className="proxy-journal-list">
+                  {group.rows.map((row) => (
+                    <li key={row.id}>
+                      <button
+                        type="button"
+                        onClick={() => openEntry(row.id)}
+                        className={`proxy-journal-list-item${
+                          detailModalOpen && selectedId === row.id ? ' proxy-journal-list-item--active' : ''
+                        }`}
+                      >
+                        <div className="proxy-journal-list-item-header">
+                          <span className="proxy-journal-list-item-msg">{formatLogMessage(row.message, row.meta)}</span>
+                          {hasImage(row.meta) && (
+                            <span className="material-symbols-outlined proxy-journal-list-item-image-icon">
+                              image
+                            </span>
+                          )}
+                        </div>
+                        <span className="proxy-journal-list-item-time">
+                          {new Date(row.timestamp).toLocaleTimeString(undefined, {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                          })}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </section>
 
