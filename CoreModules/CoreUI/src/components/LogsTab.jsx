@@ -6,6 +6,7 @@ import CoreUIButton from './CoreUIButton';
 import CoreUIPillTabs from './CoreUIPillTabs';
 import ProxyTracesTab from './ProxyTracesTab';
 import EmptyState from './EmptyState';
+import { useOptionalNotificationCenter } from './NotificationCenterContext';
 
 const ProxyLogsAnalytics = lazy(() => import('./ProxyLogsAnalytics'));
 
@@ -107,6 +108,9 @@ function sortLogsNewestFirst(items) {
 }
 
 function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
+  const notifCtx = useOptionalNotificationCenter();
+  const persistNotification = notifCtx?.persistNotification;
+
   const [viewMode, setViewMode] = useState(focusSubTab || 'traces'); // 'traces' | 'logs' | 'proxy' | 'autocomplete'
   const [logs, setLogs] = useState([]);
   const [levelFilter, setLevelFilter] = useState('');
@@ -188,9 +192,24 @@ function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
 
     if (viewMode === 'logs' && sessionId) {
       startLogPolling(sessionId, (newLogs) => {
-        setLogs(prev => {
-          const existingIds = new Set(prev.map(log => log.id));
-          const uniqueNewLogs = newLogs.filter(log => !existingIds.has(log.id));
+        const batch = Array.isArray(newLogs) ? newLogs : [];
+        setLogs((prev) => {
+          const existingIds = new Set(prev.map((log) => log.id));
+          const uniqueNewLogs = batch.filter((log) => !existingIds.has(log.id));
+          if (uniqueNewLogs.length > 0 && persistNotification) {
+            const maxId = Math.max(...uniqueNewLogs.map((log) => Number(log.id) || 0));
+            const pn = persistNotification;
+            const n = uniqueNewLogs.length;
+            queueMicrotask(() => {
+              void pn({
+                kind: 'info',
+                source: 'system_log',
+                title: 'System log',
+                message: n === 1 ? '1 new log entry' : `${n} new log entries`,
+                aggregation_key: `system-log|batch|${maxId}`,
+              });
+            });
+          }
           if (uniqueNewLogs.length === 0) return prev;
           const updated = [...sortLogsNewestFirst(uniqueNewLogs), ...prev];
           return updated.slice(0, 500);
@@ -202,18 +221,7 @@ function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
       const interval = setInterval(loadLogs, 3000);
       return () => clearInterval(interval);
     }
-  }, [sessionId, levelFilter, viewMode, period, selectedDate, loadLogs]);
-
-  const getLevelClass = (level) => {
-    return `log-entry log-${level.toLowerCase()}`;
-  };
-
-  const getLevelIcon = (level) => {
-    const lvl = (level || '').toUpperCase();
-    if (lvl === 'ERROR') return '⛔';
-    if (lvl === 'WARNING') return '';
-    return 'ℹ️';
-  };
+  }, [sessionId, levelFilter, viewMode, period, selectedDate, loadLogs, persistNotification]);
 
   const buildTitle = (log) => {
     const level = log.level || '';
@@ -261,6 +269,20 @@ function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
     } catch {
       return timestamp;
     }
+  };
+
+  const truncateText = (value, maxLen) => {
+    const s = String(value ?? '');
+    if (s.length <= maxLen) return s;
+    return `${s.slice(0, Math.max(0, maxLen - 1))}…`;
+  };
+
+  const levelVisualVariant = (level) => {
+    const l = String(level || '').toLowerCase();
+    if (l === 'error') return 'error';
+    if (l === 'warning') return 'warning';
+    if (l === 'debug') return 'debug';
+    return 'info';
   };
 
   const renderProxyLog = (log) => {
@@ -487,7 +509,7 @@ function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
       {viewMode === 'traces' && <ProxyTracesTab />}
 
       {viewMode !== 'traces' && (
-      <div className="logs-content">
+      <div className={`logs-content${viewMode === 'logs' ? ' logs-content--system-table' : ''}`}>
         {viewMode === 'logs' && !sessionId ? (
           <div className="loading">No session available. Session is loading or could not be created.</div>
         ) : loading &&
@@ -503,23 +525,46 @@ function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
             {viewMode === 'proxy' ? 'proxy ' : viewMode === 'autocomplete' ? 'autocomplete ' : ''}
             logs found
           </EmptyState>
+        ) : viewMode === 'logs' ? (
+          <div className="logs-system-panel">
+            <table className="logs-table">
+              <thead>
+                <tr>
+                  <th className="logs-col-time">Time</th>
+                  <th className="logs-col-level">Level</th>
+                  <th className="logs-col-source">Source</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {logs.map((log) => {
+                  const levelRaw = (log.level || 'INFO').toString();
+                  const lv = levelVisualVariant(log.level);
+                  const msg = buildMessage(log);
+                  return (
+                    <tr
+                      key={log.id}
+                      className={`logs-table-row logs-table-row--${lv}`}
+                      title={buildTitle(log)}
+                    >
+                      <td className="logs-col-time">{formatTimestamp(log.timestamp)}</td>
+                      <td className="logs-col-level">
+                        <span className={`logs-level-chip logs-level-chip--${lv}`}>{levelRaw}</span>
+                      </td>
+                      <td className="logs-col-source" title={log.source || ''}>
+                        {truncateText(log.source || '—', 56)}
+                      </td>
+                      <td className="logs-col-message">
+                        <span className="logs-message-cell">{truncateText(msg, 600)}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
-          (viewMode === 'proxy' || viewMode === 'autocomplete' ? displayProxyLogs : logs).map((log) => 
-            viewMode === 'proxy' || viewMode === 'autocomplete' ? (
-              renderProxyLog(log)
-            ) : (
-              <div key={log.id} className={getLevelClass(log.level)}>
-                <div className="log-header">
-                  <div className="log-title">
-                    <span className="log-icon">{getLevelIcon(log.level)}</span>
-                    <span className="log-summary">{buildTitle(log)}</span>
-                  </div>
-                  <span className="log-timestamp">{formatTimestamp(log.timestamp)}</span>
-                </div>
-                <div className="log-message">{buildMessage(log)}</div>
-              </div>
-            )
-          )
+          displayProxyLogs.map((log) => renderProxyLog(log))
         )}
       </div>
       )}

@@ -510,6 +510,56 @@ def get_sessions() -> Any:
         return jsonify({"error": str(e)}), 500
 
 
+def _parse_since_id_query(raw: str | None) -> int | None:
+    """Parse ``since_id`` query param; ``None`` if absent or empty. ``0`` is valid."""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    try:
+        return int(s)
+    except ValueError:
+        return None
+
+
+def _log_webui_logs_read_duration(
+    logs_repo: Any,
+    *,
+    endpoint: str,
+    limit: int,
+    since_id: int | None,
+    duration_ms: float,
+) -> None:
+    """Append timing row to system logs. Skip fast incremental polls (anti-spam)."""
+    try:
+        incremental = since_id is not None
+        if incremental and duration_ms < 250.0:
+            return
+        # Proxy list polls often omit since_id with a date window; avoid a row every few seconds.
+        if not incremental and "proxy-logs" in endpoint and duration_ms < 250.0:
+            return
+        msg = (
+            f"{endpoint} limit={limit} since_id={since_id if since_id is not None else 'none'} "
+            f"duration_ms={duration_ms:.1f}"
+        )
+        logs_repo.add_log(
+            "system",
+            "INFO",
+            msg,
+            source="webui_api",
+            error_type=None,
+            metadata={
+                "endpoint": endpoint,
+                "limit": limit,
+                "since_id": since_id,
+                "duration_ms": round(duration_ms, 2),
+            },
+        )
+    except Exception:
+        pass
+
+
 @webui_bp.route("/logs", methods=["GET"])
 def get_logs() -> Any:
     """Return recent log entries from database."""
@@ -518,20 +568,29 @@ def get_logs() -> Any:
         limit = int(request.args.get("limit", 100))
         level = request.args.get("level", "").upper() or None
         source = request.args.get("source") or None
-        since_id = request.args.get("since_id")
-        
+        since_id_val = _parse_since_id_query(request.args.get("since_id"))
+
         if not session_id:
             return jsonify({"error": "session_id is required"}), 400
-        
+
         logs_repo = get_logs_repository()
+        t0 = time.perf_counter()
         logs = logs_repo.get_logs(
             session_id=session_id,
             level=level,
             limit=limit,
-            since_id=int(since_id) if since_id else None,
+            since_id=since_id_val,
             source=source,
         )
-        
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        _log_webui_logs_read_duration(
+            logs_repo,
+            endpoint="GET /api/webui/logs",
+            limit=limit,
+            since_id=since_id_val,
+            duration_ms=duration_ms,
+        )
+
         return jsonify({"logs": logs})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_logs", exc_info=True)
@@ -666,20 +725,20 @@ def get_proxy_logs() -> Any:
     """
     try:
         limit = int(request.args.get("limit", 100))
-        since_id = request.args.get("since_id")
+        since_id_val = _parse_since_id_query(request.args.get("since_id"))
         from_date = request.args.get("from")
         to_date = request.args.get("to")
         ac_raw = (request.args.get("autocomplete_only") or "").strip().lower()
         autocomplete_only = ac_raw in ("1", "true", "yes")
 
         logs_repo = get_logs_repository()
-        sid = int(since_id) if since_id else None
+        t0 = time.perf_counter()
         if autocomplete_only:
             logs = logs_repo.get_logs(
                 session_id="proxy",
                 level="INFO",
                 limit=limit,
-                since_id=sid,
+                since_id=since_id_val,
                 source="proxy",
                 from_date=from_date or None,
                 to_date=to_date or None,
@@ -690,12 +749,20 @@ def get_proxy_logs() -> Any:
                 session_id="proxy",
                 level="INFO",
                 limit=limit,
-                since_id=sid,
+                since_id=since_id_val,
                 source="proxy",
                 include_system=False,
                 from_date=from_date or None,
                 to_date=to_date or None,
             )
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        _log_webui_logs_read_duration(
+            logs_repo,
+            endpoint="GET /api/webui/proxy-logs",
+            limit=limit,
+            since_id=since_id_val,
+            duration_ms=duration_ms,
+        )
 
         return jsonify({"logs": logs})
     except Exception as e:
@@ -1086,8 +1153,13 @@ def _fetch_ollama_tag_name_set_for_builds_diag(timeout_sec: float) -> set[str]:
 
 
 def _enrich_builds_with_diagnostics(builds: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    ollama_names = _ollama_tag_name_set_for_builds_diag()
-    qset = _get_cached_qdrant_collection_name_set_for_builds_diag()
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fut_o = pool.submit(_ollama_tag_name_set_for_builds_diag)
+        fut_q = pool.submit(_get_cached_qdrant_collection_name_set_for_builds_diag)
+        ollama_names = fut_o.result()
+        qset = fut_q.result()
     out: list[dict[str, Any]] = []
     for b in builds:
         row = dict(b)
@@ -1104,6 +1176,18 @@ def _enrich_builds_with_diagnostics(builds: list[dict[str, Any]]) -> list[dict[s
     return out
 
 
+def _light_build_rows_for_webui(builds: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Same shape as enriched builds but without Ollama/Qdrant/prompt diagnostics (fast first paint)."""
+    out: list[dict[str, Any]] = []
+    for b in builds:
+        row = dict(b)
+        row["use_prompt_template"] = b.get("use_prompt_template", True) is not False
+        row["issues"] = []
+        row["healthy"] = True
+        out.append(row)
+    return out
+
+
 @webui_bp.route("/llm-proxy/builds", methods=["GET"])
 def get_llm_proxy_builds() -> Any:
     """List LLM Proxy builds with validation hints for WebUI."""
@@ -1111,7 +1195,12 @@ def get_llm_proxy_builds() -> Any:
         settings_repo = get_settings_repository()
         raw = settings_repo.get_app_setting(LLM_PROXY_BUILDS_APP_KEY)
         builds = load_builds_json(raw)
-        enriched = _enrich_builds_with_diagnostics(builds)
+        diag_raw = (request.args.get("diagnostics") or "1").strip().lower()
+        include_diagnostics = diag_raw not in ("0", "false", "no", "off")
+        if include_diagnostics:
+            enriched = _enrich_builds_with_diagnostics(builds)
+        else:
+            enriched = _light_build_rows_for_webui(builds)
         sh = get_server_host()
         dh = "127.0.0.1" if sh in ("0.0.0.0", "::", "") else sh
         bp_port = get_build_proxy_port()

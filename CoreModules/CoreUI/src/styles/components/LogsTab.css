@@ -62,6 +62,109 @@
   max-height: none;
 }
 
+/* System log list: Material-style data table (aligned with Crawler sources-table) */
+.logs-content.logs-content--system-table {
+  font-family: var(--coreui-font-family-base, system-ui, -apple-system, 'Segoe UI', sans-serif);
+  font-size: 0.9rem;
+}
+
+.logs-system-panel {
+  width: 100%;
+}
+
+.logs-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.logs-table th,
+.logs-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  text-align: left;
+  vertical-align: top;
+  color: var(--md-sys-color-on-surface);
+}
+
+.logs-table th {
+  font: var(--md-sys-typescale-label-medium-font);
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  box-shadow: 0 1px 0 var(--md-sys-color-outline-variant);
+}
+
+.logs-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 5%, transparent);
+}
+
+.logs-col-time {
+  white-space: nowrap;
+  width: 1%;
+  color: var(--md-sys-color-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+.logs-col-level {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.logs-col-source {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--coreui-font-family-mono, ui-monospace, monospace);
+  font-size: 0.85em;
+}
+
+.logs-col-message .logs-message-cell {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--coreui-font-family-mono, ui-monospace, monospace);
+  font-size: 0.85em;
+  line-height: 1.45;
+}
+
+.logs-level-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  font: var(--md-sys-typescale-label-medium-font);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.75rem;
+}
+
+.logs-level-chip--info {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 20%, transparent);
+  color: var(--md-sys-color-primary);
+}
+
+.logs-level-chip--warning {
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+}
+
+.logs-level-chip--error {
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+}
+
+.logs-level-chip--debug {
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.logs-table-row--error .logs-col-time {
+  color: var(--md-sys-color-error);
+}
+
 .log-entry {
   padding: var(--md-sys-spacing-sm);
   margin-bottom: var(--md-sys-spacing-xs);

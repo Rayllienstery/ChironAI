@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+import threading
+import time
 from typing import Any
 
 from llm_interactor.contracts import (
@@ -15,6 +17,34 @@ from llm_interactor.contracts import (
     ProviderHealth,
     ProviderHostContext,
 )
+
+_CACHE_LOCK = threading.Lock()
+_CACHE: dict[str, dict[str, tuple[float, Any]]] = {}
+
+
+def _cache_get(base_url: str, key: str, ttl_sec: float) -> Any | None:
+    if not base_url or ttl_sec <= 0:
+        return None
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        bucket = _CACHE.get(base_url)
+        if not bucket:
+            return None
+        item = bucket.get(key)
+        if not item:
+            return None
+        ts, value = item
+        if (now - ts) <= ttl_sec:
+            return value
+        return None
+
+
+def _cache_set(base_url: str, key: str, value: Any) -> None:
+    if not base_url:
+        return
+    with _CACHE_LOCK:
+        bucket = _CACHE.setdefault(base_url, {})
+        bucket[key] = (time.monotonic(), value)
 
 
 class OllamaProvider:
@@ -56,7 +86,8 @@ class OllamaProvider:
 
     def list_models(self) -> list[ModelDescriptor]:
         out: list[ModelDescriptor] = []
-        for item in self._visible_model_entries():
+        # Listing models is used by UI/catalog endpoints; keep it responsive.
+        for item in self._visible_model_entries(timeout_sec=2.0, cache_ttl_sec=30.0):
             model_id = str(item.get("name") or item.get("model") or "").strip()
             if not model_id:
                 continue
@@ -190,17 +221,23 @@ class OllamaProvider:
         }
 
     def get_tab_payload(self, *, runtime: Any | None = None) -> dict[str, Any]:
-        health = self.health_check()
-        all_models = self._all_model_entries()
-        visible_models = self._visible_model_entries()
+        # UI should not block on slow/unreachable Ollama. Use short timeouts + TTL caching.
+        base_url = self._base_url()
+        health = self.health_check(timeout_sec=0.8, cache_ttl_sec=2.0)
+
         hidden_ids = self._hidden_model_ids()
+        all_models = self._all_model_entries(timeout_sec=1.2, cache_ttl_sec=30.0, allow_stale=True)
+
+        from infrastructure.ollama.ollama_model_visibility import filter_ollama_tag_entries_for_editors
+
+        visible_models = filter_ollama_tag_entries_for_editors(all_models, list(hidden_ids))
         selected_model = visible_models[0] if visible_models else (all_models[0] if all_models else None)
         selected_model_name = str((selected_model or {}).get("name") or (selected_model or {}).get("model") or "").strip()
 
         diagnostics = {
             "provider_id": self._provider_id,
             "extension_id": str(self._manifest.id),
-            "base_url": self._base_url(),
+            "base_url": base_url,
             "chat_url": str(getattr(self._chat_client, "_url", "") or ""),
             "embed_url": self._embed_url(),
             "generate_url": self._generate_url(),
@@ -451,7 +488,7 @@ class OllamaProvider:
             return {"ok": True, "message": f"Pull completed for {pull_name}", "details": last}
         raise ValueError(f"Unsupported action: {action}")
 
-    def health_check(self) -> ProviderHealth:
+    def health_check(self, *, timeout_sec: float = 5.0, cache_ttl_sec: float = 0.0) -> ProviderHealth:
         base_url = self._base_url()
         if not base_url:
             return ProviderHealth(
@@ -460,25 +497,35 @@ class OllamaProvider:
                 status="missing_base_url",
                 message="Could not derive Ollama base URL from chat client",
             )
+        if cache_ttl_sec > 0:
+            cached = _cache_get(base_url, "health", cache_ttl_sec)
+            if isinstance(cached, ProviderHealth):
+                return cached
         try:
             from infrastructure.ollama.cli_runner import invoke_ping
 
-            data = invoke_ping(base_url=base_url, timeout=5.0)
+            data = invoke_ping(base_url=base_url, timeout=float(timeout_sec))
             ok = bool(data.get("ok"))
-            return ProviderHealth(
+            health = ProviderHealth(
                 provider_id=self._provider_id,
                 ok=ok,
                 status="ok" if ok else "unreachable",
                 message="" if ok else "Ollama is not reachable",
                 details=dict(data or {}),
             )
+            if cache_ttl_sec > 0:
+                _cache_set(base_url, "health", health)
+            return health
         except Exception as e:
-            return ProviderHealth(
+            health = ProviderHealth(
                 provider_id=self._provider_id,
                 ok=False,
                 status="error",
                 message=str(e),
             )
+            if cache_ttl_sec > 0:
+                _cache_set(base_url, "health", health)
+            return health
 
     def _invoke_embed(self, request: LLMRequest) -> LLMResponse:
         from infrastructure.ollama.embed_client import OllamaEmbeddingProvider
@@ -555,26 +602,43 @@ class OllamaProvider:
         base = self._base_url().rstrip("/")
         return f"{base}/api/generate" if base else ""
 
-    def _all_model_entries(self) -> list[dict[str, Any]]:
+    def _all_model_entries(
+        self,
+        *,
+        timeout_sec: float = 5.0,
+        cache_ttl_sec: float = 0.0,
+        allow_stale: bool = False,
+    ) -> list[dict[str, Any]]:
         from infrastructure.ollama.cli_runner import invoke_tags
 
         base_url = self._base_url()
         if not base_url:
             return []
+        if cache_ttl_sec > 0:
+            cached = _cache_get(base_url, "tags", cache_ttl_sec)
+            if isinstance(cached, list):
+                return [dict(item) for item in cached if isinstance(item, dict)]
         try:
-            data = invoke_tags(base_url=base_url, timeout=5.0)
+            data = invoke_tags(base_url=base_url, timeout=float(timeout_sec))
         except Exception:
+            if allow_stale:
+                stale = _cache_get(base_url, "tags", ttl_sec=365 * 24 * 3600.0)
+                if isinstance(stale, list):
+                    return [dict(item) for item in stale if isinstance(item, dict)]
             return []
         models = data.get("models") if isinstance(data, dict) else []
-        return [dict(item) for item in models if isinstance(item, dict)]
+        out = [dict(item) for item in models if isinstance(item, dict)]
+        if cache_ttl_sec > 0:
+            _cache_set(base_url, "tags", out)
+        return out
 
-    def _visible_model_entries(self) -> list[dict[str, Any]]:
+    def _visible_model_entries(self, *, timeout_sec: float = 5.0, cache_ttl_sec: float = 0.0) -> list[dict[str, Any]]:
         from infrastructure.ollama.ollama_model_visibility import (
             filter_ollama_tag_entries_for_editors,
             get_hidden_ollama_model_ids,
         )
 
-        raw = self._all_model_entries()
+        raw = self._all_model_entries(timeout_sec=timeout_sec, cache_ttl_sec=cache_ttl_sec, allow_stale=True)
         return filter_ollama_tag_entries_for_editors(raw, get_hidden_ollama_model_ids())
 
     def _hidden_model_ids(self) -> set[str]:

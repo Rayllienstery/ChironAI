@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getLlmProxyBuilds,
   putLlmProxyBuilds,
@@ -10,14 +10,15 @@ import {
   getRagModelSettings,
 } from '../services/api';
 import { mergePipelineSnapshot } from '../hooks/useMergedPipelinePreview';
-import PipelineCiDiagram from './PipelineCiDiagram';
-import PipelineVerticalDiagram from './PipelineVerticalDiagram';
 import LlmProxyAutocompletePanel from './LlmProxyAutocompletePanel';
 import CoreUIButton from './CoreUIButton';
 import '../styles/components/DashboardTab.css';
 import '../styles/components/SettingsTab.css';
 import '../styles/components/LlmProxyTab.css';
 import CoreUIPillTabs from './CoreUIPillTabs';
+
+const PipelineCiDiagram = lazy(() => import('./PipelineCiDiagram'));
+const PipelineVerticalDiagram = lazy(() => import('./PipelineVerticalDiagram'));
 
 const SECTION_TABS = [
   { id: 'builds', label: 'Builds' },
@@ -220,6 +221,20 @@ function draftToPayload(draft) {
 }
 
 function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
+  const perfMarksRef = useRef({
+    mountMark: `llmproxybuilds:mount:${Math.random().toString(16).slice(2)}`,
+    firstDataMark: `llmproxybuilds:first_data:${Math.random().toString(16).slice(2)}`,
+    didFirstData: false,
+  });
+
+  useEffect(() => {
+    try {
+      performance.mark(perfMarksRef.current.mountMark);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const [sectionTab, setSectionTab] = useState('builds');
   const [builds, setBuilds] = useState([]);
   const [urls, setUrls] = useState({ main: '', build_proxy: '' });
@@ -243,21 +258,50 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
   const [wizardStep, setWizardStep] = useState(0);
   const [wizardDirection, setWizardDirection] = useState('forward');
 
+  const chatProviders = useMemo(
+    () => (Array.isArray(providerCatalog.providers) ? providerCatalog.providers : []),
+    [providerCatalog],
+  );
+
   const load = useCallback(async () => {
     setErr(null);
     setLoading(true);
     try {
-      const b = await getLlmProxyBuilds();
-      setBuilds(b.builds || []);
-      setUrls(b.openai_models_urls || {});
+      const fast = await getLlmProxyBuilds({ diagnostics: false });
+      setBuilds(fast.builds || []);
+      setUrls(fast.openai_models_urls || {});
+      if (!perfMarksRef.current.didFirstData) {
+        perfMarksRef.current.didFirstData = true;
+        try {
+          performance.mark(perfMarksRef.current.firstDataMark);
+          performance.measure(
+            'llmproxybuilds:time_to_first_data_ms',
+            perfMarksRef.current.mountMark,
+            perfMarksRef.current.firstDataMark,
+          );
+        } catch {
+          /* ignore */
+        }
+      }
     } catch (e) {
       setErr(String(e.message || e));
       setBuilds([]);
       setUrls({});
-    } finally {
       setLoading(false);
+      return;
     }
+    setLoading(false);
 
+    try {
+      const full = await getLlmProxyBuilds({ diagnostics: true });
+      setBuilds(full.builds || []);
+      setUrls(full.openai_models_urls || {});
+    } catch {
+      /* keep fast snapshot; diagnostics optional */
+    }
+  }, []);
+
+  const loadEditorDependencies = useCallback(async () => {
     const [catalogResult, promptsResult, settingsResult] = await Promise.allSettled([
       getProviderCatalog('chat'),
       getPrompts(),
@@ -283,6 +327,11 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!draft) return;
+    loadEditorDependencies().catch(() => {});
+  }, [draft, loadEditorDependencies]);
 
   useEffect(() => {
     if (!openMenuModel) return undefined;
@@ -348,11 +397,6 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
         draft,
       ),
     [buildModalPipelineSnap, buildModalHybrid, buildModalRerank, draft],
-  );
-
-  const chatProviders = useMemo(
-    () => (Array.isArray(providerCatalog.providers) ? providerCatalog.providers : []),
-    [providerCatalog],
   );
 
   const filteredModels = useMemo(() => {
@@ -1429,7 +1473,9 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   </div>
                 </div>
 
-                <PipelineVerticalDiagram data={buildModalPipelineData} />
+                <Suspense fallback={<div className="dashboard-card-muted">Loading pipeline diagram…</div>}>
+                  <PipelineVerticalDiagram data={buildModalPipelineData} />
+                </Suspense>
 
                 <div className="llm-proxy-build-summary">
                   <h3 className="llm-proxy-build-summary-title">

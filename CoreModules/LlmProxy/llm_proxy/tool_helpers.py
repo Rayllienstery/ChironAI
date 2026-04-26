@@ -1290,7 +1290,7 @@ def _build_tool_json_instruction(
     tail = ""
     if "replace" in n and "range" in n:
         tail = (
-            " Required: non-empty `replacement` with the full multi-line text that replaces the userâ€™s selected "
+            " Required: non-empty `replacement` with the full multi-line text that replaces the user’s selected "
             "line range (not a description)."
         )
     elif "edit" in n and "file" in n:

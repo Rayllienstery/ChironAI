@@ -113,8 +113,16 @@ export async function getLlmProxyStatus() {
   return response.json();
 }
 
-export async function getLlmProxyBuilds() {
-  const response = await fetch(`${API_BASE}/llm-proxy/builds`);
+export async function getLlmProxyBuilds(options = {}) {
+  const params = new URLSearchParams();
+  if (options.diagnostics === false) {
+    params.set('diagnostics', '0');
+  }
+  const qs = params.toString() ? `?${params}` : '';
+  const response = await fetch(`${API_BASE}/llm-proxy/builds${qs}`, {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' },
+  });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(data.error || 'Failed to load LLM Proxy builds');
@@ -279,7 +287,10 @@ export async function getLogs(sessionId, options = {}) {
     session_id: sessionId,
     ...options,
   });
-  const response = await fetch(`${API_BASE}/logs?${params}`);
+  const response = await fetch(`${API_BASE}/logs?${params}`, {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' },
+  });
   if (!response.ok) {
     throw new Error('Failed to get logs');
   }
@@ -353,7 +364,11 @@ export async function clearLogs(sessionId, options = {}) {
   if (options.includeSystem === false) {
     params.set('include_system', '0');
   }
-  const response = await fetch(`${API_BASE}/logs?${params}`, { method: 'DELETE' });
+  const response = await fetch(`${API_BASE}/logs?${params}`, {
+    method: 'DELETE',
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' },
+  });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     throw new Error(err.error || 'Failed to clear logs');
@@ -368,7 +383,11 @@ export async function clearProxyLogs(options = {}) {
   }
   const response = await fetch(
     `${API_BASE}/proxy-logs${params.toString() ? `?${params}` : ''}`,
-    { method: 'DELETE' }
+    {
+      method: 'DELETE',
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    },
   );
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
@@ -385,7 +404,10 @@ export async function getProxyLogs(options = {}) {
   if (from != null && from !== '') params.set('from', from);
   if (to != null && to !== '') params.set('to', to);
   if (autocompleteOnly) params.set('autocomplete_only', '1');
-  const response = await fetch(`${API_BASE}/proxy-logs?${params}`);
+  const response = await fetch(`${API_BASE}/proxy-logs?${params}`, {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' },
+  });
   if (!response.ok) {
     throw new Error('Failed to get proxy logs');
   }

@@ -115,6 +115,9 @@ def test_proxy_logs_passes_autocomplete_only_to_repository(monkeypatch: pytest.M
             last_kwargs.update(kwargs)
             return []
 
+        def add_log(self, *args: Any, **kwargs: Any) -> int:
+            return 1
+
     monkeypatch.setattr(wr, "get_logs_repository", lambda: FakeRepo())
 
     from api.http.rag_routes import create_app
@@ -145,6 +148,9 @@ def test_proxy_logs_default_no_autocomplete_filter(monkeypatch: pytest.MonkeyPat
             last_kwargs.update(kwargs)
             return []
 
+        def add_log(self, *args: Any, **kwargs: Any) -> int:
+            return 1
+
     monkeypatch.setattr(wr, "get_logs_repository", lambda: FakeRepo())
 
     from api.http.rag_routes import create_app
@@ -154,6 +160,124 @@ def test_proxy_logs_default_no_autocomplete_filter(monkeypatch: pytest.MonkeyPat
     r = client.get("/api/webui/proxy-logs?limit=5")
     assert r.status_code == 200
     assert last_kwargs.get("autocomplete_only") is None
+
+
+def test_webui_logs_passes_since_id_zero_to_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    """since_id=0 must reach the repository (incremental poll), not be treated as absent."""
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    import api.http.webui_routes as wr
+
+    last_kwargs: dict = {}
+
+    class FakeRepo:
+        def get_logs(self, **kwargs):
+            last_kwargs.clear()
+            last_kwargs.update(kwargs)
+            return []
+
+        def add_log(self, *args: Any, **kwargs: Any) -> int:
+            return 1
+
+    monkeypatch.setattr(wr, "get_logs_repository", lambda: FakeRepo())
+
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    client = app.test_client()
+    r = client.get("/api/webui/logs?session_id=test-session&since_id=0&limit=10")
+    assert r.status_code == 200
+    assert last_kwargs.get("since_id") == 0
+
+
+def test_llm_proxy_builds_diagnostics_zero_returns_light_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GET /api/webui/llm-proxy/builds?diagnostics=0 skips heavy Ollama/Qdrant enrichment."""
+    import json
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    import api.http.webui_routes as wr
+
+    sample = [
+        {
+            "id": "devbuild",
+            "backend": "dumb",
+            "provider_id": "ollama",
+            "model": "llama3.2:latest",
+            "prompt_name": "system_senior_ios_assistant_v1",
+            "use_prompt_template": True,
+        }
+    ]
+
+    class FakeSettings:
+        def get_app_setting(self, key: str) -> str | None:
+            if key == wr.LLM_PROXY_BUILDS_APP_KEY:
+                return json.dumps(sample)
+            return None
+
+    called: list[str] = []
+
+    def boom_enrich(_builds: list) -> list:
+        called.append("enrich")
+        raise AssertionError("enrich should not run when diagnostics=0")
+
+    monkeypatch.setattr(wr, "get_settings_repository", lambda: FakeSettings())
+    monkeypatch.setattr(wr, "_enrich_builds_with_diagnostics", boom_enrich)
+
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    client = app.test_client()
+    r = client.get("/api/webui/llm-proxy/builds?diagnostics=0")
+    assert r.status_code == 200
+    assert called == []
+    data = r.get_json()
+    assert len(data.get("builds") or []) == 1
+    row = data["builds"][0]
+    assert row.get("issues") == []
+    assert row.get("healthy") is True
+
+
+def test_webui_logs_omitted_since_id_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When since_id is omitted, repository should see since_id=None."""
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    import api.http.webui_routes as wr
+
+    last_kwargs: dict = {}
+
+    class FakeRepo:
+        def get_logs(self, **kwargs):
+            last_kwargs.clear()
+            last_kwargs.update(kwargs)
+            return []
+
+        def add_log(self, *args: Any, **kwargs: Any) -> int:
+            return 1
+
+    monkeypatch.setattr(wr, "get_logs_repository", lambda: FakeRepo())
+
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    client = app.test_client()
+    r = client.get("/api/webui/logs?session_id=test-session&limit=10")
+    assert r.status_code == 200
+    assert last_kwargs.get("since_id") is None
 
 
 def test_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:

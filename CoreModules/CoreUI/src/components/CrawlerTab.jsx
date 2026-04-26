@@ -41,7 +41,7 @@ const MD_STEP_TYPES_META = [
     description:
       "Removes the leading HTML comment <!-- meta ... --> at the start of the document, parses fields (url, framework, doc_kind, etc.) and returns them as meta; only the remaining text (body) continues through the pipeline.",
     example:
-      'Input: "<!--\\nmeta: ...\\n-->\\n\\n# Title\\nContent" â†’ meta = {...}, body = "# Title\\nContent". If no comment â€” meta = {}, body = original text.',
+      'Input: "<!--\\nmeta: ...\\n-->\\n\\n# Title\\nContent" → meta = {...}, body = "# Title\\nContent". If no comment — meta = {}, body = original text.',
   },
   {
     type: "delete_lines_exact",
@@ -81,7 +81,7 @@ const MD_STEP_TYPES_META = [
     description:
       "Finds all non-overlapping matches of one regex (including multiline) and removes each match. Useful for cutting blocks by a single pattern (e.g. from marker to marker).",
     example:
-      'Param pattern: "(?ms)^<!-- no-index -->.*?^<!-- /no-index -->" â€” removes all blocks between those comments. Or a pattern for "[View in English](...)" link lines only.',
+      'Param pattern: "(?ms)^<!-- no-index -->.*?^<!-- /no-index -->" — removes all blocks between those comments. Or a pattern for "[View in English](...)" link lines only.',
   },
   {
     type: "strip_sections_by_heading",
@@ -97,7 +97,7 @@ const MD_STEP_TYPES_META = [
     description:
       "Trims trailing space per line, strips leading/trailing blank lines, collapses two or more spaces to one. Does not change content inside fenced code blocks (```) or lines with 4+ leading spaces.",
     example:
-      'Input: "  Title  \\n\\n  line   with   spaces  \\n" â†’ "Title\\n\\nline with spaces".',
+      'Input: "  Title  \\n\\n  line   with   spaces  \\n" → "Title\\n\\nline with spaces".',
   },
   {
     type: "wrap_indented_code",
@@ -113,7 +113,7 @@ const MD_STEP_TYPES_META = [
     description:
       "Replaces every match of the regex with the given string (e.g. to clean up stray characters or tags).",
     example:
-      'Param pattern: "\\s{3,}", replacement: "\\n\\n" â€” three or more spaces/newlines become two newlines.',
+      'Param pattern: "\\s{3,}", replacement: "\\n\\n" — three or more spaces/newlines become two newlines.',
   },
   {
     type: "reject_low_signal_body",
@@ -121,7 +121,7 @@ const MD_STEP_TYPES_META = [
     description:
       "After cleanup, drops the entire body (outputs empty markdown) if the text is too weak for RAG: fewer than min_chars characters, fewer than min_words words, or alphabetic letters below min_alpha_ratio of non-space characters (filters link/nav soup). Short but dense prose can still pass.",
     example:
-      "Params: min_chars 200, min_words 5, min_alpha_ratio 0.12 â€” place this step at the end of the pipeline (and tune thresholds in JSON).",
+      "Params: min_chars 200, min_words 5, min_alpha_ratio 0.12 — place this step at the end of the pipeline (and tune thresholds in JSON).",
   },
 ];
 
@@ -165,7 +165,7 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
   const processed = progress.processed_pages ?? 0;
   const pct =
     total > 0 ? Math.min(100, Math.round((100 * processed) / total)) : 0;
-  const sourcesLabel = (progress.source_ids || []).join(", ") || "â€”";
+  const sourcesLabel = (progress.source_ids || []).join(", ") || "—";
   const currentFile =
     progress.current_filename &&
     `${progress.current_source_id || ""}/${progress.current_filename}`.replace(
@@ -314,7 +314,7 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
         </div>
         <div className="create-collection-index-stat">
           <span className="create-collection-index-stat__value">
-            {processed} / {total || "â€¦"}
+            {processed} / {total || "…"}
           </span>
           <span className="create-collection-index-stat__label">pages done</span>
         </div>
@@ -719,7 +719,7 @@ function CrawlerTab() {
       <Card className="crawler-progress-panel" role="status" aria-live="polite">
         <div className="crawler-progress-header">
           <span className="crawler-progress-spinner" aria-hidden="true" />
-          <span className="crawler-progress-title">Crawlingâ€¦</span>
+          <span className="crawler-progress-title">Crawling…</span>
           <span className="crawler-progress-sources">
             {Array.from(crawlingSources).join(", ")}
           </span>
@@ -1231,7 +1231,7 @@ function CrawlerTab() {
             onClick={handleCloseCreateToast}
             aria-label="Dismiss collection progress"
           >
-            Ã—
+            ×
           </button>
         </div>
         <div className="create-collection-toast-body">
@@ -1537,7 +1537,7 @@ function CrawlerTab() {
                   onClick={() => setCrawlAllResults([])}
                   aria-label="Close"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
               <div className="modal-body">
@@ -1550,7 +1550,7 @@ function CrawlerTab() {
                         {r.success
                           ? "Completed successfully."
                           : r.error ||
-                            `Failed (return code ${r.returnCode ?? "â€”"}).`}
+                             `Failed (return code ${r.returnCode ?? "—"}).`}
                       </p>
                     );
                   })()
@@ -1567,7 +1567,7 @@ function CrawlerTab() {
                           <strong>{r.sourceId}</strong>:{" "}
                           {r.success
                             ? "OK"
-                            : r.error || `code ${r.returnCode ?? "â€”"}`}
+                             : r.error || `code ${r.returnCode ?? "—"}`}
                         </li>
                       ))}
                     </ul>
@@ -1639,7 +1639,7 @@ function CrawlerTab() {
                           />
                         </td>
                         <td>{source.id}</td>
-                        <td className="url-cell">{source.url || "â€”"}</td>
+                         <td className="url-cell">{source.url || "—"}</td>
                         <td>{formatDate(source.last_crawled)}</td>
                         <td>{source.total_pages || 0}</td>
                         <td>
@@ -1665,7 +1665,7 @@ function CrawlerTab() {
                               onClick={() => handleEditSource(source.id)}
                               title="Edit source configuration"
                             >
-                              âœï¸ Edit
+                              ✍️ Edit
                             </button>
                             <button
                               type="button"
@@ -1678,9 +1678,9 @@ function CrawlerTab() {
                                 <>
                                   <span className="spinner"></span> Crawling...
                                 </>
-                              ) : (
-                                "ðŸ”„ Refresh"
-                              )}
+                                ) : (
+                                  "🔄 Refresh"
+                                )}
                             </button>
                           </div>
                         </td>
@@ -1802,7 +1802,7 @@ function CrawlerTab() {
                 disabled={pipelineLoading}
               >
                 {pipelineList.length === 0 && (
-                  <option value="">â€” No pipelines â€”</option>
+                  <option value="">— No pipelines —</option>
                 )}
                 {pipelineList.map((n) => (
                   <option key={n} value={n}>
@@ -1826,7 +1826,7 @@ function CrawlerTab() {
                 pipelineSaving || !selectedPipelineName || pipelineLoading
               }
             >
-              {pipelineSaving ? "Savingâ€¦" : "Save"}
+              {pipelineSaving ? "Saving…" : "Save"}
             </button>
             {pipelineSaveToast && (
               <span className="md-pipeline-toast" role="status">
@@ -1843,7 +1843,7 @@ function CrawlerTab() {
               >
                 {pipelinePreviewSources.length === 0 &&
                   !pipelinePreviewSourcesLoading && (
-                    <option value="">â€” No sources â€”</option>
+                    <option value="">— No sources —</option>
                   )}
                 {pipelinePreviewSources.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -1864,7 +1864,7 @@ function CrawlerTab() {
               >
                 {pipelinePreviewFiles.length === 0 &&
                   !pipelinePreviewFilesLoading && (
-                    <option value="">â€” No files â€”</option>
+                    <option value="">— No files —</option>
                   )}
                 {pipelinePreviewFiles.map((f) => (
                   <option key={f.filename} value={f.filename}>
@@ -1884,7 +1884,7 @@ function CrawlerTab() {
               }
               title="Run this pipeline on the selected file"
             >
-              {previewLoading ? "Previewâ€¦" : "Preview on file"}
+              {previewLoading ? "Preview…" : "Preview on file"}
             </button>
             <button
               type="button"
@@ -1897,7 +1897,7 @@ function CrawlerTab() {
             </button>
           </div>
           {pipelineLoading ? (
-            <div className="loading">Loading pipelineâ€¦</div>
+            <div className="loading">Loading pipeline…</div>
           ) : (
             <>
               <div
@@ -2322,7 +2322,7 @@ function CrawlerTab() {
                         onClick={() => setShowAddStepMenu(false)}
                         aria-label="Close"
                       >
-                        Ã—
+                        ×
                       </button>
                     </div>
                     <div className="modal-body md-pipeline-add-modal-body">
@@ -2363,13 +2363,13 @@ function CrawlerTab() {
                 <div className="md-pipeline-preview-result">
                   <h4>Preview result</h4>
                   <p>
-                    {previewResult.filename} â€” processed length:{" "}
+                    {previewResult.filename} — processed length:{" "}
                     {(previewResult.processed_md || "").length} chars
                   </p>
                   <pre className="indexer-code-block indexer-code-block-full">
                     {(previewResult.processed_md || "").slice(0, 2000)}
                     {(previewResult.processed_md || "").length > 2000
-                      ? "\nâ€¦"
+                      ? "\n…"
                       : ""}
                   </pre>
                 </div>

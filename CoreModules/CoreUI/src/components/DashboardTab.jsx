@@ -248,7 +248,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
     let cancelled = false;
     (async () => {
       try {
-        const data = await getLlmProxyBuilds();
+        const data = await getLlmProxyBuilds({ diagnostics: false });
         if (cancelled) return;
         const ids = Array.isArray(data?.builds)
           ? data.builds

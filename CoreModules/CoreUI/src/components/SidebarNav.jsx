@@ -108,6 +108,30 @@ function SidebarNav({
   serviceStatusByTabId,
   statusLoading = false,
 }) {
+  const prefetchOnceRef = useRef(new Set());
+
+  const prefetchTab = useCallback((tabId) => {
+    const id = String(tabId || '');
+    if (!id) return;
+    if (prefetchOnceRef.current.has(id)) return;
+    prefetchOnceRef.current.add(id);
+    // Best-effort: prefetch chunks on intent (hover/focus).
+    try {
+      if (id === 'llm-proxy') import('./LlmProxyBuildsTab');
+      if (id === 'rag-fusion-proxy') import('./LlmProxyTab');
+      if (id === 'logs') import('./LogsTab');
+      if (id === 'rag') import('./RagTab');
+      if (id === 'dashboard') import('./DashboardTab');
+      if (id === 'open-webui') import('./OpenWebUiTab');
+      if (id === 'template-editor') import('./TemplateEditorTab');
+      if (id === 'testing') import('./TestingTab');
+      if (id === 'extensions') import('./ExtensionsTab');
+      if (id === 'coreui-showcase') import('./CoreUIShowcaseTab');
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const asideRef = useRef(null);
   const [collapsed, setCollapsed] = useState(readStoredCollapsed);
   const [expandedWidth, setExpandedWidth] = useState(readStoredWidth);
@@ -227,6 +251,8 @@ function SidebarNav({
                 type="button"
                 className={`coreui-sidebar__link${active ? " coreui-sidebar__link--active" : ""}${isOpenWebUi ? " coreui-sidebar__link--openwebui" : ""}${isRag ? " coreui-sidebar__link--rag" : ""}`}
                 onClick={() => onTabChange(tab.id)}
+                onMouseEnter={() => prefetchTab(tab.id)}
+                onFocus={() => prefetchTab(tab.id)}
                 aria-current={active ? "page" : undefined}
                 title={collapsed ? tab.label : undefined}
               >
