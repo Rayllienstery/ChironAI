@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import LlmProxyWebInteractionPanel from './LlmProxyWebInteractionPanel';
 import CoreUIButton from './CoreUIButton';
 
-import ProxyJournalTab from './ProxyJournalTab';
 import { getLlmProxyStatus } from '../services/api';
 import '../styles/components/SettingsTab.css';
 import '../styles/components/DashboardTab.css';
@@ -20,7 +19,6 @@ function kvRow(label, value, key) {
 
 const SUB_TABS = [
   { id: 'overview', label: 'Overview' },
-  { id: 'journal', label: 'Journal' },
   { id: 'web-interaction', label: 'Web Interaction' },
 ];
 
@@ -137,12 +135,6 @@ function LlmProxyTab({
                 configuration.
               </li>
               <li>
-                <strong>Zed</strong>: in AI settings choose <em>OpenAI API Compatible</em>, set the API URL to the base
-                URL above (or <code>:8087</code> for the build-only listener). Use your <strong>build id</strong> for
-                assistant chat; for inline completions use <code>ChironAI-Autocomplete</code> after you configure it under{' '}
-                <strong>LLM Proxy</strong> → <strong>Autocomplete</strong>. API key can be left empty unless you add your own authentication.
-              </li>
-              <li>
                 <strong>VSCode + Continue.dev</strong>: configure an OpenAI-compatible provider, set the base URL to this
                 proxy, and use your <strong>build id</strong> as the model.
               </li>
@@ -220,8 +212,9 @@ function LlmProxyTab({
               </li>
               <li>
                 <strong>Response</strong>: JSON (or stream) with assistant content, model id, usage approximations, and
-                optional RAG trace when requested. The <strong>Traces</strong> and <strong>Journal</strong> sub-tabs show
-                in-memory snapshots and persisted proxy runs; this section describes the static algorithm they reflect.
+                optional RAG trace when requested. The <strong>Logs</strong> tab (<strong>Traces</strong> and{' '}
+                <strong>RAG Fusion Journal</strong>) shows in-memory snapshots and persisted proxy runs; this section
+                describes the static algorithm they reflect.
               </li>
             </ol>
           </details>
@@ -248,8 +241,6 @@ function LlmProxyTab({
           </div>
         </div>
       )}
-
-      {subTab === 'journal' && <ProxyJournalTab />}
 
       {subTab === 'web-interaction' && <LlmProxyWebInteractionPanel />}
     </div>

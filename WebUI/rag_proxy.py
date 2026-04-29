@@ -23,7 +23,7 @@ _ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT_DIR not in sys.path:
     sys.path.insert(0, _ROOT_DIR)
 
-from flask import send_from_directory
+from flask import make_response, send_from_directory
 
 from config import get_log_level, get_server_port
 from api.http.rag_routes import create_app
@@ -87,13 +87,20 @@ def webui_index():
     # Try React build first
     if os.path.exists(REACT_BUILD_INDEX):
         with open(REACT_BUILD_INDEX, "r", encoding="utf-8") as f:
-            return f.read()
+            resp = make_response(f.read())
+            # Never cache index.html: it references hashed assets and must update after rebuilds.
+            resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            resp.headers["Pragma"] = "no-cache"
+            return resp
     
     # Fall back to old HTML
     index_path = os.path.join(WEBUI_FRONTEND_DIR, "index.html")
     if os.path.exists(index_path):
         with open(index_path, "r", encoding="utf-8") as f:
-            return f.read()
+            resp = make_response(f.read())
+            resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            resp.headers["Pragma"] = "no-cache"
+            return resp
     return "WebUI not found. Please ensure CoreModules/CoreUI/dist/index.html exists (run npm run build in CoreModules/CoreUI).", 404
 
 @app.route("/webui/<path:filename>")
@@ -102,12 +109,20 @@ def webui_static(filename):
     # Try React build first
     react_file_path = os.path.join(REACT_BUILD_DIR, filename)
     if os.path.exists(react_file_path) and os.path.isfile(react_file_path):
-        return send_from_directory(REACT_BUILD_DIR, filename)
+        # Allow caching of hashed files (Vite assets are served under /assets).
+        # For safety, prevent caching for any non-asset file under /webui/*.
+        resp = send_from_directory(REACT_BUILD_DIR, filename, max_age=0)
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        return resp
 
     # Fall back to old files
     file_path = os.path.join(WEBUI_FRONTEND_DIR, filename)
     if os.path.exists(file_path) and os.path.isfile(file_path):
-        return send_from_directory(WEBUI_FRONTEND_DIR, filename)
+        resp = send_from_directory(WEBUI_FRONTEND_DIR, filename, max_age=0)
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        return resp
     return "File not found", 404
 
 
@@ -116,7 +131,8 @@ def webui_assets(filename: str):
     """Serve Vite build assets from /assets/*."""
     asset_path = os.path.join(REACT_BUILD_DIR, "assets", filename)
     if os.path.exists(asset_path) and os.path.isfile(asset_path):
-        return send_from_directory(os.path.join(REACT_BUILD_DIR, "assets"), filename)
+        # Vite assets are content-hashed; safe to cache aggressively.
+        return send_from_directory(os.path.join(REACT_BUILD_DIR, "assets"), filename, max_age=31536000)
     return "File not found", 404
 
 

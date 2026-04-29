@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import threading
 import time
 from typing import Any
@@ -232,19 +232,63 @@ class OllamaProvider:
         hidden_ids = self._hidden_model_ids()
         hidden_frozen = frozenset(hidden_ids)
 
+        # Hard bound for this endpoint: even if the underlying HTTP/CLI stalls, never block the UI.
+        health_timeout_s = 1.0
+        tags_timeout_s = 1.25
+        budget_s = 1.75
+
+        t0 = time.monotonic()
+        health: ProviderHealth
+        all_models: list[dict[str, Any]]
+        degraded_reason: str | None = None
+
         with ThreadPoolExecutor(max_workers=2) as pool:
-            fut_health = pool.submit(
-                lambda: self.health_check(timeout_sec=0.75, cache_ttl_sec=2.0),
-            )
+            fut_health = pool.submit(lambda: self.health_check(timeout_sec=0.75, cache_ttl_sec=2.0))
             fut_models = pool.submit(
                 lambda: self._all_model_entries(
                     timeout_sec=0.9,
                     cache_ttl_sec=30.0,
                     allow_stale=True,
-                ),
+                )
             )
-            health = fut_health.result()
-            all_models = fut_models.result()
+
+            remaining = max(0.0, budget_s - (time.monotonic() - t0))
+            try:
+                health = fut_health.result(timeout=min(health_timeout_s, remaining) if remaining else 0.0)
+            except TimeoutError:
+                degraded_reason = degraded_reason or "health_timeout"
+                health = ProviderHealth(
+                    provider_id=self._provider_id,
+                    ok=False,
+                    status="timeout",
+                    message="Timed out while checking Ollama health",
+                    details={"timeout_s": health_timeout_s},
+                )
+            except Exception as e:
+                degraded_reason = degraded_reason or "health_error"
+                health = ProviderHealth(
+                    provider_id=self._provider_id,
+                    ok=False,
+                    status="error",
+                    message=str(e),
+                )
+
+            remaining = max(0.0, budget_s - (time.monotonic() - t0))
+            try:
+                all_models = fut_models.result(timeout=min(tags_timeout_s, remaining) if remaining else 0.0)
+            except TimeoutError:
+                degraded_reason = degraded_reason or "tags_timeout"
+                stale = _cache_get(base_url, "tags", ttl_sec=365 * 24 * 3600.0) if base_url else None
+                if isinstance(stale, list):
+                    all_models = [dict(item) for item in stale if isinstance(item, dict)]
+                else:
+                    all_models = []
+            except Exception:
+                degraded_reason = degraded_reason or "tags_error"
+                all_models = []
+
+            fut_health.cancel()
+            fut_models.cancel()
 
         from infrastructure.ollama.ollama_model_visibility import filter_ollama_tag_entries_for_editors
 
@@ -263,6 +307,7 @@ class OllamaProvider:
             "hidden_model_ids": sorted(hidden_ids),
             "visible_models": len(visible_models),
             "total_models": len(all_models),
+            "degraded_reason": degraded_reason,
             "health": {
                 "ok": bool(health.ok),
                 "status": health.status,

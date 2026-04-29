@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { getProviderCatalog, getModelSettings, updateModelSettings } from '../services/api';
+import { getProviderCatalog, getModelSettings, updateModelSettings, getLlmProxyStatus } from '../services/api';
 import { isLogicalRagModelId } from '../constants/llmProxyModels';
 import CoreUIButton from './CoreUIButton';
 import '../styles/components/ModelSettings.css';
@@ -10,6 +10,7 @@ function LlmProxyAutocompletePanel() {
   const [catalog, setCatalog] = useState({ providers: [], models: [] });
   const [autocompleteProviderId, setAutocompleteProviderId] = useState('');
   const [autocompleteModel, setAutocompleteModel] = useState('');
+  const [proxyStatus, setProxyStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -17,15 +18,17 @@ function LlmProxyAutocompletePanel() {
     let cancelled = false;
     (async () => {
       try {
-        const [catalogData, settingsData] = await Promise.all([
+        const [catalogData, settingsData, statusData] = await Promise.all([
           getProviderCatalog('chat'),
           getModelSettings(),
+          getLlmProxyStatus(),
         ]);
         if (cancelled) return;
         setCatalog({
           providers: Array.isArray(catalogData?.providers) ? catalogData.providers : [],
           models: Array.isArray(catalogData?.models) ? catalogData.models : [],
         });
+        setProxyStatus(statusData);
         if (settingsData && settingsData.autocomplete_provider_id != null) {
           setAutocompleteProviderId(String(settingsData.autocomplete_provider_id || '').trim());
         }
@@ -81,6 +84,12 @@ function LlmProxyAutocompletePanel() {
     <div className="settings-form model-settings">
       <div className="settings-section">
         <h3>Autocomplete model</h3>
+        <div className="settings-intro" style={{ display: 'flex', gap: '2rem', marginBottom: '1rem', fontWeight: 'bold' }}>
+          <span>Model: <code>{LOGICAL_AUTOCOMPLETE_ID}</code></span>
+          {proxyStatus && (
+            <span>Port: <code>{proxyStatus.base_url?.split(':').pop()}</code></span>
+          )}
+        </div>
         <p className="settings-intro">
           Logical id <code>{LOGICAL_AUTOCOMPLETE_ID}</code> in <code>GET /v1/models</code> maps to the provider/model pair you
           pick below. <strong>Assistant chat</strong> still uses the WebUI prompt template, RAG, and{' '}
@@ -140,33 +149,6 @@ function LlmProxyAutocompletePanel() {
           <li>If completions are slow, try a lower-quantization variant or a smaller tag.</li>
           <li>Leave autocomplete empty if you only need assistant chat with RAG.</li>
         </ul>
-      </div>
-
-      <div className="settings-section">
-        <h3>Zed (chat + autocomplete)</h3>
-        <ol className="settings-instructions">
-          <li>
-            <strong>Edit prediction</strong> (OpenAI-compatible): set API URL to{' '}
-            <code>
-              http://&lt;host&gt;:&lt;port&gt;/v1/completions
-            </code>.
-          </li>
-          <li>
-            Assistant <strong>chat</strong>: proxy base URL without trailing <code>/v1</code> (see{' '}
-            <strong>RAG Fusion Proxy</strong> {'->'} <strong>Overview</strong>).
-          </li>
-          <li>
-            Provider: <em>OpenAI-compatible</em>. API key empty unless you added auth on the proxy.
-          </li>
-          <li>
-            Assistant / chat: use your <strong>build id</strong> from <strong>LLM Proxy</strong> {'->'} <strong>Builds</strong> as{' '}
-            <code>model</code>.
-          </li>
-          <li>
-            Inline assistant / completions: model <code>{LOGICAL_AUTOCOMPLETE_ID}</code> after you save a provider/model pair
-            above and it appears in <code>/v1/models</code>.
-          </li>
-        </ol>
       </div>
     </div>
   );

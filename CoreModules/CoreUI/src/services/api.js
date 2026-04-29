@@ -3,6 +3,32 @@ const API_BASE = '/api/webui';
 
 const COREUI_SESSION_STORAGE_KEY = 'chironai_coreui_session_id';
 
+async function fetchJsonWithTimeout(url, options = {}) {
+  const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 0;
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const signal = controller ? controller.signal : undefined;
+  const fetchOptions = { ...(options.fetchOptions || {}), ...(signal ? { signal } : {}) };
+
+  let timerId = null;
+  if (controller && timeoutMs > 0) {
+    timerId = window.setTimeout(() => controller.abort(), timeoutMs);
+  }
+  try {
+    const response = await fetch(url, fetchOptions);
+    const data = await response.json().catch(() => ({}));
+    return { response, data };
+  } catch (e) {
+    const msg = String(e?.message || e);
+    const isAbort = msg.toLowerCase().includes('abort');
+    if (isAbort && timeoutMs > 0) {
+      throw new Error(`Request timed out after ${timeoutMs}ms`);
+    }
+    throw e;
+  } finally {
+    if (timerId != null) window.clearTimeout(timerId);
+  }
+}
+
 export async function getSession() {
   let url = `${API_BASE}/sessions`;
   try {
@@ -64,8 +90,10 @@ export async function getExtensionTabs() {
 }
 
 export async function getExtensionTab(extensionId) {
-  const response = await fetch(`${API_BASE}/extensions/${encodeURIComponent(extensionId)}/tab`);
-  const data = await response.json().catch(() => ({}));
+  const { response, data } = await fetchJsonWithTimeout(
+    `${API_BASE}/extensions/${encodeURIComponent(extensionId)}/tab`,
+    { timeoutMs: 10_000 },
+  );
   if (!response.ok) {
     throw new Error(data.error || 'Failed to load extension tab');
   }
@@ -73,15 +101,17 @@ export async function getExtensionTab(extensionId) {
 }
 
 export async function runExtensionTabAction(extensionId, actionId, payload = {}) {
-  const response = await fetch(
+  const { response, data } = await fetchJsonWithTimeout(
     `${API_BASE}/extensions/${encodeURIComponent(extensionId)}/actions/${encodeURIComponent(actionId)}`,
     {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload || {}),
+      timeoutMs: 30_000,
+      fetchOptions: {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+      },
     },
   );
-  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(data.error || 'Extension action failed');
   }

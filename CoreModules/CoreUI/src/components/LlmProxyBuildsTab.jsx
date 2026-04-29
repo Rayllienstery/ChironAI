@@ -1118,7 +1118,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     this build — no database rows, no traces, no notifications.
                     <ul>
                       <li><strong>When to enable Private:</strong> sensitive prompts, personal data, confidential code reviews, or any workflow where you don't want a record</li>
-                      <li><strong>When to keep it off:</strong> normal development, debugging, or when you want the Traces and Journal tabs to show request history</li>
+                      <li><strong>When to keep it off:</strong> normal development, debugging, or when you want the <strong>Logs</strong> tab (Traces and RAG Fusion Journal) to show request history</li>
                     </ul>
                   </div>
                 </div>
@@ -1158,7 +1158,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   </h3>
                   <div className="llm-proxy-info-card-body">
                     <ul>
-                      <li><strong>Journal</strong> — full request/response stored in SQLite for the Journal tab</li>
+                      <li><strong>RAG Fusion Journal</strong> — full request/response stored in SQLite for the <strong>Logs</strong> tab</li>
                       <li><strong>Traces</strong> — live in-memory snapshot of the pipeline stages (RAG hits, timing, etc.)</li>
                       <li><strong>Notifications</strong> — completion alerts in the notification center</li>
                     </ul>

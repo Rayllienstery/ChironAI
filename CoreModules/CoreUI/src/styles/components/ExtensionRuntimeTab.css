@@ -1,0 +1,284 @@
+@import "./DashboardTab.css";
+@import "./LlmProxyTab.css";
+@import "./SettingsTab.css";
+
+.extensions-runtime-section {
+  display: grid;
+  gap: 12px;
+}
+
+.extensions-runtime-item {
+  display: grid;
+  gap: 6px;
+}
+
+.extensions-runtime-item--action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.extensions-runtime-label {
+  font-size: 13px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.extensions-runtime-text {
+  color: var(--md-sys-color-on-surface);
+  font-size: 14px;
+  word-break: break-word;
+}
+
+.extensions-runtime-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.extensions-runtime-status span {
+  font-weight: 500;
+  text-transform: none;
+  color: inherit;
+  opacity: 0.9;
+}
+
+.extensions-runtime-status--ok {
+  background: color-mix(in srgb, #46a758 20%, var(--md-sys-color-surface));
+  color: #1f6d32;
+}
+
+.extensions-runtime-status--unreachable,
+.extensions-runtime-status--error,
+.extensions-runtime-status--timeout {
+  background: color-mix(in srgb, var(--md-sys-color-error) 20%, var(--md-sys-color-surface));
+  color: var(--md-sys-color-error);
+}
+
+.extensions-runtime-status--unknown,
+.extensions-runtime-status--missing_base_url {
+  background: color-mix(in srgb, var(--md-sys-color-outline) 14%, var(--md-sys-color-surface));
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.extensions-runtime-item input,
+.extensions-runtime-item select {
+  width: min(560px, 100%);
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 28%, transparent);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  outline: none;
+}
+
+.extensions-runtime-item input:focus,
+.extensions-runtime-item select:focus {
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-primary) 18%, transparent);
+}
+
+.extensions-runtime-table-wrap {
+  width: 100%;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 18%, transparent);
+  border-radius: 12px;
+}
+
+.extensions-runtime-table-wrap .collections-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.extensions-runtime-table-wrap .collections-table th,
+.extensions-runtime-table-wrap .collections-table td {
+  border-bottom: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 18%, transparent);
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.extensions-runtime-diagnostics {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 80%, black 6%);
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 12px;
+  overflow: auto;
+}
+
+.extensions-runtime-model-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.extensions-runtime-model-card {
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 18%, transparent);
+  border-radius: 14px;
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level1);
+  padding: 12px 12px 10px;
+  min-width: 0;
+}
+
+.extensions-runtime-model-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.extensions-runtime-model-card__title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.extensions-runtime-model-cloud-icon {
+  font-size: 24px;
+  color: var(--md-sys-color-on-surface-variant);
+  flex-shrink: 0;
+}
+
+.extensions-runtime-model-card__title {
+  font: var(--md-sys-typescale-title-medium-font);
+  color: var(--md-sys-color-on-surface);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.extensions-runtime-model-card__provider {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.extensions-runtime-model-provider-val {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.extensions-runtime-model-provider-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.extensions-runtime-model-card__meta {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.extensions-runtime-model-card__menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.extensions-runtime-model-menu-btn {
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.extensions-runtime-model-menu-btn:hover {
+  color: var(--md-sys-color-on-surface);
+}
+
+.extensions-runtime-model-menu-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.extensions-runtime-model-menu-btn .material-symbols-outlined {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.extensions-runtime-model-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 200px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 22%, transparent);
+  border-radius: 12px;
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level2);
+  padding: 6px;
+  z-index: 20;
+}
+
+.extensions-runtime-model-menu-item {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  padding: 10px 10px;
+  cursor: pointer;
+  font: var(--md-sys-typescale-label-large-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.extensions-runtime-model-menu-item:hover {
+  background: var(--md-sys-color-surface-tint-neutral);
+}
+
+.extensions-runtime-model-menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.extensions-runtime-model-menu-item--danger {
+  color: var(--md-sys-color-error);
+}
+
+.extensions-runtime-model-card__meta {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.extensions-runtime-model-meta-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.extensions-runtime-model-meta-k {
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium-font);
+  flex: 0 0 auto;
+}
+
+.extensions-runtime-model-meta-v {
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-small-font);
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+

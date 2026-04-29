@@ -235,8 +235,14 @@ export default function ProxyJournalTab() {
     <div className="dashboard-layout">
       <section className="app-default-card" aria-labelledby={journalHeadingId}>
         <div className="dashboard-card-header">
-          <h2 id={journalHeadingId}>Journal</h2>
+          <h2 id={journalHeadingId}>RAG Fusion Journal</h2>
           <div className="dashboard-card-actions">
+            {loading && (
+              <div className="status-text-updating" style={{ marginRight: '12px' }}>
+                <span className="status-spinner" />
+                <span style={{ fontSize: 'var(--md-sys-typescale-label-medium-size)' }}>Fetching data...</span>
+              </div>
+            )}
             <CoreUIButton variant="primary" onClick={() => loadJournal()} disabled={loading}>
               Refresh
             </CoreUIButton>
@@ -258,7 +264,7 @@ export default function ProxyJournalTab() {
                 setPeriod(e.target.value);
                 setSelectedDate(null);
               }}
-              aria-label="Journal period"
+              aria-label="RAG Fusion Journal period"
             >
               <option value="day">Today</option>
               <option value="week">Last 7 days</option>

@@ -5,6 +5,7 @@ import '../styles/components/LogsTab.css';
 import CoreUIButton from './CoreUIButton';
 import CoreUIPillTabs from './CoreUIPillTabs';
 import ProxyTracesTab from './ProxyTracesTab';
+import ProxyJournalTab from './ProxyJournalTab';
 import EmptyState from './EmptyState';
 import { useOptionalNotificationCenter } from './NotificationCenterContext';
 
@@ -13,6 +14,7 @@ const ProxyLogsAnalytics = lazy(() => import('./ProxyLogsAnalytics'));
 const PROXY_LOGS_ANALYTICS_LIMIT = 5000;
 const VIEW_MODE_TABS = [
   { id: 'traces', label: 'Traces' },
+  { id: 'journal', label: 'RAG Fusion Journal' },
   { id: 'logs', label: 'Logs' },
   { id: 'proxy', label: 'Proxy Logs' },
   { id: 'autocomplete', label: 'Autocomplete Logs' },
@@ -454,7 +456,7 @@ function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
             ariaLabel="Log source"
           />
         </div>
-        {viewMode !== 'traces' && (
+        {viewMode !== 'traces' && viewMode !== 'journal' && (
         <div className="logs-controls">
           {viewMode === 'logs' && (
             <>
@@ -508,7 +510,9 @@ function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
 
       {viewMode === 'traces' && <ProxyTracesTab />}
 
-      {viewMode !== 'traces' && (
+      {viewMode === 'journal' && <ProxyJournalTab />}
+
+      {viewMode !== 'traces' && viewMode !== 'journal' && (
       <div className={`logs-content${viewMode === 'logs' ? ' logs-content--system-table' : ''}`}>
         {viewMode === 'logs' && !sessionId ? (
           <div className="loading">No session available. Session is loading or could not be created.</div>
