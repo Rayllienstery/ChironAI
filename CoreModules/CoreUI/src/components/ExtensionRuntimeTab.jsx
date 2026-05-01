@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CoreUIButton from './CoreUIButton';
+import CoreUIModal from './CoreUIModal';
+import Card from './Card';
 import { getExtensionTab, runExtensionTabAction } from '../services/api';
 import '../styles/components/ExtensionRuntimeTab.css';
 import { getOllamaModelBrandKey, OLLAMA_BRAND_ICON_URL } from '../utils/ollamaModelBrandIcons';
@@ -20,6 +22,11 @@ function extractFieldDefaults(schema) {
     });
   });
   return next;
+}
+
+function isRuntimeModelDetailsForModal(details) {
+  if (!details || typeof details !== 'object' || Array.isArray(details)) return false;
+  return Boolean(String(details.id ?? details.model ?? '').trim());
 }
 
 function collectSchemaComponents(schema) {
@@ -57,14 +64,27 @@ function formatIsoShort(value) {
   return d.toLocaleString();
 }
 
+function parseModelName(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return { displayName: s, quantization: '' };
+  const lastPart = s.includes('/') ? s.split('/').pop() : s;
+  const parts = lastPart.split(':');
+  const quantization = parts.length > 1 ? parts.pop() : '';
+  let displayName = parts.join(':');
+  displayName = displayName.replace(/-GGUF$/i, '');
+  return { displayName, quantization };
+}
+
 function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
   const [payload, setPayload] = useState(null);
   const [fieldState, setFieldState] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [lastErrorState, setLastErrorState] = useState(false);
   const [busyActionId, setBusyActionId] = useState('');
   const [busyModelActionKey, setBusyModelActionKey] = useState('');
   const [actionResult, setActionResult] = useState(null);
+  const [actionDetails, setActionDetails] = useState(null);
   const [openModelMenuId, setOpenModelMenuId] = useState('');
 
   const onErrorStateChangeRef = useRef(onErrorStateChange);
@@ -72,22 +92,35 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
     onErrorStateChangeRef.current = onErrorStateChange;
   }, [onErrorStateChange]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const data = await getExtensionTab(extensionId);
-      setPayload(data);
-      setFieldState((prev) => ({ ...extractFieldDefaults(data?.schema), ...prev }));
-      onErrorStateChangeRef.current?.(false);
+      setPayload((prev) => {
+        if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
+        return data;
+      });
+      setFieldState((prev) => {
+        const next = { ...extractFieldDefaults(data?.schema), ...prev };
+        if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
+        return next;
+      });
+      if (lastErrorState !== false) {
+        setLastErrorState(false);
+        onErrorStateChangeRef.current?.(false);
+      }
     } catch (e) {
       const msg = String(e?.message || e);
       setError(msg);
-      onErrorStateChangeRef.current?.(true);
+      if (lastErrorState !== true) {
+        setLastErrorState(true);
+        onErrorStateChangeRef.current?.(true);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [extensionId]);
+  }, [extensionId, lastErrorState]);
 
   useEffect(() => {
     void load();
@@ -108,6 +141,13 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
       unhide: pick('unhide_model'),
       delete: pick('delete_model'),
     };
+  }, [payload?.schema]);
+
+  const diagnosticsData = useMemo(() => {
+    const schema = payload?.schema;
+    const comps = collectSchemaComponents(schema);
+    const diag = comps.find((c) => String(c?.type || '').toLowerCase() === 'diagnostics');
+    return diag?.value ?? null;
   }, [payload?.schema]);
 
   useEffect(() => {
@@ -140,7 +180,8 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
       try {
         const result = await runExtensionTabAction(extensionId, actionId, actionPayload);
         setActionResult(result);
-        await load();
+        if (isRuntimeModelDetailsForModal(result.details)) setActionDetails(result.details);
+        await load(true);
       } catch (e) {
         setActionResult({ ok: false, message: String(e?.message || e) });
       } finally {
@@ -170,7 +211,8 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
       try {
         const result = await runExtensionTabAction(extensionId, actionId, body);
         setActionResult(result);
-        await load();
+        if (isRuntimeModelDetailsForModal(result.details)) setActionDetails(result.details);
+        await load(true);
       } catch (e) {
         setActionResult({ ok: false, message: String(e?.message || e) });
       } finally {
@@ -179,6 +221,66 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
     },
     [extensionId, fieldState, load],
   );
+
+  const renderModelDetailsContent = (model) => {
+    if (!model) return null;
+
+    const renderRow = (label, value, key) => (
+      <div key={key || label} className="coreui-showcase-data-row" style={{ gridTemplateColumns: '1fr auto' }}>
+        <div className="extensions-runtime-model-details-label">{label}</div>
+        <div className="extensions-runtime-model-details-value">{value}</div>
+      </div>
+    );
+
+    const renderSection = (title, data) => {
+      if (!data || Object.keys(data).length === 0) return null;
+      return (
+        <div key={title} className="extensions-runtime-model-details-section">
+          <div className="extensions-runtime-model-details-section-title">{title}</div>
+          <div className="coreui-showcase-data-table">
+            {Object.entries(data).map(([k, v]) => {
+              if (v === null || v === undefined || v === '') return null;
+              let displayValue = String(v);
+              if (k === 'size' || k === 'parameter_size') displayValue = formatBytesLoose(v);
+              if (k === 'modified_at') displayValue = formatIsoShort(v);
+              return renderRow(k, displayValue, k);
+            })}
+          </div>
+        </div>
+      );
+    };
+
+    const sections = [];
+
+    // 1. Details (General + Details)
+    const details = {};
+    ['id', 'model', 'size', 'modified_at', 'digest', 'format'].forEach((k) => {
+      if (model[k]) details[k] = model[k];
+    });
+    if (model.details) Object.assign(details, model.details);
+    sections.push(renderSection('Details', details));
+
+    // 2. Model Info
+    sections.push(renderSection('Model Info', model.model_info));
+
+    // 3. Capabilities
+    if (Array.isArray(model.capabilities) && model.capabilities.length > 0) {
+      sections.push(
+        <div key="capabilities" className="extensions-runtime-model-details-section">
+          <div className="extensions-runtime-model-details-section-title">Capabilities</div>
+          <div className="extensions-runtime-model-details-value--array">
+            {model.capabilities.map((cap) => (
+              <span key={cap} className="extensions-runtime-model-details-tag">
+                {cap}
+              </span>
+            ))}
+          </div>
+        </div>,
+      );
+    }
+
+    return <div className="extensions-runtime-model-details">{sections}</div>;
+  };
 
   const renderComponent = (component) => {
     const key = String(component?.key || component?.action_id || Math.random());
@@ -257,139 +359,227 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
       const rows = Array.isArray(component.rows) ? component.rows : [];
 
       if (key === 'provider_models') {
+        const cloudModels = rows
+          .filter((r) => String(r?.id ?? r?.model ?? '').toLowerCase().endsWith('cloud'))
+          .sort((a, b) => {
+            const nameA = String(a?.id ?? a?.model ?? '').toLowerCase();
+            const nameB = String(b?.id ?? b?.model ?? '').toLowerCase();
+            return nameA.localeCompare(nameB);
+          });
+
+        const localModels = rows
+          .filter((r) => !String(r?.id ?? r?.model ?? '').toLowerCase().endsWith('cloud'))
+          .sort((a, b) => {
+            const nameA = String(a?.id ?? a?.model ?? '').toLowerCase();
+            const nameB = String(b?.id ?? b?.model ?? '').toLowerCase();
+            return nameA.localeCompare(nameB);
+          });
+
+        const renderModelCard = (row, index) => {
+          const modelId = String(row?.id ?? row?.model ?? '').trim();
+          const { displayName, quantization } = parseModelName(modelId);
+          const sizeText = formatBytesLoose(row?.size);
+          const modifiedText = formatIsoShort(row?.modified_at);
+          const hiddenRaw = String(row?.hidden ?? '').trim().toLowerCase();
+          const isHidden = hiddenRaw === 'yes' || hiddenRaw === 'true' || hiddenRaw === '1';
+          const menuOpen = openModelMenuId === modelId;
+
+          const modelInfo = row?.model_info;
+          const contextLengthKey = modelInfo && typeof modelInfo === 'object'
+            ? Object.keys(modelInfo).find((k) => k.endsWith('context_length'))
+            : null;
+          const contextLength = contextLengthKey ? modelInfo[contextLengthKey] : null;
+
+          const capabilities = Array.isArray(row?.capabilities) ? row.capabilities : [];
+
+          const showTpl = modelActionTemplates.show;
+          const hideTpl = modelActionTemplates.hide;
+          const unhideTpl = modelActionTemplates.unhide;
+          const delTpl = modelActionTemplates.delete;
+
+          const busyShow = busyModelActionKey === `show_model:${modelId}`;
+          const busyHide = busyModelActionKey === `hide_model:${modelId}`;
+          const busyUnhide = busyModelActionKey === `unhide_model:${modelId}`;
+          const busyDel = busyModelActionKey === `delete_model:${modelId}`;
+
+          return (
+            <Card
+              key={`${key}-model-${modelId || index}`}
+              className="extensions-runtime-model-card"
+              interactive={Boolean(modelId && showTpl)}
+              elevateOnHover={Boolean(modelId && showTpl)}
+              onClick={() => {
+                if (modelId && showTpl) {
+                  void runModelMenuAction(showTpl, modelId);
+                }
+              }}
+            >
+              <div className="extensions-runtime-model-card__top">
+                <div className="extensions-runtime-model-card__title-wrap">
+                  <div className="extensions-runtime-model-card__title" title={modelId || '—'}>
+                    {displayName || modelId || '—'}
+                  </div>
+                  {quantization ? (
+                    <div className="extensions-runtime-model-card__quant">
+                      <span className="extensions-runtime-model-meta-k">Quantization:</span>
+                      <span className="extensions-runtime-model-meta-v">{quantization}</span>
+                    </div>
+                  ) : null}
+                  {contextLength != null ? (
+                    <div className="extensions-runtime-model-card__quant">
+                      <span className="extensions-runtime-model-meta-k">Context:</span>
+                      <span className="extensions-runtime-model-meta-v">{Number(contextLength).toLocaleString()}</span>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="extensions-runtime-model-card__menu">
+                  <button
+                    type="button"
+                    className="extensions-runtime-model-menu-btn"
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen ? 'true' : 'false'}
+                    aria-label="Model actions"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenModelMenuId((cur) => (cur === modelId ? '' : modelId));
+                    }}
+                    disabled={!modelId}
+                  >
+                    <span className="material-symbols-outlined" aria-hidden="true">
+                      more_vert
+                    </span>
+                  </button>
+                  {menuOpen ? (
+                    <div className="extensions-runtime-model-menu" role="menu">
+                      <button
+                        type="button"
+                        className="extensions-runtime-model-menu-item"
+                        role="menuitem"
+                        disabled={!modelId || busyShow || Boolean(busyActionId)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (showTpl) {
+                            void runModelMenuAction(showTpl, modelId);
+                          } else {
+                            setOpenModelMenuId('');
+                          }
+                        }}
+                      >
+                        {busyShow ? 'Working…' : 'Show details'}
+                      </button>
+                      {hideTpl ? (
+                        <button
+                          type="button"
+                          className="extensions-runtime-model-menu-item"
+                          role="menuitem"
+                          disabled={!modelId || isHidden || busyHide || Boolean(busyActionId)}
+                          onClick={(e) => { e.stopPropagation(); void runModelMenuAction(hideTpl, modelId); }}
+                        >
+                          {busyHide ? 'Working…' : 'Hide model'}
+                        </button>
+                      ) : null}
+                      {unhideTpl ? (
+                        <button
+                          type="button"
+                          className="extensions-runtime-model-menu-item"
+                          role="menuitem"
+                          disabled={!modelId || !isHidden || busyUnhide || Boolean(busyActionId)}
+                          onClick={(e) => { e.stopPropagation(); void runModelMenuAction(unhideTpl, modelId); }}
+                        >
+                          {busyUnhide ? 'Working…' : 'Unhide model'}
+                        </button>
+                      ) : null}
+                      {delTpl ? (
+                        <button
+                          type="button"
+                          className="extensions-runtime-model-menu-item extensions-runtime-model-menu-item--danger"
+                          role="menuitem"
+                          disabled={!modelId || busyDel || Boolean(busyActionId)}
+                          onClick={(e) => { e.stopPropagation(); void runModelMenuAction(delTpl, modelId); }}
+                        >
+                          {busyDel ? 'Working…' : 'Delete model'}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="extensions-runtime-model-card__provider">
+                <span className="extensions-runtime-model-meta-k">Provider:</span>
+                {(() => {
+                  const brandKey = getOllamaModelBrandKey(modelId);
+                  const iconUrl = brandKey ? OLLAMA_BRAND_ICON_URL[brandKey] : null;
+                  return (
+                    <div className="extensions-runtime-model-provider-val">
+                      {iconUrl && (
+                        <img
+                          src={iconUrl}
+                          alt=""
+                          className="extensions-runtime-model-provider-icon"
+                        />
+                      )}
+                      <span className="extensions-runtime-model-meta-v">{brandKey || 'unknown'}</span>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="extensions-runtime-model-card__meta">
+                {sizeText && !modelId.toLowerCase().endsWith('cloud') ? (
+                  <div className="extensions-runtime-model-meta-row">
+                    <span className="extensions-runtime-model-meta-k">Size:</span>
+                    <span className="extensions-runtime-model-meta-v">{sizeText}</span>
+                  </div>
+                ) : null}
+                {modifiedText && (
+                  <div className="extensions-runtime-model-meta-row">
+                    <span className="extensions-runtime-model-meta-k">Modified:</span>
+                    <span className="extensions-runtime-model-meta-v">{modifiedText}</span>
+                  </div>
+                )}
+                {capabilities.length > 0 ? (
+                  <div className="extensions-runtime-model-card__caps">
+                    {capabilities.map((cap) => (
+                      <span key={cap} className="extensions-runtime-model-card__cap-tag">{cap}</span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </Card>
+          );
+        };
+
         return (
           <div key={key} className="extensions-runtime-item">
             <div className="extensions-runtime-label">{component.label || 'Installed models'}</div>
             {rows.length === 0 ? (
               <div className="extensions-runtime-text">No models.</div>
             ) : (
-              <div className="extensions-runtime-model-grid" data-extensions-runtime-model-menu-root="1">
-                {rows.map((row, index) => {
-                  const modelId = String(row?.id ?? row?.model ?? '').trim();
-                  const sizeText = formatBytesLoose(row?.size);
-                  const modifiedText = formatIsoShort(row?.modified_at);
-                  const hiddenRaw = String(row?.hidden ?? '').trim().toLowerCase();
-                  const isHidden = hiddenRaw === 'yes' || hiddenRaw === 'true' || hiddenRaw === '1';
-                  const menuOpen = openModelMenuId === modelId;
-
-                  const showTpl = modelActionTemplates.show;
-                  const hideTpl = modelActionTemplates.hide;
-                  const unhideTpl = modelActionTemplates.unhide;
-                  const delTpl = modelActionTemplates.delete;
-
-                  const busyShow = busyModelActionKey === `show_model:${modelId}`;
-                  const busyHide = busyModelActionKey === `hide_model:${modelId}`;
-                  const busyUnhide = busyModelActionKey === `unhide_model:${modelId}`;
-                  const busyDel = busyModelActionKey === `delete_model:${modelId}`;
-
-                  return (
-                    <div key={`${key}-model-${modelId || index}`} className="extensions-runtime-model-card">
-                      <div className="extensions-runtime-model-card__top">
-                        <div className="extensions-runtime-model-card__title-wrap">
-                          <span className="material-symbols-outlined extensions-runtime-model-cloud-icon">
-                            {modelId.toLowerCase().endsWith('cloud') ? 'cloud' : 'cloud_off'}
-                          </span>
-                          <div className="extensions-runtime-model-card__title" title={modelId || '—'}>
-                            {modelId || '—'}
-                          </div>
-                        </div>
-                        <div className="extensions-runtime-model-card__menu">
-                          <button
-                            type="button"
-                            className="extensions-runtime-model-menu-btn"
-                            aria-haspopup="menu"
-                            aria-expanded={menuOpen ? 'true' : 'false'}
-                            aria-label="Model actions"
-                            onClick={() => setOpenModelMenuId((cur) => (cur === modelId ? '' : modelId))}
-                            disabled={!modelId}
-                          >
-                            <span className="material-symbols-outlined" aria-hidden="true">
-                              more_vert
-                            </span>
-                          </button>
-                          {menuOpen ? (
-                            <div className="extensions-runtime-model-menu" role="menu">
-                              {showTpl ? (
-                                <button
-                                  type="button"
-                                  className="extensions-runtime-model-menu-item"
-                                  role="menuitem"
-                                  disabled={!modelId || busyShow || Boolean(busyActionId)}
-                                  onClick={() => void runModelMenuAction(showTpl, modelId)}
-                                >
-                                  {busyShow ? 'Working…' : 'Show details'}
-                                </button>
-                              ) : null}
-                              {hideTpl ? (
-                                <button
-                                  type="button"
-                                  className="extensions-runtime-model-menu-item"
-                                  role="menuitem"
-                                  disabled={!modelId || isHidden || busyHide || Boolean(busyActionId)}
-                                  onClick={() => void runModelMenuAction(hideTpl, modelId)}
-                                >
-                                  {busyHide ? 'Working…' : 'Hide model'}
-                                </button>
-                              ) : null}
-                              {unhideTpl ? (
-                                <button
-                                  type="button"
-                                  className="extensions-runtime-model-menu-item"
-                                  role="menuitem"
-                                  disabled={!modelId || !isHidden || busyUnhide || Boolean(busyActionId)}
-                                  onClick={() => void runModelMenuAction(unhideTpl, modelId)}
-                                >
-                                  {busyUnhide ? 'Working…' : 'Unhide model'}
-                                </button>
-                              ) : null}
-                              {delTpl ? (
-                                <button
-                                  type="button"
-                                  className="extensions-runtime-model-menu-item extensions-runtime-model-menu-item--danger"
-                                  role="menuitem"
-                                  disabled={!modelId || busyDel || Boolean(busyActionId)}
-                                  onClick={() => void runModelMenuAction(delTpl, modelId)}
-                                >
-                                  {busyDel ? 'Working…' : 'Delete model'}
-                                </button>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="extensions-runtime-model-card__provider">
-                        <span className="extensions-runtime-model-meta-k">Provider:</span>
-                        {(() => {
-                          const brandKey = getOllamaModelBrandKey(modelId);
-                          const iconUrl = brandKey ? OLLAMA_BRAND_ICON_URL[brandKey] : null;
-                          return (
-                            <div className="extensions-runtime-model-provider-val">
-                              {iconUrl && (
-                                <img
-                                  src={iconUrl}
-                                  alt=""
-                                  className="extensions-runtime-model-provider-icon"
-                                />
-                              )}
-                              <span className="extensions-runtime-model-meta-v">{brandKey || 'unknown'}</span>
-                            </div>
-                          );
-                        })()}
-                      </div>
-
-                      <div className="extensions-runtime-model-card__meta">
-                        {sizeText && !modelId.toLowerCase().endsWith('cloud') ? (
-                          <div className="extensions-runtime-model-meta-row">
-                            <span className="extensions-runtime-model-meta-k">Size:</span>
-                            <span className="extensions-runtime-model-meta-v">{sizeText}</span>
-                          </div>
-                        ) : null}
-                      </div>
+              <>
+                {cloudModels.length > 0 && (
+                  <>
+                    <div className="extensions-runtime-label--large">
+                      <span className="material-symbols-outlined">cloud</span>
+                      Cloud
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="extensions-runtime-model-grid" data-extensions-runtime-model-menu-root="1">
+                      {cloudModels.map((row, index) => renderModelCard(row, index))}
+                    </div>
+                  </>
+                )}
+                {localModels.length > 0 && (
+                  <>
+                    <div className="extensions-runtime-label--large">
+                      <span className="material-symbols-outlined">cloud_off</span>
+                      Local
+                    </div>
+                    <div className="extensions-runtime-model-grid" data-extensions-runtime-model-menu-root="1">
+                      {localModels.map((row, index) => renderModelCard(row, index))}
+                    </div>
+                  </>
+                )}
+              </>
             )}
           </div>
         );
@@ -456,13 +646,6 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
 
   return (
     <div className="settings-tab settings-tab--fullwidth">
-      <section className="app-default-card llm-proxy-section-gap">
-        <div className="dashboard-card-actions">
-          <CoreUIButton variant="primary" onClick={() => void load()}>
-            Refresh
-          </CoreUIButton>
-        </div>
-      </section>
 
       {actionResult && (
         <div
@@ -470,13 +653,92 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           role={actionResult.ok === false ? 'alert' : 'status'}
         >
           {actionResult.message || 'Action completed'}
-          {actionResult.details ? (
-            <pre className="extensions-runtime-diagnostics">
-              {JSON.stringify(actionResult.details, null, 2)}
-            </pre>
-          ) : null}
         </div>
       )}
+
+      {diagnosticsData ? (() => {
+        const h = diagnosticsData.health;
+        const healthOk = h?.ok === true;
+        const healthStatus = h?.status || 'unknown';
+        const serviceBusy = busyActionId === 'start_service' || busyActionId === 'stop_service';
+        return (
+          <section className="app-default-card llm-proxy-section-gap">
+            <div className="dashboard-card-header">
+              <h2>Runtime details</h2>
+            </div>
+            <div className="extensions-runtime-diagnostics-cards">
+              <Card className="extensions-runtime-diag-card">
+                <div className="extensions-runtime-diag-card__label">Health</div>
+                <div className={`extensions-runtime-diag-card__value extensions-runtime-diag-card__value--${healthOk ? 'ok' : 'error'}`}>
+                  <span className="extensions-runtime-diag-card__dot" />
+                  {healthStatus}
+                </div>
+              </Card>
+              <Card className="extensions-runtime-diag-card">
+                <div className="extensions-runtime-diag-card__label">Models</div>
+                <div className="extensions-runtime-diag-card__value">
+                  {diagnosticsData.visible_models ?? '?'} / {diagnosticsData.total_models ?? '?'}
+                </div>
+              </Card>
+              <Card className="extensions-runtime-diag-card">
+                <div className="extensions-runtime-diag-card__label">Base URL</div>
+                <div className="extensions-runtime-diag-card__value extensions-runtime-diag-card__value--mono">
+                  {diagnosticsData.base_url || '—'}
+                </div>
+              </Card>
+              <Card className="extensions-runtime-diag-card">
+                <div className="extensions-runtime-diag-card__label">Chat URL</div>
+                <div className="extensions-runtime-diag-card__value extensions-runtime-diag-card__value--mono">
+                  {diagnosticsData.chat_url || '—'}
+                </div>
+              </Card>
+            </div>
+            <div className="extensions-runtime-diagnostics-actions">
+              <CoreUIButton
+                variant={healthOk ? 'danger' : 'primary'}
+                disabled={serviceBusy}
+                onClick={async () => {
+                  const actionId = healthOk ? 'stop_service' : 'start_service';
+                  if (actionId === 'stop_service' && !window.confirm('Stop the Ollama service?')) return;
+                  setBusyActionId(actionId);
+                  try {
+                    const result = await runExtensionTabAction(extensionId, actionId, {});
+                    setActionResult(result);
+                    await load(true);
+                  } catch (e) {
+                    setActionResult({ ok: false, message: String(e?.message || e) });
+                  } finally {
+                    setBusyActionId('');
+                  }
+                }}
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">
+                  {healthOk ? 'stop' : 'play_arrow'}
+                </span>
+                {serviceBusy ? 'Working…' : healthOk ? 'Stop Ollama' : 'Start Ollama'}
+              </CoreUIButton>
+              <CoreUIButton
+                variant="secondary"
+                onClick={async () => {
+                  setBusyActionId('refresh');
+                  try {
+                    await runExtensionTabAction(extensionId, 'refresh', {});
+                    await load();
+                  } catch (e) {
+                    setActionResult({ ok: false, message: String(e?.message || e) });
+                  } finally {
+                    setBusyActionId('');
+                  }
+                }}
+                disabled={busyActionId === 'refresh'}
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">refresh</span>
+                {busyActionId === 'refresh' ? 'Working…' : 'Refresh'}
+              </CoreUIButton>
+            </div>
+          </section>
+        );
+      })() : null}
 
       {pages.map((page) => (
         <div key={page.id || 'page'}>
@@ -492,6 +754,85 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           ))}
         </div>
       ))}
+
+      {actionDetails && (() => {
+        const modelId = String(actionDetails?.id ?? actionDetails?.model ?? '').trim();
+        const hiddenRaw = String(actionDetails?.hidden ?? '').trim().toLowerCase();
+        const isHidden = hiddenRaw === 'yes' || hiddenRaw === 'true' || hiddenRaw === '1';
+
+        const hideTpl = modelActionTemplates.hide;
+        const unhideTpl = modelActionTemplates.unhide;
+        const delTpl = modelActionTemplates.delete;
+
+        const busyHide = busyModelActionKey === `hide_model:${modelId}`;
+        const busyUnhide = busyModelActionKey === `unhide_model:${modelId}`;
+        const busyDel = busyModelActionKey === `delete_model:${modelId}`;
+
+        return (
+          <CoreUIModal
+            title="Model Details"
+            onClose={() => setActionDetails(null)}
+            footer={
+              <div className="extensions-runtime-model-details-actions">
+                {isHidden ? (
+                  unhideTpl ? (
+                    <CoreUIButton
+                      variant="primary"
+                      onClick={() => void runModelMenuAction(unhideTpl, modelId)}
+                      disabled={busyUnhide || Boolean(busyActionId)}
+                    >
+                      <span className="material-symbols-outlined" aria-hidden="true">visibility</span>
+                      {busyUnhide ? 'Working…' : 'Unhide model'}
+                    </CoreUIButton>
+                  ) : null
+                ) : (
+                  hideTpl ? (
+                    <CoreUIButton
+                      variant="primary"
+                      onClick={() => void runModelMenuAction(hideTpl, modelId)}
+                      disabled={busyHide || Boolean(busyActionId)}
+                    >
+                      <span className="material-symbols-outlined" aria-hidden="true">visibility_off</span>
+                      {busyHide ? 'Working…' : 'Hide model'}
+                    </CoreUIButton>
+                  ) : null
+                )}
+                {delTpl ? (
+                  <CoreUIButton
+                    variant="danger"
+                    onClick={async () => {
+                      const actionId = String(delTpl?.action_id || '').trim();
+                      if (!actionId) return;
+                      const confirmText = String(delTpl?.confirm || '').trim();
+                      if (confirmText && !window.confirm(confirmText)) return;
+                      const busyKey = `delete_model:${modelId}`;
+                      setBusyModelActionKey(busyKey);
+                      try {
+                        const result = await runExtensionTabAction(extensionId, actionId, { selected_model: modelId });
+                        setActionResult(result);
+                        if (result?.ok !== false) {
+                          setActionDetails(null);
+                          await load();
+                        }
+                      } catch (e) {
+                        setActionResult({ ok: false, message: String(e?.message || e) });
+                      } finally {
+                        setBusyModelActionKey('');
+                      }
+                    }}
+                    disabled={busyDel || Boolean(busyActionId)}
+                  >
+                    <span className="material-symbols-outlined" aria-hidden="true">delete</span>
+                    {busyDel ? 'Working…' : 'Delete model'}
+                  </CoreUIButton>
+                ) : null}
+              </div>
+            }
+          >
+            {renderModelDetailsContent(actionDetails)}
+          </CoreUIModal>
+        );
+      })()}
     </div>
   );
 }

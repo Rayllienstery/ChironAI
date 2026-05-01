@@ -1325,15 +1325,78 @@ input.dashboard-card-field {
   flex-shrink: 0;
 }
 
+.proxy-journal-list-item-meta-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-md);
+  width: 100%;
+  min-width: 0;
+}
+
+.proxy-journal-list-item-trace {
+  min-width: 0;
+  font: var(--md-sys-typescale-label-medium-font);
+  color: var(--md-sys-color-on-surface-variant);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proxy-journal-list-item-trace code {
+  font-family: var(--coreui-font-family-mono);
+  font-size: 0.95em;
+}
+
+.proxy-journal-list-item-trace-count {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--md-sys-spacing-sm);
+  padding: 2px 8px;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-small-font);
+  white-space: nowrap;
+}
+
 .proxy-journal-list-item-time {
   font: var(--md-sys-typescale-label-medium-font);
   color: var(--md-sys-color-on-surface-variant);
-  margin-top: 2px;
+  flex-shrink: 0;
 }
 
+.proxy-journal-list-item-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
+  width: 100%;
+  min-width: 0;
+  font: var(--md-sys-typescale-label-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.proxy-journal-list-item-stats span {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.proxy-journal-list-item-stats code {
+  font-family: var(--coreui-font-family-mono);
+  font-size: 0.95em;
+}
+
+.proxy-journal-list-item--active .proxy-journal-list-item-trace,
+.proxy-journal-list-item--active .proxy-journal-list-item-trace-count,
+.proxy-journal-list-item--active .proxy-journal-list-item-stats,
 .proxy-journal-list-item--active .proxy-journal-list-item-time {
   color: var(--md-sys-color-on-primary-container);
   opacity: 0.9;
+}
+
+.proxy-journal-list-item--active .proxy-journal-list-item-trace-count {
+  background: color-mix(in srgb, var(--md-sys-color-on-primary-container) 12%, transparent);
 }
 
 .proxy-journal-modal-overlay {

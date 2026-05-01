@@ -7,6 +7,8 @@ import re
 from typing import Any
 
 LLM_PROXY_BUILDS_APP_KEY = "llm_proxy_builds"
+DEFAULT_NUM_PREDICT = 65536
+MAX_NUM_PREDICT = 262144
 
 _ID_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_.-]{0,127}$")
 
@@ -95,6 +97,15 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
         except (TypeError, ValueError):
             errors.append("num_ctx must be a positive integer or empty")
 
+    num_predict = build.get("num_predict")
+    if num_predict is not None and str(num_predict).strip() != "":
+        try:
+            np = int(num_predict)
+            if np < 1 or np > MAX_NUM_PREDICT:
+                errors.append(f"num_predict must be between 1 and {MAX_NUM_PREDICT} or empty")
+        except (TypeError, ValueError):
+            errors.append("num_predict must be an integer or empty")
+
     def _optional_bounded_int(field: str, raw: Any, lo: int, hi: int) -> None:
         if raw is None or (isinstance(raw, str) and not str(raw).strip()):
             return
@@ -170,6 +181,15 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
             out["num_ctx"] = int(nc)
         except (TypeError, ValueError):
             pass
+
+    np = build.get("num_predict")
+    if np is None or str(np).strip() == "":
+        out["num_predict"] = DEFAULT_NUM_PREDICT
+    else:
+        try:
+            out["num_predict"] = int(np)
+        except (TypeError, ValueError):
+            out["num_predict"] = DEFAULT_NUM_PREDICT
 
     for lim_key, lo, hi in (
         ("context_chunk_chars", 64, 500_000),
@@ -263,6 +283,7 @@ def merge_build_into_proxy_settings(
         "code_only",
         "include_rag_metadata",
         "rag_collection",
+        "num_predict",
         "context_chunk_chars",
         "context_total_chars",
         "rag_top_k",
@@ -280,7 +301,7 @@ def merge_build_into_proxy_settings(
 
 
 def build_ollama_options(build: dict[str, Any]) -> dict[str, Any]:
-    """Extra Ollama `options` keys from build (e.g. num_ctx)."""
+    """Extra Ollama `options` keys from build (e.g. num_ctx, num_predict)."""
     opts: dict[str, Any] = {}
     nc = build.get("num_ctx")
     if nc is not None:
@@ -290,6 +311,15 @@ def build_ollama_options(build: dict[str, Any]) -> dict[str, Any]:
                 opts["num_ctx"] = n
         except (TypeError, ValueError):
             pass
+    np = build.get("num_predict", DEFAULT_NUM_PREDICT)
+    try:
+        n = int(np)
+        if 1 <= n <= MAX_NUM_PREDICT:
+            opts["num_predict"] = n
+        else:
+            opts["num_predict"] = DEFAULT_NUM_PREDICT
+    except (TypeError, ValueError):
+        opts["num_predict"] = DEFAULT_NUM_PREDICT
     return opts
 
 

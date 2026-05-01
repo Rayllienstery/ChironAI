@@ -243,6 +243,123 @@ def _rag_request_completed_payload(
 
 
 _OLLAMA_TRACE_MSG_PREVIEW = 300
+_OLLAMA_TRACE_MSG_FULL_CAP = 32_768
+_TOOL_LOOP_FINALIZE_WHITELIST = frozenset(
+    {"shell", "bash", "web_search", "file_search", "grep", "read", "glob", "task"}
+)
+
+
+def _tool_loop_needs_finalize_nudge(tool_loop_stats: dict[str, Any] | None) -> bool:
+    """Recommend a finalize nudge after many single-tool rounds (any tool name possible)."""
+    if not isinstance(tool_loop_stats, dict):
+        return False
+    singles = int(tool_loop_stats.get("single_tool_rounds") or 0)
+    rounds = int(tool_loop_stats.get("rounds") or 0)
+    dominant = str(tool_loop_stats.get("dominant_tool") or "").strip().lower()
+    dom_rounds = int(tool_loop_stats.get("dominant_tool_rounds") or 0)
+    if rounds >= 25:
+        return True
+    if singles < 3:
+        return False
+    if dominant in _TOOL_LOOP_FINALIZE_WHITELIST and dom_rounds >= 3:
+        return True
+    if dominant and dom_rounds >= 8:
+        return True
+    return False
+
+
+def _serialized_upstream_messages_chars(messages: list[Any]) -> int:
+    try:
+        return len(json.dumps(messages, ensure_ascii=False))
+    except (TypeError, ValueError):
+        run = 0
+        for m in messages:
+            if isinstance(m, dict):
+                run += len(_ollama_message_content_str(m.get("content")))
+                tc = m.get("tool_calls")
+                if tc is not None:
+                    try:
+                        run += len(json.dumps(tc, ensure_ascii=False))
+                    except (TypeError, ValueError):
+                        run += len(str(tc))
+            else:
+                run += len(str(m))
+        return run
+
+
+def _truncate_old_tool_outputs_for_upstream_budget(
+    messages: list[Any],
+    *,
+    budget_json_chars: int,
+    per_message_ceiling: int = 12_000,
+    preserve_tail_tool_roles: int = 24,
+) -> tuple[list[Any], dict[str, Any]]:
+    """Shorten oldest tool message bodies until JSON(serialized messages) fits the budget."""
+    start_chars = _serialized_upstream_messages_chars(messages)
+    diag: dict[str, Any] = {
+        "original_upstream_json_chars": start_chars,
+        "budget_json_chars": int(budget_json_chars),
+    }
+    if start_chars <= budget_json_chars:
+        diag["compacted"] = False
+        return messages, diag
+
+    out: list[Any] = []
+    for m in messages:
+        out.append(dict(m) if isinstance(m, dict) else m)
+
+    tool_indices = [
+        i
+        for i, m in enumerate(out)
+        if isinstance(m, dict) and str(m.get("role") or "").strip().lower() == "tool"
+    ]
+    protected_tail = frozenset(tool_indices[-preserve_tail_tool_roles:])
+    shortened_total = 0
+    ceilings = (
+        per_message_ceiling,
+        max(4096, per_message_ceiling // 3),
+        4096,
+        2048,
+        1024,
+        512,
+    )
+
+    def _trim_once(ceiling: int) -> int:
+        nonlocal shortened_total
+        changed = 0
+        for i in tool_indices:
+            if i in protected_tail:
+                continue
+            m = out[i]
+            if not isinstance(m, dict):
+                continue
+            raw_content = m.get("content")
+            s = _ollama_message_content_str(raw_content)
+            if len(s) <= ceiling:
+                continue
+            drop = len(s) - ceiling
+            m["content"] = (
+                f"{s[:ceiling].rstrip()}\n\n... [truncated {drop} chars for upstream budget]"
+            )
+            changed += 1
+            shortened_total += 1
+        return changed
+
+    for ceil in ceilings:
+        _trim_once(ceil)
+        cur = _serialized_upstream_messages_chars(out)
+        if cur <= budget_json_chars:
+            diag["compacted"] = True
+            diag["final_upstream_json_chars"] = cur
+            diag["tool_messages_shortened_rounds"] = shortened_total
+            diag["applied_ceiling"] = ceil
+            return out, diag
+
+    diag["compacted"] = True
+    diag["still_over_budget_after_tool_trim"] = True
+    diag["final_upstream_json_chars"] = _serialized_upstream_messages_chars(out)
+    diag["tool_messages_shortened_rounds"] = shortened_total
+    return out, diag
 
 
 def _ollama_message_content_str(content: Any) -> str:
@@ -257,7 +374,8 @@ def _ollama_message_content_str(content: Any) -> str:
 
 
 def _trace_ollama_messages_for_ui(ollama_messages: list[Any]) -> list[dict[str, Any]]:
-    """Snapshots messages for Proxy Trace (preview + full text for the WebUI modal)."""
+    """Snapshots messages for Proxy Trace (preview + capped full text for the WebUI modal)."""
+    cap = max(4096, int(_OLLAMA_TRACE_MSG_FULL_CAP))
     out: list[dict[str, Any]] = []
     for m in ollama_messages:
         if not isinstance(m, dict):
@@ -267,12 +385,16 @@ def _trace_ollama_messages_for_ui(ollama_messages: list[Any]) -> list[dict[str, 
         content_str = _ollama_message_content_str(_raw_content)
         content_len = len(content_str)
         lim = _OLLAMA_TRACE_MSG_PREVIEW
+        truncated = content_len > cap
+        displayed_full = content_str[:cap] + (f"... [truncated {content_len - cap} chars]" if truncated else "")
         entry: dict[str, Any] = {
             "role": str(role),
             "content_length_chars": int(content_len),
             "content_preview": content_str[:lim] + ("..." if content_len > lim else ""),
-            "content_full": content_str,
+            "content_full": displayed_full,
         }
+        if truncated:
+            entry["content_full_was_truncated"] = True
         _imgs = m.get("images")
         if isinstance(_imgs, list) and _imgs:
             entry["images_count"] = len(_imgs)
@@ -1297,6 +1419,76 @@ def _apply_trace_response_text_fields(
     response["final_content_chars"] = len(final_content)
 
 
+def _positive_int_or_none(value: Any) -> int | None:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
+def _effective_num_predict(
+    chat_client: Any,
+    build_extra_options: dict[str, Any],
+    chat_max_tokens: int | None,
+) -> int | None:
+    if chat_max_tokens is not None:
+        return chat_max_tokens
+    n = _positive_int_or_none(build_extra_options.get("num_predict"))
+    if n is not None:
+        return n
+    default_options = getattr(chat_client, "_default_options", None)
+    if isinstance(default_options, dict):
+        return _positive_int_or_none(default_options.get("num_predict"))
+    return None
+
+
+def _append_trace_warning(trace: dict[str, Any], code: str) -> None:
+    warnings = trace.setdefault("warnings", [])
+    if isinstance(warnings, list) and code not in warnings:
+        warnings.append(code)
+
+
+def _apply_response_diagnostics(trace: dict[str, Any]) -> None:
+    req = trace.get("request") if isinstance(trace.get("request"), dict) else {}
+    resp = trace.get("response") if isinstance(trace.get("response"), dict) else {}
+    tool_calls_count = _positive_int_or_none(resp.get("tool_calls_count")) or 0
+    reasoning_chars = _positive_int_or_none(resp.get("reasoning_chars")) or 0
+    final_content_chars = _positive_int_or_none(resp.get("final_content_chars")) or 0
+    if reasoning_chars > 0 and final_content_chars == 0 and tool_calls_count == 0:
+        _append_trace_warning(trace, "reasoning_only_response")
+
+    effective = _positive_int_or_none(req.get("effective_num_predict"))
+    eval_count = _positive_int_or_none(resp.get("ollama_eval_count"))
+    if eval_count is None:
+        eval_count = _positive_int_or_none(resp.get("eval_count"))
+    if effective is not None and eval_count is not None and eval_count >= effective:
+        _append_trace_warning(trace, "output_token_budget_exhausted")
+
+
+def _output_budget_exhaustion_error(trace: dict[str, Any], metrics_src: dict[str, Any] | None = None) -> str:
+    req = trace.get("request") if isinstance(trace.get("request"), dict) else {}
+    effective = _positive_int_or_none(req.get("effective_num_predict"))
+    if effective is None:
+        return ""
+    eval_count = None
+    if isinstance(metrics_src, dict):
+        eval_count = _positive_int_or_none(metrics_src.get("eval_count"))
+        if eval_count is None:
+            eval_count = _positive_int_or_none(metrics_src.get("ollama_eval_count"))
+    if eval_count is None:
+        resp = trace.get("response") if isinstance(trace.get("response"), dict) else {}
+        eval_count = _positive_int_or_none(resp.get("ollama_eval_count"))
+        if eval_count is None:
+            eval_count = _positive_int_or_none(resp.get("eval_count"))
+    if eval_count is None or eval_count < effective:
+        return ""
+    return (
+        f"[Error: output token budget exhausted: generated {eval_count} tokens reached "
+        f"num_predict={effective}. Increase Model Build num_predict/max_tokens or shorten the prompt.]"
+    )
+
+
 def passthrough_think_from_body(body: dict[str, Any]) -> bool | str | None:
     """Pass Ollama ``think`` only when the client included the key (mediator; no derived mapping)."""
     if "think" not in body:
@@ -1408,7 +1600,7 @@ def _proxy_ollama_chat_text_parts(
     think: bool | str | None,
     *,
     options_overlay: dict[str, Any] | None = None,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Non-stream /api/chat; returns separated text parts plus merged visible content."""
     _co = dict(getattr(chat_client, "_default_options", None) or {})
     if options_overlay:
@@ -1425,7 +1617,9 @@ def _proxy_ollama_chat_text_parts(
     if callable(chat_fn):
         data = chat_fn(payload)
         msg = data.get("message") if isinstance(data.get("message"), dict) else {}
-        return _assistant_text_parts_from_ollama_message(msg if isinstance(msg, dict) else {})
+        out = _assistant_text_parts_from_ollama_message(msg if isinstance(msg, dict) else {})
+        out["ollama_payload"] = data if isinstance(data, dict) else {}
+        return out
     text = chat_client.chat(
         messages, model, stream=False, options=options_overlay if options_overlay else None, think=think
     )
@@ -1434,6 +1628,7 @@ def _proxy_ollama_chat_text_parts(
         "visible_content": visible,
         "reasoning_content": "",
         "final_content": visible,
+        "ollama_payload": {},
     }
 
 
@@ -1931,6 +2126,12 @@ def run_chat_completions(
             merged["num_predict"] = chat_max_tokens
         return merged if merged else None
 
+    effective_num_predict = _effective_num_predict(
+        chat_client,
+        build_extra_options,
+        chat_max_tokens,
+    )
+
     private_build = bool(dumb_build_pipeline and active_build and bool(active_build.get("private")))
     if private_build:
         w.set_current_trace(None)
@@ -2232,6 +2433,7 @@ def run_chat_completions(
         "stream": bool(stream),
         "build_sse_streaming": build_sse_streaming,
         "max_tokens": chat_max_tokens,
+        "effective_num_predict": effective_num_predict,
         "ollama_chat_stream": False,
         "include_rag_metadata": bool(include_rag_metadata),
         "tools_count": len(tools),
@@ -2763,16 +2965,30 @@ def run_chat_completions(
         )
         if messages_diag:
             native_tools_diag.update(messages_diag)
+
+        try:
+            _upstream_cap_raw = os.getenv(
+                "LLM_PROXY_UPSTREAM_MESSAGES_JSON_CAP", "380000"
+            ).strip()
+            _upstream_json_cap = int(_upstream_cap_raw)
+        except (TypeError, ValueError):
+            _upstream_json_cap = 380_000
+        _upstream_json_cap = max(160_000, min(_upstream_json_cap, 2_000_000))
+
+        native_ollama_messages, compact_diag = _truncate_old_tool_outputs_for_upstream_budget(
+            native_ollama_messages,
+            budget_json_chars=_upstream_json_cap,
+        )
+        if compact_diag.get("compacted"):
+            native_tools_diag["upstream_context_compaction"] = compact_diag
+
         native_ollama_messages_for_upstream = native_ollama_messages
         trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(native_ollama_messages_for_upstream)
         trace["ollama"]["tools"] = list(oll_tools) if isinstance(oll_tools, list) else []
         if (
             has_tool_result
             and not tool_result_indicates_failure
-            and isinstance(tool_loop_stats, dict)
-            and int(tool_loop_stats.get("single_tool_rounds") or 0) >= 3
-            and str(tool_loop_stats.get("dominant_tool") or "") in {"shell", "web_search", "file_search"}
-            and int(tool_loop_stats.get("dominant_tool_rounds") or 0) >= 3
+            and _tool_loop_needs_finalize_nudge(tool_loop_stats)
         ):
             native_ollama_messages = [
                 *native_ollama_messages,
@@ -2852,6 +3068,13 @@ def run_chat_completions(
                 reasoning_content = "".join(reasoning_content_parts)
                 final_content = "".join(final_content_parts)
                 stream_latency_ms = int((time.time() - stream_start_time) * 1000)
+                budget_error = _output_budget_exhaustion_error(trace, ollama_done_payload)
+                if budget_error and not tool_calls_raw:
+                    visible_content_parts.append(budget_error)
+                    final_content_parts.append(budget_error)
+                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': budget_error}, 'finish_reason': None}]})}\n\n"
+                    full_content = "".join(visible_content_parts)
+                    final_content = "".join(final_content_parts)
 
                 if tool_calls_raw:
                     fake_msg: dict[str, Any] = {"role": "assistant", "tool_calls": tool_calls_raw}
@@ -2874,6 +3097,8 @@ def run_chat_completions(
                     finish_reason = openai_finish_reason_from_ollama(
                         {}, ollama_done_reason=ollama_done_reason,
                     )
+                    if budget_error:
+                        finish_reason = "length"
 
                 _finish_payload = f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}]})}\n\n"
                 try:
@@ -2909,6 +3134,7 @@ def run_chat_completions(
                     final_content=final_content,
                     log_preview=log_preview,
                 )
+                _apply_response_diagnostics(trace)
                 if gemini_upserted:
                     trace["response"]["gemini_tool_state_upserted_count"] = int(gemini_upserted)
                 if tool_calls_raw:
@@ -3076,6 +3302,15 @@ def run_chat_completions(
         content_parts = _assistant_text_parts_from_ollama_message(oll_msg)
         content_out = openai_msg.get("content")
         content_str = content_out if isinstance(content_out, str) else ("" if content_out is None else str(content_out))
+        budget_error = _output_budget_exhaustion_error(trace, data if isinstance(data, dict) else None)
+        if budget_error and not tool_calls_out:
+            content_str = f"{content_str}\n\n{budget_error}".strip() if content_str.strip() else budget_error
+            content_parts = {
+                "visible_content": content_str,
+                "reasoning_content": content_parts["reasoning_content"],
+                "final_content": f"{content_parts['final_content']}\n\n{budget_error}".strip(),
+            }
+            finish = "length"
 
         latency_ms = int((time.time() - start_time) * 1000)
         _pt = max(1, int(len(json.dumps(native_ollama_messages_for_upstream, ensure_ascii=False)) / 4))
@@ -3128,6 +3363,7 @@ def run_chat_completions(
             final_content=content_parts["final_content"],
             log_preview=log_preview,
         )
+        _apply_response_diagnostics(trace)
         if tool_calls_out:
             trace["response"]["tool_calls"] = tool_calls_out
         if gemini_tool_state_upserted:
@@ -3426,6 +3662,7 @@ def run_chat_completions(
                 final_content=tool_plain_fallback,
                 log_preview=log_preview,
             )
+            _apply_response_diagnostics(trace)
             publish_response_artifacts(
                 visible_content=tool_plain_fallback,
                 reasoning_content="",
@@ -3548,6 +3785,11 @@ def run_chat_completions(
             full_response = "".join(visible_content_parts)
             reasoning_content = "".join(reasoning_content_parts)
             final_content = "".join(final_content_parts)
+            budget_error = _output_budget_exhaustion_error(trace, ollama_done_payload)
+            if budget_error:
+                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': budget_error}, 'finish_reason': None}]})}\n\n"
+                full_response = f"{full_response}\n\n{budget_error}".strip() if full_response.strip() else budget_error
+                final_content = f"{final_content}\n\n{budget_error}".strip() if final_content.strip() else budget_error
 
             if not full_response.strip():
                 fallback = "Model returned an empty response. Please retry."
@@ -3558,6 +3800,8 @@ def run_chat_completions(
             finish_reason = openai_finish_reason_from_ollama(
                 {}, ollama_done_reason=ollama_done_reason,
             )
+            if budget_error:
+                finish_reason = "length"
             yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}]})}\n\n"
             yield "data: [DONE]\n\n"
 
@@ -3595,6 +3839,7 @@ def run_chat_completions(
                 final_content=final_content,
                 log_preview=log_preview,
             )
+            _apply_response_diagnostics(trace)
             trace["steps"].append({
                 "name": "provider_chat_stream",
                 "duration_ms": stream_latency_ms,
@@ -3659,6 +3904,7 @@ def run_chat_completions(
             mimetype="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+    budget_error = ""
     try:
         w.set_proxy_status(w.status_response)
         content_parts = _proxy_ollama_chat_text_parts(
@@ -3675,6 +3921,19 @@ def run_chat_completions(
                 "visible_content": content,
                 "reasoning_content": "",
                 "final_content": content,
+                "ollama_payload": content_parts.get("ollama_payload") if isinstance(content_parts, dict) else {},
+            }
+        budget_error = _output_budget_exhaustion_error(
+            trace,
+            content_parts.get("ollama_payload") if isinstance(content_parts, dict) else None,
+        )
+        if budget_error:
+            content = f"{content}\n\n{budget_error}".strip() if str(content or "").strip() else budget_error
+            content_parts = {
+                "visible_content": content,
+                "reasoning_content": str(content_parts.get("reasoning_content") or ""),
+                "final_content": f"{content_parts.get('final_content') or ''}\n\n{budget_error}".strip(),
+                "ollama_payload": content_parts.get("ollama_payload") if isinstance(content_parts, dict) else {},
             }
     except Exception as e:
         if not private_build:
@@ -3746,6 +4005,10 @@ def run_chat_completions(
     }
     trace["response"] = {
         "latency_ms": latency_ms,
+        **_trace_ollama_api_metrics(
+            content_parts.get("ollama_payload") if isinstance(content_parts, dict) else None,
+            model_id=use_model,
+        ),
     }
     _apply_trace_response_text_fields(
         trace["response"],
@@ -3754,6 +4017,7 @@ def run_chat_completions(
         final_content=content_parts["final_content"],
         log_preview=log_preview,
     )
+    _apply_response_diagnostics(trace)
     trace["steps"].append(
         {
             "name": "ollama_chat",
@@ -3814,7 +4078,7 @@ def run_chat_completions(
     choice = {
         "index": 0,
         "message": _msg_obj,
-        "finish_reason": "tool_calls" if tool_calls else "stop",
+        "finish_reason": "tool_calls" if tool_calls else ("length" if budget_error else "stop"),
     }
     response_data = {
         "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",

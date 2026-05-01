@@ -71,10 +71,16 @@ html, body {
 
 .app-card--interactive {
   cursor: pointer;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.app-card--interactive:hover {
+  background: var(--app-card-bg-hover, var(--md-sys-color-surface-container-high)) !important;
 }
 
 .app-card--elevate-on-hover:hover {
   box-shadow: var(--app-card-box-shadow-hover, var(--md-sys-elevation-level2)) !important;
+  background: var(--app-card-bg-hover, var(--md-sys-color-surface-container-high)) !important;
 }
 
 .app-card:focus-visible {

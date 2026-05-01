@@ -96,6 +96,7 @@ function emptyDraft() {
     rag_top_k: '',
     temperature: '',
     top_p: '',
+    num_predict: '65536',
     max_agent_steps: '',
     num_ctx: '',
   };
@@ -147,6 +148,7 @@ function draftToPayload(draft) {
   [
     'temperature',
     'top_p',
+    'num_predict',
     'max_agent_steps',
     'num_ctx',
     'context_chunk_chars',
@@ -157,6 +159,7 @@ function draftToPayload(draft) {
     if (s === '') delete o[k];
     else if (
       k === 'max_agent_steps' ||
+      k === 'num_predict' ||
       k === 'num_ctx' ||
       k === 'context_chunk_chars' ||
       k === 'context_total_chars' ||
@@ -487,6 +490,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
           const tp = proxyDefaults?.top_p;
           if (String(next.temperature || '').trim() === '' && t != null) next.temperature = String(t);
           if (String(next.top_p || '').trim() === '' && tp != null) next.top_p = String(tp);
+          if (String(next.num_predict || '').trim() === '') next.num_predict = '65536';
           if (String(next.num_ctx || '').trim() === '' && ctxLen != null) next.num_ctx = String(ctxLen);
           return next;
         });
@@ -1300,6 +1304,25 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
 
                 <div className="llm-proxy-param-card">
                   <div className="llm-proxy-param-card-header">
+                    <span className="llm-proxy-param-card-icon material-symbols-outlined" aria-hidden="true">data_object</span>
+                    <h4 className="llm-proxy-param-card-title">num_predict (max output tokens)</h4>
+                  </div>
+                  <p className="llm-proxy-param-card-description">
+                    The <strong>maximum number of tokens</strong> the provider may generate for one answer. This is
+                    separate from num_ctx: long plans and provider thinking can need a much larger output budget.
+                  </p>
+                  <input
+                    className="coreui-input llm-proxy-param-card-field"
+                    value={draft.num_predict}
+                    onChange={(e) => setDraft({ ...draft, num_predict: e.target.value })}
+                    placeholder="65536"
+                    inputMode="numeric"
+                  />
+                  <p className="llm-proxy-param-card-hint">Default: 65536. Request max_tokens can still override this for one call.</p>
+                </div>
+
+                <div className="llm-proxy-param-card">
+                  <div className="llm-proxy-param-card-header">
                     <span className="llm-proxy-param-card-icon material-symbols-outlined" aria-hidden="true">route</span>
                     <h4 className="llm-proxy-param-card-title">Max agent steps</h4>
                   </div>
@@ -1564,6 +1587,10 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     <div className="llm-proxy-build-summary-row">
                       <span className="llm-proxy-build-summary-key">num_ctx</span>
                       <span className="llm-proxy-build-summary-val">{draft.num_ctx || 'Inherit'}</span>
+                    </div>
+                    <div className="llm-proxy-build-summary-row">
+                      <span className="llm-proxy-build-summary-key">num_predict</span>
+                      <span className="llm-proxy-build-summary-val">{draft.num_predict || '65536'}</span>
                     </div>
                     <div className="llm-proxy-build-summary-row">
                       <span className="llm-proxy-build-summary-key">Max agent steps</span>

@@ -190,11 +190,17 @@ function CoreUIShowcaseTab() {
           name="Card"
           classes={[".app-card", ".app-card--interactive", ".app-card--elevate-on-hover"]}
           source={`${sourceRoot}/components/Card.jsx`}
-          description="Compact elevated surface with optional interaction and hover elevation."
+          description="Compact elevated surface with optional interaction, hover elevation, and hover background highlight."
         >
-          <Card interactive elevateOnHover className="coreui-showcase-demo-card">
-            Interactive card surface
-          </Card>
+          <div className="coreui-showcase-card-variants">
+            <Card className="coreui-showcase-demo-card">Default card</Card>
+            <Card interactive className="coreui-showcase-demo-card">
+              Interactive (cursor)
+            </Card>
+            <Card interactive elevateOnHover className="coreui-showcase-demo-card">
+              Hover me ↑
+            </Card>
+          </div>
         </ShowcaseItem>
 
         <ShowcaseItem
@@ -289,6 +295,62 @@ function CoreUIShowcaseTab() {
             <section className="coreui-card-shell coreui-p-md">Utility shell card</section>
             <section className="coreui-card-shell coreui-card-shell--raised coreui-p-md">Raised emphasis card</section>
             <section className="coreui-panel-note coreui-panel-note--info">Semantic note card</section>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Model card (Ollama pattern)"
+          classes={[".app-card", ".app-card--interactive", ".app-card--elevate-on-hover", ".extensions-runtime-model-card"]}
+          source={`${sourceRoot}/components/Card.jsx, ${sourceRoot}/styles/components/ExtensionRuntimeTab.css`}
+          description="Model card used in the Ollama tab. Interactive, elevates on hover, and highlights background to signal clickability."
+        >
+          <div className="coreui-showcase-model-card-grid">
+            <Card interactive elevateOnHover className="extensions-runtime-model-card">
+              <div className="extensions-runtime-model-card__top">
+                <div className="extensions-runtime-model-card__title-wrap">
+                  <div className="extensions-runtime-model-card__title">qwen2.5-coder:7b</div>
+                </div>
+              </div>
+              <div className="extensions-runtime-model-card__provider">
+                <span className="extensions-runtime-model-meta-k">Provider:</span>
+                <div className="extensions-runtime-model-provider-val">
+                  <span className="extensions-runtime-model-meta-v">qwen</span>
+                </div>
+              </div>
+              <div className="extensions-runtime-model-card__meta">
+                <div className="extensions-runtime-model-meta-row">
+                  <span className="extensions-runtime-model-meta-k">Size:</span>
+                  <span className="extensions-runtime-model-meta-v">4.73 GB</span>
+                </div>
+                <div className="extensions-runtime-model-meta-row">
+                  <span className="extensions-runtime-model-meta-k">Modified:</span>
+                  <span className="extensions-runtime-model-meta-v">2026-04-28</span>
+                </div>
+              </div>
+            </Card>
+            <Card interactive elevateOnHover className="extensions-runtime-model-card">
+              <div className="extensions-runtime-model-card__top">
+                <div className="extensions-runtime-model-card__title-wrap">
+                  <div className="extensions-runtime-model-card__title">llama3.2:3b</div>
+                </div>
+              </div>
+              <div className="extensions-runtime-model-card__provider">
+                <span className="extensions-runtime-model-meta-k">Provider:</span>
+                <div className="extensions-runtime-model-provider-val">
+                  <span className="extensions-runtime-model-meta-v">meta</span>
+                </div>
+              </div>
+              <div className="extensions-runtime-model-card__meta">
+                <div className="extensions-runtime-model-meta-row">
+                  <span className="extensions-runtime-model-meta-k">Size:</span>
+                  <span className="extensions-runtime-model-meta-v">2.01 GB</span>
+                </div>
+                <div className="extensions-runtime-model-meta-row">
+                  <span className="extensions-runtime-model-meta-k">Modified:</span>
+                  <span className="extensions-runtime-model-meta-v">2026-04-25</span>
+                </div>
+              </div>
+            </Card>
           </div>
         </ShowcaseItem>
       </ShowcaseSection>

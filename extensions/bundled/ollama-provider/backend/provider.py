@@ -323,55 +323,6 @@ class OllamaProvider:
                     "title": "Ollama",
                     "sections": [
                         {
-                            "id": "service",
-                            "title": "Service",
-                            "components": [
-                                {
-                                    "type": "status",
-                                    "key": "provider_health",
-                                    "label": "Health",
-                                    "status": health.status,
-                                    "message": health.message or ("Reachable" if health.ok else "Unavailable"),
-                                },
-                                {
-                                    "type": "text",
-                                    "key": "base_url",
-                                    "label": "Base URL",
-                                    "value": self._base_url() or "Not configured",
-                                },
-                                {
-                                    "type": "text",
-                                    "key": "default_model",
-                                    "label": "Default model",
-                                    "value": str(getattr(self._chat_client, "_model", "") or "Not configured"),
-                                },
-                                {
-                                    "type": "action",
-                                    "key": "refresh",
-                                    "label": "Refresh",
-                                    "action_id": "refresh",
-                                    "variant": "secondary",
-                                },
-                                {
-                                    "type": "action",
-                                    "key": "start_service",
-                                    "label": "Start Ollama",
-                                    "action_id": "start_service",
-                                    "variant": "primary",
-                                    "disabled": bool(health.ok),
-                                },
-                                {
-                                    "type": "action",
-                                    "key": "stop_service",
-                                    "label": "Stop Ollama",
-                                    "action_id": "stop_service",
-                                    "variant": "danger",
-                                    "disabled": not bool(health.ok),
-                                    "confirm": "Stop the Ollama service?",
-                                },
-                            ],
-                        },
-                        {
                             "id": "pull",
                             "title": "Pull model",
                             "components": [
@@ -452,15 +403,7 @@ class OllamaProvider:
                                         {"key": "modified_at", "label": "Modified"},
                                         {"key": "hidden", "label": "Hidden"},
                                     ],
-                                    "rows": [
-                                        {
-                                            "id": str(item.get("name") or item.get("model") or ""),
-                                            "size": item.get("size") or "",
-                                            "modified_at": item.get("modified_at") or "",
-                                            "hidden": "yes" if str(item.get("name") or item.get("model") or "") in hidden_ids else "",
-                                        }
-                                        for item in all_models
-                                    ],
+                                    "rows": self._build_model_rows(all_models, hidden_ids),
                                 },
                             ],
                         },
@@ -516,7 +459,19 @@ class OllamaProvider:
             or ""
         ).strip()
         if action in {"show_model", "hide_model", "unhide_model", "delete_model"} and not model_name:
-            raise ValueError("selected_model is required")
+            try:
+                hidden_ids = set(self._hidden_model_ids() or [])
+                visible_models = list(self._visible_model_entries(timeout_sec=2.0, cache_ttl_sec=0.0))
+                all_models = list(self._all_model_entries(timeout_sec=2.0, cache_ttl_sec=0.0))
+                fallback = (visible_models[0] if visible_models else (all_models[0] if all_models else None)) or {}
+                fallback_name = str(fallback.get("name") or fallback.get("model") or "").strip()
+                if fallback_name and fallback_name not in hidden_ids:
+                    model_name = fallback_name
+            except Exception:
+                # Preserve original error below; action validation should not crash on fallback lookup.
+                pass
+            if not model_name:
+                raise ValueError("selected_model is required (no default model could be inferred)")
 
         if action == "show_model":
             from infrastructure.ollama.cli_runner import invoke_show
@@ -526,8 +481,9 @@ class OllamaProvider:
         if action == "delete_model":
             from infrastructure.ollama.cli_runner import invoke_delete
 
-            out = invoke_delete(base_url=self._base_url(), name=model_name, timeout=60.0)
-            return {"ok": True, "message": f"Deleted {model_name}", "details": out}
+            invoke_delete(base_url=self._base_url(), name=model_name, timeout=60.0)
+            # Omit details: delete API payloads are not model records; the WebUI treats details as Model Details data.
+            return {"ok": True, "message": f"Deleted {model_name}"}
         if action == "hide_model":
             from infrastructure.ollama.ollama_model_visibility import patch_hidden_ollama_model_ids
 
@@ -716,6 +672,53 @@ class OllamaProvider:
         if model_id in hidden_ids:
             return f"{model_id} (hidden)"
         return model_id
+
+    def _build_model_rows(
+        self,
+        all_models: list[dict[str, Any]],
+        hidden_ids: set[str],
+    ) -> list[dict[str, Any]]:
+        from infrastructure.ollama.cli_runner import invoke_show
+
+        base_url = self._base_url()
+        rows: list[dict[str, Any]] = []
+        show_futs: list[tuple[str, Any]] = []
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for item in all_models:
+                model_id = str(item.get("name") or item.get("model") or "").strip()
+                row = {
+                    "id": model_id,
+                    "size": item.get("size") or "",
+                    "modified_at": item.get("modified_at") or "",
+                    "hidden": "yes" if model_id in hidden_ids else "",
+                }
+                if model_id:
+                    fut = pool.submit(
+                        invoke_show,
+                        base_url=base_url,
+                        name=model_id,
+                        timeout=2.0,
+                    )
+                    show_futs.append((model_id, fut))
+                rows.append(row)
+
+            for model_id, fut in show_futs:
+                try:
+                    details = fut.result(timeout=3.0)
+                    if isinstance(details, dict):
+                        row = next((r for r in rows if r["id"] == model_id), None)
+                        if row is not None:
+                            mi = details.get("model_info") or {}
+                            if isinstance(mi, dict):
+                                row["model_info"] = dict(mi)
+                            caps = details.get("capabilities")
+                            if isinstance(caps, list):
+                                row["capabilities"] = list(caps)
+                except Exception:
+                    pass
+
+        return rows
 
 
 def create_provider(host_context: ProviderHostContext, manifest: Any) -> OllamaProvider:

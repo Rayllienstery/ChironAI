@@ -53,7 +53,13 @@
             "title": "Pull model",
             "components": [
               { "type": "input", "key": "pull_model_name", "label": "Model name" },
-              { "type": "action", "key": "pull_model", "label": "Pull" }
+              {
+                "type": "action",
+                "key": "pull_model",
+                "label": "Pull",
+                "action_id": "pull_model",
+                "payload_keys": ["pull_model_name"]
+              }
             ]
           },
           {
@@ -61,10 +67,34 @@
             "title": "Model actions",
             "components": [
               { "type": "select", "key": "selected_model", "label": "Selected model" },
-              { "type": "action", "key": "show_model", "label": "Show details" },
-              { "type": "action", "key": "hide_model", "label": "Hide model" },
-              { "type": "action", "key": "unhide_model", "label": "Unhide model" },
-              { "type": "action", "key": "delete_model", "label": "Delete model" },
+              {
+                "type": "action",
+                "key": "show_model",
+                "label": "Show details",
+                "action_id": "show_model",
+                "payload_keys": ["selected_model"]
+              },
+              {
+                "type": "action",
+                "key": "hide_model",
+                "label": "Hide model",
+                "action_id": "hide_model",
+                "payload_keys": ["selected_model"]
+              },
+              {
+                "type": "action",
+                "key": "unhide_model",
+                "label": "Unhide model",
+                "action_id": "unhide_model",
+                "payload_keys": ["selected_model"]
+              },
+              {
+                "type": "action",
+                "key": "delete_model",
+                "label": "Delete model",
+                "action_id": "delete_model",
+                "payload_keys": ["selected_model"]
+              },
               {
                 "type": "table",
                 "key": "provider_models",

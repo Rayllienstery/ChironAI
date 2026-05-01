@@ -6,6 +6,7 @@ export default function Card({
   interactive = false,
   elevation = "var(--md-sys-elevation-level1)",
   elevationHover = "var(--md-sys-elevation-level2)",
+  hoverBackground = "var(--md-sys-color-surface-container-high)",
   radius = "var(--md-sys-shape-corner-medium)",
   background = "var(--md-sys-color-surface)",
   children,
@@ -21,6 +22,7 @@ export default function Card({
 
   const mergedStyle = {
     "--app-card-bg": background,
+    "--app-card-bg-hover": hoverBackground,
     "--app-card-radius": radius,
     "--app-card-box-shadow": elevation,
     "--app-card-box-shadow-hover": elevationHover,
