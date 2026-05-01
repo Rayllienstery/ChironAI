@@ -173,6 +173,20 @@ function CoreUIShowcaseTab() {
         </ShowcaseItem>
 
         <ShowcaseItem
+          name="Page width"
+          classes={[".tab-view", ".coreui-page-shell", "--coreui-page-max-width"]}
+          source={`${sourceRoot}/styles/tokens.css, ${sourceRoot}/styles/layout.css`}
+          description="Standard content rail for all feature tabs. Root tab containers use .tab-view so pages share the 1280px Showcase width and center inside the app shell."
+        >
+          <div className="coreui-showcase-page-width-demo">
+            <div className="coreui-showcase-page-width-rail">
+              <CodePill>--coreui-page-max-width: 1280px</CodePill>
+              <span>Centered tab content rail</span>
+            </div>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
           name="Surface and elevation"
           classes={[".app-card", ".app-default-card", "--md-sys-elevation-level*"]}
           source={`${sourceRoot}/styles/layout.css, ${sourceRoot}/styles/default-card.css`}

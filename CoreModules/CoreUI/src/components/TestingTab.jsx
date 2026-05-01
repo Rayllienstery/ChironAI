@@ -48,7 +48,7 @@ function TestingTab({
   const handleSubTabClick = (id) => setSubTab(id);
 
   return (
-    <div className="testing-tab">
+    <div className="testing-tab tab-view">
       <div className="testing-tab-header">
         <h2>Testing</h2>
         <CoreUIPillTabs

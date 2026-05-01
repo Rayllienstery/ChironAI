@@ -2,8 +2,6 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
-  max-width: var(--app-page-max-width);
-  margin: 0 auto;
 }
 
 .coreui-showcase-hero {
@@ -231,6 +229,31 @@
   color: var(--md-sys-color-primary);
   font: var(--md-sys-typescale-label-medium-font);
   text-transform: uppercase;
+}
+
+.coreui-showcase-page-width-demo {
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.coreui-showcase-page-width-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: min(100%, var(--coreui-page-max-width));
+  min-height: 48px;
+  margin-inline: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--md-sys-color-primary);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-medium-font);
 }
 
 .coreui-showcase-surface-row,
@@ -463,6 +486,20 @@
   font-size: 22px;
 }
 
+.coreui-showcase-card-variants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+}
+
+.coreui-showcase-model-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
 @media (max-width: 860px) {
   .coreui-showcase-hero,
   .coreui-showcase-item {
@@ -481,21 +518,8 @@
   .coreui-showcase-font-grid,
   .coreui-showcase-form-grid,
   .coreui-showcase-icon-grid,
-.coreui-showcase-card-variants {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  width: 100%;
-}
-
-.coreui-showcase-model-card-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  width: 100%;
-}
-
-.coreui-showcase-card-grid {
+  .coreui-showcase-card-grid,
+  .coreui-showcase-model-card-grid {
     grid-template-columns: 1fr;
   }
 

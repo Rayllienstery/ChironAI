@@ -61,7 +61,7 @@ function LlmProxyTab({
   }, [focusSubTab, onFocusSubTabConsumed]);
 
   return (
-    <div className="settings-tab settings-tab--fullwidth llm-proxy-tab">
+    <div className="settings-tab settings-tab--fullwidth llm-proxy-tab tab-view">
       <div className="llm-proxy-header">
         <div className="llm-proxy-header-row">
           <h2>RAG Fusion Proxy</h2>

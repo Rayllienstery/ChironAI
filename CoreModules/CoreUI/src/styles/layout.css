@@ -276,6 +276,22 @@ html, body {
   box-sizing: border-box;
 }
 
+.tab-view,
+.coreui-page-shell {
+  width: min(100%, var(--coreui-page-max-width));
+  max-width: var(--coreui-page-max-width);
+  min-width: 0;
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+
+.app-main > .tab-view,
+.app-main > .coreui-page-shell {
+  width: min(100%, var(--coreui-page-max-width));
+  max-width: var(--coreui-page-max-width);
+  margin-inline: auto;
+}
+
 /* Material Web Components base styles */
 md-filled-button,
 md-outlined-button,

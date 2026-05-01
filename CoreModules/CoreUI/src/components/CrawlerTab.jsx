@@ -1446,7 +1446,7 @@ function CrawlerTab() {
   };
 
   return (
-    <div className="crawler-tab">
+    <div className="crawler-tab tab-view">
       <div className="crawler-header">
         <h2>Crawler / Indexer</h2>
         <div className="crawler-header-tabs-and-actions">

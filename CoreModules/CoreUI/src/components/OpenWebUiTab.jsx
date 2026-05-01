@@ -177,7 +177,7 @@ function OpenWebUiTab({ onErrorStateChange }) {
   const backendHint = config?.llm_proxy_ollama_base_hint;
 
   return (
-    <div className="dashboard-tab openwebui-tab">
+    <div className="dashboard-tab openwebui-tab tab-view">
       <div className="tab-page-header">
         <h2>Open WebUI</h2>
       </div>

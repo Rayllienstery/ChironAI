@@ -117,7 +117,7 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
   }
 
   return (
-    <div className="settings-tab">
+    <div className="settings-tab tab-view">
       <h2>Settings</h2>
 
       <div className="settings-form">

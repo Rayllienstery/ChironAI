@@ -654,7 +654,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
   };
 
   return (
-    <div className="rag-tab">
+    <div className="rag-tab tab-view">
       <div className="rag-header">
         <h2>RAG / Qdrant</h2>
         <div className="rag-actions">

@@ -701,7 +701,7 @@ function TemplateEditorTab() {
   };
 
   return (
-    <div className="template-editor-tab">
+    <div className="template-editor-tab tab-view">
       <div className="template-editor-layout">
         <div className="template-list-panel">
           <div className="template-view-toggle">

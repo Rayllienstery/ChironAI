@@ -6,7 +6,6 @@
      A fixed calc(100vh - …) plus flex:1 on .logs-content made the log list a thin strip
      under tall analytics (only the “head” of the card visible). */
   min-height: min(400px, 55vh);
-  max-width: 100%;
 }
 
 .logs-tab.logs-tab--fill-screen {

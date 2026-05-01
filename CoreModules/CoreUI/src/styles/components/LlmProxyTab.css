@@ -1,6 +1,5 @@
 /* Full width: pipeline + sections use the whole main content area (not 800px settings column). */
 .llm-proxy-tab.settings-tab {
-  max-width: none;
   width: 100%;
   box-sizing: border-box;
 }

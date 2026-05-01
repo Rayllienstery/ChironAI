@@ -445,7 +445,7 @@ function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
   };
 
   return (
-    <div className={`logs-tab${viewMode === 'logs' ? ' logs-tab--fill-screen' : ''}`}>
+    <div className={`logs-tab tab-view${viewMode === 'logs' ? ' logs-tab--fill-screen' : ''}`}>
       <div className="logs-header">
         <div className="logs-header-left">
           <h2>Logs</h2>

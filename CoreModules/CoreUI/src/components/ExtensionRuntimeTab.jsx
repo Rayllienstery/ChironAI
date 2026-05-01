@@ -634,7 +634,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
 
   if (error) {
     return (
-      <div className="settings-tab settings-tab--fullwidth">
+      <div className="settings-tab settings-tab--fullwidth tab-view">
         <section className="app-default-card llm-proxy-section-gap">
           <div className="dashboard-card-error" role="alert">
             {error}
@@ -645,7 +645,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
   }
 
   return (
-    <div className="settings-tab settings-tab--fullwidth">
+    <div className="settings-tab settings-tab--fullwidth tab-view">
 
       {actionResult && (
         <div

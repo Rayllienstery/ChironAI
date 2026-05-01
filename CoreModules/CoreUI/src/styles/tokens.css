@@ -154,8 +154,13 @@
   /* Pill buttons (was missing → invalid border-radius and square corners) */
   --md-sys-shape-corner-full: 9999px;
 
-  /* Application-level layout tokens */
-  --app-page-max-width: 1280px;
+  /*
+   * Application-level layout tokens.
+   * Feature tabs should use .tab-view / .coreui-page-shell so every page
+   * shares the Showcase-width content rail instead of one-off max-width rules.
+   */
+  --coreui-page-max-width: 1280px;
+  --app-page-max-width: var(--coreui-page-max-width);
 
   /*
    * Tabs / top navigation

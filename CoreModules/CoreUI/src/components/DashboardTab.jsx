@@ -18,7 +18,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
   };
 
   return (
-    <div className="dashboard-tab">
+    <div className="dashboard-tab tab-view">
       <div className="dashboard-layout">
         <section className="dashboard-info-card" aria-label="About ChironAI">
           <div className="dashboard-info-card-header">

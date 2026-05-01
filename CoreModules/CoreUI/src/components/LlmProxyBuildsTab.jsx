@@ -505,14 +505,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
 
   if (loading) {
     return (
-      <div className="settings-tab settings-tab--fullwidth llm-proxy-tab">
+      <div className="settings-tab settings-tab--fullwidth llm-proxy-tab tab-view">
         <p className="settings-intro">Loading builds…</p>
       </div>
     );
   }
 
   return (
-    <div className="settings-tab settings-tab--fullwidth llm-proxy-tab">
+    <div className="settings-tab settings-tab--fullwidth llm-proxy-tab tab-view">
       <div className="llm-proxy-header">
         <div className="llm-proxy-header-row">
           <h2>LLM Proxy</h2>

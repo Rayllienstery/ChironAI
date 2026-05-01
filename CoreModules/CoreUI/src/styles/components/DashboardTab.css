@@ -5,9 +5,6 @@
   /* Horizontal inset comes from .app-main only — avoids double padding and a huge left gap */
   padding-block: 0;
   padding-inline: 0;
-  max-width: none;
-  margin: 0;
-  width: 100%;
   min-width: 0;
   box-sizing: border-box;
 }

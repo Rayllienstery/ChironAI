@@ -188,7 +188,7 @@ export default function ExtensionsTab({ onErrorStateChange }) {
   );
 
   return (
-    <div className="extensions-tab">
+    <div className="extensions-tab tab-view">
       <div className="extensions-tab__header">
         <div>
           <h2>Extensions</h2>
