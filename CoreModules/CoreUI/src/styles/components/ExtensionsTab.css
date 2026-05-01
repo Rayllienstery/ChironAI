@@ -1,6 +1,6 @@
 .extensions-tab {
   display: grid;
-  gap: 18px;
+  gap: var(--md-sys-spacing-lg);
 }
 
 .extensions-tab__header {
@@ -11,7 +11,7 @@
 }
 
 .extensions-tab__header h2,
-.extensions-grid-card__header h3,
+.extensions-view__header h3,
 .extensions-card__head h4,
 .extensions-schema-page h3,
 .extensions-schema-section-header h4 {
@@ -24,21 +24,29 @@
   color: var(--md-sys-color-on-surface-variant);
 }
 
-.extensions-error {
-  color: var(--md-sys-color-error);
-  border: 1px solid color-mix(in srgb, var(--md-sys-color-error) 45%, transparent);
-}
-
-.extensions-grid-card {
+.extensions-view,
+.extensions-ui-card {
   display: grid;
-  gap: 16px;
+  gap: var(--md-sys-spacing-md);
 }
 
-.extensions-grid-card__header {
+.extensions-view__header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+}
+
+.extensions-view__header h3 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.extensions-view-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .extensions-cards,
@@ -48,8 +56,7 @@
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
-.extensions-card,
-.extensions-ui-card {
+.extensions-card {
   display: grid;
   gap: 12px;
 }
@@ -82,37 +89,6 @@
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-}
-
-.extensions-health-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: capitalize;
-}
-
-.extensions-health-pill.status-ok,
-.extensions-health-pill.status-loaded,
-.extensions-health-pill.status-installed {
-  background: color-mix(in srgb, #46a758 20%, var(--md-sys-color-surface));
-  color: #1f6d32;
-}
-
-.extensions-health-pill.status-unreachable,
-.extensions-health-pill.status-failed,
-.extensions-health-pill.status-error {
-  background: color-mix(in srgb, var(--md-sys-color-error) 20%, var(--md-sys-color-surface));
-  color: var(--md-sys-color-error);
-}
-
-.extensions-health-pill.status-unknown {
-  background: color-mix(in srgb, var(--md-sys-color-outline) 14%, var(--md-sys-color-surface));
-  color: var(--md-sys-color-on-surface-variant);
 }
 
 .extensions-schema {
@@ -164,9 +140,29 @@
   gap: 10px;
 }
 
+.extensions-failed {
+  display: grid;
+  gap: var(--md-sys-spacing-sm);
+}
+
+.extensions-empty {
+  grid-column: 1 / -1;
+  padding: var(--md-sys-spacing-md);
+  border: 1px dashed var(--md-sys-color-outline-variant);
+  border-radius: var(--coreui-radius-card);
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--coreui-surface-panel-alt);
+}
+
 @media (max-width: 900px) {
   .extensions-tab__header,
-  .extensions-card__head {
+  .extensions-card__head,
+  .extensions-view__header {
     grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+
+  .extensions-tab__header {
+    flex-direction: column;
   }
 }

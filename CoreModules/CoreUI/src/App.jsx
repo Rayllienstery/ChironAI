@@ -482,22 +482,23 @@ function App() {
   };
 
   const tabs = [
-    { id: "dashboard", label: "Dashboard" },
-    { id: "llm-proxy", label: "LLM Proxy" },
-    { id: "rag-fusion-proxy", label: "RAG Fusion Proxy" },
-    { id: "logs", label: "Logs" },
+    { id: "dashboard", label: "Dashboard", section: "Main" },
+    { id: "llm-proxy", label: "LLM Proxy", section: "Main" },
+    { id: "rag-fusion-proxy", label: "RAG Fusion Proxy", section: "Main" },
+    { id: "logs", label: "Logs", section: "Main" },
+    { id: "open-webui", label: "Open WebUI", section: "Main" },
+    { id: "template-editor", label: "Template Editor", section: "Main" },
     ...extensionTabs.map((tab) => ({
       id: tab.id,
       label: tab.title || tab.id,
       icon: tab.icon || "",
+      section: "Extensions",
     })),
-    { id: "open-webui", label: "Open WebUI" },
-    { id: "extensions", label: "Extensions" },
-    { id: "rag", label: "RAG / Qdrant" },
-    { id: "crawler", label: "Crawler / Indexer" },
-    { id: "template-editor", label: "Template Editor" },
-    { id: "testing", label: "Testing" },
-    { id: "coreui-showcase", label: "CoreUI Showcase" },
+    { id: "rag", label: "RAG / Qdrant", section: "RAG" },
+    { id: "crawler", label: "Crawler / Indexer", section: "RAG" },
+    { id: "testing", label: "Testing", section: "Developer Tools" },
+    { id: "coreui-showcase", label: "CoreUI Showcase", section: "Developer Tools" },
+    { id: "extensions", label: "Extensions", section: "Developer Tools" },
   ];
 
   const renderTabContent = () => {

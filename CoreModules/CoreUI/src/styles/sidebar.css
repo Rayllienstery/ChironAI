@@ -15,7 +15,12 @@
     width 0.22s ease,
     background-color 0.22s ease,
     border-color 0.22s ease;
+  will-change: width;
   z-index: 2;
+}
+
+.coreui-sidebar--resizing {
+  transition: none;
 }
 
 .app.app--sidebar-collapsed .coreui-sidebar {
@@ -114,12 +119,61 @@
   padding: var(--md-sys-spacing-md) var(--md-sys-spacing-sm);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--md-sys-spacing-sm);
 }
 
 .app.app--sidebar-collapsed .coreui-sidebar__nav {
   align-items: center;
   padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-xs);
+  gap: 6px;
+}
+
+.coreui-sidebar__section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.coreui-sidebar__section + .coreui-sidebar__section {
+  padding-top: var(--md-sys-spacing-xs);
+}
+
+.coreui-sidebar__section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px 2px;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-small-font);
+  letter-spacing: 0;
+  text-transform: uppercase;
+  opacity: 0.72;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.coreui-sidebar__section-title::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  min-width: 12px;
+  background: var(--md-sys-color-outline-variant);
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__section {
+  align-items: center;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__section + .coreui-sidebar__section {
+  width: 100%;
+  padding-top: 6px;
+  border-top: 1px solid var(--coreui-sidenav-rail-divider);
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__section-title {
+  display: none;
 }
 
 .coreui-sidebar__link {
@@ -268,14 +322,17 @@
 }
 
 .coreui-sidebar__icon--openwebui svg,
-.coreui-sidebar__icon--openwebui img {
+.coreui-sidebar__icon--openwebui img,
+.coreui-sidebar__icon--ollama svg,
+.coreui-sidebar__icon--ollama img {
   width: 22px;
   height: 22px;
   display: block;
   color: inherit;
 }
 
-.coreui-sidebar__icon--openwebui {
+.coreui-sidebar__icon--openwebui,
+.coreui-sidebar__icon--ollama {
   font-family: inherit;
   font-size: 0;
 }

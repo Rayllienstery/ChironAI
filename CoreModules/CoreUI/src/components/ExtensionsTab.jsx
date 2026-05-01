@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import Card from "./Card";
+import CoreUIBadge from "./CoreUIBadge";
 import CoreUIButton from "./CoreUIButton";
+import CoreUIPillTabs from "./CoreUIPillTabs";
 import {
   disableExtension,
   enableExtension,
@@ -14,9 +15,22 @@ import {
 } from "../services/api";
 import "../styles/components/ExtensionsTab.css";
 
+const EXTENSION_VIEWS = [
+  { id: "registry", label: "Registry" },
+  { id: "installed", label: "Installed" },
+  { id: "providers", label: "Providers" },
+  { id: "ui", label: "CoreUI Schemas" },
+];
+
 function HealthPill({ health }) {
   const status = String(health?.status || "unknown");
-  return <span className={`extensions-health-pill status-${status}`}>{status}</span>;
+  const tone =
+    status === "ok" || status === "loaded" || status === "installed"
+      ? "success"
+      : status === "unreachable" || status === "failed" || status === "error"
+        ? "error"
+        : "neutral";
+  return <CoreUIBadge tone={tone}>{status}</CoreUIBadge>;
 }
 
 function SchemaRenderer({ schema, providerByExtensionId }) {
@@ -104,7 +118,7 @@ function SchemaRenderer({ schema, providerByExtensionId }) {
           <h3>{page.title || "Page"}</h3>
           {Array.isArray(page.sections)
             ? page.sections.map((section) => (
-                <Card key={section.id || section.title} className="extensions-schema-section">
+                <section key={section.id || section.title} className="coreui-card-shell coreui-p-md extensions-schema-section">
                   <div className="extensions-schema-section-header">
                     <h4>{section.title || "Section"}</h4>
                   </div>
@@ -113,7 +127,7 @@ function SchemaRenderer({ schema, providerByExtensionId }) {
                       renderComponent(component, page.extensionId)
                     )}
                   </div>
-                </Card>
+                </section>
               ))
             : null}
         </div>
@@ -123,6 +137,7 @@ function SchemaRenderer({ schema, providerByExtensionId }) {
 }
 
 export default function ExtensionsTab({ onErrorStateChange }) {
+  const [activeView, setActiveView] = useState("registry");
   const [registry, setRegistry] = useState([]);
   const [installed, setInstalled] = useState([]);
   const [providers, setProviders] = useState([]);
@@ -167,6 +182,21 @@ export default function ExtensionsTab({ onErrorStateChange }) {
     () => new Map(providers.map((item) => [item.extension_id, item])),
     [providers]
   );
+  const viewTabs = useMemo(
+    () =>
+      EXTENSION_VIEWS.map((view) => ({
+        ...view,
+        count:
+          view.id === "registry"
+            ? registry.length
+            : view.id === "installed"
+              ? installed.length
+              : view.id === "providers"
+                ? providers.length
+                : (uiPayload.extensions || []).length,
+      })),
+    [installed.length, providers.length, registry.length, uiPayload.extensions]
+  );
 
   const runAction = useCallback(
     async (extensionId, fn) => {
@@ -192,89 +222,106 @@ export default function ExtensionsTab({ onErrorStateChange }) {
       <div className="extensions-tab__header">
         <div>
           <h2>Extensions</h2>
-          <p>Trusted extension registry, installed providers, and declarative CoreUI schemas.</p>
+          <p>Trusted registry, installed providers, and declarative CoreUI schemas.</p>
         </div>
         <CoreUIButton variant="primary" onClick={loadAll} disabled={loading || Boolean(busyId)}>
           Refresh
         </CoreUIButton>
       </div>
 
-      {error ? <Card className="extensions-error">{error}</Card> : null}
+      <CoreUIPillTabs
+        tabs={viewTabs}
+        value={activeView}
+        onChange={setActiveView}
+        ariaLabel="Extension views"
+        getLabel={(tab) => (
+          <span className="extensions-view-tab-label">
+            <span>{tab.label}</span>
+            <CoreUIBadge>{tab.count}</CoreUIBadge>
+          </span>
+        )}
+      />
 
-      <Card className="extensions-grid-card">
-        <div className="extensions-grid-card__header">
-          <h3>Registry</h3>
-          <span>{registry.length} available</span>
-        </div>
-        <div className="extensions-cards">
-          {registry.map((item) => {
-            const installedItem = installedById.get(item.id);
-            const isBusy = busyId === item.id;
-            return (
-              <Card key={item.id} className="extensions-card">
-                <div className="extensions-card__head">
-                  <div>
-                    <h4>{item.title || item.id}</h4>
-                    <p>{item.description || "No description."}</p>
+      {error ? <div className="coreui-panel-note coreui-panel-note--error">{error}</div> : null}
+
+      {activeView === "registry" ? (
+        <section className="app-default-card extensions-view" aria-labelledby="extensions-registry-heading">
+          <div className="extensions-view__header">
+            <h3 id="extensions-registry-heading">Registry</h3>
+            <CoreUIBadge tone="info">{registry.length} available</CoreUIBadge>
+          </div>
+          <div className="extensions-cards">
+            {registry.map((item) => {
+              const installedItem = installedById.get(item.id);
+              const isBusy = busyId === item.id;
+              return (
+                <article key={item.id} className="coreui-card-shell coreui-p-md extensions-card">
+                  <div className="extensions-card__head">
+                    <div>
+                      <h4>{item.title || item.id}</h4>
+                      <p>{item.description || "No description."}</p>
+                    </div>
+                    <CoreUIBadge>{item.latest_version || item.default_ref || "latest"}</CoreUIBadge>
                   </div>
-                  <span className="extensions-card__version">{item.latest_version || item.default_ref || ""}</span>
-                </div>
-                <div className="extensions-card__meta">
-                  <span>ID: {item.id}</span>
-                  <span>Visibility: {item.visibility || "trusted"}</span>
-                </div>
-                <div className="extensions-card__actions">
-                  {!installedItem ? (
-                    <CoreUIButton
-                      variant="primary"
-                      disabled={isBusy}
-                      onClick={() => runAction(item.id, (id) => installExtension(id))}
-                    >
-                      Install
-                    </CoreUIButton>
-                  ) : (
-                    <>
+                  <div className="extensions-card__meta">
+                    <span>ID: {item.id}</span>
+                    <span>Visibility: {item.visibility || "trusted"}</span>
+                  </div>
+                  <div className="extensions-card__actions">
+                    {!installedItem ? (
                       <CoreUIButton
-                        variant="danger"
+                        variant="primary"
                         disabled={isBusy}
-                        onClick={() => runAction(item.id, (id) => removeExtension(id))}
+                        onClick={() => runAction(item.id, (id) => installExtension(id))}
                       >
-                        Remove
+                        Install
                       </CoreUIButton>
-                      {installedItem.enabled ? (
+                    ) : (
+                      <>
                         <CoreUIButton
-                          variant="ghost"
+                          variant="danger"
                           disabled={isBusy}
-                          onClick={() => runAction(item.id, (id) => disableExtension(id))}
+                          onClick={() => runAction(item.id, (id) => removeExtension(id))}
                         >
-                          Disable
+                          Remove
                         </CoreUIButton>
-                      ) : (
-                        <CoreUIButton
-                          variant="primary"
-                          disabled={isBusy}
-                          onClick={() => runAction(item.id, (id) => enableExtension(id))}
-                        >
-                          Enable
-                        </CoreUIButton>
-                      )}
-                    </>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      </Card>
+                        {installedItem.enabled ? (
+                          <CoreUIButton
+                            variant="ghost"
+                            disabled={isBusy}
+                            onClick={() => runAction(item.id, (id) => disableExtension(id))}
+                          >
+                            Disable
+                          </CoreUIButton>
+                        ) : (
+                          <CoreUIButton
+                            variant="primary"
+                            disabled={isBusy}
+                            onClick={() => runAction(item.id, (id) => enableExtension(id))}
+                          >
+                            Enable
+                          </CoreUIButton>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+            {!registry.length && !loading ? <div className="extensions-empty">No registry entries.</div> : null}
+          </div>
+        </section>
+      ) : null}
 
-      <Card className="extensions-grid-card">
-        <div className="extensions-grid-card__header">
-          <h3>Installed</h3>
-          <span>{installed.length} installed</span>
-        </div>
-        <div className="extensions-cards">
-          {installed.map((item) => (
-            <Card key={item.id} className="extensions-card installed-card">
+      {activeView === "installed" ? (
+        <section className="app-default-card extensions-view" aria-labelledby="extensions-installed-heading">
+          <div className="extensions-view__header">
+            <h3 id="extensions-installed-heading">Installed</h3>
+            <CoreUIBadge tone="info">{installed.length} installed</CoreUIBadge>
+          </div>
+          <div className="extensions-cards">
+            {installed.map((item) => (
+            <article key={item.id} className="coreui-card-shell coreui-p-md extensions-card installed-card">
               <div className="extensions-card__head">
                 <div>
                   <h4>{item.title || item.id}</h4>
@@ -288,19 +335,22 @@ export default function ExtensionsTab({ onErrorStateChange }) {
                 {item.restart_required ? <span>Restart required</span> : null}
               </div>
               {item.error ? <pre className="extensions-card__error">{item.error}</pre> : null}
-            </Card>
-          ))}
-        </div>
-      </Card>
+            </article>
+            ))}
+            {!installed.length && !loading ? <div className="extensions-empty">No installed extensions.</div> : null}
+          </div>
+        </section>
+      ) : null}
 
-      <Card className="extensions-grid-card">
-        <div className="extensions-grid-card__header">
-          <h3>Providers</h3>
-          <span>{providers.length} loaded</span>
-        </div>
-        <div className="extensions-cards">
-          {providers.map((provider) => (
-            <Card key={provider.provider_id} className="extensions-card provider-card">
+      {activeView === "providers" ? (
+        <section className="app-default-card extensions-view" aria-labelledby="extensions-providers-heading">
+          <div className="extensions-view__header">
+            <h3 id="extensions-providers-heading">Providers</h3>
+            <CoreUIBadge tone="info">{providers.length} loaded</CoreUIBadge>
+          </div>
+          <div className="extensions-cards">
+            {providers.map((provider) => (
+            <article key={provider.provider_id} className="coreui-card-shell coreui-p-md extensions-card provider-card">
               <div className="extensions-card__head">
                 <div>
                   <h4>{provider.title}</h4>
@@ -313,48 +363,61 @@ export default function ExtensionsTab({ onErrorStateChange }) {
                 <span>Extension: {provider.extension_id}</span>
                 <span>Models: {(provider.models || []).length}</span>
               </div>
-            </Card>
-          ))}
-        </div>
-      </Card>
-
-      <div className="extensions-ui">
-        {(uiPayload.extensions || []).map((entry) => {
-          const schemaWithExtensionIds = {
-            ...entry.ui_schema,
-            pages: Array.isArray(entry.ui_schema?.pages)
-              ? entry.ui_schema.pages.map((page) => ({ ...page, extensionId: entry.id }))
-              : [],
-          };
-          return (
-            <Card key={entry.id} className="extensions-ui-card">
-              <div className="extensions-grid-card__header">
-                <h3>{entry.title}</h3>
-                <span>{entry.id}</span>
-              </div>
-              <SchemaRenderer
-                schema={schemaWithExtensionIds}
-                providerByExtensionId={providerByExtensionId}
-              />
-            </Card>
-          );
-        })}
-      </div>
-
-      {Array.isArray(uiPayload.failed) && uiPayload.failed.length ? (
-        <Card className="extensions-grid-card">
-          <div className="extensions-grid-card__header">
-            <h3>Failed Extensions</h3>
-            <span>{uiPayload.failed.length}</span>
-          </div>
-          <div className="extensions-failed-list">
-            {uiPayload.failed.map((item) => (
-              <pre key={item.id} className="extensions-card__error">
-                {item.id}: {item.error}
-              </pre>
+            </article>
             ))}
+            {!providers.length && !loading ? <div className="extensions-empty">No loaded providers.</div> : null}
           </div>
-        </Card>
+        </section>
+      ) : null}
+
+      {activeView === "ui" ? (
+        <section className="app-default-card extensions-view" aria-labelledby="extensions-ui-heading">
+          <div className="extensions-view__header">
+            <h3 id="extensions-ui-heading">CoreUI Schemas</h3>
+            <CoreUIBadge tone="info">{(uiPayload.extensions || []).length} schemas</CoreUIBadge>
+          </div>
+          <div className="extensions-ui">
+            {(uiPayload.extensions || []).map((entry) => {
+              const schemaWithExtensionIds = {
+                ...entry.ui_schema,
+                pages: Array.isArray(entry.ui_schema?.pages)
+                  ? entry.ui_schema.pages.map((page) => ({ ...page, extensionId: entry.id }))
+                  : [],
+              };
+              return (
+                <article key={entry.id} className="coreui-card-shell coreui-p-md extensions-ui-card">
+                  <div className="extensions-view__header">
+                    <h3>{entry.title}</h3>
+                    <CoreUIBadge>{entry.id}</CoreUIBadge>
+                  </div>
+                  <SchemaRenderer
+                    schema={schemaWithExtensionIds}
+                    providerByExtensionId={providerByExtensionId}
+                  />
+                </article>
+              );
+            })}
+            {!(uiPayload.extensions || []).length && !loading ? (
+              <div className="extensions-empty">No CoreUI schemas published by installed extensions.</div>
+            ) : null}
+          </div>
+
+          {Array.isArray(uiPayload.failed) && uiPayload.failed.length ? (
+          <div className="coreui-panel-note coreui-panel-note--error extensions-failed">
+            <div className="extensions-view__header">
+              <h3>Failed Extensions</h3>
+              <CoreUIBadge tone="error">{uiPayload.failed.length}</CoreUIBadge>
+            </div>
+            <div className="extensions-failed-list">
+              {uiPayload.failed.map((item) => (
+                <pre key={item.id} className="extensions-card__error">
+                  {item.id}: {item.error}
+                </pre>
+              ))}
+            </div>
+          </div>
+          ) : null}
+        </section>
       ) : null}
     </div>
   );

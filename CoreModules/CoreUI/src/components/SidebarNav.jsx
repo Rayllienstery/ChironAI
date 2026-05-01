@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import Card from "./Card";
+import OllamaSidebarIcon from "./OllamaSidebarIcon";
 import OpenWebUiSidebarIcon from "./OpenWebUiSidebarIcon";
 
 const LS_WIDTH = "coreui.sidebar.width";
@@ -46,9 +47,17 @@ const TAB_MATERIAL_ICONS = {
   "coreui-showcase": "widgets",
 };
 
-function TabIcon({ tabId, icon }) {
+function isOllamaTab(tabId, icon, label) {
+  const values = [tabId, icon, label].map((value) => String(value || "").trim().toLowerCase());
+  return values.some((value) => value === "ollama" || value.includes("ollama"));
+}
+
+function TabIcon({ tabId, icon, label }) {
   if (tabId === "open-webui") {
     return <OpenWebUiSidebarIcon />;
+  }
+  if (isOllamaTab(tabId, icon, label)) {
+    return <OllamaSidebarIcon />;
   }
   const ligature = String(icon || "").trim() || (TAB_MATERIAL_ICONS[tabId] ?? "widgets");
   return (
@@ -82,7 +91,7 @@ function CollapseIcon({ expanded }) {
 
 /**
  * @param {{
- *   tabs: { id: string, label: string, icon?: string }[],
+ *   tabs: { id: string, label: string, icon?: string, section?: string }[],
  *   activeTab: string,
  *   onTabChange: (id: string) => void,
  *   tabErrors?: Record<string, boolean>,
@@ -109,6 +118,16 @@ function SidebarNav({
   statusLoading = false,
 }) {
   const prefetchOnceRef = useRef(new Set());
+  const tabSections = tabs.reduce((sections, tab) => {
+    const section = String(tab.section || "").trim();
+    const current = sections[sections.length - 1];
+    if (!current || current.title !== section) {
+      sections.push({ title: section, tabs: [tab] });
+    } else {
+      current.tabs.push(tab);
+    }
+    return sections;
+  }, []);
 
   const prefetchTab = useCallback((tabId) => {
     const id = String(tabId || '');
@@ -121,6 +140,7 @@ function SidebarNav({
       if (id === 'rag-fusion-proxy') import('./LlmProxyTab');
       if (id === 'logs') import('./LogsTab');
       if (id === 'rag') import('./RagTab');
+      if (id === 'crawler') import('./CrawlerTab');
       if (id === 'dashboard') import('./DashboardTab');
       if (id === 'open-webui') import('./OpenWebUiTab');
       if (id === 'template-editor') import('./TemplateEditorTab');
@@ -169,6 +189,8 @@ function SidebarNav({
 
   const toggleCollapsed = () => setCollapsed((c) => !c);
 
+  const rafRef = useRef(null);
+
   const onResizePointerDown = (e) => {
     if (collapsed) return;
     e.preventDefault();
@@ -180,20 +202,30 @@ function SidebarNav({
       w: aside.getBoundingClientRect().width,
     };
     document.body.classList.add("coreui-resizing");
+    aside.classList.add("coreui-sidebar--resizing");
 
     const onMove = (ev) => {
       if (!resizingRef.current) return;
-      const { x, w } = dragStartRef.current;
-      const next = Math.round(
-        Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w + (ev.clientX - x))),
-      );
-      const app = aside.closest(".app");
-      if (app) app.style.setProperty("--coreui-sidebar-width", `${next}px`);
+      if (rafRef.current) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        const { x, w } = dragStartRef.current;
+        const next = Math.round(
+          Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w + (ev.clientX - x))),
+        );
+        const app = aside.closest(".app");
+        if (app) app.style.setProperty("--coreui-sidebar-width", `${next}px`);
+      });
     };
 
     const onUp = () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       resizingRef.current = false;
       document.body.classList.remove("coreui-resizing");
+      aside.classList.remove("coreui-sidebar--resizing");
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       const asideEl = asideRef.current;
@@ -239,12 +271,20 @@ function SidebarNav({
       </div>
       <div className="coreui-sidebar__content">
         <nav className="coreui-sidebar__nav">
-          {tabs.map((tab) => {
-            const active = activeTab === tab.id;
-            const hasError = Boolean(tabErrors && tabErrors[tab.id]);
-            const isOpenWebUi = tab.id === "open-webui";
-            const isRag = tab.id === "rag";
-            const tabServiceStatus = serviceStatusByTabId?.[tab.id] || null;
+          {tabSections.map((section, sectionIndex) => (
+            <div
+              key={`${section.title || "main"}-${sectionIndex}`}
+              className="coreui-sidebar__section"
+            >
+              {section.title ? (
+                <div className="coreui-sidebar__section-title">{section.title}</div>
+              ) : null}
+              {section.tabs.map((tab) => {
+                const active = activeTab === tab.id;
+                const hasError = Boolean(tabErrors && tabErrors[tab.id]);
+                const isOpenWebUi = tab.id === "open-webui";
+                const isRag = tab.id === "rag";
+                const tabServiceStatus = serviceStatusByTabId?.[tab.id] || null;
             return (
               <button
                 key={tab.id}
@@ -256,7 +296,7 @@ function SidebarNav({
                 aria-current={active ? "page" : undefined}
                 title={collapsed ? tab.label : undefined}
               >
-                <TabIcon tabId={tab.id} icon={tab.icon} />
+                <TabIcon tabId={tab.id} icon={tab.icon} label={tab.label} />
                 <span className="coreui-sidebar__link-label">{tab.label}</span>
                 {tabServiceStatus ? (
                   <span
@@ -304,7 +344,9 @@ function SidebarNav({
                 )}
               </button>
             );
-          })}
+              })}
+            </div>
+          ))}
         </nav>
         {(onSettings || onStopWebUi) && (
           <div className="coreui-sidebar__dock">

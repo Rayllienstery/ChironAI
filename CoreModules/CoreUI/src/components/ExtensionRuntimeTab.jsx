@@ -85,7 +85,6 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
   const [busyModelActionKey, setBusyModelActionKey] = useState('');
   const [actionResult, setActionResult] = useState(null);
   const [actionDetails, setActionDetails] = useState(null);
-  const [openModelMenuId, setOpenModelMenuId] = useState('');
 
   const onErrorStateChangeRef = useRef(onErrorStateChange);
   useEffect(() => {
@@ -150,18 +149,6 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
     return diag?.value ?? null;
   }, [payload?.schema]);
 
-  useEffect(() => {
-    if (!openModelMenuId) return;
-    const onDown = (e) => {
-      const t = e.target;
-      if (!(t instanceof Element)) return;
-      if (t.closest?.('[data-extensions-runtime-model-menu-root="1"]')) return;
-      setOpenModelMenuId('');
-    };
-    window.addEventListener('mousedown', onDown, true);
-    return () => window.removeEventListener('mousedown', onDown, true);
-  }, [openModelMenuId]);
-
   const handleAction = useCallback(
     async (component) => {
       const actionId = String(component?.action_id || '').trim();
@@ -207,7 +194,6 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
       });
       const busyKey = `${actionId}:${modelId}`;
       setBusyModelActionKey(busyKey);
-      setOpenModelMenuId('');
       try {
         const result = await runExtensionTabAction(extensionId, actionId, body);
         setActionResult(result);
@@ -380,9 +366,6 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           const { displayName, quantization } = parseModelName(modelId);
           const sizeText = formatBytesLoose(row?.size);
           const modifiedText = formatIsoShort(row?.modified_at);
-          const hiddenRaw = String(row?.hidden ?? '').trim().toLowerCase();
-          const isHidden = hiddenRaw === 'yes' || hiddenRaw === 'true' || hiddenRaw === '1';
-          const menuOpen = openModelMenuId === modelId;
 
           const modelInfo = row?.model_info;
           const contextLengthKey = modelInfo && typeof modelInfo === 'object'
@@ -393,14 +376,6 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           const capabilities = Array.isArray(row?.capabilities) ? row.capabilities : [];
 
           const showTpl = modelActionTemplates.show;
-          const hideTpl = modelActionTemplates.hide;
-          const unhideTpl = modelActionTemplates.unhide;
-          const delTpl = modelActionTemplates.delete;
-
-          const busyShow = busyModelActionKey === `show_model:${modelId}`;
-          const busyHide = busyModelActionKey === `hide_model:${modelId}`;
-          const busyUnhide = busyModelActionKey === `unhide_model:${modelId}`;
-          const busyDel = busyModelActionKey === `delete_model:${modelId}`;
 
           return (
             <Card
@@ -429,77 +404,6 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
                     <div className="extensions-runtime-model-card__quant">
                       <span className="extensions-runtime-model-meta-k">Context:</span>
                       <span className="extensions-runtime-model-meta-v">{Number(contextLength).toLocaleString()}</span>
-                    </div>
-                  ) : null}
-                </div>
-                <div className="extensions-runtime-model-card__menu">
-                  <button
-                    type="button"
-                    className="extensions-runtime-model-menu-btn"
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpen ? 'true' : 'false'}
-                    aria-label="Model actions"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setOpenModelMenuId((cur) => (cur === modelId ? '' : modelId));
-                    }}
-                    disabled={!modelId}
-                  >
-                    <span className="material-symbols-outlined" aria-hidden="true">
-                      more_vert
-                    </span>
-                  </button>
-                  {menuOpen ? (
-                    <div className="extensions-runtime-model-menu" role="menu">
-                      <button
-                        type="button"
-                        className="extensions-runtime-model-menu-item"
-                        role="menuitem"
-                        disabled={!modelId || busyShow || Boolean(busyActionId)}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (showTpl) {
-                            void runModelMenuAction(showTpl, modelId);
-                          } else {
-                            setOpenModelMenuId('');
-                          }
-                        }}
-                      >
-                        {busyShow ? 'Working…' : 'Show details'}
-                      </button>
-                      {hideTpl ? (
-                        <button
-                          type="button"
-                          className="extensions-runtime-model-menu-item"
-                          role="menuitem"
-                          disabled={!modelId || isHidden || busyHide || Boolean(busyActionId)}
-                          onClick={(e) => { e.stopPropagation(); void runModelMenuAction(hideTpl, modelId); }}
-                        >
-                          {busyHide ? 'Working…' : 'Hide model'}
-                        </button>
-                      ) : null}
-                      {unhideTpl ? (
-                        <button
-                          type="button"
-                          className="extensions-runtime-model-menu-item"
-                          role="menuitem"
-                          disabled={!modelId || !isHidden || busyUnhide || Boolean(busyActionId)}
-                          onClick={(e) => { e.stopPropagation(); void runModelMenuAction(unhideTpl, modelId); }}
-                        >
-                          {busyUnhide ? 'Working…' : 'Unhide model'}
-                        </button>
-                      ) : null}
-                      {delTpl ? (
-                        <button
-                          type="button"
-                          className="extensions-runtime-model-menu-item extensions-runtime-model-menu-item--danger"
-                          role="menuitem"
-                          disabled={!modelId || busyDel || Boolean(busyActionId)}
-                          onClick={(e) => { e.stopPropagation(); void runModelMenuAction(delTpl, modelId); }}
-                        >
-                          {busyDel ? 'Working…' : 'Delete model'}
-                        </button>
-                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -563,7 +467,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
                       <span className="material-symbols-outlined">cloud</span>
                       Cloud
                     </div>
-                    <div className="extensions-runtime-model-grid" data-extensions-runtime-model-menu-root="1">
+                    <div className="extensions-runtime-model-grid">
                       {cloudModels.map((row, index) => renderModelCard(row, index))}
                     </div>
                   </>
@@ -574,7 +478,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
                       <span className="material-symbols-outlined">cloud_off</span>
                       Local
                     </div>
-                    <div className="extensions-runtime-model-grid" data-extensions-runtime-model-menu-root="1">
+                    <div className="extensions-runtime-model-grid">
                       {localModels.map((row, index) => renderModelCard(row, index))}
                     </div>
                   </>
