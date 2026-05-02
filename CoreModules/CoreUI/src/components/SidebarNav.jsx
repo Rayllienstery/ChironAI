@@ -43,6 +43,7 @@ const TAB_MATERIAL_ICONS = {
   "template-editor": "edit_note",
   testing: "science",
   extensions: "extension",
+  "dev-documentation": "menu_book",
   "coreui-showcase": "widgets",
 };
 
@@ -139,6 +140,7 @@ function SidebarNav({
       if (id === 'template-editor') import('./TemplateEditorTab');
       if (id === 'testing') import('./TestingTab');
       if (id === 'extensions') import('./ExtensionsTab');
+      if (id === 'dev-documentation') import('./DevDocumentationTab');
       if (id === 'coreui-showcase') import('./CoreUIShowcaseTab');
     } catch {
       /* ignore */

@@ -81,6 +81,7 @@ const TestingTab = lazyWithRetry("TestingTab", () => import("./components/Testin
 const TemplateEditorTab = lazyWithRetry("TemplateEditorTab", () => import("./components/TemplateEditorTab"));
 const CoreUIShowcaseTab = lazyWithRetry("CoreUIShowcaseTab", () => import("./components/CoreUIShowcaseTab"));
 const ExtensionsTab = lazyWithRetry("ExtensionsTab", () => import("./components/ExtensionsTab"));
+const DevDocumentationTab = lazyWithRetry("DevDocumentationTab", () => import("./components/DevDocumentationTab"));
 const ExtensionRuntimeTab = lazyWithRetry("ExtensionRuntimeTab", () => import("./components/ExtensionRuntimeTab"));
 
 import Card from "./components/Card";
@@ -487,6 +488,7 @@ function App() {
     { id: "testing", label: "Testing", section: "Developer Tools" },
     { id: "coreui-showcase", label: "CoreUI Showcase", section: "Developer Tools" },
     { id: "extensions", label: "Extensions", section: "Developer Tools" },
+    { id: "dev-documentation", label: "Dev Documentation", section: "Developer Tools" },
   ];
 
   const renderTabContent = () => {
@@ -521,6 +523,8 @@ function App() {
             }
           />
         );
+      case "dev-documentation":
+        return <DevDocumentationTab />;
       case "testing":
         return (
           <TestingTab
