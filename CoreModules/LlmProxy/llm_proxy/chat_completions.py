@@ -362,6 +362,91 @@ def _truncate_old_tool_outputs_for_upstream_budget(
     return out, diag
 
 
+def _compact_upstream_messages_for_budget(
+    messages: list[Any],
+    *,
+    budget_json_chars: int,
+    preserve_tail_tool_roles: int = 12,
+) -> tuple[list[Any], dict[str, Any]]:
+    """Compact old chat/tool history until upstream JSON fits the input budget."""
+    out, diag = _truncate_old_tool_outputs_for_upstream_budget(
+        messages,
+        budget_json_chars=budget_json_chars,
+        per_message_ceiling=8_000,
+        preserve_tail_tool_roles=preserve_tail_tool_roles,
+    )
+    if _serialized_upstream_messages_chars(out) <= budget_json_chars:
+        return out, diag
+
+    out = [dict(m) if isinstance(m, dict) else m for m in out]
+    last_user_idx = -1
+    for i in range(len(out) - 1, -1, -1):
+        m = out[i]
+        if isinstance(m, dict) and str(m.get("role") or "").strip().lower() == "user":
+            last_user_idx = i
+            break
+
+    assistant_trimmed = 0
+    tool_call_args_trimmed = 0
+    message_summarized = 0
+    for ceiling in (2048, 1024, 512, 256):
+        for i, m in enumerate(out):
+            if not isinstance(m, dict):
+                continue
+            role = str(m.get("role") or "").strip().lower()
+            if role == "system" or i == last_user_idx:
+                continue
+            if role == "assistant":
+                content = _ollama_message_content_str(m.get("content"))
+                if len(content) > ceiling:
+                    m["content"] = (
+                        f"{content[:ceiling].rstrip()}\n\n... [truncated {len(content) - ceiling} chars for upstream budget]"
+                    )
+                    assistant_trimmed += 1
+                tool_calls = m.get("tool_calls")
+                if isinstance(tool_calls, list):
+                    next_calls: list[Any] = []
+                    for tc in tool_calls:
+                        if not isinstance(tc, dict):
+                            next_calls.append(tc)
+                            continue
+                        tco = dict(tc)
+                        fn = tco.get("function") if isinstance(tco.get("function"), dict) else None
+                        if isinstance(fn, dict):
+                            fno = dict(fn)
+                            args = fno.get("arguments")
+                            if isinstance(args, str) and len(args) > ceiling:
+                                fno["arguments"] = (
+                                    f"{args[:ceiling].rstrip()}\n\n... [truncated {len(args) - ceiling} chars for upstream budget]"
+                                )
+                                tool_call_args_trimmed += 1
+                            tco["function"] = fno
+                        next_calls.append(tco)
+                    m["tool_calls"] = next_calls
+            elif role == "tool" and i != last_user_idx:
+                content = _ollama_message_content_str(m.get("content"))
+                if len(content) > ceiling:
+                    m["content"] = (
+                        f"{content[:ceiling].rstrip()}\n\n... [truncated {len(content) - ceiling} chars for upstream budget]"
+                    )
+                    message_summarized += 1
+        if _serialized_upstream_messages_chars(out) <= budget_json_chars:
+            break
+
+    final_chars = _serialized_upstream_messages_chars(out)
+    diag["compacted"] = bool(diag.get("compacted")) or final_chars < int(diag.get("original_upstream_json_chars") or final_chars)
+    diag["final_upstream_json_chars"] = final_chars
+    if assistant_trimmed:
+        diag["assistant_messages_shortened_rounds"] = assistant_trimmed
+    if tool_call_args_trimmed:
+        diag["assistant_tool_call_arguments_shortened_rounds"] = tool_call_args_trimmed
+    if message_summarized:
+        diag["tool_messages_extra_shortened_rounds"] = message_summarized
+    if final_chars > budget_json_chars:
+        diag["still_over_budget_after_history_compaction"] = True
+    return out, diag
+
+
 def _ollama_message_content_str(content: Any) -> str:
     """String form of an Ollama message ``content`` for logging / token estimates."""
     if isinstance(content, str):
@@ -1443,6 +1528,46 @@ def _effective_num_predict(
     return None
 
 
+def _effective_num_ctx(
+    chat_client: Any,
+    build_extra_options: dict[str, Any],
+) -> int | None:
+    n = _positive_int_or_none(build_extra_options.get("num_ctx"))
+    if n is not None:
+        return n
+    default_options = getattr(chat_client, "_default_options", None)
+    if isinstance(default_options, dict):
+        return _positive_int_or_none(default_options.get("num_ctx"))
+    return None
+
+
+def _effective_max_agent_steps(active_build: dict[str, Any] | None) -> int | None:
+    if not isinstance(active_build, dict):
+        return None
+    n = _positive_int_or_none(active_build.get("max_agent_steps"))
+    if n is None:
+        return None
+    return max(1, min(n, 256))
+
+
+def _input_budget_from_context(
+    *,
+    num_ctx: int | None,
+    num_predict: int | None,
+) -> dict[str, int] | None:
+    if num_ctx is None or num_ctx <= 0 or num_predict is None or num_predict <= 0:
+        return None
+    safety_margin = max(4096, min(int(num_ctx / 32), 8192))
+    input_budget = max(1024, int(num_ctx) - int(num_predict) - safety_margin)
+    return {
+        "num_ctx": int(num_ctx),
+        "reserved_output_tokens": int(num_predict),
+        "safety_margin_tokens": int(safety_margin),
+        "input_budget_tokens": int(input_budget),
+        "input_budget_json_chars": int(input_budget * 4),
+    }
+
+
 def _append_trace_warning(trace: dict[str, Any], code: str) -> None:
     warnings = trace.setdefault("warnings", [])
     if isinstance(warnings, list) and code not in warnings:
@@ -2131,6 +2256,11 @@ def run_chat_completions(
         build_extra_options,
         chat_max_tokens,
     )
+    effective_num_ctx = _effective_num_ctx(chat_client, build_extra_options)
+    input_budget = _input_budget_from_context(
+        num_ctx=effective_num_ctx,
+        num_predict=effective_num_predict,
+    )
 
     private_build = bool(dumb_build_pipeline and active_build and bool(active_build.get("private")))
     if private_build:
@@ -2393,6 +2523,17 @@ def run_chat_completions(
     tool_loop_stats: dict[str, Any] | None = None
     if use_native_tools:
         tool_loop_stats = _tool_round_stats_since_last_user(messages)
+    effective_max_agent_steps = _effective_max_agent_steps(active_build)
+    tool_loop_limit_reached = bool(
+        use_native_tools
+        and effective_max_agent_steps is not None
+        and tool_loop_stats is not None
+        and int(tool_loop_stats.get("rounds") or 0) >= effective_max_agent_steps
+    )
+    if tool_loop_limit_reached:
+        tools = []
+        tool_choice_effective = "none"
+        use_native_tools = False
     context_length = len(last_user.split())
     if system_prefix is not None:
         effective_prefix = prefix
@@ -2434,6 +2575,7 @@ def run_chat_completions(
         "build_sse_streaming": build_sse_streaming,
         "max_tokens": chat_max_tokens,
         "effective_num_predict": effective_num_predict,
+        "effective_num_ctx": effective_num_ctx,
         "ollama_chat_stream": False,
         "include_rag_metadata": bool(include_rag_metadata),
         "tools_count": len(tools),
@@ -2464,6 +2606,14 @@ def run_chat_completions(
         "testing_disable_rerank": bool(testing_disable_rerank),
         "client_request_id": str(body.get("client_request_id") or "").strip() or None,
     }
+    if input_budget is not None:
+        trace["request"]["input_budget"] = dict(input_budget)
+    if effective_max_agent_steps is not None:
+        trace["request"]["effective_max_agent_steps"] = effective_max_agent_steps
+    if tool_loop_limit_reached:
+        trace["request"]["tool_loop_limit_reached"] = True
+        trace["request"]["tools_suppressed_for_step_limit"] = True
+        _append_trace_warning(trace, "tool_loop_limit_reached")
     if trace_chain_id:
         trace["request"]["trace_chain_id"] = trace_chain_id
         trace["request"]["trace_chain_source"] = trace_chain_source
@@ -2927,6 +3077,41 @@ def run_chat_completions(
         if use_model == autocomplete_id:
             use_model = effective_ollama_model
 
+        if tool_loop_limit_reached:
+            ollama_messages = [
+                *ollama_messages,
+                {
+                    "role": "system",
+                    "content": (
+                        "The configured max_agent_steps limit has been reached for this turn. "
+                        "Do not call tools. Summarize what is known and provide the best final answer now."
+                    ),
+                },
+            ]
+
+        if input_budget is not None:
+            try:
+                _upstream_cap_raw = os.getenv(
+                    "LLM_PROXY_UPSTREAM_MESSAGES_JSON_CAP", "380000"
+                ).strip()
+                _upstream_json_cap = int(_upstream_cap_raw)
+            except (TypeError, ValueError):
+                _upstream_json_cap = 380_000
+            _upstream_json_cap = max(160_000, min(_upstream_json_cap, 2_000_000))
+            _budget_json_cap = min(
+                _upstream_json_cap,
+                int(input_budget.get("input_budget_json_chars") or _upstream_json_cap),
+            )
+            ollama_messages, compact_diag = _compact_upstream_messages_for_budget(
+                ollama_messages,
+                budget_json_chars=_budget_json_cap,
+            )
+            compact_diag["reserved_output_tokens"] = input_budget["reserved_output_tokens"]
+            compact_diag["safety_margin_tokens"] = input_budget["safety_margin_tokens"]
+            compact_diag["input_budget_tokens"] = input_budget["input_budget_tokens"]
+            if compact_diag.get("compacted") or compact_diag.get("still_over_budget_after_history_compaction"):
+                trace["request"]["upstream_context_compaction"] = compact_diag
+
         trace["ollama"]["model"] = use_model
         trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(ollama_messages)
         trace["ollama"]["think"] = ollama_think
@@ -2974,12 +3159,21 @@ def run_chat_completions(
         except (TypeError, ValueError):
             _upstream_json_cap = 380_000
         _upstream_json_cap = max(160_000, min(_upstream_json_cap, 2_000_000))
+        if input_budget is not None:
+            _upstream_json_cap = min(
+                _upstream_json_cap,
+                int(input_budget.get("input_budget_json_chars") or _upstream_json_cap),
+            )
 
-        native_ollama_messages, compact_diag = _truncate_old_tool_outputs_for_upstream_budget(
+        native_ollama_messages, compact_diag = _compact_upstream_messages_for_budget(
             native_ollama_messages,
             budget_json_chars=_upstream_json_cap,
         )
-        if compact_diag.get("compacted"):
+        if input_budget is not None:
+            compact_diag["reserved_output_tokens"] = input_budget["reserved_output_tokens"]
+            compact_diag["safety_margin_tokens"] = input_budget["safety_margin_tokens"]
+            compact_diag["input_budget_tokens"] = input_budget["input_budget_tokens"]
+        if compact_diag.get("compacted") or compact_diag.get("still_over_budget_after_history_compaction"):
             native_tools_diag["upstream_context_compaction"] = compact_diag
 
         native_ollama_messages_for_upstream = native_ollama_messages
@@ -3501,6 +3695,29 @@ def run_chat_completions(
                 )
             if excerpt_sys:
                 ollama_messages.append({"role": "system", "content": excerpt_sys})
+
+        if input_budget is not None:
+            try:
+                _upstream_cap_raw = os.getenv(
+                    "LLM_PROXY_UPSTREAM_MESSAGES_JSON_CAP", "380000"
+                ).strip()
+                _upstream_json_cap = int(_upstream_cap_raw)
+            except (TypeError, ValueError):
+                _upstream_json_cap = 380_000
+            _upstream_json_cap = max(160_000, min(_upstream_json_cap, 2_000_000))
+            _budget_json_cap = min(
+                _upstream_json_cap,
+                int(input_budget.get("input_budget_json_chars") or _upstream_json_cap),
+            )
+            ollama_messages, compact_diag = _compact_upstream_messages_for_budget(
+                ollama_messages,
+                budget_json_chars=_budget_json_cap,
+            )
+            compact_diag["reserved_output_tokens"] = input_budget["reserved_output_tokens"]
+            compact_diag["safety_margin_tokens"] = input_budget["safety_margin_tokens"]
+            compact_diag["input_budget_tokens"] = input_budget["input_budget_tokens"]
+            if compact_diag.get("compacted") or compact_diag.get("still_over_budget_after_history_compaction"):
+                trace["request"]["upstream_context_compaction"] = compact_diag
 
         trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(ollama_messages)
         trace["ollama"]["model"] = use_model

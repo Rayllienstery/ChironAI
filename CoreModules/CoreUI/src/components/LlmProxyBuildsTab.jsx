@@ -65,6 +65,54 @@ const WIZARD_STEPS = [
   { id: 'preview', label: 'Pipeline', icon: 'flowchart' },
 ];
 
+const PARAMETER_PREFABS = [
+  {
+    id: 'light',
+    label: 'Light',
+    icon: 'bolt',
+    values: { num_ctx: 32768, num_predict: 4096, max_agent_steps: 6 },
+    description: 'Compact agent setup for short tasks. Reserves output room inside num_ctx so tool history cannot grow too far.',
+  },
+  {
+    id: 'medium',
+    label: 'Medium',
+    icon: 'tune',
+    values: { num_ctx: 65536, num_predict: 8192, max_agent_steps: 12 },
+    description: 'Balanced default for everyday coding agents. num_predict is reserved inside num_ctx, with a controlled step count.',
+  },
+  {
+    id: 'high',
+    label: 'High',
+    icon: 'rocket_launch',
+    values: { num_ctx: 131072, num_predict: 16384, max_agent_steps: 25 },
+    description: 'Heavy autonomous work preset. Keeps a large output reserve while still limiting runaway tool loops.',
+  },
+  {
+    id: 'extreme',
+    label: 'Extreme',
+    icon: 'warning',
+    values: { num_ctx: 202752, num_predict: 32000, max_agent_steps: 50 },
+    description: 'Large-context emergency preset. Reserves a big answer budget and is intentionally capped below 256 agent steps.',
+  },
+];
+
+const CUSTOM_PARAMETER_PREFAB_NOTE = {
+  label: 'Custom values',
+  values: null,
+  description: 'Current fields do not match a prefab. Manual values will be saved as-is, and num_predict will reserve output room inside num_ctx.',
+};
+
+function getMatchingParameterPrefab(draft) {
+  if (!draft) return null;
+  return (
+    PARAMETER_PREFABS.find((prefab) =>
+      String(draft.num_ctx ?? '').trim() === String(prefab.values.num_ctx) &&
+      String(draft.num_predict ?? '').trim() === String(prefab.values.num_predict) &&
+      String(draft.max_agent_steps ?? '').trim() === String(prefab.values.max_agent_steps)
+    ) || null
+  );
+}
+
 function emptyDraft() {
   return {
     id: '',
@@ -366,6 +414,20 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
     () => builds.find((x) => x.id === detailId) || null,
     [builds, detailId],
   );
+  const matchingParameterPrefab = getMatchingParameterPrefab(draft);
+  const parameterPrefabNote = matchingParameterPrefab || CUSTOM_PARAMETER_PREFAB_NOTE;
+
+  const applyParameterPrefab = useCallback((prefab) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        num_ctx: String(prefab.values.num_ctx),
+        num_predict: String(prefab.values.num_predict),
+        max_agent_steps: String(prefab.values.max_agent_steps),
+      };
+    });
+  }, []);
 
   const openNew = () => {
     setDetailId(null);
@@ -1281,6 +1343,39 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   <p className="llm-proxy-param-card-hint">Range: 0.0 – 1.0. Typical: 0.9 for general use, 0.1 for strict/focused output.</p>
                 </div>
 
+                <div className="llm-proxy-prefab-panel">
+                  <div className="llm-proxy-param-card-header">
+                    <span className="llm-proxy-param-card-icon material-symbols-outlined" aria-hidden="true">dashboard_customize</span>
+                    <h4 className="llm-proxy-param-card-title">Префабы</h4>
+                  </div>
+                  <div className="coreui-card-actions llm-proxy-prefab-actions" aria-label="Parameter prefabs">
+                    {PARAMETER_PREFABS.map((prefab) => {
+                      const active = matchingParameterPrefab?.id === prefab.id;
+                      return (
+                        <CoreUIButton
+                          key={prefab.id}
+                          variant={active ? 'primary' : 'default'}
+                          className="llm-proxy-prefab-button"
+                          onClick={() => applyParameterPrefab(prefab)}
+                          aria-pressed={active}
+                        >
+                          <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">{prefab.icon}</span>
+                          <span>{prefab.label}</span>
+                        </CoreUIButton>
+                      );
+                    })}
+                  </div>
+                  <section className="coreui-panel-note coreui-panel-note--info llm-proxy-prefab-note">
+                    <div className="llm-proxy-prefab-note-title">{parameterPrefabNote.label}</div>
+                    {parameterPrefabNote.values ? (
+                      <div className="llm-proxy-prefab-note-values">
+                        num_ctx {parameterPrefabNote.values.num_ctx} · num_predict {parameterPrefabNote.values.num_predict} · max steps {parameterPrefabNote.values.max_agent_steps}
+                      </div>
+                    ) : null}
+                    <div className="llm-proxy-prefab-note-description">{parameterPrefabNote.description}</div>
+                  </section>
+                </div>
+
                 <div className="llm-proxy-param-card">
                   <div className="llm-proxy-param-card-header">
                     <span className="llm-proxy-param-card-icon material-symbols-outlined" aria-hidden="true">context_memory</span>
@@ -1309,7 +1404,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   </div>
                   <p className="llm-proxy-param-card-description">
                     The <strong>maximum number of tokens</strong> the provider may generate for one answer. This is
-                    separate from num_ctx: long plans and provider thinking can need a much larger output budget.
+                    also reserved inside num_ctx so long histories cannot crowd out the model's answer budget.
                   </p>
                   <input
                     className="coreui-input llm-proxy-param-card-field"
@@ -1318,7 +1413,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     placeholder="65536"
                     inputMode="numeric"
                   />
-                  <p className="llm-proxy-param-card-hint">Default: 65536. Request max_tokens can still override this for one call.</p>
+                  <p className="llm-proxy-param-card-hint">Request max_tokens can still override this for one call. Larger values leave less room for input history.</p>
                 </div>
 
                 <div className="llm-proxy-param-card">

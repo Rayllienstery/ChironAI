@@ -4017,6 +4017,333 @@ def test_request_max_tokens_overrides_build_num_predict_and_warns_when_exhausted
     assert "output_token_budget_exhausted" in (trace.get("warnings") or [])
 
 
+def test_model_build_num_predict_reserves_input_budget_for_upstream_messages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    import api.http.rag_routes as rag_routes
+    from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
+
+    captured_payload: dict[str, Any] = {}
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == LLM_PROXY_BUILDS_APP_KEY:
+                return json.dumps(
+                    [
+                        {
+                            "id": "Budget-worker",
+                            "backend": "dumb",
+                            "provider_id": "ollama",
+                            "model": "fake-model",
+                            "prompt_name": "system_senior_ios_assistant_v1",
+                            "num_ctx": 8192,
+                            "num_predict": 1024,
+                        }
+                    ]
+                )
+            if key == "proxy_settings":
+                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
+            if key == "proxy_model":
+                return "fallback-model"
+            return None
+
+    class ChatClient:
+        _default_options = {"num_predict": 3072, "temperature": 0.0, "top_p": 1.0}
+
+        def chat_api(self, payload: dict[str, Any]) -> dict[str, Any]:
+            captured_payload.clear()
+            captured_payload.update(payload)
+            return {
+                "message": {"role": "assistant", "content": "ok"},
+                "done_reason": "stop",
+                "eval_count": 12,
+                "prompt_eval_count": 4,
+            }
+
+        def chat(self, *_a: Any, **_k: Any) -> str:
+            return ""
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fallback-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=ChatClient(),
+    )
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    huge_history = "old assistant chatter " * 4000
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda request, *_a, **_k: (
+            [
+                {"role": "system", "content": "system"},
+                {"role": "assistant", "content": huge_history},
+                {"role": "user", "content": request.messages[-1]["content"]},
+            ],
+            "fake-model",
+        ),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={"model": "Budget-worker", "messages": [{"role": "user", "content": "hi"}]},
+    )
+
+    assert r.status_code == 200
+    assert captured_payload.get("options", {}).get("num_predict") == 1024
+    trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
+    budget = ((trace.get("request") or {}).get("input_budget") or {})
+    assert budget.get("reserved_output_tokens") == 1024
+    assert len(json.dumps(captured_payload.get("messages") or [], ensure_ascii=False)) <= int(
+        budget.get("input_budget_json_chars")
+    )
+    compact = (trace.get("request") or {}).get("upstream_context_compaction") or {}
+    assert compact.get("compacted") is True
+
+
+def test_request_max_tokens_overrides_input_budget_reserve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    import api.http.rag_routes as rag_routes
+    from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
+
+    captured_payload: dict[str, Any] = {}
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == LLM_PROXY_BUILDS_APP_KEY:
+                return json.dumps(
+                    [
+                        {
+                            "id": "Budget-worker",
+                            "backend": "dumb",
+                            "provider_id": "ollama",
+                            "model": "fake-model",
+                            "prompt_name": "system_senior_ios_assistant_v1",
+                            "num_ctx": 8192,
+                            "num_predict": 4096,
+                        }
+                    ]
+                )
+            if key == "proxy_settings":
+                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
+            if key == "proxy_model":
+                return "fallback-model"
+            return None
+
+    class ChatClient:
+        _default_options = {"num_predict": 3072, "temperature": 0.0, "top_p": 1.0}
+
+        def chat_api(self, payload: dict[str, Any]) -> dict[str, Any]:
+            captured_payload.clear()
+            captured_payload.update(payload)
+            return {
+                "message": {"role": "assistant", "content": "ok"},
+                "done_reason": "stop",
+                "eval_count": 12,
+                "prompt_eval_count": 4,
+            }
+
+        def chat(self, *_a: Any, **_k: Any) -> str:
+            return ""
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fallback-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=ChatClient(),
+    )
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda request, *_a, **_k: (
+            [
+                {"role": "system", "content": "system"},
+                {"role": "assistant", "content": "old assistant chatter " * 1000},
+                {"role": "user", "content": request.messages[-1]["content"]},
+            ],
+            "fake-model",
+        ),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "Budget-worker",
+            "max_tokens": 512,
+            "messages": [{"role": "user", "content": "hi"}],
+        },
+    )
+
+    assert r.status_code == 200
+    assert captured_payload.get("options", {}).get("num_predict") == 512
+    trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
+    budget = ((trace.get("request") or {}).get("input_budget") or {})
+    assert budget.get("reserved_output_tokens") == 512
+    assert (trace.get("request") or {}).get("effective_num_predict") == 512
+
+
+def test_model_build_max_agent_steps_suppresses_tools_at_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    import api.http.rag_routes as rag_routes
+    from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
+
+    captured_payload: dict[str, Any] = {}
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == LLM_PROXY_BUILDS_APP_KEY:
+                return json.dumps(
+                    [
+                        {
+                            "id": "Step-worker",
+                            "backend": "dumb",
+                            "provider_id": "ollama",
+                            "model": "fake-model",
+                            "prompt_name": "system_senior_ios_assistant_v1",
+                            "max_agent_steps": 2,
+                        }
+                    ]
+                )
+            if key == "proxy_settings":
+                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
+            if key == "proxy_model":
+                return "fallback-model"
+            return None
+
+    class ChatClient:
+        _default_options = {"num_predict": 3072, "temperature": 0.0, "top_p": 1.0}
+
+        def chat_api(self, payload: dict[str, Any]) -> dict[str, Any]:
+            captured_payload.clear()
+            captured_payload.update(payload)
+            return {
+                "message": {"role": "assistant", "content": "final"},
+                "done_reason": "stop",
+                "eval_count": 12,
+                "prompt_eval_count": 4,
+            }
+
+        def chat(self, *_a: Any, **_k: Any) -> str:
+            return ""
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fallback-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=ChatClient(),
+    )
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda request, *_a, **_k: ([{"role": "user", "content": "finalize"}], "fake-model"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "Step-worker",
+            "messages": [
+                {"role": "user", "content": "fix it"},
+                {"role": "assistant", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "grep"}}]},
+                {"role": "tool", "tool_call_id": "c1", "content": "ok"},
+                {"role": "assistant", "tool_calls": [{"id": "c2", "type": "function", "function": {"name": "grep"}}]},
+                {"role": "tool", "tool_call_id": "c2", "content": "ok"},
+            ],
+            "tools": [{"type": "function", "function": {"name": "grep", "parameters": {"type": "object"}}}],
+            "tool_choice": "auto",
+        },
+    )
+
+    assert r.status_code == 200
+    assert "tools" not in captured_payload
+    assert "tool_choice" not in captured_payload
+    payload = r.get_json() or {}
+    message = ((payload.get("choices") or [{}])[0]).get("message") or {}
+    assert not message.get("tool_calls")
+    trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
+    req = trace.get("request") or {}
+    assert req.get("effective_max_agent_steps") == 2
+    assert req.get("tool_loop_limit_reached") is True
+    assert req.get("tools_suppressed_for_step_limit") is True
+    assert "tool_loop_limit_reached" in (trace.get("warnings") or [])
+
+
 def test_streaming_budget_exhaustion_is_visible_to_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

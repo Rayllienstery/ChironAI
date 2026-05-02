@@ -594,6 +594,42 @@
   margin-top: 6px;
 }
 
+.llm-proxy-prefab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-sm);
+}
+
+.llm-proxy-prefab-actions {
+  align-items: stretch;
+}
+
+.llm-proxy-prefab-button {
+  min-width: 112px;
+  justify-content: center;
+}
+
+.llm-proxy-prefab-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.llm-proxy-prefab-note-title {
+  font: var(--md-sys-typescale-title-small-font);
+  font-weight: 600;
+}
+
+.llm-proxy-prefab-note-values,
+.llm-proxy-prefab-note-description {
+  font: var(--md-sys-typescale-body-small-font);
+  line-height: 1.45;
+}
+
+.llm-proxy-prefab-note-values {
+  opacity: 0.86;
+}
+
 /* Toggle with Explanation */
 .llm-proxy-toggle-with-explanation {
   display: flex;
