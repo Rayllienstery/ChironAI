@@ -4,6 +4,7 @@ from application.llm_proxy_builds import (
     DEFAULT_NUM_PREDICT,
     build_ollama_options,
     normalize_build,
+    openai_model_objects_for_builds,
 )
 
 
@@ -49,3 +50,12 @@ def test_build_ollama_options_defaults_num_predict_for_legacy_build() -> None:
         "num_ctx": 32768,
         "num_predict": DEFAULT_NUM_PREDICT,
     }
+
+
+def test_openai_model_objects_expose_build_context_length() -> None:
+    rows = openai_model_objects_for_builds([{**_base_build(), "num_ctx": 202752}])
+
+    assert rows[0]["context_length"] == 202752
+    assert rows[0]["num_ctx"] == 202752
+    assert rows[0]["metadata"]["context_length"] == 202752
+    assert rows[0]["metadata"]["num_ctx"] == 202752

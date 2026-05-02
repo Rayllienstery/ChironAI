@@ -385,6 +385,45 @@ def test_models_endpoint_includes_chironai_autocomplete_when_backend_configured(
     assert ac.get("supports_vision") is True
 
 
+def test_models_endpoint_exposes_build_context_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    import api.http.rag_routes as rag_routes
+    from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == LLM_PROXY_BUILDS_APP_KEY:
+                return json.dumps(
+                    [
+                        {
+                            "id": "Agent-high",
+                            "backend": "dumb",
+                            "provider_id": "ollama",
+                            "model": "deepseek-v4-pro:cloud",
+                            "prompt_name": "system_senior_ios_assistant_v1",
+                            "num_ctx": 131072,
+                        }
+                    ]
+                )
+            return None
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+
+    app = rag_routes.create_app()
+    r = app.test_client().get("/v1/models")
+
+    assert r.status_code == 200
+    data = r.get_json() or {}
+    row = next(m for m in data.get("data") or [] if m.get("id") == "Agent-high")
+    assert row.get("context_length") == 131072
+    assert row.get("num_ctx") == 131072
+    assert (row.get("metadata") or {}).get("context_length") == 131072
+    assert (row.get("metadata") or {}).get("num_ctx") == 131072
+
+
 def test_chat_completions_chironai_autocomplete_uses_same_prompt_template_as_worker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

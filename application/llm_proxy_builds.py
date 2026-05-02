@@ -245,8 +245,23 @@ def find_build_by_id(builds: list[dict[str, Any]], model_id: str) -> dict[str, A
 def openai_model_objects_for_builds(builds: list[dict[str, Any]]) -> list[dict[str, object]]:
     """OpenAI GET /v1/models `data[]` entries (stable order: by id)."""
     sorted_b = sorted(builds, key=lambda x: str(x.get("id") or "").lower())
-    return [
-        {
+    rows: list[dict[str, object]] = []
+    for b in sorted_b:
+        upstream_model = str(b.get("model") or b.get("ollama_model") or "").strip()
+        metadata: dict[str, object] = {"ollama_model": upstream_model} if upstream_model else {}
+        context_length = None
+        try:
+            raw_ctx = b.get("num_ctx")
+            if raw_ctx is not None and str(raw_ctx).strip() != "":
+                ctx = int(raw_ctx)
+                if ctx >= 256:
+                    context_length = ctx
+        except (TypeError, ValueError):
+            context_length = None
+        if context_length is not None:
+            metadata["context_length"] = context_length
+            metadata["num_ctx"] = context_length
+        row: dict[str, object] = {
             "id": str(b["id"]),
             "object": "model",
             "created": 0,
@@ -255,14 +270,13 @@ def openai_model_objects_for_builds(builds: list[dict[str, Any]]) -> list[dict[s
             # Always true so OpenAI-compatible clients (e.g. Kilo) do not block image attach;
             # text-only upstream models may still reject or ignore images.
             "supports_vision": True,
-            "metadata": (
-                {"ollama_model": str(b.get("model") or b.get("ollama_model") or "").strip()}
-                if str(b.get("model") or b.get("ollama_model") or "").strip()
-                else {}
-            ),
         }
-        for b in sorted_b
-    ]
+        if context_length is not None:
+            row["context_length"] = context_length
+            row["num_ctx"] = context_length
+        row["metadata"] = metadata
+        rows.append(row)
+    return rows
 
 
 def merge_build_into_proxy_settings(

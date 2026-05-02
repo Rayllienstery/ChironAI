@@ -80,17 +80,11 @@ Pytest adds `CoreModules/LlmProxy` to `pythonpath` in the root [`pyproject.toml`
 | `LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL` | Concrete Ollama tag for autocomplete (overrides WebUI `proxy_autocomplete_model` when set) |
 | `LLM_PROXY_COMPLETIONS_RAW` | If not `0`/`false`/`no`, `/v1/completions` sets Ollama `raw: true` on `/api/generate` (default: on) |
 
-### Upstream `/api/chat` stream guards (hang protection)
+### Upstream `/api/chat` streaming
 
-When the host uses HTTP streaming to Ollama ``/api/chat`` (NDJSON lines), the client applies **bounded** timeouts so the proxy can end an SSE stream with an error and ``[DONE]`` instead of waiting indefinitely if the upstream never sends a terminal ``{"done": true}`` chunk or goes silent mid-stream (common on long multi-tool runs).
+When the host uses HTTP streaming to Ollama ``/api/chat`` (NDJSON lines), the proxy does not apply a read, connect, or wall-clock timeout to the upstream stream. Slow cloud models can pause for longer than a minute without the proxy aborting the request with a synthetic timeout error. The stream still ends on upstream HTTP/transport errors or when Ollama closes the response.
 
-| Variable | Purpose |
-|----------|---------|
-| `OLLAMA_CHAT_STREAM_CONNECT_TIMEOUT_S` | Connect timeout in seconds (default `10`) |
-| `OLLAMA_CHAT_STREAM_READ_TIMEOUT_S` | Max seconds without receiving any bytes on the socket before aborting the stream (default `60`); raise for very slow models or long pauses between chunks |
-| `OLLAMA_CHAT_STREAM_MAX_DURATION_S` | Max wall-clock time **between** successful line reads; `0` disables the cap (default `900`) |
-
-For native-tools **token** streaming, proxy traces include ``ollama_stream_connect_timeout_s``, ``ollama_stream_read_timeout_s``, and ``ollama_stream_max_duration_s`` on ``trace.request``.
+For native-tools **token** streaming, proxy traces include ``ollama_stream_timeout_disabled: true`` on ``trace.request``.
 
 Autocomplete is **additive**: same `/v1/chat/completions` endpoint; requests with `model` set to the autocomplete logical id skip RAG (and web supplement) and use the small Ollama model from WebUI or env. System prompt comes from the same WebUI **Prompt template** (`prompt_name`) as chat. The second entry appears in `/v1/models` only after that backend model is configured.
 

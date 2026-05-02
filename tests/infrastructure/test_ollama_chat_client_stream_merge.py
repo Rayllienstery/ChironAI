@@ -158,24 +158,59 @@ def test_iter_chat_api_stream_events_errors_when_stream_closes_without_done(
     assert "without a terminal done chunk" in events[-1][1]
 
 
-def test_iter_chat_api_stream_events_read_timeout_yields_error(
+def test_iter_chat_api_stream_events_disables_requests_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    seen_kwargs: dict[str, object] = {}
+
     class FakeResponse:
         def raise_for_status(self) -> None:
             return None
 
         def iter_lines(self, decode_unicode: bool = True):  # noqa: ARG002
-            yield json.dumps({"message": {"content": "a"}})
-            raise chat_client_module.requests.exceptions.ReadTimeout()
+            yield json.dumps({"message": {"content": "ok"}})
+            yield json.dumps({"done": True, "message": {"content": "ok"}})
 
         def close(self) -> None:
             return None
 
-    monkeypatch.setattr(chat_client_module.requests, "post", lambda *args, **kwargs: FakeResponse())
+    def fake_post(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
+        seen_kwargs.update(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr(chat_client_module.requests, "post", fake_post)
 
     client = OllamaChatClient(base_url="http://example.test/api/chat", model="fake")
     events = list(client.iter_chat_api_stream_events({"model": "fake", "messages": []}))
 
-    assert events[-1][0] == "error"
-    assert "read idle timeout" in events[-1][1]
+    assert seen_kwargs["timeout"] is None
+    assert events[-1][0] == "done"
+
+
+def test_chat_api_stream_final_disables_requests_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen_kwargs: dict[str, object] = {}
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def iter_lines(self, decode_unicode: bool = True):  # noqa: ARG002
+            yield json.dumps({"message": {"content": "final"}})
+            yield json.dumps({"done": True, "message": {"content": "final"}})
+
+        def close(self) -> None:
+            return None
+
+    def fake_post(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
+        seen_kwargs.update(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr(chat_client_module.requests, "post", fake_post)
+
+    client = OllamaChatClient(base_url="http://example.test/api/chat", model="fake")
+    result = client.chat_api_stream_final({"model": "fake", "messages": []})
+
+    assert seen_kwargs["timeout"] is None
+    assert result["message"]["content"] == "final"

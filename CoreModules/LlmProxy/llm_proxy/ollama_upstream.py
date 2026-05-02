@@ -63,7 +63,7 @@ def forward_ollama_api(
 
     try:
         if stream:
-            upstream = requests.post(url, json=body, timeout=600, stream=True)
+            upstream = requests.post(url, json=body, timeout=None, stream=True)
         else:
             upstream = requests.post(url, json=body, timeout=600, stream=False)
         upstream.raise_for_status()
