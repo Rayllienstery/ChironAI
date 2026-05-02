@@ -239,7 +239,7 @@ function CoreUIShowcaseTab() {
           name="Action button groups"
           classes={["CoreUIButton", ".dashboard-primary-btn", ".dashboard-secondary-btn"]}
           source={`${sourceRoot}/components/CoreUIButton.jsx, ${sourceRoot}/styles/components/DashboardTab.css`}
-          description="Standard replacement for the older capsule action buttons used by Open WebUI, Dashboard, Ollama, and proxy screens."
+          description="Standard replacement for the older capsule action buttons used by Dashboard, extensions, Ollama, and proxy screens."
         >
           <div className="coreui-showcase-action-button-stack">
             <div className="coreui-showcase-button-row">

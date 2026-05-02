@@ -1,4 +1,4 @@
-"""ServiceStarter: install and start Docker, Ollama, Qdrant, Open WebUI."""
+"""ServiceStarter: install and start Docker, Ollama, and Qdrant."""
 
 from __future__ import annotations
 

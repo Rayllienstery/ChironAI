@@ -7,7 +7,6 @@ import {
 } from "react";
 import Card from "./Card";
 import OllamaSidebarIcon from "./OllamaSidebarIcon";
-import OpenWebUiSidebarIcon from "./OpenWebUiSidebarIcon";
 
 const LS_WIDTH = "coreui.sidebar.width";
 const LS_COLLAPSED = "coreui.sidebar.collapsed";
@@ -53,9 +52,6 @@ function isOllamaTab(tabId, icon, label) {
 }
 
 function TabIcon({ tabId, icon, label }) {
-  if (tabId === "open-webui") {
-    return <OpenWebUiSidebarIcon />;
-  }
   if (isOllamaTab(tabId, icon, label)) {
     return <OllamaSidebarIcon />;
   }
@@ -99,7 +95,6 @@ function CollapseIcon({ expanded }) {
  *   onStopWebUi?: () => void,
  *   settingsActive?: boolean,
  *   ragStatus?: { running: boolean | null, url: string | null },
- *   openWebUiStatus?: { running: boolean | null, url: string | null },
  *   serviceStatusByTabId?: Record<string, { running: boolean | null, title?: string, message?: string }>,
  *   statusLoading?: boolean,
  * }} props
@@ -113,7 +108,6 @@ function SidebarNav({
   onStopWebUi,
   settingsActive,
   ragStatus,
-  openWebUiStatus,
   serviceStatusByTabId,
   statusLoading = false,
 }) {
@@ -142,7 +136,6 @@ function SidebarNav({
       if (id === 'rag') import('./RagTab');
       if (id === 'crawler') import('./CrawlerTab');
       if (id === 'dashboard') import('./DashboardTab');
-      if (id === 'open-webui') import('./OpenWebUiTab');
       if (id === 'template-editor') import('./TemplateEditorTab');
       if (id === 'testing') import('./TestingTab');
       if (id === 'extensions') import('./ExtensionsTab');
@@ -282,14 +275,13 @@ function SidebarNav({
               {section.tabs.map((tab) => {
                 const active = activeTab === tab.id;
                 const hasError = Boolean(tabErrors && tabErrors[tab.id]);
-                const isOpenWebUi = tab.id === "open-webui";
                 const isRag = tab.id === "rag";
                 const tabServiceStatus = serviceStatusByTabId?.[tab.id] || null;
             return (
               <button
                 key={tab.id}
                 type="button"
-                className={`coreui-sidebar__link${active ? " coreui-sidebar__link--active" : ""}${isOpenWebUi ? " coreui-sidebar__link--openwebui" : ""}${isRag ? " coreui-sidebar__link--rag" : ""}`}
+                className={`coreui-sidebar__link${active ? " coreui-sidebar__link--active" : ""}${isRag ? " coreui-sidebar__link--rag" : ""}`}
                 onClick={() => onTabChange(tab.id)}
                 onMouseEnter={() => prefetchTab(tab.id)}
                 onFocus={() => prefetchTab(tab.id)}
@@ -308,19 +300,6 @@ function SidebarNav({
                         : tabServiceStatus?.running
                           ? `${tabServiceStatus?.title || tab.label} available`
                           : tabServiceStatus?.message || `${tabServiceStatus?.title || tab.label} unavailable`
-                    }
-                  />
-                ) : null}
-                {isOpenWebUi ? (
-                  <span
-                    className={`coreui-sidebar__service-dot coreui-sidebar__link-openwebui-dot ${statusLoading ? "updating" : openWebUiStatus?.running ? "running" : "stopped"}`}
-                    aria-hidden="true"
-                    title={
-                      statusLoading
-                        ? "Checking Open WebUI status…"
-                        : openWebUiStatus?.running
-                          ? "Open WebUI running"
-                          : "Open WebUI not running"
                     }
                   />
                 ) : null}

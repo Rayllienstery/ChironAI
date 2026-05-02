@@ -27,14 +27,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("start-qdrant", help="Pull/start Qdrant container")
     sub.add_parser("stop-qdrant", help="Stop Qdrant container")
 
-    sub.add_parser("start-open-webui", help="Pull/start Open WebUI container")
-    sub.add_parser("stop-open-webui", help="Stop Open WebUI container")
-
     p_all = sub.add_parser("start-all", help="Run ensure/start for listed services")
     p_all.add_argument(
         "--services",
         default="docker,qdrant",
-        help="Comma-separated: docker,ollama,qdrant,open-webui",
+        help="Comma-separated: docker,ollama,qdrant",
     )
 
     args = p.parse_args(argv)
@@ -77,16 +74,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "stop-qdrant":
         ok, msg = ss.stop_qdrant()
-        print(json.dumps({"ok": ok, "message": msg}))
-        return 0 if ok else 1
-
-    if args.command == "start-open-webui":
-        ok, msg = ss.start_open_webui()
-        print(json.dumps({"ok": ok, "message": msg}))
-        return 0 if ok else 1
-
-    if args.command == "stop-open-webui":
-        ok, msg = ss.stop_open_webui()
         print(json.dumps({"ok": ok, "message": msg}))
         return 0 if ok else 1
 

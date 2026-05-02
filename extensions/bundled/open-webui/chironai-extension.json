@@ -1,0 +1,29 @@
+{
+  "id": "open-webui",
+  "version": "0.1.0",
+  "api_version": "1",
+  "type": "ui_extension",
+  "title": "Open WebUI",
+  "description": "Removable iframe tab and Docker runtime owner for Open WebUI.",
+  "icon": "web_asset",
+  "backend": {
+    "entrypoint": "backend.provider:create_provider"
+  },
+  "capabilities": {
+    "tab_ui": true,
+    "iframe_tab": true,
+    "service_actions": true
+  },
+  "compatibility": {
+    "app": "chironai",
+    "extension_api_version": "1"
+  },
+  "settings_schema": {
+    "title": "Open WebUI Settings",
+    "fields": []
+  },
+  "ui_schema": {},
+  "metadata": {
+    "service": "open-webui"
+  }
+}

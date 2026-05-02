@@ -103,43 +103,6 @@ def container_is_running(name: str) -> bool:
     return (out or "").strip().lower() == "true"
 
 
-def _wait_open_webui_container_running(
-    name: str,
-    *,
-    timeout_sec: float = 45.0,
-) -> tuple[bool, str | None]:
-    """After docker run/start, confirm the container stays up or explain exit (e.g. wrong GPU image)."""
-    deadline = time.monotonic() + timeout_sec
-    while time.monotonic() < deadline:
-        if container_is_running(name):
-            return True, None
-        code, st, _ = run_docker(
-            ["inspect", "-f", "{{.State.Status}}", name],
-            timeout=10.0,
-        )
-        if code == 0:
-            status = (st or "").strip()
-            if status in ("exited", "dead"):
-                ecode, ec_out, _ = run_docker(
-                    ["inspect", "-f", "{{.State.ExitCode}}", name],
-                    timeout=10.0,
-                )
-                ec = (ec_out or "").strip() if ecode == 0 else "?"
-                return False, (
-                    f"container {name!r} exited (status={status}, exit={ec}). "
-                    f"Check: docker logs {name}. "
-                    "Without an NVIDIA GPU use OPEN_WEBUI_IMAGE=open-webui/open-webui:main "
-                    f"then: docker rm -f {name}"
-                )
-        time.sleep(0.5)
-    if container_is_running(name):
-        return True, None
-    return False, (
-        f"container {name!r} not running after {int(timeout_sec)}s; "
-        f"docker ps -a && docker logs {name}"
-    )
-
-
 def wait_for_docker_engine(
     cfg: ServiceStarterConfig,
     *,
@@ -243,77 +206,6 @@ def ensure_qdrant_container(cfg: ServiceStarterConfig) -> tuple[bool, str]:
     return True, out or "created"
 
 
-def _open_webui_container_ollama_base_url(name: str) -> str | None:
-    """Read OLLAMA_BASE_URL from an existing container's config, or None if missing/unreadable."""
-    code, out, _ = run_docker(
-        ["inspect", "-f", "{{range .Config.Env}}{{println .}}{{end}}", name],
-        timeout=15.0,
-    )
-    if code != 0:
-        return None
-    for line in (out or "").splitlines():
-        line = line.strip()
-        if line.startswith("OLLAMA_BASE_URL="):
-            return line.split("=", 1)[1].strip()
-    return None
-
-
-def ensure_open_webui_container(cfg: ServiceStarterConfig) -> tuple[bool, str]:
-    name = cfg.open_webui_container_name
-    desired = (cfg.open_webui_ollama_url_for_container or "").strip().rstrip("/")
-
-    if container_exists(name):
-        current = _open_webui_container_ollama_base_url(name)
-        if current is not None:
-            cur_norm = current.strip().rstrip("/")
-            if cur_norm != desired:
-                code, out, err = run_docker(["rm", "-f", name], timeout=120.0)
-                if code != 0:
-                    detail = (err or out or f"docker rm -f failed ({code})").strip()
-                    return False, detail
-
-    if container_is_running(name):
-        return True, "already running"
-
-    if container_exists(name):
-        ok_start, msg_start = docker_start_container(name)
-        if not ok_start:
-            return ok_start, msg_start
-        up, wait_err = _wait_open_webui_container_running(name)
-        if not up and wait_err:
-            return False, wait_err
-        _sync_restart_policy_unless_stopped(name)
-        return True, msg_start
-
-    ok_pull, msg_pull = docker_pull(cfg.open_webui_image)
-    if not ok_pull:
-        return False, msg_pull
-
-    env_ollama = cfg.open_webui_ollama_url_for_container
-    run_args: list[str] = [
-        "run",
-        "-d",
-        "-p",
-        f"{cfg.open_webui_host_port}:{cfg.open_webui_container_port}",
-        "--name",
-        name,
-        "-e",
-        f"OLLAMA_BASE_URL={env_ollama}",
-        "--restart",
-        "unless-stopped",
-    ]
-    if sys.platform != "win32":
-        run_args.extend(["--add-host", "host.docker.internal:host-gateway"])
-    run_args.append(cfg.open_webui_image)
-    code, out, err = run_docker(run_args, timeout=180.0)
-    if code != 0:
-        return False, err or out or f"docker run failed ({code})"
-    up, wait_err = _wait_open_webui_container_running(name)
-    if not up and wait_err:
-        return False, wait_err
-    return True, out or "created"
-
-
 def wait_for_http_json(
     url: str,
     *,
@@ -341,8 +233,3 @@ def wait_for_http_json(
 def qdrant_port_from_url(url: str) -> int:
     parsed = urlparse(url) if "://" in url else urlparse(f"http://{url}")
     return int(parsed.port or 6333)
-
-
-def open_webui_port_from_url(url: str) -> int:
-    parsed = urlparse(url) if "://" in url else urlparse(f"http://{url}")
-    return int(parsed.port or 3000)

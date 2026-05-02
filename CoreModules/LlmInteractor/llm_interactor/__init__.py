@@ -21,6 +21,7 @@ from llm_interactor.manifest import (
     ALLOWED_UI_COMPONENT_TYPES,
     EXTENSION_API_VERSION,
     EXTENSION_TYPE_LLM_PROVIDER,
+    EXTENSION_TYPE_UI_EXTENSION,
     BackendManifest,
     ExtensionManifest,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "BackendManifest",
     "EXTENSION_API_VERSION",
     "EXTENSION_TYPE_LLM_PROVIDER",
+    "EXTENSION_TYPE_UI_EXTENSION",
     "ExtensionManager",
     "ExtensionManifest",
     "ExtensionRegistryClient",

@@ -15,6 +15,7 @@ import requests
 from llm_interactor.contracts import ProviderHostContext
 from llm_interactor.discovery import FailedExtension, LoadedExtension, MANIFEST_FILENAME, discover_extensions
 from llm_interactor.install_state import ExtensionsRepository, InstalledExtensionRecord
+from llm_interactor.manifest import EXTENSION_TYPE_LLM_PROVIDER
 from llm_interactor.registry_client import ExtensionRegistryClient
 from llm_interactor.runtime import LLMRuntime, ProviderRegistry
 
@@ -62,20 +63,25 @@ class ExtensionManager:
         manifest_path = bundled / MANIFEST_FILENAME
         if not manifest_path.is_file():
             return
-        manifest = None
         try:
             from llm_interactor.discovery import load_manifest_from_dir
 
             manifest = load_manifest_from_dir(bundled)
         except Exception:
             return
+        records = self._repo.list_records()
+        existing = next((r for r in records if r.id == manifest.id), None)
+        if existing is not None and not existing.installed:
+            return
+        if existing is not None and existing.version == manifest.version:
+            target = self._installed_dir / manifest.id / manifest.version
+            if target.is_dir():
+                return
         target = self._installed_dir / manifest.id / manifest.version
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(bundled, target, dirs_exist_ok=True)
-        records = self._repo.list_records()
-        if any(r.id == manifest.id and r.version == manifest.version for r in records):
-            return
-        records.append(
+        next_records = [r for r in records if r.id != manifest.id]
+        next_records.append(
             InstalledExtensionRecord(
                 id=manifest.id,
                 version=manifest.version,
@@ -88,10 +94,17 @@ class ExtensionManager:
                 restart_required=False,
             )
         )
-        self._repo.save_records(records)
+        self._repo.save_records(next_records)
+
+    def ensure_bundled_installed(self) -> None:
+        if not self._bundled_dir.is_dir():
+            return
+        for child in sorted(self._bundled_dir.iterdir(), key=lambda p: p.name.lower()):
+            if child.is_dir():
+                self.ensure_builtin_installed(child.name)
 
     def bootstrap_runtime(self) -> RuntimeBootstrap:
-        self.ensure_builtin_installed("ollama-provider")
+        self.ensure_bundled_installed()
         records = [r for r in self._repo.list_records() if r.installed and r.enabled]
         source_dirs = [
             self._installed_dir / record.id / record.version
@@ -106,6 +119,8 @@ class ExtensionManager:
         registry = ProviderRegistry()
         failed = list(report.failed)
         for loaded in report.loaded:
+            if loaded.manifest.type != EXTENSION_TYPE_LLM_PROVIDER:
+                continue
             try:
                 registry.register(loaded.provider)
             except Exception as e:
@@ -134,6 +149,8 @@ class ExtensionManager:
         failed_by_id = {item.extension_id: item for item in self._failed}
         out: list[dict[str, Any]] = []
         for record in self._repo.list_records():
+            if not record.installed:
+                continue
             loaded = loaded_by_id.get(record.id)
             failed = failed_by_id.get(record.id)
             out.append(
@@ -250,8 +267,10 @@ class ExtensionManager:
                     "extension_id": item.manifest.id,
                     "title": title,
                     "icon": str(raw.get("icon") or item.manifest.icon or ""),
+                    "icon_url": str(raw.get("icon_url") or ""),
                     "description": str(raw.get("description") or item.manifest.description or ""),
                     "order": int(raw.get("order") or 0),
+                    "status": dict(raw.get("status") or {}) if isinstance(raw.get("status"), dict) else None,
                 }
             )
         out.sort(key=lambda row: (int(row.get("order") or 0), str(row.get("title") or "").lower()))
@@ -441,5 +460,16 @@ class ExtensionManager:
         install_dir = self._installed_dir / target.id / target.version
         if install_dir.exists():
             shutil.rmtree(install_dir, ignore_errors=True)
-        self._repo.save_records([r for r in records if r.id != ext_id])
+        tombstone = InstalledExtensionRecord(
+            id=target.id,
+            version=target.version,
+            enabled=False,
+            installed=False,
+            source=dict(target.source or {}),
+            title=target.title,
+            description=target.description,
+            icon=target.icon,
+            restart_required=True,
+        )
+        self._repo.save_records([r for r in records if r.id != ext_id] + [tombstone])
         return {"id": ext_id, "removed": True, "restart_required": True}

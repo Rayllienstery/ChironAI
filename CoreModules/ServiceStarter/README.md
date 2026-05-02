@@ -5,7 +5,6 @@ Core module that **starts**, **installs** (Windows), and reports **status** for:
 - **Docker Desktop** (Windows download + silent install; engine readiness)
 - **Ollama** (installer + `ollama serve` on configurable port, default `11343`)
 - **Qdrant** (Docker image pull + container `qdrant` on port `6333`)
-- **Open WebUI** (Docker image pull + container `open-webui` on host port `3000`)
 
 ## Install
 
@@ -21,7 +20,7 @@ from servicestarter import ServiceStarter
 ss = ServiceStarter()
 print(ss.status())
 ss.ensure_docker_running()
-ss.ensure_qdrant_container()
+ss.start_qdrant()
 ```
 
 ## CLI
@@ -29,12 +28,10 @@ ss.ensure_qdrant_container()
 ```bash
 python -m servicestarter status
 python -m servicestarter start-all --services qdrant
-python -m servicestarter start-all --services docker,qdrant,open-webui,ollama
+python -m servicestarter start-all --services docker,qdrant,ollama
 ```
 
 See `servicestarter.config` for environment variables.
-
-**Open WebUI image:** default is `open-webui/open-webui:main` (CPU). For NVIDIA GPUs set `OPEN_WEBUI_IMAGE=open-webui/open-webui:cuda`. If a previous container was created with the wrong image, remove it: `docker rm -f open-webui` (or your `OPEN_WEBUI_CONTAINER_NAME`), then start again.
 
 After installing Ollama on Windows, restart the terminal (or sign out) if `ollama` is not yet on `PATH`.
 

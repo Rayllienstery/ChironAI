@@ -38,14 +38,6 @@ class ServiceStarterConfig:
     qdrant_host_http_port: int
     qdrant_host_grpc_port: int
 
-    open_webui_container_name: str
-    open_webui_host_url: str
-    open_webui_image: str
-    open_webui_host_port: int
-    open_webui_container_port: int
-    open_webui_ollama_url_for_container: str
-    """OLLAMA_BASE_URL passed into Open WebUI container (e.g. http://host.docker.internal:11343)."""
-
     docker_desktop_installer_url: str
     ollama_installer_url: str
 
@@ -71,15 +63,6 @@ class ServiceStarterConfig:
         q_http_port = int(os.getenv("QDRANT_HOST_HTTP_PORT", "6333"))
         q_grpc_port = int(os.getenv("QDRANT_HOST_GRPC_PORT", "6334"))
 
-        open_url = os.getenv("OPEN_WEBUI_URL", "http://localhost:3000").rstrip("/")
-        ow_host_port = int(os.getenv("OPEN_WEBUI_HOST_PORT", "3000"))
-        ow_ct_port = int(os.getenv("OPEN_WEBUI_CONTAINER_PORT", "8080"))
-
-        ollama_for_container = (
-            os.getenv("OPEN_WEBUI_OLLAMA_BASE_URL")
-            or f"http://host.docker.internal:{urlparse(ollama_base).port or ollama_port}"
-        ).rstrip("/")
-
         return cls(
             ollama_base_url=ollama_base,
             ollama_listen=listen,
@@ -88,15 +71,6 @@ class ServiceStarterConfig:
             qdrant_image=os.getenv("QDRANT_IMAGE", "qdrant/qdrant:latest"),
             qdrant_host_http_port=q_http_port,
             qdrant_host_grpc_port=q_grpc_port,
-            open_webui_container_name=os.getenv("OPEN_WEBUI_CONTAINER_NAME", "open-webui"),
-            open_webui_host_url=open_url,
-            open_webui_image=os.getenv(
-                "OPEN_WEBUI_IMAGE",
-                "open-webui/open-webui:main",
-            ),
-            open_webui_host_port=ow_host_port,
-            open_webui_container_port=ow_ct_port,
-            open_webui_ollama_url_for_container=ollama_for_container,
             docker_desktop_installer_url=os.getenv(
                 "DOCKER_DESKTOP_INSTALLER_URL",
                 "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe",

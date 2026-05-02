@@ -191,7 +191,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                     </div>
                     <div className="module-card">
                       <h5>ServiceStarter</h5>
-                      <p>Auto-install/start: Docker Desktop, Ollama, Qdrant, Open WebUI (Windows). pip: <code>service-starter</code></p>
+                      <p>Auto-install/start: Docker Desktop, Ollama, Qdrant (Windows). pip: <code>service-starter</code></p>
                     </div>
                     <div className="module-card">
                       <h5>WebInteraction</h5>
@@ -385,7 +385,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                     </div>
                     <div className="credit-card">
                       <h5>ServiceStarter</h5>
-                      <p>Auto-install/start: Docker Desktop, Ollama, Qdrant, Open WebUI (Windows).</p>
+                      <p>Auto-install/start: Docker Desktop, Ollama, Qdrant (Windows).</p>
                       <code>pip: service-starter</code>
                     </div>
                     <div className="credit-card">

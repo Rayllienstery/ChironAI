@@ -61,6 +61,7 @@ def _load_factory_from_entrypoint(source_dir: Path, entrypoint: str):
         if spec is None or spec.loader is None:
             raise ImportError(f"cannot load module from {py_path}")
         mod = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = mod
         spec.loader.exec_module(mod)
     elif package_init.is_file():
         spec = importlib.util.spec_from_file_location(

@@ -241,12 +241,10 @@
   text-align: left;
 }
 
-.coreui-sidebar__link--openwebui,
 .coreui-sidebar__link--rag {
   position: relative;
 }
 
-.coreui-sidebar__link-openwebui-dot,
 .coreui-sidebar__link-rag-dot {
   flex-shrink: 0;
 }
@@ -257,8 +255,6 @@
  */
 .theme-light .coreui-sidebar__link--active .coreui-sidebar__service-dot.running,
 .theme-light .coreui-sidebar__link--active .coreui-sidebar__service-dot.updating,
-.theme-light .coreui-sidebar__link--active .coreui-sidebar__link-openwebui-dot.running,
-.theme-light .coreui-sidebar__link--active .coreui-sidebar__link-openwebui-dot.updating,
 .theme-light .coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.running,
 .theme-light .coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.updating {
   background: var(--md-sys-color-surface);
@@ -266,27 +262,22 @@
 
 .theme-dark .coreui-sidebar__link--active .coreui-sidebar__service-dot.running,
 .theme-dark .coreui-sidebar__link--active .coreui-sidebar__service-dot.updating,
-.theme-dark .coreui-sidebar__link--active .coreui-sidebar__link-openwebui-dot.running,
-.theme-dark .coreui-sidebar__link--active .coreui-sidebar__link-openwebui-dot.updating,
 .theme-dark .coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.running,
 .theme-dark .coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.updating {
   background: var(--md-sys-color-background);
 }
 
 .coreui-sidebar__link--active .coreui-sidebar__service-dot.stopped,
-.coreui-sidebar__link--active .coreui-sidebar__link-openwebui-dot.stopped,
 .coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.stopped {
   background: var(--md-sys-color-error);
 }
 
 .coreui-sidebar__link--active .coreui-sidebar__service-dot.updating,
-.coreui-sidebar__link--active .coreui-sidebar__link-openwebui-dot.updating,
 .coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.updating {
   animation: coreui-service-dot-pulse 1.2s ease-in-out infinite;
 }
 
 .app.app--sidebar-collapsed .coreui-sidebar__service-dot,
-.app.app--sidebar-collapsed .coreui-sidebar__link-openwebui-dot,
 .app.app--sidebar-collapsed .coreui-sidebar__link-rag-dot {
   position: absolute;
   top: 7px;
@@ -321,8 +312,6 @@
   color: inherit;
 }
 
-.coreui-sidebar__icon--openwebui svg,
-.coreui-sidebar__icon--openwebui img,
 .coreui-sidebar__icon--ollama svg,
 .coreui-sidebar__icon--ollama img {
   width: 22px;
@@ -331,7 +320,6 @@
   color: inherit;
 }
 
-.coreui-sidebar__icon--openwebui,
 .coreui-sidebar__icon--ollama {
   font-family: inherit;
   font-size: 0;

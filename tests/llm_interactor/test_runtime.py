@@ -92,6 +92,40 @@ def test_extension_manager_bootstraps_builtin_ollama(tmp_path: Path) -> None:
     installed = manager.installed_extensions()
     assert bootstrap.runtime is not None
     assert any(item["id"] == "ollama-provider" for item in installed)
+    assert any(item["id"] == "open-webui" for item in installed)
+    assert any(tab["id"] == "open-webui" and "status" in tab for tab in manager.extension_tabs(runtime=bootstrap.runtime))
+
+
+def test_removed_bundled_extension_is_not_reinstalled(tmp_path: Path) -> None:
+    class _Repo:
+        def __init__(self) -> None:
+            self.data: dict[str, str] = {}
+
+        def get_app_setting(self, key: str):
+            return self.data.get(key)
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            self.data[key] = value
+
+    repo = _Repo()
+    root = Path(__file__).resolve().parents[2]
+    host = ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None)
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=host,
+        settings_repo=repo,
+        registry_client=ExtensionRegistryClient(project_root=root),
+        installed_dir=tmp_path / "installed",
+        bundled_dir=root / "extensions" / "bundled",
+        default_provider_id="ollama",
+    )
+    manager.bootstrap_runtime()
+    assert any(item["id"] == "open-webui" for item in manager.installed_extensions())
+
+    manager.remove("open-webui")
+    manager.bootstrap_runtime()
+
+    assert not any(item["id"] == "open-webui" for item in manager.installed_extensions())
 
 
 def test_registry_client_reads_local_registry() -> None:
@@ -99,3 +133,4 @@ def test_registry_client_reads_local_registry() -> None:
     client = ExtensionRegistryClient(project_root=root)
     rows = client.load()
     assert any(row["id"] == "ollama-provider" for row in rows)
+    assert any(row["id"] == "open-webui" for row in rows)

@@ -8,6 +8,8 @@ from typing import Any
 
 EXTENSION_API_VERSION = "1"
 EXTENSION_TYPE_LLM_PROVIDER = "llm_provider"
+EXTENSION_TYPE_UI_EXTENSION = "ui_extension"
+SUPPORTED_EXTENSION_TYPES = {EXTENSION_TYPE_LLM_PROVIDER, EXTENSION_TYPE_UI_EXTENSION}
 ALLOWED_UI_COMPONENT_TYPES = {
     "page",
     "section",
@@ -91,7 +93,7 @@ def manifest_from_dict(raw: dict[str, Any]) -> ExtensionManifest:
         raise ValueError("manifest.version is required")
     if api_version != EXTENSION_API_VERSION:
         raise ValueError(f"unsupported manifest api_version: {api_version}")
-    if ext_type != EXTENSION_TYPE_LLM_PROVIDER:
+    if ext_type not in SUPPORTED_EXTENSION_TYPES:
         raise ValueError(f"unsupported manifest type: {ext_type}")
     if not title:
         raise ValueError("manifest.title is required")

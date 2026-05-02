@@ -7,6 +7,115 @@
   gap: 12px;
 }
 
+.extensions-runtime-frame-shell {
+  min-height: min(900px, calc(100vh - 160px));
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  gap: 12px;
+}
+
+.extensions-runtime-frame-header {
+  align-items: flex-start;
+}
+
+.extensions-runtime-frame-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 13px;
+}
+
+.extensions-runtime-frame-status__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--md-sys-color-outline);
+}
+
+.extensions-runtime-frame-status__dot.running {
+  background: var(--md-sys-color-primary);
+}
+
+.extensions-runtime-frame-status__dot.error,
+.extensions-runtime-frame-status__dot.stopped {
+  background: var(--md-sys-color-error);
+}
+
+.extensions-runtime-frame-actions {
+  flex-wrap: wrap;
+}
+
+.extensions-runtime-frame-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.extensions-runtime-frame-field {
+  display: grid;
+  gap: 6px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 13px;
+}
+
+.extensions-runtime-frame-field input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 28%, transparent);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  outline: none;
+}
+
+.extensions-runtime-frame-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.extensions-runtime-frame-detail {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 18%, transparent);
+  border-radius: 8px;
+  background: var(--md-sys-color-surface-container-low);
+  min-width: 0;
+}
+
+.extensions-runtime-frame-detail span {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+}
+
+.extensions-runtime-frame-detail strong {
+  color: var(--md-sys-color-on-surface);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.extensions-runtime-frame-wrap {
+  min-height: 520px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 18%, transparent);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--md-sys-color-surface-container-lowest);
+}
+
+.extensions-runtime-frame {
+  display: block;
+  width: 100%;
+  min-height: 720px;
+  height: 100%;
+  border: 0;
+  background: white;
+}
+
 .extensions-runtime-diagnostics-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

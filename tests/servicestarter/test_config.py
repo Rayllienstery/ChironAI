@@ -16,7 +16,6 @@ def clean_ollama_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "OLLAMA_BASE_URL",
         "OLLAMA_HOST_VALUE",
         "QDRANT_URL",
-        "OPEN_WEBUI_URL",
     ):
         monkeypatch.delenv(k, raising=False)
 

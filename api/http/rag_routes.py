@@ -95,35 +95,8 @@ def create_app(
         result = check_stack_health()
         return jsonify(result.to_json_dict(service="rag_proxy")), result.http_status
 
-    from api.http.webui_routes import (
-        open_webui_config,
-        open_webui_status,
-        open_webui_start,
-        open_webui_stop,
-        webui_bp,
-    )
+    from api.http.webui_routes import webui_bp
     from api.http.rag_tests_routes import rag_tests_bp
-
-    app.add_url_rule(
-        "/api/webui/open-webui/status",
-        view_func=open_webui_status,
-        methods=["GET"],
-    )
-    app.add_url_rule(
-        "/api/webui/open-webui/config",
-        view_func=open_webui_config,
-        methods=["GET", "PUT"],
-    )
-    app.add_url_rule(
-        "/api/webui/open-webui/start",
-        view_func=open_webui_start,
-        methods=["POST"],
-    )
-    app.add_url_rule(
-        "/api/webui/open-webui/stop",
-        view_func=open_webui_stop,
-        methods=["POST"],
-    )
 
     app.register_blueprint(webui_bp)
     app.register_blueprint(rag_tests_bp)

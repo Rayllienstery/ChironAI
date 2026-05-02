@@ -24,6 +24,16 @@ function extractFieldDefaults(schema) {
   return next;
 }
 
+function extractContentFieldDefaults(content) {
+  const next = {};
+  const fields = Array.isArray(content?.fields) ? content.fields : [];
+  fields.forEach((field) => {
+    if (!field?.key) return;
+    next[field.key] = field.value ?? '';
+  });
+  return next;
+}
+
 function isRuntimeModelDetailsForModal(details) {
   if (!details || typeof details !== 'object' || Array.isArray(details)) return false;
   return Boolean(String(details.id ?? details.model ?? '').trim());
@@ -101,7 +111,11 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
         return data;
       });
       setFieldState((prev) => {
-        const next = { ...extractFieldDefaults(data?.schema), ...prev };
+        const next = {
+          ...extractFieldDefaults(data?.schema),
+          ...extractContentFieldDefaults(data?.content),
+          ...prev,
+        };
         if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
         return next;
       });
@@ -176,6 +190,36 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
       }
     },
     [extensionId, fieldState, load],
+  );
+
+  const handleContentAction = useCallback(
+    async (action) => {
+      const actionId = String(action?.id || action?.action_id || '').trim();
+      if (!actionId) return;
+      const confirmText = String(action?.confirm || '').trim();
+      if (confirmText && !window.confirm(confirmText)) return;
+      const payloadKeys = Array.isArray(action?.payload_keys) ? action.payload_keys : [];
+      const body = {};
+      payloadKeys.forEach((key) => {
+        if (typeof key === 'string' && key.trim()) {
+          body[key] = fieldState[key] ?? '';
+        }
+      });
+      setBusyActionId(actionId);
+      setActionResult(null);
+      try {
+        const result = await runExtensionTabAction(extensionId, actionId, body);
+        setActionResult(result);
+        const externalUrl = result?.open_external_url || (actionId === 'open_external' ? payload?.content?.open_external_url : '');
+        if (externalUrl) window.open(externalUrl, '_blank', 'noopener,noreferrer');
+        await load(true);
+      } catch (e) {
+        setActionResult({ ok: false, message: String(e?.message || e) });
+      } finally {
+        setBusyActionId('');
+      }
+    },
+    [extensionId, fieldState, load, payload?.content?.open_external_url],
   );
 
   const runModelMenuAction = useCallback(
@@ -548,6 +592,13 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
     );
   }
 
+  const content = payload?.content;
+  const isIframeContent = content?.type === 'iframe';
+  const contentFields = Array.isArray(content?.fields) ? content.fields : [];
+  const contentActions = Array.isArray(content?.actions) ? content.actions : [];
+  const contentDetails = Array.isArray(content?.details) ? content.details : [];
+  const contentStatus = payload?.status && typeof payload.status === 'object' ? payload.status : null;
+
   return (
     <div className="settings-tab settings-tab--fullwidth tab-view">
 
@@ -559,6 +610,80 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           {actionResult.message || 'Action completed'}
         </div>
       )}
+
+      {isIframeContent ? (
+        <section className="app-default-card llm-proxy-section-gap extensions-runtime-frame-shell">
+          <div className="dashboard-card-header extensions-runtime-frame-header">
+            <div>
+              <h2>{content.title || payload?.title || title || extensionId}</h2>
+              {contentStatus ? (
+                <div className="extensions-runtime-frame-status">
+                  <span
+                    className={`extensions-runtime-frame-status__dot ${contentStatus.running ? 'running' : contentStatus.tone === 'error' ? 'error' : 'stopped'}`}
+                    aria-hidden="true"
+                  />
+                  <span>{contentStatus.message || (contentStatus.running ? 'running' : 'stopped')}</span>
+                  {contentStatus.http_status != null ? <span>HTTP {contentStatus.http_status}</span> : null}
+                </div>
+              ) : null}
+            </div>
+            <div className="dashboard-card-actions extensions-runtime-frame-actions">
+              {contentActions.map((action) => {
+                const actionId = String(action?.id || action?.action_id || '');
+                return (
+                  <CoreUIButton
+                    key={actionId || action.label}
+                    variant={action.variant === 'danger' ? 'danger' : action.variant === 'primary' ? 'primary' : 'default'}
+                    onClick={() => void handleContentAction(action)}
+                    disabled={Boolean(action.disabled) || busyActionId === actionId}
+                  >
+                    {busyActionId === actionId ? 'Working...' : action.label || actionId}
+                  </CoreUIButton>
+                );
+              })}
+            </div>
+          </div>
+
+          {contentFields.length ? (
+            <div className="extensions-runtime-frame-fields">
+              {contentFields.map((field) => {
+                const key = String(field.key || '');
+                return (
+                  <label key={key} className="extensions-runtime-frame-field">
+                    <span>{field.label || key}</span>
+                    <input
+                      type={field.secret ? 'password' : 'text'}
+                      value={fieldState[key] ?? ''}
+                      placeholder={field.placeholder || ''}
+                      onChange={(e) => setFieldState((prev) => ({ ...prev, [key]: e.target.value }))}
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {contentDetails.length ? (
+            <div className="extensions-runtime-frame-details">
+              {contentDetails.map((item) => (
+                <div key={`${item.label}:${item.value}`} className="extensions-runtime-frame-detail">
+                  <span>{item.label}</span>
+                  <strong>{item.value || '-'}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="extensions-runtime-frame-wrap">
+            <iframe
+              className="extensions-runtime-frame"
+              title={content.title || payload?.title || title || extensionId}
+              src={content.src || 'about:blank'}
+              allow="clipboard-read; clipboard-write"
+            />
+          </div>
+        </section>
+      ) : null}
 
       {diagnosticsData ? (() => {
         const h = diagnosticsData.health;

@@ -79,7 +79,6 @@ const RagTab = lazyWithRetry("RagTab", () => import("./components/RagTab"));
 const CrawlerTab = lazyWithRetry("CrawlerTab", () => import("./components/CrawlerTab"));
 const TestingTab = lazyWithRetry("TestingTab", () => import("./components/TestingTab"));
 const TemplateEditorTab = lazyWithRetry("TemplateEditorTab", () => import("./components/TemplateEditorTab"));
-const OpenWebUiTab = lazyWithRetry("OpenWebUiTab", () => import("./components/OpenWebUiTab"));
 const CoreUIShowcaseTab = lazyWithRetry("CoreUIShowcaseTab", () => import("./components/CoreUIShowcaseTab"));
 const ExtensionsTab = lazyWithRetry("ExtensionsTab", () => import("./components/ExtensionsTab"));
 const ExtensionRuntimeTab = lazyWithRetry("ExtensionRuntimeTab", () => import("./components/ExtensionRuntimeTab"));
@@ -89,9 +88,7 @@ import {
   getSession,
   getSettings,
   getRagStatus,
-  getOpenWebUiStatus,
   getExtensionTabs,
-  getExtensionProviders,
   getDashboardMetrics,
   stopServer,
   runRagTests,
@@ -161,10 +158,6 @@ function App() {
     running: null,
     url: null,
   });
-  const [openWebUiStatus, setOpenWebUiStatus] = useState({
-    running: null,
-    url: null,
-  });
   const [statusLoading, setStatusLoading] = useState(true);
   const [serviceStatusPollIntervalSec, setServiceStatusPollIntervalSec] = useState(5);
   const serviceStatusPollGenRef = useRef(0);
@@ -207,20 +200,18 @@ function App() {
 
   const loadExtensionSurface = useCallback(async () => {
     try {
-      const [tabsData, providersData] = await Promise.all([
+      const [tabsData] = await Promise.all([
         getExtensionTabs().catch(() => ({ tabs: [] })),
-        getExtensionProviders().catch(() => ({ providers: [] })),
       ]);
       const tabs = Array.isArray(tabsData?.tabs) ? tabsData.tabs : [];
-      const providers = Array.isArray(providersData?.providers) ? providersData.providers : [];
       const serviceStatusByTabId = {};
       tabs.forEach((tab) => {
-        const providerRow = providers.find((row) => row.extension_id === tab.extension_id);
-        if (!providerRow?.health) return;
+        if (!tab?.status) return;
         serviceStatusByTabId[tab.id] = {
-          running: Boolean(providerRow.health.ok),
-          title: providerRow.title || tab.title || tab.id,
-          message: providerRow.health.message || "",
+          running: Boolean(tab.status.running),
+          title: tab.title || tab.id,
+          tone: tab.status.tone || "",
+          message: tab.status.message || "",
         };
       });
       setExtensionTabs(tabs);
@@ -243,13 +234,11 @@ function App() {
     const loadStatuses = async (isInitial) => {
       if (isInitial) setStatusLoading(true);
       try {
-        const [rag, openWebUi] = await Promise.all([
+        const [rag] = await Promise.all([
           getRagStatus().catch(() => ({ running: false })),
-          getOpenWebUiStatus().catch(() => ({ running: false })),
         ]);
         if (serviceStatusPollGenRef.current !== gen) return;
         setRagStatusInfo(rag);
-        setOpenWebUiStatus(openWebUi);
         loadExtensionSurface().catch(() => {});
       } catch {
         // ignore
@@ -486,7 +475,6 @@ function App() {
     { id: "llm-proxy", label: "LLM Proxy", section: "Main" },
     { id: "rag-fusion-proxy", label: "RAG Fusion Proxy", section: "Main" },
     { id: "logs", label: "Logs", section: "Main" },
-    { id: "open-webui", label: "Open WebUI", section: "Main" },
     { id: "template-editor", label: "Template Editor", section: "Main" },
     ...extensionTabs.map((tab) => ({
       id: tab.id,
@@ -525,14 +513,6 @@ function App() {
         );
       case "logs":
         return <LogsTab sessionId={sessionId} focusSubTab={logsFocusSubTab} onFocusSubTabConsumed={consumeLogsFocusSubTab} />;
-      case "open-webui":
-        return (
-          <OpenWebUiTab
-            onErrorStateChange={(hasError) =>
-              setTabErrors((prev) => ({ ...prev, "open-webui": hasError }))
-            }
-          />
-        );
       case "extensions":
         return (
           <ExtensionsTab
@@ -638,7 +618,6 @@ function App() {
         onStopWebUi={handleServerStop}
         settingsActive={activeTab === "settings"}
         ragStatus={ragStatusInfo}
-        openWebUiStatus={openWebUiStatus}
         serviceStatusByTabId={extensionServiceStatusByTabId}
         statusLoading={statusLoading}
       />

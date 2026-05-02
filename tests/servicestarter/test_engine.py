@@ -41,4 +41,4 @@ def test_status_shape() -> None:
     assert st["ollama"]["port"] == 11343
     assert st["docker"]["engine_available"] is True
     assert st["qdrant"]["running"] is True
-    assert "open_webui" in st
+    assert "open_webui" not in st

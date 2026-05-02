@@ -19,8 +19,6 @@ import uuid
 from collections import deque
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import urlparse
-
 from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
 
 from core.contracts.webui_api import WEBUI_URL_PREFIX
@@ -205,11 +203,7 @@ from api.http.proxy_trace import (
     recent_proxy_traces,
 )
 from api.http.service_control import (
-    get_open_webui_config,
-    open_webui_status_snapshot,
-    start_open_webui as start_open_webui_service,
     start_qdrant as start_qdrant_service,
-    stop_open_webui as stop_open_webui_service,
     stop_qdrant as stop_qdrant_service,
 )
 
@@ -275,9 +269,6 @@ _ERROR_LOG = get_webui_error_logger()
 
 webui_bp = Blueprint("webui", __name__, url_prefix=WEBUI_URL_PREFIX)
 
-# Persisted Open WebUI → backend (Ollama-compatible base URL, e.g. LLM Proxy).
-OPEN_WEBUI_OLLAMA_BASE_URL_APP_KEY = "open_webui_ollama_base_url"
-
 register_prompt_routes(
     webui_bp,
     prompts_dir=PROMPTS_DIR,
@@ -297,22 +288,6 @@ register_extension_routes(
     error_log=_ERROR_LOG,
 )
 
-
-def _normalize_open_webui_ollama_base_url(raw: str) -> str:
-    """Return canonical http(s)://host[:port] with no path or trailing slash."""
-    s = (raw or "").strip().rstrip("/")
-    if not s:
-        raise ValueError("URL is empty")
-    if "://" not in s:
-        s = f"http://{s}"
-    parsed = urlparse(s)
-    if parsed.scheme not in ("http", "https"):
-        raise ValueError("URL scheme must be http or https")
-    host = parsed.hostname
-    if not host:
-        raise ValueError("URL must include a host")
-    port = f":{parsed.port}" if parsed.port else ""
-    return f"{parsed.scheme}://{host}{port}".rstrip("/")
 
 _SERVICE_STATUS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _SERVICE_STATUS_CACHE_LOCK = threading.Lock()
@@ -2668,128 +2643,6 @@ def rag_stop() -> Any:
     except Exception as e:
         _WEBUI_LOG.error("rag_stop: %s", e, exc_info=True)
         return jsonify({"ok": False, "output": str(e), "container": os.getenv("QDRANT_CONTAINER_NAME", "qdrant")}), 500
-
-
-def open_webui_status() -> Any:
-    """Return Open WebUI status from Docker: running if container matching OPEN_WEBUI_CONTAINER_NAME is up."""
-    try:
-        def _compute() -> dict[str, Any]:
-            return open_webui_status_snapshot(ping_timeout_sec=0.6)
-
-        status = _get_cached_status("open_webui_status", ttl_sec=2.0, compute=_compute)
-        return jsonify(status)
-    except Exception as e:
-        _WEBUI_LOG.warning("open_webui_status: %s", e)
-        u = os.getenv("OPEN_WEBUI_URL", "http://localhost:3000").rstrip("/")
-        return jsonify({"url": u, "running": False, "error": str(e)})
-
-
-def open_webui_start() -> Any:
-    """Try to start Open WebUI Docker container."""
-    try:
-        cfg = get_open_webui_config()
-        override_ollama_url: str | None = None
-        name = cfg.open_webui_container_name
-        try:
-            settings_repo = get_settings_repository()
-            saved = (settings_repo.get_app_setting(OPEN_WEBUI_OLLAMA_BASE_URL_APP_KEY) or "").strip()
-            if saved:
-                override_ollama_url = _normalize_open_webui_ollama_base_url(saved)
-        except ValueError as e:
-            return (
-                jsonify({"ok": False, "output": f"Invalid saved Open WebUI backend URL: {e}", "container": name}),
-                400,
-            )
-        ok, output, _name = start_open_webui_service(
-            open_webui_ollama_url_for_container=override_ollama_url,
-        )
-        status = 200 if ok else 500
-        return jsonify({"ok": ok, "output": output, "container": name}), status
-    except Exception as e:
-        _WEBUI_LOG.error("open_webui_start: %s", e, exc_info=True)
-        return jsonify(
-            {"ok": False, "output": str(e), "container": os.getenv("OPEN_WEBUI_CONTAINER_NAME", "open-webui")}
-        ), 500
-
-
-def open_webui_stop() -> Any:
-    """Try to stop Open WebUI Docker container."""
-    try:
-        ok, output, name = stop_open_webui_service()
-        status = 200 if ok else 500
-        return jsonify({"ok": ok, "output": output, "container": name}), status
-    except Exception as e:
-        _WEBUI_LOG.error("open_webui_stop: %s", e, exc_info=True)
-        return jsonify(
-            {"ok": False, "output": str(e), "container": os.getenv("OPEN_WEBUI_CONTAINER_NAME", "open-webui")}
-        ), 500
-
-
-def _open_webui_config_put() -> Any:
-    """Persist Open WebUI Ollama-compatible backend base URL (empty = use env/default)."""
-    body = request.get_json(silent=True) or {}
-    if "open_webui_ollama_base_url" not in body:
-        return jsonify({"ok": False, "error": "missing open_webui_ollama_base_url"}), 400
-    raw = body.get("open_webui_ollama_base_url")
-    settings_repo = get_settings_repository()
-    s = (str(raw) if raw is not None else "").strip()
-    if not s:
-        settings_repo.set_app_setting(OPEN_WEBUI_OLLAMA_BASE_URL_APP_KEY, "")
-        return jsonify({"ok": True, "open_webui_ollama_base_url": ""})
-    try:
-        norm = _normalize_open_webui_ollama_base_url(s)
-    except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
-    settings_repo.set_app_setting(OPEN_WEBUI_OLLAMA_BASE_URL_APP_KEY, norm)
-    return jsonify({"ok": True, "open_webui_ollama_base_url": norm})
-
-
-def open_webui_config() -> Any:
-    """Return effective Open WebUI Docker settings; PUT saves backend URL to app_settings."""
-    if request.method == "PUT":
-        try:
-            return _open_webui_config_put()
-        except Exception as e:
-            _WEBUI_LOG.error("open_webui_config PUT: %s", e, exc_info=True)
-            return jsonify({"ok": False, "error": str(e)}), 500
-    try:
-        cfg = get_open_webui_config()
-        settings_repo = get_settings_repository()
-        saved_raw = (settings_repo.get_app_setting(OPEN_WEBUI_OLLAMA_BASE_URL_APP_KEY) or "").strip()
-        saved_norm = ""
-        if saved_raw:
-            try:
-                saved_norm = _normalize_open_webui_ollama_base_url(saved_raw)
-            except ValueError:
-                saved_norm = saved_raw.rstrip("/")
-        env_set = bool((os.getenv("OPEN_WEBUI_OLLAMA_BASE_URL") or "").strip())
-        cfg_ollama = (cfg.open_webui_ollama_url_for_container or "").strip().rstrip("/")
-        effective = saved_norm if saved_norm else cfg_ollama
-        if saved_norm:
-            source = "saved"
-        elif env_set:
-            source = "environment"
-        else:
-            source = "default"
-        port = get_server_port()
-        llm_proxy_hint = f"http://host.docker.internal:{port}"
-        return jsonify(
-            {
-                "open_webui_host_url": cfg.open_webui_host_url,
-                "open_webui_container_name": cfg.open_webui_container_name,
-                "open_webui_image": cfg.open_webui_image,
-                "open_webui_host_port": cfg.open_webui_host_port,
-                "open_webui_container_port": cfg.open_webui_container_port,
-                "open_webui_ollama_url_for_container": effective,
-                "open_webui_ollama_base_url_saved": saved_norm or "",
-                "open_webui_ollama_base_url_effective": effective,
-                "open_webui_ollama_base_url_source": source,
-                "llm_proxy_ollama_base_hint": llm_proxy_hint,
-            }
-        )
-    except Exception as e:
-        _WEBUI_LOG.warning("open_webui_config: %s", e)
-        return jsonify({"error": str(e)}), 500
 
 
 @webui_bp.route("/ollama/status", methods=["GET"])
