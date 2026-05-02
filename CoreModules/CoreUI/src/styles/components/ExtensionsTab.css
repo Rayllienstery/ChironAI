@@ -154,7 +154,20 @@
   background: var(--coreui-surface-panel-alt);
 }
 
+.extensions-dev-doc {
+  display: grid;
+  gap: var(--md-sys-spacing-md);
+}
+
+.extensions-dev-doc code {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 80%, black 6%);
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-family: var(--md-sys-typescale-body-medium-font-family);
+}
+
 @media (max-width: 900px) {
+
   .extensions-tab__header,
   .extensions-card__head,
   .extensions-view__header {
