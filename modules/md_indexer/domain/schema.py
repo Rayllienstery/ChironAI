@@ -14,6 +14,7 @@ STEP_TYPES = (
     "delete_lines_exact",
     "delete_lines_containing",
     "delete_lines_regex",
+    "delete_sentences_starting_with",
     "delete_range_regex",
     "delete_regex_match",
     "strip_sections_by_heading",

@@ -220,6 +220,34 @@
   color: var(--md-sys-color-on-surface-variant);
 }
 
+.llm-proxy-build-params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.llm-proxy-build-param-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  white-space: nowrap;
+}
+
+.llm-proxy-build-param-badge code {
+  font-family: var(--coreui-font-family-mono);
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+  font-size: 10px;
+}
+
 .llm-proxy-build-backend code,
 .llm-proxy-build-meta code {
   font-family: var(--coreui-font-family-mono);

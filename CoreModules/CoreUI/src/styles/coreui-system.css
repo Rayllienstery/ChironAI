@@ -283,6 +283,37 @@
   padding: 8px 10px;
 }
 
+.coreui-select {
+  min-height: 48px;
+  padding: 12px 44px 12px 16px;
+  border-color: var(--md-sys-color-outline);
+  border-radius: 12px;
+  background-color: var(--md-sys-color-surface);
+  font: var(--md-sys-typescale-body-medium-font);
+  line-height: 1.25rem;
+}
+
+.coreui-select:hover:not(:disabled) {
+  border-color: var(--md-sys-color-on-surface);
+  background-color: color-mix(in srgb, var(--md-sys-color-on-surface) 4%, var(--md-sys-color-surface));
+}
+
+.coreui-select:focus-visible {
+  border-width: 2px;
+  padding: 11px 43px 11px 15px;
+}
+
+.coreui-select--dense {
+  min-height: 40px;
+  padding: 8px 40px 8px 12px;
+  border-radius: 10px;
+  font: var(--md-sys-typescale-body-small-font);
+}
+
+.coreui-select--dense:focus-visible {
+  padding: 7px 39px 7px 11px;
+}
+
 .coreui-textarea {
   min-height: 88px;
   padding: 9px 10px;

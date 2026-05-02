@@ -68,6 +68,14 @@ const MD_STEP_TYPES_META = [
       'Param pattern: "^\\s*\\[.*[Vv]iew in [Ee]nglish\\].*$" removes all "View in English" link lines. Other lines are kept.',
   },
   {
+    type: "delete_sentences_starting_with",
+    title: "Delete sentences starting with",
+    description:
+      "Removes whole prose sentences whose trimmed text starts with one of the configured prefixes, ignoring upper/lower case. Fenced code blocks are preserved.",
+    example:
+      'Param prefixes: ["Today we are", "In this article"]. Sentences starting with those words are removed; other sentences remain.',
+  },
+  {
     type: "delete_range_regex",
     title: "Delete range (regex)",
     description:
@@ -529,13 +537,31 @@ function CrawlerTab() {
         const def = (settings?.defaults?.rag_embed_model || "").trim();
         const savedProvider = (settings?.rag_embed_provider_id || "").trim();
         const saved = (settings?.rag_embed_model || "").trim();
+        const catalogModels = Array.isArray(catalog?.models) ? catalog.models : [];
+        const savedModelProvider = saved
+          ? String(
+              catalogModels.find((m) => String(m.id || "").trim() === saved)
+                ?.provider_id || "",
+            ).trim()
+          : "";
+        const defModelProvider = def
+          ? String(
+              catalogModels.find((m) => String(m.id || "").trim() === def)
+                ?.provider_id || "",
+            ).trim()
+          : "";
         setCreateEmbedDefaults({
           rag_embed_provider_id: defProvider,
           rag_embed_model: def,
         });
         setCreateForm((prev) => ({
           ...prev,
-          rag_embed_provider_id: prev.rag_embed_provider_id || savedProvider || defProvider,
+          rag_embed_provider_id:
+            prev.rag_embed_provider_id ||
+            savedProvider ||
+            savedModelProvider ||
+            defProvider ||
+            defModelProvider,
           rag_embed_model: prev.rag_embed_model || saved || def,
         }));
       } catch (e) {
@@ -912,6 +938,8 @@ function CrawlerTab() {
         return { lines: [], case_sensitive: false };
       case "delete_lines_containing":
         return { substrings: [], case_sensitive: false };
+      case "delete_sentences_starting_with":
+        return { prefixes: [] };
       case "delete_lines_regex":
       case "delete_regex_match":
         return { pattern: "" };
@@ -1016,6 +1044,33 @@ function CrawlerTab() {
     );
   };
 
+  const getMdPreviewText = () => previewResult?.processed_md || "";
+
+  const getMdPreviewSize = () => new Blob([getMdPreviewText()]).size;
+
+  const formatMdPreviewSize = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  const handleExportMdPreview = () => {
+    const text = getMdPreviewText();
+    const fallbackName = pipelinePreviewFilename || "pipeline-preview.md";
+    const filename = fallbackName.toLowerCase().endsWith(".md")
+      ? fallbackName
+      : `${fallbackName}.md`;
+    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const handlePreviewMdPipeline = async () => {
     if (!pipelinePreviewSourceId || !pipelinePreviewFilename) {
       setPipelineError("Select a source and file for preview first.");
@@ -1029,6 +1084,10 @@ function CrawlerTab() {
         selectedPipelineName || undefined,
         pipelinePreviewSourceId,
         pipelinePreviewFilename,
+        {
+          name: pipelineData.name || selectedPipelineName || "preview",
+          steps: pipelineData.steps || [],
+        },
       );
       setPreviewResult(data);
     } catch (e) {
@@ -1804,6 +1863,7 @@ function CrawlerTab() {
                 onChange={(e) => setSelectedPipelineName(e.target.value)}
                 aria-label="Select pipeline"
                 disabled={pipelineLoading}
+                className="coreui-select coreui-select--dense"
               >
                 {pipelineList.length === 0 && (
                   <option value="">— No pipelines —</option>
@@ -1844,6 +1904,7 @@ function CrawlerTab() {
                 onChange={(e) => setPipelinePreviewSourceId(e.target.value)}
                 aria-label="Source for pipeline preview"
                 disabled={pipelinePreviewSourcesLoading}
+                className="coreui-select coreui-select--dense"
               >
                 {pipelinePreviewSources.length === 0 &&
                   !pipelinePreviewSourcesLoading && (
@@ -1862,6 +1923,7 @@ function CrawlerTab() {
                 value={pipelinePreviewFilename}
                 onChange={(e) => setPipelinePreviewFilename(e.target.value)}
                 aria-label="File for pipeline preview"
+                className="coreui-select coreui-select--dense"
                 disabled={
                   pipelinePreviewFilesLoading || !pipelinePreviewSourceId
                 }
@@ -1927,7 +1989,9 @@ function CrawlerTab() {
                             isExpanded ? "Collapse step" : "Expand step"
                           }
                         >
-                          {isExpanded ? "â–¾" : "â–¸"}
+                          <span className="material-symbols-outlined" aria-hidden="true">
+                            {isExpanded ? "expand_more" : "chevron_right"}
+                          </span>
                         </button>
                         <label className="md-pipeline-step-type-label">
                           <span className="md-pipeline-step-type-caption">
@@ -1938,7 +2002,7 @@ function CrawlerTab() {
                             onChange={(e) =>
                               handleChangeMdStepType(index, e.target.value)
                             }
-                            className="md-pipeline-step-type-select"
+                            className="coreui-select coreui-select--dense md-pipeline-step-type-select"
                             aria-label="Change step type"
                           >
                             {MD_STEP_TYPES_META.map((item) => (
@@ -1951,21 +2015,27 @@ function CrawlerTab() {
                         <div className="md-pipeline-step-actions">
                           <button
                             type="button"
-                            className="crawler-button small"
+                            className="crawler-button small md-pipeline-icon-button"
                             onClick={() => handleMoveMdStep(index, -1)}
                             disabled={index === 0}
                             aria-label="Move up"
+                            title="Move up"
                           >
-                            â†‘
+                            <span className="material-symbols-outlined" aria-hidden="true">
+                              arrow_upward
+                            </span>
                           </button>
                           <button
                             type="button"
-                            className="crawler-button small"
+                            className="crawler-button small md-pipeline-icon-button"
                             onClick={() => handleMoveMdStep(index, 1)}
                             disabled={index === pipelineData.steps.length - 1}
                             aria-label="Move down"
+                            title="Move down"
                           >
-                            â†“
+                            <span className="material-symbols-outlined" aria-hidden="true">
+                              arrow_downward
+                            </span>
                           </button>
                           <button
                             type="button"
@@ -2102,6 +2172,57 @@ function CrawlerTab() {
                                 placeholder="Regex pattern"
                               />
                             </label>
+                          )}
+                          {step.type === "delete_sentences_starting_with" && (
+                            <div className="md-pipeline-param-list">
+                              <span className="md-pipeline-param-list-label">
+                                Sentence prefixes (add or remove):
+                              </span>
+                              {(step.params?.prefixes || []).map(
+                                (prefix, lineIdx) => (
+                                  <div
+                                    key={lineIdx}
+                                    className="md-pipeline-param-list-row"
+                                  >
+                                    <input
+                                      type="text"
+                                      value={prefix}
+                                      onChange={(e) =>
+                                        updateMdStepLine(
+                                          index,
+                                          "prefixes",
+                                          lineIdx,
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="md-pipeline-param-input md-pipeline-param-list-input"
+                                      placeholder="Sentence starts with..."
+                                    />
+                                    <button
+                                      type="button"
+                                      className="crawler-button small"
+                                      onClick={() =>
+                                        removeMdStepLine(
+                                          index,
+                                          "prefixes",
+                                          lineIdx,
+                                        )
+                                      }
+                                      aria-label="Remove prefix"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                ),
+                              )}
+                              <button
+                                type="button"
+                                className="crawler-button small"
+                                onClick={() => addMdStepLine(index, "prefixes")}
+                              >
+                                + Add prefix
+                              </button>
+                            </div>
                           )}
                           {step.type === "delete_range_regex" && (
                             <>
@@ -2363,23 +2484,59 @@ function CrawlerTab() {
                   </div>
                 </div>
               )}
-              {previewResult && (
-                <div className="md-pipeline-preview-result">
-                  <h4>Preview result</h4>
-                  <p>
-                    {previewResult.filename} — processed length:{" "}
-                    {(previewResult.processed_md || "").length} chars
-                  </p>
-                  <pre className="indexer-code-block indexer-code-block-full">
-                    {(previewResult.processed_md || "").slice(0, 2000)}
-                    {(previewResult.processed_md || "").length > 2000
-                      ? "\n…"
-                      : ""}
-                  </pre>
-                </div>
-              )}
             </>
           )}
+        </div>
+      )}
+      {previewResult && (
+        <div
+          className="modal-overlay"
+          onClick={() => setPreviewResult(null)}
+        >
+          <div
+            className="modal-content md-pipeline-preview-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h3>Preview result</h3>
+              <div className="md-pipeline-preview-actions">
+                <button
+                  type="button"
+                  className="crawler-button small md-pipeline-preview-export"
+                  onClick={handleExportMdPreview}
+                >
+                  <span className="material-symbols-outlined" aria-hidden="true">
+                    download
+                  </span>
+                  Export MD
+                </button>
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={() => setPreviewResult(null)}
+                  aria-label="Close"
+                >
+                  <span className="material-symbols-outlined" aria-hidden="true">
+                    close
+                  </span>
+                </button>
+              </div>
+            </div>
+            <div className="modal-body md-pipeline-preview-modal-body">
+              <p className="md-pipeline-preview-meta">
+                <span>{previewResult.filename}</span>
+                <span>
+                  processed length: {getMdPreviewText().length} chars
+                </span>
+                <span>
+                  result size: {formatMdPreviewSize(getMdPreviewSize())}
+                </span>
+              </p>
+              <pre className="coreui-card-shell md-pipeline-preview-code">
+                {getMdPreviewText()}
+              </pre>
+            </div>
+          </div>
         </div>
       )}
       <CreatePipelineModal

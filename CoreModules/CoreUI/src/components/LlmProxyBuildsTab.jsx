@@ -683,6 +683,36 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                           </>
                         ) : null}
                       </div>
+                      <div className="llm-proxy-build-params">
+                        {[
+                          { key: 'chat_think', label: 'Think', val: v => v ? 'on' : 'off' },
+                          { key: 'sse_streaming', label: 'Stream', val: v => v === false ? 'off' : 'on' },
+                          { key: 'rag_collection', label: 'Coll', val: v => v },
+                          { key: 'temperature', label: 'Temp', val: v => v },
+                          { key: 'top_p', label: 'TopP', val: v => v },
+                          { key: 'num_ctx', label: 'Ctx', val: v => v },
+                          { key: 'num_predict', label: 'Pred', val: v => v },
+                          { key: 'max_agent_steps', label: 'Steps', val: v => v },
+                          { key: 'private', label: 'Priv', val: v => v ? 'on' : 'off' },
+                          { key: 'web_enabled', label: 'Web', val: v => v ? 'on' : 'off' },
+                          { key: 'code_only', label: 'Code', val: v => v ? 'on' : 'off' },
+                          { key: 'prompt_name', label: 'Prompt', val: v => v },
+                          { key: 'use_prompt_template', label: 'Tmpl', val: v => v === false ? 'off' : 'on' },
+                          { key: 'web_interaction_ddg_news', label: 'DDG', val: v => v ? 'on' : 'off' },
+                          { key: 'web_interaction_fetch_page', label: 'Fetch', val: v => v ? 'on' : 'off' },
+                          { key: 'web_interaction_wikipedia', label: 'Wiki', val: v => v ? 'on' : 'off' },
+                          { key: 'fetch_web_knowledge', label: 'WebDocs', val: v => v ? 'on' : 'off' },
+                        ].map(p => {
+                          const v = b[p.key];
+                          const display = p.val(v);
+                          if (display === null || display === undefined || display === '') return null;
+                          return (
+                            <span key={p.key} className="llm-proxy-build-param-badge">
+                              {p.label}: <code>{display}</code>
+                            </span>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     <div

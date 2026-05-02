@@ -70,6 +70,47 @@ def step_delete_lines_regex(md: str, params: dict[str, Any]) -> str:
     return _collapse_blank_lines("\n".join(result))
 
 
+def step_delete_sentences_starting_with(md: str, params: dict[str, Any]) -> str:
+    """Remove prose sentences whose trimmed text starts with one of the configured prefixes."""
+    if not md:
+        return ""
+    prefixes_raw = params.get("prefixes") or []
+    prefixes = [
+        p.strip().casefold()
+        for p in prefixes_raw
+        if isinstance(p, str) and p.strip()
+    ]
+    if not prefixes:
+        return md
+
+    fenced_rx = re.compile(r"(?ms)^```.*?^```")
+    out: list[str] = []
+    pos = 0
+    for match in fenced_rx.finditer(md):
+        out.append(_delete_sentences_in_text(md[pos:match.start()], prefixes))
+        out.append(match.group(0))
+        pos = match.end()
+    out.append(_delete_sentences_in_text(md[pos:], prefixes))
+    return _collapse_blank_lines("".join(out))
+
+
+def _delete_sentences_in_text(text: str, prefixes: list[str]) -> str:
+    sentence_rx = re.compile(r"\s*[^.!?]+(?:[.!?]+[ \t]*|(?=\s*$))", re.DOTALL)
+    parts = re.split(r"(\n{2,})", text)
+
+    def keep_sentence(match: re.Match[str]) -> str:
+        sentence = match.group(0)
+        check = sentence.strip().casefold()
+        if any(check.startswith(prefix) for prefix in prefixes):
+            return ""
+        return sentence
+
+    return "".join(
+        part if i % 2 else sentence_rx.sub(keep_sentence, part)
+        for i, part in enumerate(parts)
+    )
+
+
 def step_delete_range_regex(md: str, params: dict[str, Any]) -> str:
     """Remove span from start_regex to end_regex (or EOF). Optionally include/exclude boundaries."""
     if not md:

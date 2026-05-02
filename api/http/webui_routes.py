@@ -1495,7 +1495,8 @@ def testing_external_docs_preview() -> Any:
         # Guardrails: clamp payload sizes.
         max_files_raw = body.get("max_files")
         max_chars_raw = body.get("max_chars_per_file")
-        pipeline_name = body.get("pipeline_name") or body.get("pipeline")
+        pipeline_name = body.get("pipeline_name")
+        pipeline_definition = body.get("pipeline")
 
         try:
             max_files = int(max_files_raw) if max_files_raw is not None else 10
@@ -3853,6 +3854,7 @@ INDEXER_EVALUATE_PIPELINE_STEPS_REF = """
 - **delete_lines_exact**: Remove lines that exactly match one of the given strings (e.g. "View in English", "Table of Contents"). Params: `lines` (list of strings), optional `case_sensitive` (bool).
 - **delete_lines_containing**: Remove lines that contain any of the given substrings (e.g. for "[View in English](url)" use substrings ["view in english"]). Params: `substrings` (list of strings), optional `case_sensitive` (bool).
 - **delete_lines_regex**: Remove each line that matches the regex. Params: `pattern` (string).
+- **delete_sentences_starting_with**: Remove whole prose sentences whose trimmed text starts with one of the prefixes, ignoring upper/lower case. Params: `prefixes` (list of strings).
 - **delete_range_regex**: Remove a range from first match of start_regex to first match of end_regex (or end of doc). Params: `start_regex`, optional `end_regex`.
 - **delete_regex_match**: Remove all non-overlapping matches of one regex (can be multiline). Params: `pattern` (string).
 - **strip_sections_by_heading**: Remove whole sections whose heading equals or starts with one of the list (e.g. "conforming types", "inherited by"). Params: `headings` (list of strings, lower case).
@@ -4423,7 +4425,8 @@ def preview_md_pipeline() -> Any:
         return jsonify({"error": "md_indexer module not available"}), 500
     try:
         body = request.get_json(force=True, silent=True) or {}
-        pipeline_name = body.get("pipeline_name") or body.get("pipeline")
+        pipeline_name = body.get("pipeline_name")
+        pipeline_definition = body.get("pipeline")
         source_id = body.get("source_id")
         filename = body.get("filename")
         if not source_id or not filename:
@@ -4443,9 +4446,10 @@ def preview_md_pipeline() -> Any:
             return jsonify({"error": "File not found"}), 404
         with open(requested_path, "r", encoding="utf-8") as f:
             source_md = f.read()
-        if pipeline_name is None and get_active_pipeline_name is not None:
-            pipeline_name = get_active_pipeline_name()
-        page_meta, processed_md = run_pipeline(pipeline_name, source_md)
+        pipeline_to_run = pipeline_definition if isinstance(pipeline_definition, dict) else pipeline_name
+        if pipeline_to_run is None and get_active_pipeline_name is not None:
+            pipeline_to_run = get_active_pipeline_name()
+        page_meta, processed_md = run_pipeline(pipeline_to_run, source_md)
         return jsonify({
             "source_id": source_id,
             "filename": basename,
@@ -4649,70 +4653,73 @@ def _save_sources_config(sources: list[dict]) -> bool:
 
 def _run_create_collection_job(
     job_id: str,
+    app_context: Any,
     collection_name: str,
     source_ids: list[str],
     chunk_max_size: int,
     chunk_min_size: int,
+    embed_provider_id: str | None = None,
     embed_model: str | None = None,
 ) -> None:
     """Background task: run indexing and update job progress."""
-    def should_cancel() -> bool:
-        with _collection_jobs_lock:
-            job = _collection_jobs.get(job_id)
-            return bool(job and job.get("cancel_requested"))
+    with app_context:
+        def should_cancel() -> bool:
+            with _collection_jobs_lock:
+                job = _collection_jobs.get(job_id)
+                return bool(job and job.get("cancel_requested"))
 
-    def on_progress(processed: int, total: int, st: dict[str, Any]) -> None:
-        with _collection_jobs_lock:
-            if job_id in _collection_jobs:
-                _collection_jobs[job_id]["processed_pages"] = processed
-                _collection_jobs[job_id]["total_pages"] = total
-                _collection_jobs[job_id]["indexed_pages"] = st.get("indexed_pages", 0)
-                _collection_jobs[job_id]["total_chunks"] = st.get("total_chunks", 0)
-                _collection_jobs[job_id]["skipped_pages"] = st.get("skipped_pages", 0)
-                _collection_jobs[job_id]["errors"] = list(st.get("errors", [])[-8:])
-                sr = st.get("skip_reasons") or {}
-                _collection_jobs[job_id]["skip_reasons"] = dict(sr)
-                _collection_jobs[job_id]["current_source_id"] = st.get("current_source_id", "")
-                _collection_jobs[job_id]["current_filename"] = st.get("current_filename", "")
-                _collection_jobs[job_id]["current_phase"] = st.get("current_phase", "")
-                _collection_jobs[job_id]["last_skip_reason"] = st.get("last_skip_reason", "")
-                _collection_jobs[job_id]["cancelled"] = bool(st.get("cancelled", False))
+        def on_progress(processed: int, total: int, st: dict[str, Any]) -> None:
+            with _collection_jobs_lock:
+                if job_id in _collection_jobs:
+                    _collection_jobs[job_id]["processed_pages"] = processed
+                    _collection_jobs[job_id]["total_pages"] = total
+                    _collection_jobs[job_id]["indexed_pages"] = st.get("indexed_pages", 0)
+                    _collection_jobs[job_id]["total_chunks"] = st.get("total_chunks", 0)
+                    _collection_jobs[job_id]["skipped_pages"] = st.get("skipped_pages", 0)
+                    _collection_jobs[job_id]["errors"] = list(st.get("errors", [])[-8:])
+                    sr = st.get("skip_reasons") or {}
+                    _collection_jobs[job_id]["skip_reasons"] = dict(sr)
+                    _collection_jobs[job_id]["current_source_id"] = st.get("current_source_id", "")
+                    _collection_jobs[job_id]["current_filename"] = st.get("current_filename", "")
+                    _collection_jobs[job_id]["current_phase"] = st.get("current_phase", "")
+                    _collection_jobs[job_id]["last_skip_reason"] = st.get("last_skip_reason", "")
+                    _collection_jobs[job_id]["cancelled"] = bool(st.get("cancelled", False))
 
-    try:
-        stats = _create_collection_from_sources(
-            collection_name=collection_name,
-            source_ids=source_ids,
-            chunk_max_size=chunk_max_size,
-            chunk_min_size=chunk_min_size,
-            on_progress=on_progress,
-            embed_provider_id=embed_provider_id,
-            embed_model=embed_model,
-            should_cancel=should_cancel,
-        )
-        with _collection_jobs_lock:
-            if job_id in _collection_jobs:
-                cancelled = bool(stats.get("cancelled")) or bool(_collection_jobs[job_id].get("cancel_requested"))
-                _collection_jobs[job_id]["status"] = "cancelled" if cancelled else "success"
-                _collection_jobs[job_id]["statistics"] = stats
-                _collection_jobs[job_id]["processed_pages"] = (
-                    _collection_jobs[job_id].get("processed_pages", 0)
-                    if cancelled
-                    else stats.get("total_pages", 0)
-                )
-                _collection_jobs[job_id]["indexed_pages"] = stats.get("indexed_pages", 0)
-                _collection_jobs[job_id]["total_chunks"] = stats.get("total_chunks", 0)
-                _collection_jobs[job_id]["skipped_pages"] = stats.get("skipped_pages", 0)
-                _collection_jobs[job_id]["skip_reasons"] = dict(stats.get("skip_reasons") or {})
-                _collection_jobs[job_id]["current_phase"] = "cancelled" if cancelled else "complete"
-                _collection_jobs[job_id]["current_source_id"] = ""
-                _collection_jobs[job_id]["current_filename"] = ""
-                _collection_jobs[job_id]["cancelled"] = cancelled
-    except Exception as e:
-        _ERROR_LOG.error("webui_routes.create_collection job", exc_info=True)
-        with _collection_jobs_lock:
-            if job_id in _collection_jobs:
-                _collection_jobs[job_id]["status"] = "failed"
-                _collection_jobs[job_id]["error"] = str(e)
+        try:
+            stats = _create_collection_from_sources(
+                collection_name=collection_name,
+                source_ids=source_ids,
+                chunk_max_size=chunk_max_size,
+                chunk_min_size=chunk_min_size,
+                on_progress=on_progress,
+                embed_provider_id=embed_provider_id,
+                embed_model=embed_model,
+                should_cancel=should_cancel,
+            )
+            with _collection_jobs_lock:
+                if job_id in _collection_jobs:
+                    cancelled = bool(stats.get("cancelled")) or bool(_collection_jobs[job_id].get("cancel_requested"))
+                    _collection_jobs[job_id]["status"] = "cancelled" if cancelled else "success"
+                    _collection_jobs[job_id]["statistics"] = stats
+                    _collection_jobs[job_id]["processed_pages"] = (
+                        _collection_jobs[job_id].get("processed_pages", 0)
+                        if cancelled
+                        else stats.get("total_pages", 0)
+                    )
+                    _collection_jobs[job_id]["indexed_pages"] = stats.get("indexed_pages", 0)
+                    _collection_jobs[job_id]["total_chunks"] = stats.get("total_chunks", 0)
+                    _collection_jobs[job_id]["skipped_pages"] = stats.get("skipped_pages", 0)
+                    _collection_jobs[job_id]["skip_reasons"] = dict(stats.get("skip_reasons") or {})
+                    _collection_jobs[job_id]["current_phase"] = "cancelled" if cancelled else "complete"
+                    _collection_jobs[job_id]["current_source_id"] = ""
+                    _collection_jobs[job_id]["current_filename"] = ""
+                    _collection_jobs[job_id]["cancelled"] = cancelled
+        except Exception as e:
+            _ERROR_LOG.error("webui_routes.create_collection job", exc_info=True)
+            with _collection_jobs_lock:
+                if job_id in _collection_jobs:
+                    _collection_jobs[job_id]["status"] = "failed"
+                    _collection_jobs[job_id]["error"] = str(e)
 
 
 @webui_bp.route("/crawler/create-collection-status/<job_id>", methods=["GET"])
@@ -4855,10 +4862,12 @@ def create_collection() -> Any:
             target=_run_create_collection_job,
             args=(
                 job_id,
+                current_app.app_context(),
                 collection_name,
                 available_sources,
                 chunk_max_size,
                 chunk_min_size,
+                embed_provider_id or None,
                 embed_model,
             ),
             daemon=True,

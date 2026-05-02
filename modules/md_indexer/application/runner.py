@@ -125,6 +125,8 @@ def _run_pipeline(pipeline: Pipeline, md: str) -> tuple[dict[str, Any], str]:
             body = step_impl.step_delete_lines_containing(body, params)
         elif stype == "delete_lines_regex":
             body = step_impl.step_delete_lines_regex(body, params)
+        elif stype == "delete_sentences_starting_with":
+            body = step_impl.step_delete_sentences_starting_with(body, params)
         elif stype == "delete_range_regex":
             body = step_impl.step_delete_range_regex(body, params)
         elif stype == "delete_regex_match":

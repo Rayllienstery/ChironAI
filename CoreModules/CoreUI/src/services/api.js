@@ -756,12 +756,13 @@ export async function deleteMdPipeline(name) {
   return response.json();
 }
 
-export async function previewMdPipeline(pipelineName, sourceId, filename) {
+export async function previewMdPipeline(pipelineName, sourceId, filename, pipeline) {
   const response = await fetch(`${API_BASE}/crawler/md-pipelines/preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       pipeline_name: pipelineName || undefined,
+      pipeline: pipeline || undefined,
       source_id: sourceId,
       filename,
     }),

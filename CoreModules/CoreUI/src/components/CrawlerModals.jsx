@@ -339,10 +339,29 @@ export function CreateCollectionModal({
   const embedModels = Array.isArray(createEmbedCatalog?.models)
     ? createEmbedCatalog.models
     : [];
+  const currentEmbedProviderId = String(createForm.rag_embed_provider_id || "").trim();
+  const defaultEmbedProviderId = String(createEmbedDefaults.rag_embed_provider_id || "").trim();
+  const providerById = new Map();
+  embedProviders.forEach((provider) => {
+    const id = String(provider.provider_id || "").trim();
+    if (id) providerById.set(id, provider);
+  });
+  embedModels.forEach((model) => {
+    const id = String(model.provider_id || "").trim();
+    if (id && !providerById.has(id)) {
+      providerById.set(id, { provider_id: id, title: id });
+    }
+  });
+  [currentEmbedProviderId, defaultEmbedProviderId].forEach((id) => {
+    if (id && !providerById.has(id)) {
+      providerById.set(id, { provider_id: id, title: id });
+    }
+  });
+  const embedProviderOptions = Array.from(providerById.values());
   const filteredEmbedModels = embedModels.filter(
     (model) =>
-      String(model.provider_id || "").trim() ===
-      String(createForm.rag_embed_provider_id || "").trim(),
+      currentEmbedProviderId &&
+      String(model.provider_id || "").trim() === currentEmbedProviderId,
   );
   return (
     <ModalShell
@@ -415,6 +434,7 @@ export function CreateCollectionModal({
         <select
           id="create-collection-embed-provider"
           value={createForm.rag_embed_provider_id}
+          className="coreui-select"
           onChange={(e) =>
             onFormChange((prev) => ({
               ...prev,
@@ -422,12 +442,12 @@ export function CreateCollectionModal({
               rag_embed_model: "",
             }))
           }
-          disabled={!embedProviders.length}
+          disabled={!embedProviderOptions.length && !defaultEmbedProviderId}
         >
           <option value="">
-            Server default provider ({createEmbedDefaults.rag_embed_provider_id || "not configured"})
+            Select provider
           </option>
-          {embedProviders.map((provider) => (
+          {embedProviderOptions.map((provider) => (
             <option key={provider.provider_id} value={provider.provider_id}>
               {provider.title || provider.provider_id}
             </option>
@@ -439,16 +459,19 @@ export function CreateCollectionModal({
         <select
           id="create-collection-embed-model"
           value={createForm.rag_embed_model}
+          className="coreui-select"
           onChange={(e) =>
             onFormChange((prev) => ({
               ...prev,
               rag_embed_model: e.target.value,
             }))
           }
-          disabled={!filteredEmbedModels.length}
+          disabled={!currentEmbedProviderId || !filteredEmbedModels.length}
         >
           <option value="">
-            Server default ({createEmbedDefaults.rag_embed_model || "not configured"})
+            {currentEmbedProviderId
+              ? "Select model"
+              : "Select provider first"}
           </option>
           {createForm.rag_embed_model &&
             !filteredEmbedModels.some((m) => m.id === createForm.rag_embed_model) && (
@@ -695,6 +718,7 @@ export function SourceModal({
           <label>Crawler</label>
           <select
             value={form.crawler}
+            className="coreui-select"
             onChange={(e) =>
               onFormChange((prev) => ({
                 ...prev,

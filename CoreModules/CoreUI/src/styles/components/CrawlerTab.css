@@ -309,11 +309,6 @@
   font: var(--md-sys-typescale-body-small-font);
 }
 
-.indexer-select-label select {
-  padding: 4px 8px;
-  font-size: 0.85rem;
-}
-
 /* Modal styles */
 .modal-overlay {
   position: fixed;
@@ -514,7 +509,7 @@
 }
 
 .form-group input[type="url"],
-.form-group select {
+.form-group select:not(.coreui-select) {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--md-sys-color-outline-variant);
@@ -525,7 +520,7 @@
 }
 
 .form-group input[type="url"]:focus,
-.form-group select:focus {
+.form-group select:not(.coreui-select):focus {
   outline: none;
   border-color: var(--md-sys-color-primary);
 }
@@ -1068,12 +1063,21 @@
 .md-pipeline-toolbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: var(--md-sys-spacing-sm);
+  align-items: flex-end;
+  gap: 12px;
 }
 
 .md-pipeline-toolbar .indexer-select-label {
+  flex: 0 1 180px;
   margin: 0;
+}
+
+.md-pipeline-toolbar .md-pipeline-preview-source {
+  flex-basis: 320px;
+}
+
+.md-pipeline-toolbar .md-pipeline-preview-file {
+  flex: 1 1 360px;
 }
 
 .md-pipeline-toast {
@@ -1084,7 +1088,7 @@
 .md-pipeline-steps {
   display: flex;
   flex-direction: column;
-  gap: var(--md-sys-spacing-sm);
+  gap: 18px;
 }
 
 .md-pipeline-step-card {
@@ -1097,13 +1101,21 @@
 }
 
 .md-pipeline-step-card::after {
-  content: "↓";
+  content: "arrow_downward";
   position: absolute;
   left: 50%;
-  bottom: -14px;
+  bottom: -22px;
   transform: translateX(-50%);
-  font-size: 0.75rem;
+  width: 20px;
+  height: 20px;
+  font-family: var(--coreui-font-family-icon);
+  font-size: 18px;
+  line-height: 20px;
+  text-align: center;
   color: var(--md-sys-color-on-surface-variant);
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  -webkit-font-smoothing: antialiased;
+  z-index: 1;
 }
 
 .md-pipeline-step-card:last-child::after {
@@ -1123,8 +1135,21 @@
   background: transparent;
   color: var(--md-sys-color-on-surface-variant);
   cursor: pointer;
-  font-size: 0.9rem;
-  padding: 2px 4px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.md-pipeline-step-toggle .material-symbols-outlined {
+  font-size: 20px;
+}
+
+.md-pipeline-step-toggle:hover {
+  background: var(--md-sys-color-surface-container-high);
 }
 
 .md-pipeline-step-card-collapsed .md-pipeline-step-header {
@@ -1144,14 +1169,7 @@
 }
 
 .md-pipeline-step-type-select {
-  padding: 4px 8px;
-  font-size: 0.9rem;
-  font-family: inherit;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-small);
-  background: var(--md-sys-color-surface);
-  color: var(--md-sys-color-on-surface);
-  min-width: 180px;
+  min-width: 252px;
 }
 
 .md-pipeline-step-type {
@@ -1164,6 +1182,20 @@
   display: flex;
   gap: 4px;
   margin-left: auto;
+}
+
+.md-pipeline-icon-button {
+  min-width: 36px;
+  width: 36px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.md-pipeline-icon-button .material-symbols-outlined {
+  font-size: 18px;
 }
 
 .md-pipeline-step-params {
@@ -1258,25 +1290,68 @@
   margin-right: 4px;
 }
 
-.md-pipeline-preview-result {
-  margin-top: 16px;
-  padding: 12px;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-small);
-  background: var(--md-sys-color-surface-container-low);
-}
-
-.md-pipeline-preview-result h4 {
-  margin: 0 0 8px 0;
-  font-size: 0.95rem;
-}
-
 /* Add step modal */
 .md-pipeline-add-modal {
   max-width: 720px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
+}
+
+.md-pipeline-preview-modal {
+  width: min(1100px, 92vw);
+  max-width: 1100px;
+  height: min(760px, 86vh);
+  max-height: 86vh;
+  overflow: hidden;
+}
+
+.md-pipeline-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.md-pipeline-preview-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.md-pipeline-preview-export .material-symbols-outlined {
+  font-size: 16px;
+}
+
+.md-pipeline-preview-modal-body {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.md-pipeline-preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 0;
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+  overflow-wrap: anywhere;
+}
+
+.md-pipeline-preview-code {
+  flex: 1;
+  min-height: 280px;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  background: var(--coreui-surface-panel);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--coreui-font-family-mono);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .md-pipeline-add-modal-body {
