@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import shutil
+import threading
 import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import requests
 
@@ -57,6 +58,57 @@ class ExtensionManager:
         self._default_provider_id = default_provider_id
         self._loaded: list[LoadedExtension] = []
         self._failed: list[FailedExtension] = []
+        self._runtime: LLMRuntime | None = None
+        self._registry: ProviderRegistry | None = None
+        self._runtime_status = "not_started"
+        self._runtime_error = ""
+        self._bootstrap_thread: threading.Thread | None = None
+        self._provider_rows_cache: list[dict[str, Any]] = []
+        self._lock = threading.RLock()
+
+    @property
+    def runtime_status(self) -> str:
+        with self._lock:
+            return self._runtime_status
+
+    @property
+    def runtime_error(self) -> str:
+        with self._lock:
+            return self._runtime_error
+
+    @property
+    def runtime(self) -> LLMRuntime | None:
+        with self._lock:
+            return self._runtime
+
+    @property
+    def registry(self) -> ProviderRegistry | None:
+        with self._lock:
+            return self._registry
+
+    def start_background_bootstrap(self) -> None:
+        """Start provider loading without blocking callers that only need manifests."""
+        with self._lock:
+            if self._runtime_status in {"loading", "ready"}:
+                return
+            self._runtime_status = "loading"
+            self._runtime_error = ""
+            self.ensure_bundled_installed()
+            thread = threading.Thread(
+                target=self._bootstrap_runtime_worker,
+                name="chironai-extension-bootstrap",
+                daemon=True,
+            )
+            self._bootstrap_thread = thread
+            thread.start()
+
+    def _bootstrap_runtime_worker(self) -> None:
+        try:
+            self.bootstrap_runtime()
+        except Exception as e:  # pragma: no cover - defensive process resilience
+            with self._lock:
+                self._runtime_status = "failed"
+                self._runtime_error = f"{type(e).__name__}: {e}"
 
     def ensure_builtin_installed(self, extension_id: str) -> None:
         bundled = self._bundled_dir / extension_id
@@ -104,6 +156,9 @@ class ExtensionManager:
                 self.ensure_builtin_installed(child.name)
 
     def bootstrap_runtime(self) -> RuntimeBootstrap:
+        with self._lock:
+            self._runtime_status = "loading"
+            self._runtime_error = ""
         self.ensure_bundled_installed()
         records = [r for r in self._repo.list_records() if r.installed and r.enabled]
         source_dirs = [
@@ -134,12 +189,108 @@ class ExtensionManager:
                 )
         self._loaded = list(report.loaded)
         self._failed = failed
-        return RuntimeBootstrap(
-            runtime=LLMRuntime(registry, default_provider_id=self._default_provider_id),
+        runtime = LLMRuntime(registry, default_provider_id=self._default_provider_id)
+        provider_rows_cache = self._provider_rows_from_runtime(runtime)
+        bootstrap = RuntimeBootstrap(
+            runtime=runtime,
             registry=registry,
             loaded=self._loaded,
             failed=self._failed,
         )
+        with self._lock:
+            self._runtime = bootstrap.runtime
+            self._registry = bootstrap.registry
+            self._provider_rows_cache = provider_rows_cache
+            self._runtime_status = "ready"
+            self._runtime_error = ""
+        return bootstrap
+
+    def _asset_url(self, extension_id: str, icon: str) -> str:
+        rel = str(icon or "").strip().replace("\\", "/")
+        if not rel or rel.startswith(("http://", "https://", "data:")):
+            return rel
+        if rel.startswith("/") or ".." in rel.split("/"):
+            return ""
+        return f"/api/webui/extensions/{quote(str(extension_id), safe='')}/assets/{quote(rel, safe='/')}"
+
+    def resolve_asset_path(self, extension_id: str, asset_path: str) -> Path:
+        ext_id = str(extension_id or "").strip()
+        rel = str(asset_path or "").strip().replace("\\", "/")
+        if not ext_id or not rel or rel.startswith("/") or ".." in rel.split("/"):
+            raise FileNotFoundError("extension asset not found")
+        records = [
+            record
+            for record in self._repo.list_records()
+            if record.installed and record.id == ext_id
+        ]
+        for record in records:
+            root = (self._installed_dir / record.id / record.version).resolve()
+            candidate = (root / rel).resolve()
+            try:
+                candidate.relative_to(root)
+            except ValueError:
+                continue
+            if candidate.is_file():
+                return candidate
+        raise FileNotFoundError("extension asset not found")
+
+    def _installed_manifest_rows(self, *, enabled_only: bool = False) -> list[tuple[InstalledExtensionRecord, Path, Any]]:
+        from llm_interactor.discovery import load_manifest_from_dir
+
+        rows: list[tuple[InstalledExtensionRecord, Path, Any]] = []
+        for record in self._repo.list_records():
+            if not record.installed:
+                continue
+            if enabled_only and not record.enabled:
+                continue
+            source_dir = self._installed_dir / record.id / record.version
+            if not source_dir.is_dir():
+                continue
+            try:
+                rows.append((record, source_dir, load_manifest_from_dir(source_dir)))
+            except Exception:
+                continue
+        return rows
+
+    def _manifest_tab_ui(self, manifest: Any) -> dict[str, Any]:
+        metadata = getattr(manifest, "metadata", {})
+        if isinstance(metadata, dict) and isinstance(metadata.get("tab_ui"), dict):
+            return dict(metadata["tab_ui"])
+        raw = getattr(manifest, "tab_ui", None)
+        return dict(raw) if isinstance(raw, dict) else {}
+
+    def _manifest_tabs(self) -> list[dict[str, Any]]:
+        failed_by_id = {item.extension_id: item for item in self._failed}
+        out: list[dict[str, Any]] = []
+        for record, _source_dir, manifest in self._installed_manifest_rows(enabled_only=True):
+            tab_ui = self._manifest_tab_ui(manifest)
+            capabilities = getattr(manifest, "capabilities", {}) or {}
+            if not tab_ui and not bool(capabilities.get("tab_ui")):
+                continue
+            icon = str(tab_ui.get("icon") or getattr(manifest, "icon", "") or "")
+            failed = failed_by_id.get(record.id)
+            status = {
+                "runtime": "failed" if failed else self.runtime_status,
+                "tone": "error" if failed else "loading",
+                "message": failed.error if failed else "Extension runtime is loading",
+                "running": False,
+            }
+            out.append(
+                {
+                    "id": str(tab_ui.get("id") or getattr(manifest, "id", record.id)).strip() or record.id,
+                    "extension_id": getattr(manifest, "id", record.id),
+                    "title": str(tab_ui.get("title") or getattr(manifest, "title", record.title or record.id)).strip()
+                    or record.id,
+                    "icon": icon,
+                    "icon_url": self._asset_url(getattr(manifest, "id", record.id), icon),
+                    "description": str(getattr(manifest, "description", "") or ""),
+                    "frame": dict(tab_ui.get("frame") or {}) if isinstance(tab_ui.get("frame"), dict) else {},
+                    "order": int(tab_ui.get("order") or 0),
+                    "status": status,
+                }
+            )
+        out.sort(key=lambda row: (int(row.get("order") or 0), str(row.get("title") or "").lower()))
+        return out
 
     def registry_entries(self) -> list[dict[str, Any]]:
         return self._registry_client.load()
@@ -163,6 +314,7 @@ class ExtensionManager:
                     "title": record.title or (loaded.manifest.title if loaded else record.id),
                     "description": record.description or (loaded.manifest.description if loaded else ""),
                     "icon": record.icon or (loaded.manifest.icon if loaded else ""),
+                    "icon_url": self._asset_url(record.id, record.icon or (loaded.manifest.icon if loaded else "")),
                     "status": (
                         "loaded"
                         if loaded is not None
@@ -176,7 +328,7 @@ class ExtensionManager:
             )
         return out
 
-    def provider_rows(self, runtime: LLMRuntime | None = None) -> list[dict[str, Any]]:
+    def _provider_rows_from_runtime(self, runtime: LLMRuntime | None = None) -> list[dict[str, Any]]:
         rt = runtime
         rows: list[dict[str, Any]] = []
         if rt is not None:
@@ -200,6 +352,7 @@ class ExtensionManager:
                         "title": desc.title,
                         "description": desc.description,
                         "icon": desc.icon,
+                        "icon_url": self._asset_url(desc.extension_id, desc.icon),
                         "capabilities": desc.capabilities.__dict__,
                         "health": {
                             "ok": bool(health.ok) if health else False,
@@ -212,7 +365,20 @@ class ExtensionManager:
                 )
         return rows
 
+    def provider_rows(self, runtime: LLMRuntime | None = None) -> list[dict[str, Any]]:
+        with self._lock:
+            if self._provider_rows_cache:
+                return [dict(row) for row in self._provider_rows_cache]
+        rt = runtime
+        if rt is None:
+            rt = self.runtime
+        if rt is None:
+            return []
+        return self._provider_rows_from_runtime(rt)
+
     def provider_catalog(self, *, runtime: LLMRuntime | None = None, capability: str | None = None) -> dict[str, Any]:
+        if runtime is None:
+            runtime = self.runtime
         rows = self.provider_rows(runtime)
         cap = str(capability or "").strip().lower()
         if cap:
@@ -228,6 +394,7 @@ class ExtensionManager:
                     {
                         "provider_id": row.get("provider_id"),
                         "provider_title": row.get("title"),
+                        "provider_icon_url": row.get("icon_url"),
                         "extension_id": row.get("extension_id"),
                         "id": model.get("id"),
                         "name": model.get("label") or model.get("id"),
@@ -248,6 +415,10 @@ class ExtensionManager:
         return None
 
     def extension_tabs(self, *, runtime: LLMRuntime | None = None) -> list[dict[str, Any]]:
+        if runtime is None:
+            runtime = self.runtime
+        if runtime is None:
+            return self._manifest_tabs()
         out: list[dict[str, Any]] = []
         for item in self._loaded:
             fn = getattr(item.provider, "get_tab_descriptor", None)
@@ -267,7 +438,8 @@ class ExtensionManager:
                     "extension_id": item.manifest.id,
                     "title": title,
                     "icon": str(raw.get("icon") or item.manifest.icon or ""),
-                    "icon_url": str(raw.get("icon_url") or ""),
+                    "icon_url": str(raw.get("icon_url") or "")
+                    or self._asset_url(item.manifest.id, str(raw.get("icon") or item.manifest.icon or "")),
                     "description": str(raw.get("description") or item.manifest.description or ""),
                     "frame": dict(raw.get("frame") or {}) if isinstance(raw.get("frame"), dict) else {},
                     "order": int(raw.get("order") or 0),
@@ -299,6 +471,7 @@ class ExtensionManager:
             "extension_id": item.manifest.id,
             "title": item.manifest.title,
             "icon": item.manifest.icon,
+            "icon_url": self._asset_url(item.manifest.id, item.manifest.icon),
             **payload,
         }
 
@@ -332,6 +505,7 @@ class ExtensionManager:
                     "title": item.manifest.title,
                     "description": item.manifest.description,
                     "icon": item.manifest.icon,
+                    "icon_url": self._asset_url(item.manifest.id, item.manifest.icon),
                     "settings_schema": item.manifest.settings_schema,
                     "ui_schema": item.manifest.ui_schema,
                 }

@@ -4,11 +4,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, send_file
 
 
 def _get_extensions_service() -> Any:
     return current_app.extensions.get("llm_extensions_service")
+
+
+def _get_extensions_runtime(svc: Any) -> Any:
+    runtime = current_app.extensions.get("llm_interactor_runtime")
+    if runtime is not None:
+        return runtime
+    return getattr(svc, "runtime", None) if svc is not None else None
 
 
 def register_extension_routes(
@@ -48,10 +55,16 @@ def register_extension_routes(
     def get_extension_providers() -> Any:
         try:
             svc = _get_extensions_service()
-            runtime = current_app.extensions.get("llm_interactor_runtime")
-            if svc is None or runtime is None:
+            runtime = _get_extensions_runtime(svc)
+            if svc is None:
                 return jsonify({"available": False, "providers": []}), 200
-            return jsonify({"available": True, "providers": svc.provider_rows(runtime)})
+            return jsonify(
+                {
+                    "available": True,
+                    "runtime_status": getattr(svc, "runtime_status", "ready" if runtime is not None else "unavailable"),
+                    "providers": svc.provider_rows(runtime),
+                }
+            )
         except Exception as e:
             error_log.error("webui_extensions_routes.get_extension_providers", exc_info=True)
             return jsonify({"error": str(e)}), 500
@@ -60,13 +73,14 @@ def register_extension_routes(
     def get_provider_catalog() -> Any:
         try:
             svc = _get_extensions_service()
-            runtime = current_app.extensions.get("llm_interactor_runtime")
-            if svc is None or runtime is None:
+            runtime = _get_extensions_runtime(svc)
+            if svc is None:
                 return jsonify({"available": False, "providers": [], "models": []}), 200
             capability = (request.args.get("capability") or "").strip() or None
             payload = svc.provider_catalog(runtime=runtime, capability=capability)
             payload["available"] = True
             payload["capability"] = capability
+            payload["runtime_status"] = getattr(svc, "runtime_status", "ready" if runtime is not None else "unavailable")
             return jsonify(payload)
         except Exception as e:
             error_log.error("webui_extensions_routes.get_provider_catalog", exc_info=True)
@@ -76,10 +90,16 @@ def register_extension_routes(
     def get_extension_tabs() -> Any:
         try:
             svc = _get_extensions_service()
-            runtime = current_app.extensions.get("llm_interactor_runtime")
-            if svc is None or runtime is None:
+            runtime = _get_extensions_runtime(svc)
+            if svc is None:
                 return jsonify({"available": False, "tabs": []}), 200
-            return jsonify({"available": True, "tabs": svc.extension_tabs(runtime=runtime)})
+            return jsonify(
+                {
+                    "available": True,
+                    "runtime_status": getattr(svc, "runtime_status", "ready" if runtime is not None else "unavailable"),
+                    "tabs": svc.extension_tabs(runtime=runtime),
+                }
+            )
         except Exception as e:
             error_log.error("webui_extensions_routes.get_extension_tabs", exc_info=True)
             return jsonify({"error": str(e)}), 500
@@ -88,9 +108,11 @@ def register_extension_routes(
     def get_extension_tab(extension_id: str) -> Any:
         try:
             svc = _get_extensions_service()
-            runtime = current_app.extensions.get("llm_interactor_runtime")
-            if svc is None or runtime is None:
+            runtime = _get_extensions_runtime(svc)
+            if svc is None:
                 return jsonify({"error": "Extensions runtime is unavailable"}), 503
+            if runtime is None:
+                return jsonify({"error": "Extension runtime is still loading"}), 503
             payload = svc.extension_tab_payload(extension_id, runtime=runtime)
             payload["available"] = True
             return jsonify(payload)
@@ -115,7 +137,7 @@ def register_extension_routes(
     def run_extension_action(extension_id: str, action_id: str) -> Any:
         try:
             svc = _get_extensions_service()
-            runtime = current_app.extensions.get("llm_interactor_runtime")
+            runtime = _get_extensions_runtime(svc)
             if svc is None or runtime is None:
                 return jsonify({"error": "Extensions runtime is unavailable"}), 503
             body = request.get_json(force=True, silent=True) or {}
@@ -129,6 +151,17 @@ def register_extension_routes(
         except Exception as e:
             error_log.error("webui_extensions_routes.run_extension_action", exc_info=True)
             return jsonify({"error": str(e)}), 400
+
+    @bp.route("/extensions/<extension_id>/assets/<path:asset_path>", methods=["GET"])
+    def get_extension_asset(extension_id: str, asset_path: str) -> Any:
+        try:
+            svc = _get_extensions_service()
+            if svc is None:
+                return jsonify({"error": "Extensions runtime is unavailable"}), 404
+            path = svc.resolve_asset_path(extension_id, asset_path)
+            return send_file(path)
+        except Exception:
+            return jsonify({"error": "extension asset not found"}), 404
 
     @bp.route("/extensions/install", methods=["POST"])
     def install_extension() -> Any:

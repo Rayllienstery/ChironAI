@@ -6,8 +6,8 @@
       "description": "Trusted local Ollama provider for ChironAI LLM runtime.",
       "icon": "icons/ollama-light.svg",
       "source_path": "extensions/bundled/ollama-provider",
-      "default_ref": "0.1.1",
-      "latest_version": "0.1.1",
+      "default_ref": "0.1.2",
+      "latest_version": "0.1.2",
       "visibility": "trusted",
       "compatibility": {
         "extension_api_version": "1",
@@ -20,8 +20,8 @@
       "description": "Removable iframe tab and Docker runtime owner for Open WebUI.",
       "icon": "icons/open-webui-light.svg",
       "source_path": "extensions/bundled/open-webui",
-      "default_ref": "0.1.1",
-      "latest_version": "0.1.1",
+      "default_ref": "0.1.2",
+      "latest_version": "0.1.2",
       "visibility": "trusted",
       "compatibility": {
         "extension_api_version": "1",

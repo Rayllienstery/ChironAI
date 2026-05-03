@@ -292,7 +292,6 @@ def _build_extension_manager(
             ExtensionManager,
             ExtensionRegistryClient,
             ProviderHostContext,
-            RuntimeBackedChatClient,
         )
     except Exception as e:
         _RAG_LOG.warning("LlmInteractor unavailable; falling back to direct chat client: %s", e)
@@ -319,22 +318,9 @@ def _build_extension_manager(
         registry_client=ExtensionRegistryClient(project_root=_workspace_root()),
         default_provider_id=None,
     )
-    bootstrap = manager.bootstrap_runtime()
-    descriptors = bootstrap.registry.descriptors()
-    default_provider_id = descriptors[0].id if descriptors else None
-    if not default_provider_id:
-        _RAG_LOG.warning("No default LLM provider loaded; proxy will fall back to direct chat client")
-        return manager, bootstrap.runtime, bootstrap.registry, None, None
-    upstream_url = getattr(deps.chat_client, "_url", None) if deps.chat_client is not None else None
-    default_options = getattr(deps.chat_client, "_default_options", None) if deps.chat_client is not None else None
-    runtime_chat_client = RuntimeBackedChatClient(
-        bootstrap.runtime,
-        provider_id=default_provider_id,
-        upstream_url=str(upstream_url or "") or None,
-        default_options=dict(default_options or {}),
-        delegate=deps.chat_client,
-    )
-    return manager, bootstrap.runtime, bootstrap.registry, runtime_chat_client, default_provider_id
+    manager.start_background_bootstrap()
+    _RAG_LOG.info("Extension runtime bootstrap started in background")
+    return manager, None, None, None, None
 
 
 def build_llm_proxy_wiring(

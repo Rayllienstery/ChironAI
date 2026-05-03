@@ -1387,7 +1387,8 @@ def tester_chat() -> Any:
                     options["top_p"] = float(top_p)
                 except (TypeError, ValueError):
                     pass
-            runtime = current_app.extensions.get("llm_interactor_runtime")
+            svc = current_app.extensions.get("llm_extensions_service")
+            runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
             # Preserve the legacy direct-chat path when no provider is selected so
             # older tests and monkeypatch-based integrations still hit deps.chat_client.
             if runtime is not None and provider_id:
@@ -1902,7 +1903,8 @@ def _default_llm_provider_id() -> str:
     provider_id = getattr(wiring, "default_provider_id", None)
     if isinstance(provider_id, str) and provider_id.strip():
         return provider_id.strip()
-    runtime = current_app.extensions.get("llm_interactor_runtime")
+    svc = current_app.extensions.get("llm_extensions_service")
+    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
     try:
         descriptors = runtime.registry.descriptors() if runtime is not None else []
     except Exception:
@@ -1911,13 +1913,13 @@ def _default_llm_provider_id() -> str:
         first_id = str(descriptors[0].id or "").strip()
         if first_id:
             return first_id
-    return "ollama"
+    return ""
 
 
 def _provider_catalog_payload(*, capability: str | None = None) -> dict[str, Any]:
     svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime")
-    if svc is None or runtime is None:
+    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    if svc is None:
         return {"providers": [], "models": []}
     try:
         return svc.provider_catalog(runtime=runtime, capability=capability)
@@ -1927,8 +1929,8 @@ def _provider_catalog_payload(*, capability: str | None = None) -> dict[str, Any
 
 def _provider_row(provider_id: str | None = None) -> dict[str, Any] | None:
     svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime")
-    if svc is None or runtime is None:
+    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    if svc is None:
         return None
     try:
         rows = svc.provider_rows(runtime)
@@ -1952,7 +1954,7 @@ def _run_provider_extension_action(
     payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime")
+    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
     row = _provider_row(provider_id)
     if svc is None or runtime is None or row is None:
         raise RuntimeError("No provider extension is available")
@@ -1973,7 +1975,7 @@ def _run_default_provider_extension_action(action_id: str, payload: dict[str, An
 
 def _default_provider_tab_payload() -> dict[str, Any]:
     svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime")
+    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
     row = _default_provider_row()
     if svc is None or runtime is None or row is None:
         raise RuntimeError("No default provider extension is available")
@@ -1990,7 +1992,8 @@ def _invoke_runtime_chat(
     messages: list[dict[str, Any]],
     options: dict[str, Any] | None = None,
 ) -> str:
-    runtime = current_app.extensions.get("llm_interactor_runtime")
+    svc = current_app.extensions.get("llm_extensions_service")
+    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
     if runtime is None:
         raise RuntimeError("LLM runtime is unavailable")
     from llm_interactor.contracts import LLMRequest
@@ -2014,7 +2017,8 @@ def _invoke_runtime_embed(
     model: str,
     texts: list[str],
 ) -> list[list[float]]:
-    runtime = current_app.extensions.get("llm_interactor_runtime")
+    svc = current_app.extensions.get("llm_extensions_service")
+    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
     if runtime is None:
         raise RuntimeError("LLM runtime is unavailable")
     from llm_interactor.contracts import LLMRequest

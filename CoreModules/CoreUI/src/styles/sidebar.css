@@ -312,17 +312,17 @@
   color: inherit;
 }
 
-.coreui-sidebar__icon--ollama svg,
-.coreui-sidebar__icon--ollama img,
+.coreui-sidebar__icon--image,
 .coreui-sidebar__icon--svg svg,
 .coreui-sidebar__icon--svg img {
   width: 22px;
   height: 22px;
   display: block;
   color: inherit;
+  object-fit: contain;
 }
 
-.coreui-sidebar__icon--ollama,
+.coreui-sidebar__icon--image,
 .coreui-sidebar__icon--svg {
   font-family: inherit;
   font-size: 0;

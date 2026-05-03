@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
 
@@ -108,3 +109,44 @@ def test_extension_lifecycle_routes_return_restart_required() -> None:
     assert (disable.get_json() or {}).get("restart_required") is True
     assert (enable.get_json() or {}).get("restart_required") is True
     assert (remove.get_json() or {}).get("restart_required") is True
+
+
+def test_extension_asset_route_serves_installed_assets_and_blocks_escape(tmp_path: Path) -> None:
+    _ensure_root_on_path()
+    from api.http.rag_routes import create_app
+    from llm_interactor import ExtensionManager, ExtensionRegistryClient, ProviderHostContext
+
+    class _Repo:
+        def __init__(self) -> None:
+            self.data: dict[str, str] = {}
+
+        def get_app_setting(self, key: str):
+            return self.data.get(key)
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            self.data[key] = value
+
+    repo = _Repo()
+    root = Path(__file__).resolve().parents[2]
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        registry_client=ExtensionRegistryClient(project_root=root),
+        installed_dir=tmp_path / "installed",
+        bundled_dir=root / "extensions" / "bundled",
+    )
+    manager.ensure_bundled_installed()
+
+    app = create_app()
+    app.extensions["llm_extensions_service"] = manager
+    client = app.test_client()
+
+    ok = client.get("/api/webui/extensions/open-webui/assets/icons/open-webui-light.svg")
+    escaped = client.get("/api/webui/extensions/open-webui/assets/../chironai-extension.json")
+    missing = client.get("/api/webui/extensions/open-webui/assets/icons/missing.svg")
+
+    assert ok.status_code == 200
+    assert b"<svg" in ok.data
+    assert escaped.status_code == 404
+    assert missing.status_code == 404

@@ -1,14 +1,16 @@
 {
   "id": "ollama-provider",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "api_version": "1",
   "type": "llm_provider",
   "title": "Ollama Provider",
   "description": "Trusted local provider that exposes the existing Ollama runtime through LlmInteractor.",
   "icon": "icons/ollama-light.svg",
   "tab_ui": {
+    "id": "ollama",
     "title": "Ollama",
     "icon": "icons/ollama-light.svg",
+    "order": 50,
     "frame": {
       "id": "ollama-runtime-frame",
       "type": "declarative",

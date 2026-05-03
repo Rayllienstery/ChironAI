@@ -6,8 +6,6 @@ import {
   useState,
 } from "react";
 import Card from "./Card";
-import OllamaSidebarIcon from "./OllamaSidebarIcon";
-import OpenWebUISidebarIcon from "./OpenWebUISidebarIcon";
 
 const LS_WIDTH = "coreui.sidebar.width";
 const LS_COLLAPSED = "coreui.sidebar.collapsed";
@@ -48,24 +46,37 @@ const TAB_MATERIAL_ICONS = {
   "coreui-showcase": "widgets",
 };
 
-function isOllamaTab(tabId, icon, label) {
-  const values = [tabId, icon, label].map((value) => String(value || "").trim().toLowerCase());
-  return values.some((value) => value === "ollama" || value.includes("ollama"));
+function iconLooksLikeAssetPath(icon) {
+  const value = String(icon || "").trim();
+  return (
+    value.includes("/") ||
+    value.includes("\\") ||
+    /\.(svg|png|jpg|jpeg|webp|gif)$/i.test(value)
+  );
 }
 
-function isOpenWebUITab(tabId, icon, iconUrl, label) {
-  const values = [tabId, icon, iconUrl, label].map((value) => String(value || "").trim().toLowerCase());
-  return values.some((value) => value === "open-webui" || value.includes("open-webui"));
-}
-
-function TabIcon({ tabId, icon, iconUrl, label }) {
-  if (isOllamaTab(tabId, icon, label)) {
-    return <OllamaSidebarIcon />;
+function TabIcon({ tabId, icon, iconUrl }) {
+  const url = String(iconUrl || "").trim();
+  const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => {
+    setImageFailed(false);
+  }, [url]);
+  if (url && !imageFailed) {
+    return (
+      <img
+        className="coreui-sidebar__icon coreui-sidebar__icon--image"
+        src={url}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        onError={() => setImageFailed(true)}
+      />
+    );
   }
-  if (isOpenWebUITab(tabId, icon, iconUrl, label)) {
-    return <OpenWebUISidebarIcon />;
-  }
-  const ligature = String(icon || "").trim() || (TAB_MATERIAL_ICONS[tabId] ?? "widgets");
+  const iconText = String(icon || "").trim();
+  const ligature = iconText && !iconLooksLikeAssetPath(iconText)
+    ? iconText
+    : (TAB_MATERIAL_ICONS[tabId] ?? "widgets");
   return (
     <span className="material-symbols-outlined coreui-sidebar__icon" aria-hidden="true">
       {ligature}
@@ -299,7 +310,7 @@ function SidebarNav({
                 aria-current={active ? "page" : undefined}
                 title={collapsed ? tab.label : undefined}
               >
-                <TabIcon tabId={tab.id} icon={tab.icon} iconUrl={tab.iconUrl} label={tab.label} />
+                <TabIcon tabId={tab.id} icon={tab.icon} iconUrl={tab.iconUrl} />
                 <span className="coreui-sidebar__link-label">{tab.label}</span>
                 {tabServiceStatus ? (
                   <span
