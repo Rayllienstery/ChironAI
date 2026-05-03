@@ -19,7 +19,7 @@ import '../styles/components/LlmProxyTab.css';
 import CoreUIPillTabs from './CoreUIPillTabs';
 
 const PipelineCiDiagram = lazy(() => import('./PipelineCiDiagram'));
-const PipelineVerticalDiagram = lazy(() => import('./PipelineVerticalDiagram'));
+const CoreUIPipelineVerticalDiagram = lazy(() => import('./CoreUIPipelineVerticalDiagram'));
 
 const SECTION_TABS = [
   { id: 'builds', label: 'Builds' },
@@ -1662,7 +1662,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 </div>
 
                 <Suspense fallback={<div className="dashboard-card-muted">Loading pipeline diagram…</div>}>
-                  <PipelineVerticalDiagram data={buildModalPipelineData} />
+                  <CoreUIPipelineVerticalDiagram data={buildModalPipelineData} />
                 </Suspense>
 
                 <div className="llm-proxy-build-summary">

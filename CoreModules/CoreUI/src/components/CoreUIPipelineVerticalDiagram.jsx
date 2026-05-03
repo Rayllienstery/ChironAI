@@ -15,7 +15,7 @@ function getVerticalSteps(data) {
     }));
 }
 
-function PipelineVerticalDiagram({ data }) {
+function CoreUIPipelineVerticalDiagram({ data }) {
   const activeMap = useMemo(() => (data ? computePipelineActive(data) : null), [data]);
   const steps = useMemo(() => {
     const rawSteps = getVerticalSteps(data);
@@ -31,4 +31,4 @@ function PipelineVerticalDiagram({ data }) {
   return <CoreUIPipelinePreview steps={steps} />;
 }
 
-export default PipelineVerticalDiagram;
+export default CoreUIPipelineVerticalDiagram;

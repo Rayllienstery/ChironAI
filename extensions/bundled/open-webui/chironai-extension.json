@@ -5,7 +5,7 @@
   "type": "ui_extension",
   "title": "Open WebUI",
   "description": "Removable iframe tab and Docker runtime owner for Open WebUI.",
-  "icon": "web_asset",
+  "icon": "icons/open-webui-light.svg",
   "backend": {
     "entrypoint": "backend.provider:create_provider"
   },

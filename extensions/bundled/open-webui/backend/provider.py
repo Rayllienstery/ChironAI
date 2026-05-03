@@ -244,7 +244,7 @@ class OpenWebUiExtension:
         return {
             "id": "open-webui",
             "title": "Open WebUI",
-            "icon": "web_asset",
+            "icon": "icons/open-webui-light.svg",
             "description": "Open WebUI iframe tab managed by its own extension runtime.",
             "order": 60,
             "status": self._status(ping=False),
@@ -260,7 +260,7 @@ class OpenWebUiExtension:
         running = bool(status.get("running"))
         return {
             "title": "Open WebUI",
-            "icon": "web_asset",
+            "icon": "icons/open-webui-light.svg",
             "status": status,
             "content": {
                 "type": "iframe",

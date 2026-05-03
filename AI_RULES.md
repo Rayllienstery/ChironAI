@@ -7,7 +7,7 @@ For humans and AI assistants: terminology, module boundaries, what to keep in sy
 ## 1. Purpose
 
 - **Goal:** quickly locate the Web UI stack, how CoreUI talks to the backend, Python layer boundaries, and the fragile spots.
-- **Non-goal:** replace `docs/ARCHITECTURE.md` or per-module READMEs—when in doubt, open the references in section 8.
+- **Non-goal:** replace `docs/ARCHITECTURE.md` or per-module READMEs—when in doubt, open the references in section 9.
 
 ---
 
@@ -55,7 +55,16 @@ Ambiguous “WebUI” in conversation: clarify—**`WebUI/` folder**, **`/api/we
 
 ---
 
-## 4. Python core (monolith)
+## 4. Extensions
+
+- **Self-containment:** Every extension MUST provide its own UI frame, its own tab icon, and its own assets. Do not rely on CoreUI to provide extension-specific visuals or logic beyond the basic runtime container.
+- **Manifest:** Every extension MUST have a `chironai-extension.json` in its root directory defining `id`, `version`, `type`, and `capabilities`.
+- **Backend:** Must define a `create_provider(host_context, manifest)` entry point in the configured backend module.
+- **UI Integration:** Extensions can provide `tab_ui` (prefer `iframe_tab` for complex UIs) or declarative `ui_schema` for settings/status pages.
+
+---
+
+## 5. Python core (monolith)
 
 Layers (top to bottom): **`api/`** → **`application/`** → **`domain/`** → **`infrastructure/`**, plus `config/`, `utils/`. Details: `docs/ARCHITECTURE.md`.
 
@@ -67,7 +76,7 @@ Layers (top to bottom): **`api/`** → **`application/`** → **`domain/`** → 
 
 ---
 
-## 5. Modular target state
+## 6. Modular target state
 
 Target data flow:
 
@@ -90,7 +99,7 @@ Until migration completes, the monolith (`api/`, `application/`, `domain/`, `inf
 
 ---
 
-## 6. High-risk areas
+## 7. High-risk areas
 
 Change carefully; if behavior shifts, document and align with team/repo norms.
 
@@ -104,17 +113,21 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 
 ---
 
-## 7. AI checklist before finishing a task
+## 8. AI checklist before finishing a task
 
 - [ ] If the Web UI API changed: updated `webui_api.py`, `api.js` (and contract types/comments if needed), server routes.
 - [ ] No import-boundary violations for `domain/`?
 - [ ] If `config/*.yaml` or env vars changed: are they documented for users/deploy?
 - [ ] Did you add a new long-lived monolith “tail”—worth a line in `docs/legacy_map.md`?
 - [ ] For CoreUI: styles via tokens/existing classes; new tabs via the lazy pattern in `App.jsx`.
+- [ ] For Extensions:
+    - [ ] Does it provide its own frame, tab icon, and assets?
+    - [ ] Is `chironai-extension.json` present and valid?
+    - [ ] Is the `create_provider` entry point implemented?
 
 ---
 
-## 8. Further reading
+## 9. Further reading
 
 | Document / module | Purpose |
 |-------------------|---------|

@@ -6,6 +6,7 @@ import CoreUISubtabs from "./CoreUISubtabs";
 import CoreUISlider from "./CoreUISlider";
 import EmptyState from "./EmptyState";
 import "../styles/components/CoreUIShowcaseTab.css";
+import CoreUIPipelinePreview from "./CoreUIPipelinePreview";
 
 const sourceRoot = "src";
 
@@ -365,6 +366,27 @@ function CoreUIShowcaseTab() {
                 </div>
               </div>
             </Card>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="CoreUIPipelinePreview"
+          classes={[".coreui-pipeline-preview", ".coreui-pipeline-preview__item", ".coreui-pipeline-preview__item--active"]}
+          source={`${sourceRoot}/components/CoreUIPipelinePreview.jsx`}
+          description="Standardized vertical pipeline diagram for request flows, build steps, and multi-stage processes."
+        >
+          <div style={{ maxWidth: '400px' }}>
+            <CoreUIPipelinePreview
+              steps={[
+                { id: '1', label: 'Parse / gate', description: 'Prepare request, resolve settings, and decide retrieval/supplement gates.', icon: 'login', active: true },
+                { id: '2', label: 'Vector RAG', description: 'Run RAG retrieval against the selected Qdrant collection when configured.', icon: 'database', active: true },
+                { id: '3', label: 'Hybrid sparse', description: 'Use dense+sparse retrieval fusion when hybrid sparse is enabled.', icon: 'vertical_align_top', active: true },
+                { id: '4', label: 'LLM rerank', description: 'Rerank retrieved chunks when rerank-for-rag is enabled.', icon: 'swap_vert', active: true },
+                { id: '5', label: 'Build context', description: 'Assemble final context block for prompt construction.', icon: 'build', active: true },
+                { id: '6', label: 'Agent skills', description: 'Attach skill/tool packs when enabled for proxy requests.', icon: 'extension', active: true },
+                { id: '7', label: 'Merged docs', description: 'Merge external docs retrieval (on-demand/discovery + RAG) when enabled.', icon: 'cloud_download', active: false },
+              ]}
+            />
           </div>
         </ShowcaseItem>
       </ShowcaseSection>
