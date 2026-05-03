@@ -51,6 +51,30 @@ def _cache_set(base_url: str, key: str, value: Any) -> None:
 from infrastructure.ollama.model_brand import resolve_brand_key
 
 
+def _manifest_tab_ui(manifest: Any) -> dict[str, Any]:
+    metadata = getattr(manifest, "metadata", {})
+    if isinstance(metadata, dict) and isinstance(metadata.get("tab_ui"), dict):
+        return dict(metadata["tab_ui"])
+    raw = getattr(manifest, "tab_ui", None)
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _tab_frame(manifest: Any) -> dict[str, Any]:
+    tab_ui = _manifest_tab_ui(manifest)
+    frame = tab_ui.get("frame")
+    return dict(frame) if isinstance(frame, dict) else {}
+
+
+def _tab_title(manifest: Any, fallback: str) -> str:
+    tab_ui = _manifest_tab_ui(manifest)
+    return str(tab_ui.get("title") or fallback).strip() or fallback
+
+
+def _tab_icon(manifest: Any, fallback: str) -> str:
+    tab_ui = _manifest_tab_ui(manifest)
+    return str(tab_ui.get("icon") or getattr(manifest, "icon", "") or fallback).strip() or fallback
+
+
 class OllamaProvider:
     """Trusted provider and extension surface for Ollama-backed capabilities."""
 
@@ -217,11 +241,13 @@ class OllamaProvider:
             )
 
     def get_tab_descriptor(self, *, runtime: Any | None = None) -> dict[str, Any]:
+        frame = _tab_frame(self._manifest)
         return {
             "id": "ollama",
-            "title": "Ollama",
-            "icon": "network_node",
+            "title": _tab_title(self._manifest, "Ollama"),
+            "icon": _tab_icon(self._manifest, "icons/ollama-light.svg"),
             "description": "Provider management, runtime diagnostics, and model operations.",
+            "frame": frame,
             "order": 50,
         }
 
@@ -424,6 +450,9 @@ class OllamaProvider:
             ]
         }
         return {
+            "title": _tab_title(self._manifest, "Ollama"),
+            "icon": _tab_icon(self._manifest, "icons/ollama-light.svg"),
+            "frame": _tab_frame(self._manifest),
             "schema": schema,
             "state": {
                 "provider_id": self._provider_id,

@@ -269,6 +269,7 @@ class ExtensionManager:
                     "icon": str(raw.get("icon") or item.manifest.icon or ""),
                     "icon_url": str(raw.get("icon_url") or ""),
                     "description": str(raw.get("description") or item.manifest.description or ""),
+                    "frame": dict(raw.get("frame") or {}) if isinstance(raw.get("frame"), dict) else {},
                     "order": int(raw.get("order") or 0),
                     "status": dict(raw.get("status") or {}) if isinstance(raw.get("status"), dict) else None,
                 }

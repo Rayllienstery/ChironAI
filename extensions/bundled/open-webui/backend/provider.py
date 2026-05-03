@@ -21,6 +21,30 @@ LEGACY_BACKEND_KEY = "open_webui_ollama_base_url"
 BACKEND_KEY = "extensions.open-webui.ollama_base_url"
 
 
+def _manifest_tab_ui(manifest: Any) -> dict[str, Any]:
+    metadata = getattr(manifest, "metadata", {})
+    if isinstance(metadata, dict) and isinstance(metadata.get("tab_ui"), dict):
+        return dict(metadata["tab_ui"])
+    raw = getattr(manifest, "tab_ui", None)
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _tab_frame(manifest: Any) -> dict[str, Any]:
+    tab_ui = _manifest_tab_ui(manifest)
+    frame = tab_ui.get("frame")
+    return dict(frame) if isinstance(frame, dict) else {}
+
+
+def _tab_title(manifest: Any, fallback: str) -> str:
+    tab_ui = _manifest_tab_ui(manifest)
+    return str(tab_ui.get("title") or fallback).strip() or fallback
+
+
+def _tab_icon(manifest: Any, fallback: str) -> str:
+    tab_ui = _manifest_tab_ui(manifest)
+    return str(tab_ui.get("icon") or getattr(manifest, "icon", "") or fallback).strip() or fallback
+
+
 def _as_int(raw: str | None, default: int) -> int:
     try:
         return int(str(raw or "").strip())
@@ -241,11 +265,13 @@ class OpenWebUiExtension:
         return status
 
     def get_tab_descriptor(self, *, runtime: Any | None = None) -> dict[str, Any]:
+        frame = _tab_frame(self._manifest)
         return {
             "id": "open-webui",
-            "title": "Open WebUI",
-            "icon": "icons/open-webui-light.svg",
+            "title": _tab_title(self._manifest, "Open WebUI"),
+            "icon": _tab_icon(self._manifest, "icons/open-webui-light.svg"),
             "description": "Open WebUI iframe tab managed by its own extension runtime.",
+            "frame": frame,
             "order": 60,
             "status": self._status(ping=False),
         }
@@ -259,8 +285,9 @@ class OpenWebUiExtension:
         llm_proxy_hint = f"http://host.docker.internal:{self._server_port()}"
         running = bool(status.get("running"))
         return {
-            "title": "Open WebUI",
-            "icon": "icons/open-webui-light.svg",
+            "title": _tab_title(self._manifest, "Open WebUI"),
+            "icon": _tab_icon(self._manifest, "icons/open-webui-light.svg"),
+            "frame": _tab_frame(self._manifest),
             "status": status,
             "content": {
                 "type": "iframe",

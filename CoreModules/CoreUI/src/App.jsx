@@ -481,6 +481,7 @@ function App() {
       id: tab.id,
       label: tab.title || tab.id,
       icon: tab.icon || "",
+      iconUrl: tab.icon_url || "",
       section: "Extensions",
     })),
     { id: "rag", label: "RAG / Qdrant", section: "RAG" },

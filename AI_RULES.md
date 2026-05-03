@@ -57,7 +57,7 @@ Ambiguous “WebUI” in conversation: clarify—**`WebUI/` folder**, **`/api/we
 
 ## 4. Extensions
 
-- **Self-containment:** Every extension MUST provide its own UI frame, its own tab icon, and its own assets. Do not rely on CoreUI to provide extension-specific visuals or logic beyond the basic runtime container.
+- **Self-containment:** Every extension MUST provide its own UI frame, its own tab title, its own tab icon, and its own assets. Do not rely on CoreUI to provide extension-specific visuals or logic beyond the basic runtime container.
 - **Manifest:** Every extension MUST have a `chironai-extension.json` in its root directory defining `id`, `version`, `type`, and `capabilities`.
 - **Backend:** Must define a `create_provider(host_context, manifest)` entry point in the configured backend module.
 - **UI Integration:** Extensions can provide `tab_ui` (prefer `iframe_tab` for complex UIs) or declarative `ui_schema` for settings/status pages.
@@ -121,7 +121,7 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 - [ ] Did you add a new long-lived monolith “tail”—worth a line in `docs/legacy_map.md`?
 - [ ] For CoreUI: styles via tokens/existing classes; new tabs via the lazy pattern in `App.jsx`.
 - [ ] For Extensions:
-    - [ ] Does it provide its own frame, tab icon, and assets?
+    - [ ] Does it provide its own frame, tab title, tab icon, and assets?
     - [ ] Is `chironai-extension.json` present and valid?
     - [ ] Is the `create_provider` entry point implemented?
 

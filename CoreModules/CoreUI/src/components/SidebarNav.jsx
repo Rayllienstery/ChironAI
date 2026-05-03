@@ -7,6 +7,7 @@ import {
 } from "react";
 import Card from "./Card";
 import OllamaSidebarIcon from "./OllamaSidebarIcon";
+import OpenWebUISidebarIcon from "./OpenWebUISidebarIcon";
 
 const LS_WIDTH = "coreui.sidebar.width";
 const LS_COLLAPSED = "coreui.sidebar.collapsed";
@@ -52,9 +53,17 @@ function isOllamaTab(tabId, icon, label) {
   return values.some((value) => value === "ollama" || value.includes("ollama"));
 }
 
-function TabIcon({ tabId, icon, label }) {
+function isOpenWebUITab(tabId, icon, iconUrl, label) {
+  const values = [tabId, icon, iconUrl, label].map((value) => String(value || "").trim().toLowerCase());
+  return values.some((value) => value === "open-webui" || value.includes("open-webui"));
+}
+
+function TabIcon({ tabId, icon, iconUrl, label }) {
   if (isOllamaTab(tabId, icon, label)) {
     return <OllamaSidebarIcon />;
+  }
+  if (isOpenWebUITab(tabId, icon, iconUrl, label)) {
+    return <OpenWebUISidebarIcon />;
   }
   const ligature = String(icon || "").trim() || (TAB_MATERIAL_ICONS[tabId] ?? "widgets");
   return (
@@ -88,7 +97,7 @@ function CollapseIcon({ expanded }) {
 
 /**
  * @param {{
- *   tabs: { id: string, label: string, icon?: string, section?: string }[],
+ *   tabs: { id: string, label: string, icon?: string, iconUrl?: string, section?: string }[],
  *   activeTab: string,
  *   onTabChange: (id: string) => void,
  *   tabErrors?: Record<string, boolean>,
@@ -290,7 +299,7 @@ function SidebarNav({
                 aria-current={active ? "page" : undefined}
                 title={collapsed ? tab.label : undefined}
               >
-                <TabIcon tabId={tab.id} icon={tab.icon} label={tab.label} />
+                <TabIcon tabId={tab.id} icon={tab.icon} iconUrl={tab.iconUrl} label={tab.label} />
                 <span className="coreui-sidebar__link-label">{tab.label}</span>
                 {tabServiceStatus ? (
                   <span

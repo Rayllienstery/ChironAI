@@ -74,7 +74,24 @@ class _Docker:
 def _extension(repo: _Repo, docker: _Docker):
     mod = _load_open_webui_provider_module()
     host = SimpleNamespace(get_settings_repository=lambda: repo)
-    manifest = SimpleNamespace(id="open-webui", title="Open WebUI", description="", icon="web_asset")
+    manifest = SimpleNamespace(
+        id="open-webui",
+        title="Open WebUI",
+        description="",
+        icon="icons/open-webui-light.svg",
+        metadata={
+            "tab_ui": {
+                "title": "Open WebUI",
+                "icon": "icons/open-webui-light.svg",
+                "frame": {
+                    "id": "open-webui-iframe-frame",
+                    "type": "iframe",
+                    "chrome": "open-webui-service",
+                    "asset_scope": "extension",
+                },
+            }
+        },
+    )
     return mod.OpenWebUiExtension(host, manifest, docker=docker), mod
 
 
@@ -88,7 +105,11 @@ def test_open_webui_extension_descriptor_and_iframe_payload() -> None:
     payload = ext.get_tab_payload()
 
     assert descriptor["id"] == "open-webui"
+    assert descriptor["title"] == "Open WebUI"
+    assert descriptor["icon"] == "icons/open-webui-light.svg"
+    assert descriptor["frame"]["type"] == "iframe"
     assert descriptor["status"]["running"] is True
+    assert payload["frame"]["id"] == "open-webui-iframe-frame"
     assert payload["content"]["type"] == "iframe"
     assert payload["content"]["src"] == "http://localhost:3000"
     assert any(action["id"] == "stop" for action in payload["content"]["actions"])
