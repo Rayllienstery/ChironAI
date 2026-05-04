@@ -19,6 +19,7 @@ from llm_proxy.anthropic_compat import (
     openai_chat_completion_to_anthropic_message,
     wants_anthropic_models_list,
 )
+from llm_proxy.api_key import verify_proxy_api_key
 from llm_proxy.chat_completions import run_chat_completions
 from llm_proxy.completions_generate import run_legacy_completions_via_ollama_generate
 from llm_proxy.external_ingest import run_external_docs_ingest
@@ -31,6 +32,19 @@ if TYPE_CHECKING:
     from llm_proxy.contracts import LlmProxyWiring
 
 _V1_LOG = logging.getLogger("llm_proxy")
+
+
+def _request_proxy_api_key() -> str:
+    auth = str(request.headers.get("Authorization") or "").strip()
+    prefix = "Bearer "
+    if auth.startswith(prefix):
+        return auth[len(prefix) :].strip()
+    return str(request.headers.get("x-api-key") or "").strip()
+
+
+def _openai_error_response(message: str, error_type: str, status: int):
+    return jsonify({"error": {"type": error_type, "message": message}}), status
+
 
 def _openai_build_model_rows(wiring: LlmProxyWiring) -> list[dict[str, object]]:
     try:
@@ -772,6 +786,27 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
         except Exception:
             pass
         return jsonify({"error": str(error)}), 500
+
+    @bp.before_request
+    def _require_proxy_api_key():
+        path = request.path or ""
+        if path != "/v1" and not path.startswith("/v1/"):
+            return None
+        supplied = _request_proxy_api_key()
+        configured, valid = verify_proxy_api_key(wiring.get_settings_repository(), supplied)
+        if not configured:
+            return _openai_error_response(
+                "Chiron proxy API key is not configured",
+                "server_configuration_error",
+                503,
+            )
+        if not supplied or not valid:
+            return _openai_error_response(
+                "Invalid or missing API key",
+                "authentication_error",
+                401,
+            )
+        return None
 
     @bp.route("/v1", methods=["GET", "POST"])
     def v1_root():

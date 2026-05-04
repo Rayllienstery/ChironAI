@@ -6,7 +6,7 @@ Installable package **`llm-proxy`**: **OpenAI-** and **Anthropic Messages–** c
 |--------|------|---------|
 | GET | `/v1` | API metadata |
 | GET | `/v1/models` | **OpenAI clients:** `object`/`data` list of **build ids** plus optional **ChironAI-Autocomplete** when configured. Each OpenAI-shaped row includes Chiron extension **`supports_vision`: always `true`** so clients (e.g. Kilo) do not hide image attachment; purely text-only upstream models may still reject or ignore images. **Anthropic clients:** send header `anthropic-version` (any non-empty value, e.g. `2023-06-01`) for Anthropic-shaped `data` / `first_id` / `has_more`. |
-| POST | `/v1/messages` | **Anthropic Messages API** — translated to the same pipeline as `POST /v1/chat/completions` (RAG, tools, streaming). Empty `x-api-key` is accepted for local use (e.g. Anthropic-style env with Ollama-compatible tokens). |
+| POST | `/v1/messages` | **Anthropic Messages API** — translated to the same pipeline as `POST /v1/chat/completions` (RAG, tools, streaming). |
 | POST | `/v1/chat/completions` | Chat with optional RAG, tools, streaming |
 | POST | `/v1/completions` | OpenAI legacy completions (`choices[].text`) — implemented as transparent **`POST …/api/generate`** upstream (same as raw Ollama). No RAG, no WebUI prompt template, no web supplement. Optional `LLM_PROXY_COMPLETIONS_RAW` (`true` by default: sets Ollama `raw`). Zed **edit prediction** (`open_ai_compatible_api`): use `http://<host>:<port>/v1/completions`. |
 | POST | `/v1/files/apply-edit` | Apply a line/column range edit in the workspace |
@@ -56,7 +56,18 @@ If you see that string inside the **user message** (as opposed to an HTTP error 
 
 **`POST /v1/completions`** is a separate legacy shape (OpenAI `prompt` / `input` → Ollama **`/api/generate`**); it is not merged into the same analytics semantics as chat completions.
 
-**Network note:** the server often binds `0.0.0.0` ([`config/server.yaml`](../../config/server.yaml)); there is **no API key** on the proxy by default—use only on a trusted network.
+## Chiron proxy API key
+
+All Chiron `/v1*` endpoints are fail-closed and require a WebUI-managed API key:
+
+- Generate or reveal the key in WebUI: **RAG Fusion Proxy** -> **Overview** -> **Security**. Use **Generate key** for the first key, **Reveal key** to copy the current key, and **Regenerate key** to rotate it.
+- The key is stored in `app_settings` under `llm_proxy_api_key` as a recoverable admin secret plus `sha256`, `prefix`, `created_at`, and `rotated_at`. Runtime auth verifies via the hash; WebUI can reveal the key again for IDE/OpenWebUI setup.
+- Send the key as either `Authorization: Bearer <key>` or `x-api-key: <key>`.
+- If no key is configured, `/v1*` returns `503` with `server_configuration_error`; if the request key is missing or wrong, it returns `401` with `authentication_error`.
+- Regenerating rotates the single active key and immediately invalidates the old one. Deleting the key closes `/v1*` again until a new key is generated.
+- The Ollama passthrough routes `/api/tags`, `/api/show`, `/api/generate`, and `/api/chat` are intentionally not protected by this Chiron key so OpenWebUI/Ollama-style clients can keep using `OLLAMA_BASE_URL`.
+
+OpenWebUI has its own account/API-key protection. That protects OpenWebUI itself, but it does not protect this Chiron proxy if clients can reach `http://host:port/v1/...` directly. When configuring OpenWebUI as an OpenAI-compatible `/v1` client for Chiron, set the Chiron proxy key as the provider API key/Bearer token.
 
 ## Installation
 

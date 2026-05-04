@@ -28,6 +28,11 @@ build_proxy:
 
 ## Main /v1/models: optional ChironAI-Autocomplete row when autocomplete Ollama model is configured (plus builds).
 ## Set v1_include_autocomplete_logical_model to false to list only build ids (and hide autocomplete id).
+## Security: all Chiron OpenAI/Anthropic-compatible /v1* endpoints are protected by a WebUI-managed API key.
+## Generate/rotate/delete it in WebUI -> RAG Fusion Proxy -> Overview -> Security.
+## Clients must send Authorization: Bearer <key> or x-api-key: <key>; WebUI can reveal the current key for IDE setup.
+## The Ollama passthrough routes (/api/tags, /api/show, /api/generate, /api/chat) are intentionally not protected
+## by this key so OpenWebUI/Ollama-style backends can keep using OLLAMA_BASE_URL without extra headers.
 llm_proxy:
   v1_include_autocomplete_logical_model: true
 

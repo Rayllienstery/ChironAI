@@ -143,6 +143,51 @@ export async function getLlmProxyStatus() {
   return response.json();
 }
 
+export async function getLlmProxyApiKeyStatus() {
+  const response = await fetch(`${API_BASE}/llm-proxy/api-key`, {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to get LLM Proxy API key status');
+  }
+  return data;
+}
+
+export async function generateLlmProxyApiKey() {
+  const response = await fetch(`${API_BASE}/llm-proxy/api-key/generate`, {
+    method: 'POST',
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to generate LLM Proxy API key');
+  }
+  return data;
+}
+
+export async function revealLlmProxyApiKey() {
+  const response = await fetch(`${API_BASE}/llm-proxy/api-key/reveal`, {
+    method: 'POST',
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to reveal LLM Proxy API key');
+  }
+  return data;
+}
+
+export async function deleteLlmProxyApiKey() {
+  const response = await fetch(`${API_BASE}/llm-proxy/api-key`, {
+    method: 'DELETE',
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to delete LLM Proxy API key');
+  }
+  return data;
+}
+
 export async function getLlmProxyBuilds(options = {}) {
   const params = new URLSearchParams();
   if (options.diagnostics === false) {

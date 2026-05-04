@@ -4,11 +4,31 @@ Light integration tests for HTTP endpoints (Flask test client).
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+
+TEST_PROXY_API_KEY = "test-chiron-proxy-key"
+NO_TEST_PROXY_AUTH_HEADER = "X-Test-Skip-Chiron-Auth"
+TEST_PROXY_API_KEY_SETTING = "llm_proxy_api_key"
+TEST_PROXY_API_KEY_SETTING_VALUE = json.dumps(
+    {
+        "sha256": hashlib.sha256(TEST_PROXY_API_KEY.encode("utf-8")).hexdigest(),
+        "prefix": TEST_PROXY_API_KEY[:20],
+        "created_at": "2026-05-04T00:00:00Z",
+        "rotated_at": None,
+    }
+)
+
+
+def _test_proxy_api_key_setting(key: str) -> str | None:
+    if key == TEST_PROXY_API_KEY_SETTING:
+        return TEST_PROXY_API_KEY_SETTING_VALUE
+    return None
 
 
 class _OllamaShimChatClient:
@@ -81,19 +101,52 @@ def _rag_routes_llm_proxy_app_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """/chat/completions requires saved proxy_model + prompt_name unless create_app uses system_prefix."""
     import json
 
+    from flask.testing import FlaskClient
+    from werkzeug.datastructures import Headers
+
     import api.http.rag_routes as rag_routes
+    import api.http.webui_routes as webui_routes
+
+    original_open = FlaskClient.open
+
+    def open_with_proxy_auth(self, *args: Any, **kwargs: Any):
+        path = kwargs.get("path")
+        if path is None and args and isinstance(args[0], str):
+            path = args[0]
+        if isinstance(path, str) and (path == "/v1" or path.startswith("/v1/")):
+            headers = Headers(kwargs.get("headers") or {})
+            if headers.get(NO_TEST_PROXY_AUTH_HEADER):
+                del headers[NO_TEST_PROXY_AUTH_HEADER]
+            elif not headers.get("Authorization") and not headers.get("x-api-key"):
+                headers["Authorization"] = f"Bearer {TEST_PROXY_API_KEY}"
+            kwargs["headers"] = headers
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(FlaskClient, "open", open_with_proxy_auth)
 
     class _FakeRepo:
-        def get_app_setting(self, key: str):
-            if key == "proxy_model":
-                return "fake-proxy-ollama-model"
-            if key == "proxy_settings":
-                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
-            if key == "rag_collection":
-                return ""
-            return None
+        def __init__(self, include_api_key: bool = True) -> None:
+            self.app_settings = {
+                "proxy_model": "fake-proxy-ollama-model",
+                "proxy_settings": json.dumps({"prompt_name": "system_senior_ios_assistant_v1"}),
+                "rag_collection": "",
+            }
+            if include_api_key:
+                self.app_settings[TEST_PROXY_API_KEY_SETTING] = TEST_PROXY_API_KEY_SETTING_VALUE
 
-    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: _FakeRepo())
+        def get_app_setting(self, key: str):
+            return self.app_settings.get(key)
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            self.app_settings[key] = value
+
+        def delete_app_setting(self, key: str) -> None:
+            self.app_settings.pop(key, None)
+
+    fake_repo = _FakeRepo()
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: fake_repo)
+    monkeypatch.setattr(webui_routes, "get_settings_repository", lambda: fake_repo)
 
 
 def test_proxy_logs_passes_autocomplete_only_to_repository(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -343,6 +396,296 @@ def test_health_endpoint_503_when_qdrant_unavailable(monkeypatch: pytest.MonkeyP
     assert (data.get("components") or {}).get("qdrant") == "unhealthy"
 
 
+def test_v1_models_returns_503_when_proxy_api_key_not_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    import api.http.rag_routes as rag_routes
+    from api.http.rag_routes import create_app
+
+    class NoKeyRepo:
+        def get_app_setting(self, key: str):
+            if key == "proxy_model":
+                return "fake-proxy-ollama-model"
+            if key == "proxy_settings":
+                return "{}"
+            if key == "rag_collection":
+                return ""
+            return None
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: NoKeyRepo())
+
+    r = create_app().test_client().get("/v1/models", headers={NO_TEST_PROXY_AUTH_HEADER: "1"})
+    assert r.status_code == 503
+    data = r.get_json() or {}
+    assert (data.get("error") or {}).get("type") == "server_configuration_error"
+    assert (data.get("error") or {}).get("message") == "Chiron proxy API key is not configured"
+
+
+def test_v1_models_returns_401_when_proxy_api_key_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    from api.http.rag_routes import create_app
+
+    r = create_app().test_client().get("/v1/models", headers={NO_TEST_PROXY_AUTH_HEADER: "1"})
+    assert r.status_code == 401
+    data = r.get_json() or {}
+    assert (data.get("error") or {}).get("type") == "authentication_error"
+    assert (data.get("error") or {}).get("message") == "Invalid or missing API key"
+
+
+def test_v1_models_returns_401_when_proxy_api_key_invalid() -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    from api.http.rag_routes import create_app
+
+    r = create_app().test_client().get("/v1/models", headers={"Authorization": "Bearer wrong-key"})
+    assert r.status_code == 401
+    data = r.get_json() or {}
+    assert (data.get("error") or {}).get("type") == "authentication_error"
+    assert (data.get("error") or {}).get("message") == "Invalid or missing API key"
+
+
+def test_v1_models_accepts_bearer_proxy_api_key() -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    from api.http.rag_routes import create_app
+
+    r = create_app().test_client().get(
+        "/v1/models",
+        headers={"Authorization": f"Bearer {TEST_PROXY_API_KEY}"},
+    )
+    assert r.status_code == 200
+    assert "data" in (r.get_json() or {})
+
+
+def test_v1_models_accepts_x_api_key_proxy_api_key() -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    from api.http.rag_routes import create_app
+
+    r = create_app().test_client().get("/v1/models", headers={"x-api-key": TEST_PROXY_API_KEY})
+    assert r.status_code == 200
+    assert "data" in (r.get_json() or {})
+
+
+def test_webui_reveal_proxy_api_key_returns_404_for_hash_only_legacy_key() -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
+    status = client.get("/api/webui/llm-proxy/api-key").get_json() or {}
+    assert status.get("configured") is True
+    assert status.get("recoverable") is False
+
+    r = client.post("/api/webui/llm-proxy/api-key/reveal")
+    assert r.status_code == 404
+    assert "not recoverable" in ((r.get_json() or {}).get("error") or "")
+
+
+def test_webui_generate_proxy_api_key_returns_plaintext_once_and_enables_v1() -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
+    generated = client.post("/api/webui/llm-proxy/api-key/generate").get_json() or {}
+    key = generated.get("key")
+    assert isinstance(key, str)
+    assert key.startswith("chiron_sk_")
+    assert generated.get("configured") is True
+    assert generated.get("recoverable") is True
+    assert generated.get("prefix")
+    assert generated.get("created_at")
+    assert "sha256" not in generated
+    assert "secret" not in generated
+
+    status = client.get("/api/webui/llm-proxy/api-key").get_json() or {}
+    assert status.get("configured") is True
+    assert "key" not in status
+    assert "sha256" not in status
+    assert "secret" not in status
+
+    revealed = client.post("/api/webui/llm-proxy/api-key/reveal").get_json() or {}
+    assert revealed.get("key") == key
+    assert revealed.get("recoverable") is True
+    assert "sha256" not in revealed
+    assert "secret" not in revealed
+
+    r = client.get("/v1/models", headers={"Authorization": f"Bearer {key}"})
+    assert r.status_code == 200
+    assert "data" in (r.get_json() or {})
+
+
+def test_webui_generated_proxy_api_key_accepts_x_api_key() -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
+    generated = client.post("/api/webui/llm-proxy/api-key/generate").get_json() or {}
+    key = generated["key"]
+
+    r = client.get("/v1/models", headers={"x-api-key": key})
+    assert r.status_code == 200
+    assert "data" in (r.get_json() or {})
+
+
+def test_webui_regenerate_proxy_api_key_invalidates_old_key() -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
+    first = client.post("/api/webui/llm-proxy/api-key/generate").get_json() or {}
+    second = client.post("/api/webui/llm-proxy/api-key/generate").get_json() or {}
+    assert first["key"] != second["key"]
+    assert second.get("rotated_at")
+
+    old_response = client.get("/v1/models", headers={"Authorization": f"Bearer {first['key']}"})
+    assert old_response.status_code == 401
+
+    new_response = client.get("/v1/models", headers={"Authorization": f"Bearer {second['key']}"})
+    assert new_response.status_code == 200
+
+
+def test_webui_delete_proxy_api_key_closes_v1() -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
+    generated = client.post("/api/webui/llm-proxy/api-key/generate").get_json() or {}
+    assert generated.get("configured") is True
+
+    deleted = client.delete("/api/webui/llm-proxy/api-key").get_json() or {}
+    assert deleted.get("configured") is False
+
+    r = client.get("/v1/models", headers={"Authorization": f"Bearer {generated['key']}"})
+    assert r.status_code == 503
+    assert ((r.get_json() or {}).get("error") or {}).get("type") == "server_configuration_error"
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("get", "/v1/models", None),
+        ("post", "/v1/chat/completions", {"model": "fake", "messages": []}),
+        ("post", "/v1/messages", {"model": "fake", "messages": []}),
+        ("post", "/v1/responses", {"model": "fake", "input": "hi"}),
+        ("post", "/v1/completions", {"model": "fake", "prompt": "hi"}),
+        ("post", "/v1/files/apply-edit", {}),
+        ("post", "/v1/external-docs/ingest", {}),
+    ],
+)
+def test_v1_routes_share_proxy_api_key_middleware(method: str, path: str, body: dict[str, Any] | None) -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
+    request_fn = getattr(client, method)
+    kwargs: dict[str, Any] = {"headers": {NO_TEST_PROXY_AUTH_HEADER: "1"}}
+    if body is not None:
+        kwargs["json"] = body
+    r = request_fn(path, **kwargs)
+    assert r.status_code == 401
+    assert ((r.get_json() or {}).get("error") or {}).get("type") == "authentication_error"
+
+
+def test_non_v1_routes_remain_reachable_without_proxy_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    class FakeOllamaResponse:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, Any]:
+            return {"models": []}
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("llm_proxy.ollama_upstream.requests.get", lambda *_a, **_k: FakeOllamaResponse())
+
+    import api.http.rag_routes as rag_routes
+
+    monkeypatch.setattr(
+        rag_routes,
+        "check_stack_health",
+        lambda: SimpleNamespace(
+            http_status=200,
+            to_json_dict=lambda service: {"service": service, "status": "healthy"},
+        ),
+    )
+
+    client = rag_routes.create_app().test_client()
+    assert client.get("/health").status_code == 200
+    api_tags = client.get("/api/tags")
+    assert api_tags.status_code == 200
+    assert (api_tags.get_json() or {}).get("models") == []
+
+
 def test_models_endpoint() -> None:
     import os
     import sys
@@ -408,7 +751,7 @@ def test_models_endpoint_exposes_build_context_length(
                         }
                     ]
                 )
-            return None
+            return _test_proxy_api_key_setting(key)
 
     monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
 
@@ -441,7 +784,7 @@ def test_chat_completions_chironai_autocomplete_uses_same_prompt_template_as_wor
                 return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
             if key == "proxy_model":
                 return ""
-            return None
+            return _test_proxy_api_key_setting(key)
 
     monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
 
@@ -579,7 +922,7 @@ def test_v1_completions_forwards_suffix_to_ollama_generate(monkeypatch: pytest.M
                 return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
             if key == "proxy_model":
                 return "worker-ollama"
-            return None
+            return _test_proxy_api_key_setting(key)
 
     monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
 
@@ -768,7 +1111,7 @@ def test_chat_completions_native_tools_passthrough_skips_argument_normalize(
                     return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
                 if key == "rag_collection":
                     return ""
-                return None
+                return _test_proxy_api_key_setting(key)
 
         monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
 
@@ -2646,7 +2989,7 @@ def test_chat_completions_400_when_prompt_template_missing(monkeypatch: pytest.M
                 return json.dumps({"prompt_name": ""})
             if key == "proxy_model":
                 return "real-ollama-model"
-            return None
+            return _test_proxy_api_key_setting(key)
 
     monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
     app = rag_routes.create_app()
@@ -2675,7 +3018,7 @@ def test_chat_completions_accepts_direct_ollama_model_without_proxy_model_settin
                 return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
             if key == "proxy_model":
                 return ""
-            return None
+            return _test_proxy_api_key_setting(key)
 
     monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
 
@@ -3886,7 +4229,7 @@ def test_model_build_num_predict_forwards_to_ollama_options(
                 return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
             if key == "proxy_model":
                 return "fallback-model"
-            return None
+            return _test_proxy_api_key_setting(key)
 
     class ChatClient:
         _default_options = {"num_predict": 3072, "temperature": 0.0, "top_p": 1.0}
@@ -3979,7 +4322,7 @@ def test_request_max_tokens_overrides_build_num_predict_and_warns_when_exhausted
                 return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
             if key == "proxy_model":
                 return "fallback-model"
-            return None
+            return _test_proxy_api_key_setting(key)
 
     class ChatClient:
         _default_options = {"num_predict": 3072, "temperature": 0.0, "top_p": 1.0}
@@ -4086,7 +4429,7 @@ def test_model_build_num_predict_reserves_input_budget_for_upstream_messages(
                 return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
             if key == "proxy_model":
                 return "fallback-model"
-            return None
+            return _test_proxy_api_key_setting(key)
 
     class ChatClient:
         _default_options = {"num_predict": 3072, "temperature": 0.0, "top_p": 1.0}
@@ -4194,7 +4537,7 @@ def test_request_max_tokens_overrides_input_budget_reserve(
                 return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
             if key == "proxy_model":
                 return "fallback-model"
-            return None
+            return _test_proxy_api_key_setting(key)
 
     class ChatClient:
         _default_options = {"num_predict": 3072, "temperature": 0.0, "top_p": 1.0}
@@ -4300,7 +4643,7 @@ def test_model_build_max_agent_steps_suppresses_tools_at_limit(
                 return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
             if key == "proxy_model":
                 return "fallback-model"
-            return None
+            return _test_proxy_api_key_setting(key)
 
     class ChatClient:
         _default_options = {"num_predict": 3072, "temperature": 0.0, "top_p": 1.0}

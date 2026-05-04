@@ -413,6 +413,11 @@ function App() {
     setLlmProxyBuildsFocusSubTab("autocomplete");
   }, []);
 
+  const handleOpenLlmProxySecurity = useCallback(() => {
+    setActiveTab("rag-fusion-proxy");
+    setLlmProxyFocusSubTab("security");
+  }, []);
+
   const consumeLlmProxyFocusSubTab = useCallback(() => {
     setLlmProxyFocusSubTab(null);
   }, []);
@@ -512,6 +517,7 @@ function App() {
             onNavigate={setActiveTab}
             onOpenLogs={() => setActiveTab("logs")}
             onOpenLlmProxyAutocomplete={handleOpenLlmProxyAutocomplete}
+            onOpenLlmProxySecurity={handleOpenLlmProxySecurity}
           />
         );
       case "logs":

@@ -10,7 +10,7 @@ const INFO_TABS = [
   { id: 'credits', label: 'Credits' },
 ];
 
-function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
+function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOpenLlmProxySecurity }) {
   const [infoSubTab, setInfoSubTab] = useState('intro');
 
   const go = (tabId) => {
@@ -427,6 +427,32 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete }) {
                 </div>
               </div>
             )}
+          </div>
+        </section>
+
+        <section className="dashboard-info-card dashboard-proxy-hint-card" aria-label="Chiron proxy API key">
+          <div className="dashboard-info-card-header">
+            <h2 className="dashboard-info-card-title">Proxy API Key</h2>
+            <p className="dashboard-info-card-subtitle">
+              Protect direct <code>/v1</code> access before connecting external OpenAI-compatible clients.
+            </p>
+          </div>
+          <div className="dashboard-section-inner">
+            <p className="dashboard-card-muted">
+              Generate or reveal the key in WebUI, then use it as <code>Authorization: Bearer &lt;key&gt;</code> or{' '}
+              <code>x-api-key</code>. The Ollama-style <code>/api/*</code> routes stay open for compatibility.
+            </p>
+            <div className="dashboard-proxy-hint-actions">
+              <button
+                type="button"
+                className="dashboard-text-btn"
+                onClick={() =>
+                  typeof onOpenLlmProxySecurity === 'function' ? onOpenLlmProxySecurity() : go('rag-fusion-proxy')
+                }
+              >
+                Open key generator
+              </button>
+            </div>
           </div>
         </section>
 

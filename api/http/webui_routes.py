@@ -65,6 +65,13 @@ from application.rag.proxy_settings_contract import (
     resolve_web_interaction_flags,
 )
 from application.rag.params import get_rag_answer_params
+from llm_proxy.api_key import (
+    delete_proxy_api_key_record,
+    generate_proxy_api_key_record,
+    proxy_api_key_status,
+    reveal_proxy_api_key,
+    store_proxy_api_key_record,
+)
 
 try:
     from rag_service.infrastructure.keyword_collections_sqlite import get_keyword_collections_repository
@@ -1052,6 +1059,59 @@ def llm_proxy_status() -> Any:
         return jsonify(payload)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.llm_proxy_status", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/llm-proxy/api-key", methods=["GET"])
+def llm_proxy_api_key_status() -> Any:
+    """Return public metadata for the WebUI-managed Chiron /v1 API key."""
+    try:
+        return jsonify(proxy_api_key_status(get_settings_repository()))
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.llm_proxy_api_key_status", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/llm-proxy/api-key/generate", methods=["POST"])
+def llm_proxy_generate_api_key() -> Any:
+    """Create or rotate the Chiron /v1 API key. Plaintext is returned only here."""
+    try:
+        settings_repo = get_settings_repository()
+        plaintext, record = generate_proxy_api_key_record(settings_repo)
+        store_proxy_api_key_record(settings_repo, record)
+        payload = {
+            "key": plaintext,
+            **proxy_api_key_status(settings_repo),
+        }
+        return jsonify(payload)
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.llm_proxy_generate_api_key", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/llm-proxy/api-key/reveal", methods=["POST"])
+def llm_proxy_reveal_api_key() -> Any:
+    """Return the recoverable Chiron /v1 API key for WebUI admin reuse."""
+    try:
+        settings_repo = get_settings_repository()
+        plaintext = reveal_proxy_api_key(settings_repo)
+        if not plaintext:
+            return jsonify({"error": "Chiron proxy API key is not recoverable"}), 404
+        return jsonify({"key": plaintext, **proxy_api_key_status(settings_repo)})
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.llm_proxy_reveal_api_key", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@webui_bp.route("/llm-proxy/api-key", methods=["DELETE"])
+def llm_proxy_delete_api_key() -> Any:
+    """Delete the Chiron /v1 API key and close protected routes until regenerated."""
+    try:
+        settings_repo = get_settings_repository()
+        delete_proxy_api_key_record(settings_repo)
+        return jsonify(proxy_api_key_status(settings_repo))
+    except Exception as e:
+        _ERROR_LOG.error("webui_routes.llm_proxy_delete_api_key", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 

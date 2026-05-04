@@ -230,6 +230,12 @@ class SettingsRepository:
             )
             conn.commit()
 
+    def delete_app_setting(self, key: str) -> None:
+        """Delete an app setting value."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+            conn.commit()
+
     def get_all_app_settings(self) -> dict[str, str]:
         """Get all app settings."""
         with sqlite3.connect(self.db_path) as conn:
