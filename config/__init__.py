@@ -452,13 +452,13 @@ def get_qdrant_collection_name() -> str:
         try:
             return os.getenv(
                 "QDRANT_COLLECTION_NAME",
-                str(_rsc.QDRANT_CONFIG.get("collection_name", "Apple_Documentation")),
+                str(_rsc.QDRANT_CONFIG.get("collection_name", "webcrawl")),
             )
         except Exception:
             pass
     return os.getenv(
         "QDRANT_COLLECTION_NAME",
-        QDRANT_CONFIG.get("collection_name", "Apple_Documentation")
+        QDRANT_CONFIG.get("collection_name", "webcrawl")
     )
 
 

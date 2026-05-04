@@ -20,12 +20,12 @@ import {
   updateModelSettings,
 } from '../services/api';
 import { useMergedPipelinePreview } from '../hooks/useMergedPipelinePreview';
-import PipelineCiDiagram from './PipelineCiDiagram';
 import RagTraceTimeline, {
   CHIRONAI_RAG_TRACE_EVENT,
   CHIRONAI_RAG_TRACE_STORAGE_KEY,
 } from './RagTraceTimeline';
 import RagPipelineOverview from './RagPipelineOverview';
+import CoreUIPillTabs from './CoreUIPillTabs';
 import '../styles/components/CoreUIButtons.css';
 import '../styles/components/RagTab.css';
 
@@ -152,6 +152,7 @@ function capitalize(word) {
 }
 
 function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
+  const [activeTab, setActiveTab] = useState('main');
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [collections, setCollections] = useState([]);
@@ -174,7 +175,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
   const [triggerTestLoading, setTriggerTestLoading] = useState(false);
   const [frameworkSettings, setFrameworkSettings] = useState(null);
   const [frameworkTtlDraft, setFrameworkTtlDraft] = useState('');
-  const [frameworkSettingsSaving, setFrameworkSettingsSaving] = useState(false);
+  const [savingFrameworkSettings, setSavingFrameworkSettings] = useState(false);
 
   const [embedCatalog, setEmbedCatalog] = useState({ providers: [], models: [] });
   const [rerankCatalog, setRerankCatalog] = useState({ providers: [], models: [] });
@@ -485,7 +486,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
   const handleSaveFrameworkSettings = async () => {
     const val = parseInt(frameworkTtlDraft, 10);
     if (Number.isNaN(val) || val < 1 || val > 3650) return;
-    setFrameworkSettingsSaving(true);
+    setSavingFrameworkSettings(true);
     setError(null);
     try {
       await updateRagFrameworkSettings({ framework_latest_ttl_days: val });
@@ -495,7 +496,7 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
     } catch (e) {
       setError(e.message);
     } finally {
-      setFrameworkSettingsSaving(false);
+      setSavingFrameworkSettings(false);
     }
   };
 
@@ -653,45 +654,46 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
     handleSaveKeywordCollections(next);
   };
 
+  const handleRefresh = () => {
+    loadStatus();
+    loadCollections();
+    loadKeywordCollections();
+    loadTriggerSettings();
+    loadFrameworkSettings();
+    loadConsumerBindings();
+    reloadPipelinePreview();
+  };
+
+  const RAG_TABS = [
+    { id: 'main', label: 'Main' },
+    { id: 'collections', label: 'Collections' },
+    { id: 'settings', label: 'Settings' },
+  ];
+
   return (
     <div className="rag-tab tab-view">
       <div className="rag-header">
         <h2>RAG / Qdrant</h2>
         <div className="rag-actions">
-          <span className={`rag-status-badge ${isRunning ? 'running' : 'stopped'}`}>
+          <div className={`rag-status-badge ${isRunning ? 'running' : 'stopped'}`}>
             {isRunning ? 'Running' : 'Stopped'}
-          </span>
+            <button
+              type="button"
+              className="rag-refresh-btn"
+              onClick={handleRefresh}
+              disabled={busy}
+              title="Refresh status"
+            >
+              <span className="material-symbols-outlined">refresh</span>
+            </button>
+          </div>
           <button
             type="button"
-            className="coreui-btn coreui-btn-primary"
-            onClick={handleStart}
-            disabled={busy || isRunning}
-          >
-            Start
-          </button>
-          <button
-            type="button"
-            className="coreui-btn"
-            onClick={handleStop}
-            disabled={busy || !isRunning}
-          >
-            Stop
-          </button>
-          <button
-            type="button"
-            className="coreui-btn coreui-btn-ghost"
-            onClick={() => {
-              loadStatus();
-              loadCollections();
-              loadKeywordCollections();
-              loadTriggerSettings();
-              loadFrameworkSettings();
-              loadConsumerBindings();
-              reloadPipelinePreview();
-            }}
+            className={`coreui-btn ${isRunning ? '' : 'coreui-btn-primary'}`}
+            onClick={isRunning ? handleStop : handleStart}
             disabled={busy}
           >
-            Refresh
+            {isRunning ? 'Stop' : 'Start'}
           </button>
           <button
             type="button"
@@ -705,650 +707,685 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
         </div>
       </div>
 
-      {status && (
-        <div className="rag-status-grid">
-          <div className="rag-status-card">
-            <div className="label">Endpoint</div>
-            <div className="value">{status.url}</div>
-          </div>
-          <div className="rag-status-card">
-            <div className="label">Running</div>
-            <div className="value">{status.running ? 'Yes' : 'No'}</div>
-          </div>
-          <div className="rag-status-card">
-            <div className="label">Collections</div>
-            <div className="value">{status.collections_count ?? '—'}</div>
-          </div>
-          {status.version && (
-            <div className="rag-status-card">
-              <div className="label">Version</div>
-              <div className="value">{status.version}</div>
+      <div className="rag-tabs-nav">
+        <CoreUIPillTabs
+          tabs={RAG_TABS}
+          value={activeTab}
+          onChange={setActiveTab}
+        />
+      </div>
+
+      {activeTab === 'main' && (
+        <>
+          {status && (
+            <div className="rag-status-grid">
+              <div className="rag-status-card">
+                <div className="label">Endpoint</div>
+                <div className="value">{status.url}</div>
+              </div>
+              <div className="rag-status-card">
+                <div className="label">Running</div>
+                <div className="value">{status.running ? 'Yes' : 'No'}</div>
+              </div>
+              <div className="rag-status-card">
+                <div className="label">Collections</div>
+                <div className="value">{status.collections_count ?? '—'}</div>
+              </div>
+              {status.version && (
+                <div className="rag-status-card">
+                  <div className="label">Version</div>
+                  <div className="value">{status.version}</div>
+                </div>
+              )}
             </div>
+          )}
+
+          <section
+            className="rag-pipeline-overview-section"
+            aria-labelledby="rag-pipeline-overview-heading"
+          >
+            <h3 id="rag-pipeline-overview-heading" className="rag-pipeline-mirror-title">
+              RAG pipeline map (how it runs, in order)
+            </h3>
+            <p className="rag-pipeline-mirror-hint">
+              This is a <strong>static</strong> description of the server-side retrieval path: the same sequence applies to
+              every RAG-backed request; only the timings and which optional branches actually run change per call.{' '}
+              <strong>Highlighting</strong> reflects your current <strong>Models for RAG / Qdrant</strong> card (saved flags):{' '}
+              <span className="rag-pipeline-legend rag-pipeline-legend--core">always runs</span>
+              {' · '}
+              <span className="rag-pipeline-legend rag-pipeline-legend--on">optional, on</span>
+              {' · '}
+              <span className="rag-pipeline-legend rag-pipeline-legend--off">optional, off</span>
+              . Sub-badges (e.g. hybrid sparse, structured layout) apply on top of a core step. The live trace merges
+              gate/retry hints into <strong>Context assembly</strong>; this map lists every stage. For timings, use{' '}
+              <strong>Testing</strong> → Model Tester with <strong>Use RAG</strong>.
+            </p>
+            <RagPipelineOverview pipelineSettings={ragModelSettings} />
+          </section>
+
+          <section
+            className="rag-pipeline-mirror-section"
+            aria-labelledby="rag-pipeline-mirror-heading"
+          >
+            <h3 id="rag-pipeline-mirror-heading" className="rag-pipeline-mirror-title">
+              Last run timeline (with timings)
+            </h3>
+            <p className="rag-pipeline-mirror-hint">
+              Send a message in <strong>Testing</strong> → <strong>Model Tester</strong> with <strong>Use RAG</strong>{' '}
+              enabled. The live timeline appears there immediately; this card mirrors the <strong>most recent</strong>{' '}
+              captured trace (per-step latency and skip reasons when applicable).
+            </p>
+            {mirroredPipelineTrace?.steps?.length > 0 ? (
+              <RagTraceTimeline
+                steps={mirroredPipelineTrace.steps}
+                title="Last RAG pipeline"
+                totalLatencyMs={mirroredPipelineTrace.latencyMs ?? undefined}
+              />
+            ) : (
+              <p className="rag-pipeline-mirror-empty">
+                No trace yet — open Testing, enable Use RAG, send a message, then return here or stay on Testing to see
+                steps.
+              </p>
+            )}
+          </section>
+        </>
+      )}
+
+      {activeTab === 'settings' && (
+        <>
+          <Card
+            id="rag-qdrant-models-section"
+            className="rag-trigger-card"
+            aria-label="RAG embedding model settings"
+          >
+            <h3 className="rag-trigger-card-title">Embedding model (index + query)</h3>
+            <p className="rag-trigger-card-description">
+              Embedding model affects how chunks are encoded into Qdrant.
+              If you change the embedding model, you typically need to re-create Qdrant collections (vector dimension may differ).
+            </p>
+
+            <div className="rag-trigger-threshold-row">
+              <label className="rag-trigger-label" htmlFor="rag-embed-provider">Provider</label>
+              <select
+                id="rag-embed-provider"
+                className="rag-trigger-input"
+                value={ragModelSettings.rag_embed_provider_id}
+                onChange={(e) =>
+                  setRagModelSettings((prev) => ({
+                    ...prev,
+                    rag_embed_provider_id: e.target.value,
+                    rag_embed_model: '',
+                  }))
+                }
+                disabled={!embedProviders.length}
+              >
+                <option value="">
+                  Server default provider ({ragModelDefaults.rag_embed_provider_id || 'not configured'})
+                </option>
+                {embedProviders.map((provider) => (
+                  <option key={provider.provider_id} value={provider.provider_id}>
+                    {provider.title || provider.provider_id}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="rag-trigger-threshold-row">
+              <label className="rag-trigger-label" htmlFor="rag-embed-model">Model</label>
+              <select
+                id="rag-embed-model"
+                className="rag-trigger-input"
+                value={ragModelSettings.rag_embed_model}
+                onChange={(e) => setRagModelSettings((prev) => ({ ...prev, rag_embed_model: e.target.value }))
+                }
+                disabled={!filteredEmbedModels.length}
+              >
+                <option value="">
+                  Server default ({ragModelDefaults.rag_embed_model || 'not configured'})
+                </option>
+                {ragModelSettings.rag_embed_model &&
+                  !filteredEmbedModels.some((m) => m.id === ragModelSettings.rag_embed_model) && (
+                    <option value={ragModelSettings.rag_embed_model}>
+                      {ragModelSettings.rag_embed_model} (saved — not in current provider list)
+                    </option>
+                  )}
+                {filteredEmbedModels.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+            <p className="rag-trigger-hint rag-trigger-hint--tight">
+              Empty selection uses the server default above (from env <code>RAG_EMBED_MODEL</code> or{' '}
+              <code>config/models.yaml</code>).
+            </p>
+
+            <div className="rag-trigger-actions">
+              <button
+                type="button"
+                className="rag-button primary"
+                onClick={handleSaveRagModelSettings}
+                disabled={busy || ragModelSaving}
+              >
+                {ragModelSaving ? 'Saving…' : 'Save embedding settings'}
+              </button>
+              {ragModelSaveNotice && (
+                <p className={`rag-model-save-notice rag-model-save-notice--${ragModelSaveNotice.type}`}>
+                  {ragModelSaveNotice.text}
+                </p>
+              )}
+            </div>
+          </Card>
+
+          <Card className="rag-trigger-card" aria-label="Hybrid sparse settings">
+            <h3 className="rag-trigger-card-title">Hybrid sparse (dense + keyword)</h3>
+            <p className="rag-trigger-card-description">
+              One setting for both <strong>indexing new collections</strong> (writes dense + sparse vectors to Qdrant)
+              and <strong>retrieval</strong> (RRF fusion when the collection has sparse data).
+            </p>
+            <div className="rag-trigger-threshold-row">
+              <label className="rag-trigger-inline-check">
+                <input
+                  type="checkbox"
+                  id="rag-hybrid-sparse-enabled"
+                  checked={ragModelSettings.hybrid_sparse_enabled}
+                  onChange={(e) =>
+                    setRagModelSettings((prev) => ({ ...prev, hybrid_sparse_enabled: e.target.checked }))
+                  }
+                />
+                Enabled
+              </label>
+            </div>
+            <p className="rag-trigger-hint rag-trigger-hint--tight">
+              Turn off for legacy dense-only collections or to skip sparse encoding. Config default:{' '}
+              {ragModelDefaults.hybrid_sparse_enabled ? 'on' : 'off'} (from <code>retrieval.yaml</code> if never saved).
+            </p>
+            <div className="rag-trigger-actions">
+              <button
+                type="button"
+                className="rag-button primary"
+                onClick={handleSaveRagModelSettings}
+                disabled={busy || ragModelSaving}
+              >
+                {ragModelSaving ? 'Saving…' : 'Save hybrid settings'}
+              </button>
+              {ragModelSaveNotice && (
+                <p className={`rag-model-save-notice rag-model-save-notice--${ragModelSaveNotice.type}`}>
+                  {ragModelSaveNotice.text}
+                </p>
+              )}
+            </div>
+          </Card>
+
+          <Card className="rag-trigger-card" aria-label="Rerank model settings">
+            <h3 className="rag-trigger-card-title">Rerank for RAG</h3>
+            <p className="rag-trigger-card-description">
+              Rerank affects how retrieved chunks are ordered before they go into the final prompt.
+            </p>
+            <div className="rag-trigger-threshold-row">
+              <label className="rag-trigger-inline-check">
+                <input
+                  type="checkbox"
+                  checked={ragModelSettings.rerank_for_rag}
+                  onChange={(e) => setRagModelSettings((prev) => ({ ...prev, rerank_for_rag: e.target.checked }))}
+                />
+                Enabled
+              </label>
+            </div>
+
+            <div className="rag-trigger-threshold-row">
+              <label className="rag-trigger-label" htmlFor="rag-rerank-provider">Rerank provider</label>
+              <select
+                id="rag-rerank-provider"
+                className="rag-trigger-input"
+                value={ragModelSettings.rag_rerank_provider_id}
+                onChange={(e) =>
+                  setRagModelSettings((prev) => ({
+                    ...prev,
+                    rag_rerank_provider_id: e.target.value,
+                    rerank_model: '',
+                  }))
+                }
+                disabled={!rerankProviders.length}
+              >
+                <option value="">
+                  Server default provider ({ragModelDefaults.rag_rerank_provider_id || 'not configured'})
+                </option>
+                {rerankProviders.map((provider) => (
+                  <option key={provider.provider_id} value={provider.provider_id}>
+                    {provider.title || provider.provider_id}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="rag-trigger-threshold-row">
+              <label className="rag-trigger-label" htmlFor="rag-rerank-model">Rerank model</label>
+              <select
+                id="rag-rerank-model"
+                className="rag-trigger-input"
+                value={ragModelSettings.rerank_model}
+                onChange={(e) => setRagModelSettings((prev) => ({ ...prev, rerank_model: e.target.value }))
+                }
+                disabled={!filteredRerankModels.length}
+              >
+                <option value="">
+                  Server default ({ragModelDefaults.rerank_model || 'not configured'}) — used when rerank is enabled and no model is chosen
+                </option>
+                {ragModelSettings.rerank_model &&
+                  !filteredRerankModels.some((m) => m.id === ragModelSettings.rerank_model) && (
+                    <option value={ragModelSettings.rerank_model}>
+                      {ragModelSettings.rerank_model} (saved — not in current provider list)
+                    </option>
+                  )}
+                {filteredRerankModels.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+            <p className="rag-trigger-hint rag-trigger-hint--tight">
+              Empty selection uses the server default above (from env <code>RAG_RERANK_MODEL</code> or{' '}
+              <code>config/models.yaml</code>).
+            </p>
+            <div className="rag-trigger-actions">
+              <button
+                type="button"
+                className="rag-button primary"
+                onClick={handleSaveRagModelSettings}
+                disabled={busy || ragModelSaving}
+              >
+                {ragModelSaving ? 'Saving…' : 'Save rerank settings'}
+              </button>
+              {ragModelSaveNotice && (
+                <p className={`rag-model-save-notice rag-model-save-notice--${ragModelSaveNotice.type}`}>
+                  {ragModelSaveNotice.text}
+                </p>
+              )}
+            </div>
+          </Card>
+
+          <Card className="rag-trigger-card" aria-label="Advanced retrieval options">
+            <h3 className="rag-trigger-card-title">Advanced retrieval options</h3>
+            <p className="rag-adv-retrieval-intro">
+              Fine-tune how the RAG pipeline selects and formats context. These settings are saved to your local profile and override <code>retrieval.yaml</code> defaults.
+            </p>
+            <div className="rag-adv-options-list">
+              {ADVANCED_RETRIEVAL_OPTIONS.map((opt) => (
+                <div key={opt.key} className="rag-adv-option">
+                  <div className="rag-adv-option-head">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(ragModelSettings[opt.key])}
+                        onChange={(e) =>
+                          setRagModelSettings((prev) => ({ ...prev, [opt.key]: e.target.checked }))
+                        }
+                      />
+                      {opt.label}
+                    </label>
+                    <span className={`rag-adv-cost rag-adv-cost--${opt.cost}`}>
+                      {opt.costLabel}
+                    </span>
+                  </div>
+                  <div className="rag-adv-option-body">
+                    {opt.lines.map((line, i) => (
+                      <span key={i} className="rag-adv-option-line">
+                        <strong>{line.tag}:</strong> {line.text}
+                      </span>
+                    ))}
+                    <span className="rag-adv-yaml-hint">
+                      YAML default: {retrievalYamlDefaults[opt.key] ? 'on' : 'off'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="rag-trigger-actions">
+              <button
+                type="button"
+                className="rag-button primary"
+                onClick={handleSaveRagModelSettings}
+                disabled={busy || ragModelSaving}
+              >
+                {ragModelSaving ? 'Saving…' : 'Save advanced options'}
+              </button>
+              {ragModelSaveNotice && (
+                <p className={`rag-model-save-notice rag-model-save-notice--${ragModelSaveNotice.type}`}>
+                  {ragModelSaveNotice.text}
+                </p>
+              )}
+            </div>
+          </Card>
+
+
+          <section
+            id="rag-consumer-bindings-section"
+            className="rag-service-bindings-card"
+            aria-labelledby="rag-service-bindings-heading"
+          >
+            <h3 id="rag-service-bindings-heading">Service bindings</h3>
+            <p className="rag-service-bindings-intro">
+              Choose which Qdrant collection each runtime consumer uses. Empty selection means the server config default (
+              <code>qdrant.collection_name</code>).
+            </p>
+            {bindingsNotice && (
+              <p
+                className={
+                  bindingsNotice.type === 'error' ? 'rag-service-bindings-notice error' : 'rag-service-bindings-notice'
+                }
+                role={bindingsNotice.type === 'error' ? 'alert' : 'status'}
+              >
+                {bindingsNotice.text}
+              </p>
+            )}
+            <div className="rag-service-bindings-grid">
+              <div className="rag-service-binding-row">
+                <label className="rag-service-binding-label" htmlFor="rag-binding-llm-proxy">
+                  LLM Proxy (OpenAI / Anthropic RAG)
+                </label>
+                <div className="rag-service-binding-controls">
+                  <select
+                    id="rag-binding-llm-proxy"
+                    className="rag-service-binding-select"
+                    value={
+                      qdrantCollectionNames.length > 0 && qdrantCollectionNames.includes((llmProxyRagSelect || '').trim())
+                        ? llmProxyRagSelect
+                        : ''
+                    }
+                    onChange={(e) => setLlmProxyRagSelect(e.target.value)}
+                    disabled={collections.length === 0}
+                    aria-label="Qdrant collection for LLM Proxy"
+                  >
+                    <option value="">
+                      {collections.length === 0
+                        ? 'No collections — create one below or crawl/index first'
+                        : 'Config default'}
+                    </option>
+                    {collections.map((col) => (
+                      <option key={col.name} value={col.name}>
+                        {col.name}
+                        {col.points_count != null ? ` (${col.points_count} vectors)` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="rag-button primary"
+                    onClick={saveLlmProxyRagBinding}
+                    disabled={savingLlmRagBinding || busy}
+                  >
+                    {savingLlmRagBinding ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+                {(llmProxyRagSelect || '').trim() &&
+                  qdrantCollectionNames.length > 0 &&
+                  !qdrantCollectionNames.includes((llmProxyRagSelect || '').trim()) && (
+                    <p className="rag-service-binding-stale">
+                      Database has <code>{llmProxyRagSelect}</code> (not in current Qdrant list) — pick a listed collection or
+                      clear to default.
+                    </p>
+                  )}
+              </div>
+            </div>
+          </section>
+
+
+          <Card
+            className="rag-keywords-card"
+            role="button"
+            tabIndex={0}
+            onClick={() => setSheetOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setSheetOpen(true);
+              }
+            }}
+            elevateOnHover
+            aria-label="Manage keywords that trigger RAG search"
+          >
+            <h3 className="rag-keywords-card-title">Keywords that trigger RAG search</h3>
+            <div className="rag-keywords-collections-row">
+              {keywordCollections.filter((c) => c.enabled).length === 0 ? (
+                <span className="rag-keywords-collections-empty">No active collections</span>
+              ) : (
+                keywordCollections
+                  .filter((c) => c.enabled)
+                  .map((c) => (
+                    <div key={c.id} className="rag-keywords-collection-chip">
+                      <span className="rag-keywords-collection-chip-name">{c.name}:</span>
+                      <span className="rag-keywords-collection-chip-meta">
+                        {(c.keywords || []).length} word{(c.keywords || []).length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  ))
+              )}
+            </div>
+            <p className="rag-keywords-card-description">
+              Matching is case-insensitive: the user query is compared in lower case.
+              RAG is also triggered by technical signals (e.g. CamelCase, code blocks, technical phrases) when the trigger score is high enough.
+            </p>
+            {overlappingWords.length > 0 && (
+              <div className="rag-keywords-card-warning">
+                Duplicated in collections: {overlappingWords.join(', ')}
+              </div>
+            )}
+            <button
+              type="button"
+              className="rag-button primary rag-keywords-card-action"
+              onClick={(e) => { e.stopPropagation(); setSheetOpen(true); }}
+            >
+              Manage keywords
+            </button>
+          </Card>
+
+          <Card className="rag-trigger-card" elevation="var(--md-sys-elevation-level1)">
+            <h3 className="rag-trigger-card-title">RAG trigger threshold</h3>
+            <p className="rag-trigger-card-description">
+              RAG runs when the message score is at least this value. Score is the sum of signals below.
+            </p>
+            <div className="rag-trigger-threshold-row">
+              <label className="rag-trigger-label" htmlFor="rag-trigger-threshold">
+                Threshold
+              </label>
+              <input
+                id="rag-trigger-threshold"
+                type="number"
+                min={0}
+                max={20}
+                value={triggerThresholdDraft}
+                onChange={(e) => setTriggerThresholdDraft(e.target.value)}
+                className="rag-trigger-input"
+                aria-describedby="rag-trigger-threshold-desc"
+              />
+              <button
+                type="button"
+                className="rag-button primary"
+                onClick={handleSaveTriggerThreshold}
+                disabled={
+                  triggerSaving ||
+                  (() => {
+                    const v = parseInt(triggerThresholdDraft, 10);
+                    const valid = !Number.isNaN(v) && v >= 0 && v <= 20;
+                    const unchanged = String(triggerSettings?.rag_trigger_threshold ?? '') === triggerThresholdDraft;
+                    return !valid || unchanged;
+                  })()
+                }
+              >
+                {triggerSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            <p id="rag-trigger-threshold-desc" className="rag-trigger-hint">
+              Value 0–20. Saved in app settings (overrides config).
+            </p>
+            <div className="rag-trigger-table-wrap">
+              <table className="rag-trigger-table" aria-label="How trigger score is computed">
+                <thead>
+                  <tr>
+                    <th>Signal</th>
+                    <th>Points</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(triggerSettings?.trigger_help_table || []).map((row, i) => (
+                    <tr key={i}>
+                      <td>{row.signal}</td>
+                      <td>{row.points}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="rag-trigger-test">
+              <h4 className="rag-trigger-test-title">Test message</h4>
+              <p className="rag-trigger-test-desc">Enter a message to see whether it would trigger RAG.</p>
+              <textarea
+                className="rag-trigger-test-input"
+                value={triggerTestMessage}
+                onChange={(e) => setTriggerTestMessage(e.target.value)}
+                placeholder="e.g. How does SwiftUI work?"
+                rows={2}
+                aria-label="Message to test RAG trigger"
+              />
+              <button
+                type="button"
+                className="rag-button primary"
+                onClick={handleCheckTrigger}
+                disabled={triggerTestLoading}
+              >
+                {triggerTestLoading ? 'Checking…' : 'Check'}
+              </button>
+              {triggerTestResult != null && (
+                <div className="rag-trigger-test-result" role="status">
+                  <p className="rag-trigger-test-summary">
+                    <strong>RAG {triggerTestResult.triggered ? 'will run' : 'will not run'}</strong>
+                    {' — '}
+                    score <strong>{triggerTestResult.score}</strong>
+                    {triggerTestResult.signals?.length > 0
+                      ? ` (${triggerTestResult.signals.join(', ')})`
+                      : ''}
+                    , threshold {triggerTestResult.threshold}.
+                  </p>
+                </div>
+              )}
+            </div>
+          </Card>
+
+          <Card className="rag-trigger-card" elevation="var(--md-sys-elevation-level1)">
+            <h3 className="rag-trigger-card-title">Framework docs versioning</h3>
+            <p className="rag-trigger-card-description">
+              Configure how long the latest framework documentation collections (e.g. Alamofire_x.m.n_latest) stay fresh
+              before being re-fetched and re-indexed.
+            </p>
+            <div className="rag-trigger-threshold-row">
+              <label className="rag-trigger-label" htmlFor="framework-latest-ttl-days">
+                Latest TTL (days)
+              </label>
+              <input
+                id="framework-latest-ttl-days"
+                type="number"
+                min={1}
+                max={3650}
+                value={frameworkTtlDraft}
+                onChange={(e) => setFrameworkTtlDraft(e.target.value)}
+                className="rag-trigger-input"
+              />
+              <button
+                type="button"
+                className="rag-button primary"
+                onClick={handleSaveFrameworkSettings}
+                disabled={busy || savingFrameworkSettings}
+              >
+                {savingFrameworkSettings ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {activeTab === 'collections' && (
+        <div className="rag-collections">
+          <div className="collections-header">
+            <h3>Collections</h3>
+          </div>
+          {loading ? (
+            <div className="loading">Checking Qdrant status...</div>
+          ) : !collections.length ? (
+            <div className="empty-state">No collections found or Qdrant is not reachable.</div>
+          ) : (
+            <>
+              <table className="collections-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Vectors</th>
+                    <th>Segments</th>
+                    <th>Shards</th>
+                    <th>Replication</th>
+                    <th>Vectors Config</th>
+                    <th>On Disk</th>
+                    <th>Framework</th>
+                    <th>Version</th>
+                    <th>Last refreshed</th>
+                    <th>Type</th>
+                    <th>Age vs TTL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {collections.map((col) => {
+                    const isFramework = Boolean(col.framework_id);
+                    const isLatest = isFramework && typeof col.name === 'string' && col.name.endsWith('_latest');
+                    const ttlDays = frameworkSettings?.framework_latest_ttl_days ?? 90;
+                    let ageLabel = '—';
+                    if (col.last_refreshed_at && ttlDays && ttlDays > 0) {
+                      const refreshed = new Date(col.last_refreshed_at);
+                      if (!Number.isNaN(refreshed.getTime())) {
+                        const now = new Date();
+                        const diffMs = now - refreshed;
+                        const ageDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                        ageLabel = `${ageDays}d / ${ttlDays}d${ageDays > ttlDays ? ' (stale)' : ''}`;
+                      }
+                    }
+                    return (
+                      <tr key={col.name}>
+                        <td>{col.name}</td>
+                        <td>{col.points_count ?? '—'}</td>
+                        <td>{col.segments_count ?? '—'}</td>
+                        <td>{col.shards_count ?? '—'}</td>
+                        <td>{col.replication_factor ?? '—'}</td>
+                        <td>
+                          {col.vectors_config ? (
+                            <div className="vectors-config">
+                              <span className="vector-badge">{col.vectors_config.name || 'Default'}</span>
+                              <span className="vector-badge">{col.vectors_config.size}</span>
+                              <span className="vector-badge">{col.vectors_config.distance || '—'}</span>
+                            </div>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td>{col.on_disk ? 'Yes' : 'No'}</td>
+                        <td>{col.framework_id || '—'}</td>
+                        <td>{col.version || '—'}</td>
+                        <td>{col.last_refreshed_at || '—'}</td>
+                        <td>{isFramework ? (isLatest ? 'Latest' : 'Archive') : '—'}</td>
+                        <td>{isFramework ? ageLabel : '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <p className="rag-trigger-hint rag-trigger-hint--offset">
+                Collections with a framework id come from external framework docs. Rows marked as
+                {' '}
+                <strong>Latest</strong>
+                {' '}
+                (e.g. Alamofire_x.m.n_latest) are refreshed automatically when their age exceeds the configured TTL.
+              </p>
+            </>
           )}
         </div>
       )}
 
-      <section
-        className="rag-pipeline-overview-section"
-        aria-labelledby="rag-pipeline-overview-heading"
-      >
-        <h3 id="rag-pipeline-overview-heading" className="rag-pipeline-mirror-title">
-          RAG pipeline map (how it runs, in order)
-        </h3>
-        <p className="rag-pipeline-mirror-hint">
-          This is a <strong>static</strong> description of the server-side retrieval path: the same sequence applies to
-          every RAG-backed request; only the timings and which optional branches actually run change per call.{' '}
-          <strong>Highlighting</strong> reflects your current <strong>Models for RAG / Qdrant</strong> card (saved flags):{' '}
-          <span className="rag-pipeline-legend rag-pipeline-legend--core">always runs</span>
-          {' · '}
-          <span className="rag-pipeline-legend rag-pipeline-legend--on">optional, on</span>
-          {' · '}
-          <span className="rag-pipeline-legend rag-pipeline-legend--off">optional, off</span>
-          . Sub-badges (e.g. hybrid sparse, structured layout) apply on top of a core step. The live trace merges
-          gate/retry hints into <strong>Context assembly</strong>; this map lists every stage. For timings, use{' '}
-          <strong>Testing</strong> → Model Tester with <strong>Use RAG</strong>.
-        </p>
-        <RagPipelineOverview pipelineSettings={ragModelSettings} />
-      </section>
-
-      <section
-        className="rag-pipeline-mirror-section"
-        aria-labelledby="rag-pipeline-mirror-heading"
-      >
-        <h3 id="rag-pipeline-mirror-heading" className="rag-pipeline-mirror-title">
-          Last run timeline (with timings)
-        </h3>
-        <p className="rag-pipeline-mirror-hint">
-          Send a message in <strong>Testing</strong> → <strong>Model Tester</strong> with <strong>Use RAG</strong>{' '}
-          enabled. The live timeline appears there immediately; this card mirrors the <strong>most recent</strong>{' '}
-          captured trace (per-step latency and skip reasons when applicable).
-        </p>
-        {mirroredPipelineTrace?.steps?.length > 0 ? (
-          <RagTraceTimeline
-            steps={mirroredPipelineTrace.steps}
-            title="Last RAG pipeline"
-            totalLatencyMs={mirroredPipelineTrace.latencyMs ?? undefined}
-          />
-        ) : (
-          <p className="rag-pipeline-mirror-empty">
-            No trace yet — open Testing, enable Use RAG, send a message, then return here or stay on Testing to see
-            steps.
-          </p>
-        )}
-      </section>
-
-      <section
-        id="rag-consumer-bindings-section"
-        className="rag-service-bindings-card"
-        aria-labelledby="rag-service-bindings-heading"
-      >
-        <h3 id="rag-service-bindings-heading">Service bindings</h3>
-        <p className="rag-service-bindings-intro">
-          Choose which Qdrant collection each runtime consumer uses. Empty selection means the server config default (
-          <code>qdrant.collection_name</code>).
-        </p>
-        {bindingsNotice && (
-          <p
-            className={
-              bindingsNotice.type === 'error' ? 'rag-service-bindings-notice error' : 'rag-service-bindings-notice'
-            }
-            role={bindingsNotice.type === 'error' ? 'alert' : 'status'}
-          >
-            {bindingsNotice.text}
-          </p>
-        )}
-        <div className="rag-service-bindings-grid">
-          <div className="rag-service-binding-row">
-            <label className="rag-service-binding-label" htmlFor="rag-binding-llm-proxy">
-              LLM Proxy (OpenAI / Anthropic RAG)
-            </label>
-            <div className="rag-service-binding-controls">
-              <select
-                id="rag-binding-llm-proxy"
-                className="rag-service-binding-select"
-                value={
-                  qdrantCollectionNames.length > 0 && qdrantCollectionNames.includes((llmProxyRagSelect || '').trim())
-                    ? llmProxyRagSelect
-                    : ''
-                }
-                onChange={(e) => setLlmProxyRagSelect(e.target.value)}
-                disabled={collections.length === 0}
-                aria-label="Qdrant collection for LLM Proxy"
-              >
-                <option value="">
-                  {collections.length === 0
-                    ? 'No collections — create one below or crawl/index first'
-                    : 'Config default'}
-                </option>
-                {collections.map((col) => (
-                  <option key={col.name} value={col.name}>
-                    {col.name}
-                    {col.points_count != null ? ` (${col.points_count} vectors)` : ''}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="rag-button primary"
-                onClick={saveLlmProxyRagBinding}
-                disabled={savingLlmRagBinding || busy}
-              >
-                {savingLlmRagBinding ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-            {(llmProxyRagSelect || '').trim() &&
-              qdrantCollectionNames.length > 0 &&
-              !qdrantCollectionNames.includes((llmProxyRagSelect || '').trim()) && (
-                <p className="rag-service-binding-stale">
-                  Database has <code>{llmProxyRagSelect}</code> (not in current Qdrant list) — pick a listed collection or
-                  clear to default.
-                </p>
-              )}
-          </div>
-        </div>
-      </section>
-
-      <PipelineCiDiagram
-        data={pipelineMerged}
-        title="LLM proxy pipeline (RAG + supplements)"
-        subtitle="Green stages are enabled with current settings; gray are off. Unsaved hybrid/rerank toggles below update this row live. Web and GitHub flags are edited under LLM Proxy → Web interaction."
-      />
-
-      <Card
-        className="rag-keywords-card"
-        role="button"
-        tabIndex={0}
-        onClick={() => setSheetOpen(true)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setSheetOpen(true);
-          }
-        }}
-        elevateOnHover
-        aria-label="Manage keywords that trigger RAG search"
-      >
-        <h3 className="rag-keywords-card-title">Keywords that trigger RAG search</h3>
-        <div className="rag-keywords-collections-row">
-          {keywordCollections.filter((c) => c.enabled).length === 0 ? (
-            <span className="rag-keywords-collections-empty">No active collections</span>
-          ) : (
-            keywordCollections
-              .filter((c) => c.enabled)
-              .map((c) => (
-                <div key={c.id} className="rag-keywords-collection-chip">
-                  <span className="rag-keywords-collection-chip-name">{c.name}:</span>
-                  <span className="rag-keywords-collection-chip-meta">
-                    {(c.keywords || []).length} word{(c.keywords || []).length !== 1 ? 's' : ''}
-                  </span>
-                </div>
-              ))
-          )}
-        </div>
-        <p className="rag-keywords-card-description">
-          Matching is case-insensitive: the user query is compared in lower case.
-          RAG is also triggered by technical signals (e.g. CamelCase, code blocks, technical phrases) when the trigger score is high enough.
-        </p>
-        {overlappingWords.length > 0 && (
-          <div className="rag-keywords-card-warning">
-            Duplicated in collections: {overlappingWords.join(', ')}
-          </div>
-        )}
-        <button
-          type="button"
-          className="rag-button primary rag-keywords-card-action"
-          onClick={(e) => { e.stopPropagation(); setSheetOpen(true); }}
-        >
-          Manage keywords
-        </button>
-      </Card>
-
-      <Card className="rag-trigger-card" elevation="var(--md-sys-elevation-level1)">
-        <h3 className="rag-trigger-card-title">RAG trigger threshold</h3>
-        <p className="rag-trigger-card-description">
-          RAG runs when the message score is at least this value. Score is the sum of signals below.
-        </p>
-        <div className="rag-trigger-threshold-row">
-          <label className="rag-trigger-label" htmlFor="rag-trigger-threshold">
-            Threshold
-          </label>
-          <input
-            id="rag-trigger-threshold"
-            type="number"
-            min={0}
-            max={20}
-            value={triggerThresholdDraft}
-            onChange={(e) => setTriggerThresholdDraft(e.target.value)}
-            className="rag-trigger-input"
-            aria-describedby="rag-trigger-threshold-desc"
-          />
-          <button
-            type="button"
-            className="rag-button primary"
-            onClick={handleSaveTriggerThreshold}
-            disabled={
-              triggerSaving ||
-              (() => {
-                const v = parseInt(triggerThresholdDraft, 10);
-                const valid = !Number.isNaN(v) && v >= 0 && v <= 20;
-                const unchanged = String(triggerSettings?.rag_trigger_threshold ?? '') === triggerThresholdDraft;
-                return !valid || unchanged;
-              })()
-            }
-          >
-            {triggerSaving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-        <p id="rag-trigger-threshold-desc" className="rag-trigger-hint">
-          Value 0–20. Saved in app settings (overrides config).
-        </p>
-        <div className="rag-trigger-table-wrap">
-          <table className="rag-trigger-table" aria-label="How trigger score is computed">
-            <thead>
-              <tr>
-                <th>Signal</th>
-                <th>Points</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(triggerSettings?.trigger_help_table || []).map((row, i) => (
-                <tr key={i}>
-                  <td>{row.signal}</td>
-                  <td>{row.points}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="rag-trigger-test">
-          <h4 className="rag-trigger-test-title">Test message</h4>
-          <p className="rag-trigger-test-desc">Enter a message to see whether it would trigger RAG.</p>
-          <textarea
-            className="rag-trigger-test-input"
-            value={triggerTestMessage}
-            onChange={(e) => setTriggerTestMessage(e.target.value)}
-            placeholder="e.g. How does SwiftUI work?"
-            rows={2}
-            aria-label="Message to test RAG trigger"
-          />
-          <button
-            type="button"
-            className="rag-button primary"
-            onClick={handleCheckTrigger}
-            disabled={triggerTestLoading}
-          >
-            {triggerTestLoading ? 'Checking…' : 'Check'}
-          </button>
-          {triggerTestResult != null && (
-            <div className="rag-trigger-test-result" role="status">
-              <p className="rag-trigger-test-summary">
-                <strong>RAG {triggerTestResult.triggered ? 'will run' : 'will not run'}</strong>
-                {' — '}
-                score <strong>{triggerTestResult.score}</strong>
-                {triggerTestResult.signals?.length > 0
-                  ? ` (${triggerTestResult.signals.join(', ')})`
-                  : ''}
-                , threshold {triggerTestResult.threshold}.
-              </p>
-            </div>
-          )}
-        </div>
-      </Card>
-
-      <Card className="rag-trigger-card" elevation="var(--md-sys-elevation-level1)">
-        <h3 className="rag-trigger-card-title">Framework docs versioning</h3>
-        <p className="rag-trigger-card-description">
-          Configure how long the latest framework documentation collections (e.g. Alamofire_x.m.n_latest) stay fresh
-          before being re-fetched and re-indexed.
-        </p>
-        <div className="rag-trigger-threshold-row">
-          <label className="rag-trigger-label" htmlFor="framework-latest-ttl-days">
-            Latest TTL (days)
-          </label>
-          <input
-            id="framework-latest-ttl-days"
-            type="number"
-            min={1}
-            max={3650}
-            value={frameworkTtlDraft}
-            onChange={(e) => setFrameworkTtlDraft(e.target.value)}
-            className="rag-trigger-input"
-            aria-describedby="framework-latest-ttl-days-desc"
-          />
-          <button
-            type="button"
-            className="rag-button primary"
-            onClick={handleSaveFrameworkSettings}
-            disabled={
-              frameworkSettingsSaving ||
-              (() => {
-                const v = parseInt(frameworkTtlDraft, 10);
-                const valid = !Number.isNaN(v) && v >= 1 && v <= 3650;
-                const unchanged =
-                  String(frameworkSettings?.framework_latest_ttl_days ?? '') === frameworkTtlDraft;
-                return !valid || unchanged;
-              })()
-            }
-          >
-            {frameworkSettingsSaving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-        <p id="framework-latest-ttl-days-desc" className="rag-trigger-hint">
-          Value 1–3650 days. Controls when Alamofire_x.m.n_latest and similar collections will be refreshed from
-          GitHub (default 90 days).
-        </p>
-      </Card>
-
-      <div
-        id="rag-qdrant-models-section"
-        className="rag-trigger-card"
-        aria-label="RAG embedding and rerank model settings"
-      >
-        <h3 className="rag-trigger-card-title">Models for RAG / Qdrant</h3>
-        <p className="rag-trigger-card-description">
-          Embedding model affects how chunks are encoded into Qdrant. Rerank affects how retrieved chunks are ordered
-          before they go into the final prompt.
-        </p>
-
-        <div className="rag-trigger-test rag-trigger-test--first">
-          <h4 className="rag-trigger-test-title rag-trigger-test-title--compact">Embedding model (index + query)</h4>
-          <div className="rag-trigger-threshold-row">
-            <label className="rag-trigger-label" htmlFor="rag-embed-provider">Provider</label>
-            <select
-              id="rag-embed-provider"
-              className="rag-trigger-input"
-              value={ragModelSettings.rag_embed_provider_id}
-              onChange={(e) =>
-                setRagModelSettings((prev) => ({
-                  ...prev,
-                  rag_embed_provider_id: e.target.value,
-                  rag_embed_model: '',
-                }))
-              }
-              disabled={!embedProviders.length}
-            >
-              <option value="">
-                Server default provider ({ragModelDefaults.rag_embed_provider_id || 'not configured'})
-              </option>
-              {embedProviders.map((provider) => (
-                <option key={provider.provider_id} value={provider.provider_id}>
-                  {provider.title || provider.provider_id}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="rag-trigger-threshold-row">
-            <label className="rag-trigger-label" htmlFor="rag-embed-model">Model</label>
-            <select
-              id="rag-embed-model"
-              className="rag-trigger-input"
-              value={ragModelSettings.rag_embed_model}
-              onChange={(e) => setRagModelSettings((prev) => ({ ...prev, rag_embed_model: e.target.value }))}
-              disabled={!filteredEmbedModels.length}
-            >
-              <option value="">
-                Server default ({ragModelDefaults.rag_embed_model || 'not configured'})
-              </option>
-              {ragModelSettings.rag_embed_model &&
-                !filteredEmbedModels.some((m) => m.id === ragModelSettings.rag_embed_model) && (
-                  <option value={ragModelSettings.rag_embed_model}>
-                    {ragModelSettings.rag_embed_model} (saved — not in current provider list)
-                  </option>
-                )}
-              {filteredEmbedModels.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
-          </div>
-          <p className="rag-trigger-hint rag-trigger-hint--tight">
-            Empty selection uses the server default above (from env <code>RAG_EMBED_MODEL</code> or{' '}
-            <code>config/models.yaml</code>).
-            If you change the embedding model, you typically need to re-create Qdrant collections (vector dimension may
-            differ).
-          </p>
-
-          <div className="rag-trigger-spacer" />
-
-          <h4 className="rag-trigger-test-title rag-trigger-test-title--compact">Hybrid sparse (dense + keyword)</h4>
-          <div className="rag-trigger-threshold-row">
-            <label className="rag-trigger-inline-check">
-              <input
-                type="checkbox"
-                id="rag-hybrid-sparse-enabled"
-                checked={ragModelSettings.hybrid_sparse_enabled}
-                onChange={(e) =>
-                  setRagModelSettings((prev) => ({ ...prev, hybrid_sparse_enabled: e.target.checked }))
-                }
-              />
-              Enabled
-            </label>
-          </div>
-          <p className="rag-trigger-hint rag-trigger-hint--tight">
-            One setting for both <strong>indexing new collections</strong> (writes dense + sparse vectors to Qdrant)
-            and <strong>retrieval</strong> (RRF fusion when the collection has sparse data). Turn off for legacy
-            dense-only collections or to skip sparse encoding. Config default:{' '}
-            {ragModelDefaults.hybrid_sparse_enabled ? 'on' : 'off'} (from <code>retrieval.yaml</code> if never saved).
-          </p>
-
-          <div className="rag-trigger-spacer" />
-
-          <h4 className="rag-trigger-test-title rag-trigger-test-title--compact">Rerank for RAG</h4>
-          <div className="rag-trigger-threshold-row">
-            <label className="rag-trigger-inline-check">
-              <input
-                type="checkbox"
-                checked={ragModelSettings.rerank_for_rag}
-                onChange={(e) => setRagModelSettings((prev) => ({ ...prev, rerank_for_rag: e.target.checked }))}
-              />
-              Enabled
-            </label>
-          </div>
-
-          <div className="rag-trigger-threshold-row">
-            <label className="rag-trigger-label" htmlFor="rag-rerank-provider">Rerank provider</label>
-            <select
-              id="rag-rerank-provider"
-              className="rag-trigger-input"
-              value={ragModelSettings.rag_rerank_provider_id}
-              onChange={(e) =>
-                setRagModelSettings((prev) => ({
-                  ...prev,
-                  rag_rerank_provider_id: e.target.value,
-                  rerank_model: '',
-                }))
-              }
-              disabled={!rerankProviders.length}
-            >
-              <option value="">
-                Server default provider ({ragModelDefaults.rag_rerank_provider_id || 'not configured'})
-              </option>
-              {rerankProviders.map((provider) => (
-                <option key={provider.provider_id} value={provider.provider_id}>
-                  {provider.title || provider.provider_id}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="rag-trigger-threshold-row">
-            <label className="rag-trigger-label" htmlFor="rag-rerank-model">Rerank model</label>
-            <select
-              id="rag-rerank-model"
-              className="rag-trigger-input"
-              value={ragModelSettings.rerank_model}
-              onChange={(e) => setRagModelSettings((prev) => ({ ...prev, rerank_model: e.target.value }))}
-              disabled={!filteredRerankModels.length}
-            >
-              <option value="">
-                Server default ({ragModelDefaults.rerank_model || 'not configured'}) — used when rerank is enabled and no model is chosen
-              </option>
-              {ragModelSettings.rerank_model &&
-                !filteredRerankModels.some((m) => m.id === ragModelSettings.rerank_model) && (
-                  <option value={ragModelSettings.rerank_model}>
-                    {ragModelSettings.rerank_model} (saved — not in current provider list)
-                  </option>
-                )}
-              {filteredRerankModels.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <p className="rag-trigger-hint rag-trigger-hint--tight">
-            You can pick a rerank model even when Enabled is off; it is used only after you turn rerank on. Enabled
-            rerank improves quality but slows down requests — prefer a dedicated (smaller) rerank model.
-          </p>
-
-          <div className="rag-trigger-spacer rag-trigger-spacer--lg" />
-
-          <h4 className="rag-trigger-test-title rag-trigger-test-title--compact">
-            Retrieval quality &amp; coverage
-          </h4>
-          <p className="rag-adv-retrieval-intro">
-            Stored in proxy settings; they override <code>retrieval.yaml</code> on this server. Listed{' '}
-            <strong>cheapest → most expensive</strong> (badge on the right). Each row has a <strong>Pro</strong>{' '}
-            (why turn it on) and <strong>Con</strong> (price or risk). All default <strong>off</strong> in YAML until you
-            enable them here or in the file. Numeric thresholds stay in YAML only. Save with <strong>Save Models</strong>{' '}
-            together with embedding / hybrid / rerank.
-          </p>
-          {ADVANCED_RETRIEVAL_OPTIONS.map((opt) => (
-            <div key={opt.key} className="rag-adv-option">
-              <div className="rag-adv-option-head">
-                <label htmlFor={`rag-adv-${opt.key}`}>
-                  <input
-                    id={`rag-adv-${opt.key}`}
-                    type="checkbox"
-                    checked={Boolean(ragModelSettings[opt.key])}
-                    onChange={(e) =>
-                      setRagModelSettings((prev) => ({ ...prev, [opt.key]: e.target.checked }))
-                    }
-                  />
-                  {opt.label}
-                </label>
-                <span className={`rag-adv-cost rag-adv-cost--${opt.cost}`}>{opt.costLabel}</span>
-              </div>
-              <div className="rag-adv-option-body">
-                {opt.lines.map((ln) => (
-                  <span key={ln.tag} className="rag-adv-option-line">
-                    <strong>{ln.tag}:</strong> {ln.text}
-                  </span>
-                ))}
-                <span className="rag-adv-yaml-hint">
-                  <code>retrieval.yaml</code> default:{' '}
-                  {retrievalYamlDefaults[opt.key] ? 'On' : 'Off'}
-                  {' '}
-                  (before any value saved here)
-                </span>
-              </div>
-            </div>
-          ))}
-
-          <div className="rag-trigger-actions">
-            <button
-              type="button"
-              className="rag-button primary"
-              onClick={handleSaveRagModelSettings}
-              disabled={ragModelSaving || busy}
-            >
-              {ragModelSaving ? 'Saving…' : 'Save Models'}
-            </button>
-            {ragModelSaveNotice?.type === 'success' && (
-              <p className="rag-model-save-notice rag-model-save-notice--success" role="status">
-                {ragModelSaveNotice.text}
-              </p>
-            )}
-            {ragModelSaveNotice?.type === 'error' && (
-              <p className="rag-model-save-notice rag-model-save-notice--error" role="alert">
-                {ragModelSaveNotice.text}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
       {error && <div className="rag-error">Error: {error}</div>}
 
-      <div className="rag-collections">
-        <div className="collections-header">
-          <h3>Collections</h3>
-        </div>
-        {loading ? (
-          <div className="loading">Checking Qdrant status...</div>
-        ) : !collections.length ? (
-          <div className="empty-state">No collections found or Qdrant is not reachable.</div>
-        ) : (
-          <>
-            <table className="collections-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Vectors</th>
-                  <th>Segments</th>
-                  <th>Shards</th>
-                  <th>Replication</th>
-                  <th>Vectors Config</th>
-                  <th>On Disk</th>
-                  <th>Framework</th>
-                  <th>Version</th>
-                  <th>Last refreshed</th>
-                  <th>Type</th>
-                  <th>Age vs TTL</th>
-                </tr>
-              </thead>
-              <tbody>
-                {collections.map((col) => {
-                  const isFramework = Boolean(col.framework_id);
-                  const isLatest = isFramework && typeof col.name === 'string' && col.name.endsWith('_latest');
-                  const ttlDays = frameworkSettings?.framework_latest_ttl_days ?? 90;
-                  let ageLabel = '—';
-                  if (col.last_refreshed_at && ttlDays && ttlDays > 0) {
-                    const refreshed = new Date(col.last_refreshed_at);
-                    if (!Number.isNaN(refreshed.getTime())) {
-                      const now = new Date();
-                      const diffMs = now - refreshed;
-                      const ageDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                      ageLabel = `${ageDays}d / ${ttlDays}d${ageDays > ttlDays ? ' (stale)' : ''}`;
-                    }
-                  }
-                  return (
-                    <tr key={col.name}>
-                      <td>{col.name}</td>
-                      <td>{col.points_count ?? '—'}</td>
-                      <td>{col.segments_count ?? '—'}</td>
-                      <td>{col.shards_count ?? '—'}</td>
-                      <td>{col.replication_factor ?? '—'}</td>
-                      <td>
-                        {col.vectors_config ? (
-                          <div className="vectors-config">
-                            <span className="vector-badge">{col.vectors_config.name || 'Default'}</span>
-                            <span className="vector-badge">{col.vectors_config.size}</span>
-                            <span className="vector-badge">{col.vectors_config.distance || '—'}</span>
-                          </div>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td>{col.on_disk ? 'Yes' : 'No'}</td>
-                      <td>{col.framework_id || '—'}</td>
-                      <td>{col.version || '—'}</td>
-                      <td>{col.last_refreshed_at || '—'}</td>
-                      <td>{isFramework ? (isLatest ? 'Latest' : 'Archive') : '—'}</td>
-                      <td>{isFramework ? ageLabel : '—'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <p className="rag-trigger-hint rag-trigger-hint--offset">
-              Collections with a framework id come from external framework docs. Rows marked as
-              {' '}
-              <strong>Latest</strong>
-              {' '}
-              (e.g. Alamofire_x.m.n_latest) are refreshed automatically when their age exceeds the configured TTL.
-            </p>
-          </>
-        )}
-      </div>
 
       {sheetOpen && (
         <div className="rag-sheet-overlay" onClick={() => setSheetOpen(false)}>

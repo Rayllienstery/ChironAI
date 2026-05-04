@@ -371,22 +371,40 @@ function CoreUIShowcaseTab() {
 
         <ShowcaseItem
           name="CoreUIPipelinePreview"
-          classes={[".coreui-pipeline-preview", ".coreui-pipeline-preview__item", ".coreui-pipeline-preview__item--active"]}
+          classes={[".coreui-pipeline-preview", ".coreui-pipeline-preview--animated", ".coreui-pipeline-preview__item"]}
           source={`${sourceRoot}/components/CoreUIPipelinePreview.jsx`}
-          description="Standardized vertical pipeline diagram for request flows, build steps, and multi-stage processes."
+          description="Standardized vertical pipeline diagram for request flows, build steps, and multi-stage processes. Supports staggered entrance animations."
         >
           <div style={{ maxWidth: '400px' }}>
-            <CoreUIPipelinePreview
-              steps={[
-                { id: '1', label: 'Parse / gate', description: 'Prepare request, resolve settings, and decide retrieval/supplement gates.', icon: 'login', active: true },
-                { id: '2', label: 'Vector RAG', description: 'Run RAG retrieval against the selected Qdrant collection when configured.', icon: 'database', active: true },
-                { id: '3', label: 'Hybrid sparse', description: 'Use dense+sparse retrieval fusion when hybrid sparse is enabled.', icon: 'vertical_align_top', active: true },
-                { id: '4', label: 'LLM rerank', description: 'Rerank retrieved chunks when rerank-for-rag is enabled.', icon: 'swap_vert', active: true },
-                { id: '5', label: 'Build context', description: 'Assemble final context block for prompt construction.', icon: 'build', active: true },
-                { id: '6', label: 'Agent skills', description: 'Attach skill/tool packs when enabled for proxy requests.', icon: 'extension', active: true },
-                { id: '7', label: 'Merged docs', description: 'Merge external docs retrieval (on-demand/discovery + RAG) when enabled.', icon: 'cloud_download', active: false },
-              ]}
-            />
+            <div style={{ marginBottom: '16px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button 
+                className="rag-button primary" 
+                onClick={() => {
+                  const el = document.getElementById('showcase-pipeline-demo');
+                  if (el) {
+                    const clone = el.cloneNode(true);
+                    el.parentNode.replaceChild(clone, el);
+                  }
+                }}
+              >
+                Replay Animation
+              </button>
+              <span style={{ fontSize: '12px', color: 'var(--md-sys-color-outline)' }}>
+                Uses <code>animated</code> prop + <code>key</code> trigger
+              </span>
+            </div>
+            <div id="showcase-pipeline-demo">
+              <CoreUIPipelinePreview
+                animated
+                steps={[
+                  { id: '1', label: 'Parse / gate', description: 'Prepare request, resolve settings, and decide retrieval/supplement gates.', icon: 'login', active: true, tone: 'success' },
+                  { id: '2', label: 'Vector RAG', description: 'Run RAG retrieval against the selected Qdrant collection when configured.', icon: 'database', active: true, tone: 'success' },
+                  { id: '3', label: 'Hybrid sparse', description: 'Use dense+sparse retrieval fusion when hybrid sparse is enabled.', icon: 'vertical_align_top', active: true, tone: 'info', badges: ['Hybrid On'] },
+                  { id: '4', label: 'LLM rerank', description: 'Rerank retrieved chunks when rerank-for-rag is enabled.', icon: 'swap_vert', active: false, tone: 'neutral' },
+                  { id: '5', label: 'Build context', description: 'Assemble final context block for prompt construction.', icon: 'build', active: true, tone: 'success' },
+                ]}
+              />
+            </div>
           </div>
         </ShowcaseItem>
       </ShowcaseSection>

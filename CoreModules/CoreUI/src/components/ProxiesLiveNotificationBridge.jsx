@@ -350,6 +350,30 @@ function payloadActiveTraces(proxyPayload) {
   return [];
 }
 
+function ragCollectionIssueFromTrace(trace) {
+  const issue = trace?.rag?.collection_issue;
+  if (!issue || typeof issue !== 'object') return null;
+  const code = nonEmptyString(issue.code) || 'rag_collection_issue';
+  const collection = nonEmptyString(issue.collection_name);
+  const source = nonEmptyString(issue.collection_source);
+  const message = nonEmptyString(issue.message) || 'Choose a Qdrant collection in RAG / Qdrant before using RAG.';
+  return {
+    code,
+    collection,
+    source,
+    title: nonEmptyString(issue.title) || 'RAG collection is not selected',
+    message,
+    aggregationKey: ['rag-collection', code, collection || source || 'default'].join(':'),
+    metadata: {
+      code,
+      collection_name: collection || null,
+      collection_source: source || null,
+      trace_id: nonEmptyString(trace?.trace_id) || null,
+      available_collections: Array.isArray(issue.available_collections) ? issue.available_collections : [],
+    },
+  };
+}
+
 /**
  * Polls LLM proxy trace; live card while busy, 7s wind-down then persist to History.
  */
@@ -376,6 +400,7 @@ export default function ProxiesLiveNotificationBridge({
   const llmWindDownGenRef = useRef(0);
   const prevProxySlotIdsRef = useRef(new Set());
   const llmWindDownTimersRef = useRef(new Map());
+  const notifiedCollectionIssuesRef = useRef(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -445,6 +470,28 @@ export default function ProxiesLiveNotificationBridge({
 
     prevActiveProxyTracesRef.current = nextActive;
   }, [proxyPayload, bumpLlmWindDowns, clearLiveSuppression]);
+
+  useEffect(() => {
+    if (!proxyPayload || !sessionId) return;
+    const traces = [
+      proxyPayload.trace,
+      ...(Array.isArray(proxyPayload.active_traces) ? proxyPayload.active_traces : []),
+    ].filter((trace) => trace && typeof trace === 'object');
+    traces.forEach((trace) => {
+      const issue = ragCollectionIssueFromTrace(trace);
+      if (!issue) return;
+      if (notifiedCollectionIssuesRef.current.has(issue.aggregationKey)) return;
+      notifiedCollectionIssuesRef.current.add(issue.aggregationKey);
+      void persistNotification({
+        kind: 'error',
+        source: 'rag-fusion-proxy',
+        title: issue.title,
+        message: issue.message,
+        metadata: issue.metadata,
+        aggregation_key: issue.aggregationKey,
+      });
+    });
+  }, [proxyPayload, sessionId, persistNotification]);
 
   useEffect(() => {
     const m = llmWindDownsRef.current;

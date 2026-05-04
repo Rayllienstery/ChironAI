@@ -18,8 +18,6 @@ import '../styles/components/SettingsTab.css';
 import '../styles/components/LlmProxyTab.css';
 import CoreUIPillTabs from './CoreUIPillTabs';
 
-const PipelineCiDiagram = lazy(() => import('./PipelineCiDiagram'));
-const CoreUIPipelineVerticalDiagram = lazy(() => import('./CoreUIPipelineVerticalDiagram'));
 
 const SECTION_TABS = [
   { id: 'builds', label: 'Builds' },
@@ -62,7 +60,6 @@ const WIZARD_STEPS = [
   { id: 'agent', label: 'Agent Proxy Mode', icon: 'terminal' },
   { id: 'parameters', label: 'Parameters', icon: 'tune' },
   { id: 'web', label: 'Web Knowledge', icon: 'language' },
-  { id: 'preview', label: 'Pipeline', icon: 'flowchart' },
 ];
 
 const PARAMETER_PREFABS = [
@@ -1643,86 +1640,6 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     </div>
                   </>
                 )}
-              </div>
-            )}
-
-            {/* ── Step 6: Pipeline Preview ── */}
-            {wizardStep === 6 && (
-              <div className="llm-proxy-wizard-step-panel">
-                <div className="llm-proxy-info-card">
-                  <h3 className="llm-proxy-info-card-title">
-                    <span className="llm-proxy-info-card-title-icon material-symbols-outlined" aria-hidden="true">flowchart</span>
-                    Pipeline preview
-                  </h3>
-                  <div className="llm-proxy-info-card-body">
-                    This diagram shows the full request pipeline for your build — from the incoming API request through
-                    RAG retrieval, web supplements, and the final LLM call. It reflects your current settings overlaid
-                    on the server defaults.
-                  </div>
-                </div>
-
-                <Suspense fallback={<div className="dashboard-card-muted">Loading pipeline diagram…</div>}>
-                  <CoreUIPipelineVerticalDiagram data={buildModalPipelineData} />
-                </Suspense>
-
-                <div className="llm-proxy-build-summary">
-                  <h3 className="llm-proxy-build-summary-title">
-                    <span className="material-symbols-outlined" aria-hidden="true">summarize</span>
-                    Build summary
-                  </h3>
-                  <div className="llm-proxy-build-summary-grid">
-                    <div className="llm-proxy-build-summary-row">
-                      <span className="llm-proxy-build-summary-key">Build id</span>
-                      <code className="llm-proxy-build-summary-val">{draft.id || '—'}</code>
-                    </div>
-                    <div className="llm-proxy-build-summary-row">
-                      <span className="llm-proxy-build-summary-key">Display name</span>
-                      <span className="llm-proxy-build-summary-val">{draft.display_name || '—'}</span>
-                    </div>
-                    <div className="llm-proxy-build-summary-row">
-                      <span className="llm-proxy-build-summary-key">Provider / model</span>
-                      <code className="llm-proxy-build-summary-val">{`${draft.provider_id || '—'} / ${draft.model || '—'}`}</code>
-                    </div>
-                    <div className="llm-proxy-build-summary-row">
-                      <span className="llm-proxy-build-summary-key">RAG</span>
-                      <span className={`llm-proxy-build-summary-val${draft.rag_enabled ? ' llm-proxy-build-summary-val--on' : ' llm-proxy-build-summary-val--off'}`}>
-                        {draft.rag_enabled ? 'Enabled' : 'Disabled'}{draft.rag_enabled && draft.rag_collection ? ` · ${draft.rag_collection}` : ''}
-                      </span>
-                    </div>
-                    <div className="llm-proxy-build-summary-row">
-                      <span className="llm-proxy-build-summary-key">Private</span>
-                      <span className={`llm-proxy-build-summary-val${draft.private ? ' llm-proxy-build-summary-val--on' : ' llm-proxy-build-summary-val--off'}`}>
-                        {draft.private ? 'On' : 'Off'}
-                      </span>
-                    </div>
-                    <div className="llm-proxy-build-summary-row">
-                      <span className="llm-proxy-build-summary-key">Web</span>
-                      <span className={`llm-proxy-build-summary-val${draft.web_enabled ? ' llm-proxy-build-summary-val--on' : ' llm-proxy-build-summary-val--off'}`}>
-                        {draft.web_enabled ? 'Enabled' : 'Disabled'}
-                      </span>
-                    </div>
-                    <div className="llm-proxy-build-summary-row">
-                      <span className="llm-proxy-build-summary-key">Temperature</span>
-                      <span className="llm-proxy-build-summary-val">{draft.temperature || 'Inherit'}</span>
-                    </div>
-                    <div className="llm-proxy-build-summary-row">
-                      <span className="llm-proxy-build-summary-key">Top P</span>
-                      <span className="llm-proxy-build-summary-val">{draft.top_p || 'Inherit'}</span>
-                    </div>
-                    <div className="llm-proxy-build-summary-row">
-                      <span className="llm-proxy-build-summary-key">num_ctx</span>
-                      <span className="llm-proxy-build-summary-val">{draft.num_ctx || 'Inherit'}</span>
-                    </div>
-                    <div className="llm-proxy-build-summary-row">
-                      <span className="llm-proxy-build-summary-key">num_predict</span>
-                      <span className="llm-proxy-build-summary-val">{draft.num_predict || '65536'}</span>
-                    </div>
-                    <div className="llm-proxy-build-summary-row">
-                      <span className="llm-proxy-build-summary-key">Max agent steps</span>
-                      <span className="llm-proxy-build-summary-val">{draft.max_agent_steps || 'Inherit'}</span>
-                    </div>
-                  </div>
-                </div>
               </div>
             )}
           </div>

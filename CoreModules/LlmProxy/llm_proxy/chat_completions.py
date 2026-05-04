@@ -12,6 +12,7 @@ import sqlite3
 import threading
 import time
 import uuid
+import urllib.request
 from datetime import datetime, timezone
 from collections.abc import Iterator
 from pathlib import Path
@@ -1573,6 +1574,89 @@ def _append_trace_warning(trace: dict[str, Any], code: str) -> None:
         warnings.append(code)
 
 
+_QDRANT_COLLECTION_NAMES_CACHE: dict[str, tuple[float, set[str], str | None]] = {}
+
+
+def _qdrant_collection_names_cached(qdrant_url: str, *, timeout_s: float = 0.8) -> tuple[set[str], str | None]:
+    url = str(qdrant_url or "").strip().rstrip("/")
+    if not url:
+        return set(), "qdrant_url_missing"
+    now = time.time()
+    cached = _QDRANT_COLLECTION_NAMES_CACHE.get(url)
+    if cached is not None:
+        ts, names, error = cached
+        if now - ts <= 5.0:
+            return set(names), error
+    try:
+        with urllib.request.urlopen(f"{url}/collections", timeout=timeout_s) as resp:
+            raw = resp.read()
+        data = json.loads(raw.decode("utf-8")) if raw else {}
+        collections = ((data.get("result") or {}).get("collections") or [])
+        names = {
+            str(item.get("name") or "").strip()
+            for item in collections
+            if isinstance(item, dict) and str(item.get("name") or "").strip()
+        }
+        _QDRANT_COLLECTION_NAMES_CACHE[url] = (now, names, None)
+        return set(names), None
+    except Exception as exc:
+        error = str(exc)
+        _QDRANT_COLLECTION_NAMES_CACHE[url] = (now, set(), error)
+        return set(), error
+
+
+def _effective_rag_collection_name(rag_repo: Any) -> str:
+    getter = getattr(rag_repo, "get_collection_name", None)
+    if not callable(getter):
+        return ""
+    try:
+        return str(getter() or "").strip()
+    except Exception:
+        return ""
+
+
+def _build_rag_collection_issue(
+    *,
+    collection_name: str,
+    collection_source: str,
+    qdrant_url: str,
+) -> dict[str, Any] | None:
+    names, error = _qdrant_collection_names_cached(qdrant_url)
+    if error:
+        return None
+    if not names:
+        return {
+            "code": "rag_collection_not_selected",
+            "title": "RAG collection is not selected",
+            "message": "Qdrant has no available collections. Create or select a collection in RAG / Qdrant before using RAG.",
+            "collection_name": collection_name,
+            "collection_source": collection_source,
+            "available_collections": [],
+        }
+    if not collection_name:
+        return {
+            "code": "rag_collection_not_selected",
+            "title": "RAG collection is not selected",
+            "message": "Choose a Qdrant collection in RAG / Qdrant before using RAG.",
+            "collection_name": "",
+            "collection_source": collection_source,
+            "available_collections": sorted(names),
+        }
+    if collection_name not in names:
+        return {
+            "code": "rag_collection_missing",
+            "title": "RAG collection is unavailable",
+            "message": (
+                f"Configured collection '{collection_name}' is not in Qdrant. "
+                "Choose an available collection in RAG / Qdrant."
+            ),
+            "collection_name": collection_name,
+            "collection_source": collection_source,
+            "available_collections": sorted(names),
+        }
+    return None
+
+
 def _apply_response_diagnostics(trace: dict[str, Any]) -> None:
     req = trace.get("request") if isinstance(trace.get("request"), dict) else {}
     resp = trace.get("response") if isinstance(trace.get("response"), dict) else {}
@@ -2753,6 +2837,20 @@ def run_chat_completions(
         effective_ollama_model if dumb_build_pipeline or is_autocomplete else requested_model
     )
     trace["request"]["actual_model"] = actual_model
+
+    effective_collection_name = _effective_rag_collection_name(effective_rag_repo)
+    trace["rag"]["collection_name"] = effective_collection_name
+    trace["rag"]["collection_source"] = trace["request"].get("collection_source") or collection_source
+    if not is_autocomplete and not private_build:
+        collection_issue = _build_rag_collection_issue(
+            collection_name=effective_collection_name,
+            collection_source=str(trace["rag"].get("collection_source") or "default"),
+            qdrant_url=w.get_qdrant_url(),
+        )
+        if collection_issue:
+            trace["rag"]["collection_issue"] = collection_issue
+            _append_trace_warning(trace, str(collection_issue.get("code") or "rag_collection_issue"))
+            publish_trace(trace)
 
     # Collection resolution can reload proxy_settings from DB and drop the dumb-build merge;
     # re-apply build overlay so per-build RAG limits and rag_collection stay authoritative.

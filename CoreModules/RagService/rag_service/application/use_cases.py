@@ -30,8 +30,9 @@ from rag_service.application.pipeline_steps.retrieval_flow import (
     maybe_apply_concept_expansion,
 )
 from rag_service.config import get_retrieval_bool, get_retrieval_int
-from rag_service.core import RagCore, StepRegistry
+from rag_service.core import PipelineExecutionError, RagCore, StepRegistry
 from rag_service.domain.entities import QueryIntent, RagAnswerResponse, RagContext, RagQuestionRequest
+from rag_service.domain.errors import RetrievalError
 from rag_service.domain.ports import ChatLLMClient, EmbeddingProvider, RagRepository, RerankClient
 from rag_service.domain.services.prompt_builder import (
     build_system_content,
@@ -361,6 +362,12 @@ def build_rag_context(
         if isinstance(rag_ctx, RagContext) and isinstance(timings, dict):
             return rag_ctx, timings
         _rag_log.warning("RagCore base pipeline returned incomplete payload; falling back to empty context")
+        return RagContext("", [], 0.0), empty_timings
+    except (PipelineExecutionError, RetrievalError) as e:
+        if isinstance(e, PipelineExecutionError) and not isinstance(e.cause, RetrievalError):
+            _rag_log.exception("RAG build_rag_context failed: %s", e)
+            return RagContext("", [], 0.0), empty_timings
+        _rag_log.warning("RAG build_rag_context retrieval failed: %s", e)
         return RagContext("", [], 0.0), empty_timings
     except Exception as e:
         _rag_log.exception("RAG build_rag_context failed: %s", e)

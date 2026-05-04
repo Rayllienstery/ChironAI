@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import CoreUIBadge from './CoreUIBadge';
+import CoreUIPillTabs from './CoreUIPillTabs';
+import CoreUIPipelinePreview from './CoreUIPipelinePreview';
 
 /**
  * @typedef {'core' | 'option_on' | 'option_off'} OverviewBand
@@ -75,6 +76,8 @@ function buildOverviewStepsWithHighlights(s) {
 export default function RagPipelineOverview({ pipelineSettings = {} }) {
   const steps = useMemo(() => buildOverviewStepsWithHighlights(pipelineSettings), [pipelineSettings]);
   const [selectedStepId, setSelectedStepId] = useState(null);
+  const [viewMode, setViewMode] = useState('current');
+
   const selectedStep = useMemo(
     () => steps.find((s) => s.id === selectedStepId) || null,
     [steps, selectedStepId],
@@ -92,50 +95,45 @@ export default function RagPipelineOverview({ pipelineSettings = {} }) {
   if (!Array.isArray(steps) || steps.length < 1) {
     return <p className="rag-pipeline-mirror-empty">Pipeline definition unavailable from backend.</p>;
   }
+
+  const allPreviewSteps = steps.map(step => {
+    let tone = 'neutral';
+    if (step.overviewBand === 'core') tone = 'success';
+    else if (step.overviewBand === 'option_on') tone = 'info';
+
+    return {
+      id: step.id,
+      label: step.label,
+      description: step.detail,
+      icon: step.icon,
+      active: step.overviewBand === 'core' || step.overviewBand === 'option_on',
+      tone: tone,
+      badges: step.overviewBadges,
+      onClick: () => setSelectedStepId(step.id)
+    };
+  });
+
+  const previewSteps = viewMode === 'current' 
+    ? allPreviewSteps.filter(s => s.active)
+    : allPreviewSteps;
+
+  const tabs = [
+    { id: 'current', label: 'Current Config' },
+    { id: 'all', label: 'All Steps' }
+  ];
+
   return (
     <>
-      <div className="rag-pipeline-cards" role="list" aria-label="RAG pipeline map">
-        {steps.map((step, i) => {
-          const isLast = i === steps.length - 1;
-          const band = String(step.overviewBand || 'core');
-          return (
-            <div key={step.id} className="rag-pipeline-cards__item" role="listitem">
-              <button
-                type="button"
-                className={`rag-pipeline-step-card rag-pipeline-step-card--${band}`}
-                aria-label={`${step.label} (${band}). Open details.`}
-                onClick={() => setSelectedStepId(step.id)}
-              >
-                <div className="rag-pipeline-step-card__header">
-                  <span className="rag-pipeline-step-card__icon-wrap" aria-hidden="true">
-                    <span className="material-symbols-outlined rag-pipeline-step-card__icon">
-                      {step.icon || 'widgets'}
-                    </span>
-                  </span>
-                  <h4 className="rag-pipeline-step-card__title">{step.label}</h4>
-                </div>
-
-                {Array.isArray(step.overviewBadges) && step.overviewBadges.length > 0 ? (
-                  <div className="rag-pipeline-step-card__badges" aria-label="Step options">
-                    {step.overviewBadges.map((b) => (
-                      <CoreUIBadge key={b} tone="info">
-                        {String(b).toUpperCase()}
-                      </CoreUIBadge>
-                    ))}
-                  </div>
-                ) : null}
-
-                {step.detail ? <p className="rag-pipeline-step-card__desc">{step.detail}</p> : null}
-              </button>
-
-              {!isLast ? (
-                <div className={`rag-pipeline-step-arrow rag-pipeline-step-arrow--${band}`} aria-hidden="true">
-                  <span className="material-symbols-outlined">arrow_downward</span>
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
+      <div className="rag-pipeline-overview-container">
+        <div className="rag-pipeline-tabs-wrap">
+          <CoreUIPillTabs
+            tabs={tabs}
+            value={viewMode}
+            onChange={setViewMode}
+            className="rag-pipeline-tabs"
+          />
+        </div>
+        <CoreUIPipelinePreview key={viewMode} steps={previewSteps} animated />
       </div>
 
       {selectedStep ? (

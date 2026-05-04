@@ -39,5 +39,5 @@ logging:
 
 qdrant:
   url: "http://localhost:6333"
-  collection_name: "Apple_Documentation"
+  collection_name: "Apple_Collection"
 

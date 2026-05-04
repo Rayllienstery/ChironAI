@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
 import { getModelSettings, updateModelSettings, getPipelinePreview } from '../services/api';
-import PipelineCiDiagram from './PipelineCiDiagram';
 import '../styles/components/LlmProxyTab.css';
 
 const defaults = {
@@ -117,11 +116,6 @@ function LlmProxyWebInteractionPanel() {
 
   return (
     <div className="llm-proxy-web-panel settings-form">
-      <PipelineCiDiagram
-        data={pipelineMerged}
-        title="Proxy request pipeline"
-        subtitle="One row: each stage is on (solid highlight) or off (dashed) with current settings. RAG hybrid/rerank follow the RAG tab unless you change them there."
-      />
       <div className="settings-section">
         <h3>GitHub and merged RAG</h3>
         <p className="settings-intro">

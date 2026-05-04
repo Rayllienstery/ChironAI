@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from application.rag.use_cases import build_rag_context, prepare_ollama_messages, search_rag
 from domain.entities.rag import RagContext, RagQuestionRequest
+from rag_service.domain.errors import RetrievalError
 
 
 class MockRagRepo:
@@ -26,6 +27,11 @@ class MockRagRepo:
             {"id": "1", "score": 0.9, "payload": {"text": "chunk one"}},
             {"id": "2", "score": 0.8, "payload": {"text": "chunk two"}},
         ]
+
+
+class RetrievalErrorRagRepo(MockRagRepo):
+    def search(self, vector, top_k, filter_dict=None, **kwargs):
+        raise RetrievalError("Qdrant search error (collection=missing): not found")
 
 
 class MockEmbed:
@@ -94,6 +100,21 @@ def test_build_rag_context_uses_rag_when_keyword_present() -> None:
     assert len(ctx.chunks_info) >= 1
     assert ctx.max_score >= 0.8
     assert len(search_calls) >= 1
+
+
+def test_build_rag_context_returns_empty_on_retrieval_error(caplog) -> None:
+    ctx, timings = build_rag_context(
+        "What is SwiftUI?",
+        RetrievalErrorRagRepo(),
+        MockEmbed(),
+        MockRerank(),
+        500,
+        2000,
+    )
+    assert ctx.context_text == ""
+    assert ctx.chunks_info == []
+    assert timings["search_s"] == 0.0
+    assert "retrieval failed" in caplog.text
 
 
 def test_build_rag_context_with_custom_keywords_skips_when_no_match() -> None:

@@ -4,10 +4,25 @@
   gap: 0;
 }
 
+@keyframes coreui-pipeline-item-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .coreui-pipeline-preview__item {
   display: flex;
   gap: 16px;
   position: relative;
+}
+
+.coreui-pipeline-preview--animated .coreui-pipeline-preview__item {
+  animation: coreui-pipeline-item-in 0.3s cubic-bezier(0.2, 0, 0, 1) both;
 }
 
 .coreui-pipeline-preview__rail {
@@ -37,6 +52,35 @@
   box-shadow: 0 0 0 3px var(--md-sys-color-primary-tint-16);
 }
 
+/* Tones */
+.coreui-pipeline-preview__item--tone-success.coreui-pipeline-preview__item--active .coreui-pipeline-preview__icon-wrap {
+  background: var(--md-sys-color-success-container, #e8f5e9);
+  border-color: var(--md-sys-color-success, #4caf50);
+  box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.16);
+}
+
+.coreui-pipeline-preview__item--tone-success.coreui-pipeline-preview__item--active .coreui-pipeline-preview__icon--on {
+  color: var(--md-sys-color-on-success-container, #1b5e20);
+}
+
+.coreui-pipeline-preview__item--tone-success.coreui-pipeline-preview__item--active .coreui-pipeline-preview__line {
+  background: var(--md-sys-color-success, #4caf50);
+}
+
+.coreui-pipeline-preview__item--tone-info.coreui-pipeline-preview__item--active .coreui-pipeline-preview__icon-wrap {
+  background: var(--md-sys-color-info-container, #e3f2fd);
+  border-color: var(--md-sys-color-info, #2196f3);
+  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.16);
+}
+
+.coreui-pipeline-preview__item--tone-info.coreui-pipeline-preview__item--active .coreui-pipeline-preview__icon--on {
+  color: var(--md-sys-color-on-info-container, #0d47a1);
+}
+
+.coreui-pipeline-preview__item--tone-info.coreui-pipeline-preview__item--active .coreui-pipeline-preview__line {
+  background: var(--md-sys-color-info, #2196f3);
+}
+
 .coreui-pipeline-preview__icon {
   font-size: 20px;
   color: var(--md-sys-color-on-surface-variant);
@@ -62,12 +106,34 @@
   background: var(--md-sys-color-primary);
 }
 
+.coreui-pipeline-preview__item--clickable {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font-family: inherit;
+  border-radius: 8px;
+  transition: background-color 0.2s ease;
+}
+
+.coreui-pipeline-preview__item--clickable:hover {
+  background-color: var(--md-sys-color-surface-container-low);
+}
+
+.coreui-pipeline-preview__wrapper {
+  display: contents;
+}
+
 .coreui-pipeline-preview__content {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding-bottom: 20px;
   min-width: 0;
+  flex: 1;
 }
 
 .coreui-pipeline-preview__item:last-child .coreui-pipeline-preview__content {
@@ -94,4 +160,23 @@
 
 .coreui-pipeline-preview__item:not(.coreui-pipeline-preview__item--active) .coreui-pipeline-preview__desc {
   opacity: 0.55;
+}
+
+.coreui-pipeline-preview__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+  margin-bottom: 8px;
+}
+
+.coreui-pipeline-preview__badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  letter-spacing: 0.02em;
 }
