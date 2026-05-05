@@ -95,6 +95,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
   const [busyModelActionKey, setBusyModelActionKey] = useState('');
   const [actionResult, setActionResult] = useState(null);
   const [actionDetails, setActionDetails] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const onErrorStateChangeRef = useRef(onErrorStateChange);
   useEffect(() => {
@@ -210,6 +211,9 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
       try {
         const result = await runExtensionTabAction(extensionId, actionId, body);
         setActionResult(result);
+        if (actionId === 'refresh') {
+          setRefreshKey((prev) => prev + 1);
+        }
         const externalUrl = result?.open_external_url || (actionId === 'open_external' ? payload?.content?.open_external_url : '');
         if (externalUrl) window.open(externalUrl, '_blank', 'noopener,noreferrer');
         await load(true);
@@ -676,6 +680,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
 
           <div className="extensions-runtime-frame-wrap">
             <iframe
+              key={refreshKey}
               className="extensions-runtime-frame"
               title={content.title || payload?.title || title || extensionId}
               src={content.src || 'about:blank'}
@@ -752,6 +757,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
                   setBusyActionId('refresh');
                   try {
                     await runExtensionTabAction(extensionId, 'refresh', {});
+                    setRefreshKey((prev) => prev + 1);
                     await load();
                   } catch (e) {
                     setActionResult({ ok: false, message: String(e?.message || e) });

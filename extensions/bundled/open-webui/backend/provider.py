@@ -284,6 +284,49 @@ class OpenWebUiExtension:
         source = "saved" if saved else "environment" if env_set else "default"
         llm_proxy_hint = f"http://host.docker.internal:{self._server_port()}"
         running = bool(status.get("running"))
+
+        actions = [
+            {"id": "refresh", "label": "Refresh", "variant": "secondary"},
+        ]
+        if running:
+            actions.append(
+                {
+                    "id": "stop",
+                    "label": "Stop service",
+                    "variant": "danger",
+                    "confirm": "Stop Open WebUI container?",
+                }
+            )
+        else:
+            actions.append(
+                {
+                    "id": "start",
+                    "label": "Start service",
+                    "variant": "primary",
+                }
+            )
+
+        actions.extend(
+            [
+                {
+                    "id": "save_backend",
+                    "label": "Save backend",
+                    "variant": "primary",
+                    "payload_keys": ["backend_url"],
+                },
+                {
+                    "id": "clear_backend",
+                    "label": "Clear saved backend",
+                    "variant": "secondary",
+                },
+                {
+                    "id": "open_external",
+                    "label": "Open external",
+                    "variant": "secondary",
+                },
+            ]
+        )
+
         return {
             "title": _tab_title(self._manifest, "Open WebUI"),
             "icon": _tab_icon(self._manifest, "icons/open-webui-light.svg"),
@@ -302,38 +345,7 @@ class OpenWebUiExtension:
                         "placeholder": llm_proxy_hint,
                     }
                 ],
-                "actions": [
-                    {"id": "refresh", "label": "Refresh", "variant": "secondary"},
-                    {
-                        "id": "start",
-                        "label": "Start service",
-                        "variant": "primary",
-                        "disabled": running,
-                    },
-                    {
-                        "id": "stop",
-                        "label": "Stop service",
-                        "variant": "danger",
-                        "disabled": not running,
-                        "confirm": "Stop Open WebUI container?",
-                    },
-                    {
-                        "id": "save_backend",
-                        "label": "Save backend",
-                        "variant": "primary",
-                        "payload_keys": ["backend_url"],
-                    },
-                    {
-                        "id": "clear_backend",
-                        "label": "Clear saved backend",
-                        "variant": "secondary",
-                    },
-                    {
-                        "id": "open_external",
-                        "label": "Open external",
-                        "variant": "secondary",
-                    },
-                ],
+                "actions": actions,
                 "details": [
                     {"label": "Container", "value": cfg.container_name},
                     {"label": "Image", "value": cfg.image},
