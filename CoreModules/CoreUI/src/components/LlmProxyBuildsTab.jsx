@@ -41,7 +41,7 @@ function mergeBuildDraftIntoPipelinePreview(snapshot, hybridSparse, rerankForRag
   return {
     ...base,
     env,
-    backend: 'dumb',
+    backend: 'rag_fusion',
     rag_collection_configured:
       Boolean(draft.rag_enabled) &&
       (Boolean(String(draft.rag_collection || '').trim()) || Boolean(base.rag_collection_configured)),
@@ -114,7 +114,7 @@ function emptyDraft() {
   return {
     id: '',
     display_name: '',
-    backend: 'dumb',
+    backend: 'rag_fusion',
     provider_id: '',
     model: '',
     prompt_name: '',
@@ -166,7 +166,7 @@ function draftToPayload(draft) {
   const o = { ...draft };
   o.id = String(draft.id || '').trim();
   o.display_name = String(draft.display_name || '').trim() || o.id;
-  o.backend = String(draft.backend || 'dumb').toLowerCase();
+  o.backend = String(draft.backend || 'rag_fusion').toLowerCase();
   o.provider_id = String(draft.provider_id || '').trim();
   o.model = String(draft.model || '').trim();
   delete o.ollama_model;
@@ -660,53 +660,75 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                           <span className="llm-proxy-build-display-name">{b.display_name}</span>
                         ) : null}
                       </div>
-                      <div className="llm-proxy-build-meta">
-                        <span className="llm-proxy-build-backend">
-                          Backend: <code>{b.backend || 'dumb'}</code>
-                        </span>
-                        {(b.model || b.ollama_model) ? (
-                          <>
-                            <span className="llm-proxy-dot" aria-hidden="true">·</span>
-                            <span>
-                              Provider: <code>{b.provider_id || '—'}</code> · Model:{' '}
-                              <code>{b.model || b.ollama_model}</code>
-                            </span>
-                          </>
-                        ) : null}
-                        {b.rag_enabled ? (
-                          <>
-                            <span className="llm-proxy-dot" aria-hidden="true">·</span>
-                            <span>RAG enabled</span>
-                          </>
-                        ) : null}
-                      </div>
-                      <div className="llm-proxy-build-params">
+                      <div className="llm-proxy-build-params-list">
                         {[
-                          { key: 'chat_think', label: 'Think', val: v => v ? 'on' : 'off' },
-                          { key: 'sse_streaming', label: 'Stream', val: v => v === false ? 'off' : 'on' },
-                          { key: 'rag_collection', label: 'Coll', val: v => v },
-                          { key: 'temperature', label: 'Temp', val: v => v },
-                          { key: 'top_p', label: 'TopP', val: v => v },
-                          { key: 'num_ctx', label: 'Ctx', val: v => v },
-                          { key: 'num_predict', label: 'Pred', val: v => v },
-                          { key: 'max_agent_steps', label: 'Steps', val: v => v },
-                          { key: 'private', label: 'Priv', val: v => v ? 'on' : 'off' },
-                          { key: 'web_enabled', label: 'Web', val: v => v ? 'on' : 'off' },
-                          { key: 'code_only', label: 'Code', val: v => v ? 'on' : 'off' },
-                          { key: 'prompt_name', label: 'Prompt', val: v => v },
-                          { key: 'use_prompt_template', label: 'Tmpl', val: v => v === false ? 'off' : 'on' },
-                          { key: 'web_interaction_ddg_news', label: 'DDG', val: v => v ? 'on' : 'off' },
-                          { key: 'web_interaction_fetch_page', label: 'Fetch', val: v => v ? 'on' : 'off' },
-                          { key: 'web_interaction_wikipedia', label: 'Wiki', val: v => v ? 'on' : 'off' },
-                          { key: 'fetch_web_knowledge', label: 'WebDocs', val: v => v ? 'on' : 'off' },
-                        ].map(p => {
-                          const v = b[p.key];
-                          const display = p.val(v);
-                          if (display === null || display === undefined || display === '') return null;
+                          {
+                            label: 'Basic',
+                            items: [
+                              { key: 'provider_id', label: 'Provider', icon: 'hub', val: v => v },
+                              { key: 'model', label: 'Model', icon: 'smart_toy', val: v => v || b.ollama_model },
+                            ]
+                          },
+                          {
+                            label: 'RAG',
+                            items: [
+                              { key: 'rag_enabled', label: 'RAG', icon: 'search', val: v => v ? 'enabled' : 'disabled' },
+                              { key: 'rag_collection', label: 'Coll', icon: 'database', val: v => v },
+                              { key: 'code_only', label: 'Code', icon: 'code', val: v => v ? 'on' : 'off' },
+                            ]
+                          },
+                          {
+                            label: 'Parameters',
+                            items: [
+                              { key: 'temperature', label: 'Temp', icon: 'thermostat', val: v => v },
+                              { key: 'top_p', label: 'TopP', icon: 'filter_list', val: v => v },
+                              { key: 'num_ctx', label: 'Ctx', icon: 'memory', val: v => v },
+                              { key: 'num_predict', label: 'Pred', icon: 'data_object', val: v => v },
+                              { key: 'max_agent_steps', label: 'Steps', icon: 'route', val: v => v },
+                              { key: 'sse_streaming', label: 'Stream', icon: 'stream', val: v => v === false ? 'off' : 'on' },
+                              { key: 'chat_think', label: 'Think', icon: 'psychology', val: v => v ? 'on' : 'off' },
+                            ]
+                          },
+                          {
+                            label: 'Web',
+                            items: [
+                              { key: 'web_enabled', label: 'Web', icon: 'public', val: v => v ? 'on' : 'off' },
+                              { key: 'fetch_web_knowledge', label: 'WebDocs', icon: 'cloud_download', val: v => v ? 'on' : 'off' },
+                              { key: 'web_interaction_ddg_news', label: 'DDG', icon: 'travel_explore', val: v => v ? 'on' : 'off' },
+                              { key: 'web_interaction_fetch_page', label: 'Fetch', icon: 'web', val: v => v ? 'on' : 'off' },
+                              { key: 'web_interaction_wikipedia', label: 'Wiki', icon: 'menu_book', val: v => v ? 'on' : 'off' },
+                            ]
+                          },
+                          {
+                            label: 'Agent & Privacy',
+                            items: [
+                              { key: 'prompt_name', label: 'Prompt', icon: 'description', val: v => v },
+                              { key: 'use_prompt_template', label: 'Tmpl', icon: 'terminal', val: v => v === false ? 'off' : 'on' },
+                              { key: 'private', label: 'Priv', icon: 'visibility_off', val: v => v ? 'on' : 'off' },
+                            ]
+                          }
+                        ].map(cat => {
+                          const visibleItems = cat.items.filter(p => {
+                            const v = b[p.key];
+                            const display = p.val(v);
+                            return display !== null && display !== undefined && display !== '';
+                          });
+
+                          if (visibleItems.length === 0) return null;
+
                           return (
-                            <span key={p.key} className="llm-proxy-build-param-badge">
-                              {p.label}: <code>{display}</code>
-                            </span>
+                            <div key={cat.label} className="llm-proxy-build-param-section">
+                              <div className="llm-proxy-build-param-section-title">{cat.label}</div>
+                              {visibleItems.map(p => (
+                                <div key={p.key} className="llm-proxy-build-param-item">
+                                  <div className="llm-proxy-build-param-label">
+                                    <span className="material-symbols-outlined" aria-hidden="true">{p.icon}</span>
+                                    <span>{p.label}</span>
+                                  </div>
+                                  <code className="llm-proxy-build-param-value">{p.val(b[p.key])}</code>
+                                </div>
+                              ))}
+                            </div>
                           );
                         })}
                       </div>
@@ -1405,7 +1427,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
 
                 <div className="llm-proxy-param-card">
                   <div className="llm-proxy-param-card-header">
-                    <span className="llm-proxy-param-card-icon material-symbols-outlined" aria-hidden="true">context_memory</span>
+                    <span className="llm-proxy-param-card-icon material-symbols-outlined" aria-hidden="true">memory</span>
                     <h4 className="llm-proxy-param-card-title">num_ctx (context window)</h4>
                   </div>
                   <p className="llm-proxy-param-card-description">

@@ -409,7 +409,7 @@ def run_chat_completions(
     except Exception:
         active_build = None
 
-    if active_build and str(active_build.get("backend") or "").strip().lower() == "dumb":
+    if active_build and str(active_build.get("backend") or "").strip().lower() in ("dumb", "rag_fusion"):
         proxy_settings = merge_build_into_proxy_settings(proxy_settings, active_build)
         _om_b = str(active_build.get("model") or "").strip() or str(active_build.get("ollama_model") or "").strip()
         if _om_b:

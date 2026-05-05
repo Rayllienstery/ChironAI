@@ -50,8 +50,8 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
         return None, errors
 
     backend = str(build.get("backend") or "dumb").strip().lower()
-    if backend != "dumb":
-        errors.append("backend must be 'dumb'")
+    if backend not in ("dumb", "rag_fusion"):
+        errors.append("backend must be 'rag_fusion'")
 
     provider_id = str(build.get("provider_id") or "").strip()
     model = str(build.get("model") or "").strip()
@@ -60,10 +60,10 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
         provider_id = "ollama"
     if not model and legacy_ollama_model:
         model = legacy_ollama_model
-    if backend == "dumb" and not provider_id:
-        errors.append("dumb builds require provider_id")
-    if backend == "dumb" and not model:
-        errors.append("dumb builds require model")
+    if backend in ("dumb", "rag_fusion") and not provider_id:
+        errors.append("rag_fusion builds require provider_id")
+    if backend in ("dumb", "rag_fusion") and not model:
+        errors.append("rag_fusion builds require model")
 
     use_prompt_template = build.get("use_prompt_template", True) is not False
     prompt_name = str(build.get("prompt_name") or "").strip()
