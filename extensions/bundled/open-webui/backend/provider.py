@@ -285,9 +285,7 @@ class OpenWebUiExtension:
         llm_proxy_hint = f"http://host.docker.internal:{self._server_port()}"
         running = bool(status.get("running"))
 
-        actions = [
-            {"id": "refresh", "label": "Refresh", "variant": "secondary"},
-        ]
+        actions = [{"id": "refresh", "label": "Refresh", "variant": "secondary"}]
         if running:
             actions.append(
                 {
@@ -309,15 +307,10 @@ class OpenWebUiExtension:
         actions.extend(
             [
                 {
-                    "id": "save_backend",
-                    "label": "Save backend",
-                    "variant": "primary",
-                    "payload_keys": ["backend_url"],
-                },
-                {
                     "id": "clear_backend",
                     "label": "Clear saved backend",
                     "variant": "secondary",
+                    "confirm": "Clear the saved backend URL? Open WebUI will fall back to env/default.",
                 },
                 {
                     "id": "open_external",
@@ -332,28 +325,60 @@ class OpenWebUiExtension:
             "icon": _tab_icon(self._manifest, "icons/open-webui-light.svg"),
             "frame": _tab_frame(self._manifest),
             "status": status,
-            "content": {
-                "type": "iframe",
-                "src": cfg.host_url,
-                "open_external_url": cfg.host_url,
-                "title": "Open WebUI",
-                "fields": [
+            "schema": {
+                "pages": [
                     {
-                        "key": "backend_url",
-                        "label": "Chat backend URL",
-                        "value": cfg.ollama_url_for_container,
-                        "placeholder": llm_proxy_hint,
+                        "id": "open-webui-settings",
+                        "sections": [
+                            {
+                                "id": "open-webui-actions",
+                                "title": "Open WebUI",
+                                "components": [
+                                    {
+                                        "type": "status",
+                                        "key": "status",
+                                        "label": "Service",
+                                        "status": "running" if running else "stopped",
+                                        "message": str(status.get("message") or ""),
+                                    },
+                                    {
+                                        "type": "input",
+                                        "key": "backend_url",
+                                        "label": "Chat backend URL",
+                                        "value": cfg.ollama_url_for_container,
+                                        "placeholder": llm_proxy_hint,
+                                        "autosave_action_id": "save_backend",
+                                    },
+                                    *(
+                                        [
+                                            {
+                                                "type": "action",
+                                                "action_id": action["id"],
+                                                "label": action.get("label"),
+                                                "variant": action.get("variant"),
+                                                "confirm": action.get("confirm"),
+                                                "payload_keys": action.get("payload_keys"),
+                                            }
+                                            for action in actions
+                                        ]
+                                    ),
+                                    {
+                                        "type": "text",
+                                        "key": "details",
+                                        "label": "Details",
+                                        "value": (
+                                            f"Container={cfg.container_name} | "
+                                            f"Image={cfg.image} | "
+                                            f"Host URL={cfg.host_url} | "
+                                            f"Container port={cfg.container_port} | "
+                                            f"Backend source={source}"
+                                        ),
+                                    },
+                                ],
+                            }
+                        ],
                     }
-                ],
-                "actions": actions,
-                "details": [
-                    {"label": "Container", "value": cfg.container_name},
-                    {"label": "Image", "value": cfg.image},
-                    {"label": "Host URL", "value": cfg.host_url},
-                    {"label": "Container port", "value": str(cfg.container_port)},
-                    {"label": "Backend source", "value": source},
-                    {"label": "LLM Proxy hint", "value": llm_proxy_hint},
-                ],
+                ]
             },
         }
 
@@ -412,7 +437,12 @@ class OpenWebUiExtension:
             }
         if action == "clear_backend":
             self._settings_repo().set_app_setting(BACKEND_KEY, "")
-            return {"ok": True, "message": "Cleared saved backend URL."}
+            refreshed = self._config()
+            return {
+                "ok": True,
+                "message": "Cleared saved backend URL.",
+                "backend_url": refreshed.ollama_url_for_container,
+            }
         raise ValueError(f"Unsupported action: {action}")
 
 

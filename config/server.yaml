@@ -19,13 +19,6 @@ server:
 webui:
   port: 5000
 
-## OpenAI-compatible Build Proxy (user-defined builds on /v1/models + /v1/chat/completions)
-## Listens on a separate port (default 8087) in addition to the main server port.
-build_proxy:
-  enabled: true
-  host: "0.0.0.0"
-  port: 8087
-
 ## Main /v1/models: optional ChironAI-Autocomplete row when autocomplete Ollama model is configured (plus builds).
 ## Set v1_include_autocomplete_logical_model to false to list only build ids (and hide autocomplete id).
 ## Security: all Chiron OpenAI/Anthropic-compatible /v1* endpoints are protected by a WebUI-managed API key.

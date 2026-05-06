@@ -250,7 +250,6 @@ function CoreUIShowcaseTab() {
             <div className="coreui-showcase-button-row">
               <CoreUIButton>Use LLM Proxy default</CoreUIButton>
               <CoreUIButton>Clear saved (env/default)</CoreUIButton>
-              <CoreUIButton variant="primary">Save backend</CoreUIButton>
             </div>
           </div>
         </ShowcaseItem>

@@ -56,7 +56,7 @@
 - [x] **Метрики (in-memory)** — счётчики и гистограммы в LLM Proxy: `rag_requests_total`, `rag_empty_results`, `rag_low_confidence`, latency/tokens и др. (`infrastructure/metrics`, запись из `CoreModules/LlmProxy/llm_proxy/chat_completions.py`).
 - [x] **Логирование (structured, proxy)** — JSON-строка `event: rag_request_completed` с `query_hash`, `chunks_count`, `max_score`, `model`, `latency_ms`, `stream`, шагами RAG (`rag_steps`); см. `_rag_request_completed_payload` в `chat_completions.py`.
 - [x] **Отдельный error‑логгер WebUI** — `infrastructure/logging/webui_error_logger.py`: файл `webui_errors.log`, ротация, опционально JSON Lines (`LOG_FORMAT=json`); вызовы `log_webui_error` из прокси/WebUI.
-- [x] **Health check** — `GET /health` в основном приложении (`api/http/rag_routes.py`), build proxy (`api/http/build_proxy_app.py`), standalone `rag_service` (`CoreModules/RagService/rag_service/api/http.py`); пробы Ollama `/api/tags` и Qdrant `/collections` через `infrastructure/stack_health.py`, при сбое — `503`.
+- [x] **Health check** — `GET /health` в основном приложении (`api/http/rag_routes.py`) и standalone `rag_service` (`CoreModules/RagService/rag_service/api/http.py`); пробы Ollama `/api/tags` и Qdrant `/collections` через `infrastructure/stack_health.py`, при сбое — `503`.
 - [x] **Конфиг** — YAML в `config/*.yaml` плюс env overrides (URL Ollama/Qdrant, модели, лимиты RAG, confidence, веб-поиск и т.д.; см. `config/__init__.py`, `config/README.md`).
 
 ## 7. Документация и структура проекта

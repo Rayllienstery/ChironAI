@@ -174,6 +174,10 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
             continue
         if role == "assistant":
             text = _openai_message_content_to_text(m.get("content"))
+            reasoning = m.get("thinking")
+            if not isinstance(reasoning, str):
+                reasoning = m.get("reasoning_content")
+            reasoning_text = reasoning.strip() if isinstance(reasoning, str) else ""
             tcs = m.get("tool_calls")
             if isinstance(tcs, list) and tcs:
                 ollama_calls: list[dict[str, Any]] = []
@@ -217,6 +221,8 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
                     ollama_call["extra_content"] = extra_out
                     ollama_calls.append(ollama_call)
                 out_msg: dict[str, Any] = {"role": "assistant", "content": text}
+                if reasoning_text:
+                    out_msg["thinking"] = reasoning_text
                 if ollama_calls:
                     out_msg["tool_calls"] = ollama_calls
                 if "signature" in m:
@@ -224,6 +230,8 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
                 ollama.append(out_msg)
             else:
                 plain_assistant: dict[str, Any] = {"role": "assistant", "content": text}
+                if reasoning_text:
+                    plain_assistant["thinking"] = reasoning_text
                 if "signature" in m:
                     plain_assistant["signature"] = m["signature"]
                 ollama.append(plain_assistant)
@@ -337,8 +345,8 @@ def ollama_tools_from_openai(tools: list[dict[str, Any]] | None) -> list[dict[st
 def ollama_message_to_openai_assistant(ollama_msg: dict[str, Any]) -> dict[str, Any]:
     """
     Build OpenAI `message` object from Ollama assistant `message` payload.
-    Returns dict with keys: role, content (optional), tool_calls (optional).
-    Merges Ollama ``thinking`` into ``content`` (single visible string; no ``reasoning_content``).
+    Returns dict with keys: role, content (optional), reasoning_content (optional),
+    tool_calls (optional).  Ollama ``thinking`` is kept separate from final answer content.
     """
     role = ollama_msg.get("role") or "assistant"
     content = ollama_msg.get("content")
@@ -384,18 +392,16 @@ def ollama_message_to_openai_assistant(ollama_msg: dict[str, Any]) -> dict[str, 
     thinking = ollama_msg.get("thinking")
     th = thinking.strip() if isinstance(thinking, str) else ""
     co = (content or "").strip() if content else ""
-    if th and co:
-        merged = f"{th}\n\n{co}"
-    else:
-        merged = co or th
 
     msg: dict[str, Any] = {"role": str(role)}
-    if merged:
-        msg["content"] = merged
+    if co:
+        msg["content"] = co
     elif not openai_calls:
         msg["content"] = None
     else:
         msg["content"] = None
+    if th:
+        msg["reasoning_content"] = th
     if openai_calls:
         msg["tool_calls"] = openai_calls
     if "signature" in ollama_msg:

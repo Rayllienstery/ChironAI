@@ -111,6 +111,7 @@ from llm_proxy.chat_completions_ollama_proxy import (
     _trace_ollama_api_metrics,
     _trace_ollama_messages_for_ui,
     effective_ollama_think_from_body,
+    gpt_oss_model_requires_reasoning_level,
     passthrough_think_from_body,
 )
 from llm_proxy.chat_completions_run_phases import (
@@ -119,6 +120,83 @@ from llm_proxy.chat_completions_run_phases import (
 )
 
 _RAG_LOG = logging.getLogger("llm_proxy")
+
+_REASONING_ONLY_GUARD_DEFAULT_CHARS = 32_000
+
+
+def _truthy_body_flag(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    if isinstance(value, (int, float)):
+        return value != 0
+    return False
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    try:
+        n = int(str(raw).strip()) if raw is not None else default
+    except (TypeError, ValueError):
+        n = default
+    return max(256, n)
+
+
+def _reasoning_sse_delta(kind: str, data: Any, *, include_reasoning_content: bool) -> dict[str, Any]:
+    if kind == "thinking_delta" and not include_reasoning_content:
+        return {"reasoning_content": data}
+    return {"content": data}
+
+
+def _stream_reasoning_guard_message(
+    *,
+    reasoning_text: str,
+    final_text: str,
+    tool_calls_count: int,
+    limit_chars: int,
+) -> str:
+    if tool_calls_count > 0 or final_text.strip():
+        return ""
+    if len(reasoning_text) <= limit_chars:
+        return ""
+    return (
+        "[Error: reasoning-only response guard triggered: model produced "
+        f"{len(reasoning_text)} reasoning chars without final content or tool calls. "
+        "Try disabling thinking or shortening the prompt.]"
+    )
+
+
+def _record_reasoning_token_estimates(response: dict[str, Any], reasoning: str, final: str) -> None:
+    response["reasoning_tokens_estimated"] = max(0, int(len(reasoning or "") / 4))
+    response["final_tokens_estimated"] = max(0, int(len(final or "") / 4))
+
+
+def _final_or_compat_content(parts: dict[str, Any], *, include_reasoning_content: bool) -> str:
+    if include_reasoning_content:
+        return str(parts.get("visible_content") or "")
+    return str(parts.get("final_content") or "")
+
+
+def _build_forced_think_value(
+    *,
+    body: dict[str, Any],
+    active_build: dict[str, Any] | None,
+    model_name: str | None,
+) -> bool | str | None:
+    if not isinstance(active_build, dict) or "think" in body:
+        return None
+    if gpt_oss_model_requires_reasoning_level(model_name):
+        if active_build.get("chat_think"):
+            level = str(
+                body.get("reasoning_level")
+                or body.get("reasoning")
+                or active_build.get("reasoning_level")
+                or ""
+            ).strip().lower()
+            return level if level in {"low", "medium", "high"} else "medium"
+        return None
+    return True if active_build.get("chat_think") else False
 
 
 def _log_rag_error(stage: str, error: Exception) -> None:
@@ -426,8 +504,6 @@ def run_chat_completions(
             except (TypeError, ValueError):
                 pass
         dumb_build_pipeline = True
-        if active_build.get("chat_think") and "think" not in body:
-            body["think"] = True
         _rl_b = str(active_build.get("reasoning_level") or "").strip()
         if _rl_b and not body.get("reasoning_level") and not body.get("reasoning"):
             body["reasoning_level"] = _rl_b
@@ -439,7 +515,12 @@ def run_chat_completions(
     def ollama_options_overlay() -> dict[str, Any] | None:
         merged: dict[str, Any] = {**build_extra_options}
         if chat_max_tokens is not None:
-            merged["num_predict"] = chat_max_tokens
+            build_np = build_extra_options.get("num_predict")
+            try:
+                build_np_int = int(build_np)
+            except (TypeError, ValueError):
+                build_np_int = 0
+            merged["num_predict"] = min(chat_max_tokens, build_np_int) if build_np_int > 0 else chat_max_tokens
         return merged if merged else None
 
     effective_num_predict = _effective_num_predict(
@@ -494,6 +575,7 @@ def run_chat_completions(
         include_rag_metadata = bool(proxy_settings.get("include_rag_metadata", False))
     else:
         include_rag_metadata = bool(body.get("include_rag_metadata", False))
+    include_reasoning_content = _truthy_body_flag(body.get("include_reasoning_content"))
 
     def proxy_backend_tag() -> str:
         if is_autocomplete:
@@ -1016,6 +1098,14 @@ def run_chat_completions(
     ollama_think = effective_ollama_think_from_body(
         body, effective_ollama_model, capabilities=_ollama_caps
     )
+    forced_build_think = _build_forced_think_value(
+        body=body,
+        active_build=active_build if dumb_build_pipeline else None,
+        model_name=effective_ollama_model,
+    )
+    if forced_build_think is not None:
+        ollama_think = forced_build_think
+        trace["request"]["ollama_think_source"] = "build.chat_think"
     trace["request"]["ollama_think"] = ollama_think
     if _ollama_caps is not None:
         trace["request"]["ollama_capabilities"] = sorted(_ollama_caps)
@@ -1421,6 +1511,11 @@ def run_chat_completions(
                 tool_calls_raw: list[dict[str, Any]] = []
                 ollama_done_reason: str | None = None
                 ollama_done_payload: dict[str, Any] | None = None
+                reasoning_guard_triggered = False
+                reasoning_guard_limit_chars = _positive_int_env(
+                    "LLM_PROXY_REASONING_ONLY_GUARD_CHARS",
+                    _REASONING_ONLY_GUARD_DEFAULT_CHARS,
+                )
                 total_tokens_holder = [0]
 
                 yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
@@ -1439,7 +1534,26 @@ def run_chat_completions(
                                 reasoning_content_parts.append(text_part)
                             else:
                                 final_content_parts.append(text_part)
-                            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': data}, 'finish_reason': None}]})}\n\n"
+                            delta = _reasoning_sse_delta(
+                                kind,
+                                data,
+                                include_reasoning_content=include_reasoning_content,
+                            )
+                            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': delta, 'finish_reason': None}]})}\n\n"
+                            guard_error = _stream_reasoning_guard_message(
+                                reasoning_text="".join(reasoning_content_parts),
+                                final_text="".join(final_content_parts),
+                                tool_calls_count=len(tool_calls_raw),
+                                limit_chars=reasoning_guard_limit_chars,
+                            )
+                            if guard_error:
+                                reasoning_guard_triggered = True
+                                _append_trace_warning(trace, "reasoning_only_guard_triggered")
+                                trace["request"]["reasoning_only_guard_chars"] = reasoning_guard_limit_chars
+                                visible_content_parts.append(guard_error)
+                                final_content_parts.append(guard_error)
+                                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': guard_error}, 'finish_reason': None}]})}\n\n"
+                                break
                         elif kind == "tool_calls" and data:
                             tool_calls_raw = data
                         elif kind == "done" and isinstance(data, dict):
@@ -1493,7 +1607,7 @@ def run_chat_completions(
                     finish_reason = openai_finish_reason_from_ollama(
                         {}, ollama_done_reason=ollama_done_reason,
                     )
-                    if budget_error:
+                    if budget_error or reasoning_guard_triggered:
                         finish_reason = "length"
 
                 _finish_payload = f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}]})}\n\n"
@@ -1521,8 +1635,10 @@ def run_chat_completions(
                     "latency_ms": stream_latency_ms,
                     "tool_calls_count": len(tool_calls_raw),
                     "native_tools": True,
+                    "reasoning_only_guard_triggered": bool(reasoning_guard_triggered),
                     **_trace_ollama_api_metrics(ollama_done_payload, model_id=use_model),
                 }
+                _record_reasoning_token_estimates(trace["response"], reasoning_content, final_content)
                 _apply_trace_response_text_fields(
                     trace["response"],
                     visible_content=full_content,
@@ -1696,8 +1812,25 @@ def run_chat_completions(
             db_path=proxy_db_path,
         )
         content_parts = _assistant_text_parts_from_ollama_message(oll_msg)
-        content_out = openai_msg.get("content")
-        content_str = content_out if isinstance(content_out, str) else ("" if content_out is None else str(content_out))
+        content_str = _final_or_compat_content(
+            content_parts,
+            include_reasoning_content=include_reasoning_content,
+        )
+        if (
+            content_parts["reasoning_content"]
+            and not content_parts["final_content"]
+            and not tool_calls_out
+        ):
+            _append_trace_warning(trace, "reasoning_only_response_guarded")
+            content_str = (
+                "[Error: model returned reasoning without final answer. "
+                "Try disabling thinking or shortening the prompt.]"
+            )
+            content_parts = {
+                "visible_content": f"{content_parts['visible_content']}\n\n{content_str}".strip(),
+                "reasoning_content": content_parts["reasoning_content"],
+                "final_content": content_str,
+            }
         budget_error = _output_budget_exhaustion_error(trace, data if isinstance(data, dict) else None)
         if budget_error and not tool_calls_out:
             content_str = f"{content_str}\n\n{budget_error}".strip() if content_str.strip() else budget_error
@@ -1752,6 +1885,11 @@ def run_chat_completions(
             "native_tools": True,
             **_trace_ollama_api_metrics(data if isinstance(data, dict) else None, model_id=use_model),
         }
+        _record_reasoning_token_estimates(
+            trace["response"],
+            content_parts["reasoning_content"],
+            content_parts["final_content"],
+        )
         _apply_trace_response_text_fields(
             trace["response"],
             visible_content=content_parts["visible_content"] or content_str,
@@ -1762,6 +1900,8 @@ def run_chat_completions(
         _apply_response_diagnostics(trace)
         if tool_calls_out:
             trace["response"]["tool_calls"] = tool_calls_out
+            if post_tool_success_turn:
+                trace["response"]["post_tool_returned_tool_calls"] = True
         if gemini_tool_state_upserted:
             trace["response"]["gemini_tool_state_upserted_count"] = int(gemini_tool_state_upserted)
         if shell_sanitize_count:
@@ -1771,6 +1911,8 @@ def run_chat_completions(
             "role": "assistant",
             "content": None if tool_calls_out else (content_str or None),
         }
+        if content_parts["reasoning_content"]:
+            choice_msg["reasoning_content"] = content_parts["reasoning_content"]
         if tool_calls_out:
             choice_msg["tool_calls"] = tool_calls_out
         response_data: dict[str, object] = {
@@ -1836,6 +1978,8 @@ def run_chat_completions(
         def generate_sse_native_single() -> Iterator[str]:
             oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
             yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+            if content_parts["reasoning_content"] and not include_reasoning_content:
+                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'reasoning_content': content_parts['reasoning_content']}, 'finish_reason': None}]})}\n\n"
             if content_str:
                 yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': content_str}, 'finish_reason': None}]})}\n\n"
             if tool_calls_out:
@@ -2166,6 +2310,11 @@ def run_chat_completions(
             final_content_parts: list[str] = []
             ollama_done_reason: str | None = None
             ollama_done_payload: dict[str, Any] | None = None
+            reasoning_guard_triggered = False
+            reasoning_guard_limit_chars = _positive_int_env(
+                "LLM_PROXY_REASONING_ONLY_GUARD_CHARS",
+                _REASONING_ONLY_GUARD_DEFAULT_CHARS,
+            )
             total_tokens_holder = [0]
 
             yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
@@ -2182,7 +2331,26 @@ def run_chat_completions(
                             reasoning_content_parts.append(text_part)
                         else:
                             final_content_parts.append(text_part)
-                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': data}, 'finish_reason': None}]})}\n\n"
+                        delta = _reasoning_sse_delta(
+                            kind,
+                            data,
+                            include_reasoning_content=include_reasoning_content,
+                        )
+                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': delta, 'finish_reason': None}]})}\n\n"
+                        guard_error = _stream_reasoning_guard_message(
+                            reasoning_text="".join(reasoning_content_parts),
+                            final_text="".join(final_content_parts),
+                            tool_calls_count=0,
+                            limit_chars=reasoning_guard_limit_chars,
+                        )
+                        if guard_error:
+                            reasoning_guard_triggered = True
+                            _append_trace_warning(trace, "reasoning_only_guard_triggered")
+                            trace["request"]["reasoning_only_guard_chars"] = reasoning_guard_limit_chars
+                            visible_content_parts.append(guard_error)
+                            final_content_parts.append(guard_error)
+                            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': guard_error}, 'finish_reason': None}]})}\n\n"
+                            break
                     elif kind == "done" and isinstance(data, dict):
                         ollama_done_payload = data
                         ollama_done_reason = data.get("done_reason")
@@ -2219,7 +2387,7 @@ def run_chat_completions(
             finish_reason = openai_finish_reason_from_ollama(
                 {}, ollama_done_reason=ollama_done_reason,
             )
-            if budget_error:
+            if budget_error or reasoning_guard_triggered:
                 finish_reason = "length"
             yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}]})}\n\n"
             yield "data: [DONE]\n\n"
@@ -2249,8 +2417,10 @@ def run_chat_completions(
             }
             trace["response"] = {
                 "latency_ms": stream_latency_ms,
+                "reasoning_only_guard_triggered": bool(reasoning_guard_triggered),
                 **_trace_ollama_api_metrics(ollama_done_payload),
             }
+            _record_reasoning_token_estimates(trace["response"], reasoning_content, final_content)
             _apply_trace_response_text_fields(
                 trace["response"],
                 visible_content=full_response,
@@ -2333,12 +2503,30 @@ def run_chat_completions(
             ollama_think,
             options_overlay=ollama_options_overlay(),
         )
-        content = content_parts["visible_content"]
-        if _degenerate_assistant_reply(content):
+        content = _final_or_compat_content(
+            content_parts,
+            include_reasoning_content=include_reasoning_content,
+        )
+        if _degenerate_assistant_reply(content) and not str(content_parts.get("reasoning_content") or ""):
             content = _PLACEHOLDER_REPLY_FALLBACK_EN
             content_parts = {
                 "visible_content": content,
                 "reasoning_content": "",
+                "final_content": content,
+                "ollama_payload": content_parts.get("ollama_payload") if isinstance(content_parts, dict) else {},
+            }
+        if (
+            str(content_parts.get("reasoning_content") or "")
+            and not str(content_parts.get("final_content") or "")
+        ):
+            _append_trace_warning(trace, "reasoning_only_response_guarded")
+            content = (
+                "[Error: model returned reasoning without final answer. "
+                "Try disabling thinking or shortening the prompt.]"
+            )
+            content_parts = {
+                "visible_content": f"{content_parts.get('visible_content') or ''}\n\n{content}".strip(),
+                "reasoning_content": str(content_parts.get("reasoning_content") or ""),
                 "final_content": content,
                 "ollama_payload": content_parts.get("ollama_payload") if isinstance(content_parts, dict) else {},
             }
@@ -2429,6 +2617,11 @@ def run_chat_completions(
             model_id=use_model,
         ),
     }
+    _record_reasoning_token_estimates(
+        trace["response"],
+        content_parts["reasoning_content"],
+        content_parts["final_content"],
+    )
     _apply_trace_response_text_fields(
         trace["response"],
         visible_content=content_parts["visible_content"],
@@ -2492,6 +2685,8 @@ def run_chat_completions(
         "role": "assistant",
         "content": None if tool_calls else content,
     }
+    if content_parts["reasoning_content"]:
+        _msg_obj["reasoning_content"] = content_parts["reasoning_content"]
     if tool_calls:
         _msg_obj["tool_calls"] = tool_calls
     choice = {
@@ -2535,6 +2730,8 @@ def run_chat_completions(
 
         def generate_sse_plain_single() -> Iterator[str]:
             yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+            if content_parts["reasoning_content"] and not include_reasoning_content:
+                yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'reasoning_content': content_parts['reasoning_content']}, 'finish_reason': None}]})}\n\n"
             if content:
                 yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': content}, 'finish_reason': None}]})}\n\n"
             if tool_calls:

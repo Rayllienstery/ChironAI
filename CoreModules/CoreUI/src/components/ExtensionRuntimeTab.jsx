@@ -182,6 +182,9 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
       try {
         const result = await runExtensionTabAction(extensionId, actionId, actionPayload);
         setActionResult(result);
+        if (typeof result?.backend_url === 'string') {
+          setFieldState((prev) => ({ ...prev, backend_url: result.backend_url }));
+        }
         if (isRuntimeModelDetailsForModal(result.details)) setActionDetails(result.details);
         await load(true);
       } catch (e) {
@@ -211,6 +214,9 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
       try {
         const result = await runExtensionTabAction(extensionId, actionId, body);
         setActionResult(result);
+        if (typeof result?.backend_url === 'string') {
+          setFieldState((prev) => ({ ...prev, backend_url: result.backend_url }));
+        }
         if (actionId === 'refresh') {
           setRefreshKey((prev) => prev + 1);
         }
@@ -224,6 +230,26 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
       }
     },
     [extensionId, fieldState, load, payload?.content?.open_external_url],
+  );
+
+  const runAutosave = useCallback(
+    async (actionId, key) => {
+      const resolvedActionId = String(actionId || '').trim();
+      const resolvedKey = String(key || '').trim();
+      if (!resolvedActionId || !resolvedKey) return;
+
+      const value = fieldState[resolvedKey] ?? '';
+      try {
+        const result = await runExtensionTabAction(extensionId, resolvedActionId, { [resolvedKey]: value });
+        if (typeof result?.backend_url === 'string') {
+          setFieldState((prev) => ({ ...prev, backend_url: result.backend_url }));
+        }
+        await load(true);
+      } catch (e) {
+        setActionResult({ ok: false, message: String(e?.message || e) });
+      }
+    },
+    [extensionId, fieldState, load],
   );
 
   const runModelMenuAction = useCallback(
@@ -352,6 +378,11 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
             value={fieldState[key] ?? ''}
             placeholder={component.placeholder || ''}
             onChange={(e) => setFieldState((prev) => ({ ...prev, [key]: e.target.value }))}
+            onBlur={() => {
+              const autosaveActionId = String(component?.autosave_action_id || '').trim();
+              if (!autosaveActionId) return;
+              void runAutosave(autosaveActionId, key);
+            }}
           />
         </label>
       );
@@ -660,6 +691,11 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
                       value={fieldState[key] ?? ''}
                       placeholder={field.placeholder || ''}
                       onChange={(e) => setFieldState((prev) => ({ ...prev, [key]: e.target.value }))}
+                      onBlur={() => {
+                        const autosaveActionId = String(field?.autosave_action_id || '').trim();
+                        if (!autosaveActionId) return;
+                        void runAutosave(autosaveActionId, key);
+                      }}
                     />
                   </label>
                 );

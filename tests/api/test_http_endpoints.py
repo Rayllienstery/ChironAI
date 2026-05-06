@@ -4034,7 +4034,7 @@ def test_native_tools_stream_trace_includes_tokens_estimates_and_latency(
     assert int(resp.get("latency_ms") or 0) >= 0
 
 
-def test_stream_trace_separates_reasoning_and_final_content_without_changing_sse(
+def test_stream_trace_separates_reasoning_and_final_content_in_sse(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import api.http.rag_routes as rag_routes
@@ -4095,7 +4095,8 @@ def test_stream_trace_separates_reasoning_and_final_content_without_changing_sse
     )
     assert r.status_code == 200
     body = r.get_data(as_text=True)
-    assert "Plan: " in body
+    assert '"reasoning_content": "Plan: "' in body
+    assert '"content": "Plan: "' not in body
     assert "Answer" in body
 
     cur = client.get("/api/webui/proxy-trace/current")
@@ -4108,6 +4109,76 @@ def test_stream_trace_separates_reasoning_and_final_content_without_changing_sse
     assert artifacts.get("reasoning_content") == "Plan: "
     assert artifacts.get("final_content") == "Answer"
     assert artifacts.get("visible_content") == "Plan: Answer"
+
+
+def test_stream_reasoning_only_guard_stops_visible_repeat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+
+    monkeypatch.setenv("LLM_PROXY_REASONING_ONLY_GUARD_CHARS", "512")
+
+    class StreamingChatClient:
+        def iter_chat_api_stream_events(self, _payload: dict[str, Any]):
+            yield ("thinking_delta", "x" * 300)
+            yield ("thinking_delta", "y" * 300)
+            yield ("thinking_delta", "z" * 300)
+            yield ("done", {"done_reason": "stop", "eval_count": 900, "prompt_eval_count": 4})
+
+        def chat(self, *_a: Any, **_k: Any) -> str:
+            return ""
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fake-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=StreamingChatClient(),
+    )
+
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda request, *_a, **_k: ([{"role": "user", "content": request.messages[-1]["content"]}], "fake-model"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-proxy-ollama-model",
+            "stream": True,
+            "messages": [{"role": "user", "content": "hi"}],
+        },
+    )
+
+    assert r.status_code == 200
+    body = r.get_data(as_text=True)
+    assert "reasoning_content" in body
+    assert "reasoning-only response guard triggered" in body
+    assert '"content": "' + ("x" * 20) not in body
+    trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
+    assert "reasoning_only_guard_triggered" in (trace.get("warnings") or [])
+    assert (trace.get("response") or {}).get("reasoning_only_guard_triggered") is True
 
 
 def test_non_stream_logs_store_only_previews_for_reasoning_and_final_content(
@@ -4187,8 +4258,9 @@ def test_non_stream_logs_store_only_previews_for_reasoning_and_final_content(
     assert r.status_code == 200
     data = r.get_json() or {}
     content = (((data.get("choices") or [{}])[0]).get("message") or {}).get("content") or ""
-    assert "Internal reasoning" in content
-    assert "Final answer." in content
+    msg = ((data.get("choices") or [{}])[0]).get("message") or {}
+    assert content == "Final answer."
+    assert msg.get("reasoning_content") == "Internal reasoning that should stay preview-only."
 
     metadata = captured_log.get("metadata") or {}
     trace = metadata.get("trace") or {}
@@ -4288,9 +4360,11 @@ def test_model_build_num_predict_forwards_to_ollama_options(
 
     assert r.status_code == 200
     assert captured_payload.get("options", {}).get("num_predict") == 65536
+    assert captured_payload.get("think") is False
 
     trace = (app.test_client().get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
     assert (trace.get("request") or {}).get("effective_num_predict") == 65536
+    assert (trace.get("request") or {}).get("ollama_think") is False
 
 
 def test_request_max_tokens_overrides_build_num_predict_and_warns_when_exhausted(
@@ -4397,6 +4471,103 @@ def test_request_max_tokens_overrides_build_num_predict_and_warns_when_exhausted
     trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
     assert (trace.get("request") or {}).get("effective_num_predict") == 64
     assert "output_token_budget_exhausted" in (trace.get("warnings") or [])
+
+
+def test_request_max_tokens_cannot_exceed_build_num_predict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    import api.http.rag_routes as rag_routes
+    from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
+
+    captured_payload: dict[str, Any] = {}
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == LLM_PROXY_BUILDS_APP_KEY:
+                return json.dumps(
+                    [
+                        {
+                            "id": "Capped-worker",
+                            "backend": "dumb",
+                            "provider_id": "ollama",
+                            "model": "fake-model",
+                            "prompt_name": "system_senior_ios_assistant_v1",
+                            "num_predict": 1024,
+                        }
+                    ]
+                )
+            if key == "proxy_settings":
+                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
+            if key == "proxy_model":
+                return "fallback-model"
+            return _test_proxy_api_key_setting(key)
+
+    class ChatClient:
+        _default_options = {"num_predict": 3072, "temperature": 0.0, "top_p": 1.0}
+
+        def chat_api(self, payload: dict[str, Any]) -> dict[str, Any]:
+            captured_payload.clear()
+            captured_payload.update(payload)
+            return {
+                "message": {"role": "assistant", "content": "ok"},
+                "done_reason": "stop",
+                "eval_count": 12,
+                "prompt_eval_count": 4,
+            }
+
+        def chat(self, *_a: Any, **_k: Any) -> str:
+            return ""
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fallback-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=ChatClient(),
+    )
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda request, *_a, **_k: ([{"role": "user", "content": request.messages[-1]["content"]}], "fake-model"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "Capped-worker",
+            "max_tokens": 4096,
+            "messages": [{"role": "user", "content": "hi"}],
+        },
+    )
+
+    assert r.status_code == 200
+    assert captured_payload.get("options", {}).get("num_predict") == 1024
+    trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
+    assert (trace.get("request") or {}).get("effective_num_predict") == 1024
 
 
 def test_model_build_num_predict_reserves_input_budget_for_upstream_messages(

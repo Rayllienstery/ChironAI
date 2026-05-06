@@ -4,26 +4,20 @@
   "api_version": "1",
   "type": "ui_extension",
   "title": "Open WebUI",
-  "description": "Removable iframe tab and Docker runtime owner for Open WebUI.",
+  "description": "Docker runtime owner for Open WebUI.",
   "icon": "icons/open-webui-light.svg",
   "tab_ui": {
     "id": "open-webui",
     "title": "Open WebUI",
     "icon": "icons/open-webui-light.svg",
-    "order": 60,
-    "frame": {
-      "id": "open-webui-iframe-frame",
-      "type": "iframe",
-      "chrome": "open-webui-service",
-      "asset_scope": "extension"
-    }
+    "order": 60
   },
   "backend": {
     "entrypoint": "backend.provider:create_provider"
   },
   "capabilities": {
     "tab_ui": true,
-    "iframe_tab": true,
+    "iframe_tab": false,
     "service_actions": true
   },
   "compatibility": {

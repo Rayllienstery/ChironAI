@@ -107,12 +107,13 @@ def test_open_webui_extension_descriptor_and_iframe_payload() -> None:
     assert descriptor["id"] == "open-webui"
     assert descriptor["title"] == "Open WebUI"
     assert descriptor["icon"] == "icons/open-webui-light.svg"
-    assert descriptor["frame"]["type"] == "iframe"
+    assert descriptor["frame"] == {}
     assert descriptor["status"]["running"] is True
-    assert payload["frame"]["id"] == "open-webui-iframe-frame"
-    assert payload["content"]["type"] == "iframe"
-    assert payload["content"]["src"] == "http://localhost:3000"
-    assert any(action["id"] == "stop" for action in payload["content"]["actions"])
+    assert payload["frame"] == {}
+    assert payload.get("content") is None
+    assert "schema" in payload
+    components = payload["schema"]["pages"][0]["sections"][0]["components"]
+    assert any(c.get("type") == "action" and c.get("action_id") == "stop" for c in components)
 
 
 def test_open_webui_extension_actions_and_legacy_setting_migration() -> None:
@@ -124,7 +125,9 @@ def test_open_webui_extension_actions_and_legacy_setting_migration() -> None:
     payload = ext.get_tab_payload()
     assert repo.get_app_setting(mod.LEGACY_BACKEND_KEY) == ""
     assert repo.get_app_setting(mod.BACKEND_KEY) == "http://host.docker.internal:8080"
-    assert payload["content"]["fields"][0]["value"] == "http://host.docker.internal:8080"
+    components = payload["schema"]["pages"][0]["sections"][0]["components"]
+    backend_field = next(c for c in components if c.get("type") == "input" and c.get("key") == "backend_url")
+    assert backend_field["value"] == "http://host.docker.internal:8080"
 
     saved = ext.run_action("save_backend", {"backend_url": "localhost:9999"})
     assert saved["ok"] is True

@@ -112,7 +112,6 @@ class LlmProxyStatusResponse(TypedDict):
 
 class OpenAiModelsUrls(TypedDict):
     main: str
-    build_proxy: str
 
 
 class LlmProxyBuildRow(TypedDict, total=False):

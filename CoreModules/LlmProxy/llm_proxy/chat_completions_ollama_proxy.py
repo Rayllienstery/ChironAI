@@ -41,6 +41,10 @@ def _trace_ollama_messages_for_ui(ollama_messages: list[Any]) -> list[dict[str, 
         }
         if truncated:
             entry["content_full_was_truncated"] = True
+        thinking = m.get("thinking")
+        if isinstance(thinking, str) and thinking:
+            entry["thinking_length_chars"] = len(thinking)
+            entry["thinking_preview"] = thinking[:lim] + ("..." if len(thinking) > lim else "")
         _imgs = m.get("images")
         if isinstance(_imgs, list) and _imgs:
             entry["images_count"] = len(_imgs)
@@ -67,7 +71,7 @@ def _trace_ollama_api_metrics(src: dict[str, Any] | None, model_id: str | None =
 
 
 def _merge_ollama_visible_text(thinking: str | None, content: str | None) -> str:
-    """Single assistant string for the client: thinking then content when both exist."""
+    """Single trace string: thinking then content when both exist."""
     t = (thinking or "").strip()
     c = (content or "").strip()
     if t and c:
@@ -133,11 +137,11 @@ def _effective_num_predict(
     build_extra_options: dict[str, Any],
     chat_max_tokens: int | None,
 ) -> int | None:
+    build_n = _positive_int_or_none(build_extra_options.get("num_predict"))
     if chat_max_tokens is not None:
-        return chat_max_tokens
-    n = _positive_int_or_none(build_extra_options.get("num_predict"))
-    if n is not None:
-        return n
+        return min(chat_max_tokens, build_n) if build_n is not None else chat_max_tokens
+    if build_n is not None:
+        return build_n
     default_options = getattr(chat_client, "_default_options", None)
     if isinstance(default_options, dict):
         return _positive_int_or_none(default_options.get("num_predict"))
@@ -369,6 +373,10 @@ def effective_ollama_think_from_body(
     return raw
 
 
+def gpt_oss_model_requires_reasoning_level(model_name: str | None) -> bool:
+    return "gpt-oss" in (model_name or "").lower()
+
+
 _PLACEHOLDER_REPLY_FALLBACK_EN = (
     "The model returned only a placeholder fragment. Try again, shorten the prompt, or switch model. "
     "The system prompt already prioritizes your message and attachments over retrieved snippets."
@@ -516,4 +524,3 @@ def _iter_proxy_ollama_chat_stream(
             elif parts["visible_content"]:
                 yield ("content_delta", parts["visible_content"])
             yield ("done", {})
-

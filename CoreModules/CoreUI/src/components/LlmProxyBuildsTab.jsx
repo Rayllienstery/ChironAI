@@ -233,7 +233,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
 
   const [sectionTab, setSectionTab] = useState('builds');
   const [builds, setBuilds] = useState([]);
-  const [urls, setUrls] = useState({ main: '', build_proxy: '' });
+  const [urls, setUrls] = useState({ main: '' });
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -590,9 +590,9 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
         <>
       <p className="settings-intro">
         Each build is a stable <code>model</code> id for <code>POST /v1/chat/completions</code>. The same builds appear
-        on <code>GET /v1/models</code> on the main server and on the build proxy port (default 8087).
+        on <code>GET /v1/models</code> on the main server.
       </p>
-      {(urls.main || urls.build_proxy) && (
+      {urls.main && (
         <section className="app-default-card llm-proxy-section-gap">
           <div className="dashboard-card-header">
             <h3>OpenAI list endpoints</h3>
@@ -601,11 +601,6 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
             {urls.main && (
               <li>
                 Main: <code>{urls.main}</code>
-              </li>
-            )}
-            {urls.build_proxy && (
-              <li>
-                Build proxy: <code>{urls.build_proxy}</code>
               </li>
             )}
           </ul>

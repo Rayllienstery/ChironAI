@@ -135,7 +135,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                   </div>
                   <div className="feature-card">
                     <h4>Multi-Port Architecture</h4>
-                    <p>8080 (main app), 8087 (build proxy when enabled) — auxiliary services on their own ports</p>
+                    <p>8080 (main app) — auxiliary services on their own ports</p>
                   </div>
                 </div>
               </div>

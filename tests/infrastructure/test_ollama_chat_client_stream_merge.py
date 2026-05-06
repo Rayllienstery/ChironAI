@@ -8,6 +8,10 @@ import pytest
 
 import infrastructure.ollama.chat_client as chat_client_module
 from infrastructure.ollama.chat_client import OllamaChatClient, _merge_ollama_assistant_message_parts
+from infrastructure.ollama.openai_ollama_tool_bridge import (
+    ollama_message_to_openai_assistant,
+    openai_messages_to_ollama,
+)
 
 
 def test_merge_tool_calls_preserves_thought_signature_across_chunks() -> None:
@@ -69,6 +73,38 @@ def test_merge_tool_calls_keeps_existing_when_later_chunk_empty() -> None:
     merged2 = _merge_ollama_assistant_message_parts(merged, {"tool_calls": []})
     assert merged2["tool_calls"][0]["id"] == "call_2"
     assert merged2["tool_calls"][0]["function"]["name"] == "read"
+
+
+def test_openai_messages_to_ollama_preserves_assistant_reasoning_with_tool_calls() -> None:
+    messages = [
+        {
+            "role": "assistant",
+            "reasoning_content": "Need to inspect the file first.",
+            "content": "I will inspect it.",
+            "tool_calls": [
+                {
+                    "id": "call_read",
+                    "type": "function",
+                    "function": {"name": "read", "arguments": "{\"filePath\":\"a.py\"}"},
+                }
+            ],
+        }
+    ]
+
+    out = openai_messages_to_ollama(messages)
+
+    assert out[0]["thinking"] == "Need to inspect the file first."
+    assert out[0]["content"] == "I will inspect it."
+    assert out[0]["tool_calls"][0]["id"] == "call_read"
+
+
+def test_ollama_message_to_openai_keeps_thinking_separate_from_content() -> None:
+    msg = ollama_message_to_openai_assistant(
+        {"role": "assistant", "thinking": "Plan", "content": "Final answer"}
+    )
+
+    assert msg["content"] == "Final answer"
+    assert msg["reasoning_content"] == "Plan"
 
 
 def test_iter_chat_api_stream_events_separates_thinking_and_final_content(

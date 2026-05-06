@@ -96,7 +96,7 @@ def test_extension_manager_bootstraps_builtin_ollama(tmp_path: Path) -> None:
     tabs = manager.extension_tabs(runtime=bootstrap.runtime)
     assert any(tab["id"] == "open-webui" and "status" in tab for tab in tabs)
     assert any(tab["id"] == "ollama" and tab.get("frame", {}).get("id") == "ollama-runtime-frame" for tab in tabs)
-    assert any(tab["id"] == "open-webui" and tab.get("frame", {}).get("id") == "open-webui-iframe-frame" for tab in tabs)
+    assert any(tab["id"] == "open-webui" and tab.get("frame") == {} for tab in tabs)
     assert any(tab["id"] == "ollama" and tab.get("icon_url", "").endswith("/icons/ollama-light.svg") for tab in tabs)
 
 

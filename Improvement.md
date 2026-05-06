@@ -37,7 +37,7 @@
 ### 3.1 Эксплуатация и зависимости от локальных сервисов
 
 - Сбои **Ollama `/api/embed`** (500) приводят к провалу индексации отдельных файлов; в [`TODO.md`](TODO.md) зафиксированы реальные примеры. Нужны retry, бэкпрешер и явная отчётность «сколько пропущено из-за embed» (чеклист шага 3, §6.1).
-- **`GET /health`** использует общий [`check_stack_health()`](infrastructure/stack_health.py): HTTP-пробы к Ollama (`/api/tags`) и Qdrant (`/collections`), ответ `status: healthy|unhealthy`, `components`, `503` при сбое. Подключено в [`api/http/rag_routes.py`](api/http/rag_routes.py) (`service: rag_proxy`), [`api/http/build_proxy_app.py`](api/http/build_proxy_app.py) (`service: build_proxy`), [`rag_service/api/http.py`](CoreModules/RagService/rag_service/api/http.py) (`service: rag_service`). Опционально: отдельная проверка `/api/embed` в health — в чеклисте §6.1.
+- **`GET /health`** использует общий [`check_stack_health()`](infrastructure/stack_health.py): HTTP-пробы к Ollama (`/api/tags`) и Qdrant (`/collections`), ответ `status: healthy|unhealthy`, `components`, `503` при сбое. Подключено в [`api/http/rag_routes.py`](api/http/rag_routes.py) (`service: rag_proxy`) и [`rag_service/api/http.py`](CoreModules/RagService/rag_service/api/http.py) (`service: rag_service`). Опционально: отдельная проверка `/api/embed` в health — в чеклисте §6.1.
 
 ### 3.2 Дублирование и расхождение поведения
 
@@ -122,7 +122,6 @@
 
 - [x] Общий модуль [`infrastructure/stack_health.py`](infrastructure/stack_health.py) (`check_stack_health`, пробы Ollama + Qdrant, корректный `overall` при `HTTP 4xx/5xx`).
 - [x] Подключение в [`api/http/rag_routes.py`](api/http/rag_routes.py) (`service: rag_proxy`).
-- [x] Подключение в [`api/http/build_proxy_app.py`](api/http/build_proxy_app.py) (`service: build_proxy`).
 - [x] Подключение в [`rag_service/api/http.py`](CoreModules/RagService/rag_service/api/http.py) (`service: rag_service`; нужен project root на `PYTHONPATH`).
 - [x] Тесты: успешный `/health` и `503` при падении зависимости ([`tests/api/test_http_endpoints.py`](tests/api/test_http_endpoints.py)).
 - [x] Текст §3.1 и таблица §6 согласованы с кодом.

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-# Paths relative to proxy base URL (same blueprint on main port and optional build_proxy port).
+# Paths relative to proxy base URL (served on the main server port).
 V1_MODELS_PATH: str = "/v1/models"
 V1_CHAT_COMPLETIONS_PATH: str = "/v1/chat/completions"
 V1_COMPLETIONS_PATH: str = "/v1/completions"

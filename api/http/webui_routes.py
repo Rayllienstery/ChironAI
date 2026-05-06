@@ -110,7 +110,6 @@ except ImportError:
     _EXTERNAL_DOCS_RAG_AVAILABLE = False
 
 from config import (
-    get_build_proxy_port,
     get_default_rag_top_k,
     get_framework_collection_ttl_days,
     get_qdrant_url,
@@ -1237,14 +1236,12 @@ def get_llm_proxy_builds() -> Any:
             enriched = _light_build_rows_for_webui(builds)
         sh = get_server_host()
         dh = "127.0.0.1" if sh in ("0.0.0.0", "::", "") else sh
-        bp_port = get_build_proxy_port()
         main_port = get_server_port()
         return jsonify(
             {
                 "builds": enriched,
                 "openai_models_urls": {
                     "main": f"http://{dh}:{main_port}/v1/models",
-                    "build_proxy": f"http://{dh}:{bp_port}/v1/models",
                 },
             }
         )
