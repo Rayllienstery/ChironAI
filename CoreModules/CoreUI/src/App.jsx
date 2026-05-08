@@ -482,6 +482,7 @@ function App() {
     { id: "rag-fusion-proxy", label: "RAG Fusion Proxy", section: "Main" },
     { id: "logs", label: "Logs", section: "Main" },
     { id: "template-editor", label: "Template Editor", section: "Main" },
+    { id: "extensions", label: "Extensions", section: "Extensions" },
     ...extensionTabs.map((tab) => ({
       id: tab.id,
       label: tab.title || tab.id,
@@ -493,7 +494,6 @@ function App() {
     { id: "crawler", label: "Crawler / Indexer", section: "RAG" },
     { id: "testing", label: "Testing", section: "Developer Tools" },
     { id: "coreui-showcase", label: "CoreUI Showcase", section: "Developer Tools" },
-    { id: "extensions", label: "Extensions", section: "Developer Tools" },
     { id: "dev-documentation", label: "Dev Documentation", section: "Developer Tools" },
   ];
 

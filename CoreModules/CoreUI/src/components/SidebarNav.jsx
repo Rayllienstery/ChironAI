@@ -62,6 +62,19 @@ function TabIcon({ tabId, icon, iconUrl }) {
     setImageFailed(false);
   }, [url]);
   if (url && !imageFailed) {
+    const isSvg = url.toLowerCase().endsWith(".svg") || url.toLowerCase().includes(".svg?");
+    if (isSvg) {
+      return (
+        <span
+          className="coreui-sidebar__icon coreui-sidebar__icon--masked"
+          style={{
+            maskImage: `url(${url})`,
+            WebkitMaskImage: `url(${url})`,
+          }}
+          aria-hidden="true"
+        />
+      );
+    }
     return (
       <img
         className="coreui-sidebar__icon coreui-sidebar__icon--image"

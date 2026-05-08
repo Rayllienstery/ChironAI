@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { summarizeAgentTraceMeta } from '../utils/agentTraceSummary';
 import AgentTraceSummaryCards from './AgentTraceSummaryCards';
+import Card from './Card';
 import '../styles/components/DashboardTab.css';
 
 function readMetadata(log) {
@@ -176,54 +177,61 @@ function ProxyRequestStructuredBody({ log, meta }) {
     backend === 'rag_fusion' ? 'RAG Fusion' : backend ? String(backend) : '—';
 
   return (
-    <div className="proxy-trace-detail-body">
-      <p className="coreui-text-muted-sm">
-        <strong>Pipeline:</strong> {pipelineLabel}
-        {isAc ? ' · Autocomplete' : ''}
-      </p>
-      <div className="coreui-section-block">
+    <div className="proxy-trace-detail-body coreui-stack-md">
+      <Card className="coreui-p-md">
+        <p className="coreui-text-muted-sm" style={{ margin: 0 }}>
+          <strong>Pipeline:</strong> {pipelineLabel}
+          {isAc ? ' · Autocomplete' : ''}
+        </p>
+      </Card>
+
+      <Card className="coreui-p-md coreui-stack-xs">
         <strong>User query</strong>
         <div className="dashboard-card-muted coreui-text-break">
           {meta.user_query || '—'}
         </div>
-      </div>
-      <div className="coreui-section-block">
+      </Card>
+
+      <Card className="coreui-p-md coreui-stack-xs">
         <strong>Response preview</strong>
         <div className="dashboard-card-muted coreui-text-break">
           {meta.response_preview || '—'}
         </div>
-      </div>
-      <div className="coreui-meta-grid">
-        <span>
+      </Card>
+
+      <div className="coreui-inline-cluster coreui-gap-sm">
+        <div className="coreui-status-pill">
           <strong>Model:</strong> {meta.model || 'N/A'}
-        </span>
-        <span>
+        </div>
+        <div className="coreui-status-pill">
           <strong>Latency:</strong> {meta.latency_ms != null ? `${meta.latency_ms} ms` : '—'}
-        </span>
-        <span>
+        </div>
+        <div className="coreui-status-pill">
           <strong>Prompt tok.:</strong> {meta.prompt_tokens ?? '—'}
-        </span>
-        <span>
+        </div>
+        <div className="coreui-status-pill">
           <strong>Completion tok.:</strong> {meta.completion_tokens ?? '—'}
-        </span>
-        <span>
+        </div>
+        <div className="coreui-status-pill">
           <strong>Total tok.:</strong> {meta.total_tokens ?? '—'}
-        </span>
+        </div>
       </div>
+
       {meta.rag_steps && (
-        <div className="coreui-section-block">
+        <Card className="coreui-p-md coreui-stack-xs">
           <strong>RAG steps (time)</strong>
-          <p className="coreui-text-muted-sm">
+          <p className="coreui-text-muted-sm" style={{ margin: 0 }}>
             embed {Number(meta.rag_steps.embed_s ?? 0).toFixed(2)}s · search {Number(meta.rag_steps.search_s ?? 0).toFixed(2)}s ·
             rerank {Number(meta.rag_steps.rerank_s ?? 0).toFixed(2)}s
             {meta.rag_steps.total_rag_s != null && <> (total RAG {Number(meta.rag_steps.total_rag_s).toFixed(2)}s)</>}
           </p>
-        </div>
+        </Card>
       )}
+
       {chunksCount > 0 && (
-        <div className="coreui-section-block">
+        <Card className="coreui-p-md coreui-stack-xs">
           <strong>RAG context</strong>
-          <p className="coreui-text-muted-sm">
+          <p className="coreui-text-muted-sm" style={{ margin: 0 }}>
             Chunks: {chunksCount} · Max score: {typeof maxScore === 'number' ? maxScore.toFixed(3) : maxScore || 'N/A'} · Context
             length: {ragContext.context_length || 0} chars
           </p>
@@ -241,12 +249,15 @@ function ProxyRequestStructuredBody({ log, meta }) {
               {chunksInfo.length > 12 ? <li>… +{chunksInfo.length - 12} more</li> : null}
             </ul>
           )}
-        </div>
+        </Card>
       )}
+
       {log?.timestamp && (
-        <p className="coreui-text-muted-sm coreui-section-block">
-          Log time: {log.timestamp}
-        </p>
+        <Card className="coreui-p-md">
+          <p className="coreui-text-muted-sm" style={{ margin: 0 }}>
+            Log time: {log.timestamp}
+          </p>
+        </Card>
       )}
     </div>
   );

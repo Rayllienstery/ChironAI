@@ -313,6 +313,7 @@
 }
 
 .coreui-sidebar__icon--image,
+.coreui-sidebar__icon--masked,
 .coreui-sidebar__icon--svg svg,
 .coreui-sidebar__icon--svg img {
   width: 22px;
@@ -322,7 +323,18 @@
   object-fit: contain;
 }
 
+.coreui-sidebar__icon--masked {
+  background-color: currentColor;
+  mask-repeat: no-repeat;
+  WebkitMaskRepeat: no-repeat;
+  mask-position: center;
+  WebkitMaskPosition: center;
+  mask-size: contain;
+  WebkitMaskSize: contain;
+}
+
 .coreui-sidebar__icon--image,
+.coreui-sidebar__icon--masked,
 .coreui-sidebar__icon--svg {
   font-family: inherit;
   font-size: 0;
