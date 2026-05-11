@@ -5,6 +5,7 @@ import CoreUIPillTabs from "./CoreUIPillTabs";
 import CoreUISubtabs from "./CoreUISubtabs";
 import CoreUISlider from "./CoreUISlider";
 import EmptyState from "./EmptyState";
+import "../styles/components/DockerTab.css";
 import "../styles/components/CoreUIShowcaseTab.css";
 import CoreUIPipelinePreview from "./CoreUIPipelinePreview";
 
@@ -405,6 +406,203 @@ function CoreUIShowcaseTab() {
               />
             </div>
           </div>
+        </ShowcaseItem>
+      </ShowcaseSection>
+
+      <ShowcaseSection title="Docker Manager Views">
+        <ShowcaseItem
+          name="Docker status panel"
+          classes={[".docker-status-panel", ".docker-status-main", ".docker-status-grid"]}
+          source={`${sourceRoot}/components/DockerTab.jsx, ${sourceRoot}/styles/components/DockerTab.css`}
+          description="Generic Docker Engine status surface for CLI availability, server readiness, and local runtime counts."
+        >
+          <section className="app-default-card docker-status-panel coreui-showcase-docker-status" aria-label="Docker status preview">
+            <div className="docker-status-main">
+              <CoreUIBadge tone="success">Engine ready</CoreUIBadge>
+              <div>
+                <strong>docker</strong>
+                <span>Docker CLI and Engine status loaded.</span>
+              </div>
+            </div>
+            <div className="docker-status-grid">
+              <div>
+                <span>CLI</span>
+                <strong>26.1.4</strong>
+              </div>
+              <div>
+                <span>Server</span>
+                <strong>26.1.4</strong>
+              </div>
+              <div>
+                <span>Containers</span>
+                <strong>2</strong>
+              </div>
+              <div>
+                <span>Images</span>
+                <strong>5</strong>
+              </div>
+            </div>
+          </section>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Docker containers table"
+          classes={[".docker-section", ".docker-table-wrap", ".docker-table", ".docker-action-row"]}
+          source={`${sourceRoot}/components/DockerTab.jsx, ${sourceRoot}/styles/components/DockerTab.css`}
+          description="Operator table for generic containers with start, stop, and remove actions guarded by caller-side confirmation."
+        >
+          <section className="app-default-card docker-section coreui-showcase-docker-panel" aria-label="Docker containers preview">
+            <div className="docker-section__header">
+              <h3>Containers</h3>
+              <CoreUIBadge tone="info">2 total</CoreUIBadge>
+            </div>
+            <div className="docker-table-wrap">
+              <table className="docker-table coreui-showcase-docker-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Image</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <strong>my-extension-service</strong>
+                      <span>7f2c1b9a0d42</span>
+                    </td>
+                    <td>ghcr.io/acme/service:latest</td>
+                    <td><CoreUIBadge tone="success">running</CoreUIBadge></td>
+                    <td>
+                      <div className="docker-action-row">
+                        <CoreUIButton size="sm" variant="ghost">
+                          <span className="material-symbols-outlined" aria-hidden="true">stop_circle</span>
+                          Stop
+                        </CoreUIButton>
+                        <CoreUIButton size="sm" variant="danger">
+                          <span className="material-symbols-outlined" aria-hidden="true">delete</span>
+                          Remove
+                        </CoreUIButton>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <strong>worker-cache</strong>
+                      <span>9ac0440e731b</span>
+                    </td>
+                    <td>registry.example.local/cache:stable</td>
+                    <td><CoreUIBadge>exited</CoreUIBadge></td>
+                    <td>
+                      <div className="docker-action-row">
+                        <CoreUIButton size="sm" variant="ghost">
+                          <span className="material-symbols-outlined" aria-hidden="true">play_circle</span>
+                          Start
+                        </CoreUIButton>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Docker images table"
+          classes={[".docker-section", ".docker-table", ".docker-action-row", ".docker-message"]}
+          source={`${sourceRoot}/components/DockerTab.jsx, ${sourceRoot}/styles/components/DockerTab.css`}
+          description="Local image inventory with best-effort update state and image-level check, update, and remove actions."
+        >
+          <section className="app-default-card docker-section coreui-showcase-docker-panel" aria-label="Docker images preview">
+            <div className="docker-section__header">
+              <h3>Images</h3>
+              <CoreUIBadge tone="info">2 local</CoreUIBadge>
+            </div>
+            <div className="docker-message docker-message--info">Checked ghcr.io/acme/service:latest</div>
+            <div className="docker-table-wrap">
+              <table className="docker-table coreui-showcase-docker-table">
+                <thead>
+                  <tr>
+                    <th>Image</th>
+                    <th>ID</th>
+                    <th>Update</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <strong>ghcr.io/acme/service:latest</strong>
+                      <span>ghcr.io/acme/service</span>
+                    </td>
+                    <td>0f2a92ce88b4</td>
+                    <td><CoreUIBadge tone="warning">update_available</CoreUIBadge></td>
+                    <td>
+                      <div className="docker-action-row">
+                        <CoreUIButton size="sm" variant="ghost">
+                          <span className="material-symbols-outlined" aria-hidden="true">published_with_changes</span>
+                          Check
+                        </CoreUIButton>
+                        <CoreUIButton size="sm" variant="ghost">
+                          <span className="material-symbols-outlined" aria-hidden="true">system_update_alt</span>
+                          Update
+                        </CoreUIButton>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <strong>registry.example.local/cache:stable</strong>
+                      <span>registry.example.local/cache</span>
+                    </td>
+                    <td>19b33fd117ac</td>
+                    <td><CoreUIBadge tone="success">up_to_date</CoreUIBadge></td>
+                    <td>
+                      <div className="docker-action-row">
+                        <CoreUIButton size="sm" variant="danger">
+                          <span className="material-symbols-outlined" aria-hidden="true">delete</span>
+                          Remove
+                        </CoreUIButton>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Docker contracts guide"
+          classes={[".docker-contracts", ".docker-contract-grid", ".docker-contract-block"]}
+          source={`${sourceRoot}/components/DockerTab.jsx, ${sourceRoot}/styles/components/DockerTab.css`}
+          description="Developer-facing contract docs for extension backends that use host_context.docker_runtime instead of WebUI routes."
+        >
+          <section className="app-default-card docker-section docker-contracts coreui-showcase-docker-panel" aria-label="Docker contracts preview">
+            <div className="docker-section__header">
+              <h3>Extension Contract</h3>
+              <CoreUIBadge tone="info">CoreModule API</CoreUIBadge>
+            </div>
+            <div className="docker-contract-grid coreui-showcase-docker-contract-grid">
+              <article className="docker-contract-block">
+                <h4>Host capability</h4>
+                <p>Extensions receive DockerManager through <code>host_context.docker_runtime</code>.</p>
+                <pre>{`def create_provider(host_context, manifest):
+    return MyProvider(host_context, manifest)`}</pre>
+              </article>
+              <article className="docker-contract-block">
+                <h4>Lifecycle</h4>
+                <p>Use <code>DockerContainerSpec</code> and let <code>ensure_container</code> own create/start/recreate.</p>
+                <pre>{`spec = DockerContainerSpec(
+    name="my-extension-service",
+    image="ghcr.io/acme/service:latest",
+)
+return docker.ensure_container(spec)`}</pre>
+              </article>
+            </div>
+          </section>
         </ShowcaseItem>
       </ShowcaseSection>
 

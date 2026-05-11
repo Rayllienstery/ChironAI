@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import threading
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 from llm_interactor.contracts import (
     LLMRequest,
@@ -73,6 +74,13 @@ def _tab_title(manifest: Any, fallback: str) -> str:
 def _tab_icon(manifest: Any, fallback: str) -> str:
     tab_ui = _manifest_tab_ui(manifest)
     return str(tab_ui.get("icon") or getattr(manifest, "icon", "") or fallback).strip() or fallback
+
+
+def _as_int(raw: str | None, default: int) -> int:
+    try:
+        return int(str(raw or "").strip())
+    except Exception:
+        return default
 
 
 class OllamaProvider:
@@ -471,15 +479,9 @@ class OllamaProvider:
         if action == "refresh":
             return {"ok": True, "message": "Refreshed"}
         if action == "start_service":
-            from api.http.service_control import start_ollama
-
-            ok, output = start_ollama()
-            return {"ok": bool(ok), "message": output}
+            return self._start_service_with_docker()
         if action == "stop_service":
-            from api.http.service_control import stop_ollama
-
-            ok, output = stop_ollama(base_url=self._base_url(), default_port=11434)
-            return {"ok": bool(ok), "message": output}
+            return self._stop_service_with_docker()
 
         model_name = str(
             payload.get("selected_model")
@@ -609,6 +611,111 @@ class OllamaProvider:
             text=str(response_text or ""),
             raw={"response": response_text},
         )
+
+    def _docker_runtime(self) -> Any | None:
+        runtime = getattr(self._host, "docker_runtime", None)
+        if runtime is not None:
+            return runtime
+        metadata = getattr(self._host, "metadata", {}) or {}
+        if isinstance(metadata, dict):
+            return metadata.get("docker_runtime")
+        return None
+
+    def _docker_unavailable(self) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "message": "Docker runtime is unavailable",
+            "error": "Docker runtime is unavailable",
+        }
+
+    def _docker_container_name(self) -> str:
+        import os
+
+        return (os.getenv("OLLAMA_CONTAINER_NAME") or "chironai-ollama").strip() or "chironai-ollama"
+
+    def _docker_image(self) -> str:
+        import os
+
+        return (os.getenv("OLLAMA_DOCKER_IMAGE") or "ollama/ollama:latest").strip() or "ollama/ollama:latest"
+
+    def _docker_base_url(self) -> str:
+        import os
+
+        raw_base = (self._base_url() or os.getenv("OLLAMA_BASE_URL") or "").strip().rstrip("/")
+        if raw_base:
+            return raw_base if "://" in raw_base else f"http://{raw_base}"
+        port = _as_int(os.getenv("OLLAMA_PORT"), 11434)
+        return f"http://localhost:{port}"
+
+    def _docker_host_port(self) -> int:
+        import os
+
+        base = self._docker_base_url()
+        parsed = urlparse(base if "://" in base else f"http://{base}")
+        return int(parsed.port or _as_int(os.getenv("OLLAMA_PORT"), 11434))
+
+    def _docker_volume(self) -> str:
+        import os
+
+        return (os.getenv("OLLAMA_DOCKER_VOLUME") or "ollama_models:/root/.ollama").strip()
+
+    def _docker_spec(self) -> Any:
+        import os
+        from docker_manager import DockerContainerSpec
+
+        host_port = self._docker_host_port()
+        volume = self._docker_volume()
+        volumes = [volume] if volume else []
+        return DockerContainerSpec(
+            name=self._docker_container_name(),
+            image=self._docker_image(),
+            ports=[f"{host_port}:11434"],
+            env={"OLLAMA_HOST": "0.0.0.0:11434"},
+            volumes=volumes,
+            restart=(os.getenv("OLLAMA_DOCKER_RESTART") or "unless-stopped").strip(),
+            labels={
+                "chironai.extension": str(self._manifest.id),
+                "chironai.provider": self._provider_id,
+            },
+        )
+
+    def _start_service_with_docker(self) -> dict[str, Any]:
+        docker = self._docker_runtime()
+        if docker is None:
+            return self._docker_unavailable()
+        try:
+            spec = self._docker_spec()
+            ensured = docker.ensure_container(spec)
+            if not bool(ensured.get("ok")):
+                return {"ok": False, "message": ensured.get("details") or ensured.get("error") or "Failed to start Ollama", "details": ensured}
+            health = docker.wait_http(self._docker_base_url(), path="/api/tags", timeout=60.0, interval=1.0)
+            if not bool(health.get("ok")):
+                return {
+                    "ok": False,
+                    "message": f"Ollama container started but health check failed: {health.get('error') or 'timeout'}",
+                    "details": {"container": ensured, "health": health},
+                }
+            return {
+                "ok": True,
+                "message": f"Ollama container {spec.name} is running",
+                "details": {"container": ensured, "health": health, "base_url": self._docker_base_url()},
+            }
+        except Exception as e:
+            return {"ok": False, "message": str(e), "error": str(e)}
+
+    def _stop_service_with_docker(self) -> dict[str, Any]:
+        docker = self._docker_runtime()
+        if docker is None:
+            return self._docker_unavailable()
+        try:
+            result = docker.stop_container(self._docker_container_name())
+            return {
+                "ok": bool(result.get("ok")),
+                "message": result.get("message") or result.get("details") or result.get("error") or "",
+                "details": result,
+            }
+        except Exception as e:
+            return {"ok": False, "message": str(e), "error": str(e)}
 
     def _yield_chat_api_events(self, model: str, data: Any) -> Iterator[LLMStreamEvent]:
         payload = data if isinstance(data, dict) else {}

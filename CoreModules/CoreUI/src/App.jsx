@@ -83,6 +83,7 @@ const CoreUIShowcaseTab = lazyWithRetry("CoreUIShowcaseTab", () => import("./com
 const ExtensionsTab = lazyWithRetry("ExtensionsTab", () => import("./components/ExtensionsTab"));
 const DevDocumentationTab = lazyWithRetry("DevDocumentationTab", () => import("./components/DevDocumentationTab"));
 const ExtensionRuntimeTab = lazyWithRetry("ExtensionRuntimeTab", () => import("./components/ExtensionRuntimeTab"));
+const DockerTab = lazyWithRetry("DockerTab", () => import("./components/DockerTab"));
 
 import Card from "./components/Card";
 import {
@@ -493,6 +494,7 @@ function App() {
     { id: "rag", label: "RAG / Qdrant", section: "RAG" },
     { id: "crawler", label: "Crawler / Indexer", section: "RAG" },
     { id: "testing", label: "Testing", section: "Developer Tools" },
+    { id: "docker", label: "Docker", section: "Developer Tools" },
     { id: "coreui-showcase", label: "CoreUI Showcase", section: "Developer Tools" },
     { id: "dev-documentation", label: "Dev Documentation", section: "Developer Tools" },
   ];
@@ -549,6 +551,8 @@ function App() {
             onCancelRun={handleRagTestRunCancel}
           />
         );
+      case "docker":
+        return <DockerTab />;
       case "rag":
         return (
           <RagTab

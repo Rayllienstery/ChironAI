@@ -1346,6 +1346,79 @@ export async function disableExtension(extensionId) {
   return postExtensionAction('/extensions/disable', { extension_id: extensionId });
 }
 
+export async function getDockerStatus() {
+  const response = await fetch(`${API_BASE}/docker/status`, {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error || 'Failed to load Docker status');
+  }
+  return data;
+}
+
+export async function getDockerContainers() {
+  const response = await fetch(`${API_BASE}/docker/containers`, {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error || 'Failed to load Docker containers');
+  }
+  return data;
+}
+
+export async function getDockerImages() {
+  const response = await fetch(`${API_BASE}/docker/images`, {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error || 'Failed to load Docker images');
+  }
+  return data;
+}
+
+async function dockerJsonAction(path, body = {}, method = 'POST') {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.details || data.error || 'Docker action failed');
+  }
+  return data;
+}
+
+export async function checkDockerImageUpdate(image) {
+  return dockerJsonAction('/docker/images/check-update', { image });
+}
+
+export async function updateDockerImage(image) {
+  return dockerJsonAction('/docker/images/update', { image });
+}
+
+export async function startDockerContainer(container) {
+  return dockerJsonAction('/docker/containers/start', { container });
+}
+
+export async function stopDockerContainer(container) {
+  return dockerJsonAction('/docker/containers/stop', { container });
+}
+
+export async function removeDockerContainer(container, force = false) {
+  return dockerJsonAction('/docker/containers', { container, force }, 'DELETE');
+}
+
+export async function removeDockerImage(image, force = false) {
+  return dockerJsonAction('/docker/images', { image, force }, 'DELETE');
+}
+
 export async function cancelCreateCollection(jobId) {
   const response = await fetch(`${API_BASE}/crawler/create-collection-cancel/${encodeURIComponent(jobId)}`, {
     method: 'POST',

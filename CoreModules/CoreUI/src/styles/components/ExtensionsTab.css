@@ -75,6 +75,38 @@
   align-items: start;
 }
 
+.extensions-card__title-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.extensions-card__icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.extensions-card__icon--image {
+  object-fit: contain;
+}
+
+.extensions-card__icon--masked {
+  background-color: currentColor;
+  mask-repeat: no-repeat;
+  WebkitMaskRepeat: no-repeat;
+  mask-position: center;
+  WebkitMaskPosition: center;
+  mask-size: contain;
+  WebkitMaskSize: contain;
+}
+
 .extensions-card__version {
   font-size: 12px;
   color: var(--md-sys-color-on-surface-variant);

@@ -100,6 +100,19 @@ def test_extension_manager_bootstraps_builtin_ollama(tmp_path: Path) -> None:
     assert any(tab["id"] == "ollama" and tab.get("icon_url", "").endswith("/icons/ollama-light.svg") for tab in tabs)
 
 
+def test_provider_host_context_accepts_docker_runtime() -> None:
+    root = Path(__file__).resolve().parents[2]
+    docker_runtime = object()
+    host = ProviderHostContext(
+        project_root=root,
+        get_settings_repository=lambda: None,
+        chat_client=None,
+        docker_runtime=docker_runtime,
+    )
+
+    assert host.docker_runtime is docker_runtime
+
+
 def test_extension_manager_exposes_manifest_tabs_before_runtime_ready(tmp_path: Path) -> None:
     class _Repo:
         def __init__(self) -> None:

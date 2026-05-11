@@ -49,6 +49,9 @@ if os.path.isdir(_LLM_PROXY) and _LLM_PROXY not in sys.path:
 _LLM_INTERACTOR = os.path.join(_ROOT, "CoreModules", "LlmInteractor")
 if os.path.isdir(_LLM_INTERACTOR) and _LLM_INTERACTOR not in sys.path:
     sys.path.insert(0, _LLM_INTERACTOR)
+_DOCKER_MANAGER = os.path.join(_ROOT, "CoreModules", "DockerManager")
+if os.path.isdir(_DOCKER_MANAGER) and _DOCKER_MANAGER not in sys.path:
+    sys.path.insert(0, _DOCKER_MANAGER)
 
 from application.llm_proxy_builds import (
     LLM_PROXY_BUILDS_APP_KEY,
@@ -187,6 +190,7 @@ from infrastructure.database import (
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
 from api.http.webui_crawler_helpers import is_safe_identifier
 from api.http.webui_crawler_source_routes import register_crawler_source_routes
+from api.http.webui_docker_routes import register_docker_routes
 from api.http.webui_extensions_routes import register_extension_routes
 from api.http.webui_prompt_routes import register_prompt_routes
 from api.http.webui_prompts import is_readme_name
@@ -290,6 +294,10 @@ register_crawler_source_routes(
     save_sources_config=lambda sources: _save_sources_config(sources),
 )
 register_extension_routes(
+    webui_bp,
+    error_log=_ERROR_LOG,
+)
+register_docker_routes(
     webui_bp,
     error_log=_ERROR_LOG,
 )

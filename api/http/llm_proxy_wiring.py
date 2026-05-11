@@ -53,6 +53,9 @@ if _WEBINTERACTION not in sys.path:
 _LLM_INTERACTOR = os.path.join(_ROOT, "CoreModules", "LlmInteractor")
 if os.path.isdir(_LLM_INTERACTOR) and _LLM_INTERACTOR not in sys.path:
     sys.path.insert(0, _LLM_INTERACTOR)
+_DOCKER_MANAGER = os.path.join(_ROOT, "CoreModules", "DockerManager")
+if os.path.isdir(_DOCKER_MANAGER) and _DOCKER_MANAGER not in sys.path:
+    sys.path.insert(0, _DOCKER_MANAGER)
 
 try:
     from external_docs_rag.application.use_cases import (
@@ -302,11 +305,19 @@ def _build_extension_manager(
     except Exception as e:
         _RAG_LOG.warning("settings repository unavailable for LlmInteractor: %s", e)
         return None, None, None, None, None
+    try:
+        from docker_manager import DockerManager
+
+        docker_runtime = DockerManager()
+    except Exception as e:
+        _RAG_LOG.warning("DockerManager unavailable for LlmInteractor extensions: %s", e)
+        docker_runtime = None
 
     host_context = ProviderHostContext(
         project_root=_workspace_root(),
         get_settings_repository=get_settings_repository,
         chat_client=deps.chat_client,
+        docker_runtime=docker_runtime,
         metadata={
             "source": "api.http.llm_proxy_wiring",
         },

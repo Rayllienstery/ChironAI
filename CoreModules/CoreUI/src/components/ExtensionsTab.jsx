@@ -19,8 +19,57 @@ const EXTENSION_VIEWS = [
   { id: "registry", label: "Registry" },
   { id: "installed", label: "Installed" },
   { id: "providers", label: "Providers" },
-  { id: "ui", label: "CoreUI Schemas" },
 ];
+
+function ExtensionIcon({ icon, iconUrl }) {
+  const url = String(iconUrl || "").trim();
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [url]);
+
+  if (url && !imageFailed) {
+    const isSvg = url.toLowerCase().endsWith(".svg") || url.toLowerCase().includes(".svg?");
+    if (isSvg) {
+      return (
+        <span
+          className="extensions-card__icon extensions-card__icon--masked"
+          style={{
+            maskImage: `url(${url})`,
+            WebkitMaskImage: `url(${url})`,
+          }}
+          aria-hidden="true"
+        />
+      );
+    }
+    return (
+      <img
+        className="extensions-card__icon extensions-card__icon--image"
+        src={url}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        onError={() => setImageFailed(true)}
+      />
+    );
+  }
+
+  const iconText = String(icon || "").trim();
+  if (iconText && !iconText.includes("/") && !iconText.includes("\\") && !/\.(svg|png|jpg|jpeg|webp|gif)$/i.test(iconText)) {
+    return (
+      <span className="material-symbols-outlined extensions-card__icon" aria-hidden="true">
+        {iconText}
+      </span>
+    );
+  }
+
+  return (
+    <span className="material-symbols-outlined extensions-card__icon" aria-hidden="true">
+      extension
+    </span>
+  );
+}
 
 function HealthPill({ health }) {
 
@@ -262,9 +311,12 @@ export default function ExtensionsTab({ onErrorStateChange }) {
               return (
                 <article key={item.id} className="coreui-card-shell coreui-p-md extensions-card">
                   <div className="extensions-card__head">
-                    <div>
-                      <h4>{item.title || item.id}</h4>
-                      <p>{item.description || "No description."}</p>
+                    <div className="extensions-card__title-row">
+                      <ExtensionIcon icon={item.icon} iconUrl={item.icon_url} />
+                      <div>
+                        <h4>{item.title || item.id}</h4>
+                        <p>{item.description || "No description."}</p>
+                      </div>
                     </div>
                     <CoreUIBadge>{item.latest_version || item.default_ref || "latest"}</CoreUIBadge>
                   </div>
@@ -328,9 +380,12 @@ export default function ExtensionsTab({ onErrorStateChange }) {
             {installed.map((item) => (
             <article key={item.id} className="coreui-card-shell coreui-p-md extensions-card installed-card">
               <div className="extensions-card__head">
-                <div>
-                  <h4>{item.title || item.id}</h4>
-                  <p>{item.description || "No description."}</p>
+                <div className="extensions-card__title-row">
+                  <ExtensionIcon icon={item.icon} iconUrl={item.icon_url} />
+                  <div>
+                    <h4>{item.title || item.id}</h4>
+                    <p>{item.description || "No description."}</p>
+                  </div>
                 </div>
                 <HealthPill health={{ status: item.status || "installed" }} />
               </div>
@@ -372,56 +427,6 @@ export default function ExtensionsTab({ onErrorStateChange }) {
             ))}
             {!providers.length && !loading ? <div className="extensions-empty">No loaded providers.</div> : null}
           </div>
-        </section>
-      ) : null}
-
-      {activeView === "ui" ? (
-        <section className="app-default-card extensions-view" aria-labelledby="extensions-ui-heading">
-          <div className="extensions-view__header">
-            <h3 id="extensions-ui-heading">CoreUI Schemas</h3>
-            <CoreUIBadge tone="info">{(uiPayload.extensions || []).length} schemas</CoreUIBadge>
-          </div>
-          <div className="extensions-ui">
-            {(uiPayload.extensions || []).map((entry) => {
-              const schemaWithExtensionIds = {
-                ...entry.ui_schema,
-                pages: Array.isArray(entry.ui_schema?.pages)
-                  ? entry.ui_schema.pages.map((page) => ({ ...page, extensionId: entry.id }))
-                  : [],
-              };
-              return (
-                <article key={entry.id} className="coreui-card-shell coreui-p-md extensions-ui-card">
-                  <div className="extensions-view__header">
-                    <h3>{entry.title}</h3>
-                    <CoreUIBadge>{entry.id}</CoreUIBadge>
-                  </div>
-                  <SchemaRenderer
-                    schema={schemaWithExtensionIds}
-                    providerByExtensionId={providerByExtensionId}
-                  />
-                </article>
-              );
-            })}
-            {!(uiPayload.extensions || []).length && !loading ? (
-              <div className="extensions-empty">No CoreUI schemas published by installed extensions.</div>
-            ) : null}
-          </div>
-
-          {Array.isArray(uiPayload.failed) && uiPayload.failed.length ? (
-          <div className="coreui-panel-note coreui-panel-note--error extensions-failed">
-            <div className="extensions-view__header">
-              <h3>Failed Extensions</h3>
-              <CoreUIBadge tone="error">{uiPayload.failed.length}</CoreUIBadge>
-            </div>
-            <div className="extensions-failed-list">
-              {uiPayload.failed.map((item) => (
-                <pre key={item.id} className="extensions-card__error">
-                  {item.id}: {item.error}
-                </pre>
-              ))}
-            </div>
-          </div>
-          ) : null}
         </section>
       ) : null}
     </div>

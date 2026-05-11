@@ -500,6 +500,38 @@
   width: 100%;
 }
 
+.coreui-showcase-docker-status,
+.coreui-showcase-docker-panel {
+  width: 100%;
+  padding: 14px;
+}
+
+.coreui-showcase-docker-status {
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.coreui-showcase-docker-panel {
+  max-width: 100%;
+}
+
+.coreui-showcase-docker-panel .docker-section__header h3 {
+  font: var(--md-sys-typescale-title-small-font);
+}
+
+.coreui-showcase-docker-table {
+  min-width: 620px;
+}
+
+.coreui-showcase-docker-table th:last-child,
+.coreui-showcase-docker-table td:last-child {
+  width: 180px;
+}
+
+.coreui-showcase-docker-contract-grid {
+  grid-template-columns: 1fr;
+}
+
 @media (max-width: 860px) {
   .coreui-showcase-hero,
   .coreui-showcase-item {

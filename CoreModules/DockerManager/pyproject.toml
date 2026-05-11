@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "docker-manager"
+version = "0.1.0"
+description = "Docker CLI inspection and lifecycle helpers for ChironAI CoreUI"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["docker_manager"]
