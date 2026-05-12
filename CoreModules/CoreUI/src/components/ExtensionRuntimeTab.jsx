@@ -95,6 +95,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
   const [busyModelActionKey, setBusyModelActionKey] = useState('');
   const [actionResult, setActionResult] = useState(null);
   const [actionDetails, setActionDetails] = useState(null);
+  const [showDiagnosticsModal, setShowDiagnosticsModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const onErrorStateChangeRef = useRef(onErrorStateChange);
@@ -157,12 +158,18 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
     };
   }, [payload?.schema]);
 
-  const diagnosticsData = useMemo(() => {
+  const diagnosticsInfo = useMemo(() => {
     const schema = payload?.schema;
     const comps = collectSchemaComponents(schema);
     const diag = comps.find((c) => String(c?.type || '').toLowerCase() === 'diagnostics');
-    return diag?.value ?? null;
+    if (!diag) return null;
+    return {
+      value: diag.value ?? {},
+      label: diag.label || 'Diagnostics',
+    };
   }, [payload?.schema]);
+
+  const diagnosticsData = diagnosticsInfo?.value ?? null;
 
   const handleAction = useCallback(
     async (component) => {
@@ -599,14 +606,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
       );
     }
     if (component?.type === 'diagnostics') {
-      return (
-        <div key={key} className="extensions-runtime-item">
-          <div className="extensions-runtime-label">{component.label || key}</div>
-          <pre className="extensions-runtime-diagnostics">
-            {JSON.stringify(component.value ?? {}, null, 2)}
-          </pre>
-        </div>
-      );
+      return null;
     }
     return null;
   };
@@ -806,6 +806,14 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
                 <span className="material-symbols-outlined" aria-hidden="true">refresh</span>
                 {busyActionId === 'refresh' ? 'Working…' : 'Refresh'}
               </CoreUIButton>
+              <CoreUIButton
+                variant="secondary"
+                onClick={() => setShowDiagnosticsModal(true)}
+                style={{ marginLeft: 'auto' }}
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">analytics</span>
+                Diagnostics
+              </CoreUIButton>
             </div>
           </section>
         );
@@ -813,16 +821,24 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
 
       {pages.map((page) => (
         <div key={page.id || 'page'}>
-          {(Array.isArray(page.sections) ? page.sections : []).map((section) => (
-            <section key={section.id || section.title} className="app-default-card llm-proxy-section-gap">
-              <div className="dashboard-card-header">
-                <h2>{section.title || 'Section'}</h2>
-              </div>
-              <div className="extensions-runtime-section">
-                {(Array.isArray(section.components) ? section.components : []).map(renderComponent)}
-              </div>
-            </section>
-          ))}
+          {(Array.isArray(page.sections) ? page.sections : []).map((section) => {
+            const renderedComponents = (Array.isArray(section.components) ? section.components : [])
+              .map(renderComponent)
+              .filter(Boolean);
+
+            if (renderedComponents.length === 0) return null;
+
+            return (
+              <section key={section.id || section.title} className="app-default-card llm-proxy-section-gap">
+                <div className="dashboard-card-header">
+                  <h2>{section.title || 'Section'}</h2>
+                </div>
+                <div className="extensions-runtime-section">
+                  {renderedComponents}
+                </div>
+              </section>
+            );
+          })}
         </div>
       ))}
 
@@ -904,6 +920,19 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           </CoreUIModal>
         );
       })()}
+
+      {showDiagnosticsModal && (
+        <CoreUIModal
+          title={diagnosticsInfo?.label || 'Diagnostics'}
+          onClose={() => setShowDiagnosticsModal(false)}
+        >
+          <div style={{ padding: '16px' }}>
+            <pre className="extensions-runtime-diagnostics">
+              {JSON.stringify(diagnosticsData ?? {}, null, 2)}
+            </pre>
+          </div>
+        </CoreUIModal>
+      )}
     </div>
   );
 }

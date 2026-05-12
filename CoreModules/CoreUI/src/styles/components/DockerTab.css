@@ -152,7 +152,80 @@
 
 .docker-table td:last-child,
 .docker-table th:last-child {
-  width: 270px;
+  width: 60px;
+  text-align: center;
+}
+
+.docker-action-menu-root {
+  position: relative;
+  display: inline-block;
+}
+
+.docker-action-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.docker-action-menu-trigger:hover {
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface);
+}
+
+.docker-action-menu {
+  min-width: 160px;
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+  box-shadow: var(--md-sys-elevation-level2);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.docker-action-menu button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-large-font);
+  cursor: pointer;
+  border-radius: 4px;
+  text-align: left;
+}
+
+.docker-action-menu button:hover:not(:disabled) {
+  background: var(--md-sys-color-surface-variant);
+}
+
+.docker-action-menu button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.docker-action-menu button .material-symbols-outlined {
+  font-size: 20px;
+}
+
+.docker-action-menu-item--danger {
+  color: var(--md-sys-color-error) !important;
+}
+
+.docker-action-menu-item--danger:hover:not(:disabled) {
+  background: var(--md-sys-color-error-container) !important;
+  color: var(--md-sys-color-on-error-container) !important;
 }
 
 .docker-table td strong,

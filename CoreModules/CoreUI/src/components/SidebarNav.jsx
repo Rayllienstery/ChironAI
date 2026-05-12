@@ -42,6 +42,7 @@ const TAB_MATERIAL_ICONS = {
   "template-editor": "edit_note",
   testing: "science",
   extensions: "extension",
+  docker: "container",
   "dev-documentation": "menu_book",
   "coreui-showcase": "widgets",
 };
@@ -62,14 +63,17 @@ function TabIcon({ tabId, icon, iconUrl }) {
     setImageFailed(false);
   }, [url]);
   if (url && !imageFailed) {
-    const isSvg = url.toLowerCase().endsWith(".svg") || url.toLowerCase().includes(".svg?");
+    const isSvg =
+      url.toLowerCase().includes(".svg") ||
+      url.toLowerCase().startsWith("data:image/svg+xml");
     if (isSvg) {
       return (
         <span
           className="coreui-sidebar__icon coreui-sidebar__icon--masked"
           style={{
-            maskImage: `url(${url})`,
-            WebkitMaskImage: `url(${url})`,
+            maskImage: `url("${url}")`,
+            WebkitMaskImage: `url("${url}")`,
+            backgroundColor: "currentColor",
           }}
           aria-hidden="true"
         />

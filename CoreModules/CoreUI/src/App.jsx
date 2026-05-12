@@ -85,6 +85,7 @@ const DevDocumentationTab = lazyWithRetry("DevDocumentationTab", () => import(".
 const ExtensionRuntimeTab = lazyWithRetry("ExtensionRuntimeTab", () => import("./components/ExtensionRuntimeTab"));
 const DockerTab = lazyWithRetry("DockerTab", () => import("./components/DockerTab"));
 
+import DockerTabIcon from "./assets/docker-mark.svg?url";
 import Card from "./components/Card";
 import {
   getSession,
@@ -479,6 +480,7 @@ function App() {
 
   const tabs = [
     { id: "dashboard", label: "Dashboard", section: "Main" },
+    { id: "docker", label: "Docker", section: "Main", iconUrl: DockerTabIcon },
     { id: "llm-proxy", label: "LLM Proxy", section: "Main" },
     { id: "rag-fusion-proxy", label: "RAG Fusion Proxy", section: "Main" },
     { id: "logs", label: "Logs", section: "Main" },
@@ -494,7 +496,6 @@ function App() {
     { id: "rag", label: "RAG / Qdrant", section: "RAG" },
     { id: "crawler", label: "Crawler / Indexer", section: "RAG" },
     { id: "testing", label: "Testing", section: "Developer Tools" },
-    { id: "docker", label: "Docker", section: "Developer Tools" },
     { id: "coreui-showcase", label: "CoreUI Showcase", section: "Developer Tools" },
     { id: "dev-documentation", label: "Dev Documentation", section: "Developer Tools" },
   ];

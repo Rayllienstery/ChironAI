@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 
 import CoreUIBadge from "./CoreUIBadge";
 import CoreUIButton from "./CoreUIButton";
@@ -43,6 +43,155 @@ function Message({ value }) {
   if (!value) return null;
   const tone = value.type === "error" ? "error" : "info";
   return <div className={`docker-message docker-message--${tone}`}>{value.text}</div>;
+}
+
+function DockerActionMenu({ id, container, imageName, busyKey, runAction, onCheckUpdate, onUpdateImage }) {
+  const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState({});
+  const rootRef = useRef(null);
+
+  const toggleOpen = () => {
+    if (!open && rootRef.current) {
+      const rect = rootRef.current.getBoundingClientRect();
+      setMenuStyle({
+        position: "fixed",
+        top: `${rect.bottom + 4}px`,
+        right: `${window.innerWidth - rect.right}px`,
+        zIndex: 1000,
+      });
+    }
+    setOpen(!open);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const handleDown = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    const handleKey = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const handleScroll = () => setOpen(false);
+
+    window.addEventListener("pointerdown", handleDown);
+    window.addEventListener("keydown", handleKey);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => {
+      window.removeEventListener("pointerdown", handleDown);
+      window.removeEventListener("keydown", handleKey);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [open]);
+
+  const busy = busyKey.includes(String(id || imageName));
+
+  return (
+    <div className="docker-action-menu-root" ref={rootRef}>
+      <button
+        type="button"
+        className="docker-action-menu-trigger"
+        onClick={toggleOpen}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="Actions"
+      >
+        {icon("more_vert")}
+      </button>
+      {open && (
+        <div className="docker-action-menu" role="menu" style={menuStyle}>
+          {container && (
+            <>
+              {container.running ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={busy || Boolean(busyKey)}
+                  onClick={() => {
+                    setOpen(false);
+                    runAction(`stop:${id}`, () => stopDockerContainer(id), `Stopped ${id}`);
+                  }}
+                >
+                  {icon("stop_circle")}
+                  <span>Stop</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={busy || Boolean(busyKey)}
+                  onClick={() => {
+                    setOpen(false);
+                    runAction(`start:${id}`, () => startDockerContainer(id), `Started ${id}`);
+                  }}
+                >
+                  {icon("play_circle")}
+                  <span>Start</span>
+                </button>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                className="docker-action-menu-item--danger"
+                disabled={busy || Boolean(busyKey)}
+                onClick={() => {
+                  setOpen(false);
+                  if (window.confirm(`Remove container ${id}?`)) {
+                    runAction(`remove:${id}`, () => removeDockerContainer(id), `Removed ${id}`);
+                  }
+                }}
+              >
+                {icon("delete")}
+                <span>Remove</span>
+              </button>
+            </>
+          )}
+          {imageName && (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={busy || Boolean(busyKey)}
+                onClick={() => {
+                  setOpen(false);
+                  onCheckUpdate(imageName);
+                }}
+              >
+                {icon("published_with_changes")}
+                <span>Check update</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={busy || Boolean(busyKey)}
+                onClick={() => {
+                  setOpen(false);
+                  onUpdateImage(imageName);
+                }}
+              >
+                {icon("system_update_alt")}
+                <span>Pull latest</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="docker-action-menu-item--danger"
+                disabled={busy || Boolean(busyKey)}
+                onClick={() => {
+                  setOpen(false);
+                  if (window.confirm(`Remove image ${imageName}?`)) {
+                    runAction(`remove-image:${imageName}`, () => removeDockerImage(imageName), `Removed ${imageName}`);
+                  }
+                }}
+              >
+                {icon("delete")}
+                <span>Remove</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function DockerTab() {
@@ -239,45 +388,12 @@ export default function DockerTab() {
                       <td>{container.ports || ""}</td>
                       <td>{container.created || ""}</td>
                       <td>
-                        <div className="docker-action-row">
-                          {container.running ? (
-                            <CoreUIButton
-                              size="sm"
-                              variant="ghost"
-                              disabled={busy || Boolean(busyKey)}
-                              title="Stop container"
-                              onClick={() => runAction(`stop:${id}`, () => stopDockerContainer(id), `Stopped ${id}`)}
-                            >
-                              {icon("stop_circle")}
-                              Stop
-                            </CoreUIButton>
-                          ) : (
-                            <CoreUIButton
-                              size="sm"
-                              variant="ghost"
-                              disabled={busy || Boolean(busyKey)}
-                              title="Start container"
-                              onClick={() => runAction(`start:${id}`, () => startDockerContainer(id), `Started ${id}`)}
-                            >
-                              {icon("play_circle")}
-                              Start
-                            </CoreUIButton>
-                          )}
-                          <CoreUIButton
-                            size="sm"
-                            variant="danger"
-                            disabled={busy || Boolean(busyKey)}
-                            title="Remove container"
-                            onClick={() => {
-                              if (window.confirm(`Remove container ${id}?`)) {
-                                runAction(`remove:${id}`, () => removeDockerContainer(id), `Removed ${id}`);
-                              }
-                            }}
-                          >
-                            {icon("delete")}
-                            Remove
-                          </CoreUIButton>
-                        </div>
+                        <DockerActionMenu
+                          id={id}
+                          container={container}
+                          busyKey={busyKey}
+                          runAction={runAction}
+                        />
                       </td>
                     </tr>
                   );
@@ -333,42 +449,13 @@ export default function DockerTab() {
                         )}
                       </td>
                       <td>
-                        <div className="docker-action-row">
-                          <CoreUIButton
-                            size="sm"
-                            variant="ghost"
-                            disabled={busy || Boolean(busyKey)}
-                            title="Check image update"
-                            onClick={() => onCheckUpdate(imageName)}
-                          >
-                            {icon("published_with_changes")}
-                            Check
-                          </CoreUIButton>
-                          <CoreUIButton
-                            size="sm"
-                            variant="ghost"
-                            disabled={busy || Boolean(busyKey)}
-                            title="Pull latest image"
-                            onClick={() => onUpdateImage(imageName)}
-                          >
-                            {icon("system_update_alt")}
-                            Update
-                          </CoreUIButton>
-                          <CoreUIButton
-                            size="sm"
-                            variant="danger"
-                            disabled={busy || Boolean(busyKey)}
-                            title="Remove image"
-                            onClick={() => {
-                              if (window.confirm(`Remove image ${imageName}?`)) {
-                                runAction(`remove-image:${imageName}`, () => removeDockerImage(imageName), `Removed ${imageName}`);
-                              }
-                            }}
-                          >
-                            {icon("delete")}
-                            Remove
-                          </CoreUIButton>
-                        </div>
+                        <DockerActionMenu
+                          imageName={imageName}
+                          busyKey={busyKey}
+                          runAction={runAction}
+                          onCheckUpdate={onCheckUpdate}
+                          onUpdateImage={onUpdateImage}
+                        />
                       </td>
                     </tr>
                   );
