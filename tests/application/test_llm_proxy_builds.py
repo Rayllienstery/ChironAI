@@ -37,6 +37,22 @@ def test_normalize_build_accepts_custom_num_predict() -> None:
     assert build_ollama_options(normalized)["num_predict"] == 65536
 
 
+def test_normalize_build_defaults_ide_mode_to_false() -> None:
+    normalized, errors = normalize_build(_base_build())
+
+    assert errors == []
+    assert normalized is not None
+    assert normalized["ide_mode"] is False
+
+
+def test_normalize_build_preserves_ide_mode() -> None:
+    normalized, errors = normalize_build({**_base_build(), "ide_mode": True})
+
+    assert errors == []
+    assert normalized is not None
+    assert normalized["ide_mode"] is True
+
+
 def test_normalize_build_rejects_invalid_num_predict() -> None:
     for raw in ("abc", "0", "262145"):
         normalized, errors = normalize_build({**_base_build(), "num_predict": raw})

@@ -67,29 +67,29 @@ const PARAMETER_PREFABS = [
     id: 'light',
     label: 'Light',
     icon: 'bolt',
-    values: { num_ctx: 32768, num_predict: 4096, max_agent_steps: 6 },
-    description: 'Compact agent setup for short tasks. Reserves output room inside num_ctx so tool history cannot grow too far.',
+    values: { num_ctx: 32768, num_predict: 4096, max_agent_steps: 10 },
+    description: 'Quick fixes and single-file edits. 10 steps covers simple tool-using agents (read → edit → verify) without runaway loops.',
   },
   {
     id: 'medium',
     label: 'Medium',
     icon: 'tune',
-    values: { num_ctx: 65536, num_predict: 8192, max_agent_steps: 12 },
-    description: 'Balanced default for everyday coding agents. num_predict is reserved inside num_ctx, with a controlled step count.',
+    values: { num_ctx: 65536, num_predict: 8192, max_agent_steps: 25 },
+    description: 'Feature implementation and unit tests. 25 steps handles a typical plan → implement → test → fix cycle on a single module.',
   },
   {
     id: 'high',
     label: 'High',
     icon: 'rocket_launch',
-    values: { num_ctx: 131072, num_predict: 16384, max_agent_steps: 25 },
-    description: 'Heavy autonomous work preset. Keeps a large output reserve while still limiting runaway tool loops.',
+    values: { num_ctx: 131072, num_predict: 16384, max_agent_steps: 60 },
+    description: 'Multi-file refactors and complex features. Research benchmarks place real agentic coding tasks at 40–80 steps; 60 is the reliable midpoint.',
   },
   {
     id: 'extreme',
     label: 'Extreme',
     icon: 'warning',
-    values: { num_ctx: 202752, num_predict: 32000, max_agent_steps: 50 },
-    description: 'Large-context emergency preset. Reserves a big answer budget and is intentionally capped below 256 agent steps.',
+    values: { num_ctx: 202752, num_predict: 32768, max_agent_steps: 128 },
+    description: '200K context for full-codebase sessions. 128 steps supports long-horizon work (migrations, multi-module rewrites). Beyond this, use durable project memory files instead.',
   },
 ];
 
@@ -186,6 +186,7 @@ function draftToPayload(draft) {
   o.code_only = Boolean(draft.code_only);
   o.include_rag_metadata = Boolean(draft.include_rag_metadata);
   o.chat_think = Boolean(draft.chat_think);
+  o.ide_mode = draft.use_prompt_template === false;
   o.sse_streaming = draft.sse_streaming !== false;
   o.private = Boolean(draft.private);
   o.reasoning_level = String(draft.reasoning_level || '').trim();
@@ -698,7 +699,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                             label: 'Agent & Privacy',
                             items: [
                               { key: 'prompt_name', label: 'Prompt', icon: 'description', val: v => v },
-                              { key: 'use_prompt_template', label: 'Tmpl', icon: 'terminal', val: v => v === false ? 'off' : 'on' },
+                              { key: 'use_prompt_template', label: 'Agent', icon: 'code_blocks', val: v => v === false ? 'on' : 'off' },
                               { key: 'private', label: 'Priv', icon: 'visibility_off', val: v => v ? 'on' : 'off' },
                             ]
                           }
@@ -1294,7 +1295,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 <div className="llm-proxy-toggle-with-explanation">
                   <div className="llm-proxy-toggle-row">
                     <span className="llm-proxy-toggle-label">
-                      <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">description</span>
+                      <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">code_blocks</span>
                       Enable Agent Proxy Mode
                     </span>
                     <label className="coreui-switch">
@@ -1307,7 +1308,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                     </label>
                   </div>
                   <p className="llm-proxy-toggle-explanation">
-                    If enabled, we won't use our system prompt templates because the agent is expected to provide its own instructions.
+                    The app will not inject system prompts — the agent manages them entirely. Also makes this build available to <code>chironai codex</code> and the Codex tab.
                   </p>
                 </div>
 

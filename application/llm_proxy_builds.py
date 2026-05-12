@@ -148,6 +148,7 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
         "include_rag_metadata": bool(build.get("include_rag_metadata", True)),
         "reasoning_level": str(build.get("reasoning_level") or "").strip(),
         "chat_think": bool(build.get("chat_think", False)),
+        "ide_mode": bool(build.get("ide_mode", False)),
         "private": bool(build.get("private", False)),
         "rag_collection": str(build.get("rag_collection") or "").strip(),
         # When False: client may still send stream=true; proxy calls Ollama once (non-stream)

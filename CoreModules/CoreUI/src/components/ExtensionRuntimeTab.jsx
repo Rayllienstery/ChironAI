@@ -185,10 +185,12 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
     return {
       value: diag.value ?? {},
       label: diag.label || 'Diagnostics',
+      summary: diag.summary !== false,
     };
   }, [payload?.schema]);
 
   const diagnosticsData = diagnosticsInfo?.value ?? null;
+  const showRuntimeDiagnosticsSummary = Boolean(diagnosticsData && diagnosticsInfo?.summary !== false);
 
   const handleAction = useCallback(
     async (component) => {
@@ -392,6 +394,38 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
         <div key={key} className="extensions-runtime-item">
           <div className="extensions-runtime-label">{component.label || key}</div>
           <div className="extensions-runtime-text">{component.value ?? '—'}</div>
+        </div>
+      );
+    }
+    if (component?.type === 'steps') {
+      const steps = Array.isArray(component.steps) ? component.steps : [];
+      return (
+        <div key={key} className="extensions-runtime-steps">
+          {component.label ? <div className="extensions-runtime-label">{component.label}</div> : null}
+          <ol className="extensions-runtime-steps-list">
+            {steps.map((step, i) => {
+              const done = step.status === 'done';
+              return (
+                <li
+                  key={step.id || i}
+                  className={`extensions-runtime-step extensions-runtime-step--${done ? 'done' : 'todo'}`}
+                >
+                  <span className="material-symbols-outlined extensions-runtime-step-icon" aria-hidden="true">
+                    {done ? 'check_circle' : 'radio_button_unchecked'}
+                  </span>
+                  <div className="extensions-runtime-step-body">
+                    <span className="extensions-runtime-step-label">{step.label}</span>
+                    {step.command ? (
+                      <code className="extensions-runtime-step-code">{step.command}</code>
+                    ) : null}
+                    {step.hint ? (
+                      <span className="extensions-runtime-step-hint">{step.hint}</span>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
         </div>
       );
     }
@@ -820,7 +854,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
         </section>
       ) : null}
 
-      {diagnosticsData ? (() => {
+      {showRuntimeDiagnosticsSummary ? (() => {
         const h = diagnosticsData.health;
         const healthOk = h?.ok === true;
         const healthStatus = h?.status || 'unknown';

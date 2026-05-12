@@ -268,6 +268,7 @@ def test_llm_proxy_builds_diagnostics_zero_returns_light_rows(monkeypatch: pytes
             "model": "llama3.2:latest",
             "prompt_name": "system_senior_ios_assistant_v1",
             "use_prompt_template": True,
+            "ide_mode": True,
         }
     ]
 
@@ -298,6 +299,62 @@ def test_llm_proxy_builds_diagnostics_zero_returns_light_rows(monkeypatch: pytes
     row = data["builds"][0]
     assert row.get("issues") == []
     assert row.get("healthy") is True
+    assert row.get("ide_mode") is True
+
+
+def test_llm_proxy_builds_put_roundtrips_ide_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    import api.http.webui_routes as wr
+
+    class FakeSettings:
+        def __init__(self) -> None:
+            self.data: dict[str, str] = {}
+
+        def get_app_setting(self, key: str) -> str | None:
+            return self.data.get(key)
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            self.data[key] = value
+
+    fake_settings = FakeSettings()
+
+    def light_enrich(builds: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [{**item, "issues": [], "healthy": True} for item in builds]
+
+    monkeypatch.setattr(wr, "get_settings_repository", lambda: fake_settings)
+    monkeypatch.setattr(wr, "_enrich_builds_with_diagnostics", light_enrich)
+
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    client = app.test_client()
+    body = {
+        "builds": [
+            {
+                "id": "Agent-high",
+                "backend": "dumb",
+                "provider_id": "ollama",
+                "model": "qwen3:latest",
+                "prompt_name": "system_senior_ios_assistant_v1",
+                "ide_mode": True,
+            }
+        ]
+    }
+
+    r = client.put("/api/webui/llm-proxy/builds", json=body)
+
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["builds"][0]["ide_mode"] is True
+    stored = json.loads(fake_settings.get_app_setting(wr.LLM_PROXY_BUILDS_APP_KEY) or "[]")
+    assert stored[0]["ide_mode"] is True
 
 
 def test_webui_logs_omitted_since_id_is_none(monkeypatch: pytest.MonkeyPatch) -> None:

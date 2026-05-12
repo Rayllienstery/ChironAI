@@ -27,6 +27,20 @@
         "extension_api_version": "1",
         "app": "chironai"
       }
+    },
+    {
+      "id": "codex-launcher",
+      "title": "Codex",
+      "description": "Configure Codex against ChironAI LLM Proxy IDE builds.",
+      "icon": "icons/codex-light.svg",
+      "source_path": "extensions/bundled/codex-launcher",
+      "default_ref": "0.1.0",
+      "latest_version": "0.1.0",
+      "visibility": "trusted",
+      "compatibility": {
+        "extension_api_version": "1",
+        "app": "chironai"
+      }
     }
   ]
 }

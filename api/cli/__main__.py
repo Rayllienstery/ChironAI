@@ -89,6 +89,89 @@ def cmd_test(_: argparse.Namespace) -> int:
     return _run(["-m", "pytest", "tests/"])
 
 
+def _strip_dashdash(args: list[str]) -> list[str]:
+    if args and args[0] == "--":
+        return args[1:]
+    return args
+
+
+def _pick_codex_build(builds: list[dict]) -> dict | None:
+    print("Select ChironAI IDE build for Codex:")
+    for index, build in enumerate(builds, start=1):
+        bid = str(build.get("id") or "")
+        title = str(build.get("display_name") or bid)
+        model = str(build.get("model") or build.get("ollama_model") or "")
+        provider = str(build.get("provider_id") or "")
+        suffix = f" ({provider}/{model})" if provider or model else ""
+        print(f"  {index}. {title} [{bid}]{suffix}")
+    try:
+        raw = input("Build number: ").strip()
+    except EOFError:
+        return None
+    try:
+        selected = int(raw)
+    except ValueError:
+        return None
+    if selected < 1 or selected > len(builds):
+        return None
+    return builds[selected - 1]
+
+
+def cmd_codex(ns: argparse.Namespace) -> int:
+    root = _root()
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    try:
+        from application.codex_launcher import (
+            CodexLauncherError,
+            build_codex_argv,
+            build_codex_env,
+            build_command_preview,
+            check_proxy_reachable,
+            ide_builds,
+            load_builds,
+            proxy_base_url,
+            require_codex_installed,
+            reveal_existing_proxy_key,
+            selected_ide_build,
+            write_codex_profile,
+        )
+        from config import get_server_port
+        from infrastructure.database import get_settings_repository
+    except ImportError as e:
+        print(f"Codex launcher unavailable: {e}", file=sys.stderr)
+        return 1
+
+    try:
+        require_codex_installed()
+        settings_repo = get_settings_repository()
+        api_key = reveal_existing_proxy_key(settings_repo)
+        base_url = proxy_base_url(get_server_port())
+        check_proxy_reachable(base_url, api_key)
+        builds = ide_builds(load_builds(settings_repo))
+        if not builds:
+            raise CodexLauncherError("No IDE-enabled builds found. Enable IDE mode in LLM Proxy Builds -> Agent Proxy Mode.")
+        requested_model = str(getattr(ns, "model", "") or "").strip()
+        if requested_model:
+            build = selected_ide_build(builds, requested_model)
+        else:
+            build = _pick_codex_build(builds)
+            if build is None:
+                raise CodexLauncherError("No build selected")
+        build_id = str(build.get("id") or "").strip()
+        config_path = write_codex_profile(base_url, build=build)
+        extra_args = _strip_dashdash(list(getattr(ns, "extra_args", None) or []))
+        argv = build_codex_argv(build_id, extra_args)
+        print(f"Configured Codex profile at {config_path}")
+        print(f"Command: {build_command_preview(build_id)}")
+        if bool(getattr(ns, "config", False)):
+            return 0
+        return subprocess.run(argv, cwd=os.getcwd(), env=build_codex_env(api_key)).returncode
+    except CodexLauncherError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+
+
 def cmd_rag_tests_run(ns: argparse.Namespace) -> int:
     """Run RAG tests from CLI (no Flask)."""
     root = _root()
@@ -178,7 +261,7 @@ def cmd_test_single(ns: argparse.Namespace) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="tmrag",
+        prog="chironai",
         description="ChironAI CLI: WebUI, crawl, ingest, proxy, tests.",
     )
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
@@ -198,6 +281,12 @@ def main() -> None:
 
     p_proxy = sub.add_parser("proxy", help="Start RAG proxy (OpenAI-compatible, for Zed etc.)")
     p_proxy.set_defaults(_run=cmd_proxy)
+
+    p_codex = sub.add_parser("codex", help="Launch Codex with a ChironAI IDE build")
+    p_codex.add_argument("--model", help="IDE-enabled LLM Proxy build id to use")
+    p_codex.add_argument("--config", action="store_true", help="Configure Codex profile without launching")
+    p_codex.add_argument("extra_args", nargs=argparse.REMAINDER, help="Arguments after -- are passed to Codex")
+    p_codex.set_defaults(_run=cmd_codex)
 
     p_test = sub.add_parser("test", help="Run pytest tests/")
     p_test.set_defaults(_run=cmd_test)

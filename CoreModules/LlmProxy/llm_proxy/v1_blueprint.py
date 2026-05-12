@@ -133,6 +133,28 @@ def _responses_input_to_openai_messages(raw_input: Any) -> list[dict[str, Any]]:
         if not isinstance(item, dict):
             continue
         itype = str(item.get("type") or "").strip()
+        if itype == "function_call":
+            # Responses API assistant tool-call item → OpenAI Chat assistant message with tool_calls.
+            # Must be preserved in the message list so _build_tool_call_id_to_name can resolve the
+            # function name when processing the corresponding function_call_output below.
+            call_id = str(item.get("call_id") or item.get("id") or "").strip()
+            fn_name = str(item.get("name") or "").strip()
+            if fn_name:
+                tc_id = call_id or f"call_{uuid.uuid4().hex[:24]}"
+                out.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        "id": tc_id,
+                        "call_id": call_id or tc_id,
+                        "type": "function",
+                        "function": {
+                            "name": fn_name,
+                            "arguments": str(item.get("arguments") or "{}"),
+                        },
+                    }],
+                })
+            continue
         if itype == "function_call_output":
             call_id = str(
                 item.get("call_id")

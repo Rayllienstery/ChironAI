@@ -96,9 +96,11 @@ def test_extension_manager_bootstraps_builtin_ollama(tmp_path: Path) -> None:
     assert bootstrap.runtime is not None
     assert any(item["id"] == "ollama-provider" for item in installed)
     assert any(item["id"] == "open-webui" for item in installed)
+    assert any(item["id"] == "codex-launcher" for item in installed)
     tabs = manager.extension_tabs(runtime=bootstrap.runtime)
     assert any(tab["id"] == "open-webui" and "status" in tab for tab in tabs)
     assert any(tab["id"] == "ollama" and tab.get("frame", {}).get("id") == "ollama-runtime-frame" for tab in tabs)
+    assert any(tab["id"] == "codex" and tab.get("extension_id") == "codex-launcher" for tab in tabs)
     assert any(tab["id"] == "open-webui" and tab.get("frame") == {} for tab in tabs)
     assert any(tab["id"] == "ollama" and tab.get("icon_url", "").endswith("/icons/ollama-light.svg") for tab in tabs)
 
@@ -146,6 +148,7 @@ def test_extension_manager_exposes_manifest_tabs_before_runtime_ready(tmp_path: 
     assert manager.runtime_status == "not_started"
     assert any(tab["id"] == "ollama" and tab["status"]["runtime"] == "not_started" for tab in tabs)
     assert any(tab["id"] == "open-webui" and tab.get("icon_url", "").endswith("/icons/open-webui-light.svg") for tab in tabs)
+    assert any(tab["id"] == "codex" and tab.get("icon_url", "").endswith("/icons/codex-light.svg") for tab in tabs)
 
 
 def test_bundled_extension_refreshes_existing_same_version_install(tmp_path: Path) -> None:
@@ -247,3 +250,4 @@ def test_registry_client_reads_local_registry() -> None:
     rows = client.load()
     assert any(row["id"] == "ollama-provider" for row in rows)
     assert any(row["id"] == "open-webui" for row in rows)
+    assert any(row["id"] == "codex-launcher" for row in rows)
