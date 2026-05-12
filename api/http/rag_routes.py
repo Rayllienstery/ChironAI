@@ -23,6 +23,9 @@ if _MODULES_EXT_RAG not in sys.path:
 _RAG_SVC = os.path.join(_ROOT, "CoreModules", "RagService")
 if os.path.isdir(_RAG_SVC) and _RAG_SVC not in sys.path:
     sys.path.insert(0, _RAG_SVC)
+_DOCKER_MANAGER = os.path.join(_ROOT, "CoreModules", "DockerManager")
+if os.path.isdir(_DOCKER_MANAGER) and _DOCKER_MANAGER not in sys.path:
+    sys.path.insert(0, _DOCKER_MANAGER)
 _LLM_INTERACTOR = os.path.join(_ROOT, "CoreModules", "LlmInteractor")
 if os.path.isdir(_LLM_INTERACTOR) and _LLM_INTERACTOR not in sys.path:
     sys.path.insert(0, _LLM_INTERACTOR)

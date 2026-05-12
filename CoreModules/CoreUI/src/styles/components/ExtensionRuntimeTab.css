@@ -116,6 +116,169 @@
   background: white;
 }
 
+.extensions-runtime-service-shell {
+  display: grid;
+  gap: 22px;
+  max-width: 1180px;
+}
+
+.extensions-runtime-service-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.extensions-runtime-service-title-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.extensions-runtime-service-title-row h2 {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-headline-small-font);
+}
+
+.extensions-runtime-service-title-row p {
+  margin: 4px 0 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.extensions-runtime-service-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, var(--md-sys-color-surface));
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
+  flex: 0 0 auto;
+}
+
+.extensions-runtime-service-icon .material-symbols-outlined {
+  font-size: 24px;
+}
+
+.extensions-runtime-service-state {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 18%, transparent);
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container-low);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.extensions-runtime-service-state strong {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.extensions-runtime-service-state__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.extensions-runtime-service-state--running {
+  color: #1f6d32;
+  background: color-mix(in srgb, #46a758 12%, var(--md-sys-color-surface));
+  border-color: color-mix(in srgb, #46a758 24%, transparent);
+}
+
+.extensions-runtime-service-state--error {
+  color: var(--md-sys-color-error);
+  background: color-mix(in srgb, var(--md-sys-color-error) 10%, var(--md-sys-color-surface));
+  border-color: color-mix(in srgb, var(--md-sys-color-error) 22%, transparent);
+}
+
+.extensions-runtime-service-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(280px, 0.7fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.extensions-runtime-service-main {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.extensions-runtime-service-field {
+  display: grid;
+  gap: 8px;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-large-font);
+  min-width: 0;
+}
+
+.extensions-runtime-service-field input {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 28%, transparent);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  outline: none;
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.extensions-runtime-service-field input:focus {
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-primary) 16%, transparent);
+}
+
+.extensions-runtime-service-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.extensions-runtime-service-actions .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.extensions-runtime-service-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.extensions-runtime-service-detail {
+  padding: 12px;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.extensions-runtime-service-detail span {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.extensions-runtime-service-detail strong {
+  color: var(--md-sys-color-on-surface);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 .extensions-runtime-diagnostics-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -482,5 +645,20 @@
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
+}
+
+@media (max-width: 860px) {
+  .extensions-runtime-service-header,
+  .extensions-runtime-service-title-row {
+    align-items: flex-start;
+  }
+
+  .extensions-runtime-service-header {
+    flex-direction: column;
+  }
+
+  .extensions-runtime-service-grid {
+    grid-template-columns: 1fr;
+  }
 }
 

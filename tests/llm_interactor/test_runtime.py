@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,8 @@ from llm_interactor import (
     EXTENSION_API_VERSION,
     ExtensionManager,
     ExtensionRegistryClient,
+    ExtensionsRepository,
+    InstalledExtensionRecord,
     LLMRequest,
     LLMResponse,
     LLMRuntime,
@@ -143,6 +146,67 @@ def test_extension_manager_exposes_manifest_tabs_before_runtime_ready(tmp_path: 
     assert manager.runtime_status == "not_started"
     assert any(tab["id"] == "ollama" and tab["status"]["runtime"] == "not_started" for tab in tabs)
     assert any(tab["id"] == "open-webui" and tab.get("icon_url", "").endswith("/icons/open-webui-light.svg") for tab in tabs)
+
+
+def test_bundled_extension_refreshes_existing_same_version_install(tmp_path: Path) -> None:
+    class _Repo:
+        def __init__(self) -> None:
+            self.data: dict[str, str] = {}
+
+        def get_app_setting(self, key: str):
+            return self.data.get(key)
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            self.data[key] = value
+
+    bundled = tmp_path / "bundled" / "sample-ext"
+    bundled_backend = bundled / "backend"
+    bundled_backend.mkdir(parents=True)
+    manifest = {
+        "id": "sample-ext",
+        "version": "1.0.0",
+        "api_version": EXTENSION_API_VERSION,
+        "type": "ui_extension",
+        "title": "Sample",
+        "backend": {"entrypoint": "backend.provider:create_provider"},
+    }
+    (bundled / "chironai-extension.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (bundled_backend / "provider.py").write_text("VALUE = 'fresh'\n", encoding="utf-8")
+
+    installed = tmp_path / "installed" / "sample-ext" / "1.0.0"
+    installed_backend = installed / "backend"
+    installed_backend.mkdir(parents=True)
+    (installed / "chironai-extension.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (installed_backend / "provider.py").write_text("VALUE = 'stale'\n", encoding="utf-8")
+
+    repo = _Repo()
+    state = [
+        InstalledExtensionRecord(
+            id="sample-ext",
+            version="1.0.0",
+            enabled=False,
+            installed=True,
+            source={"type": "bundled", "path": str(bundled)},
+            title="Sample",
+        )
+    ]
+    ExtensionsRepository(repo).save_records(state)
+    root = Path(__file__).resolve().parents[2]
+    host = ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None)
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=host,
+        settings_repo=repo,
+        registry_client=ExtensionRegistryClient(project_root=root),
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+
+    manager.ensure_builtin_installed("sample-ext")
+
+    assert (installed_backend / "provider.py").read_text(encoding="utf-8") == "VALUE = 'fresh'\n"
+    refreshed = ExtensionsRepository(repo).list_records()
+    assert refreshed[0].enabled is False
 
 
 def test_removed_bundled_extension_is_not_reinstalled(tmp_path: Path) -> None:

@@ -46,6 +46,56 @@ def load_manifest_from_dir(source_dir: Path) -> ExtensionManifest:
     return manifest_from_dict(raw)
 
 
+def _backend_source_paths(source_dir: Path, entrypoint: str) -> list[Path]:
+    module_name, _, attr_name = entrypoint.partition(":")
+    if not module_name or not attr_name:
+        raise ValueError("backend.entrypoint must be 'module:callable'")
+    module_rel = module_name.replace(".", "/")
+    py_path = source_dir / f"{module_rel}.py"
+    package_init = source_dir / module_rel / "__init__.py"
+    if py_path.is_file():
+        return [py_path]
+    if package_init.is_file():
+        return sorted(package_init.parent.rglob("*.py"))
+    return []
+
+
+def validate_extension_backend_docker_policy(source_dir: Path, entrypoint: str) -> None:
+    """Reject extension backends that bypass host_context.docker_runtime."""
+
+    banned_patterns = [
+        "import subprocess",
+        "from subprocess import",
+        "subprocess.",
+        "class DockerRunner",
+        "_docker_executable",
+        "_resolved_" + "docker_executable",
+        "DOCKER" + "_EXE",
+        'shutil.which("' + "docker" + '")',
+        "shutil.which('" + "docker" + "')",
+        "docker.from_env",
+        "docker compose",
+        "docker-compose",
+        "/api/webui/docker",
+    ]
+    violations: list[str] = []
+    for path in _backend_source_paths(source_dir, entrypoint):
+        text = path.read_text(encoding="utf-8")
+        lowered = text.lower()
+        for pattern in banned_patterns:
+            haystack = lowered if pattern in {"docker compose", "docker-compose"} else text
+            needle = pattern.lower() if haystack is lowered else pattern
+            if needle in haystack:
+                violations.append(f"{path.relative_to(source_dir)} contains {pattern!r}")
+
+    if violations:
+        details = "; ".join(violations)
+        raise ValueError(
+            "Extension backend violates Docker contract: use host_context.docker_runtime "
+            f"and DockerContainerSpec instead of direct Docker access ({details})"
+        )
+
+
 def _load_factory_from_entrypoint(source_dir: Path, entrypoint: str):
     module_name, _, attr_name = entrypoint.partition(":")
     if not module_name or not attr_name:
@@ -99,6 +149,7 @@ def discover_extensions(
                 continue
             if manifest.backend is None:
                 raise ValueError("manifest backend is required")
+            validate_extension_backend_docker_policy(source_dir, manifest.backend.entrypoint)
             factory = _load_factory_from_entrypoint(source_dir, manifest.backend.entrypoint)
             provider = factory(host_context, manifest)
             report.loaded.append(LoadedExtension(manifest=manifest, source_dir=source_dir, provider=provider))

@@ -125,19 +125,24 @@ class ExtensionManager:
         existing = next((r for r in records if r.id == manifest.id), None)
         if existing is not None and not existing.installed:
             return
-        if existing is not None and existing.version == manifest.version:
-            target = self._installed_dir / manifest.id / manifest.version
-            if target.is_dir():
-                return
         target = self._installed_dir / manifest.id / manifest.version
+        if existing is not None and existing.version == manifest.version and target.is_dir():
+            source_type = str((existing.source or {}).get("type") or "").strip().lower()
+            if source_type and source_type != "bundled":
+                return
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(bundled, target, dirs_exist_ok=True)
+        if target.exists():
+            if target.is_dir():
+                shutil.rmtree(target)
+            else:
+                target.unlink()
+        shutil.copytree(bundled, target)
         next_records = [r for r in records if r.id != manifest.id]
         next_records.append(
             InstalledExtensionRecord(
                 id=manifest.id,
                 version=manifest.version,
-                enabled=True,
+                enabled=existing.enabled if existing is not None else True,
                 installed=True,
                 source={"type": "bundled", "path": str(bundled)},
                 title=manifest.title,

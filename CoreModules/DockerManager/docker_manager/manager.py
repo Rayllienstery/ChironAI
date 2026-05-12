@@ -176,6 +176,64 @@ class DockerManager:
             "error": "" if cli_available and info.ok else _compact_error(info.message if cli_available else version.message),
         }
 
+    def engine_info(self) -> tuple[bool, str]:
+        status = self.status()
+        if bool(status.get("engine_ready")):
+            return True, ""
+        return False, str(status.get("error") or "Docker Engine is not ready")
+
+    def wait_engine(
+        self,
+        *,
+        docker_desktop_exe: str = r"C:\Program Files\Docker\Docker\Docker Desktop.exe",
+        timeout: float = 120.0,
+        interval: float = 5.0,
+        start_desktop_on_windows: bool = True,
+    ) -> dict[str, Any]:
+        ready, detail = self.engine_info()
+        if ready:
+            return {"ok": True, "message": "docker engine ready", "status": self.status()}
+
+        if start_desktop_on_windows and sys.platform == "win32":
+            try:
+                subprocess.Popen(
+                    [docker_desktop_exe],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except OSError as e:
+                return {"ok": False, "message": f"failed to start Docker Desktop: {e}", "status": self.status()}
+
+        deadline = time.monotonic() + float(timeout)
+        last_err = detail or "docker not ready"
+        while time.monotonic() < deadline:
+            ready, detail = self.engine_info()
+            if ready:
+                return {"ok": True, "message": "docker engine became ready", "status": self.status()}
+            time.sleep(max(0.1, float(interval)))
+            if detail:
+                last_err = f"timeout waiting for docker info: {detail}"
+            else:
+                last_err = "timeout waiting for docker info"
+
+        return {"ok": False, "message": last_err, "status": self.status()}
+
+    def wait_engine_tuple(
+        self,
+        *,
+        docker_desktop_exe: str = r"C:\Program Files\Docker\Docker\Docker Desktop.exe",
+        timeout: float = 120.0,
+        interval: float = 5.0,
+        start_desktop_on_windows: bool = True,
+    ) -> tuple[bool, str]:
+        result = self.wait_engine(
+            docker_desktop_exe=docker_desktop_exe,
+            timeout=timeout,
+            interval=interval,
+            start_desktop_on_windows=start_desktop_on_windows,
+        )
+        return bool(result.get("ok")), str(result.get("message") or "")
+
     def containers(self) -> dict[str, Any]:
         result = self.run(["ps", "-a", "--format", "{{json .}}"], timeout=20.0)
         if not result.ok:
@@ -262,6 +320,12 @@ class DockerManager:
         if key is None:
             return env
         return env.get(str(key), "")
+
+    def container_exists(self, container: str) -> bool:
+        return self.inspect_container(container).exists
+
+    def container_running(self, container: str) -> bool:
+        return self.inspect_container(container).running
 
     def ensure_container(self, spec: DockerContainerSpec) -> dict[str, Any]:
         spec = self._normalize_spec(spec)

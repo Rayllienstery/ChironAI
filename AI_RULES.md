@@ -61,6 +61,7 @@ Ambiguous “WebUI” in conversation: clarify—**`WebUI/` folder**, **`/api/we
 - **Manifest:** Every extension MUST have a `chironai-extension.json` in its root directory defining `id`, `version`, `type`, and `capabilities`.
 - **Backend:** Must define a `create_provider(host_context, manifest)` entry point in the configured backend module.
 - **UI Integration:** Extensions can provide `tab_ui` (prefer `iframe_tab` for complex UIs) or declarative `ui_schema` for settings/status pages.
+- **Docker contract:** Extensions MUST NOT call Docker directly, shell out to Docker, resolve Docker CLI paths, use Docker SDK clients, or call CoreUI routes such as `/api/webui/docker/*`. Extension-owned containers MUST be declared with `DockerContainerSpec` and managed only through `host_context.docker_runtime`.
 
 ---
 
@@ -124,6 +125,7 @@ Risk and “tail” summary: `docs/legacy_map.md`.
     - [ ] Does it provide its own frame, tab title, tab icon, and assets?
     - [ ] Is `chironai-extension.json` present and valid?
     - [ ] Is the `create_provider` entry point implemented?
+    - [ ] If it needs Docker, does it use only `host_context.docker_runtime` + `DockerContainerSpec`?
 
 ---
 

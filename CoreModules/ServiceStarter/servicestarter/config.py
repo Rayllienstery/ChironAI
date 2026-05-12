@@ -1,8 +1,6 @@
 """Environment-driven configuration for ServiceStarter.
 
-Docker CLI resolution (see docker_ops): optional ``DOCKER_EXE`` (full path to docker.exe),
-else ``PATH``, else typical Docker Desktop path on Windows
-(``ProgramFiles\\Docker\\Docker\\resources\\bin\\docker.exe``).
+Docker CLI resolution is owned by the DockerManager CoreModule.
 """
 
 from __future__ import annotations

@@ -4,6 +4,7 @@ import importlib.util
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 
 def _load_open_webui_provider_module():
@@ -33,47 +34,32 @@ class _Docker:
         self.running = False
         self.exists = False
         self.env = ""
-        self.pulled = False
-        self.started = False
-        self.stopped = False
+        self.ensure_spec: Any | None = None
+        self.stopped = ""
 
-    def container_running(self, name: str):
-        return self.running, ""
+    def inspect_container(self, name: str):
+        return SimpleNamespace(
+            exists=self.exists or self.running,
+            running=self.running,
+            name=name,
+            env={"OLLAMA_BASE_URL": self.env} if self.env else {},
+        )
 
-    def container_exists(self, name: str) -> bool:
-        return self.exists
-
-    def container_env(self, name: str, key: str) -> str:
-        return self.env
-
-    def start_container(self, name: str):
-        self.started = True
-        self.running = True
-        return True, "started"
-
-    def stop_container(self, name: str):
-        self.stopped = True
-        self.running = False
-        return True, "stopped"
-
-    def remove_container(self, name: str):
-        self.exists = False
-        self.running = False
-        return True, "removed"
-
-    def pull_image(self, image: str):
-        self.pulled = True
-        return True, "pulled"
-
-    def run_container(self, cfg):
+    def ensure_container(self, spec: Any) -> dict[str, Any]:
+        self.ensure_spec = spec
         self.exists = True
         self.running = True
-        return True, "created"
+        return {"ok": True, "container": spec.name, "image": spec.image, "message": "created"}
+
+    def stop_container(self, name: str) -> dict[str, Any]:
+        self.stopped = name
+        self.running = False
+        return {"ok": True, "container": name, "message": "stopped"}
 
 
 def _extension(repo: _Repo, docker: _Docker):
     mod = _load_open_webui_provider_module()
-    host = SimpleNamespace(get_settings_repository=lambda: repo)
+    host = SimpleNamespace(get_settings_repository=lambda: repo, docker_runtime=docker)
     manifest = SimpleNamespace(
         id="open-webui",
         title="Open WebUI",
@@ -92,7 +78,7 @@ def _extension(repo: _Repo, docker: _Docker):
             }
         },
     )
-    return mod.OpenWebUiExtension(host, manifest, docker=docker), mod
+    return mod.OpenWebUiExtension(host, manifest), mod
 
 
 def test_open_webui_extension_descriptor_and_iframe_payload() -> None:
@@ -107,10 +93,14 @@ def test_open_webui_extension_descriptor_and_iframe_payload() -> None:
     assert descriptor["id"] == "open-webui"
     assert descriptor["title"] == "Open WebUI"
     assert descriptor["icon"] == "icons/open-webui-light.svg"
-    assert descriptor["frame"] == {}
+    assert descriptor["frame"]["type"] == "iframe"
     assert descriptor["status"]["running"] is True
-    assert payload["frame"] == {}
-    assert payload.get("content") is None
+    assert payload["frame"]["type"] == "iframe"
+    assert payload["content"]["type"] == "service_panel"
+    assert payload["content"]["title"] == "Open WebUI"
+    assert any(field.get("key") == "backend_url" for field in payload["content"]["fields"])
+    assert any(action.get("id") == "stop" for action in payload["content"]["actions"])
+    assert any(item.get("label") == "Container" and item.get("value") == "open-webui" for item in payload["content"]["details"])
     assert "schema" in payload
     components = payload["schema"]["pages"][0]["sections"][0]["components"]
     assert any(c.get("type") == "action" and c.get("action_id") == "stop" for c in components)
@@ -135,9 +125,30 @@ def test_open_webui_extension_actions_and_legacy_setting_migration() -> None:
 
     started = ext.run_action("start", {})
     assert started["ok"] is True
-    assert docker.pulled is True
     assert docker.running is True
+    assert docker.ensure_spec.name == "open-webui"
+    assert docker.ensure_spec.image == "open-webui/open-webui:main"
+    assert docker.ensure_spec.ports == ["3000:8080"]
+    assert docker.ensure_spec.env == {"OLLAMA_BASE_URL": "http://localhost:9999"}
+    assert docker.ensure_spec.restart == "unless-stopped"
+    assert docker.ensure_spec.labels["chironai.extension"] == "open-webui"
 
     stopped = ext.run_action("stop", {})
     assert stopped["ok"] is True
-    assert docker.stopped is True
+    assert docker.stopped == "open-webui"
+
+
+def test_open_webui_extension_reports_missing_docker_runtime() -> None:
+    mod = _load_open_webui_provider_module()
+    repo = _Repo()
+    host = SimpleNamespace(get_settings_repository=lambda: repo)
+    manifest = SimpleNamespace(id="open-webui", title="Open WebUI", description="", icon="", metadata={})
+    ext = mod.OpenWebUiExtension(host, manifest)
+
+    started = ext.run_action("start", {})
+    stopped = ext.run_action("stop", {})
+
+    assert started["ok"] is False
+    assert started["message"] == "Docker runtime is unavailable"
+    assert stopped["ok"] is False
+    assert stopped["message"] == "Docker runtime is unavailable"

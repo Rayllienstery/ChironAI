@@ -52,6 +52,25 @@ function collectSchemaComponents(schema) {
   return out;
 }
 
+function serviceActionIcon(actionId) {
+  switch (String(actionId || '')) {
+    case 'refresh':
+      return 'refresh';
+    case 'start':
+    case 'start_service':
+      return 'play_arrow';
+    case 'stop':
+    case 'stop_service':
+      return 'stop';
+    case 'clear_backend':
+      return 'backspace';
+    case 'open_external':
+      return 'open_in_new';
+    default:
+      return '';
+  }
+}
+
 function formatBytesLoose(value) {
   const raw = String(value ?? '').trim();
   if (!raw) return '';
@@ -629,6 +648,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
 
   const content = payload?.content;
   const isIframeContent = content?.type === 'iframe';
+  const isServicePanelContent = content?.type === 'service_panel';
   const contentFields = Array.isArray(content?.fields) ? content.fields : [];
   const contentActions = Array.isArray(content?.actions) ? content.actions : [];
   const contentDetails = Array.isArray(content?.details) ? content.details : [];
@@ -726,6 +746,80 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
         </section>
       ) : null}
 
+      {isServicePanelContent ? (
+        <section className="app-default-card llm-proxy-section-gap extensions-runtime-service-shell">
+          <div className="extensions-runtime-service-header">
+            <div className="extensions-runtime-service-title-row">
+              <div className="extensions-runtime-service-icon" aria-hidden="true">
+                <span className="material-symbols-outlined">deployed_code</span>
+              </div>
+              <div>
+                <h2>{content.title || payload?.title || title || extensionId}</h2>
+                {content.subtitle ? <p>{content.subtitle}</p> : null}
+              </div>
+            </div>
+            {contentStatus ? (
+              <div className={`extensions-runtime-service-state extensions-runtime-service-state--${contentStatus.running ? 'running' : contentStatus.tone === 'error' ? 'error' : 'stopped'}`}>
+                <span className="extensions-runtime-service-state__dot" aria-hidden="true" />
+                <span>{contentStatus.message || (contentStatus.running ? 'running' : 'stopped')}</span>
+                {contentStatus.http_status != null ? <strong>HTTP {contentStatus.http_status}</strong> : null}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="extensions-runtime-service-grid">
+            <div className="extensions-runtime-service-main">
+              {contentFields.map((field) => {
+                const key = String(field.key || '');
+                return (
+                  <label key={key} className="extensions-runtime-service-field">
+                    <span>{field.label || key}</span>
+                    <input
+                      type={field.secret ? 'password' : 'text'}
+                      value={fieldState[key] ?? ''}
+                      placeholder={field.placeholder || ''}
+                      onChange={(e) => setFieldState((prev) => ({ ...prev, [key]: e.target.value }))}
+                      onBlur={() => {
+                        const autosaveActionId = String(field?.autosave_action_id || '').trim();
+                        if (!autosaveActionId) return;
+                        void runAutosave(autosaveActionId, key);
+                      }}
+                    />
+                  </label>
+                );
+              })}
+
+              <div className="extensions-runtime-service-actions">
+                {contentActions.map((action) => {
+                  const actionId = String(action?.id || action?.action_id || '');
+                  const icon = serviceActionIcon(actionId);
+                  return (
+                    <CoreUIButton
+                      key={actionId || action.label}
+                      variant={action.variant === 'danger' ? 'danger' : action.variant === 'primary' ? 'primary' : 'default'}
+                      onClick={() => void handleContentAction(action)}
+                      disabled={Boolean(action.disabled) || busyActionId === actionId}
+                    >
+                      {icon ? <span className="material-symbols-outlined" aria-hidden="true">{icon}</span> : null}
+                      {busyActionId === actionId ? 'Working...' : action.label || actionId}
+                    </CoreUIButton>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="extensions-runtime-service-details">
+              {contentDetails.map((item) => (
+                <Card key={`${item.label}:${item.value}`} className="extensions-runtime-service-detail">
+                  <span>{item.label}</span>
+                  <strong>{item.value || '-'}</strong>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {diagnosticsData ? (() => {
         const h = diagnosticsData.health;
         const healthOk = h?.ok === true;
@@ -819,7 +913,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
         );
       })() : null}
 
-      {pages.map((page) => (
+      {!isServicePanelContent && pages.map((page) => (
         <div key={page.id || 'page'}>
           {(Array.isArray(page.sections) ? page.sections : []).map((section) => {
             const renderedComponents = (Array.isArray(section.components) ? section.components : [])

@@ -14,10 +14,13 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 
 
 def ensure_servicestarter_on_path() -> None:
-    """Best-effort: add CoreModules/ServiceStarter to sys.path for source checkout runs."""
-    candidate = os.path.join(_ROOT, "CoreModules", "ServiceStarter")
-    if candidate not in sys.path:
-        sys.path.insert(0, candidate)
+    """Best-effort: add ServiceStarter dependencies to sys.path for source checkout runs."""
+    for candidate in (
+        os.path.join(_ROOT, "CoreModules", "DockerManager"),
+        os.path.join(_ROOT, "CoreModules", "ServiceStarter"),
+    ):
+        if os.path.isdir(candidate) and candidate not in sys.path:
+            sys.path.insert(0, candidate)
 
 
 def get_service_starter() -> Any:

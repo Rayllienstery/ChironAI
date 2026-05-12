@@ -40,6 +40,55 @@ def test_status_reports_engine_ready_versions() -> None:
     assert status["server_version"] == "27.0.2"
 
 
+def test_wait_engine_ready_returns_tuple() -> None:
+    version = json.dumps({"Client": {"Version": "27.0.1"}, "Server": {"Version": "27.0.2"}})
+
+    def fake_run(args: list[str], **_: object) -> CompletedProcess[str]:
+        if args[1:3] == ["version", "--format"]:
+            return _proc(args, out=version)
+        if args[1:] == ["info"]:
+            return _proc(args, out="ok")
+        raise AssertionError(args)
+
+    with patch("docker_manager.manager.subprocess.run", side_effect=fake_run):
+        ok, msg = DockerManager(docker_exe="docker").wait_engine_tuple(timeout=0.1, interval=0.01)
+
+    assert ok is True
+    assert msg == "docker engine ready"
+
+
+def test_wait_engine_starts_docker_desktop_on_windows() -> None:
+    version = json.dumps({"Client": {"Version": "27.0.1"}, "Server": {"Version": "27.0.2"}})
+    info_calls = 0
+
+    def fake_run(args: list[str], **_: object) -> CompletedProcess[str]:
+        nonlocal info_calls
+        if args[1:3] == ["version", "--format"]:
+            return _proc(args, out=version)
+        if args[1:] == ["info"]:
+            info_calls += 1
+            if info_calls == 1:
+                return _proc(args, code=1, err="not ready")
+            return _proc(args, out="ready")
+        raise AssertionError(args)
+
+    with (
+        patch("docker_manager.manager.subprocess.run", side_effect=fake_run),
+        patch("docker_manager.manager.subprocess.Popen") as popen,
+        patch("docker_manager.manager.sys.platform", "win32"),
+    ):
+        result = DockerManager(docker_exe="docker").wait_engine(
+            docker_desktop_exe=r"C:\Docker\Docker Desktop.exe",
+            timeout=0.1,
+            interval=0.01,
+            start_desktop_on_windows=True,
+        )
+
+    assert result["ok"] is True
+    assert result["message"] == "docker engine became ready"
+    popen.assert_called_once()
+
+
 def test_containers_parse_json_lines() -> None:
     line = json.dumps(
         {
@@ -58,6 +107,18 @@ def test_containers_parse_json_lines() -> None:
     assert result["ok"] is True
     assert result["containers"][0]["name"] == "qdrant"
     assert result["containers"][0]["running"] is True
+
+
+def test_container_public_state_helpers() -> None:
+    spec = DockerContainerSpec(name="svc", image="example/service:latest")
+
+    with patch(
+        "docker_manager.manager.subprocess.run",
+        return_value=_proc(["docker"], out=_inspect_payload(spec, running=True)),
+    ):
+        manager = DockerManager(docker_exe="docker")
+        assert manager.container_exists("svc") is True
+        assert manager.container_running("svc") is True
 
 
 def test_images_parse_json_lines() -> None:

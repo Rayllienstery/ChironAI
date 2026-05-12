@@ -7,8 +7,6 @@ this bundled extension so the core app can remove or update it independently.
 from __future__ import annotations
 
 import os
-import shutil
-import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -77,120 +75,11 @@ class OpenWebUiConfig:
     ollama_url_for_container: str
 
 
-class DockerRunner:
-    def _docker_executable(self) -> str:
-        env = (os.getenv("DOCKER_EXE") or "").strip()
-        if env:
-            return env
-        found = shutil.which("docker")
-        if found:
-            return found
-        if sys.platform == "win32":
-            pf = os.environ.get("ProgramFiles", r"C:\Program Files")
-            candidate = os.path.join(pf, "Docker", "Docker", "resources", "bin", "docker.exe")
-            if os.path.isfile(candidate):
-                return candidate
-        return "docker"
-
-    def run(self, args: list[str], *, timeout: float = 30.0) -> tuple[int, str, str]:
-        try:
-            proc = subprocess.run(
-                [self._docker_executable(), *args],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                check=False,
-            )
-            return int(proc.returncode), proc.stdout.strip(), proc.stderr.strip()
-        except FileNotFoundError:
-            return 127, "", "Docker CLI not found"
-        except subprocess.TimeoutExpired as e:
-            return 124, e.stdout or "", e.stderr or "Docker command timed out"
-
-    def container_running(self, name: str) -> tuple[bool, str]:
-        code, out, err = self.run(["inspect", "-f", "{{.State.Running}}", name], timeout=8.0)
-        if code == 0:
-            return out.strip().lower() == "true", ""
-        if "no such object" in err.lower() or "no such object" in out.lower():
-            return False, ""
-        return False, err or out
-
-    def container_exists(self, name: str) -> bool:
-        code, _out, _err = self.run(["inspect", name], timeout=8.0)
-        return code == 0
-
-    def container_env(self, name: str, key: str) -> str:
-        code, out, _err = self.run(
-            ["inspect", "-f", "{{range .Config.Env}}{{println .}}{{end}}", name],
-            timeout=8.0,
-        )
-        if code != 0:
-            return ""
-        prefix = f"{key}="
-        for line in out.splitlines():
-            if line.startswith(prefix):
-                return line[len(prefix) :].strip()
-        return ""
-
-    def start_container(self, name: str) -> tuple[bool, str]:
-        code, out, err = self.run(["start", name], timeout=30.0)
-        if code == 0:
-            return True, out or "started"
-        if "already running" in err.lower():
-            return True, "already running"
-        return False, err or out
-
-    def stop_container(self, name: str) -> tuple[bool, str]:
-        code, out, err = self.run(["stop", name], timeout=30.0)
-        if code == 0:
-            return True, out or "stopped"
-        return False, err or out
-
-    def remove_container(self, name: str) -> tuple[bool, str]:
-        code, out, err = self.run(["rm", "-f", name], timeout=30.0)
-        if code == 0:
-            return True, out or "removed"
-        if "no such" in (err or out).lower():
-            return True, "not present"
-        return False, err or out
-
-    def pull_image(self, image: str) -> tuple[bool, str]:
-        code, out, err = self.run(["pull", image], timeout=300.0)
-        if code == 0:
-            return True, out or "pulled"
-        return False, err or out
-
-    def run_container(self, cfg: OpenWebUiConfig) -> tuple[bool, str]:
-        extra_hosts: list[str] = []
-        if sys.platform != "win32":
-            extra_hosts = ["--add-host", "host.docker.internal:host-gateway"]
-        code, out, err = self.run(
-            [
-                "run",
-                "-d",
-                "--name",
-                cfg.container_name,
-                "-p",
-                f"{cfg.host_port}:{cfg.container_port}",
-                "-e",
-                f"OLLAMA_BASE_URL={cfg.ollama_url_for_container}",
-                "--restart",
-                "unless-stopped",
-                *extra_hosts,
-                cfg.image,
-            ],
-            timeout=60.0,
-        )
-        if code == 0:
-            return True, out or "started"
-        return False, err or out
-
-
 class OpenWebUiExtension:
-    def __init__(self, host_context: Any, manifest: Any, docker: DockerRunner | None = None) -> None:
+    def __init__(self, host_context: Any, manifest: Any, docker: Any | None = None) -> None:
         self._host = host_context
         self._manifest = manifest
-        self._docker = docker or DockerRunner()
+        self._docker_override = docker
 
     def _settings_repo(self) -> Any:
         return self._host.get_settings_repository()
@@ -244,18 +133,71 @@ class OpenWebUiExtension:
             ollama_url_for_container=(saved or env_backend or self._default_ollama_for_container()).rstrip("/"),
         )
 
+    def _docker_runtime(self) -> Any | None:
+        if self._docker_override is not None:
+            return self._docker_override
+        runtime = getattr(self._host, "docker_runtime", None)
+        if runtime is not None:
+            return runtime
+        metadata = getattr(self._host, "metadata", {}) or {}
+        if isinstance(metadata, dict):
+            return metadata.get("docker_runtime")
+        return None
+
+    def _docker_unavailable(self) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "message": "Docker runtime is unavailable",
+            "error": "Docker runtime is unavailable",
+        }
+
+    def _docker_spec(self, cfg: OpenWebUiConfig) -> Any:
+        from docker_manager import DockerContainerSpec
+
+        extra_hosts: list[str] = []
+        if sys.platform != "win32":
+            extra_hosts = ["host.docker.internal:host-gateway"]
+        return DockerContainerSpec(
+            name=cfg.container_name,
+            image=cfg.image,
+            ports=[f"{cfg.host_port}:{cfg.container_port}"],
+            env={"OLLAMA_BASE_URL": cfg.ollama_url_for_container},
+            restart="unless-stopped",
+            extra_hosts=extra_hosts,
+            labels={
+                "chironai.extension": str(getattr(self._manifest, "id", "open-webui") or "open-webui"),
+                "chironai.provider": "open-webui",
+            },
+        )
+
     def _status(self, *, ping: bool = False) -> dict[str, Any]:
         cfg = self._config()
-        running, err = self._docker.container_running(cfg.container_name)
+        docker = self._docker_runtime()
+        running = False
         status: dict[str, Any] = {
-            "running": bool(running),
-            "tone": "success" if running else "neutral",
-            "message": "running" if running else "stopped",
+            "running": False,
+            "tone": "neutral",
+            "message": "stopped",
             "updated_at": int(time.time()),
             "url": cfg.host_url,
         }
-        if err:
-            status.update({"tone": "error", "message": err})
+        if docker is None:
+            status.update({"tone": "error", "message": "Docker runtime is unavailable"})
+            return status
+        try:
+            state = docker.inspect_container(cfg.container_name)
+            exists = bool(getattr(state, "exists", False))
+            running = bool(getattr(state, "running", False))
+            status.update(
+                {
+                    "running": running,
+                    "tone": "success" if running else "neutral",
+                    "message": "running" if running else "stopped" if exists else "not created",
+                }
+            )
+        except Exception as e:
+            status.update({"tone": "error", "message": str(e)})
+            return status
         if ping and running:
             try:
                 resp = requests.get(cfg.host_url.rstrip("/") + "/", timeout=0.8)
@@ -325,6 +267,29 @@ class OpenWebUiExtension:
             "icon": _tab_icon(self._manifest, "icons/open-webui-light.svg"),
             "frame": _tab_frame(self._manifest),
             "status": status,
+            "content": {
+                "type": "service_panel",
+                "title": _tab_title(self._manifest, "Open WebUI"),
+                "subtitle": "Docker-managed Open WebUI runtime",
+                "open_external_url": cfg.host_url,
+                "fields": [
+                    {
+                        "key": "backend_url",
+                        "label": "Chat backend URL",
+                        "value": cfg.ollama_url_for_container,
+                        "placeholder": llm_proxy_hint,
+                        "autosave_action_id": "save_backend",
+                    }
+                ],
+                "actions": actions,
+                "details": [
+                    {"label": "Container", "value": cfg.container_name},
+                    {"label": "Image", "value": cfg.image},
+                    {"label": "Host URL", "value": cfg.host_url},
+                    {"label": "Port", "value": f"{cfg.host_port}:{cfg.container_port}"},
+                    {"label": "Backend source", "value": source},
+                ],
+            },
             "schema": {
                 "pages": [
                     {
@@ -383,29 +348,11 @@ class OpenWebUiExtension:
         }
 
     def _ensure_container(self, cfg: OpenWebUiConfig) -> tuple[bool, str]:
-        running, err = self._docker.container_running(cfg.container_name)
-        if err:
-            return False, err
-        if running:
-            current = self._docker.container_env(cfg.container_name, "OLLAMA_BASE_URL").rstrip("/")
-            if current and current != cfg.ollama_url_for_container:
-                ok_rm, msg_rm = self._docker.remove_container(cfg.container_name)
-                if not ok_rm:
-                    return False, msg_rm
-            else:
-                return True, "already running"
-        elif self._docker.container_exists(cfg.container_name):
-            current = self._docker.container_env(cfg.container_name, "OLLAMA_BASE_URL").rstrip("/")
-            if current and current != cfg.ollama_url_for_container:
-                ok_rm, msg_rm = self._docker.remove_container(cfg.container_name)
-                if not ok_rm:
-                    return False, msg_rm
-            else:
-                return self._docker.start_container(cfg.container_name)
-        ok_pull, msg_pull = self._docker.pull_image(cfg.image)
-        if not ok_pull:
-            return False, msg_pull
-        return self._docker.run_container(cfg)
+        docker = self._docker_runtime()
+        if docker is None:
+            return False, "Docker runtime is unavailable"
+        result = docker.ensure_container(self._docker_spec(cfg))
+        return bool(result.get("ok")), str(result.get("message") or result.get("details") or result.get("error") or "")
 
     def run_action(
         self,
@@ -424,8 +371,16 @@ class OpenWebUiExtension:
             ok, msg = self._ensure_container(cfg)
             return {"ok": bool(ok), "message": msg, "status": self._status(ping=True)}
         if action == "stop":
-            ok, msg = self._docker.stop_container(cfg.container_name)
-            return {"ok": bool(ok), "message": msg, "status": self._status(ping=True)}
+            docker = self._docker_runtime()
+            if docker is None:
+                unavailable = self._docker_unavailable()
+                return {**unavailable, "status": self._status(ping=True)}
+            result = docker.stop_container(cfg.container_name)
+            return {
+                "ok": bool(result.get("ok")),
+                "message": result.get("message") or result.get("details") or result.get("error") or "",
+                "status": self._status(ping=True),
+            }
         if action == "save_backend":
             raw = str(payload.get("backend_url") or "").strip()
             norm = _normalize_backend_url(raw)

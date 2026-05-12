@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 
 import requests
 
+from docker_manager import DockerContainerSpec, DockerManager
 from rag_service.config import get_ollama_chat_url, get_qdrant_url
 
 
@@ -121,42 +122,16 @@ def ollama_port_from_base_url(base_url: str, default_port: int = 11434) -> int:
     return int(parsed.port or default_port)
 
 
-def _resolved_docker_executable() -> str:
-    env = (os.getenv("DOCKER_EXE") or "").strip()
-    if env:
-        return env
-    found = shutil.which("docker")
-    if found:
-        return found
-    if sys.platform == "win32":
-        pf = os.environ.get("ProgramFiles", r"C:\Program Files")
-        candidate = os.path.join(pf, "Docker", "Docker", "resources", "bin", "docker.exe")
-        if os.path.isfile(candidate):
-            return candidate
-    return "docker"
-
-
-def run_docker(args: list[str], *, timeout: float | None = 300.0) -> tuple[int, str, str]:
-    exe = _resolved_docker_executable()
-    try:
-        proc = subprocess.run([exe, *args], capture_output=True, text=True, timeout=timeout, check=False)
-    except FileNotFoundError:
-        return 127, "", f"Docker CLI not found or not executable: {exe!r}"
-    except PermissionError as e:
-        return 126, "", f"Docker CLI permission denied: {exe!r}: {e}"
-    return proc.returncode, (proc.stdout or "").strip(), (proc.stderr or "").strip()
+def _docker_manager() -> DockerManager:
+    return DockerManager()
 
 
 def docker_version_available() -> bool:
-    code, _, _ = run_docker(["--version"], timeout=10.0)
-    return code == 0
+    return bool(_docker_manager().status().get("cli_available"))
 
 
 def docker_engine_info() -> tuple[bool, str]:
-    code, out, err = run_docker(["info"], timeout=15.0)
-    if code == 0:
-        return True, ""
-    return False, (err or out or "").strip()
+    return _docker_manager().engine_info()
 
 
 def docker_engine_ready() -> bool:
@@ -165,97 +140,54 @@ def docker_engine_ready() -> bool:
 
 
 def wait_for_docker_engine(cfg: RagRuntimeConfig, *, start_desktop_on_windows: bool = True) -> tuple[bool, str]:
-    ready, last_detail = docker_engine_info()
-    if ready:
-        return True, "docker engine ready"
-    if start_desktop_on_windows and sys.platform == "win32":
-        try:
-            subprocess.Popen([cfg.docker_desktop_exe], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except OSError as e:
-            return False, f"failed to start Docker Desktop: {e}"
-    deadline = time.monotonic() + cfg.docker_ready_timeout_sec
-    last_err = "docker not ready"
-    while time.monotonic() < deadline:
-        ready, last_detail = docker_engine_info()
-        if ready:
-            return True, "docker engine became ready"
-        time.sleep(cfg.docker_poll_interval_sec)
-        last_err = "timeout waiting for docker info"
-        if last_detail:
-            last_err = f"{last_err}: {last_detail}"
-    return False, last_err
+    return _docker_manager().wait_engine_tuple(
+        docker_desktop_exe=cfg.docker_desktop_exe,
+        timeout=cfg.docker_ready_timeout_sec,
+        interval=cfg.docker_poll_interval_sec,
+        start_desktop_on_windows=start_desktop_on_windows,
+    )
 
 
 def container_exists(name: str) -> bool:
-    code, _, _ = run_docker(["inspect", name], timeout=15.0)
-    return code == 0
+    return _docker_manager().container_exists(name)
 
 
 def container_is_running(name: str) -> bool:
-    code, out, _ = run_docker(["inspect", "-f", "{{.State.Running}}", name], timeout=15.0)
-    return code == 0 and (out or "").strip().lower() == "true"
+    return _docker_manager().container_running(name)
 
 
 def docker_pull(image: str, *, timeout: float = 600.0) -> tuple[bool, str]:
-    code, out, err = run_docker(["pull", image], timeout=timeout)
-    if code != 0:
-        return False, err or out or f"docker pull failed ({code})"
-    return True, out or "ok"
+    result = _docker_manager().pull_image(image)
+    return bool(result.get("ok")), str(result.get("message") or result.get("details") or result.get("error") or "")
 
 
 def docker_start_container(name: str) -> tuple[bool, str]:
-    code, out, err = run_docker(["start", name], timeout=60.0)
-    if code == 0:
-        return True, (out or err or "ok").strip() or "ok"
-    combined = f"{err}\n{out}".lower()
-    if "already running" in combined or "is already running" in combined:
+    result = _docker_manager().start_container(name)
+    msg = str(result.get("message") or result.get("details") or result.get("error") or "")
+    if not bool(result.get("ok")) and "already running" in msg.lower():
         return True, "already running"
-    return False, (err or out or f"exit {code}").strip()
+    return bool(result.get("ok")), msg
 
 
 def docker_stop_container(name: str) -> tuple[bool, str]:
-    code, out, err = run_docker(["stop", name], timeout=120.0)
-    ok = code == 0
-    return ok, out or err or ("ok" if ok else f"exit {code}")
-
-
-def _sync_restart_policy_unless_stopped(name: str) -> None:
-    run_docker(["update", "--restart", "unless-stopped", name], timeout=30.0)
+    result = _docker_manager().stop_container(name)
+    return bool(result.get("ok")), str(result.get("message") or result.get("details") or result.get("error") or "")
 
 
 def ensure_qdrant_container(cfg: RagRuntimeConfig) -> tuple[bool, str]:
-    name = cfg.qdrant_container_name
-    if container_is_running(name):
-        return True, "already running"
-    if container_exists(name):
-        ok_s, msg_s = docker_start_container(name)
-        if ok_s:
-            _sync_restart_policy_unless_stopped(name)
-        return ok_s, msg_s
-    ok_pull, msg_pull = docker_pull(cfg.qdrant_image)
-    if not ok_pull:
-        return False, msg_pull
-    code, out, err = run_docker(
-        [
-            "run",
-            "-d",
-            "-p",
+    spec = DockerContainerSpec(
+        name=cfg.qdrant_container_name,
+        image=cfg.qdrant_image,
+        ports=[
             f"{cfg.qdrant_host_http_port}:6333",
-            "-p",
             f"{cfg.qdrant_host_grpc_port}:6334",
-            "--name",
-            name,
-            "-v",
-            "qdrant_storage:/qdrant/storage",
-            "--restart",
-            "unless-stopped",
-            cfg.qdrant_image,
         ],
-        timeout=120.0,
+        volumes=["qdrant_storage:/qdrant/storage"],
+        restart="unless-stopped",
+        labels={"chironai.service": "qdrant"},
     )
-    if code != 0:
-        return False, err or out or f"docker run failed ({code})"
-    return True, out or "created"
+    result = _docker_manager().ensure_container(spec)
+    return bool(result.get("ok")), str(result.get("message") or result.get("details") or result.get("error") or "")
 
 
 def wait_for_http_json(
