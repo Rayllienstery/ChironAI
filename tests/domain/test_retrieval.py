@@ -17,7 +17,6 @@ from domain.services.retrieval import (
     need_more_chunks,
     parse_versions_from_question,
     query_for_retrieval,
-    should_skip_rag_search,
 )
 from domain.entities.rag import QueryIntent
 
@@ -114,50 +113,6 @@ class TestQueryForRetrieval:
         q = query_for_retrieval("Observable macro + UIKit iOS 18+")
         # RAG query should carry strong hints toward Observation/observation tracking docs.
         assert "observation tracking" in q
-
-
-class TestShouldSkipRagSearch:
-    def test_returns_true_for_hi(self) -> None:
-        assert should_skip_rag_search("hi") is True
-
-    def test_returns_true_for_hello_case_insensitive(self) -> None:
-        assert should_skip_rag_search("  HELLO  ") is True
-
-    def test_returns_true_for_greeting_from_default_list(self) -> None:
-        assert should_skip_rag_search("hey") is True
-
-    def test_returns_false_for_what_is_swift(self) -> None:
-        assert should_skip_rag_search("what is Swift?") is False
-
-    def test_returns_false_for_explain_swift_code(self) -> None:
-        assert should_skip_rag_search("explain this Swift code") is False
-
-    def test_returns_true_for_query_without_rag_indicators(self) -> None:
-        assert should_skip_rag_search("what is the weather today?") is True
-
-    def test_returns_false_for_empty_string(self) -> None:
-        assert should_skip_rag_search("") is False
-
-    def test_returns_false_for_none(self) -> None:
-        assert should_skip_rag_search(None) is False
-
-    def test_returns_false_for_observation_tracking(self) -> None:
-        assert should_skip_rag_search("Updating views automatically with observation tracking") is False
-
-    def test_uses_custom_keywords_when_provided(self) -> None:
-        custom = ["foo", "bar"]
-        assert should_skip_rag_search("hello", rag_required_keywords=custom) is True
-        assert should_skip_rag_search("tell me about foo", rag_required_keywords=custom) is False
-        assert should_skip_rag_search("bar is great", rag_required_keywords=custom) is False
-
-    def test_custom_keywords_case_insensitive(self) -> None:
-        custom = ["Swift"]
-        assert should_skip_rag_search("what is swift?", rag_required_keywords=custom) is False
-        assert should_skip_rag_search("SWIFT and iOS", rag_required_keywords=custom) is False
-        assert should_skip_rag_search("weather", rag_required_keywords=custom) is True
-
-    def test_empty_custom_keywords_skips_when_no_default_match(self) -> None:
-        assert should_skip_rag_search("weather", rag_required_keywords=[]) is True
 
 
 class TestBuildQdrantFilter:

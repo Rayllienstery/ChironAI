@@ -39,11 +39,10 @@ from rag_service.domain.services.prompt_builder import (
     last_user_content,
 )
 from rag_service.domain.services.rag_trace import build_rag_trace_from_timings
-from rag_service.domain.services.rag_trigger import compute_rag_trigger_score
+from rag_service.domain.services.rag_trigger import compute_rag_trigger_score, should_skip_rag_search
 from rag_service.domain.services.retrieval import (
     MULTI_CHUNK_TOP_K,
     need_more_chunks,
-    should_skip_rag_search,
 )
 from rag_service.infrastructure.openai_multipart_vision import (
     collect_ollama_images_b64_from_parts,

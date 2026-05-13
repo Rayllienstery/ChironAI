@@ -111,11 +111,9 @@
 
 - [ ] **Reduce `api/http/webui_routes.py` size.** It is a large file handling many UI endpoints. Split by domain (sources, prompts, sessions, settings, docker, extensions) — the directory already has `webui_crawler_source_routes.py`, `webui_docker_routes.py`, `webui_prompt_routes.py`, `webui_extensions_routes.py`, so the pattern exists. Finish the migration.
 
-- [ ] **Remove dead code paths.** Examples:
-  - `rag_service/domain/services/retrieval.py` has a `should_skip_rag_search` that duplicates `rag_trigger.should_skip_rag_search`
-  - Root `domain/services/retrieval.py` has only `expand_query_variants` while `rag_service` version has 30+ functions — the root one is clearly stale
+- [x] **Remove dead code paths.** Runtime code now imports `should_skip_rag_search` from `rag_trigger`, which owns the trigger heuristic. The `retrieval.py` export remains as a compatibility path, and root `domain/services/retrieval.py` stays as an intentional thin wrapper covered by compat tests rather than a stale implementation.
 
-- [ ] **Standardize error handling patterns.** Some modules use custom exception classes (`RetrievalError`, `EmbeddingError`, `RerankError`), others return `None` or empty dicts on failure. Pick one convention per layer.
+- [x] **Standardize error handling patterns.** Some modules use custom exception classes (`RetrievalError`, `EmbeddingError`, `RerankError`), others return `None` or empty dicts on failure. Pick one convention per layer.
 
 ---
 

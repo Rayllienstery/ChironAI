@@ -6,7 +6,6 @@ from rag_service.domain.services.retrieval import (
     need_more_chunks,
     parse_versions_from_question,
     query_for_retrieval,
-    should_skip_rag_search,
 )
 
 
@@ -35,14 +34,3 @@ def test_need_more_chunks() -> None:
     assert need_more_chunks("what is View") is False
 
 
-def test_should_skip_rag_search_greeting() -> None:
-    assert should_skip_rag_search("hi") is True
-    assert should_skip_rag_search("hello") is True
-
-
-def test_should_skip_rag_search_no_keyword() -> None:
-    assert should_skip_rag_search("what is the weather") is True
-
-
-def test_should_skip_rag_search_with_swift() -> None:
-    assert should_skip_rag_search("How to use SwiftUI View?") is False
