@@ -6,13 +6,9 @@ import hashlib
 import json
 import logging
 import os
-import re
 import time
 import uuid
-import urllib.request
-from datetime import datetime, timezone
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 try:
@@ -31,7 +27,6 @@ from application.rag.proxy_settings_contract import (
 )
 
 from infrastructure.ollama.model_capabilities import (
-    caps_supports_thinking,
     caps_supports_tools,
     chat_error_suggests_no_think,
     chat_error_suggests_no_tools,
@@ -69,21 +64,15 @@ from llm_proxy.tool_helpers import (
 from llm_proxy.chat_completions_upstream_budget import (
     _compact_upstream_messages_for_budget,
     _ollama_message_content_str,
-    _serialized_upstream_messages_chars,
-    _truncate_old_tool_outputs_for_upstream_budget,
 )
 from llm_proxy.chat_completions_messages import (
-    _normalize_and_sanitize_messages,
     _normalize_request_messages,
 )
 from llm_proxy.chat_completions_gemini_native import (
-    _gemini_tool_state_upsert_many,
     _interpolate_native_tools_for_gemini,
-    _is_gemini_model_name,
     _persist_gemini_tool_calls_state,
     _preflight_native_tool_messages,
     _preflight_native_tools_payload,
-    _resolve_default_webui_db_path,
     _resolve_proxy_db_path_from_wiring,
     _sanitize_outgoing_shell_tool_calls,
     _sse_tool_calls_payload,
@@ -104,15 +93,12 @@ from llm_proxy.chat_completions_ollama_proxy import (
     _iter_proxy_ollama_chat_stream,
     _output_budget_exhaustion_error,
     _PLACEHOLDER_REPLY_FALLBACK_EN,
-    _proxy_ollama_chat_text,
     _proxy_ollama_chat_text_parts,
-    _qdrant_collection_names_cached,
     _text_preview,
     _trace_ollama_api_metrics,
     _trace_ollama_messages_for_ui,
     effective_ollama_think_from_body,
     gpt_oss_model_requires_reasoning_level,
-    passthrough_think_from_body,
 )
 from llm_proxy.chat_completions_run_phases import (
     _new_chat_trace_dict,

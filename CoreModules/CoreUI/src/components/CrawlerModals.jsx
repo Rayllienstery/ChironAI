@@ -49,7 +49,7 @@ const SKIP_REASON_LABELS = {
   other: "Other",
 };
 
-export function CreateCollectionIndexProgress({
+function CreateCollectionIndexProgress({
   progress,
   collectionName,
   variant,

@@ -1,21 +1,15 @@
 """
-RAG domain errors.
+RAG domain errors — re-exported from the canonical ``error_manager`` package.
 
-Business-level failures (retrieval, embedding, rerank) without
-infrastructure-specific details.
+All exception classes are defined once in ``CoreModules/ErrorManager/error_manager/exceptions.py``.
+This module keeps its original import path (``rag_service.domain.errors``) working for all
+existing callers.
 """
 
-
-class RetrievalError(Exception):
-    """Raised when RAG retrieval fails in a domain-visible way."""
-
-
-class EmbeddingError(Exception):
-    """Raised when embedding generation fails."""
-
-
-class RerankError(Exception):
-    """Raised when reranking cannot be completed."""
-
+from error_manager.exceptions import (  # noqa: F401
+    EmbeddingError,
+    RerankError,
+    RetrievalError,
+)
 
 __all__ = ["RetrievalError", "EmbeddingError", "RerankError"]

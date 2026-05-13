@@ -29,6 +29,9 @@ if os.path.isdir(_DOCKER_MANAGER) and _DOCKER_MANAGER not in sys.path:
 _LLM_INTERACTOR = os.path.join(_ROOT, "CoreModules", "LlmInteractor")
 if os.path.isdir(_LLM_INTERACTOR) and _LLM_INTERACTOR not in sys.path:
     sys.path.insert(0, _LLM_INTERACTOR)
+_ERROR_MANAGER = os.path.join(_ROOT, "CoreModules", "ErrorManager")
+if os.path.isdir(_ERROR_MANAGER) and _ERROR_MANAGER not in sys.path:
+    sys.path.insert(0, _ERROR_MANAGER)
 
 from application.rag.collection_freshness import check_collection_freshness
 from application.rag.params import get_rag_answer_params

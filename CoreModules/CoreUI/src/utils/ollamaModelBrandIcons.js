@@ -122,7 +122,7 @@ export function getOllamaModelBrandKey(fullId) {
  * @param {unknown} payload
  * @returns {string | null}
  */
-export function extractFamilyFromShowPayload(payload) {
+function extractFamilyFromShowPayload(payload) {
   if (!payload || typeof payload !== 'object') return null;
   const o = /** @type {Record<string, unknown>} */ (payload);
 
@@ -189,7 +189,7 @@ const FAMILY_TO_BRAND_RULES = [
  * @param {string | undefined | null} family
  * @returns {keyof typeof OLLAMA_BRAND_ICON_URL | null}
  */
-export function getOllamaModelBrandKeyFromFamily(family) {
+function getOllamaModelBrandKeyFromFamily(family) {
   const s = (family || '').trim();
   if (!s) return null;
   for (const [re, key] of FAMILY_TO_BRAND_RULES) {

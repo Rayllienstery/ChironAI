@@ -8,7 +8,6 @@ import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from llm_interactor.contracts import LLMProvider, ProviderHostContext
 from llm_interactor.manifest import ExtensionManifest, manifest_from_dict

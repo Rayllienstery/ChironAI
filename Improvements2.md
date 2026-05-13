@@ -1,4 +1,4 @@
-﻿# ChironAI — Code-Level Improvements
+# ChironAI — Code-Level Improvements
 
 ## 1. Domain Layer Duplication (Shim / Re-export Anti-pattern)
 
@@ -121,9 +121,9 @@
 
 ## 10. Security
 
-- [ ] **Audit `.gitignore` for secrets.** Ensure `*.db`, `*.sqlite`, `.env`, `logs/`, and any key files are explicitly ignored. TODO.md already flags this.
+- [x] **Audit `.gitignore` for secrets.** All required patterns are explicitly covered: `*.db`/`*.sqlite`/WAL sidecars (lines 117–129), `.env`/`.env.*` (lines 65–69), `logs/`/`*.log` (lines 78–80), `*.key`/`*.pem` (lines 72–73). No gaps found.
 
-- [ ] **Scan git history for accidentally committed secrets.** Use `git log --all --diff-filter=A -- '*.env'` or a tool like `trufflehog`.
+- [x] **Scan git history for accidentally committed secrets.** Scanned with `git log --all --diff-filter=A` for `*.env`, `*.key`, `*.pem`, `sk-proj-*`, `sk-ant-*`, `password`, `Bearer`. No real secrets ever committed. `api_key.py` matched `sk-` but only contains the internal `chiron_sk_` prefix string — no actual key values. All secret-type file extensions return 0 tracked files in `git ls-files`.
 
 ---
 

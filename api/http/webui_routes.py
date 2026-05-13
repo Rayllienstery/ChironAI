@@ -17,7 +17,6 @@ import threading
 import time
 import uuid
 from collections import deque
-from pathlib import Path
 from typing import Any, Callable
 from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
 
@@ -52,6 +51,12 @@ if os.path.isdir(_LLM_INTERACTOR) and _LLM_INTERACTOR not in sys.path:
 _DOCKER_MANAGER = os.path.join(_ROOT, "CoreModules", "DockerManager")
 if os.path.isdir(_DOCKER_MANAGER) and _DOCKER_MANAGER not in sys.path:
     sys.path.insert(0, _DOCKER_MANAGER)
+_ERROR_MANAGER = os.path.join(_ROOT, "CoreModules", "ErrorManager")
+if os.path.isdir(_ERROR_MANAGER) and _ERROR_MANAGER not in sys.path:
+    sys.path.insert(0, _ERROR_MANAGER)
+
+from error_manager.exceptions import ValidationError as _ValidationError
+from error_manager.http import error_response as _error_response
 
 from application.llm_proxy_builds import (
     LLM_PROXY_BUILDS_APP_KEY,
@@ -266,10 +271,6 @@ except ImportError:
 
 import hashlib
 import subprocess
-try:
-    import winreg  # type: ignore[import-not-found]
-except Exception:  # pragma: no cover - non-Windows fallback
-    winreg = None  # type: ignore[assignment]
 
 # In-memory buffer for dev console (last 50 requests)
 _REQUEST_BUFFER: deque[dict[str, Any]] = deque(maxlen=50)
@@ -406,7 +407,7 @@ def _run_unified_proxy_chat(body: dict[str, Any]) -> Any:
     """Delegate chat handling to /v1 chat_completions core to avoid duplicate RAG logic."""
     wiring = current_app.extensions.get("llm_proxy_wiring")
     if wiring is None:
-        return jsonify({"error": "LLM proxy wiring not initialized"}), 500
+        return _error_response("LLM proxy wiring not initialized", 500)
     from llm_proxy.chat_completions import run_chat_completions
 
     return run_chat_completions(wiring, body_override=body)
@@ -466,7 +467,7 @@ def get_models() -> Any:
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_models", exc_info=True)
         log_to_database("ERROR", str(e), source="webui_routes.get_models", error_type=type(e).__name__)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/config", methods=["GET"])
@@ -482,7 +483,7 @@ def get_config() -> Any:
         })
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_config", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/sessions", methods=["GET"])
@@ -495,7 +496,7 @@ def get_sessions() -> Any:
         return jsonify(session)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_sessions", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 def _parse_since_id_query(raw: str | None) -> int | None:
@@ -559,7 +560,7 @@ def get_logs() -> Any:
         since_id_val = _parse_since_id_query(request.args.get("since_id"))
 
         if not session_id:
-            return jsonify({"error": "session_id is required"}), 400
+            return _error_response("session_id is required", 400)
 
         logs_repo = get_logs_repository()
         t0 = time.perf_counter()
@@ -582,7 +583,7 @@ def get_logs() -> Any:
         return jsonify({"logs": logs})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_logs", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/notifications", methods=["GET"])
@@ -591,7 +592,7 @@ def get_coreui_notifications() -> Any:
     try:
         session_id = request.args.get("session_id")
         if not session_id:
-            return jsonify({"error": "session_id is required"}), 400
+            return _error_response("session_id is required", 400)
         limit = min(500, max(1, int(request.args.get("limit", 200))))
         include_raw = (request.args.get("include_dismissed") or "true").strip().lower()
         include_dismissed = include_raw in ("1", "true", "yes")
@@ -619,7 +620,7 @@ def get_coreui_notifications() -> Any:
         return jsonify({"notifications": items})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_coreui_notifications", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/notifications", methods=["POST"])
@@ -636,13 +637,13 @@ def create_coreui_notification() -> Any:
         aggregation_key = (body.get("aggregation_key") or "").strip()
 
         if not session_id:
-            return jsonify({"error": "session_id is required"}), 400
+            return _error_response("session_id is required", 400)
         if kind not in ("error", "event", "info"):
-            return jsonify({"error": "kind must be error, event, or info"}), 400
+            return _error_response("kind must be error, event, or info", 400)
         if not source:
-            return jsonify({"error": "source is required"}), 400
+            return _error_response("source is required", 400)
         if not title:
-            return jsonify({"error": "title is required"}), 400
+            return _error_response("title is required", 400)
         if not isinstance(message, str):
             message = str(message)
         if len(message) > 8000:
@@ -650,7 +651,7 @@ def create_coreui_notification() -> Any:
         meta_dict: dict[str, Any] | None = None
         if metadata is not None:
             if not isinstance(metadata, dict):
-                return jsonify({"error": "metadata must be an object"}), 400
+                return _error_response("metadata must be an object", 400)
             meta_dict = metadata
         if not aggregation_key:
             aggregation_key = None
@@ -667,7 +668,7 @@ def create_coreui_notification() -> Any:
         return jsonify({"id": nid})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.create_coreui_notification", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/notifications/<int:nid>/dismiss", methods=["PATCH"])
@@ -677,17 +678,17 @@ def dismiss_coreui_notification(nid: int) -> Any:
         body = request.get_json(force=True, silent=True) or {}
         session_id = body.get("session_id") or request.args.get("session_id")
         if not session_id:
-            return jsonify({"error": "session_id is required"}), 400
+            return _error_response("session_id is required", 400)
         repo = get_notifications_repository()
         ok = repo.dismiss(session_id, nid)
         if not ok and session_id != "system":
             ok = repo.dismiss("system", nid)
         if not ok:
-            return jsonify({"error": "not found or already dismissed"}), 404
+            return _error_response("not found or already dismissed", 404)
         return jsonify({"ok": True})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.dismiss_coreui_notification", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/notifications/clear", methods=["POST"])
@@ -697,12 +698,12 @@ def clear_coreui_notifications() -> Any:
         body = request.get_json(force=True, silent=True) or {}
         session_id = body.get("session_id")
         if not session_id:
-            return jsonify({"error": "session_id is required"}), 400
+            return _error_response("session_id is required", 400)
         deleted = get_notifications_repository().clear_session(session_id)
         return jsonify({"deleted": deleted})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.clear_coreui_notifications", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/proxy-logs", methods=["GET"])
@@ -755,7 +756,7 @@ def get_proxy_logs() -> Any:
         return jsonify({"logs": logs})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_proxy_logs", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/proxy-trace/current", methods=["GET"])
@@ -775,7 +776,7 @@ def get_proxy_trace_current() -> Any:
         )
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_proxy_trace_current", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/proxy-traces", methods=["GET"])
@@ -794,7 +795,7 @@ def get_proxy_traces() -> Any:
         return jsonify({"available": True, "traces": traces})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_proxy_traces", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/proxy-traces/clear", methods=["POST"])
@@ -804,7 +805,7 @@ def post_proxy_traces_clear() -> Any:
         return jsonify({"ok": True})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.post_proxy_traces_clear", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/proxy-journal", methods=["GET"])
@@ -861,7 +862,7 @@ def create_log() -> Any:
         metadata = body.get("metadata")
         
         if not session_id or not message:
-            return jsonify({"error": "session_id and message are required"}), 400
+            return _error_response("session_id and message are required", 400)
         
         logs_repo = get_logs_repository()
         log_id = logs_repo.add_log(
@@ -876,7 +877,7 @@ def create_log() -> Any:
         return jsonify({"id": log_id, "status": "created"})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.create_log", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/logs", methods=["DELETE"])
@@ -885,7 +886,7 @@ def delete_logs() -> Any:
     try:
         session_id = request.args.get("session_id")
         if not session_id:
-            return jsonify({"error": "session_id is required"}), 400
+            return _error_response("session_id is required", 400)
         inc_raw = (request.args.get("include_system") or "1").strip().lower()
         include_system = inc_raw not in ("0", "false", "no")
 
@@ -896,7 +897,7 @@ def delete_logs() -> Any:
         return jsonify({"status": "ok", "deleted_count": deleted})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.delete_logs", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/proxy-logs", methods=["DELETE"])
@@ -911,7 +912,7 @@ def delete_proxy_logs() -> Any:
         return jsonify({"status": "ok", "deleted_count": deleted})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.delete_proxy_logs", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/chat", methods=["POST"])
@@ -934,7 +935,7 @@ def webui_chat() -> Any:
         body = request.get_json(force=True, silent=True) or {}
         messages = body.get("messages") or []
         if not messages:
-            return jsonify({"error": "messages is required"}), 400
+            return _error_response("messages is required", 400)
 
         # Unified path: delegate to /v1 core (single RAG implementation).
         proxy_body: dict[str, Any] = dict(body)
@@ -956,7 +957,7 @@ def webui_chat() -> Any:
     except Exception as e:
         _ERROR_LOG.error("webui_routes.webui_chat", exc_info=True)
         log_to_database("ERROR", str(e), source="webui_routes.webui_chat", error_type=type(e).__name__)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
     finally:
         set_proxy_status(STATUS_IDLE)
         set_latest_request_seconds(time.time() - start_time)
@@ -972,7 +973,7 @@ def get_dev_console() -> Any:
         })
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_dev_console", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/model-settings", methods=["GET"])
@@ -1047,7 +1048,7 @@ def get_model_settings() -> Any:
         return jsonify(out)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_model_settings", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/llm-proxy/status", methods=["GET"])
@@ -1066,7 +1067,7 @@ def llm_proxy_status() -> Any:
         return jsonify(payload)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.llm_proxy_status", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/llm-proxy/api-key", methods=["GET"])
@@ -1076,7 +1077,7 @@ def llm_proxy_api_key_status() -> Any:
         return jsonify(proxy_api_key_status(get_settings_repository()))
     except Exception as e:
         _ERROR_LOG.error("webui_routes.llm_proxy_api_key_status", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/llm-proxy/api-key/generate", methods=["POST"])
@@ -1093,7 +1094,7 @@ def llm_proxy_generate_api_key() -> Any:
         return jsonify(payload)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.llm_proxy_generate_api_key", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/llm-proxy/api-key/reveal", methods=["POST"])
@@ -1103,11 +1104,11 @@ def llm_proxy_reveal_api_key() -> Any:
         settings_repo = get_settings_repository()
         plaintext = reveal_proxy_api_key(settings_repo)
         if not plaintext:
-            return jsonify({"error": "Chiron proxy API key is not recoverable"}), 404
+            return _error_response("Chiron proxy API key is not recoverable", 404)
         return jsonify({"key": plaintext, **proxy_api_key_status(settings_repo)})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.llm_proxy_reveal_api_key", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/llm-proxy/api-key", methods=["DELETE"])
@@ -1119,7 +1120,7 @@ def llm_proxy_delete_api_key() -> Any:
         return jsonify(proxy_api_key_status(settings_repo))
     except Exception as e:
         _ERROR_LOG.error("webui_routes.llm_proxy_delete_api_key", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/model-settings", methods=["POST"])
@@ -1164,7 +1165,7 @@ def update_model_settings() -> Any:
         return jsonify({"status": "ok", "settings": merged})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.update_model_settings", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 def _ollama_tag_name_set_for_builds_diag() -> set[str]:
@@ -1255,7 +1256,7 @@ def get_llm_proxy_builds() -> Any:
         )
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_llm_proxy_builds", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/llm-proxy/builds", methods=["PUT"])
@@ -1265,17 +1266,17 @@ def put_llm_proxy_builds() -> Any:
         body = request.get_json(force=True, silent=True) or {}
         raw_list = body.get("builds")
         if not isinstance(raw_list, list):
-            return jsonify({"error": "builds must be a JSON array"}), 400
+            return _error_response("builds must be a JSON array", 400)
         normalized, errs = validate_builds_list([x for x in raw_list if isinstance(x, dict)])
         if normalized is None:
-            return jsonify({"error": "validation failed", "details": errs}), 400
+            return _error_response(_ValidationError("validation failed", details=errs))
         settings_repo = get_settings_repository()
         settings_repo.set_app_setting(LLM_PROXY_BUILDS_APP_KEY, dump_builds_json(normalized))
         enriched = _enrich_builds_with_diagnostics(normalized)
         return jsonify({"ok": True, "builds": enriched})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.put_llm_proxy_builds", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/llm-proxy/builds/<build_id>", methods=["GET"])
@@ -1283,18 +1284,18 @@ def get_llm_proxy_build_one(build_id: str) -> Any:
     """Single build by id with diagnostics."""
     try:
         if ".." in build_id or "/" in build_id or "\\" in build_id:
-            return jsonify({"error": "Invalid id"}), 400
+            return _error_response("Invalid id", 400)
         settings_repo = get_settings_repository()
         raw = settings_repo.get_app_setting(LLM_PROXY_BUILDS_APP_KEY)
         builds = load_builds_json(raw)
         b = find_build_by_id(builds, build_id)
         if not b:
-            return jsonify({"error": "not found"}), 404
+            return _error_response("not found", 404)
         enriched = _enrich_builds_with_diagnostics([b])[0]
         return jsonify({"build": enriched})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_llm_proxy_build_one", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/llm-proxy/builds/preview-model", methods=["POST"])
@@ -1336,7 +1337,7 @@ def get_tester_settings() -> Any:
     try:
         session_id = request.args.get("session_id")
         if not session_id:
-            return jsonify({"error": "session_id is required"}), 400
+            return _error_response("session_id is required", 400)
         
         settings_repo = get_settings_repository()
         settings = settings_repo.get_tester_settings(session_id)
@@ -1363,7 +1364,7 @@ def get_tester_settings() -> Any:
         return jsonify(settings)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_tester_settings", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/tester-settings", methods=["POST"])
@@ -1374,7 +1375,7 @@ def update_tester_settings() -> Any:
         session_id = body.get("session_id")
         
         if not session_id:
-            return jsonify({"error": "session_id is required"}), 400
+            return _error_response("session_id is required", 400)
         
         settings_repo = get_settings_repository()
         settings_repo.save_tester_settings(session_id, body)
@@ -1382,7 +1383,7 @@ def update_tester_settings() -> Any:
         return jsonify({"status": "ok"})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.update_tester_settings", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/tester/chat", methods=["POST"])
@@ -1404,10 +1405,10 @@ def tester_chat() -> Any:
         top_k = body.get("top_k")
         
         if not messages:
-            return jsonify({"error": "messages is required"}), 400
+            return _error_response("messages is required", 400)
         
         if not session_id:
-            return jsonify({"error": "session_id is required"}), 400
+            return _error_response("session_id is required", 400)
 
         # Get tester settings if not provided
         settings_repo = get_settings_repository()
@@ -1440,7 +1441,7 @@ def tester_chat() -> Any:
             use_model = model_req or (params.model_name if params else "")
             use_model = (str(use_model or "")).strip()
             if not use_model:
-                return jsonify({"error": "model is required"}), 400
+                return _error_response("model is required", 400)
             options: dict[str, Any] = {}
             if temperature is not None:
                 try:
@@ -1514,7 +1515,7 @@ def tester_chat() -> Any:
 
     except Exception as e:
         _ERROR_LOG.error("webui_routes.tester_chat", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/testing/external-docs/preview", methods=["POST"])
@@ -1524,20 +1525,19 @@ def testing_external_docs_preview() -> Any:
     and return raw + MD-pipeline-processed markdown for inspection (no indexing, no Qdrant writes).
     """
     if run_pipeline is None:
-        return jsonify({"error": "md_indexer module not available"}), 500
+        return _error_response("md_indexer module not available", 500)
     if not _EXTERNAL_DOCS_RAG_AVAILABLE:
-        return jsonify({"error": "external_docs_rag module not available"}), 500
+        return _error_response("external_docs_rag module not available", 500)
     try:
         body = request.get_json(force=True, silent=True) or {}
         library = (body.get("library") or body.get("name") or "").strip()
         if not library:
-            return jsonify({"error": "library is required"}), 400
+            return _error_response("library is required", 400)
 
         # Guardrails: clamp payload sizes.
         max_files_raw = body.get("max_files")
         max_chars_raw = body.get("max_chars_per_file")
         pipeline_name = body.get("pipeline_name")
-        pipeline_definition = body.get("pipeline")
 
         try:
             max_files = int(max_files_raw) if max_files_raw is not None else 10
@@ -1647,7 +1647,7 @@ def testing_external_docs_preview() -> Any:
         })
     except Exception as e:
         _ERROR_LOG.error("webui_routes.testing_external_docs_preview", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/tester/prompt-preview", methods=["POST"])
@@ -1715,7 +1715,7 @@ def tester_prompt_preview() -> Any:
         )
     except Exception as e:
         _ERROR_LOG.error("webui_routes.tester_prompt_preview", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/settings", methods=["GET"])
@@ -1730,7 +1730,7 @@ def get_settings() -> Any:
         return jsonify(settings)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_settings", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/settings", methods=["POST"])
@@ -1746,7 +1746,7 @@ def update_settings() -> Any:
         return jsonify({"status": "ok"})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.update_settings", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/rag-keyword-collections", methods=["GET"])
@@ -1760,14 +1760,14 @@ def get_rag_keyword_collections() -> Any:
         return jsonify({"collections": collections})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_rag_keyword_collections", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/rag-keyword-collections", methods=["POST"])
 def update_rag_keyword_collections() -> Any:
     """Create or update a collection, or replace all. Body: single {id?, name, enabled, keywords} or {collections: [...]}."""
     if get_keyword_collections_repository is None:
-        return jsonify({"error": "Keyword collections not available"}), 503
+        return _error_response("Keyword collections not available", 503)
     try:
         body = request.get_json(force=True, silent=True) or {}
         repo = get_keyword_collections_repository()
@@ -1802,21 +1802,21 @@ def update_rag_keyword_collections() -> Any:
         return jsonify({"status": "ok", "id": cid, "collections": repo.get_all()})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.update_rag_keyword_collections", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/rag-keyword-collections/<collection_id>", methods=["DELETE"])
 def delete_rag_keyword_collection(collection_id: str) -> Any:
     """Delete a RAG keyword collection."""
     if get_keyword_collections_repository is None:
-        return jsonify({"error": "Keyword collections not available"}), 503
+        return _error_response("Keyword collections not available", 503)
     try:
         repo = get_keyword_collections_repository()
         repo.delete_collection(collection_id)
         return jsonify({"status": "ok"})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.delete_rag_keyword_collection", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/rag-trigger-settings", methods=["GET"])
@@ -1830,7 +1830,7 @@ def get_rag_trigger_settings() -> Any:
         })
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_rag_trigger_settings", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/rag-trigger-settings", methods=["POST"])
@@ -1840,18 +1840,18 @@ def update_rag_trigger_settings() -> Any:
         body = request.get_json(force=True, silent=True) or {}
         raw = body.get("rag_trigger_threshold")
         if raw is None:
-            return jsonify({"error": "rag_trigger_threshold required"}), 400
+            return _error_response("rag_trigger_threshold required", 400)
         val = int(raw)
         if val < 0 or val > 20:
-            return jsonify({"error": "rag_trigger_threshold must be between 0 and 20"}), 400
+            return _error_response("rag_trigger_threshold must be between 0 and 20", 400)
         settings_repo = get_settings_repository()
         settings_repo.set_app_setting("rag_trigger_threshold", str(val))
         return jsonify({"status": "ok", "rag_trigger_threshold": val})
     except ValueError:
-        return jsonify({"error": "rag_trigger_threshold must be an integer"}), 400
+        return _error_response("rag_trigger_threshold must be an integer", 400)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.update_rag_trigger_settings", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/rag-framework-settings", methods=["GET"])
@@ -1872,7 +1872,7 @@ def get_rag_framework_settings() -> Any:
         )
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_rag_framework_settings", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/rag-framework-settings", methods=["POST"])
@@ -1884,18 +1884,18 @@ def update_rag_framework_settings() -> Any:
         body = request.get_json(force=True, silent=True) or {}
         raw_ttl = body.get("framework_latest_ttl_days")
         if raw_ttl is None:
-            return jsonify({"error": "framework_latest_ttl_days required"}), 400
+            return _error_response("framework_latest_ttl_days required", 400)
         ttl_days = int(raw_ttl)
         if ttl_days <= 0 or ttl_days > 3650:
-            return jsonify({"error": "framework_latest_ttl_days must be between 1 and 3650"}), 400
+            return _error_response("framework_latest_ttl_days must be between 1 and 3650", 400)
         settings_repo = get_settings_repository()
         settings_repo.set_app_setting("framework_latest_ttl_days", str(ttl_days))
         return jsonify({"status": "ok", "framework_latest_ttl_days": ttl_days})
     except ValueError:
-        return jsonify({"error": "framework_latest_ttl_days must be an integer"}), 400
+        return _error_response("framework_latest_ttl_days must be an integer", 400)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.update_rag_framework_settings", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 def _retrieval_yaml_raw_bool(key: str) -> bool:
@@ -2216,7 +2216,7 @@ def get_rag_model_settings() -> Any:
         )
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_rag_model_settings", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/pipeline-preview", methods=["GET"])
@@ -2305,7 +2305,7 @@ def get_pipeline_preview() -> Any:
         )
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_pipeline_preview", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/pipeline-definition", methods=["GET"])
@@ -2320,7 +2320,7 @@ def get_pipeline_definition() -> Any:
         )
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_pipeline_definition", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/rag-model-settings", methods=["POST"])
@@ -2397,7 +2397,7 @@ def update_rag_model_settings() -> Any:
         )
     except Exception as e:
         _ERROR_LOG.error("webui_routes.update_rag_model_settings", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/rag-trigger-test", methods=["POST"])
@@ -2421,7 +2421,7 @@ def rag_trigger_test() -> Any:
         })
     except Exception as e:
         _ERROR_LOG.error("webui_routes.rag_trigger_test", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/rag/status", methods=["GET"])
@@ -2687,7 +2687,7 @@ def save_rag_collection_settings() -> Any:
         return jsonify({"status": "ok"})
     except Exception as e:
         _WEBUI_LOG.error("save_rag_collection_settings: %s", e, exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/rag/start", methods=["POST"])
@@ -2856,7 +2856,7 @@ def ollama_pull_stream() -> Any:
     body = request.get_json(silent=True) or {}
     model = (body.get("model") or "").strip()
     if not model:
-        return jsonify({"error": "model is required"}), 400
+        return _error_response("model is required", 400)
 
     def generate():
         try:
@@ -2900,7 +2900,7 @@ def server_stop() -> Any:
         return jsonify({"status": "stopping"})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.server_stop", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 # ============================================================================
@@ -3541,7 +3541,7 @@ def get_crawler_sources() -> Any:
         return jsonify({"sources": sources})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_crawler_sources", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/crawler/sources/<source_id>", methods=["GET"])
@@ -3556,7 +3556,7 @@ def get_crawler_source(source_id: str) -> Any:
             # Fallback to meta.json
             meta = _load_source_meta(source_id)
             if not meta:
-                return jsonify({"error": "Source not found"}), 404
+                return _error_response("Source not found", 404)
             
             source = {
                 "id": source_id,
@@ -3570,7 +3570,7 @@ def get_crawler_source(source_id: str) -> Any:
         return jsonify(source)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_crawler_source", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/crawler/sources/<source_id>/pages", methods=["GET"])
@@ -3579,7 +3579,7 @@ def get_crawler_source_pages(source_id: str) -> Any:
     try:
         meta = _load_source_meta(source_id)
         if not meta:
-            return jsonify({"error": "Source not found"}), 404
+            return _error_response("Source not found", 404)
         
         pages = meta.get("pages", {})
         page_list = []
@@ -3602,7 +3602,7 @@ def get_crawler_source_pages(source_id: str) -> Any:
         })
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_crawler_source_pages", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/crawler/indexer-tester/sources", methods=["GET"])
@@ -3643,7 +3643,7 @@ def get_indexer_tester_sources() -> Any:
         return jsonify({"sources": result})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_indexer_tester_sources", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/crawler/indexer-tester/sources/<source_id>/files", methods=["GET"])
@@ -3655,7 +3655,7 @@ def get_indexer_tester_files(source_id: str) -> Any:
         sources_dir = _get_crawler_sources_dir()
         pages_dir = os.path.join(sources_dir, source_id, "pages")
         if not os.path.isdir(pages_dir):
-            return jsonify({"error": "Source pages directory not found"}), 404
+            return _error_response("Source pages directory not found", 404)
 
         sort_by = request.args.get("sort", "name")
         order = request.args.get("order", "asc")
@@ -3697,7 +3697,7 @@ def get_indexer_tester_files(source_id: str) -> Any:
         )
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_indexer_tester_files", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/crawler/indexer-tester/sources/<source_id>/files/<path:filename>", methods=["GET"])
@@ -3709,18 +3709,18 @@ def get_indexer_tester_file_detail(source_id: str, filename: str) -> Any:
         sources_dir = _get_crawler_sources_dir()
         pages_dir = os.path.join(sources_dir, source_id, "pages")
         if not os.path.isdir(pages_dir):
-            return jsonify({"error": "Source pages directory not found"}), 404
+            return _error_response("Source pages directory not found", 404)
 
         # Normalize and validate path to stay under pages_dir
         requested_path = os.path.abspath(os.path.join(pages_dir, filename))
         pages_dir_abs = os.path.abspath(pages_dir)
         if not requested_path.startswith(pages_dir_abs + os.sep):
-            return jsonify({"error": "Invalid filename"}), 400
+            return _error_response("Invalid filename", 400)
         basename = os.path.basename(requested_path)
         if not basename.lower().endswith(".md"):
-            return jsonify({"error": "Only .md files are supported"}), 400
+            return _error_response("Only .md files are supported", 400)
         if not os.path.isfile(requested_path):
-            return jsonify({"error": "File not found"}), 404
+            return _error_response("File not found", 404)
 
         meta = _load_source_meta(source_id) or {}
         page_entry = (meta.get("pages") or {}).get(basename, {})
@@ -3730,7 +3730,7 @@ def get_indexer_tester_file_detail(source_id: str, filename: str) -> Any:
 
         pipeline_name = get_active_pipeline_name() if get_active_pipeline_name else "default"
         if run_pipeline is None:
-            return jsonify({"error": "md_indexer module not available"}), 500
+            return _error_response("md_indexer module not available", 500)
         page_meta, processed_md = run_pipeline(pipeline_name, source_md)
 
         return jsonify(
@@ -3744,7 +3744,7 @@ def get_indexer_tester_file_detail(source_id: str, filename: str) -> Any:
         )
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_indexer_tester_file_detail", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 INDEXER_EVALUATE_SYSTEM_PROMPT_MAIN = """You are an expert on document processing for RAG. The user will provide PARSED METADATA (when available), then ORIGINAL markdown, PROCESSED markdown (after cleanup), and REMOVED CONTENT (the exact text that was deleted). Use REMOVED CONTENT to know precisely what was removed—do not guess from comparing ORIGINAL and PROCESSED.
@@ -4095,7 +4095,7 @@ def indexer_tester_evaluate() -> Any:
             orig_max = proc_max = rem_max = None
 
         if not source_md and not processed_md:
-            return jsonify({"error": "At least one of source_md or processed_md is required"}), 400
+            return _error_response("At least one of source_md or processed_md is required", 400)
 
         webui_dir = None
         possible_webui = os.path.join(_ROOT, "WebUI")
@@ -4121,10 +4121,10 @@ def indexer_tester_evaluate() -> Any:
         )
         return jsonify({"reply": content or ""})
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        return _error_response(e, 400)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.indexer_tester_evaluate", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/crawler/indexer-tester/evaluate-batch", methods=["POST"])
@@ -4137,13 +4137,13 @@ def start_indexer_tester_evaluate_batch() -> Any:
         count = body.get("count")
         model = (body.get("model") or "").strip() or None
         if not source_id:
-            return jsonify({"error": "source_id is required"}), 400
+            return _error_response("source_id is required", 400)
         try:
             count = int(count) if count is not None else 0
         except (TypeError, ValueError):
             count = 0
         if count < 1 or count > 500:
-            return jsonify({"error": "count must be between 1 and 500"}), 400
+            return _error_response("count must be between 1 and 500", 400)
 
         def _parse_limit(val: Any, default: int, min_val: int = 1000, max_val: int = 500_000) -> int:
             if val is None:
@@ -4181,7 +4181,7 @@ def start_indexer_tester_evaluate_batch() -> Any:
         return jsonify({"job_id": job_id})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.start_indexer_tester_evaluate_batch", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/crawler/indexer-tester/evaluate-batch/status/<job_id>", methods=["GET"])
@@ -4190,7 +4190,7 @@ def get_indexer_tester_evaluate_batch_status(job_id: str) -> Any:
     with _batch_eval_lock:
         job = _batch_eval_jobs.get(job_id)
     if not job:
-        return jsonify({"error": "Job not found"}), 404
+        return _error_response("Job not found", 404)
     return jsonify({
         "job_id": job_id,
         "status": job["status"],
@@ -4226,7 +4226,7 @@ def detect_batch_eval_patterns() -> Any:
         provider_id = (body.get("provider_id") or "").strip() or None
         model = (body.get("model") or "").strip() or None
         if not results or not isinstance(results, list):
-            return jsonify({"error": "results array is required"}), 400
+            return _error_response("results array is required", 400)
 
         # Build content: one block per doc (filename + first N chars of reply) to stay within context
         max_reply_chars = 600
@@ -4241,7 +4241,7 @@ def detect_batch_eval_patterns() -> Any:
                 reply = reply[:max_reply_chars] + "\n[...]"
             parts.append(f"--- {fn} ---\n{reply}")
         if not parts:
-            return jsonify({"error": "No valid results to analyze"}), 400
+            return _error_response("No valid results to analyze", 400)
         user_content = (
             "Below are per-document evaluation replies from a batch of "
             + str(len(results))
@@ -4255,7 +4255,7 @@ def detect_batch_eval_patterns() -> Any:
         chat_client = deps.chat_client
         use_model = model or (params.model_name if params else None)
         if not use_model:
-            return jsonify({"error": "No chat model configured"}), 400
+            return _error_response("No chat model configured", 400)
 
         system_prompt = BATCH_PATTERNS_SYSTEM_PROMPT
         ollama_messages = [
@@ -4275,7 +4275,7 @@ def detect_batch_eval_patterns() -> Any:
         return jsonify({"patterns": (patterns or "").strip()})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.detect_batch_eval_patterns", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 # ---- MD Pipelines (config-driven markdown cleanup) ----
@@ -4284,67 +4284,67 @@ def detect_batch_eval_patterns() -> Any:
 def get_md_pipelines_list() -> Any:
     """List available pipeline names (config/md_pipelines/*.json)."""
     if list_pipeline_names is None:
-        return jsonify({"error": "md_indexer module not available"}), 500
+        return _error_response("md_indexer module not available", 500)
     try:
         names = list_pipeline_names()
         return jsonify({"pipelines": names})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_md_pipelines_list", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/crawler/md-pipelines/<name>", methods=["GET"])
 def get_md_pipeline(name: str) -> Any:
     """Get pipeline JSON by name."""
     if load_pipeline is None:
-        return jsonify({"error": "md_indexer module not available"}), 500
+        return _error_response("md_indexer module not available", 500)
     try:
         pipeline = load_pipeline(name)
         if pipeline is None:
-            return jsonify({"error": f"Pipeline '{name}' not found"}), 404
+            return _error_response(f"Pipeline '{name}' not found", 404)
         return jsonify(pipeline.to_dict())
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_md_pipeline", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/crawler/md-pipelines/<name>", methods=["PUT", "POST"])
 def save_md_pipeline(name: str) -> Any:
     """Save pipeline JSON by name. Body: { "name": "...", "steps": [...] }."""
     if save_pipeline is None:
-        return jsonify({"error": "md_indexer module not available"}), 500
+        return _error_response("md_indexer module not available", 500)
     try:
         body = request.get_json(force=True, silent=True) or {}
         if "steps" not in body:
-            return jsonify({"error": "Missing 'steps' in body"}), 400
+            return _error_response("Missing 'steps' in body", 400)
         from modules.md_indexer.domain.schema import Pipeline
         pipeline = Pipeline.from_dict(body)
         save_pipeline(name, pipeline)
         return jsonify({"ok": True, "name": name})
     except Exception as e:
         _ERROR_LOG.error("webui_routes.save_md_pipeline", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/crawler/md-pipelines/<name>", methods=["DELETE"])
 def delete_md_pipeline(name: str) -> Any:
     """Delete pipeline by name."""
     if md_indexer_delete_pipeline is None:
-        return jsonify({"error": "md_indexer module not available"}), 500
+        return _error_response("md_indexer module not available", 500)
     try:
         if md_indexer_delete_pipeline(name):
             return jsonify({"ok": True, "name": name})
-        return jsonify({"error": f"Pipeline '{name}' not found"}), 404
+        return _error_response(f"Pipeline '{name}' not found", 404)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.delete_md_pipeline", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/crawler/md-pipelines/preview", methods=["POST"])
 def preview_md_pipeline() -> Any:
     """Run a pipeline on a source file and return source_md + processed_md."""
     if run_pipeline is None:
-        return jsonify({"error": "md_indexer module not available"}), 500
+        return _error_response("md_indexer module not available", 500)
     try:
         body = request.get_json(force=True, silent=True) or {}
         pipeline_name = body.get("pipeline_name")
@@ -4352,20 +4352,20 @@ def preview_md_pipeline() -> Any:
         source_id = body.get("source_id")
         filename = body.get("filename")
         if not source_id or not filename:
-            return jsonify({"error": "Missing source_id or filename"}), 400
+            return _error_response("Missing source_id or filename", 400)
         sources_dir = _get_crawler_sources_dir()
         pages_dir = os.path.join(sources_dir, source_id, "pages")
         if not os.path.isdir(pages_dir):
-            return jsonify({"error": "Source pages directory not found"}), 404
+            return _error_response("Source pages directory not found", 404)
         requested_path = os.path.abspath(os.path.join(pages_dir, filename))
         pages_dir_abs = os.path.abspath(pages_dir)
         if not requested_path.startswith(pages_dir_abs + os.sep):
-            return jsonify({"error": "Invalid filename"}), 400
+            return _error_response("Invalid filename", 400)
         basename = os.path.basename(requested_path)
         if not basename.lower().endswith(".md"):
-            return jsonify({"error": "Only .md files are supported"}), 400
+            return _error_response("Only .md files are supported", 400)
         if not os.path.isfile(requested_path):
-            return jsonify({"error": "File not found"}), 404
+            return _error_response("File not found", 404)
         with open(requested_path, "r", encoding="utf-8") as f:
             source_md = f.read()
         pipeline_to_run = pipeline_definition if isinstance(pipeline_definition, dict) else pipeline_name
@@ -4381,7 +4381,7 @@ def preview_md_pipeline() -> Any:
         })
     except Exception as e:
         _ERROR_LOG.error("webui_routes.preview_md_pipeline", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/crawler/sources/<source_id>/stats", methods=["GET"])
@@ -4390,7 +4390,7 @@ def get_crawler_source_stats(source_id: str) -> Any:
     try:
         meta = _load_source_meta(source_id)
         if not meta:
-            return jsonify({"error": "Source not found"}), 404
+            return _error_response("Source not found", 404)
         
         stats = _get_source_stats(meta)
         return jsonify({
@@ -4399,7 +4399,7 @@ def get_crawler_source_stats(source_id: str) -> Any:
         })
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_crawler_source_stats", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 # Track crawling processes
@@ -4430,7 +4430,7 @@ def crawl_source_endpoint(source_id: str) -> Any:
             # Try to get source from SOURCES in WebUI/app.py
             app_path = _get_webui_app_path()
             if not os.path.isfile(app_path):
-                return jsonify({"error": "WebUI/app.py not found"}), 500
+                return _error_response("WebUI/app.py not found", 500)
             
             # For now, we'll allow crawling even if meta doesn't exist
             # The crawl will create it
@@ -4447,7 +4447,7 @@ def crawl_source_endpoint(source_id: str) -> Any:
         # Start crawl in background
         app_path = _get_webui_app_path()
         if not os.path.isfile(app_path):
-            return jsonify({"error": "WebUI/app.py not found"}), 500
+            return _error_response("WebUI/app.py not found", 500)
         
         # Run crawl in subprocess
         env = os.environ.copy()
@@ -4489,7 +4489,7 @@ def crawl_source_endpoint(source_id: str) -> Any:
         })
     except Exception as e:
         _ERROR_LOG.error("webui_routes.crawl_source_endpoint", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 @webui_bp.route("/crawler/sources/<source_id>/crawl/status", methods=["GET"])
@@ -4533,7 +4533,7 @@ def get_crawl_status(source_id: str) -> Any:
             return jsonify(out)
     except Exception as e:
         _ERROR_LOG.error("webui_routes.get_crawl_status", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 
 def _load_sources_config() -> list[dict]:
@@ -4650,7 +4650,7 @@ def get_create_collection_status(job_id: str) -> Any:
     with _collection_jobs_lock:
         job = _collection_jobs.get(job_id)
     if not job:
-        return jsonify({"error": "Job not found", "job_id": job_id}), 404
+        return _error_response("Job not found", 404, extra={"job_id": job_id})
     return jsonify({
         "job_id": job_id,
         "status": job.get("status", "running"),
@@ -4680,7 +4680,7 @@ def cancel_create_collection(job_id: str) -> Any:
     with _collection_jobs_lock:
         job = _collection_jobs.get(job_id)
         if not job:
-            return jsonify({"error": "Job not found", "job_id": job_id}), 404
+            return _error_response("Job not found", 404, extra={"job_id": job_id})
         status = job.get("status", "running")
         if status != "running":
             return jsonify({
@@ -4711,19 +4711,19 @@ def create_collection() -> Any:
         embed_model = embed_model_raw or None
 
         if not collection_name:
-            return jsonify({"error": "collection_name is required"}), 400
+            return _error_response("collection_name is required", 400)
 
         if not source_ids:
-            return jsonify({"error": "At least one source_id is required"}), 400
+            return _error_response("At least one source_id is required", 400)
 
         if not is_safe_identifier(collection_name):
-            return jsonify({"error": "Collection name must contain only alphanumeric characters, underscores, and hyphens"}), 400
+            return _error_response("Collection name must contain only alphanumeric characters, underscores, and hyphens", 400)
 
         qdrant_url = get_qdrant_url().rstrip("/")
         qclient = QdrantClient(url=qdrant_url)
         try:
             qclient.get_collection(collection_name)
-            return jsonify({"error": f"Collection '{collection_name}' already exists"}), 409
+            return _error_response(f"Collection '{collection_name}' already exists", 409)
         except Exception:
             pass
 
@@ -4804,6 +4804,6 @@ def create_collection() -> Any:
 
     except Exception as e:
         _ERROR_LOG.error("webui_routes.create_collection", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return _error_response(e)
 
 __all__ = ["webui_bp"]

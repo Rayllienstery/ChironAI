@@ -114,7 +114,8 @@ def test_iter_chat_api_stream_events_separates_thinking_and_final_content(
         def raise_for_status(self) -> None:
             return None
 
-        def iter_lines(self, decode_unicode: bool = True):  # noqa: ARG002
+        def iter_lines(self, decode_unicode: bool = True):
+            assert decode_unicode is True
             rows = [
                 {"message": {"thinking": "Plan"}},
                 {"message": {"thinking": "Plan more", "content": "Answer"}},
@@ -147,7 +148,8 @@ def test_iter_chat_api_stream_openai_parts_keeps_visible_stream_order(
         def raise_for_status(self) -> None:
             return None
 
-        def iter_lines(self, decode_unicode: bool = True):  # noqa: ARG002
+        def iter_lines(self, decode_unicode: bool = True):
+            assert decode_unicode is True
             rows = [
                 {"message": {"thinking": "Plan"}},
                 {"message": {"thinking": "Plan more", "content": "Answer"}},
@@ -179,7 +181,8 @@ def test_iter_chat_api_stream_events_errors_when_stream_closes_without_done(
         def raise_for_status(self) -> None:
             return None
 
-        def iter_lines(self, decode_unicode: bool = True):  # noqa: ARG002
+        def iter_lines(self, decode_unicode: bool = True):
+            assert decode_unicode is True
             yield json.dumps({"message": {"content": "partial only"}})
 
         def close(self) -> None:
@@ -203,7 +206,8 @@ def test_iter_chat_api_stream_events_disables_requests_timeout(
         def raise_for_status(self) -> None:
             return None
 
-        def iter_lines(self, decode_unicode: bool = True):  # noqa: ARG002
+        def iter_lines(self, decode_unicode: bool = True):
+            assert decode_unicode is True
             yield json.dumps({"message": {"content": "ok"}})
             yield json.dumps({"done": True, "message": {"content": "ok"}})
 
@@ -232,7 +236,8 @@ def test_chat_api_stream_final_disables_requests_timeout(
         def raise_for_status(self) -> None:
             return None
 
-        def iter_lines(self, decode_unicode: bool = True):  # noqa: ARG002
+        def iter_lines(self, decode_unicode: bool = True):
+            assert decode_unicode is True
             yield json.dumps({"message": {"content": "final"}})
             yield json.dumps({"done": True, "message": {"content": "final"}})
 

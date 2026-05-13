@@ -3,23 +3,28 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
 from typing import Any, Mapping
 
+from error_manager.exceptions import PipelineError
 from rag_service.core.contracts import PipelineRunResult, PipelineTraceStep, StepDefinition
 from rag_service.core.registry import StepRegistry
 
 
-@dataclass
-class PipelineExecutionError(Exception):
-    """Raised when a step fails and `continue_on_error=False`."""
+class PipelineExecutionError(PipelineError):
+    """Raised when a pipeline step fails and ``continue_on_error=False``.
 
-    step_id: str
-    trace: list[PipelineTraceStep]
-    cause: Exception
+    Subclasses :class:`error_manager.PipelineError` so callers can catch either
+    name. Existing ``raise PipelineExecutionError(step_id, trace, cause)`` call
+    sites are preserved via positional arguments.
+    """
 
-    def __str__(self) -> str:
-        return f"pipeline step '{self.step_id}' failed: {self.cause}"
+    def __init__(self, step_id: str, trace: list[PipelineTraceStep], cause: Exception) -> None:
+        super().__init__(
+            f"pipeline step '{step_id}' failed: {cause}",
+            cause=cause,
+        )
+        self.step_id = step_id
+        self.trace = trace
 
 
 class RagCore:

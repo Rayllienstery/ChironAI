@@ -1,6 +1,25 @@
 /** Must match Python ``core.contracts.webui_api.WEBUI_URL_PREFIX``. */
 const API_BASE = '/api/webui';
 
+/**
+ * Extract a human-readable error message from a JSON response body.
+ *
+ * Handles both the legacy string format `{"error": "message"}` and the new
+ * structured format `{"error": {"code": "...", "message": "..."}}` produced by
+ * the ErrorManager CoreModule.  Falls back to `fallback` when neither is present.
+ *
+ * @param {object} data     - Parsed JSON response body
+ * @param {string} fallback - Fallback message when no error field is present
+ * @returns {string}
+ */
+function extractApiError(data, fallback = 'An error occurred') {
+  if (!data) return fallback;
+  const err = data.error;
+  if (!err) return fallback;
+  if (typeof err === 'object') return err.message ?? JSON.stringify(err);
+  return String(err);
+}
+
 const COREUI_SESSION_STORAGE_KEY = 'chironai_coreui_session_id';
 
 async function fetchJsonWithTimeout(url, options = {}) {
@@ -57,16 +76,6 @@ export async function getSession() {
   return session;
 }
 
-/** @returns {Promise<Array<{ id: string, name: string }>>} models array (not wrapped in { models }) */
-export async function getModels() {
-  const response = await fetch(`${API_BASE}/models`);
-  if (!response.ok) {
-    throw new Error('Failed to get models');
-  }
-  const data = await response.json();
-  return data.models ?? [];
-}
-
 export async function getProviderCatalog(capability = '') {
   const params = new URLSearchParams();
   if (capability) params.set('capability', capability);
@@ -75,7 +84,7 @@ export async function getProviderCatalog(capability = '') {
   );
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Failed to get provider catalog');
+    throw new Error(extractApiError(data, 'Failed to get provider catalog'));
   }
   return data;
 }
@@ -84,7 +93,7 @@ export async function getExtensionTabs() {
   const response = await fetch(`${API_BASE}/extensions/tabs`);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Failed to load extension tabs');
+    throw new Error(extractApiError(data, 'Failed to load extension tabs'));
   }
   return data;
 }
@@ -95,7 +104,7 @@ export async function getExtensionTab(extensionId) {
     { timeoutMs: 10_000 },
   );
   if (!response.ok) {
-    throw new Error(data.error || 'Failed to load extension tab');
+    throw new Error(extractApiError(data, 'Failed to load extension tab'));
   }
   return data;
 }
@@ -113,7 +122,7 @@ export async function runExtensionTabAction(extensionId, actionId, payload = {})
     },
   );
   if (!response.ok) {
-    throw new Error(data.error || 'Extension action failed');
+    throw new Error(extractApiError(data, 'Extension action failed'));
   }
   return data;
 }
@@ -150,7 +159,7 @@ export async function getLlmProxyApiKeyStatus() {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Failed to get LLM Proxy API key status');
+    throw new Error(extractApiError(data, 'Failed to get LLM Proxy API key status'));
   }
   return data;
 }
@@ -161,7 +170,7 @@ export async function generateLlmProxyApiKey() {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Failed to generate LLM Proxy API key');
+    throw new Error(extractApiError(data, 'Failed to generate LLM Proxy API key'));
   }
   return data;
 }
@@ -172,7 +181,7 @@ export async function revealLlmProxyApiKey() {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Failed to reveal LLM Proxy API key');
+    throw new Error(extractApiError(data, 'Failed to reveal LLM Proxy API key'));
   }
   return data;
 }
@@ -183,7 +192,7 @@ export async function deleteLlmProxyApiKey() {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Failed to delete LLM Proxy API key');
+    throw new Error(extractApiError(data, 'Failed to delete LLM Proxy API key'));
   }
   return data;
 }
@@ -200,7 +209,7 @@ export async function getLlmProxyBuilds(options = {}) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Failed to load LLM Proxy builds');
+    throw new Error(extractApiError(data, 'Failed to load LLM Proxy builds'));
   }
   return data;
 }
@@ -215,7 +224,7 @@ export async function putLlmProxyBuilds(builds) {
   if (!response.ok) {
     const detailMsg =
       Array.isArray(data.details) && data.details.length ? data.details.join('; ') : null;
-    throw new Error(detailMsg || data.error || 'Failed to save builds');
+    throw new Error(detailMsg || extractApiError(data, 'Failed to save builds'));
   }
   return data;
 }
@@ -231,7 +240,7 @@ export async function previewLlmProxyBuildModel(model, providerId = null) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Model preview failed');
+    throw new Error(extractApiError(data, 'Model preview failed'));
   }
   return data;
 }
@@ -286,7 +295,7 @@ export async function testerChat(sessionId, messages, options = {}) {
   });
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Chat request failed');
+    throw new Error(extractApiError(error, 'Chat request failed'));
   }
   return response.json();
 }
@@ -301,7 +310,7 @@ export async function testerPromptPreview(options = {}) {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to get prompt preview');
+    throw new Error(extractApiError(error, 'Failed to get prompt preview'));
   }
   return response.json();
 }
@@ -330,7 +339,7 @@ export async function getCoreuiNotifications(sessionId, options = {}) {
   const response = await fetch(`${API_BASE}/notifications?${params}`);
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to get notifications');
+    throw new Error(extractApiError(err, 'Failed to get notifications'));
   }
   return response.json();
 }
@@ -352,7 +361,7 @@ export async function createCoreuiNotification(sessionId, payload) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Failed to create notification');
+    throw new Error(extractApiError(data, 'Failed to create notification'));
   }
   return data;
 }
@@ -365,7 +374,7 @@ export async function dismissCoreuiNotification(sessionId, notificationId) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Failed to dismiss notification');
+    throw new Error(extractApiError(data, 'Failed to dismiss notification'));
   }
   return data;
 }
@@ -378,7 +387,7 @@ export async function clearCoreuiNotifications(sessionId) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Failed to clear notifications');
+    throw new Error(extractApiError(data, 'Failed to clear notifications'));
   }
   return data;
 }
@@ -395,7 +404,7 @@ export async function clearLogs(sessionId, options = {}) {
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to clear logs');
+    throw new Error(extractApiError(err, 'Failed to clear logs'));
   }
   return response.json();
 }
@@ -415,7 +424,7 @@ export async function clearProxyLogs(options = {}) {
   );
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to clear proxy logs');
+    throw new Error(extractApiError(err, 'Failed to clear proxy logs'));
   }
   return response.json();
 }
@@ -474,7 +483,7 @@ export async function getProxyJournal(options = {}) {
   const response = await fetch(`${API_BASE}/proxy-journal?${params}`);
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.ok) {
-    throw new Error(data.error || 'Failed to load proxy journal');
+    throw new Error(extractApiError(data, 'Failed to load proxy journal'));
   }
   return data;
 }
@@ -483,7 +492,7 @@ export async function clearProxyJournal() {
   const response = await fetch(`${API_BASE}/proxy-journal`, { method: 'DELETE' });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.ok) {
-    throw new Error(data.error || 'Failed to clear proxy journal');
+    throw new Error(extractApiError(data, 'Failed to clear proxy journal'));
   }
   return data;
 }
@@ -559,7 +568,7 @@ export async function updateRagFrameworkSettings(settings) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to update RAG framework settings');
+    throw new Error(extractApiError(data, 'Failed to update RAG framework settings'));
   }
   return response.json();
 }
@@ -572,7 +581,7 @@ export async function updateRagTriggerSettings(settings) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to update RAG trigger settings');
+    throw new Error(extractApiError(data, 'Failed to update RAG trigger settings'));
   }
   return response.json();
 }
@@ -594,7 +603,7 @@ export async function getPipelinePreview() {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to load pipeline preview');
+    throw new Error(extractApiError(data, 'Failed to load pipeline preview'));
   }
   return response.json();
 }
@@ -609,7 +618,7 @@ export async function updateRagModelSettings(settings) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to update RAG model settings');
+    throw new Error(extractApiError(data, 'Failed to update RAG model settings'));
   }
   return response.json();
 }
@@ -618,7 +627,7 @@ export async function getIndexerTesterSources() {
   const response = await fetch(`${API_BASE}/crawler/indexer-tester/sources`);
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to get Indexer Tester sources');
+    throw new Error(extractApiError(data, 'Failed to get Indexer Tester sources'));
   }
   return response.json();
 }
@@ -633,7 +642,7 @@ export async function getIndexerTesterFiles(sourceId, options = {}) {
   );
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to get Indexer Tester files');
+    throw new Error(extractApiError(data, 'Failed to get Indexer Tester files'));
   }
   return response.json();
 }
@@ -646,7 +655,7 @@ export async function getIndexerTesterFileDetail(sourceId, filename) {
   );
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to get Indexer Tester file detail');
+    throw new Error(extractApiError(data, 'Failed to get Indexer Tester file detail'));
   }
   return response.json();
 }
@@ -686,7 +695,7 @@ export async function evaluateIndexerWithLlm(
     } catch {
       data = { error: text ? text.slice(0, 300) : response.statusText };
     }
-    throw new Error(data.error || 'Evaluate failed');
+    throw new Error(extractApiError(data, 'Evaluate failed'));
   }
   return response.json();
 }
@@ -716,7 +725,7 @@ export async function startIndexerTesterEvaluateBatch({
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to start batch evaluation');
+    throw new Error(extractApiError(data, 'Failed to start batch evaluation'));
   }
   return response.json();
 }
@@ -727,7 +736,7 @@ export async function getIndexerTesterEvaluateBatchStatus(jobId) {
   );
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to get batch status');
+    throw new Error(extractApiError(data, 'Failed to get batch status'));
   }
   return response.json();
 }
@@ -747,7 +756,7 @@ export async function detectBatchEvalPatterns(results, providerId, model) {
   );
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to detect patterns');
+    throw new Error(extractApiError(data, 'Failed to detect patterns'));
   }
   return response.json();
 }
@@ -757,7 +766,7 @@ export async function getMdPipelines() {
   const response = await fetch(`${API_BASE}/crawler/md-pipelines`);
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to list MD pipelines');
+    throw new Error(extractApiError(data, 'Failed to list MD pipelines'));
   }
   return response.json();
 }
@@ -768,7 +777,7 @@ export async function getMdPipeline(name) {
   );
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || `Failed to get pipeline ${name}`);
+    throw new Error(extractApiError(data, `Failed to get pipeline ${name}`));
   }
   return response.json();
 }
@@ -784,7 +793,7 @@ export async function saveMdPipeline(name, pipeline) {
   );
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to save pipeline');
+    throw new Error(extractApiError(data, 'Failed to save pipeline'));
   }
   return response.json();
 }
@@ -796,7 +805,7 @@ export async function deleteMdPipeline(name) {
   );
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to delete pipeline');
+    throw new Error(extractApiError(data, 'Failed to delete pipeline'));
   }
   return response.json();
 }
@@ -814,7 +823,7 @@ export async function previewMdPipeline(pipelineName, sourceId, filename, pipeli
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to preview pipeline');
+    throw new Error(extractApiError(data, 'Failed to preview pipeline'));
   }
   return response.json();
 }
@@ -832,7 +841,7 @@ export async function previewExternalDocs({ library, pipelineName, maxFiles, max
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to preview external docs');
+    throw new Error(extractApiError(data, 'Failed to preview external docs'));
   }
   return response.json();
 }
@@ -845,7 +854,7 @@ export async function checkRagTrigger(message) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to check RAG trigger');
+    throw new Error(extractApiError(data, 'Failed to check RAG trigger'));
   }
   return response.json();
 }
@@ -881,7 +890,7 @@ export async function runRagTests(body) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to run RAG tests');
+    throw new Error(extractApiError(data, 'Failed to run RAG tests'));
   }
   const data = await response.json();
   if (response.status === 202) {
@@ -905,7 +914,7 @@ export async function cancelRagTestRun(jobId) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to cancel');
+    throw new Error(extractApiError(data, 'Failed to cancel'));
   }
   return response.json();
 }
@@ -918,7 +927,7 @@ export async function runRagTesterV2(body) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to run Rag Tester V2');
+    throw new Error(extractApiError(data, 'Failed to run Rag Tester V2'));
   }
   const data = await response.json();
   if (response.status === 202) {
@@ -942,7 +951,7 @@ export async function cancelRagTesterV2Run(jobId) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to cancel Rag Tester V2 run');
+    throw new Error(extractApiError(data, 'Failed to cancel Rag Tester V2 run'));
   }
   return response.json();
 }
@@ -971,7 +980,7 @@ export async function deleteRagTestRuns(body) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to delete run history');
+    throw new Error(extractApiError(data, 'Failed to delete run history'));
   }
   return response.json();
 }
@@ -1034,7 +1043,7 @@ export async function createRagTest(body) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to create RAG test');
+    throw new Error(extractApiError(data, 'Failed to create RAG test'));
   }
   return response.json();
 }
@@ -1047,7 +1056,7 @@ export async function updateRagTest(testId, body) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to update RAG test');
+    throw new Error(extractApiError(data, 'Failed to update RAG test'));
   }
   return response.json();
 }
@@ -1058,7 +1067,7 @@ export async function deleteRagTest(testId) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to delete RAG test');
+    throw new Error(extractApiError(data, 'Failed to delete RAG test'));
   }
 }
 
@@ -1078,7 +1087,7 @@ export async function saveRagKeywordCollections(payload) {
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to save RAG keyword collections');
+    throw new Error(extractApiError(err, 'Failed to save RAG keyword collections'));
   }
   return response.json();
 }
@@ -1089,7 +1098,7 @@ export async function deleteRagKeywordCollection(collectionId) {
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to delete collection');
+    throw new Error(extractApiError(err, 'Failed to delete collection'));
   }
   return response.json();
 }
@@ -1100,7 +1109,7 @@ export async function startRag() {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to start RAG server');
+    throw new Error(extractApiError(error, 'Failed to start RAG server'));
   }
   return response.json();
 }
@@ -1111,7 +1120,7 @@ export async function stopRag() {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to stop RAG server');
+    throw new Error(extractApiError(error, 'Failed to stop RAG server'));
   }
   return response.json();
 }
@@ -1130,7 +1139,7 @@ export async function stopServer() {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to stop WebUI server');
+    throw new Error(extractApiError(error, 'Failed to stop WebUI server'));
   }
   return response.json();
 }
@@ -1139,7 +1148,7 @@ export async function getPromptContent(name) {
   const response = await fetch(`${API_BASE}/prompts/${encodeURIComponent(name)}`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to get prompt content');
+    throw new Error(extractApiError(error, 'Failed to get prompt content'));
   }
   return response.json();
 }
@@ -1154,7 +1163,7 @@ export async function createPrompt({ sourceName, name, content }) {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to create prompt');
+    throw new Error(extractApiError(error, 'Failed to create prompt'));
   }
   return response.json();
 }
@@ -1169,7 +1178,7 @@ export async function updatePrompt(name, { newName, content }) {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to update prompt');
+    throw new Error(extractApiError(error, 'Failed to update prompt'));
   }
   return response.json();
 }
@@ -1180,7 +1189,7 @@ export async function deletePrompt(name) {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to delete prompt');
+    throw new Error(extractApiError(error, 'Failed to delete prompt'));
   }
   return response.json();
 }
@@ -1189,7 +1198,7 @@ export async function getTrashPrompts() {
   const response = await fetch(`${API_BASE}/prompts/trash`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to get trash prompts');
+    throw new Error(extractApiError(error, 'Failed to get trash prompts'));
   }
   return response.json();
 }
@@ -1198,7 +1207,7 @@ export async function getTrashPromptContent(trashName) {
   const response = await fetch(`${API_BASE}/prompts/trash/${encodeURIComponent(trashName)}`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to get trash prompt content');
+    throw new Error(extractApiError(error, 'Failed to get trash prompt content'));
   }
   return response.json();
 }
@@ -1213,7 +1222,7 @@ export async function updateTrashPrompt(trashName, content) {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to update trash prompt');
+    throw new Error(extractApiError(error, 'Failed to update trash prompt'));
   }
   return response.json();
 }
@@ -1224,7 +1233,7 @@ export async function restorePrompt(trashName) {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to restore prompt');
+    throw new Error(extractApiError(error, 'Failed to restore prompt'));
   }
   return response.json();
 }
@@ -1235,7 +1244,7 @@ export async function clearTrash() {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to clear trash');
+    throw new Error(extractApiError(error, 'Failed to clear trash'));
   }
   return response.json();
 }
@@ -1253,7 +1262,7 @@ export async function getCrawlerSourcePages(sourceId) {
   const response = await fetch(`${API_BASE}/crawler/sources/${encodeURIComponent(sourceId)}/pages`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to get source pages');
+    throw new Error(extractApiError(error, 'Failed to get source pages'));
   }
   return response.json();
 }
@@ -1266,7 +1275,7 @@ export async function createCollection(config) {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to create collection');
+    throw new Error(extractApiError(error, 'Failed to create collection'));
   }
   const data = await response.json();
   return { ...data, job_id: data.job_id, statusCode: response.status };
@@ -1276,7 +1285,7 @@ export async function getCreateCollectionStatus(jobId) {
   const response = await fetch(`${API_BASE}/crawler/create-collection-status/${encodeURIComponent(jobId)}`);
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to get job status');
+    throw new Error(extractApiError(err, 'Failed to get job status'));
   }
   return response.json();
 }
@@ -1285,7 +1294,7 @@ export async function getExtensionRegistry() {
   const response = await fetch(`${API_BASE}/extensions/registry`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to load extension registry');
+    throw new Error(extractApiError(error, 'Failed to load extension registry'));
   }
   return response.json();
 }
@@ -1294,7 +1303,7 @@ export async function getExtensionInstalled() {
   const response = await fetch(`${API_BASE}/extensions/installed`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to load installed extensions');
+    throw new Error(extractApiError(error, 'Failed to load installed extensions'));
   }
   return response.json();
 }
@@ -1303,7 +1312,7 @@ export async function getExtensionProviders() {
   const response = await fetch(`${API_BASE}/extensions/providers`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to load extension providers');
+    throw new Error(extractApiError(error, 'Failed to load extension providers'));
   }
   return response.json();
 }
@@ -1312,7 +1321,7 @@ export async function getExtensionUiPayload() {
   const response = await fetch(`${API_BASE}/extensions/ui`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to load extension UI payload');
+    throw new Error(extractApiError(error, 'Failed to load extension UI payload'));
   }
   return response.json();
 }
@@ -1325,7 +1334,7 @@ async function postExtensionAction(path, body) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Extension action failed');
+    throw new Error(extractApiError(data, 'Extension action failed'));
   }
   return data;
 }
@@ -1353,7 +1362,7 @@ export async function getDockerStatus() {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.ok === false) {
-    throw new Error(data.error || 'Failed to load Docker status');
+    throw new Error(extractApiError(data, 'Failed to load Docker status'));
   }
   return data;
 }
@@ -1365,7 +1374,7 @@ export async function getDockerContainers() {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.ok === false) {
-    throw new Error(data.error || 'Failed to load Docker containers');
+    throw new Error(extractApiError(data, 'Failed to load Docker containers'));
   }
   return data;
 }
@@ -1377,7 +1386,7 @@ export async function getDockerImages() {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.ok === false) {
-    throw new Error(data.error || 'Failed to load Docker images');
+    throw new Error(extractApiError(data, 'Failed to load Docker images'));
   }
   return data;
 }
@@ -1390,7 +1399,7 @@ async function dockerJsonAction(path, body = {}, method = 'POST') {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.ok === false) {
-    throw new Error(data.details || data.error || 'Docker action failed');
+    throw new Error(data.details || extractApiError(data, 'Docker action failed'));
   }
   return data;
 }
@@ -1425,7 +1434,7 @@ export async function cancelCreateCollection(jobId) {
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to cancel collection creation');
+    throw new Error(extractApiError(err, 'Failed to cancel collection creation'));
   }
   return response.json();
 }
@@ -1436,7 +1445,7 @@ export async function crawlSource(sourceId) {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || `Failed to start crawl for source ${sourceId}`);
+    throw new Error(extractApiError(error, `Failed to start crawl for source ${sourceId}`));
   }
   return response.json();
 }
@@ -1459,7 +1468,7 @@ export async function addCrawlerSource(sourceConfig) {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to add source');
+    throw new Error(extractApiError(error, 'Failed to add source'));
   }
   return response.json();
 }
@@ -1468,7 +1477,7 @@ export async function getCrawlerSource(sourceId) {
   const response = await fetch(`${API_BASE}/crawler/sources/${encodeURIComponent(sourceId)}`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || `Failed to get source ${sourceId}`);
+    throw new Error(extractApiError(error, `Failed to get source ${sourceId}`));
   }
   return response.json();
 }
@@ -1483,7 +1492,7 @@ export async function updateCrawlerSource(sourceId, sourceConfig) {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || `Failed to update source ${sourceId}`);
+    throw new Error(extractApiError(error, `Failed to update source ${sourceId}`));
   }
   return response.json();
 }

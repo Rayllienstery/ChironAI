@@ -4,12 +4,23 @@ from __future__ import annotations
 
 import logging
 import json
+import os
+import sys
 import time
 import uuid
 from typing import TYPE_CHECKING, Any
 
 from flask import Blueprint, Response, jsonify, request
 from werkzeug.exceptions import HTTPException
+
+# ErrorManager lives in CoreModules/ErrorManager — add to path if not already present.
+_LLM_PROXY_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # CoreModules/LlmProxy
+_CORE_MODULES_DIR = os.path.dirname(_LLM_PROXY_DIR)  # CoreModules/
+_ERROR_MANAGER_DIR = os.path.join(_CORE_MODULES_DIR, "ErrorManager")
+if os.path.isdir(_ERROR_MANAGER_DIR) and _ERROR_MANAGER_DIR not in sys.path:
+    sys.path.insert(0, _ERROR_MANAGER_DIR)
+
+from error_manager.http import error_response as _error_response
 
 from llm_proxy.apply_edit import run_apply_file_edit
 from llm_proxy.anthropic_compat import (
@@ -807,7 +818,7 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
             )
         except Exception:
             pass
-        return jsonify({"error": str(error)}), 500
+        return _error_response(error, status=500)
 
     @bp.before_request
     def _require_proxy_api_key():
