@@ -71,16 +71,18 @@ html, body {
 
 .app-card--interactive {
   cursor: pointer;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
-.app-card--interactive:hover {
+.app-card--interactive:not(.app-card--elevate-on-hover):hover {
   background: var(--app-card-bg-hover, var(--md-sys-color-surface-container-high)) !important;
 }
 
-.app-card--elevate-on-hover:hover {
-  box-shadow: var(--app-card-box-shadow-hover, var(--md-sys-elevation-level2)) !important;
-  background: var(--app-card-bg-hover, var(--md-sys-color-surface-container-high)) !important;
+.app-card--elevate-on-hover:hover,
+.app-card--elevate-on-hover:focus-visible {
+  background: var(--app-card-bg-hover, var(--app-card-bg, var(--md-sys-color-surface))) !important;
+  box-shadow: var(--app-card-box-shadow-hover, var(--coreui-card-hover-shadow)) !important;
+  transform: translateY(-1px);
 }
 
 .app-card:focus-visible {

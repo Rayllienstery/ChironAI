@@ -313,6 +313,18 @@ def _build_extension_manager(
         _RAG_LOG.warning("DockerManager unavailable for LlmInteractor extensions: %s", e)
         docker_runtime = None
 
+    def _stop_native_ollama() -> tuple[bool, str]:
+        """Stop the native Ollama process on the host (Windows: taskkill; Linux: pkill)."""
+        try:
+            from api.http.service_control import ensure_servicestarter_on_path  # noqa: PLC0415
+
+            ensure_servicestarter_on_path()
+            from servicestarter.ollama_ops import stop_ollama_process  # noqa: PLC0415
+
+            return stop_ollama_process()
+        except Exception as exc:
+            return False, str(exc)
+
     host_context = ProviderHostContext(
         project_root=_workspace_root(),
         get_settings_repository=get_settings_repository,
@@ -320,6 +332,7 @@ def _build_extension_manager(
         docker_runtime=docker_runtime,
         metadata={
             "source": "api.http.llm_proxy_wiring",
+            "stop_native_ollama": _stop_native_ollama,
         },
     )
     manager = ExtensionManager(

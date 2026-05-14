@@ -47,22 +47,13 @@ def stop_qdrant() -> tuple[bool, str, str]:
 
 def start_ollama() -> tuple[bool, str]:
     ss = get_service_starter()
-    ok_i, out_i = ss.ensure_ollama_installed()
-    if not ok_i:
-        return False, str(out_i)
     ok, output = ss.start_ollama()
     return bool(ok), str(output)
 
 
-def stop_ollama(*, base_url: str, default_port: int = 11434) -> tuple[bool, str]:
-    try:
-        from servicestarter.ollama_ops import ollama_port_from_base_url, stop_ollama_process
-    except ModuleNotFoundError:
-        ensure_servicestarter_on_path()
-        from servicestarter.ollama_ops import ollama_port_from_base_url, stop_ollama_process
-
-    port = ollama_port_from_base_url(base_url, default_port=default_port)
-    ok, output = stop_ollama_process(listen_port=port)
+def stop_ollama(*, base_url: str = "", default_port: int = 11434) -> tuple[bool, str]:
+    ss = get_service_starter()
+    ok, output = ss.stop_ollama()
     return bool(ok), str(output)
 
 

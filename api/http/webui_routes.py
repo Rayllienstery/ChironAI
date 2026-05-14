@@ -201,7 +201,6 @@ from api.http.webui_crawler_routes import register_crawler_routes
 from api.http.webui_docker_routes import register_docker_routes
 from api.http.webui_extensions_routes import register_extension_routes
 from api.http.webui_llm_proxy_routes import register_llm_proxy_routes
-from api.http.webui_ollama_routes import register_ollama_routes
 from api.http.webui_prompt_routes import register_prompt_routes
 from api.http.webui_session_routes import register_session_routes
 from api.http.webui_settings_routes import register_settings_routes
@@ -291,6 +290,46 @@ _enrich_builds_with_diagnostics = None
 
 webui_bp = Blueprint("webui", __name__, url_prefix=WEBUI_URL_PREFIX)
 
+
+def _register_extension_http_routes(bp: Blueprint) -> None:
+    """Discover bundled extensions and register any extension-owned HTTP routes.
+
+    Extensions that want to contribute routes expose a module-level function
+    ``register_http_routes_on_blueprint(bp)`` in their ``backend/provider.py``.
+    Route *handlers* close over ``current_app`` so they resolve the running
+    extension at request time — no static coupling to a specific extension class.
+
+    Discovery is purely filesystem-based: the project has zero import-time
+    knowledge about which extensions are installed.
+    """
+    import importlib.util
+    import pathlib
+
+    here = pathlib.Path(__file__).parent.parent.parent  # project root
+    bundled = here / "extensions" / "bundled"
+    if not bundled.is_dir():
+        return
+
+    for ext_dir in sorted(bundled.iterdir()):
+        if not ext_dir.is_dir():
+            continue
+        provider_py = ext_dir / "backend" / "provider.py"
+        if not provider_py.is_file():
+            continue
+        try:
+            mod_name = f"_ext_bp_{ext_dir.name}_provider"
+            spec = importlib.util.spec_from_file_location(mod_name, provider_py)
+            if spec is None or spec.loader is None:
+                continue
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)  # type: ignore[union-attr]
+            fn = getattr(mod, "register_http_routes_on_blueprint", None)
+            if callable(fn):
+                fn(bp)
+        except Exception as _e:
+            _WEBUI_LOG.warning("_register_extension_http_routes: %r: %s", ext_dir.name, _e)
+
+
 register_prompt_routes(
     webui_bp,
     prompts_dir=PROMPTS_DIR,
@@ -320,10 +359,7 @@ register_llm_proxy_routes(
     webui_bp,
     error_log=_ERROR_LOG,
 )
-register_ollama_routes(
-    webui_bp,
-    error_log=_ERROR_LOG,
-)
+_register_extension_http_routes(webui_bp)
 register_crawler_routes(
     webui_bp,
     error_log=_ERROR_LOG,

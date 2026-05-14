@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from urllib.parse import urlparse
 
 from docker_manager import DockerContainerSpec, DockerManager
@@ -74,6 +75,51 @@ def docker_start_container(name: str) -> tuple[bool, str]:
 
 def docker_stop_container(name: str) -> tuple[bool, str]:
     result = _manager().stop_container(name)
+    return bool(result.get("ok")), str(result.get("message") or result.get("details") or result.get("error") or "")
+
+
+def _ollama_container_name(cfg: ServiceStarterConfig) -> str:
+    explicit = (os.getenv("OLLAMA_CONTAINER_NAME") or "").strip()
+    return explicit or getattr(cfg, "ollama_container_name", None) or "chironai-ollama"
+
+
+def _ollama_docker_image(cfg: ServiceStarterConfig) -> str:
+    explicit = (os.getenv("OLLAMA_DOCKER_IMAGE") or "").strip()
+    return explicit or getattr(cfg, "ollama_docker_image", None) or "ollama/ollama:latest"
+
+
+def _ollama_docker_volume(cfg: ServiceStarterConfig) -> str:
+    explicit = (os.getenv("OLLAMA_DOCKER_VOLUME") or "").strip()
+    return explicit or getattr(cfg, "ollama_docker_volume", None) or "ollama_models:/root/.ollama"
+
+
+def _ollama_host_port(cfg: ServiceStarterConfig) -> int:
+    explicit = (os.getenv("OLLAMA_PORT") or "").strip()
+    if explicit:
+        try:
+            return int(explicit)
+        except ValueError:
+            pass
+    parsed = urlparse(
+        cfg.ollama_base_url if "://" in cfg.ollama_base_url else f"http://{cfg.ollama_base_url}"
+    )
+    return int(parsed.port or 11434)
+
+
+def ensure_ollama_container(cfg: ServiceStarterConfig) -> tuple[bool, str]:
+    """Start Ollama as a Docker container using the configured spec."""
+    host_port = _ollama_host_port(cfg)
+    volume = _ollama_docker_volume(cfg)
+    spec = DockerContainerSpec(
+        name=_ollama_container_name(cfg),
+        image=_ollama_docker_image(cfg),
+        ports=[f"{host_port}:11434"],
+        env={"OLLAMA_HOST": "0.0.0.0:11434"},
+        volumes=[volume] if volume else [],
+        restart=(os.getenv("OLLAMA_DOCKER_RESTART") or "unless-stopped").strip(),
+        labels={"chironai.service": "ollama"},
+    )
+    result = _manager().ensure_container(spec)
     return bool(result.get("ok")), str(result.get("message") or result.get("details") or result.get("error") or "")
 
 

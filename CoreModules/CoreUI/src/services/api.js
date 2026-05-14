@@ -109,11 +109,12 @@ export async function getExtensionTab(extensionId) {
   return data;
 }
 
-export async function runExtensionTabAction(extensionId, actionId, payload = {}) {
+export async function runExtensionTabAction(extensionId, actionId, payload = {}, options = {}) {
+  const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 30_000;
   const { response, data } = await fetchJsonWithTimeout(
     `${API_BASE}/extensions/${encodeURIComponent(extensionId)}/actions/${encodeURIComponent(actionId)}`,
     {
-      timeoutMs: 30_000,
+      timeoutMs,
       fetchOptions: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -125,6 +126,52 @@ export async function runExtensionTabAction(extensionId, actionId, payload = {})
     throw new Error(extractApiError(data, 'Extension action failed'));
   }
   return data;
+}
+
+export async function streamOllamaPull(model, onEvent) {
+  const response = await fetch(`${API_BASE}/ollama/pull`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(extractApiError(data, 'Failed to pull Ollama model'));
+  }
+  if (!response.body || typeof response.body.getReader !== 'function') {
+    const data = await response.json().catch(() => ({}));
+    if (data?.error || data?.ok === false) throw new Error(data.error || 'Failed to pull Ollama model');
+    onEvent?.(data);
+    return data;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let last = null;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const event = JSON.parse(trimmed);
+      last = event;
+      onEvent?.(event);
+      if (event?.error || event?.ok === false) throw new Error(event.error || 'Failed to pull Ollama model');
+    }
+  }
+  buffer += decoder.decode();
+  if (buffer.trim()) {
+    const event = JSON.parse(buffer.trim());
+    last = event;
+    onEvent?.(event);
+    if (event?.error || event?.ok === false) throw new Error(event.error || 'Failed to pull Ollama model');
+  }
+  return last;
 }
 
 export async function getPrompts() {

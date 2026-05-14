@@ -2,6 +2,18 @@
 
 from __future__ import annotations
 
+import os as _os
+import sys as _sys
+
+# Add this extension's backend directory to sys.path so sibling modules
+# (model_brand, model_visibility, ollama_http, embed_client, rerank_client)
+# can be imported as absolute names.  This is required because the extension
+# loader uses importlib.util.spec_from_file_location which loads provider.py
+# as a standalone module (no package context), so relative imports do not work.
+_backend_dir = _os.path.dirname(_os.path.abspath(__file__))
+if _backend_dir not in _sys.path:
+    _sys.path.insert(0, _backend_dir)
+
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import threading
@@ -10,6 +22,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from llm_interactor.contracts import (
+    DockerContainerSpec,
     LLMRequest,
     LLMResponse,
     LLMStreamEvent,
@@ -19,6 +32,16 @@ from llm_interactor.contracts import (
     ProviderHealth,
     ProviderHostContext,
 )
+
+from model_brand import resolve_brand_key  # noqa: E402
+from model_visibility import (  # noqa: E402
+    filter_ollama_tag_entries_for_editors,
+    get_hidden_ollama_model_ids,
+    patch_hidden_ollama_model_ids,
+)
+from ollama_http import invoke_delete, invoke_ping, invoke_show, invoke_tags, iter_pull_objects  # noqa: E402
+from embed_client import OllamaEmbeddingProvider  # noqa: E402
+from rerank_client import OllamaRerankClient  # noqa: E402
 
 _CACHE_LOCK = threading.Lock()
 _CACHE: dict[str, dict[str, tuple[float, Any]]] = {}
@@ -47,9 +70,6 @@ def _cache_set(base_url: str, key: str, value: Any) -> None:
     with _CACHE_LOCK:
         bucket = _CACHE.setdefault(base_url, {})
         bucket[key] = (time.monotonic(), value)
-
-
-from infrastructure.ollama.model_brand import resolve_brand_key
 
 
 def _manifest_tab_ui(manifest: Any) -> dict[str, Any]:
@@ -269,6 +289,7 @@ class OllamaProvider:
         # Hard bound for this endpoint: even if the underlying HTTP/CLI stalls, never block the UI.
         health_timeout_s = 1.0
         tags_timeout_s = 1.25
+        docker_timeout_s = 1.0
         budget_s = 1.75
 
         t0 = time.monotonic()
@@ -276,7 +297,8 @@ class OllamaProvider:
         all_models: list[dict[str, Any]]
         degraded_reason: str | None = None
 
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        pool = ThreadPoolExecutor(max_workers=3)
+        try:
             fut_health = pool.submit(lambda: self.health_check(timeout_sec=0.75, cache_ttl_sec=2.0))
             fut_models = pool.submit(
                 lambda: self._all_model_entries(
@@ -285,6 +307,7 @@ class OllamaProvider:
                     allow_stale=True,
                 )
             )
+            fut_docker = pool.submit(self._docker_state_snapshot)
 
             remaining = max(0.0, budget_s - (time.monotonic() - t0))
             try:
@@ -321,14 +344,53 @@ class OllamaProvider:
                 degraded_reason = degraded_reason or "tags_error"
                 all_models = []
 
+            remaining = max(0.0, budget_s - (time.monotonic() - t0))
+            try:
+                docker_state = fut_docker.result(timeout=min(docker_timeout_s, remaining) if remaining else 0.0)
+            except TimeoutError:
+                degraded_reason = degraded_reason or "docker_timeout"
+                docker_state = {
+                    "available": False,
+                    "container_name": self._docker_container_name(),
+                    "image": self._docker_image(),
+                    "exists": None,
+                    "running": None,
+                    "status": "timeout",
+                    "message": "Timed out while checking the Ollama Docker container.",
+                    "action_hint": "refresh",
+                }
+            except Exception as e:
+                degraded_reason = degraded_reason or "docker_error"
+                docker_state = {
+                    "available": False,
+                    "container_name": self._docker_container_name(),
+                    "image": self._docker_image(),
+                    "exists": None,
+                    "running": None,
+                    "status": "error",
+                    "message": str(e),
+                    "action_hint": "refresh",
+                }
+
             fut_health.cancel()
             fut_models.cancel()
-
-        from infrastructure.ollama.ollama_model_visibility import filter_ollama_tag_entries_for_editors
+            fut_docker.cancel()
+        finally:
+            # Do not let a stuck HTTP or Docker CLI probe hold the tab endpoint open.
+            pool.shutdown(wait=False, cancel_futures=True)
 
         visible_models = filter_ollama_tag_entries_for_editors(all_models, hidden_frozen)
         selected_model = visible_models[0] if visible_models else (all_models[0] if all_models else None)
         selected_model_name = str((selected_model or {}).get("name") or (selected_model or {}).get("model") or "").strip()
+
+        health_status = health.status
+        health_message = health.message
+        if not health.ok:
+            docker_status = str(docker_state.get("status") or "")
+            docker_message = str(docker_state.get("message") or "")
+            if docker_status in {"container_missing", "container_stopped"} and docker_message:
+                health_status = docker_status
+                health_message = docker_message
 
         diagnostics = {
             "provider_id": self._provider_id,
@@ -342,10 +404,11 @@ class OllamaProvider:
             "visible_models": len(visible_models),
             "total_models": len(all_models),
             "degraded_reason": degraded_reason,
+            "docker": docker_state,
             "health": {
                 "ok": bool(health.ok),
-                "status": health.status,
-                "message": health.message,
+                "status": health_status,
+                "message": health_message,
                 "details": dict(health.details or {}),
             },
         }
@@ -505,32 +568,26 @@ class OllamaProvider:
                 raise ValueError("selected_model is required (no default model could be inferred)")
 
         if action == "show_model":
-            from infrastructure.ollama.cli_runner import invoke_show
-
             details = invoke_show(base_url=self._base_url(), name=model_name, timeout=60.0)
             return {"ok": True, "message": f"Loaded details for {model_name}", "details": details}
         if action == "delete_model":
-            from infrastructure.ollama.cli_runner import invoke_delete
-
             invoke_delete(base_url=self._base_url(), name=model_name, timeout=60.0)
             # Omit details: delete API payloads are not model records; the WebUI treats details as Model Details data.
             return {"ok": True, "message": f"Deleted {model_name}"}
         if action == "hide_model":
-            from infrastructure.ollama.ollama_model_visibility import patch_hidden_ollama_model_ids
-
-            updated = patch_hidden_ollama_model_ids(add=[model_name], remove=[])
+            updated = patch_hidden_ollama_model_ids(
+                self._host.get_settings_repository(), add=[model_name], remove=[]
+            )
             return {"ok": True, "message": f"Hidden {model_name}", "hidden_model_ids": updated}
         if action == "unhide_model":
-            from infrastructure.ollama.ollama_model_visibility import patch_hidden_ollama_model_ids
-
-            updated = patch_hidden_ollama_model_ids(add=[], remove=[model_name])
+            updated = patch_hidden_ollama_model_ids(
+                self._host.get_settings_repository(), add=[], remove=[model_name]
+            )
             return {"ok": True, "message": f"Unhid {model_name}", "hidden_model_ids": updated}
         if action == "pull_model":
             pull_name = str(payload.get("pull_model_name") or "").strip()
             if not pull_name:
                 raise ValueError("pull_model_name is required")
-            from infrastructure.ollama.cli_runner import iter_pull_objects
-
             last: dict[str, Any] = {}
             for item in iter_pull_objects(base_url=self._base_url(), name=pull_name, read_timeout=3600.0):
                 if isinstance(item, dict):
@@ -552,8 +609,6 @@ class OllamaProvider:
             if isinstance(cached, ProviderHealth):
                 return cached
         try:
-            from infrastructure.ollama.cli_runner import invoke_ping
-
             data = invoke_ping(base_url=base_url, timeout=float(timeout_sec))
             ok = bool(data.get("ok"))
             health = ProviderHealth(
@@ -578,8 +633,6 @@ class OllamaProvider:
             return health
 
     def _invoke_embed(self, request: LLMRequest) -> LLMResponse:
-        from infrastructure.ollama.embed_client import OllamaEmbeddingProvider
-
         provider = OllamaEmbeddingProvider(base_url=self._embed_url(), model=request.model)
         texts = [x for x in (request.input_texts or []) if isinstance(x, str)]
         if texts:
@@ -598,8 +651,6 @@ class OllamaProvider:
         )
 
     def _invoke_rerank(self, request: LLMRequest) -> LLMResponse:
-        from infrastructure.ollama.rerank_client import OllamaRerankClient
-
         client = OllamaRerankClient(base_url=self._generate_url(), model=request.model)
         response_text = client.rerank(
             str(request.rerank_query or ""),
@@ -626,6 +677,90 @@ class OllamaProvider:
             "ok": False,
             "message": "Docker runtime is unavailable",
             "error": "Docker runtime is unavailable",
+        }
+
+    def _docker_state_snapshot(self) -> dict[str, Any]:
+        container_name = self._docker_container_name()
+        image = self._docker_image()
+        docker = self._docker_runtime()
+        if docker is None:
+            return {
+                "available": False,
+                "container_name": container_name,
+                "image": image,
+                "exists": None,
+                "running": None,
+                "status": "docker_unavailable",
+                "message": "Docker runtime is unavailable.",
+                "action_hint": "refresh",
+            }
+
+        try:
+            state = None
+            inspect = getattr(docker, "inspect_container", None)
+            if callable(inspect):
+                state = inspect(container_name)
+                exists = bool(getattr(state, "exists", False))
+                running = bool(getattr(state, "running", False)) if exists else False
+            else:
+                exists_fn = getattr(docker, "container_exists", None)
+                running_fn = getattr(docker, "container_running", None)
+                exists = bool(exists_fn(container_name)) if callable(exists_fn) else None
+                running = bool(running_fn(container_name)) if callable(running_fn) and exists else False
+        except Exception as e:
+            return {
+                "available": True,
+                "container_name": container_name,
+                "image": image,
+                "exists": None,
+                "running": None,
+                "status": "error",
+                "message": f"Could not inspect Ollama container {container_name}: {e}",
+                "action_hint": "refresh",
+            }
+
+        if exists is None:
+            return {
+                "available": True,
+                "container_name": container_name,
+                "image": image,
+                "exists": None,
+                "running": None,
+                "status": "unknown",
+                "message": f"Docker runtime cannot inspect Ollama container {container_name}.",
+                "action_hint": "refresh",
+            }
+        if not exists:
+            return {
+                "available": True,
+                "container_name": container_name,
+                "image": image,
+                "exists": False,
+                "running": False,
+                "status": "container_missing",
+                "message": f"Ollama container {container_name} does not exist. Download and create it from {image}.",
+                "action_hint": "download",
+            }
+        if not running:
+            return {
+                "available": True,
+                "container_name": container_name,
+                "image": image,
+                "exists": True,
+                "running": False,
+                "status": "container_stopped",
+                "message": f"Ollama container {container_name} exists but is stopped.",
+                "action_hint": "start",
+            }
+        return {
+            "available": True,
+            "container_name": container_name,
+            "image": image,
+            "exists": True,
+            "running": True,
+            "status": "container_running",
+            "message": f"Ollama container {container_name} is running.",
+            "action_hint": "stop",
         }
 
     def _docker_container_name(self) -> str:
@@ -661,7 +796,6 @@ class OllamaProvider:
 
     def _docker_spec(self) -> Any:
         import os
-        from docker_manager import DockerContainerSpec
 
         host_port = self._docker_host_port()
         volume = self._docker_volume()
@@ -679,11 +813,25 @@ class OllamaProvider:
             },
         )
 
+    def _stop_native_ollama(self) -> tuple[bool, str]:
+        """Best-effort: stop the native Ollama process via host-provided callable."""
+        stop_fn = (getattr(self._host, "metadata", None) or {}).get("stop_native_ollama")
+        if callable(stop_fn):
+            try:
+                return stop_fn()
+            except Exception as e:
+                return False, str(e)
+        return False, "stop_native_ollama not available in host context"
+
     def _start_service_with_docker(self) -> dict[str, Any]:
         docker = self._docker_runtime()
         if docker is None:
             return self._docker_unavailable()
         try:
+            # Stop native Ollama to free the port before launching the container.
+            # If the native app is already stopped this is a no-op.
+            self._stop_native_ollama()
+
             spec = self._docker_spec()
             ensured = docker.ensure_container(spec)
             if not bool(ensured.get("ok")):
@@ -764,8 +912,6 @@ class OllamaProvider:
         cache_ttl_sec: float = 0.0,
         allow_stale: bool = False,
     ) -> list[dict[str, Any]]:
-        from infrastructure.ollama.cli_runner import invoke_tags
-
         base_url = self._base_url()
         if not base_url:
             return []
@@ -788,18 +934,12 @@ class OllamaProvider:
         return out
 
     def _visible_model_entries(self, *, timeout_sec: float = 5.0, cache_ttl_sec: float = 0.0) -> list[dict[str, Any]]:
-        from infrastructure.ollama.ollama_model_visibility import (
-            filter_ollama_tag_entries_for_editors,
-            get_hidden_ollama_model_ids,
-        )
-
         raw = self._all_model_entries(timeout_sec=timeout_sec, cache_ttl_sec=cache_ttl_sec, allow_stale=True)
-        return filter_ollama_tag_entries_for_editors(raw, get_hidden_ollama_model_ids())
+        repo = self._host.get_settings_repository()
+        return filter_ollama_tag_entries_for_editors(raw, get_hidden_ollama_model_ids(repo))
 
     def _hidden_model_ids(self) -> set[str]:
-        from infrastructure.ollama.ollama_model_visibility import get_hidden_ollama_model_ids
-
-        return set(get_hidden_ollama_model_ids())
+        return set(get_hidden_ollama_model_ids(self._host.get_settings_repository()))
 
     def _model_option_label(self, item: dict[str, Any], hidden_ids: set[str]) -> str:
         model_id = str(item.get("name") or item.get("model") or "").strip()
@@ -814,8 +954,6 @@ class OllamaProvider:
         all_models: list[dict[str, Any]],
         hidden_ids: set[str],
     ) -> list[dict[str, Any]]:
-        from infrastructure.ollama.cli_runner import invoke_show
-
         base_url = self._base_url()
         rows: list[dict[str, Any]] = []
         show_futs: list[tuple[str, Any]] = []
@@ -859,3 +997,254 @@ class OllamaProvider:
 
 def create_provider(host_context: ProviderHostContext, manifest: Any) -> OllamaProvider:
     return OllamaProvider(host_context, manifest)
+
+
+
+# ---------------------------------------------------------------------------
+# Module-level blueprint hook — called by the project at startup via
+# filesystem discovery (_register_extension_http_routes in webui_routes.py).
+# Uses current_app at request time; no import from infrastructure.* here.
+# ---------------------------------------------------------------------------
+
+_EXTENSION_ID = "ollama-provider"
+_PROVIDER_ID = "ollama"
+
+
+def register_http_routes_on_blueprint(blueprint: Any) -> None:  # noqa: C901 (complexity ok for route block)
+    """Register all Ollama HTTP routes on the host blueprint.
+
+    Called once at startup by ``webui_routes._register_extension_http_routes``.
+    Route handlers close over ``current_app`` so they resolve the running
+    extension service at request time.
+    """
+    import json as _json
+    import logging as _logging
+
+    from flask import Response, current_app, jsonify, request, stream_with_context
+
+    try:
+        from error_manager.http import error_response as _error_response
+    except Exception:
+        def _error_response(err: Any, status: int = 500) -> Any:  # type: ignore[misc]
+            return jsonify({"error": str(err)}), status
+
+    _log = _logging.getLogger("webui.ollama_provider")
+
+    # ---- dispatch helpers -------------------------------------------------
+
+    def _svc() -> Any:
+        return current_app.extensions.get("llm_extensions_service")
+
+    def _runtime() -> Any:
+        svc = _svc()
+        return current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+
+    def _default_provider_row() -> dict[str, Any] | None:
+        svc = _svc()
+        if svc is None:
+            return None
+        try:
+            rows = svc.provider_rows(_runtime())
+        except Exception:
+            return None
+        for row in rows:
+            if str(row.get("provider_id") or "").strip() == _PROVIDER_ID:
+                return row
+        return rows[0] if rows else None
+
+    def _run_action(action_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        svc = _svc()
+        rt = _runtime()
+        if svc is None or rt is None:
+            raise RuntimeError("LLM extension service is unavailable")
+        return svc.run_extension_action(_EXTENSION_ID, action_id, payload=dict(payload or {}), runtime=rt)
+
+    def _tab_payload() -> dict[str, Any]:
+        svc = _svc()
+        rt = _runtime()
+        if svc is None or rt is None:
+            raise RuntimeError("LLM extension service is unavailable")
+        return svc.extension_tab_payload(_EXTENSION_ID, runtime=rt)
+
+    def _shutdown_server() -> None:
+        func = request.environ.get("werkzeug.server.shutdown")
+        if func is not None:
+            func()
+            return
+        import os as _os
+        _os.exit(0)
+
+    # ---- routes -----------------------------------------------------------
+
+    @blueprint.route("/ollama/status", methods=["GET"])
+    def ollama_status() -> Any:
+        row = _default_provider_row()
+        if row is None:
+            return jsonify({"running": False, "error": "No default provider extension loaded"}), 503
+        health = row.get("health") if isinstance(row.get("health"), dict) else {}
+        metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        return jsonify(
+            {
+                "url": metadata.get("base_url") or metadata.get("chat_url") or None,
+                "running": bool(health.get("ok")),
+                "http_status": health.get("details", {}).get("status_code") if isinstance(health.get("details"), dict) else None,
+                "error": health.get("message") or "",
+            }
+        )
+
+    @blueprint.route("/ollama/start", methods=["POST"])
+    def ollama_start() -> Any:
+        try:
+            result = _run_action("start_service")
+            status = 200 if bool(result.get("ok")) else 500
+            return jsonify({"ok": bool(result.get("ok")), "output": result.get("message") or ""}), status
+        except Exception as e:
+            _log.error("ollama_start: %s", e, exc_info=True)
+            return jsonify({"ok": False, "output": str(e)}), 500
+
+    @blueprint.route("/ollama/stop", methods=["POST"])
+    def ollama_stop() -> Any:
+        try:
+            result = _run_action("stop_service")
+            status = 200 if bool(result.get("ok")) else 500
+            return jsonify({"ok": bool(result.get("ok")), "output": result.get("message") or ""}), status
+        except Exception as e:
+            _log.error("ollama_stop: %s", e, exc_info=True)
+            return jsonify({"ok": False, "output": str(e)}), 500
+
+    @blueprint.route("/ollama/library", methods=["GET"])
+    def ollama_library() -> Any:
+        try:
+            payload = _tab_payload()
+            schema = payload.get("schema") if isinstance(payload.get("schema"), dict) else {}
+            rows: list[dict[str, Any]] = []
+            hidden_ids: list[str] = []
+            diagnostics: dict[str, Any] = {}
+            for page in schema.get("pages") or []:
+                if not isinstance(page, dict):
+                    continue
+                for section in page.get("sections") or []:
+                    if not isinstance(section, dict):
+                        continue
+                    for component in section.get("components") or []:
+                        if not isinstance(component, dict):
+                            continue
+                        if component.get("type") == "table" and component.get("key") == "provider_models":
+                            rows = [dict(item) for item in component.get("rows") or [] if isinstance(item, dict)]
+                        if component.get("type") == "diagnostics":
+                            diagnostics = dict(component.get("value") or {})
+            if isinstance(diagnostics.get("hidden_model_ids"), list):
+                hidden_ids = [str(x) for x in diagnostics.get("hidden_model_ids") if str(x).strip()]
+            models = [
+                {
+                    "name": str(row.get("id") or ""),
+                    "size": row.get("size", 0),
+                    "modified_at": row.get("modified_at", ""),
+                    "digest": row.get("digest"),
+                    "hidden": bool(row.get("hidden")),
+                }
+                for row in rows
+                if str(row.get("id") or "").strip()
+            ]
+            return jsonify({"ok": True, "url": diagnostics.get("base_url"), "models": models, "hidden_ids": hidden_ids})
+        except Exception as e:
+            _log.warning("ollama_library: %s", e)
+            return jsonify({"ok": False, "url": None, "models": [], "hidden_ids": [], "error": str(e)})
+
+    @blueprint.route("/ollama/hidden", methods=["PATCH"])
+    def ollama_hidden_patch() -> Any:
+        body = request.get_json(silent=True) or {}
+        add = body.get("add") if isinstance(body.get("add"), list) else []
+        remove = body.get("remove") if isinstance(body.get("remove"), list) else []
+        try:
+            updated: list[str] = []
+            for model_name in add:
+                result = _run_action("hide_model", {"selected_model": str(model_name)})
+                if isinstance(result.get("hidden_model_ids"), list):
+                    updated = [str(x) for x in result.get("hidden_model_ids") if str(x).strip()]
+            for model_name in remove:
+                result = _run_action("unhide_model", {"selected_model": str(model_name)})
+                if isinstance(result.get("hidden_model_ids"), list):
+                    updated = [str(x) for x in result.get("hidden_model_ids") if str(x).strip()]
+            return jsonify({"ok": True, "hidden_ids": updated})
+        except Exception as e:
+            _log.error("ollama_hidden_patch: %s", e, exc_info=True)
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @blueprint.route("/ollama/show", methods=["POST"])
+    def ollama_show_model() -> Any:
+        body = request.get_json(silent=True) or {}
+        model = (body.get("model") or "").strip()
+        if not model:
+            return jsonify({"ok": False, "error": "model is required"}), 400
+        try:
+            result = _run_action("show_model", {"selected_model": model})
+            return jsonify({"ok": bool(result.get("ok", True)), "details": result.get("details") or {}})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 502
+
+    @blueprint.route("/ollama/delete", methods=["POST"])
+    def ollama_delete_model() -> Any:
+        body = request.get_json(silent=True) or {}
+        model = (body.get("model") or "").strip()
+        if not model:
+            return jsonify({"ok": False, "error": "model is required"}), 400
+        try:
+            result = _run_action("delete_model", {"selected_model": model})
+            return jsonify({"ok": bool(result.get("ok", True)), "result": result.get("details") or result.get("result") or {}})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 502
+
+    @blueprint.route("/ollama/pull", methods=["POST"])
+    def ollama_pull_stream() -> Any:
+        body = request.get_json(silent=True) or {}
+        model = (body.get("model") or "").strip()
+        if not model:
+            return _error_response("model is required", 400)
+        row = _default_provider_row() or {}
+        metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        base_url = str(metadata.get("base_url") or metadata.get("chat_url") or "").strip()
+        if base_url.endswith("/api/chat"):
+            base_url = base_url[: -len("/api/chat")]
+        base_url = base_url.rstrip("/")
+        if not base_url:
+            try:
+                payload = _tab_payload()
+                schema = payload.get("schema") if isinstance(payload.get("schema"), dict) else {}
+                for page in schema.get("pages") or []:
+                    for section in (page.get("sections") if isinstance(page, dict) else []) or []:
+                        for component in (section.get("components") if isinstance(section, dict) else []) or []:
+                            if isinstance(component, dict) and component.get("type") == "diagnostics":
+                                value = component.get("value") if isinstance(component.get("value"), dict) else {}
+                                base_url = str(value.get("base_url") or "").strip().rstrip("/")
+                                break
+            except Exception:
+                base_url = ""
+        if not base_url:
+            return _error_response("Could not resolve Ollama base URL", 503)
+
+        def generate():
+            try:
+                for item in iter_pull_objects(base_url=base_url, name=model, read_timeout=3600.0):
+                    if isinstance(item, dict):
+                        yield _json.dumps(item, ensure_ascii=False) + "\n"
+                yield _json.dumps({"ok": True, "status": "success", "model": model}, ensure_ascii=False) + "\n"
+            except Exception as e:
+                _log.error("ollama_pull_stream: %s", e, exc_info=True)
+                yield _json.dumps({"ok": False, "error": str(e), "status": "error"}, ensure_ascii=False) + "\n"
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype="application/x-ndjson",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @blueprint.route("/server/stop", methods=["POST"])
+    def server_stop() -> Any:
+        try:
+            _log.info("Received WebUI shutdown request")
+            _shutdown_server()
+            return jsonify({"status": "stopping"})
+        except Exception as e:
+            _log.error("server_stop: %s", e, exc_info=True)
+            return _error_response(e)

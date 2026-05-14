@@ -103,6 +103,7 @@ import { NotificationCenterProvider } from "./components/NotificationCenterConte
 import NotificationCenterShell from "./components/NotificationCenterShell";
 import RagTestRunNotificationBridge from "./components/RagTestRunNotificationBridge";
 import ProxiesLiveNotificationBridge from "./components/ProxiesLiveNotificationBridge";
+import OllamaPullNotificationBridge from "./components/OllamaPullNotificationBridge";
 import InfrastructureAlertsBridge from "./components/InfrastructureAlertsBridge";
 import "./styles/layout.css";
 import "./styles/default-card.css";
@@ -154,6 +155,7 @@ function App() {
   const [llmProxyBuildsFocusSubTab, setLlmProxyBuildsFocusSubTab] = useState(null);
   const [logsFocusSubTab, setLogsFocusSubTab] = useState(null);
   const [tabErrors, setTabErrors] = useState({});
+  const [tabActivity, setTabActivity] = useState({});
   const [themeMode, setThemeMode] = useState("system");
   const [lightAccent, setLightAccent] = useState("purple");
   const [darkAccent, setDarkAccent] = useState("cyan");
@@ -507,9 +509,11 @@ function App() {
         <ExtensionRuntimeTab
           extensionId={activeExtensionTab.extension_id}
           title={activeExtensionTab.title}
-          onErrorStateChange={(hasError) =>
-            setTabErrors((prev) => ({ ...prev, [activeExtensionTab.id]: hasError }))
-          }
+          onErrorStateChange={(state) => {
+            const loading = state === "loading";
+            setTabActivity((prev) => ({ ...prev, [activeExtensionTab.id]: loading }));
+            setTabErrors((prev) => ({ ...prev, [activeExtensionTab.id]: loading ? false : Boolean(state) }));
+          }}
         />
       );
     }
@@ -630,6 +634,7 @@ function App() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         tabErrors={tabErrors}
+        tabActivity={tabActivity}
         onSettings={() => setActiveTab("settings")}
         onStopWebUi={handleServerStop}
         settingsActive={activeTab === "settings"}
@@ -707,6 +712,16 @@ function App() {
       {sessionId && (
         <ProxiesLiveNotificationBridge
           onOpenLlmProxyTrace={handleOpenLlmProxyTrace}
+        />
+      )}
+      {sessionId && (
+        <OllamaPullNotificationBridge
+          onOpenOllama={() => {
+            const ollamaTab = extensionTabs.find(
+              (tab) => tab.id === "ollama" || tab.extension_id === "ollama-provider",
+            );
+            setActiveTab(ollamaTab?.id || "ollama");
+          }}
         />
       )}
       {sessionId && (

@@ -205,8 +205,8 @@ function CoreUIShowcaseTab() {
         <ShowcaseItem
           name="Card"
           classes={[".app-card", ".app-card--interactive", ".app-card--elevate-on-hover"]}
-          source={`${sourceRoot}/components/Card.jsx`}
-          description="Compact elevated surface with optional interaction, hover elevation, and hover background highlight."
+          source={`${sourceRoot}/components/Card.jsx, ${sourceRoot}/styles/layout.css, ${sourceRoot}/styles/tokens.css`}
+          description="Compact elevated surface. Hoverable cards keep a neutral surface and signal interaction with a denser accent-colored shadow."
         >
           <div className="coreui-showcase-card-variants">
             <Card className="coreui-showcase-demo-card">Default card</Card>
@@ -317,7 +317,7 @@ function CoreUIShowcaseTab() {
           name="Model card (Ollama pattern)"
           classes={[".app-card", ".app-card--interactive", ".app-card--elevate-on-hover", ".extensions-runtime-model-card"]}
           source={`${sourceRoot}/components/Card.jsx, ${sourceRoot}/styles/components/ExtensionRuntimeTab.css`}
-          description="Model card used in the Ollama tab. Interactive, elevates on hover, and highlights background to signal clickability."
+          description="Model card used in the Ollama tab. It follows the CoreUI hoverable-card rule: neutral body, stronger accent-tinted hover shadow."
         >
           <div className="coreui-showcase-model-card-grid">
             <Card interactive elevateOnHover className="extensions-runtime-model-card">

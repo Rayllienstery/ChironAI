@@ -27,6 +27,8 @@ class _DockerRuntime:
     def __init__(self) -> None:
         self.ensure_spec = None
         self.stopped = ""
+        self.exists = True
+        self.running = False
 
     def ensure_container(self, spec: Any) -> dict[str, Any]:
         self.ensure_spec = spec
@@ -39,13 +41,27 @@ class _DockerRuntime:
         self.stopped = container
         return {"ok": True, "container": container, "message": "stopped"}
 
+    def inspect_container(self, container: str) -> Any:
+        return SimpleNamespace(exists=self.exists, running=self.running, name=container)
 
-def _provider(docker_runtime: Any | None):
-    module = _load_ollama_provider_module()
+
+class _Repo:
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+
+    def get_app_setting(self, key: str) -> str:
+        return self.values.get(key, "")
+
+    def set_app_setting(self, key: str, value: str) -> None:
+        self.values[key] = value
+
+
+def _provider(docker_runtime: Any | None, *, repo: Any | None = None, module: Any | None = None):
+    module = module or _load_ollama_provider_module()
     root = Path(__file__).resolve().parents[2]
     host = ProviderHostContext(
         project_root=root,
-        get_settings_repository=lambda: None,
+        get_settings_repository=lambda: repo or _Repo(),
         chat_client=_ChatClient(),
         docker_runtime=docker_runtime,
     )
@@ -86,3 +102,41 @@ def test_ollama_extension_reports_missing_docker_runtime() -> None:
     assert started["message"] == "Docker runtime is unavailable"
     assert stopped["ok"] is False
     assert stopped["message"] == "Docker runtime is unavailable"
+
+
+def test_ollama_extension_tab_reports_missing_container(monkeypatch: Any) -> None:
+    module = _load_ollama_provider_module()
+    monkeypatch.setattr(module, "invoke_ping", lambda **_: {"ok": False})
+    monkeypatch.setattr(module, "invoke_tags", lambda **_: {"models": []})
+
+    docker = _DockerRuntime()
+    docker.exists = False
+    provider = _provider(docker, repo=_Repo(), module=module)
+
+    payload = provider.get_tab_payload()
+    diagnostics = payload["schema"]["pages"][0]["sections"][2]["components"][0]["value"]
+
+    assert diagnostics["health"]["status"] == "container_missing"
+    assert diagnostics["docker"]["exists"] is False
+    assert diagnostics["docker"]["action_hint"] == "download"
+    assert "does not exist" in diagnostics["health"]["message"]
+
+
+def test_ollama_extension_tab_reports_stopped_container(monkeypatch: Any) -> None:
+    module = _load_ollama_provider_module()
+    monkeypatch.setattr(module, "invoke_ping", lambda **_: {"ok": False})
+    monkeypatch.setattr(module, "invoke_tags", lambda **_: {"models": []})
+
+    docker = _DockerRuntime()
+    docker.exists = True
+    docker.running = False
+    provider = _provider(docker, repo=_Repo(), module=module)
+
+    payload = provider.get_tab_payload()
+    diagnostics = payload["schema"]["pages"][0]["sections"][2]["components"][0]["value"]
+
+    assert diagnostics["health"]["status"] == "container_stopped"
+    assert diagnostics["docker"]["exists"] is True
+    assert diagnostics["docker"]["running"] is False
+    assert diagnostics["docker"]["action_hint"] == "start"
+    assert "exists but is stopped" in diagnostics["health"]["message"]

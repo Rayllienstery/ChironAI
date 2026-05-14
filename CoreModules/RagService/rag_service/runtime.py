@@ -8,7 +8,6 @@ Owns start/stop/status logic for the services that rag_service needs at runtime:
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -81,10 +80,6 @@ class RagRuntimeConfig:
         )
 
 
-def find_ollama_executable() -> str | None:
-    return shutil.which("ollama")
-
-
 def ollama_ping(base_url: str, *, timeout: float = 5.0) -> dict[str, Any]:
     base = base_url.rstrip("/")
     url = f"{base}/api/tags"
@@ -99,22 +94,36 @@ def ollama_ping(base_url: str, *, timeout: float = 5.0) -> dict[str, Any]:
         return result
 
 
-def start_ollama_serve(cfg: RagRuntimeConfig) -> tuple[bool, str]:
-    exe = find_ollama_executable()
-    if not exe:
-        return False, "ollama executable not found in PATH"
-    env = dict(os.environ)
-    env["OLLAMA_HOST"] = cfg.ollama_listen
-    kwargs: dict[str, Any] = {"env": env, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
-    if sys.platform == "win32":
-        kwargs["creationflags"] = 0x00000008 | 0x00000200
-    else:
-        kwargs["start_new_session"] = True
-    try:
-        subprocess.Popen([exe, "serve"], **kwargs)
-        return True, "ollama serve started"
-    except OSError as e:
-        return False, str(e)
+def _ollama_container_name() -> str:
+    return (os.getenv("OLLAMA_CONTAINER_NAME") or "chironai-ollama").strip() or "chironai-ollama"
+
+
+def _ollama_docker_image() -> str:
+    return (os.getenv("OLLAMA_DOCKER_IMAGE") or "ollama/ollama:latest").strip() or "ollama/ollama:latest"
+
+
+def _ollama_docker_volume() -> str:
+    return (os.getenv("OLLAMA_DOCKER_VOLUME") or "ollama_models:/root/.ollama").strip()
+
+
+def ensure_ollama_container(cfg: RagRuntimeConfig) -> tuple[bool, str]:
+    """Start Ollama as a Docker container (Docker-first, no native binary)."""
+    parsed = urlparse(cfg.ollama_base_url if "://" in cfg.ollama_base_url else f"http://{cfg.ollama_base_url}")
+    host_port = int(parsed.port or 11434)
+    volume = _ollama_docker_volume()
+    spec = DockerContainerSpec(
+        name=_ollama_container_name(),
+        image=_ollama_docker_image(),
+        ports=[f"{host_port}:11434"],
+        env={"OLLAMA_HOST": "0.0.0.0:11434"},
+        volumes=[volume] if volume else [],
+        restart="unless-stopped",
+        labels={"chironai.service": "ollama"},
+    )
+    result = _docker_manager().ensure_container(spec)
+    ok = bool(result.get("ok"))
+    msg = str(result.get("message") or result.get("details") or result.get("error") or "")
+    return ok, msg or ("started" if ok else "failed")
 
 
 def ollama_port_from_base_url(base_url: str, default_port: int = 11434) -> int:
@@ -282,14 +291,16 @@ class RagRuntime:
         }
 
     def start_ollama(self) -> tuple[bool, str]:
-        ping = ollama_ping(self._cfg.ollama_base_url, timeout=2.0)
-        if ping.get("ok"):
-            return True, "already running"
-        return start_ollama_serve(self._cfg)
+        # If the Docker container is already running, the port is already served correctly.
+        if _docker_manager().container_running(_ollama_container_name()):
+            return True, "already running (container)"
+        # Port may respond from a native Ollama process — stop it first to free the port.
+        if ollama_ping(self._cfg.ollama_base_url, timeout=2.0).get("ok"):
+            stop_ollama_process()
+        return ensure_ollama_container(self._cfg)
 
     def stop_ollama(self) -> tuple[bool, str]:
-        port = ollama_port_from_base_url(self._cfg.ollama_base_url)
-        return stop_ollama_process(listen_port=port)
+        return docker_stop_container(_ollama_container_name())
 
     def start_qdrant(self) -> tuple[bool, str]:
         ok_d, msg_d = wait_for_docker_engine(self._cfg, start_desktop_on_windows=(sys.platform == "win32"))

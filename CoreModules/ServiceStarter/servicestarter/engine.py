@@ -102,14 +102,19 @@ class ServiceStarter:
         return windows_install.ensure_ollama_installed(self._cfg.ollama_installer_url)
 
     def start_ollama(self) -> tuple[bool, str]:
-        ping = ollama_ops.ollama_ping(self._cfg.ollama_base_url, timeout=2.0)
-        if ping.get("ok"):
-            return True, "already running"
-        return ollama_ops.start_ollama_serve(self._cfg)
+        # If the Docker container is already running, nothing to do.
+        if docker_ops.container_is_running(docker_ops._ollama_container_name(self._cfg)):
+            return True, "already running (container)"
+        # Port may respond from native Ollama — stop it to free the port for Docker.
+        if ollama_ops.ollama_ping(self._cfg.ollama_base_url, timeout=2.0).get("ok"):
+            ollama_ops.stop_ollama_process()
+        ok_d, msg_d = self.ensure_docker_running()
+        if not ok_d:
+            return False, f"docker: {msg_d}"
+        return docker_ops.ensure_ollama_container(self._cfg)
 
     def stop_ollama(self) -> tuple[bool, str]:
-        port = ollama_ops.ollama_port_from_base_url(self._cfg.ollama_base_url)
-        return ollama_ops.stop_ollama_process(listen_port=port)
+        return docker_ops.docker_stop_container(docker_ops._ollama_container_name(self._cfg))
 
     def start_qdrant(self) -> tuple[bool, str]:
         ok_d, msg_d = self.ensure_docker_running()
@@ -135,7 +140,6 @@ class ServiceStarter:
                 results["docker_install"] = self.ensure_docker_installed()
                 results["docker"] = self.ensure_docker_running()
             elif n == "ollama":
-                results["ollama_install"] = self.ensure_ollama_installed()
                 results["ollama"] = self.start_ollama()
             elif n == "qdrant":
                 results["qdrant"] = self.start_qdrant()

@@ -129,6 +129,7 @@ function CollapseIcon({ expanded }) {
  *   activeTab: string,
  *   onTabChange: (id: string) => void,
  *   tabErrors?: Record<string, boolean>,
+ *   tabActivity?: Record<string, boolean>,
  *   onSettings?: () => void,
  *   onStopWebUi?: () => void,
  *   settingsActive?: boolean,
@@ -142,6 +143,7 @@ function SidebarNav({
   activeTab,
   onTabChange,
   tabErrors,
+  tabActivity,
   onSettings,
   onStopWebUi,
   settingsActive,
@@ -315,6 +317,7 @@ function SidebarNav({
               {section.tabs.map((tab) => {
                 const active = activeTab === tab.id;
                 const hasError = Boolean(tabErrors && tabErrors[tab.id]);
+                const isActivity = Boolean(tabActivity && tabActivity[tab.id]);
                 const isRag = tab.id === "rag";
                 const tabServiceStatus = serviceStatusByTabId?.[tab.id] || null;
             return (
@@ -330,7 +333,13 @@ function SidebarNav({
               >
                 <TabIcon tabId={tab.id} icon={tab.icon} iconUrl={tab.iconUrl} />
                 <span className="coreui-sidebar__link-label">{tab.label}</span>
-                {tabServiceStatus ? (
+                {tabServiceStatus && isActivity ? (
+                  <span
+                    className="coreui-sidebar__activity coreui-sidebar__activity--service"
+                    aria-label="Loading"
+                    title={`${tab.label} is loading`}
+                  />
+                ) : tabServiceStatus ? (
                   <span
                     className={`coreui-sidebar__service-dot ${statusLoading ? "updating" : tabServiceStatus?.running ? "running" : "stopped"}`}
                     aria-hidden="true"
@@ -356,7 +365,13 @@ function SidebarNav({
                     }
                   />
                 ) : null}
-                {hasError && (
+                {!tabServiceStatus && isActivity ? (
+                  <span
+                    className="coreui-sidebar__activity"
+                    aria-label="Loading"
+                    title={`${tab.label} is loading`}
+                  />
+                ) : hasError && (
                   <span className="coreui-sidebar__badge" aria-label="Error">
                     !
                   </span>

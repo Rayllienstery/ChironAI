@@ -7,6 +7,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
+try:
+    from docker_manager import DockerContainerSpec as _DockerContainerSpec
+
+    DockerContainerSpec = _DockerContainerSpec
+except Exception:
+    DockerContainerSpec = None  # type: ignore[assignment,misc]
+
 
 @dataclass(frozen=True)
 class MessagePart:
@@ -145,3 +152,7 @@ class LLMProvider(Protocol):
     def stream_invoke(self, request: LLMRequest) -> Iterator[LLMStreamEvent]: ...
 
     def health_check(self) -> ProviderHealth: ...
+
+    def register_http_routes(self, blueprint: Any) -> None:
+        """Optional: register extension-owned HTTP routes on the host blueprint."""
+        ...
