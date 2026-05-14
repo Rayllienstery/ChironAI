@@ -1284,6 +1284,122 @@ def test_chat_completions_native_tools_passthrough_skips_argument_normalize(
             test_file.unlink()
 
 
+def test_chat_completions_native_tools_recovers_dsml_tool_call_from_thinking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == "proxy_model":
+                return "fake-proxy-ollama-model"
+            if key == "proxy_settings":
+                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
+            if key == "rag_collection":
+                return ""
+            return _test_proxy_api_key_setting(key)
+
+    class DsmlOllamaClient:
+        _default_options = {"temperature": 0.0}
+
+        def chat_api(self, _body: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "message": {
+                    "role": "assistant",
+                    "thinking": (
+                        "~197KB. Let me inspect it.\n\n"
+                        "<｜DSML｜tool_calls>\n"
+                        "<｜DSML｜invoke name=\"shell\">\n"
+                        "<｜DSML｜parameter name=\"command\" string=\"false\">"
+                        "[\"powershell.exe\", \"-Command\", \"Get-ChildItem -Path api\\\\http\\\\webui_routes.py\"]"
+                        "</｜DSML｜parameter>\n"
+                        "</｜DSML｜invoke>\n"
+                        "</｜DSML｜tool_calls>"
+                    ),
+                    "content": "",
+                },
+                "done_reason": "stop",
+            }
+
+        def chat(self, *_a: Any, **_k: Any) -> str:
+            return ""
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fake-proxy-ollama-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=DsmlOllamaClient(),
+    )
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda request, *_a, **_k: ([{"role": "user", "content": request.messages[-1]["content"]}], "fake-model"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-proxy-ollama-model",
+            "messages": [{"role": "user", "content": "reduce webui_routes.py"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "shell",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"command": {"type": "array", "items": {"type": "string"}}},
+                            "required": ["command"],
+                        },
+                    },
+                }
+            ],
+            "tool_choice": "auto",
+        },
+    )
+
+    assert r.status_code == 200, r.get_data(as_text=True)
+    data = r.get_json() or {}
+    choice = data["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    message = choice["message"]
+    assert message["content"] is None
+    assert message["reasoning_content"] == "~197KB. Let me inspect it."
+    assert "model returned reasoning without final answer" not in json.dumps(data)
+    tc = message["tool_calls"][0]
+    assert tc["function"]["name"] == "shell"
+    args = json.loads(tc["function"]["arguments"])
+    assert args["command"] == ["powershell.exe", "-Command", "Get-ChildItem -Path api\\http\\webui_routes.py"]
+
+    trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
+    assert "native_tool_calls_recovered_from_text" in (trace.get("warnings") or [])
+    assert (trace.get("response") or {}).get("tool_calls_recovered_from_text") is True
+    assert (trace.get("response") or {}).get("tool_calls_count") == 1
+
+
 def test_chat_completions_respects_none_tool_choice_for_swift_file_edit_intent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -112,6 +112,34 @@ def test_ollama_message_to_openai_assistant_tool_calls() -> None:
     assert openai_finish_reason_from_ollama(ollama_msg) == "tool_calls"
 
 
+def test_ollama_message_to_openai_assistant_recovers_dsml_tool_call_from_thinking() -> None:
+    ollama_msg = {
+        "role": "assistant",
+        "thinking": (
+            "~197KB. Let me inspect it.\n\n"
+            "<｜DSML｜tool_calls>\n"
+            "<｜DSML｜invoke name=\"shell\">\n"
+            "<｜DSML｜parameter name=\"command\" string=\"false\">"
+            "[\"powershell.exe\", \"-Command\", \"Get-ChildItem -Path api\\\\http\\\\webui_routes.py\"]"
+            "</｜DSML｜parameter>\n"
+            "</｜DSML｜invoke>\n"
+            "</｜DSML｜tool_calls>"
+        ),
+        "content": "",
+    }
+
+    oa = ollama_message_to_openai_assistant(ollama_msg)
+
+    assert oa["content"] is None
+    assert oa["reasoning_content"] == "~197KB. Let me inspect it."
+    assert len(oa["tool_calls"]) == 1
+    tc = oa["tool_calls"][0]
+    assert tc["function"]["name"] == "shell"
+    args = json.loads(tc["function"]["arguments"])
+    assert args == {"command": ["powershell.exe", "-Command", "Get-ChildItem -Path api\\http\\webui_routes.py"]}
+    assert openai_finish_reason_from_ollama(ollama_msg) == "tool_calls"
+
+
 def test_openai_finish_reason_length_from_ollama_done_reason() -> None:
     msg = {"role": "assistant", "content": "hi"}
     assert openai_finish_reason_from_ollama(msg) == "stop"

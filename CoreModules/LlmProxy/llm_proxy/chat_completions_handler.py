@@ -164,6 +164,17 @@ def _final_or_compat_content(parts: dict[str, Any], *, include_reasoning_content
     return str(parts.get("final_content") or "")
 
 
+def _text_parts_from_openai_assistant_message(message: dict[str, Any]) -> dict[str, str]:
+    reasoning = str(message.get("reasoning_content") or "").strip()
+    final = str(message.get("content") or "").strip()
+    visible = "\n\n".join(part for part in (reasoning, final) if part)
+    return {
+        "visible_content": visible,
+        "reasoning_content": reasoning,
+        "final_content": final,
+    }
+
+
 def _build_forced_think_value(
     *,
     body: dict[str, Any],
@@ -1572,12 +1583,34 @@ def run_chat_completions(
                     full_content = "".join(visible_content_parts)
                     final_content = "".join(final_content_parts)
 
-                if tool_calls_raw:
+                mapped_calls: list[Any] = []
+                tool_calls_recovered_from_text = False
+                if not tool_calls_raw:
+                    recovery_msg: dict[str, Any] = {"role": "assistant"}
+                    if reasoning_content:
+                        recovery_msg["thinking"] = reasoning_content
+                    if final_content:
+                        recovery_msg["content"] = final_content
+                    elif full_content and not reasoning_content:
+                        recovery_msg["content"] = full_content
+                    recovered_msg = ollama_message_to_openai_assistant(recovery_msg)
+                    recovered_calls = recovered_msg.get("tool_calls")
+                    if isinstance(recovered_calls, list) and recovered_calls:
+                        mapped_calls = recovered_calls
+                        tool_calls_recovered_from_text = True
+                        _append_trace_warning(trace, "native_tool_calls_recovered_from_text")
+                        recovered_parts = _text_parts_from_openai_assistant_message(recovered_msg)
+                        reasoning_content = recovered_parts["reasoning_content"]
+                        final_content = recovered_parts["final_content"]
+                        full_content = recovered_parts["visible_content"]
+
+                if tool_calls_raw or mapped_calls:
                     fake_msg: dict[str, Any] = {"role": "assistant", "tool_calls": tool_calls_raw}
-                    if full_content:
+                    if tool_calls_raw and full_content:
                         fake_msg["content"] = full_content
-                    openai_mapped = ollama_message_to_openai_assistant(fake_msg)
-                    mapped_calls = openai_mapped.get("tool_calls") or []
+                    if tool_calls_raw:
+                        openai_mapped = ollama_message_to_openai_assistant(fake_msg)
+                        mapped_calls = openai_mapped.get("tool_calls") or []
                     gemini_upserted = _persist_gemini_tool_calls_state(
                         tool_calls=mapped_calls,
                         model_name=use_model,
@@ -1619,7 +1652,7 @@ def run_chat_completions(
                 }
                 trace["response"] = {
                     "latency_ms": stream_latency_ms,
-                    "tool_calls_count": len(tool_calls_raw),
+                    "tool_calls_count": len(mapped_calls) if mapped_calls else len(tool_calls_raw),
                     "native_tools": True,
                     "reasoning_only_guard_triggered": bool(reasoning_guard_triggered),
                     **_trace_ollama_api_metrics(ollama_done_payload, model_id=use_model),
@@ -1637,6 +1670,10 @@ def run_chat_completions(
                     trace["response"]["gemini_tool_state_upserted_count"] = int(gemini_upserted)
                 if tool_calls_raw:
                     trace["response"]["tool_calls_raw"] = tool_calls_raw
+                if mapped_calls:
+                    trace["response"]["tool_calls"] = mapped_calls
+                if tool_calls_recovered_from_text:
+                    trace["response"]["tool_calls_recovered_from_text"] = True
                 trace["steps"].append({
                     "name": "provider_chat_native_tools_stream",
                     "duration_ms": stream_latency_ms,
@@ -1790,14 +1827,24 @@ def run_chat_completions(
             oll_msg, ollama_done_reason=data.get("done_reason"),
         )
         tool_calls_out = openai_msg.get("tool_calls") if isinstance(openai_msg.get("tool_calls"), list) else []
+        tool_calls_recovered_from_text = bool(
+            tool_calls_out
+            and not (
+                isinstance(oll_msg.get("tool_calls"), list)
+                and bool(oll_msg.get("tool_calls"))
+            )
+        )
         tool_calls_out, shell_sanitize_count = _sanitize_outgoing_shell_tool_calls(tool_calls_out)
+        if tool_calls_recovered_from_text:
+            _append_trace_warning(trace, "native_tool_calls_recovered_from_text")
+            finish = "tool_calls"
         gemini_tool_state_upserted = _persist_gemini_tool_calls_state(
             tool_calls=tool_calls_out,
             model_name=use_model,
             trace_id=trace_id,
             db_path=proxy_db_path,
         )
-        content_parts = _assistant_text_parts_from_ollama_message(oll_msg)
+        content_parts = _text_parts_from_openai_assistant_message(openai_msg)
         content_str = _final_or_compat_content(
             content_parts,
             include_reasoning_content=include_reasoning_content,
@@ -1888,6 +1935,8 @@ def run_chat_completions(
             trace["response"]["tool_calls"] = tool_calls_out
             if post_tool_success_turn:
                 trace["response"]["post_tool_returned_tool_calls"] = True
+        if tool_calls_recovered_from_text:
+            trace["response"]["tool_calls_recovered_from_text"] = True
         if gemini_tool_state_upserted:
             trace["response"]["gemini_tool_state_upserted_count"] = int(gemini_tool_state_upserted)
         if shell_sanitize_count:

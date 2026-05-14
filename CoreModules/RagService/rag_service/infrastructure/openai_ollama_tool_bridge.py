@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import html
 import json
+import re
 import uuid
 from typing import Any
 
@@ -80,6 +82,112 @@ def arguments_to_openai_string(obj: object | None) -> str:
         return json.dumps(obj, ensure_ascii=False)
     except (TypeError, ValueError):
         return "{}"
+
+
+_DSML_TOOL_CALLS_RE = re.compile(
+    r"<\|DSML\|tool_calls>\s*(?P<body>.*?)\s*</\|DSML\|tool_calls>",
+    re.DOTALL,
+)
+_DSML_INVOKE_RE = re.compile(
+    r"<\|DSML\|invoke\b(?P<attrs>[^>]*)>(?P<body>.*?)</\|DSML\|invoke>",
+    re.DOTALL,
+)
+_DSML_PARAMETER_RE = re.compile(
+    r"<\|DSML\|parameter\b(?P<attrs>[^>]*)>(?P<value>.*?)</\|DSML\|parameter>",
+    re.DOTALL,
+)
+_DSML_ATTR_RE = re.compile(
+    r"""(?P<name>[A-Za-z_][\w:-]*)\s*=\s*(?P<quote>["'])(?P<value>.*?)(?P=quote)""",
+    re.DOTALL,
+)
+
+
+def _normalize_dsml_text(text: str | None) -> str:
+    if not text:
+        return ""
+    return str(text).replace("\uff5c", "|").replace("ï½œ", "|")
+
+
+def _parse_dsml_attrs(raw: str | None) -> dict[str, str]:
+    attrs: dict[str, str] = {}
+    for m in _DSML_ATTR_RE.finditer(raw or ""):
+        name = str(m.group("name") or "").strip().lower()
+        if name:
+            attrs[name] = html.unescape(str(m.group("value") or ""))
+    return attrs
+
+
+def _parse_dsml_parameter_value(raw: str, attrs: dict[str, str]) -> Any:
+    value = html.unescape(str(raw or "")).strip()
+    if str(attrs.get("string") or "").strip().lower() == "false":
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
+
+
+def _dsml_tool_calls_from_text(text: str | None) -> list[dict[str, Any]]:
+    normalized = _normalize_dsml_text(text)
+    if "<|DSML|tool_calls>" not in normalized:
+        return []
+
+    calls: list[dict[str, Any]] = []
+    for block in _DSML_TOOL_CALLS_RE.finditer(normalized):
+        body = block.group("body") or ""
+        for invoke in _DSML_INVOKE_RE.finditer(body):
+            attrs = _parse_dsml_attrs(invoke.group("attrs"))
+            name = _sanitize_tool_name(attrs.get("name"), fallback="")
+            if not name:
+                continue
+
+            args: dict[str, Any] = {}
+            invoke_body = invoke.group("body") or ""
+            for param in _DSML_PARAMETER_RE.finditer(invoke_body):
+                param_attrs = _parse_dsml_attrs(param.group("attrs"))
+                param_name = _sanitize_tool_name(param_attrs.get("name"), fallback="")
+                if not param_name:
+                    continue
+                args[param_name] = _parse_dsml_parameter_value(param.group("value") or "", param_attrs)
+
+            call_id = _new_call_id()
+            calls.append(
+                {
+                    "id": call_id,
+                    "call_id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": arguments_to_openai_string(args),
+                    },
+                }
+            )
+    return calls
+
+
+def _dsml_tool_calls_from_texts(*texts: str | None) -> list[dict[str, Any]]:
+    calls: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for text in texts:
+        for call in _dsml_tool_calls_from_text(text):
+            fn = call.get("function") if isinstance(call.get("function"), dict) else {}
+            key = (str(fn.get("name") or ""), str(fn.get("arguments") or ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            calls.append(call)
+    return calls
+
+
+def _strip_dsml_tool_call_blocks(text: str | None) -> str:
+    if not text:
+        return ""
+    normalized = _normalize_dsml_text(text)
+    if "<|DSML|tool_calls>" not in normalized:
+        return str(text).strip()
+    stripped = _DSML_TOOL_CALLS_RE.sub("", normalized)
+    stripped = re.sub(r"\n{3,}", "\n\n", stripped)
+    return stripped.strip()
 
 
 def _openai_message_content_to_text(content: object) -> str:
@@ -389,9 +497,23 @@ def ollama_message_to_openai_assistant(ollama_msg: dict[str, Any]) -> dict[str, 
             if extra_out:
                 call_out["extra_content"] = extra_out
             openai_calls.append(call_out)
+
     thinking = ollama_msg.get("thinking")
-    th = thinking.strip() if isinstance(thinking, str) else ""
-    co = (content or "").strip() if content else ""
+    dsml_calls: list[dict[str, Any]] = []
+    if not openai_calls:
+        dsml_calls = _dsml_tool_calls_from_texts(
+            thinking if isinstance(thinking, str) else None,
+            content if isinstance(content, str) else None,
+        )
+        openai_calls.extend(dsml_calls)
+
+    thinking_text = thinking if isinstance(thinking, str) else ""
+    content_text = content if isinstance(content, str) else ""
+    if dsml_calls:
+        thinking_text = _strip_dsml_tool_call_blocks(thinking_text)
+        content_text = _strip_dsml_tool_call_blocks(content_text)
+    th = thinking_text.strip()
+    co = content_text.strip()
 
     msg: dict[str, Any] = {"role": str(role)}
     if co:
@@ -414,6 +536,13 @@ def openai_finish_reason_from_ollama(
     ollama_done_reason: str | None = None,
 ) -> str:
     if isinstance(ollama_msg.get("tool_calls"), list) and ollama_msg.get("tool_calls"):
+        return "tool_calls"
+    content = ollama_msg.get("content")
+    thinking = ollama_msg.get("thinking")
+    if _dsml_tool_calls_from_texts(
+        thinking if isinstance(thinking, str) else None,
+        content if isinstance(content, str) else None,
+    ):
         return "tool_calls"
     dr = (
         (ollama_done_reason or "").strip().lower()
