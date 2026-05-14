@@ -14,16 +14,12 @@ Uses api.http.rag_routes.create_app; prompt and model come from config via appli
 
 import logging
 import os
-import sys
-
-_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _ROOT_DIR not in sys.path:
-    sys.path.insert(0, _ROOT_DIR)
 
 from flask import make_response, send_from_directory
 
 from config import get_log_level, get_server_port
 from api.http.rag_routes import create_app
+from webui_backend.paths import coreui_dir, project_root, webui_data_dir
 
 logging.basicConfig(
     level=get_log_level(),
@@ -39,10 +35,10 @@ if not _rag_verbose:
     logging.getLogger("llm_proxy").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(BASE_DIR)
+BASE_DIR = str(webui_data_dir())
+PROJECT_ROOT = str(project_root())
 # Frontend: CoreUI (React) under CoreModules
-WEBUI_FRONTEND_DIR = os.path.join(PROJECT_ROOT, "CoreModules", "CoreUI")
+WEBUI_FRONTEND_DIR = str(coreui_dir())
 
 # create_app() registers webui_bp, so /api/webui/* (open-webui/status, start, stop, etc.) is available
 app = create_app(webui_dir=BASE_DIR)

@@ -89,3 +89,5 @@ def test_engine_raises_pipeline_execution_error() -> None:
     except PipelineExecutionError as e:
         assert e.step_id == "rerank"
         assert e.trace[-1].status == "failed"
+        assert isinstance(e.cause, RuntimeError)
+        assert e.__cause__ is e.cause

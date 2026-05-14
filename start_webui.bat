@@ -10,6 +10,8 @@ echo.
 echo If you updated the code, run start_webui.bat again to load changes (this window closes when the server stops).
 echo.
 
+set "PYTHONPATH=%CD%;%CD%\CoreModules\WebUIBackend;%PYTHONPATH%"
+
 where python >nul 2>&1
 if errorlevel 1 (
   echo ERROR: python is not in PATH. Add Python to PATH or run from a dev environment.
@@ -18,14 +20,14 @@ if errorlevel 1 (
 
 REM Stop any process already listening on the configured server port (avoids "address already in use")
 echo Stopping any previous WebUI / rag_proxy listener on this port...
-python WebUI\kill_listeners_on_config_port.py
+python -m webui_backend.kill_listeners_on_config_port
 echo.
 
 REM Open browser in the background
 start "" "http://localhost:8080/webui"
 
 REM Run Flask server (rag_proxy registers webui_bp so /api/webui/* is available)
-python WebUI\rag_proxy.py
+python -m webui_backend.rag_proxy
 set WEBUI_EXIT=%ERRORLEVEL%
 if not %WEBUI_EXIT%==0 (
   echo.

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-- **Rag sources crawl** (default): Playwright BFS + WWDC transcript pipeline writing markdown under `WebUI/rag_sources` (same behavior as legacy `WebUI/app.py crawl`).
+- **Rag sources crawl** (default): Playwright BFS + WWDC transcript pipeline writing markdown under `WebUI/rag_sources` using helpers from `webui_backend`.
 - **Port `CrawlRunner`**: `PlaywrightCrawler.crawl()` returns fetched pages without writing to disk (for future md_ingestion HTTP push).
 
 ## Install

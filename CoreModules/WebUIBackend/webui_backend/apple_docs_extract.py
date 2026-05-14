@@ -23,7 +23,7 @@ except ImportError:  # pragma: no cover - environment without lxml
     lxml_html = None  # type: ignore[assignment]
     _HAS_LXML = False
 
-from apple_docs_fetcher import AppleDocRaw
+from webui_backend.apple_docs_fetcher import AppleDocRaw
 
 
 @dataclass

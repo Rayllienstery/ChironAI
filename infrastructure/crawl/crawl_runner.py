@@ -2,7 +2,7 @@
 Crawl runner adapters implementing CrawlRunner.
 
 PlaywrightCrawler is the only supported crawler; full implementation
-remains in WebUI/app.py and can be invoked via a wrapper or migrated here later.
+remains in crawler_service/webui_backend and can be invoked via a wrapper or migrated here later.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ class PlaywrightCrawler:
     def crawl(self, source: CrawlSource) -> List[CrawlResult]:
         """Crawl the source. Raises CrawlError on failure."""
         raise NotImplementedError(
-            "PlaywrightCrawler: use WebUI app.py crawl flow or implement by extracting from app.py"
+            "PlaywrightCrawler: use crawler_service crawl flow or implement it here"
         )
 
 

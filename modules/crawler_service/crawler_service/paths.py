@@ -15,7 +15,7 @@ def default_project_root() -> Path:
 
 
 def resolve_webui_dir(project_root: Path | None = None) -> Path:
-    """WebUI package directory (contains rag_sources, apple_docs_*.py)."""
+    """WebUI runtime/data directory (contains rag_sources)."""
     env = os.environ.get("CHIRONAI_WEBUI_DIR", "").strip()
     if env:
         return Path(env).resolve()

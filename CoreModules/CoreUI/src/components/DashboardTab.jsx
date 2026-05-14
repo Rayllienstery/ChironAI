@@ -284,8 +284,8 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                     <div className="qs-content">
                       <h4>Crawl & Index</h4>
                       <p>Crawl sources and build the RAG index:</p>
-                      <code>python WebUI/app.py crawl</code>
-                      <code>python WebUI/app.py index</code>
+                      <code>python -m api.cli crawl</code>
+                      <code>python -m api.cli ingest &lt;markdown_dir&gt;</code>
                       <p className="qs-hint">Monitor progress in the WebUI Crawler/Indexer tabs. Embeddings use Ollama.</p>
                     </div>
                   </div>

@@ -12,7 +12,7 @@
 | Конфигурируемость | **4** | YAML в `config/` + широкие env overrides ([`config/__init__.py`](config/__init__.py), [`config/README.md`](config/README.md)). Отдельные параметры всё ещё размазаны по коду и WebUI settings. |
 | Наблюдаемость | **2–3** | Логирование есть; метрики Prometheus в прокси; `GET /health` проверяет Ollama+Qdrant через [`infrastructure/stack_health.py`](infrastructure/stack_health.py) на основном приложении, build proxy и `rag_service`. Полный JSON-лог на всех ветках chat и probe `/api/embed` в health — см. чеклист §6.1. |
 | Тесты | **3–4** | Pytest покрывает domain, llm_proxy, rag_service, crawler, md ingestion, web_interaction, часть infrastructure. Нет единого «золотого набора» регрессии ответов LLM в CI как отдельного артефакта (см. TODO). |
-| Developer experience | **3** | Много точек входа (`WebUI/rag_proxy.py`, `WebUI/app.py`, `api.cli`, standalone `rag_service.api.http`). Повторяющийся `sys.path.insert` усложняет onboarding. |
+| Developer experience | **3** | Много точек входа (`webui_backend.rag_proxy`, `webui_backend.app`, `api.cli`, standalone `rag_service.api.http`). Повторяющийся `sys.path.insert` усложняет onboarding. |
 | Безопасность секретов | **3** | Ключи по смыслу через env; в [`TODO.md`](TODO.md) явно отмечено усилить `.gitignore` для БД, логов, `.env`. Нужен периодический аудит коммитов. |
 | Документация | **3** | README корня и модулей хороши; нет единого CHANGELOG в корне (отмечено в TODO). |
 
@@ -56,7 +56,7 @@
 
 ### 3.3 Хрупкость запуска
 
-- Множественные вставки **`sys.path`** в [`api/http/rag_routes.py`](api/http/rag_routes.py), [`llm_proxy_wiring.py`](api/http/llm_proxy_wiring.py), [`webui_routes.py`](api/http/webui_routes.py), [`WebUI/app.py`](WebUI/app.py). Ошибка cwd или запуск из «не того» каталога ломает импорты.
+- Множественные вставки **`sys.path`** в [`api/http/rag_routes.py`](api/http/rag_routes.py), [`llm_proxy_wiring.py`](api/http/llm_proxy_wiring.py), [`webui_routes.py`](api/http/webui_routes.py) и WebUI backend entrypoints. Ошибка cwd или запуск из «не того» каталога ломает импорты.
 - **`external_docs_rag`** опционален: `ImportError` глушится в wiring — полезно для dev, но усложняет диагностику «почему нет merged context».
 
 ### 3.4 Поддерживаемость WebUI backend
@@ -136,7 +136,7 @@
 
 **Шаг 3 (P1) — индексация**
 
-- [x] Счётчики в ingest (успех / skip / ошибка чтения / mismatch embed / ошибки embed); сводка [`print_local_ingest_summary`](WebUI/ingest_markdown_common.py) в [`WebUI/ingest_markdown.py`](WebUI/ingest_markdown.py) и [`WebUI/ingest_markdown_local.py`](WebUI/ingest_markdown_local.py).
+- [x] Счётчики в ingest (успех / skip / ошибка чтения / mismatch embed / ошибки embed); сводка `print_local_ingest_summary` в `webui_backend.ingest_markdown_local`.
 - [x] Retry с backoff для временных сбоев embed: `RAG_EMBED_MAX_RETRIES`, `RAG_EMBED_RETRY_BASE_SEC` в [`infrastructure/ollama/cli_runner.py`](infrastructure/ollama/cli_runner.py) (`invoke_embed`).
 - [x] Те же правила для всех вызовов `invoke_embed` (в т.ч. ingest и runtime embed), когда заданы env или явные `max_retries`.
 

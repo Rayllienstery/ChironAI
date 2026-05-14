@@ -25,7 +25,7 @@ core/                — (Target) config, shared, contracts
 ## Data flow
 
 - **HTTP**: Client → `api/http/rag_routes.py` (Flask) → `application/rag/use_cases.py` → `domain/services/*` + ports → `infrastructure/*` (Qdrant, Ollama).
-- **CLI**: `api/cli/crawl_cli.py` (or `python WebUI/app.py crawl`) → delegates to WebUI/app.py crawl/index/rebuild.
+- **CLI**: `api/cli/crawl_cli.py` (or `python -m api.cli crawl`) -> delegates to crawler_service/webui_backend crawl/index workflows.
 - **RAG**: `query_for_retrieval` (domain) → embed (Ollama) → search (Qdrant) → rerank (Ollama) → `build_context_block` (domain) → chat (Ollama).
 
 ## Layers
@@ -70,7 +70,7 @@ The repository root is an installable project **`chironai`** ([`pyproject.toml`]
 
 - **New embedding model**: configure in `config/models.yaml` (or env `RAG_EMBED_MODEL`); `OllamaEmbeddingProvider` uses it. No code change in domain/application.
 - **New chat model**: configure in `config/models.yaml`; `OllamaChatClient` and `create_app` use it.
-- **New crawl source**: add a source dict to WebUI/app.py `SOURCES`; crawl CLI and index flow use it. For a new crawler implementation, implement `CrawlRunner` in `infrastructure/crawl/` and wire it in the application layer.
+- **New crawl source**: add source configuration under the crawler config/source loader used by `crawler_service`; crawl CLI and index flow use it. For a new crawler implementation, implement `CrawlRunner` in `infrastructure/crawl/` and wire it in the application layer.
 - **New vector store**: implement `RagRepository` in `infrastructure/` and wire it in `application/container.py` instead of `QdrantRagRepository`.
 
 ## Service Control Boundary

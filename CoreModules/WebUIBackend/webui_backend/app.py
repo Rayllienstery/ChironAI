@@ -15,7 +15,9 @@ from pathlib import Path
 
 from flask import Flask
 
-_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from webui_backend.paths import project_root, webui_data_dir
+
+_ROOT_DIR = str(project_root())
 if _ROOT_DIR not in sys.path:
     sys.path.insert(0, _ROOT_DIR)
 
@@ -46,9 +48,9 @@ id_counter = 1
 
 IS_CLI = False
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = str(webui_data_dir())
 RAG_SOURCES_DIR = os.path.join(BASE_DIR, "rag_sources")
-PROJECT_ROOT = Path(BASE_DIR).parent.resolve()
+PROJECT_ROOT = project_root()
 
 SOURCES = load_sources(PROJECT_ROOT)
 
@@ -91,7 +93,7 @@ def event_stream():
 def _crawl_host():
     return build_crawl_host(
         project_root=PROJECT_ROOT,
-        webui_dir=Path(BASE_DIR),
+        webui_dir=webui_data_dir(),
         log=log,
         is_cli=IS_CLI,
     )
@@ -155,7 +157,7 @@ if __name__ == "__main__":
     if args.command == "crawl":
         host = build_crawl_host(
             project_root=PROJECT_ROOT,
-            webui_dir=Path(BASE_DIR),
+            webui_dir=webui_data_dir(),
             log=print,
             is_cli=True,
         )

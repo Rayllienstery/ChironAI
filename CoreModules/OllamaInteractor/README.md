@@ -4,7 +4,7 @@ Standalone **CLI** that speaks to the [Ollama](https://ollama.com/) HTTP API. Th
 
 ## Why this exists
 
-- **Single place for Ollama HTTP**: The monolith previously issued `requests` to `localhost:11434` (and friends) from many files (`infrastructure/ollama`, `webui_routes`, `WebUI/app.py`, ingest scripts, RAG submodules). That spreads timeouts, error handling, and API quirks everywhere.
+- **Single place for Ollama HTTP**: The monolith previously issued `requests` to `localhost:11434` (and friends) from many files (`infrastructure/ollama`, `webui_routes`, WebUI backend ingest scripts, RAG submodules). That spreads timeouts, error handling, and API quirks everywhere.
 - **Explicit contract**: stdin/stdout JSON (and NDJSON for streaming) is easy to test, log, and swap for another implementation later (different language, gRPC, etc.) without touching domain logic.
 - **Process isolation**: A failure or heavy response handling stays inside the helper process; the host can enforce global timeouts and capture stderr uniformly.
 

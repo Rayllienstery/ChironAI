@@ -71,12 +71,12 @@
 
 ## 6. Developer Experience Friction
 
-- [ ] **Eliminate `sys.path.insert` hacks.** Multiple entry points (`WebUI/rag_proxy.py`, `WebUI/app.py`, `api/cli/__main__.py`) manipulate `sys.path` to find packages. This breaks in any non-standard setup. Use proper package installs (`pip install -e .`) or `python -m` consistently.
+- [x] **Eliminate legacy `WebUI/*.py` entrypoints.** Python WebUI backend scripts now live under `CoreModules/WebUIBackend/webui_backend`, and CLI/batch entrypoints use `python -m webui_backend...` or `python -m api.cli ...`. Root `WebUI/` remains the runtime/data directory.
 
 - [ ] **Standardize entry points.** Currently:
   - `python -m api.cli` (CLI)
-  - `WebUI/rag_proxy.py` (proxy server)
-  - `WebUI/app.py` (web UI)
+  - `python -m webui_backend.rag_proxy` (proxy server)
+  - `python -m webui_backend.app start` (web UI)
   - `rag_service` standalone via `python -m rag_service`
   - `ServiceStarter` via `python -m servicestarter`
   Consider a single `chironai` CLI with subcommands: `chironai serve`, `chironai rag`, `chironai crawl`, `chironai start`.

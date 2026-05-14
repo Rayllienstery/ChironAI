@@ -363,7 +363,8 @@ def build_rag_context(
         _rag_log.warning("RagCore base pipeline returned incomplete payload; falling back to empty context")
         return RagContext("", [], 0.0), empty_timings
     except (PipelineExecutionError, RetrievalError) as e:
-        if isinstance(e, PipelineExecutionError) and not isinstance(e.cause, RetrievalError):
+        cause = getattr(e, "cause", None) or getattr(e, "__cause__", None)
+        if isinstance(e, PipelineExecutionError) and not isinstance(cause, RetrievalError):
             _rag_log.exception("RAG build_rag_context failed: %s", e)
             return RagContext("", [], 0.0), empty_timings
         _rag_log.warning("RAG build_rag_context retrieval failed: %s", e)

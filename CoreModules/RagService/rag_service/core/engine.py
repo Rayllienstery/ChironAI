@@ -25,6 +25,7 @@ class PipelineExecutionError(PipelineError):
         )
         self.step_id = step_id
         self.trace = trace
+        self.cause = cause
 
 
 class RagCore:

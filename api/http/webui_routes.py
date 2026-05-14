@@ -54,9 +54,13 @@ if os.path.isdir(_DOCKER_MANAGER) and _DOCKER_MANAGER not in sys.path:
 _ERROR_MANAGER = os.path.join(_ROOT, "CoreModules", "ErrorManager")
 if os.path.isdir(_ERROR_MANAGER) and _ERROR_MANAGER not in sys.path:
     sys.path.insert(0, _ERROR_MANAGER)
+_WEBUI_BACKEND = os.path.join(_ROOT, "CoreModules", "WebUIBackend")
+if os.path.isdir(_WEBUI_BACKEND) and _WEBUI_BACKEND not in sys.path:
+    sys.path.insert(0, _WEBUI_BACKEND)
 
 from error_manager.exceptions import ValidationError as _ValidationError
 from error_manager.http import error_response as _error_response
+from webui_backend.paths import webui_data_dir
 
 from application.llm_proxy_builds import (
     LLM_PROXY_BUILDS_APP_KEY,
@@ -1436,7 +1440,7 @@ def tester_chat() -> Any:
         prompt_name = (prompt_name or "").strip() if isinstance(prompt_name, str) else str(prompt_name or "").strip()
         model_req = (str(model).strip() if model is not None else "")
         if not bool(use_rag):
-            webui_dir = os.path.join(_ROOT, "WebUI") if os.path.isdir(os.path.join(_ROOT, "WebUI")) else None
+            webui_dir = str(webui_data_dir()) if webui_data_dir().is_dir() else None
             params, deps = get_rag_answer_params(webui_dir=webui_dir, collection_name=collection_name)
             use_model = model_req or (params.model_name if params else "")
             use_model = (str(use_model or "")).strip()
@@ -2909,18 +2913,7 @@ def server_stop() -> Any:
 
 def _get_crawler_sources_dir() -> str:
     """Get path to WebUI/rag_sources directory."""
-    # Try to find WebUI directory relative to project root
-    possible_paths = [
-        os.path.join(_ROOT, "WebUI", "rag_sources"),
-        os.path.join(os.path.dirname(_ROOT), "WebUI", "rag_sources"),
-    ]
-    for path in possible_paths:
-        if os.path.isdir(path):
-            return path
-    # Fallback: assume WebUI is sibling to api directory
-    api_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    webui_dir = os.path.join(os.path.dirname(api_dir), "WebUI", "rag_sources")
-    return webui_dir
+    return str(webui_data_dir() / "rag_sources")
 
 
 def _load_source_meta(source_id: str) -> dict | None:
@@ -3703,7 +3696,7 @@ def get_indexer_tester_files(source_id: str) -> Any:
 @webui_bp.route("/crawler/indexer-tester/sources/<source_id>/files/<path:filename>", methods=["GET"])
 def get_indexer_tester_file_detail(source_id: str, filename: str) -> Any:
     """
-    Return original and processed markdown for a specific page using WebUI/app.py pipeline.
+    Return original and processed markdown for a specific page using the WebUI backend pipeline.
     """
     try:
         sources_dir = _get_crawler_sources_dir()
@@ -3987,7 +3980,7 @@ def _batch_eval_worker(
         _batch_eval_jobs[job_id]["total"] = total
         _batch_eval_jobs[job_id]["results"] = []
 
-    webui_dir = os.path.join(_ROOT, "WebUI") if os.path.isdir(os.path.join(_ROOT, "WebUI")) else None
+    webui_dir = str(webui_data_dir()) if webui_data_dir().is_dir() else None
     collection_name = (_get_qdrant_collection_names() or [None])[0]
     try:
         params, deps = get_rag_answer_params(webui_dir=webui_dir, collection_name=collection_name)
@@ -4097,10 +4090,7 @@ def indexer_tester_evaluate() -> Any:
         if not source_md and not processed_md:
             return _error_response("At least one of source_md or processed_md is required", 400)
 
-        webui_dir = None
-        possible_webui = os.path.join(_ROOT, "WebUI")
-        if os.path.isdir(possible_webui):
-            webui_dir = possible_webui
+        webui_dir = str(webui_data_dir()) if webui_data_dir().is_dir() else None
         collection_name = None
         names = _get_qdrant_collection_names()
         if names:
@@ -4249,7 +4239,7 @@ def detect_batch_eval_patterns() -> Any:
             + "\n\n".join(parts)
         )
 
-        webui_dir = os.path.join(_ROOT, "WebUI") if os.path.isdir(os.path.join(_ROOT, "WebUI")) else None
+        webui_dir = str(webui_data_dir()) if webui_data_dir().is_dir() else None
         collection_name = (_get_qdrant_collection_names() or [None])[0]
         params, deps = get_rag_answer_params(webui_dir=webui_dir, collection_name=collection_name)
         chat_client = deps.chat_client
@@ -4406,20 +4396,6 @@ def get_crawler_source_stats(source_id: str) -> Any:
 _crawling_processes: dict[str, subprocess.Popen] = {}
 
 
-def _get_webui_app_path() -> str:
-    """Get path to WebUI/app.py."""
-    possible_paths = [
-        os.path.join(_ROOT, "WebUI", "app.py"),
-        os.path.join(os.path.dirname(_ROOT), "WebUI", "app.py"),
-    ]
-    for path in possible_paths:
-        if os.path.isfile(path):
-            return path
-    # Fallback
-    api_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(os.path.dirname(api_dir), "WebUI", "app.py")
-
-
 @webui_bp.route("/crawler/sources/<source_id>/crawl", methods=["POST"])
 def crawl_source_endpoint(source_id: str) -> Any:
     """Start crawling a specific source. Returns immediately, crawl runs in background."""
@@ -4427,13 +4403,9 @@ def crawl_source_endpoint(source_id: str) -> Any:
         # Check if source exists
         meta = _load_source_meta(source_id)
         if not meta:
-            # Try to get source from SOURCES in WebUI/app.py
-            app_path = _get_webui_app_path()
-            if not os.path.isfile(app_path):
-                return _error_response("WebUI/app.py not found", 500)
-            
             # For now, we'll allow crawling even if meta doesn't exist
             # The crawl will create it
+            pass
         
         # Check if already crawling
         if source_id in _crawling_processes:
@@ -4444,18 +4416,14 @@ def crawl_source_endpoint(source_id: str) -> Any:
                     "message": f"Crawl for source '{source_id}' is already in progress"
                 }), 409
         
-        # Start crawl in background
-        app_path = _get_webui_app_path()
-        if not os.path.isfile(app_path):
-            return _error_response("WebUI/app.py not found", 500)
-        
         # Run crawl in subprocess
         env = os.environ.copy()
         env["CHIRONAI_PROJECT_ROOT"] = _ROOT
-        env["CHIRONAI_WEBUI_DIR"] = os.path.join(_ROOT, "WebUI")
+        env["CHIRONAI_WEBUI_DIR"] = str(webui_data_dir())
         _extra_path = os.pathsep.join(
             [
                 _ROOT,
+                _WEBUI_BACKEND,
                 os.path.join(_ROOT, "modules", "crawler_service"),
                 os.path.join(_ROOT, "modules", "html_md"),
             ]

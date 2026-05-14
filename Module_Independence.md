@@ -6,7 +6,7 @@ This document describes the goal of making modules **fully independent from the 
 
 ## Current State
 
-- **Core** = `api/` (Flask app, `webui_routes.py`, `rag_routes.py`), `WebUI/app.py`, root-level `config/`, `application/`, `domain/`, `infrastructure/`.
+- **Core** = `api/` (Flask app, `webui_routes.py`, `rag_routes.py`), `CoreModules/WebUIBackend`, root-level `config/`, `application/`, `domain/`, `infrastructure/`.
 - **Modules** = **CoreModules/RagService** (`rag_service` + `chironai_rag`, pip `chironai-rag-service`), `modules/crawler_service`, `modules/webui_backend`, `modules/webui_frontend`, `modules/md_indexer`, **CoreModules/MdIngestionService** (`md_ingestion_service` package), etc.
 
 **Problems:**

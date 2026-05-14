@@ -25,20 +25,33 @@ def _root() -> str:
 
 
 def _app_py() -> str:
-    return os.path.join(_root(), "WebUI", "app.py")
+    return os.path.join(_root(), "CoreModules", "WebUIBackend", "webui_backend", "app.py")
 
 
-def _run(args: list[str], cwd: str | None = None) -> int:
+def _webui_backend_root() -> str:
+    return os.path.join(_root(), "CoreModules", "WebUIBackend")
+
+
+def _module_env() -> dict[str, str]:
+    env = os.environ.copy()
+    paths = [_root(), _webui_backend_root()]
+    existing = env.get("PYTHONPATH")
+    if existing:
+        paths.append(existing)
+    env["PYTHONPATH"] = os.pathsep.join(paths)
+    return env
+
+
+def _run(args: list[str], cwd: str | None = None, env: dict[str, str] | None = None) -> int:
     cmd = [sys.executable] + args
-    return subprocess.run(cmd, cwd=cwd or _root()).returncode
+    return subprocess.run(cmd, cwd=cwd or _root(), env=env).returncode
 
 
 def cmd_start(_: argparse.Namespace) -> int:
-    app = _app_py()
-    if not os.path.isfile(app):
-        print("WebUI/app.py not found.", file=sys.stderr)
+    if not os.path.isfile(_app_py()):
+        print("webui_backend.app not found.", file=sys.stderr)
         return 1
-    return _run([app, "start"])
+    return _run(["-m", "webui_backend.app", "start"], env=_module_env())
 
 
 def cmd_crawl(ns: argparse.Namespace) -> int:
@@ -49,6 +62,7 @@ def cmd_crawl(ns: argparse.Namespace) -> int:
     _p = os.pathsep.join(
         [
             root,
+            os.path.join(root, "CoreModules", "WebUIBackend"),
             os.path.join(root, "modules", "crawler_service"),
             os.path.join(root, "modules", "html_md"),
         ]
@@ -63,22 +77,22 @@ def cmd_crawl(ns: argparse.Namespace) -> int:
 
 
 def cmd_ingest(ns: argparse.Namespace) -> int:
-    script = os.path.join(_root(), "WebUI", "ingest_markdown_local.py")
+    script = os.path.join(_webui_backend_root(), "webui_backend", "ingest_markdown_local.py")
     if not os.path.isfile(script):
-        print("WebUI/ingest_markdown_local.py not found.", file=sys.stderr)
+        print("webui_backend.ingest_markdown_local not found.", file=sys.stderr)
         return 1
-    argv = [script, ns.markdown_dir]
+    argv = ["-m", "webui_backend.ingest_markdown_local", ns.markdown_dir]
     if getattr(ns, "collection", None):
         argv.extend(["--collection", ns.collection])
-    return _run(argv)
+    return _run(argv, env=_module_env())
 
 
 def cmd_proxy(_: argparse.Namespace) -> int:
-    script = os.path.join(_root(), "WebUI", "rag_proxy.py")
+    script = os.path.join(_webui_backend_root(), "webui_backend", "rag_proxy.py")
     if not os.path.isfile(script):
-        print("WebUI/rag_proxy.py not found.", file=sys.stderr)
+        print("webui_backend.rag_proxy not found.", file=sys.stderr)
         return 1
-    return _run([script])
+    return _run(["-m", "webui_backend.rag_proxy"], env=_module_env())
 
 
 def cmd_test(_: argparse.Namespace) -> int:
@@ -249,14 +263,14 @@ def cmd_rag_tests_lint(_: argparse.Namespace) -> int:
 
 
 def cmd_test_single(ns: argparse.Namespace) -> int:
-    script = os.path.join(_root(), "WebUI", "app_tester.py")
+    script = os.path.join(_webui_backend_root(), "webui_backend", "app_tester.py")
     if not os.path.isfile(script):
-        print("WebUI/app_tester.py not found.", file=sys.stderr)
+        print("webui_backend.app_tester not found.", file=sys.stderr)
         return 1
-    argv = [script]
+    argv = ["-m", "webui_backend.app_tester"]
     if getattr(ns, "url", None):
         argv.append(ns.url)
-    return _run(argv, cwd=os.path.join(_root(), "WebUI"))
+    return _run(argv, env=_module_env())
 
 
 def main() -> None:

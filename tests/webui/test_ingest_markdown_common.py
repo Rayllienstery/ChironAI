@@ -8,13 +8,13 @@ import sys
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent.parent
-_WEBUI = _REPO / "WebUI"
-for p in (_REPO, _WEBUI):
+_WEBUI_BACKEND = _REPO / "CoreModules" / "WebUIBackend"
+for p in (_REPO, _WEBUI_BACKEND):
     s = str(p)
     if s not in sys.path:
         sys.path.insert(0, s)
 
-from ingest_markdown_common import (  # noqa: E402
+from webui_backend.ingest_markdown_common import (  # noqa: E402
     payloads_for_markdown,
     qdrant_payload_local,
 )

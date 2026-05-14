@@ -1,4 +1,4 @@
-"""CLI: crawl configured sources into WebUI/rag_sources (same semantics as WebUI/app.py crawl)."""
+"""CLI: crawl configured sources into WebUI/rag_sources."""
 
 from __future__ import annotations
 

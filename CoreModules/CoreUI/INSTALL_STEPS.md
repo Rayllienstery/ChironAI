@@ -42,8 +42,7 @@ Start the Flask server:
 
 ```powershell
 cd C:\Users\Raylee\AI
-python WebUI\rag_proxy.py
+python -m webui_backend.rag_proxy
 ```
 
 WebUI will be available at: http://localhost:8080/webui
-

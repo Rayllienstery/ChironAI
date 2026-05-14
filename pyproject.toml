@@ -58,8 +58,12 @@ include = [
   "domain*",
   "infrastructure*",
   "utils*",
+  "webui_backend*",
 ]
 exclude = ["tests*", "tests"]
+
+[tool.setuptools.package-dir]
+webui_backend = "CoreModules/WebUIBackend/webui_backend"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -74,6 +78,7 @@ pythonpath = [
     "CoreModules/RagService",
     "CoreModules/WebInteraction",
     "CoreModules/MdIngestionService",
+    "CoreModules/WebUIBackend",
 ]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
@@ -99,6 +104,7 @@ src = [
   "CoreModules/RagService/rag_service",
   "CoreModules/WebInteraction/web_interaction",
   "CoreModules/MdIngestionService/md_ingestion_service",
+  "CoreModules/WebUIBackend/webui_backend",
   "modules/crawler_service/crawler_service",
   "modules/html_md/html_md",
 ]
@@ -136,7 +142,7 @@ paths = [
   "infrastructure",
   "utils",
   "CoreModules",
-  "WebUI",
+  "CoreModules/WebUIBackend/webui_backend",
   "modules",
   "modules/html_md",
   "scripts",

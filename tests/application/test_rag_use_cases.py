@@ -117,6 +117,25 @@ def test_build_rag_context_returns_empty_on_retrieval_error(caplog) -> None:
     assert "retrieval failed" in caplog.text
 
 
+def test_build_rag_context_returns_empty_on_pipeline_wrapped_retrieval_error(caplog) -> None:
+    class PipelineWrappedRetrievalRepo(MockRagRepo):
+        def search(self, vector, top_k, filter_dict=None, **kwargs):
+            raise RetrievalError("Qdrant refused connection")
+
+    ctx, timings = build_rag_context(
+        "What is SwiftUI?",
+        PipelineWrappedRetrievalRepo(),
+        MockEmbed(),
+        MockRerank(),
+        500,
+        2000,
+    )
+    assert ctx.context_text == ""
+    assert ctx.chunks_info == []
+    assert timings["search_s"] == 0.0
+    assert "retrieval failed" in caplog.text
+
+
 def test_build_rag_context_with_custom_keywords_skips_when_no_match() -> None:
     search_calls: list[int] = []
     repo = MockRagRepo(search_call_count=search_calls)

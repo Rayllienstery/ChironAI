@@ -1,9 +1,9 @@
 """
-CLI entrypoint for crawl: delegates to crawler_service (same as WebUI/app.py crawl).
+CLI entrypoint for crawl: delegates to crawler_service.
 
 Usage from project root:
   python -m api.cli.crawl_cli crawl [--dry-run] [--source ID]
-  chironai-crawl   (after pip install -e modules/crawler_service)
+  chironai-crawl   (after installing crawler_service and webui_backend)
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ def main() -> None:
     _p = os.pathsep.join(
         [
             root,
+            os.path.join(root, "CoreModules", "WebUIBackend"),
             os.path.join(root, "modules", "crawler_service"),
             os.path.join(root, "modules", "html_md"),
         ]

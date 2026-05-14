@@ -60,7 +60,7 @@
 - [x] **Конфиг** — YAML в `config/*.yaml` плюс env overrides (URL Ollama/Qdrant, модели, лимиты RAG, confidence, веб-поиск и т.д.; см. `config/__init__.py`, `config/README.md`).
 
 ## 7. Документация и структура проекта
-- [x] **Дублирование app.py** — отдельного `app.py` в корне репозитория нет; краул и индексация идут через [`WebUI/app.py`](WebUI/app.py) (см. CLI/README).
+- [x] **Дублирование app.py** — отдельного `app.py` в корне репозитория нет; краул и индексация идут через `CoreModules/WebUIBackend/webui_backend/app.py` и CLI (см. CLI/README).
 - [x] **.gitignore: DB / logs / secrets** — в корневом `.gitignore` уже есть `.env*`, ключи, `*.db`/`*.sqlite*`, `logs/`, `*.log`, кэши, дампы и др.; периодически перепроверять, что новые артефакты не утекают в коммиты.
 
 ## 8. Качество кода (проект)

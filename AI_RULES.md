@@ -16,11 +16,12 @@ For humans and AI assistants: terminology, module boundaries, what to keep in sy
 | Term | What it is |
 |------|------------|
 | **CoreUI** | React/Vite SPA under `CoreModules/CoreUI/`. Talks to the backend **only over HTTP**—no direct RAG, crawler, or ingestion calls. See `CoreModules/CoreUI/README.md`. |
-| **`WebUI/` folder** | **Legacy** Python: crawl, index, helper scripts, `WebUI/app.py`. This is **not** the frontend. |
+| **`WebUI/` folder** | Runtime/data directory (`rag_sources`, caches, logs, `last_collection.txt`). This is **not** the frontend and no longer contains Python entrypoints. |
+| **WebUIBackend** | Python backend entrypoints and legacy crawl/ingest helpers under `CoreModules/WebUIBackend/webui_backend/`. |
 | **Web UI (HTTP API)** | REST under the `/api/webui` prefix for dashboard, settings, logs, etc. **Today** the main route implementation is the monolith `api/http/webui_routes.py`. **Target** migration is the standalone service `modules/webui_backend/`. |
 | **Open WebUI** | A separate Docker product; status/start via `CoreModules/ServiceStarter`. Do not conflate with **CoreUI** (our React app) or call it “our WebUI” without qualification. |
 
-Ambiguous “WebUI” in conversation: clarify—**`WebUI/` folder**, **`/api/webui` HTTP API**, **CoreUI**, or **Open WebUI**.
+Ambiguous “WebUI” in conversation: clarify—**`WebUI/` data folder**, **WebUIBackend**, **`/api/webui` HTTP API**, **CoreUI**, or **Open WebUI**.
 
 ---
 

@@ -279,10 +279,6 @@ def crawl_wwdc_transcripts_source(host: CrawlHost, source: dict[str, Any], dry_r
 
 def crawl_source(host: CrawlHost, source: dict[str, Any], dry_run: bool = False) -> None:
     _ensure_project_on_path(host.project_root)
-    webui_s = str(host.webui_dir)
-    if webui_s not in sys.path:
-        sys.path.insert(0, webui_s)
-
     source_id = source["id"]
     extra = source.get("extra") or {}
     if extra.get("type") == "wwdc_transcripts":
@@ -300,8 +296,8 @@ def crawl_source(host: CrawlHost, source: dict[str, Any], dry_run: bool = False)
         )
         return
 
-    from apple_docs_extract import build_apple_doc_page, render_apple_doc_to_markdown
-    from apple_docs_fetcher import fetch_apple_doc_raw
+    from webui_backend.apple_docs_extract import build_apple_doc_page, render_apple_doc_to_markdown
+    from webui_backend.apple_docs_fetcher import fetch_apple_doc_raw
 
     start_url = source["url"]
     max_depth = int(source.get("max_depth", 3))

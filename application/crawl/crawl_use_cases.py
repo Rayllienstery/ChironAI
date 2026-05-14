@@ -2,7 +2,7 @@
 Crawl and index application use cases.
 
 Orchestrates crawl -> markdown store. Full crawl implementation lives in
-WebUI/app.py; this module exposes a small use-case API for injection/testing.
+webui_backend.app; this module exposes a small use-case API for injection/testing.
 """
 
 from __future__ import annotations

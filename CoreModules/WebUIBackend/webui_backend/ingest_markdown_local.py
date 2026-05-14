@@ -11,8 +11,7 @@ Embedding model and endpoint are shared with the main RAG pipeline:
 
 Usage (PowerShell):
 
-  cd "c:\\Users\\Raylee\\AI\\WebUI"
-  python .\\ingest_markdown_local.py `
+  python -m webui_backend.ingest_markdown_local `
     "c:\\Users\\Raylee\\AI\\Apple-Developer-Documentation-Offline-Archive-main\\markdown" `
     --collection apple_docs
 
@@ -27,18 +26,17 @@ import sys
 from pathlib import Path
 from typing import List
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_WEBUI_DIR = os.path.dirname(os.path.abspath(__file__))
+from webui_backend.paths import project_root, webui_data_dir
+
+_ROOT = str(project_root())
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
-if _WEBUI_DIR not in sys.path:
-    sys.path.insert(0, _WEBUI_DIR)
 
 from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_embed
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import VectorParams, Distance, PointStruct
 
-from ingest_markdown_common import (
+from webui_backend.ingest_markdown_common import (
     chunks_for_local_ingest,
     print_local_ingest_summary,
     qdrant_payload_local,
@@ -57,7 +55,7 @@ OLLAMA_EMBED_URL = get_ollama_embed_url()
 EMBED_MODEL_NAME = get_ollama_embed_model()
 EMBED_BATCH_SIZE = 32
 QDRANT_URL = "http://localhost:6333"
-COLLECTION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_collection.txt")
+COLLECTION_FILE = str(webui_data_dir() / "last_collection.txt")
 
 
 def get_embeddings(texts: List[str]) -> List[List[float]]:
@@ -109,13 +107,13 @@ def collection_name_from_path(root: Path) -> str:
 
 
 def main() -> None:
-    if len(sys.argv) < 2:
-        print("Usage: python ingest_markdown_local.py <path_to_markdown_folder> [--collection NAME]")
+    if len(sys.argv) < 2 or sys.argv[1] in {"-h", "--help"}:
+        print("Usage: python -m webui_backend.ingest_markdown_local <path_to_markdown_folder> [--collection NAME]")
         print(
-            "Example: python ingest_markdown_local.py "
+            "Example: python -m webui_backend.ingest_markdown_local "
             "C:\\path\\to\\Apple-Developer-Documentation-Offline-Archive\\markdown --collection apple_docs"
         )
-        sys.exit(1)
+        sys.exit(0 if len(sys.argv) >= 2 else 1)
 
     root = Path(sys.argv[1]).resolve()
     if not root.is_dir():
