@@ -3848,6 +3848,22 @@ def test_native_tools_preflight_recovers_tool_name_and_sets_name_alias() -> None
     assert (diag.get("tool_message_name_recovered_heuristic_sources") or {}).get("call_id_map") == 1
 
 
+def test_tool_loop_limit_final_message_names_real_stop_reason() -> None:
+    import llm_proxy.chat_completions_handler as handler
+
+    msg = handler._tool_loop_limit_final_message(
+        {
+            "request": {
+                "tool_loop_limit_reached": True,
+                "tool_loop_stats": {"rounds": 25, "dominant_tool": "shell"},
+            }
+        }
+    )
+
+    assert "max_agent_steps limit reached after 25 tool rounds (shell)" in msg
+    assert "model returned reasoning without final answer" not in msg
+
+
 def test_sse_tool_calls_payload_preserves_thought_signature_aliases() -> None:
     import llm_proxy.chat_completions as cc
 

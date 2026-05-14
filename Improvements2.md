@@ -109,7 +109,7 @@
 
 ## 9. Code Quality & Maintenance
 
-- [ ] **Reduce `api/http/webui_routes.py` size.** It is a large file handling many UI endpoints. Split by domain (sources, prompts, sessions, settings, docker, extensions) — the directory already has `webui_crawler_source_routes.py`, `webui_docker_routes.py`, `webui_prompt_routes.py`, `webui_extensions_routes.py`, so the pattern exists. Finish the migration.
+- [x] **Reduce `api/http/webui_routes.py` size.** It is a large file handling many UI endpoints. Split by domain (sources, prompts, sessions, settings, docker, extensions) — the directory already has `webui_crawler_source_routes.py`, `webui_docker_routes.py`, `webui_prompt_routes.py`, `webui_extensions_routes.py`, so the pattern exists. Finish the migration.
 
 - [x] **Remove dead code paths.** Runtime code now imports `should_skip_rag_search` from `rag_trigger`, which owns the trigger heuristic. The `retrieval.py` export remains as a compatibility path, and root `domain/services/retrieval.py` stays as an intentional thin wrapper covered by compat tests rather than a stale implementation.
 

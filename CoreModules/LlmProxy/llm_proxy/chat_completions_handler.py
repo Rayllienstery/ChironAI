@@ -175,6 +175,23 @@ def _text_parts_from_openai_assistant_message(message: dict[str, Any]) -> dict[s
     }
 
 
+def _tool_loop_limit_final_message(trace: dict[str, Any]) -> str:
+    req = trace.get("request") if isinstance(trace.get("request"), dict) else {}
+    if req.get("tool_loop_limit_reached") is not True:
+        return ""
+    stats = req.get("tool_loop_stats") if isinstance(req.get("tool_loop_stats"), dict) else {}
+    rounds = stats.get("rounds")
+    dominant_tool = str(stats.get("dominant_tool") or "").strip()
+    detail = f" after {rounds} tool rounds" if rounds else ""
+    if dominant_tool:
+        detail += f" ({dominant_tool})"
+    return (
+        f"[Error: max_agent_steps limit reached{detail}. "
+        "The model requested another tool call after tools were disabled for this turn. "
+        "Increase the build max_agent_steps limit, narrow the task, or continue in a new turn.]"
+    )
+
+
 def _build_forced_think_value(
     *,
     body: dict[str, Any],
@@ -2554,11 +2571,16 @@ def run_chat_completions(
             str(content_parts.get("reasoning_content") or "")
             and not str(content_parts.get("final_content") or "")
         ):
-            _append_trace_warning(trace, "reasoning_only_response_guarded")
-            content = (
-                "[Error: model returned reasoning without final answer. "
-                "Try disabling thinking or shortening the prompt.]"
-            )
+            tool_loop_limit_message = _tool_loop_limit_final_message(trace)
+            if tool_loop_limit_message:
+                _append_trace_warning(trace, "tool_loop_limit_response_guarded")
+                content = tool_loop_limit_message
+            else:
+                _append_trace_warning(trace, "reasoning_only_response_guarded")
+                content = (
+                    "[Error: model returned reasoning without final answer. "
+                    "Try disabling thinking or shortening the prompt.]"
+                )
             content_parts = {
                 "visible_content": f"{content_parts.get('visible_content') or ''}\n\n{content}".strip(),
                 "reasoning_content": str(content_parts.get("reasoning_content") or ""),
