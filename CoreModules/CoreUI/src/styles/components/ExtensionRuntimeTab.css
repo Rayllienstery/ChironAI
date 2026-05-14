@@ -336,6 +336,133 @@
   align-items: center;
   gap: 8px;
   margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.extensions-runtime-diagnostics-actions__tail {
+  margin-left: auto;
+}
+
+.extensions-runtime-cloud-api-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.extensions-runtime-cloud-api-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--md-sys-color-outline) 35%, transparent);
+}
+
+.extensions-runtime-cloud-api-dot--valid {
+  /* tertiary in M3 is often purple/brown — use explicit success green */
+  background: var(--coreui-color-success, var(--md-sys-color-success, #2e7d32));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--coreui-color-success, #2e7d32) 40%, transparent);
+}
+
+.extensions-runtime-cloud-api-dot--invalid {
+  background: var(--md-sys-color-error);
+}
+
+.extensions-runtime-cloud-api-dot--neutral {
+  background: var(--md-sys-color-outline-variant);
+}
+
+.coreui-modal.extensions-runtime-cloud-api-modal {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.extensions-runtime-cloud-api-modal__body {
+  display: grid;
+  gap: 16px;
+}
+
+.extensions-runtime-cloud-api-modal__status {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--md-sys-color-surface-container-low);
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.extensions-runtime-cloud-api-modal__eyebrow {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--md-sys-color-on-surface-variant);
+  margin-bottom: 4px;
+}
+
+.extensions-runtime-cloud-api-modal__status-line {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.extensions-runtime-cloud-api-modal__hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.extensions-runtime-cloud-api-modal__hint a {
+  color: var(--md-sys-color-primary);
+}
+
+.extensions-runtime-cloud-api-modal__code {
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.extensions-runtime-cloud-api-modal__field {
+  display: grid;
+  gap: 6px;
+}
+
+.extensions-runtime-cloud-api-modal__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.extensions-runtime-cloud-api-modal__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font-size: 14px;
+}
+
+.extensions-runtime-cloud-api-modal__input:focus {
+  outline: 2px solid color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.extensions-runtime-cloud-api-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.extensions-runtime-cloud-api-modal__footer-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .extensions-runtime-item {
@@ -383,6 +510,65 @@
 
 .extensions-runtime-pull-progress--error {
   border-color: color-mix(in srgb, var(--md-sys-color-error) 45%, var(--md-sys-color-outline-variant)) !important;
+}
+
+.extensions-runtime-pull-progress--cancelled {
+  border-color: color-mix(in srgb, var(--md-sys-color-on-surface-variant) 35%, var(--md-sys-color-outline-variant)) !important;
+}
+
+.extensions-runtime-pull-progress--cancelled .extensions-runtime-pull-progress__bar span {
+  background: var(--md-sys-color-on-surface-variant);
+}
+
+.extensions-runtime-pull-progress--exiting {
+  pointer-events: none;
+  animation: extensions-runtime-pull-dismiss 0.4s cubic-bezier(0.32, 0, 0.67, 0) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .extensions-runtime-pull-progress--exiting {
+    animation: extensions-runtime-pull-dismiss-reduced 0.2s ease forwards;
+  }
+}
+
+@keyframes extensions-runtime-pull-dismiss {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+    margin-block: 0;
+    padding-block: 0;
+    padding-inline: 0;
+    min-height: 0;
+    border-color: transparent;
+    box-shadow: none;
+  }
+}
+
+@keyframes extensions-runtime-pull-dismiss-reduced {
+  to {
+    opacity: 0;
+  }
+}
+
+.extensions-runtime-pull-progress__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.extensions-runtime-pull-progress__actions .coreui-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.extensions-runtime-pull-progress__actions .material-symbols-outlined {
+  font-size: 16px;
+  line-height: 1;
 }
 
 .extensions-runtime-pull-progress__header {

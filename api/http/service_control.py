@@ -45,23 +45,9 @@ def stop_qdrant() -> tuple[bool, str, str]:
     return bool(ok), str(output), str(ss.cfg.qdrant_container_name)
 
 
-def start_ollama() -> tuple[bool, str]:
-    ss = get_service_starter()
-    ok, output = ss.start_ollama()
-    return bool(ok), str(output)
-
-
-def stop_ollama(*, base_url: str = "", default_port: int = 11434) -> tuple[bool, str]:
-    ss = get_service_starter()
-    ok, output = ss.stop_ollama()
-    return bool(ok), str(output)
-
-
 __all__ = [
     "ensure_servicestarter_on_path",
     "get_service_starter",
-    "start_ollama",
     "start_qdrant",
-    "stop_ollama",
     "stop_qdrant",
 ]

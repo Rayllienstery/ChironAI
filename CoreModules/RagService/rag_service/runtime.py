@@ -1,14 +1,12 @@
 """Standalone runtime helpers for rag_service dependencies.
 
-Owns start/stop/status logic for the services that rag_service needs at runtime:
-- Ollama
-- Qdrant
+Owns start/stop/status logic for Qdrant and Docker checks. Ollama is expected to be
+running already (ChironAI Ollama tab / Docker); this module no longer starts Ollama.
 """
 
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -92,38 +90,6 @@ def ollama_ping(base_url: str, *, timeout: float = 5.0) -> dict[str, Any]:
     except requests.RequestException as e:
         result["error"] = str(e)
         return result
-
-
-def _ollama_container_name() -> str:
-    return (os.getenv("OLLAMA_CONTAINER_NAME") or "chironai-ollama").strip() or "chironai-ollama"
-
-
-def _ollama_docker_image() -> str:
-    return (os.getenv("OLLAMA_DOCKER_IMAGE") or "ollama/ollama:latest").strip() or "ollama/ollama:latest"
-
-
-def _ollama_docker_volume() -> str:
-    return (os.getenv("OLLAMA_DOCKER_VOLUME") or "ollama_models:/root/.ollama").strip()
-
-
-def ensure_ollama_container(cfg: RagRuntimeConfig) -> tuple[bool, str]:
-    """Start Ollama as a Docker container (Docker-first, no native binary)."""
-    parsed = urlparse(cfg.ollama_base_url if "://" in cfg.ollama_base_url else f"http://{cfg.ollama_base_url}")
-    host_port = int(parsed.port or 11434)
-    volume = _ollama_docker_volume()
-    spec = DockerContainerSpec(
-        name=_ollama_container_name(),
-        image=_ollama_docker_image(),
-        ports=[f"{host_port}:11434"],
-        env={"OLLAMA_HOST": "0.0.0.0:11434"},
-        volumes=[volume] if volume else [],
-        restart="unless-stopped",
-        labels={"chironai.service": "ollama"},
-    )
-    result = _docker_manager().ensure_container(spec)
-    ok = bool(result.get("ok"))
-    msg = str(result.get("message") or result.get("details") or result.get("error") or "")
-    return ok, msg or ("started" if ok else "failed")
 
 
 def ollama_port_from_base_url(base_url: str, default_port: int = 11434) -> int:
@@ -229,7 +195,7 @@ def qdrant_port_from_url(url: str) -> int:
 
 
 class RagRuntime:
-    """Owns start/stop/status for services required by rag_service."""
+    """Owns start/stop/status for Qdrant and runtime health (including Ollama reachability)."""
 
     def __init__(self, config: RagRuntimeConfig | None = None) -> None:
         self._cfg = config or RagRuntimeConfig.from_env()
@@ -290,18 +256,6 @@ class RagRuntime:
             },
         }
 
-    def start_ollama(self) -> tuple[bool, str]:
-        # If the Docker container is already running, the port is already served correctly.
-        if _docker_manager().container_running(_ollama_container_name()):
-            return True, "already running (container)"
-        # Port may respond from a native Ollama process — stop it first to free the port.
-        if ollama_ping(self._cfg.ollama_base_url, timeout=2.0).get("ok"):
-            stop_ollama_process()
-        return ensure_ollama_container(self._cfg)
-
-    def stop_ollama(self) -> tuple[bool, str]:
-        return docker_stop_container(_ollama_container_name())
-
     def start_qdrant(self) -> tuple[bool, str]:
         ok_d, msg_d = wait_for_docker_engine(self._cfg, start_desktop_on_windows=(sys.platform == "win32"))
         if not ok_d:
@@ -320,10 +274,14 @@ class RagRuntime:
 
     def start_dependencies(self, services: list[str]) -> dict[str, Any]:
         results: dict[str, Any] = {}
+        _ollama_removed = (
+            False,
+            "Ollama Docker is started from the ChironAI app (Ollama tab); rag-service no longer starts it.",
+        )
         for name in services:
             n = name.strip().lower()
             if n == "ollama":
-                results["ollama"] = self.start_ollama()
+                results["ollama"] = _ollama_removed
             elif n == "qdrant":
                 results["qdrant"] = self.start_qdrant()
             elif n == "docker":
@@ -334,103 +292,3 @@ class RagRuntime:
                 results[n] = (False, f"unknown service: {name}")
         results["health"] = self.health()
         return results
-
-
-def _win_pids_listening_on_tcp_port(port: int) -> list[int]:
-    proc = subprocess.run(
-        ["netstat", "-ano"],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=45,
-    )
-    if proc.returncode != 0 or not (proc.stdout or "").strip():
-        return []
-    pids: set[int] = set()
-    port_token = f":{int(port)}"
-    for line in proc.stdout.splitlines():
-        line_st = line.strip()
-        if not line_st.upper().startswith("TCP"):
-            continue
-        if "LISTENING" not in line_st.upper():
-            continue
-        if port_token not in line_st:
-            continue
-        parts = line_st.split()
-        last = parts[-1] if parts else ""
-        if last.isdigit():
-            pid = int(last)
-            if pid > 0:
-                pids.add(pid)
-    return sorted(pids)
-
-
-def _win_pid_image_mentions_ollama(pid: int) -> bool:
-    proc = subprocess.run(
-        ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=15,
-    )
-    return "ollama" in (proc.stdout or "").lower()
-
-
-def _win_taskkill_not_found_ok(proc: subprocess.CompletedProcess[str]) -> bool:
-    if proc.returncode == 0:
-        return True
-    combined = f"{proc.stdout or ''}\n{proc.stderr or ''}".lower()
-    return proc.returncode == 128 and ("not found" in combined or "not running" in combined)
-
-
-def stop_ollama_process(listen_port: int | None = None) -> tuple[bool, str]:
-    try:
-        if sys.platform == "win32":
-            messages: list[str] = []
-            if listen_port is not None:
-                for pid in _win_pids_listening_on_tcp_port(listen_port):
-                    if not _win_pid_image_mentions_ollama(pid):
-                        messages.append(
-                            f"skip PID {pid} on port {listen_port} (tasklist does not look like ollama)"
-                        )
-                        continue
-                    proc = subprocess.run(
-                        ["taskkill", "/PID", str(pid), "/F"],
-                        capture_output=True,
-                        text=True,
-                        check=False,
-                        timeout=30,
-                    )
-                    txt = (proc.stdout or proc.stderr or "").strip()
-                    if txt:
-                        messages.append(txt)
-            proc = subprocess.run(
-                ["taskkill", "/IM", "ollama.exe", "/F"],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=30,
-            )
-            txt = (proc.stdout or proc.stderr or "").strip()
-            if txt:
-                messages.append(txt)
-            if listen_port is not None:
-                remaining = _win_pids_listening_on_tcp_port(listen_port)
-                ok = len(remaining) == 0
-                if not ok:
-                    messages.append(f"port {listen_port} still has listener PID(s): {remaining}")
-                return ok, "; ".join(messages) if messages else ("ok" if ok else "failed")
-            ok = proc.returncode == 0 or _win_taskkill_not_found_ok(proc)
-            return ok, txt or ("ok" if ok else "taskkill failed")
-        proc = subprocess.run(
-            ["pkill", "-f", "ollama"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=30,
-        )
-        ok = proc.returncode == 0
-        out = (proc.stdout or "").strip() or (proc.stderr or "").strip()
-        return ok, out or ("ok" if ok else "failed")
-    except Exception as e:
-        return False, str(e)

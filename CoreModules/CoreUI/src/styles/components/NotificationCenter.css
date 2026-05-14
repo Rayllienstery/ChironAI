@@ -624,6 +624,10 @@
   background: var(--md-sys-color-error);
 }
 
+.notification-ollama-pull--cancelled .notification-ollama-pull__bar span {
+  background: var(--md-sys-color-on-surface-variant);
+}
+
 .notification-ollama-pull code {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -634,6 +638,8 @@
 .notification-ollama-pull__actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .notification-ollama-pull__actions button {
@@ -648,6 +654,15 @@
 
 .notification-ollama-pull__actions button:hover {
   background: var(--md-sys-color-primary-container);
+}
+
+.notification-ollama-pull__cancel {
+  color: var(--md-sys-color-on-surface) !important;
+  border-color: var(--md-sys-color-outline-variant) !important;
+}
+
+.notification-ollama-pull__cancel:hover {
+  background: var(--md-sys-color-surface-container-high) !important;
 }
 
 .notification-center-module-footer {

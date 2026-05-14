@@ -21,9 +21,6 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("ensure-ollama", help="Install Ollama (Windows) if missing")
 
-    sub.add_parser("start-ollama", help="Start ollama serve (OLLAMA_HOST from config)")
-    sub.add_parser("stop-ollama", help="Stop Ollama process")
-
     sub.add_parser("start-qdrant", help="Pull/start Qdrant container")
     sub.add_parser("stop-qdrant", help="Stop Qdrant container")
 
@@ -31,7 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     p_all.add_argument(
         "--services",
         default="docker,qdrant",
-        help="Comma-separated: docker,ollama,qdrant",
+        help="Comma-separated: docker,qdrant (ollama: use ChironAI Ollama tab)",
     )
 
     args = p.parse_args(argv)
@@ -54,16 +51,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ensure-ollama":
         ok, msg = ss.ensure_ollama_installed()
-        print(json.dumps({"ok": ok, "message": msg}))
-        return 0 if ok else 1
-
-    if args.command == "start-ollama":
-        ok, msg = ss.start_ollama()
-        print(json.dumps({"ok": ok, "message": msg}))
-        return 0 if ok else 1
-
-    if args.command == "stop-ollama":
-        ok, msg = ss.stop_ollama()
         print(json.dumps({"ok": ok, "message": msg}))
         return 0 if ok else 1
 

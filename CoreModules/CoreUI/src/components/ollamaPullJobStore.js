@@ -13,6 +13,9 @@ let state = {
   promise: null,
 };
 
+/** @type {AbortController | null} */
+let pullAbortController = null;
+
 function emit() {
   listeners.forEach((listener) => listener(state));
 }
@@ -25,6 +28,17 @@ export function subscribeOllamaPullJob(listener) {
 
 export function getOllamaPullJobSnapshot() {
   return state;
+}
+
+export function cancelOllamaPullJob() {
+  if (pullAbortController) {
+    try {
+      pullAbortController.abort();
+    } catch {
+      /* ignore */
+    }
+    pullAbortController = null;
+  }
 }
 
 export function formatOllamaBytes(value) {
@@ -41,6 +55,7 @@ export function formatOllamaBytes(value) {
 
 export function ollamaPullProgressText(progress) {
   if (!progress) return 'Preparing download';
+  if (progress.cancelled) return 'Download cancelled';
   if (progress.error) return progress.error;
   if (progress.done) {
     const total = formatOllamaBytes(progress.total);
@@ -93,7 +108,15 @@ export function pullProgressFromEvent(event, modelName, previousLayers = {}) {
     percent,
     done: Boolean(event?.ok === true || event?.status === 'success'),
     error: event?.error ? String(event.error) : '',
+    cancelled: false,
   };
+}
+
+function isAbortError(e) {
+  const name = e && typeof e === 'object' ? e.name : '';
+  if (name === 'AbortError') return true;
+  const msg = String(e?.message || e || '').toLowerCase();
+  return msg.includes('abort') || msg.includes('aborted');
 }
 
 export function startOllamaPullJob(modelName) {
@@ -103,6 +126,10 @@ export function startOllamaPullJob(modelName) {
     if (state.model === model && state.promise) return state.promise;
     throw new Error(`Ollama is already pulling ${state.model}`);
   }
+
+  cancelOllamaPullJob();
+  pullAbortController = new AbortController();
+  const signal = pullAbortController.signal;
 
   const initial = {
     model,
@@ -114,6 +141,7 @@ export function startOllamaPullJob(modelName) {
     percent: null,
     done: false,
     error: '',
+    cancelled: false,
   };
   state = {
     running: true,
@@ -133,8 +161,9 @@ export function startOllamaPullJob(modelName) {
       progress: pullProgressFromEvent(event, model, state.progress?.layers),
     };
     emit();
-  })
+  }, { signal })
     .then((last) => {
+      pullAbortController = null;
       const latest = state.progress || pullProgressFromEvent(last, model);
       state = {
         ...state,
@@ -153,6 +182,26 @@ export function startOllamaPullJob(modelName) {
       return { ok: true, message: `Pull completed for ${model}`, details: state.progress };
     })
     .catch((e) => {
+      pullAbortController = null;
+      if (isAbortError(e) || signal.aborted) {
+        const latest = state.progress || initial;
+        state = {
+          ...state,
+          running: false,
+          completed: false,
+          error: '',
+          finishedAt: new Date().toISOString(),
+          progress: {
+            ...latest,
+            cancelled: true,
+            done: false,
+            status: 'Cancelled',
+          },
+          promise: null,
+        };
+        emit();
+        return { ok: false, cancelled: true, message: `Pull cancelled for ${model}` };
+      }
       const message = String(e?.message || e);
       state = {
         ...state,

@@ -56,6 +56,16 @@ class _Repo:
         self.values[key] = value
 
 
+def _diagnostics_from_tab_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    sections = payload["schema"]["pages"][0]["sections"]
+    for sec in sections:
+        if sec.get("id") == "diagnostics":
+            for c in sec.get("components") or []:
+                if c.get("key") == "provider_diagnostics":
+                    return c["value"]
+    raise AssertionError("diagnostics not found in tab payload")
+
+
 def _provider(docker_runtime: Any | None, *, repo: Any | None = None, module: Any | None = None):
     module = module or _load_ollama_provider_module()
     root = Path(__file__).resolve().parents[2]
@@ -114,7 +124,7 @@ def test_ollama_extension_tab_reports_missing_container(monkeypatch: Any) -> Non
     provider = _provider(docker, repo=_Repo(), module=module)
 
     payload = provider.get_tab_payload()
-    diagnostics = payload["schema"]["pages"][0]["sections"][2]["components"][0]["value"]
+    diagnostics = _diagnostics_from_tab_payload(payload)
 
     assert diagnostics["health"]["status"] == "container_missing"
     assert diagnostics["docker"]["exists"] is False
@@ -133,7 +143,7 @@ def test_ollama_extension_tab_reports_stopped_container(monkeypatch: Any) -> Non
     provider = _provider(docker, repo=_Repo(), module=module)
 
     payload = provider.get_tab_payload()
-    diagnostics = payload["schema"]["pages"][0]["sections"][2]["components"][0]["value"]
+    diagnostics = _diagnostics_from_tab_payload(payload)
 
     assert diagnostics["health"]["status"] == "container_stopped"
     assert diagnostics["docker"]["exists"] is True

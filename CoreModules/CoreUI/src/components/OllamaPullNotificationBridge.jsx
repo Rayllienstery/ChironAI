@@ -1,20 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNotificationCenter } from './NotificationCenterContext';
-import { ollamaPullProgressText, subscribeOllamaPullJob } from './ollamaPullJobStore';
+import {
+  cancelOllamaPullJob,
+  ollamaPullProgressText,
+  subscribeOllamaPullJob,
+} from './ollamaPullJobStore';
 
 function PullJobView({ job, onOpenOllama }) {
   const progress = job?.progress || {};
   const pct = progress.percent;
-  const failed = Boolean(job?.error || progress.error);
+  const cancelled = Boolean(progress.cancelled);
+  const failed = Boolean(!cancelled && (job?.error || progress.error));
   const progressText = ollamaPullProgressText(progress);
+  const tone = failed ? 'error' : cancelled ? 'cancelled' : '';
   return (
-    <div className={`notification-ollama-pull${failed ? ' notification-ollama-pull--error' : ''}`}>
+    <div className={`notification-ollama-pull${tone ? ` notification-ollama-pull--${tone}` : ''}`}>
       <div className="notification-ollama-pull__header">
         <span
           className={job?.running ? 'notification-ollama-pull__spinner' : 'material-symbols-outlined'}
           aria-hidden="true"
         >
-          {job?.running ? '' : failed ? 'error' : 'check_circle'}
+          {job?.running ? '' : failed ? 'error' : cancelled ? 'block' : 'check_circle'}
         </span>
         <div>
           <strong>{progress.model || job?.model || 'Ollama model'}</strong>
@@ -26,6 +32,11 @@ function PullJobView({ job, onOpenOllama }) {
         <span style={{ width: pct != null ? `${pct}%` : '38%' }} />
       </div>
       <div className="notification-ollama-pull__actions">
+        {job?.running ? (
+          <button type="button" className="notification-ollama-pull__cancel" onClick={cancelOllamaPullJob}>
+            Cancel download
+          </button>
+        ) : null}
         <button type="button" onClick={onOpenOllama}>Open Ollama</button>
       </div>
     </div>
@@ -68,14 +79,17 @@ export default function OllamaPullNotificationBridge({ onOpenOllama }) {
     const key = `${job.model}:${job.finishedAt}`;
     if (persistedKeyRef.current === key) return;
     persistedKeyRef.current = key;
-    const failed = Boolean(job.error || job.progress?.error);
+    const cancelled = Boolean(job.progress?.cancelled);
+    const failed = Boolean(!cancelled && (job.error || job.progress?.error));
     persistNotification({
       kind: failed ? 'error' : 'event',
       source: 'ollama',
-      title: failed ? 'Model pull failed' : 'Model pull finished',
-      message: failed
-        ? String(job.error || job.progress?.error || '').slice(0, 400)
-        : `${job.model} is ready.`,
+      title: cancelled ? 'Model pull cancelled' : failed ? 'Model pull failed' : 'Model pull finished',
+      message: cancelled
+        ? `Stopped downloading ${job.model}.`
+        : failed
+          ? String(job.error || job.progress?.error || '').slice(0, 400)
+          : `${job.model} is ready.`,
       metadata: {
         model: job.model,
       },

@@ -14,7 +14,7 @@ from servicestarter import windows_install
 
 
 class ServiceStarter:
-    """Install (Windows) and start Docker engine, Ollama, and Qdrant."""
+    """Install (Windows) and start Docker engine and Qdrant. Ollama is managed from the ChironAI app."""
 
     def __init__(self, config: ServiceStarterConfig | None = None) -> None:
         self._cfg = config or ServiceStarterConfig.from_env()
@@ -101,21 +101,6 @@ class ServiceStarter:
             return False, "automated Ollama install is only implemented for Windows"
         return windows_install.ensure_ollama_installed(self._cfg.ollama_installer_url)
 
-    def start_ollama(self) -> tuple[bool, str]:
-        # If the Docker container is already running, nothing to do.
-        if docker_ops.container_is_running(docker_ops._ollama_container_name(self._cfg)):
-            return True, "already running (container)"
-        # Port may respond from native Ollama — stop it to free the port for Docker.
-        if ollama_ops.ollama_ping(self._cfg.ollama_base_url, timeout=2.0).get("ok"):
-            ollama_ops.stop_ollama_process()
-        ok_d, msg_d = self.ensure_docker_running()
-        if not ok_d:
-            return False, f"docker: {msg_d}"
-        return docker_ops.ensure_ollama_container(self._cfg)
-
-    def stop_ollama(self) -> tuple[bool, str]:
-        return docker_ops.docker_stop_container(docker_ops._ollama_container_name(self._cfg))
-
     def start_qdrant(self) -> tuple[bool, str]:
         ok_d, msg_d = self.ensure_docker_running()
         if not ok_d:
@@ -140,7 +125,10 @@ class ServiceStarter:
                 results["docker_install"] = self.ensure_docker_installed()
                 results["docker"] = self.ensure_docker_running()
             elif n == "ollama":
-                results["ollama"] = self.start_ollama()
+                results["ollama"] = (
+                    False,
+                    "Ollama Docker is started from the ChironAI app (Ollama tab); servicestarter no longer starts it.",
+                )
             elif n == "qdrant":
                 results["qdrant"] = self.start_qdrant()
             else:

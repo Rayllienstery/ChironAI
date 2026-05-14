@@ -74,12 +74,12 @@ def test_runtime_health_shape() -> None:
 def test_runtime_start_dependencies_shape() -> None:
     rt = RagRuntime(RagRuntimeConfig.from_env())
     with (
-        patch.object(rt, "start_ollama", return_value=(True, "ok")),
         patch.object(rt, "start_qdrant", return_value=(True, "ok")),
         patch.object(rt, "health", return_value={"ollama": {"running": True}, "qdrant": {"running": True}}),
     ):
         out = rt.start_dependencies(["ollama", "qdrant"])
-    assert out["ollama"] == (True, "ok")
+    assert out["ollama"][0] is False
+    assert "ChironAI" in out["ollama"][1] or "Ollama tab" in out["ollama"][1]
     assert out["qdrant"] == (True, "ok")
     assert "health" in out
 

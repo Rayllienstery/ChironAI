@@ -102,15 +102,21 @@ def stream_pull_objects(
         body["insecure"] = True
     resp = post_json(url, body, timeout=timeout, stream=True)
     resp.raise_for_status()
-    for line in resp.iter_lines(decode_unicode=True):
-        if not line:
-            continue
+    try:
+        for line in resp.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(obj, dict):
+                yield obj
+    finally:
         try:
-            obj = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(obj, dict):
-            yield obj
+            resp.close()
+        except Exception:
+            pass
 
 
 def format_http_error(exc: requests.exceptions.HTTPError) -> dict[str, Any]:
