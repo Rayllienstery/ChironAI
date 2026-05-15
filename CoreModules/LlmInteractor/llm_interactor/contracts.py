@@ -153,6 +153,6 @@ class LLMProvider(Protocol):
 
     def health_check(self) -> ProviderHealth: ...
 
-    def register_http_routes(self, blueprint: Any) -> None:
+    def register_http_routes(self, _blueprint: Any) -> None:
         """Optional: register extension-owned HTTP routes on the host blueprint."""
         ...

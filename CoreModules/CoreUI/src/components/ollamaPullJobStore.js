@@ -26,7 +26,7 @@ export function subscribeOllamaPullJob(listener) {
   return () => listeners.delete(listener);
 }
 
-export function getOllamaPullJobSnapshot() {
+function getOllamaPullJobSnapshot() {
   return state;
 }
 
@@ -41,7 +41,7 @@ export function cancelOllamaPullJob() {
   }
 }
 
-export function formatOllamaBytes(value) {
+function formatOllamaBytes(value) {
   const bytes = Number(value || 0);
   if (!Number.isFinite(bytes) || bytes <= 0) return '';
   const gb = bytes / (1024 ** 3);
@@ -68,7 +68,7 @@ export function ollamaPullProgressText(progress) {
   return 'Preparing download';
 }
 
-export function pullProgressFromEvent(event, modelName, previousLayers = {}) {
+function pullProgressFromEvent(event, modelName, previousLayers = {}) {
   const digest = String(event?.digest || '');
   const eventTotal = Number(event?.total || 0);
   const eventCompleted = Number(event?.completed || 0);

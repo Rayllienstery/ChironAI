@@ -125,7 +125,7 @@ def register_settings_routes(
     def get_rag_trigger_settings() -> Any:
         """Return RAG trigger threshold (effective from settings or config) and help table for scoring."""
         try:
-            threshold = _get_effective_rag_trigger_threshold()
+            threshold = get_effective_rag_trigger_threshold()
             return jsonify({
                 "rag_trigger_threshold": threshold,
                 "trigger_help_table": RAG_TRIGGER_HELP_ROWS,
