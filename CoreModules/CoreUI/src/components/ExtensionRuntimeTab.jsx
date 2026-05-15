@@ -156,6 +156,7 @@ function OllamaServiceLiveActivity({ actionLabel, containerName, imageName }) {
 }
 
 const PULL_SUCCESS_DISMISS_MS = 5000;
+/** Must match `--coreui-motion-duration-dismiss-exit` in `styles/coreui-motion.css`. */
 const PULL_SUCCESS_EXIT_ANIM_MS = 400;
 
 function PullModelProgressView({ job, onCancelDownload }) {
@@ -279,8 +280,6 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
   const [actionResult, setActionResult] = useState(null);
   const [actionDetails, setActionDetails] = useState(null);
   const [showDiagnosticsModal, setShowDiagnosticsModal] = useState(false);
-  const [showOllamaCloudApiModal, setShowOllamaCloudApiModal] = useState(false);
-  const [ollamaCloudApiKeyDraft, setOllamaCloudApiKeyDraft] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const [pullJob, setPullJob] = useState(null);
   const [openModelMenuId, setOpenModelMenuId] = useState('');
@@ -391,34 +390,6 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
   const diagnosticsData = diagnosticsInfo?.value ?? null;
   const showRuntimeDiagnosticsSummary = Boolean(diagnosticsData && diagnosticsInfo?.summary !== false);
 
-  const ollamaCloudAuth = useMemo(() => {
-    if (extensionId !== 'ollama-provider') return null;
-    const ca = payload?.cloud_auth;
-    if (!ca || typeof ca !== 'object') {
-      return { configured: false, valid: null, statusLabel: 'Not configured' };
-    }
-    const v = ca.valid;
-    let valid = null;
-    if (v === true) valid = true;
-    else if (v === false) valid = false;
-    return {
-      configured: Boolean(ca.configured),
-      valid,
-      statusLabel: String(ca.status_label || '—'),
-    };
-  }, [extensionId, payload?.cloud_auth]);
-
-  const ollamaCloudDotTone = useMemo(() => {
-    if (!ollamaCloudAuth?.configured) return 'neutral';
-    if (ollamaCloudAuth.valid === true) return 'valid';
-    if (ollamaCloudAuth.valid === false) return 'invalid';
-    return 'neutral';
-  }, [ollamaCloudAuth]);
-
-  useEffect(() => {
-    if (showOllamaCloudApiModal) setOllamaCloudApiKeyDraft('');
-  }, [showOllamaCloudApiModal]);
-
   const showOllamaServiceNotification = useCallback((actionId) => {
     if (actionId !== 'start_service' && actionId !== 'stop_service') return null;
     const liveId = `ollama-service-${actionId}`;
@@ -466,65 +437,6 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
       throw e;
     }
   }, []);
-
-  const runOllamaCloudSave = useCallback(async () => {
-    setBusyActionId('save_ollama_cloud_api_key');
-    setActionResult(null);
-    try {
-      const result = await runExtensionTabAction(
-        extensionId,
-        'save_ollama_cloud_api_key',
-        { ollama_cloud_api_key: ollamaCloudApiKeyDraft },
-        { timeoutMs: serviceActionTimeoutMs('save_ollama_cloud_api_key') },
-      );
-      setActionResult(result);
-      await load(true);
-    } catch (e) {
-      setActionResult({ ok: false, message: String(e?.message || e) });
-    } finally {
-      setBusyActionId('');
-    }
-  }, [extensionId, load, ollamaCloudApiKeyDraft]);
-
-  const runOllamaCloudTest = useCallback(async () => {
-    setBusyActionId('test_ollama_cloud_api_key');
-    setActionResult(null);
-    try {
-      const result = await runExtensionTabAction(
-        extensionId,
-        'test_ollama_cloud_api_key',
-        { ollama_cloud_api_key: ollamaCloudApiKeyDraft },
-        { timeoutMs: serviceActionTimeoutMs('test_ollama_cloud_api_key') },
-      );
-      setActionResult(result);
-      await load(true);
-    } catch (e) {
-      setActionResult({ ok: false, message: String(e?.message || e) });
-    } finally {
-      setBusyActionId('');
-    }
-  }, [extensionId, load, ollamaCloudApiKeyDraft]);
-
-  const runOllamaCloudDelete = useCallback(async () => {
-    if (!window.confirm('Remove the saved Ollama cloud API key from this app?')) return;
-    setBusyActionId('delete_ollama_cloud_api_key');
-    setActionResult(null);
-    try {
-      const result = await runExtensionTabAction(
-        extensionId,
-        'delete_ollama_cloud_api_key',
-        {},
-        { timeoutMs: 30_000 },
-      );
-      setActionResult(result);
-      setOllamaCloudApiKeyDraft('');
-      await load(true);
-    } catch (e) {
-      setActionResult({ ok: false, message: String(e?.message || e) });
-    } finally {
-      setBusyActionId('');
-    }
-  }, [extensionId, load]);
 
   const handleAction = useCallback(
     async (component) => {
@@ -1483,37 +1395,6 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
                 <span className="material-symbols-outlined" aria-hidden="true">refresh</span>
                 {busyActionId === 'refresh' ? 'Working…' : 'Refresh'}
               </CoreUIButton>
-              {extensionId === 'ollama-provider' ? (
-                <div className="extensions-runtime-cloud-api-trigger">
-                  <span
-                    className={`extensions-runtime-cloud-api-dot extensions-runtime-cloud-api-dot--${ollamaCloudDotTone}`}
-                    role="img"
-                    aria-label={
-                      ollamaCloudDotTone === 'valid'
-                        ? 'Cloud API key valid'
-                        : ollamaCloudDotTone === 'invalid'
-                          ? 'Cloud API key invalid'
-                          : 'Cloud API key not set or not verified'
-                    }
-                    title={
-                      ollamaCloudDotTone === 'valid'
-                        ? 'Cloud API key: valid'
-                        : ollamaCloudDotTone === 'invalid'
-                          ? 'Cloud API key: invalid'
-                          : 'Cloud API key: not set or not verified'
-                    }
-                  />
-                  <CoreUIButton
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setShowOllamaCloudApiModal(true)}
-                    disabled={Boolean(busyActionId)}
-                  >
-                    <span className="material-symbols-outlined" aria-hidden="true">key</span>
-                    API token
-                  </CoreUIButton>
-                </div>
-              ) : null}
               <CoreUIButton
                 variant="secondary"
                 onClick={() => setShowDiagnosticsModal(true)}
@@ -1527,75 +1408,9 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
         );
       })() : null}
 
-      {extensionId === 'ollama-provider' && showOllamaCloudApiModal ? (
-        <CoreUIModal
-          className="extensions-runtime-cloud-api-modal"
-          title="Ollama cloud API key"
-          onClose={() => setShowOllamaCloudApiModal(false)}
-          footer={(
-            <div className="extensions-runtime-cloud-api-modal__footer">
-              <CoreUIButton
-                type="button"
-                variant="danger"
-                onClick={() => void runOllamaCloudDelete()}
-                disabled={!ollamaCloudAuth.configured || Boolean(busyActionId)}
-              >
-                {busyActionId === 'delete_ollama_cloud_api_key' ? 'Working…' : 'Remove saved key'}
-              </CoreUIButton>
-              <div className="extensions-runtime-cloud-api-modal__footer-actions">
-                <CoreUIButton
-                  type="button"
-                  variant="secondary"
-                  onClick={() => void runOllamaCloudTest()}
-                  disabled={Boolean(busyActionId)}
-                >
-                  {busyActionId === 'test_ollama_cloud_api_key' ? 'Working…' : 'Test cloud auth'}
-                </CoreUIButton>
-                <CoreUIButton
-                  type="button"
-                  variant="primary"
-                  onClick={() => void runOllamaCloudSave()}
-                  disabled={Boolean(busyActionId)}
-                >
-                  {busyActionId === 'save_ollama_cloud_api_key' ? 'Working…' : 'Save'}
-                </CoreUIButton>
-              </div>
-            </div>
-          )}
-        >
-          <div className="extensions-runtime-cloud-api-modal__body">
-            <div className="extensions-runtime-cloud-api-modal__status">
-              <span className="extensions-runtime-cloud-api-modal__eyebrow">Status</span>
-              <p className="extensions-runtime-cloud-api-modal__status-line">{ollamaCloudAuth.statusLabel}</p>
-            </div>
-            <p className="extensions-runtime-cloud-api-modal__hint">
-              Create a key at{' '}
-              <a href="https://ollama.com/settings/keys" target="_blank" rel="noreferrer">
-                ollama.com/settings/keys
-              </a>
-              . After changing the key, use <strong>Start Ollama</strong> again so the container is recreated with{' '}
-              <code className="extensions-runtime-cloud-api-modal__code">OLLAMA_API_KEY</code>.
-            </p>
-            <label className="extensions-runtime-cloud-api-modal__field">
-              <span className="extensions-runtime-cloud-api-modal__label">OLLAMA_API_KEY</span>
-              <input
-                type="password"
-                className="extensions-runtime-cloud-api-modal__input"
-                autoComplete="off"
-                value={ollamaCloudApiKeyDraft}
-                onChange={(e) => setOllamaCloudApiKeyDraft(e.target.value)}
-                placeholder="Paste a new key (saved keys are never shown)"
-              />
-            </label>
-          </div>
-        </CoreUIModal>
-      ) : null}
-
       {!isServicePanelContent && pages.map((page) => (
         <div key={page.id || 'page'}>
-          {(Array.isArray(page.sections) ? page.sections : [])
-            .filter((section) => section?.id !== 'cloud')
-            .map((section) => {
+          {(Array.isArray(page.sections) ? page.sections : []).map((section) => {
             const renderedComponents = (Array.isArray(section.components) ? section.components : [])
               .map(renderComponent)
               .filter(Boolean);

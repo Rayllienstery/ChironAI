@@ -6,7 +6,7 @@ import os as _os
 import sys as _sys
 
 # Add this extension's backend directory to sys.path so sibling modules
-# (model_brand, model_visibility, ollama_http, ollama_cloud_settings, embed_client, rerank_client)
+# (model_brand, model_visibility, ollama_http, embed_client, rerank_client)
 # can be imported as absolute names.  This is required because the extension
 # loader uses importlib.util.spec_from_file_location which loads provider.py
 # as a standalone module (no package context), so relative imports do not work.
@@ -40,16 +40,6 @@ from model_visibility import (  # noqa: E402
     patch_hidden_ollama_model_ids,
 )
 from ollama_http import invoke_delete, invoke_ping, invoke_show, invoke_tags, iter_pull_objects  # noqa: E402
-from ollama_cloud_settings import (  # noqa: E402
-    clear_api_key,
-    cloud_auth_status_text,
-    get_check_record,
-    get_stored_api_key,
-    mark_check_unknown_after_save,
-    save_api_key,
-    set_check_record,
-    validate_cloud_api_key,
-)
 from embed_client import OllamaEmbeddingProvider  # noqa: E402
 from rerank_client import OllamaRerankClient  # noqa: E402
 
@@ -423,19 +413,7 @@ class OllamaProvider:
             },
         }
 
-        repo = self._host.get_settings_repository()
-        cloud_status = cloud_auth_status_text(repo)
-        check_rec = get_check_record(repo)
-        key_present = bool(get_stored_api_key(repo))
-        raw_valid = check_rec.get("valid")
-        check_valid: bool | None
-        if raw_valid is True:
-            check_valid = True
-        elif raw_valid is False:
-            check_valid = False
-        else:
-            check_valid = None
-
+        ctn = self._docker_container_name()
         schema = {
             "pages": [
                 {
@@ -528,6 +506,44 @@ class OllamaProvider:
                             ],
                         },
                         {
+                            "id": "cloud_models",
+                            "title": "Cloud models (ollama.com)",
+                            "components": [
+                                {
+                                    "type": "text",
+                                    "key": "cloud_models_intro",
+                                    "label": "About",
+                                    "value": (
+                                        "Models with the :cloud suffix run on Ollama Cloud. "
+                                        "Authenticate once inside the same Ollama process Chiron uses (see steps). "
+                                        "Docs: https://docs.ollama.com/cloud"
+                                    ),
+                                },
+                                {
+                                    "type": "steps",
+                                    "key": "cloud_signin_steps",
+                                    "label": "Sign in (Docker)",
+                                    "steps": [
+                                        {
+                                            "id": "cloud_shell",
+                                            "label": "Open a shell in the Ollama container",
+                                            "command": f"docker exec -it {ctn} sh",
+                                            "hint": (
+                                                "Docker Desktop: Containers → your Ollama container → Exec / Terminal. "
+                                                "If the name differs, set OLLAMA_CONTAINER_NAME or edit the command."
+                                            ),
+                                        },
+                                        {
+                                            "id": "cloud_signin_cmd",
+                                            "label": "Run sign-in and complete the browser/device flow",
+                                            "command": "ollama signin",
+                                            "hint": "When finished, return here and try your cloud model again.",
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                        {
                             "id": "diagnostics",
                             "title": "Diagnostics",
                             "components": [
@@ -548,11 +564,6 @@ class OllamaProvider:
             "icon": _tab_icon(self._manifest, "icons/ollama-light.svg"),
             "frame": _tab_frame(self._manifest),
             "schema": schema,
-            "cloud_auth": {
-                "configured": key_present,
-                "valid": check_valid,
-                "status_label": cloud_status,
-            },
             "state": {
                 "provider_id": self._provider_id,
                 "extension_id": str(self._manifest.id),
@@ -573,12 +584,6 @@ class OllamaProvider:
             return self._start_service_with_docker()
         if action == "stop_service":
             return self._stop_service_with_docker()
-        if action == "save_ollama_cloud_api_key":
-            return self._save_ollama_cloud_api_key(payload)
-        if action == "test_ollama_cloud_api_key":
-            return self._test_ollama_cloud_api_key(payload)
-        if action == "delete_ollama_cloud_api_key":
-            return self._delete_ollama_cloud_api_key()
 
         model_name = str(
             payload.get("selected_model")
@@ -835,9 +840,6 @@ class OllamaProvider:
         volume = self._docker_volume()
         volumes = [volume] if volume else []
         env: dict[str, str] = {"OLLAMA_HOST": "0.0.0.0:11434"}
-        api_key = get_stored_api_key(self._host.get_settings_repository())
-        if api_key:
-            env = {**env, "OLLAMA_API_KEY": api_key}
         return DockerContainerSpec(
             name=self._docker_container_name(),
             image=self._docker_image(),
@@ -902,33 +904,6 @@ class OllamaProvider:
             }
         except Exception as e:
             return {"ok": False, "message": str(e), "error": str(e)}
-
-    def _save_ollama_cloud_api_key(self, payload: dict[str, Any]) -> dict[str, Any]:
-        repo = self._host.get_settings_repository()
-        raw = str(payload.get("ollama_cloud_api_key") or "").strip()
-        if raw:
-            save_api_key(repo, raw)
-            mark_check_unknown_after_save(repo)
-            return {"ok": True, "message": "API key saved"}
-        if get_stored_api_key(repo):
-            return {"ok": True, "message": "Existing API key unchanged (enter a new key to replace it)"}
-        return {"ok": True, "message": "Nothing to save (no key entered)"}
-
-    def _test_ollama_cloud_api_key(self, payload: dict[str, Any]) -> dict[str, Any]:
-        repo = self._host.get_settings_repository()
-        raw = str(payload.get("ollama_cloud_api_key") or "").strip()
-        stored = get_stored_api_key(repo)
-        key = raw or stored
-        if not key:
-            return {"ok": False, "message": "No API key to test — enter a key or save one first."}
-        ok, msg = validate_cloud_api_key(key)
-        if not raw or raw == stored:
-            set_check_record(repo, valid=ok, detail=msg)
-        return {"ok": ok, "message": msg}
-
-    def _delete_ollama_cloud_api_key(self) -> dict[str, Any]:
-        clear_api_key(self._host.get_settings_repository())
-        return {"ok": True, "message": "Saved API key removed"}
 
     def _yield_chat_api_events(self, model: str, data: Any) -> Iterator[LLMStreamEvent]:
         payload = data if isinstance(data, dict) else {}

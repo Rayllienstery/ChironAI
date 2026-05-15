@@ -1,6 +1,6 @@
 {
   "id": "ollama-provider",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "api_version": "1",
   "type": "llm_provider",
   "title": "Ollama Provider",

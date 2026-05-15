@@ -40,6 +40,11 @@ def forward_ollama_api(
 
     ``api_segment`` is the path after ``/api/`` (e.g. ``tags``, ``show``, ``chat``).
     """
+    hdrs: dict[str, str] = {}
+    auth_in = str(request.headers.get("Authorization") or "").strip()
+    if auth_in:
+        hdrs["Authorization"] = auth_in
+
     chat_full = get_configured_ollama_chat_url(wiring)
     base = ollama_api_base_from_chat_url(chat_full)
     url = f"{base}/api/{api_segment.lstrip('/')}"
@@ -47,7 +52,7 @@ def forward_ollama_api(
 
     if method == "GET":
         try:
-            upstream = requests.get(url, params=request.args, timeout=120)
+            upstream = requests.get(url, params=request.args, timeout=120, headers=hdrs or None)
             upstream.raise_for_status()
         except requests.RequestException as e:
             return jsonify({"error": str(e)}), 502
@@ -63,9 +68,9 @@ def forward_ollama_api(
 
     try:
         if stream:
-            upstream = requests.post(url, json=body, timeout=None, stream=True)
+            upstream = requests.post(url, json=body, timeout=None, stream=True, headers=hdrs or None)
         else:
-            upstream = requests.post(url, json=body, timeout=600, stream=False)
+            upstream = requests.post(url, json=body, timeout=600, stream=False, headers=hdrs or None)
         upstream.raise_for_status()
     except requests.RequestException as e:
         return jsonify({"error": str(e)}), 502

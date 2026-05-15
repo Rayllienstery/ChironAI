@@ -516,7 +516,7 @@
   border: 2px solid color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
   border-top-color: var(--md-sys-color-primary);
   flex-shrink: 0;
-  animation: notification-ollama-service-spin 0.8s linear infinite;
+  animation: coreui-kf-spin var(--coreui-motion-duration-spin) var(--coreui-motion-linear) infinite;
 }
 
 .notification-ollama-service__body {
@@ -547,12 +547,6 @@
 .notification-ollama-service__hint {
   font-size: 12px;
   line-height: 1.35;
-}
-
-@keyframes notification-ollama-service-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .notification-ollama-pull {
@@ -601,7 +595,7 @@
   border-radius: 50%;
   border: 2px solid color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
   border-top-color: var(--md-sys-color-primary);
-  animation: notification-ollama-service-spin 0.8s linear infinite;
+  animation: coreui-kf-spin var(--coreui-motion-duration-spin) var(--coreui-motion-linear) infinite;
 }
 
 .notification-ollama-pull__bar {

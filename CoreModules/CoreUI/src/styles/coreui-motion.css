@@ -1,0 +1,130 @@
+/**
+ * CoreUI motion — shared durations, curves, keyframes, and utility classes.
+ * Import after tokens.css (uses theme colors for spin rings).
+ */
+
+:root {
+  --coreui-motion-duration-spin: 0.8s;
+  --coreui-motion-duration-dismiss-exit: 0.4s;
+  --coreui-motion-duration-dismiss-exit-reduced: 0.2s;
+  --coreui-motion-duration-dismiss-demo-loop: 2.8s;
+  --coreui-motion-duration-pulse-soft: 1.6s;
+
+  --coreui-motion-ease-dismiss-exit: cubic-bezier(0.32, 0, 0.67, 0);
+  --coreui-motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --coreui-motion-linear: linear;
+}
+
+@keyframes coreui-kf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes coreui-kf-dismiss-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+    margin-block: 0;
+    padding-block: 0;
+    padding-inline: 0;
+    min-height: 0;
+    border-color: transparent;
+    box-shadow: none;
+  }
+}
+
+@keyframes coreui-kf-dismiss-exit-reduced {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Looping preview: hold visible → exit → hold gone → repeat (Showcase, Storybook-style). */
+@keyframes coreui-kf-dismiss-demo-loop {
+  0%,
+  38% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+}
+
+@keyframes coreui-kf-dismiss-demo-loop-reduced {
+  0%,
+  40% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes coreui-kf-pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.92);
+  }
+}
+
+/* One-shot exit after success (e.g. pull progress card). */
+.coreui-anim-dismiss-exit {
+  animation: coreui-kf-dismiss-exit var(--coreui-motion-duration-dismiss-exit)
+    var(--coreui-motion-ease-dismiss-exit) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coreui-anim-dismiss-exit {
+    animation: coreui-kf-dismiss-exit-reduced var(--coreui-motion-duration-dismiss-exit-reduced) ease forwards;
+  }
+}
+
+/* Showcase / docs: infinite loop */
+.coreui-anim-dismiss-demo-loop {
+  animation: coreui-kf-dismiss-demo-loop var(--coreui-motion-duration-dismiss-demo-loop)
+    var(--coreui-motion-ease-dismiss-exit) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coreui-anim-dismiss-demo-loop {
+    animation: coreui-kf-dismiss-demo-loop-reduced 2s ease infinite;
+  }
+}
+
+/* Indeterminate progress ring (bordered element rotates as a whole). */
+.coreui-anim-spin-ring {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
+  border-top-color: var(--md-sys-color-primary);
+  animation: coreui-kf-spin var(--coreui-motion-duration-spin) var(--coreui-motion-linear) infinite;
+}
+
+.coreui-anim-pulse-soft {
+  animation: coreui-kf-pulse-soft var(--coreui-motion-duration-pulse-soft) ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coreui-anim-pulse-soft {
+    animation: none;
+  }
+}
