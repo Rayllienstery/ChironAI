@@ -579,7 +579,7 @@ class OllamaProvider:
     ) -> dict[str, Any]:
         action = str(action_id or "").strip()
         if action == "refresh":
-            return {"ok": True, "message": "Refreshed"}
+            return {"ok": True, "message": "Refreshed", "details": {}}
         if action == "start_service":
             return self._start_service_with_docker()
         if action == "stop_service":
@@ -612,17 +612,27 @@ class OllamaProvider:
         if action == "delete_model":
             invoke_delete(base_url=self._base_url(), name=model_name, timeout=60.0)
             # Omit details: delete API payloads are not model records; the WebUI treats details as Model Details data.
-            return {"ok": True, "message": f"Deleted {model_name}"}
+            return {"ok": True, "message": f"Deleted {model_name}", "details": {}}
         if action == "hide_model":
             updated = patch_hidden_ollama_model_ids(
                 self._host.get_settings_repository(), add=[model_name], remove=[]
             )
-            return {"ok": True, "message": f"Hidden {model_name}", "hidden_model_ids": updated}
+            return {
+                "ok": True,
+                "message": f"Hidden {model_name}",
+                "details": {"model": model_name},
+                "hidden_model_ids": updated,
+            }
         if action == "unhide_model":
             updated = patch_hidden_ollama_model_ids(
                 self._host.get_settings_repository(), add=[], remove=[model_name]
             )
-            return {"ok": True, "message": f"Unhid {model_name}", "hidden_model_ids": updated}
+            return {
+                "ok": True,
+                "message": f"Unhid {model_name}",
+                "details": {"model": model_name},
+                "hidden_model_ids": updated,
+            }
         if action == "pull_model":
             pull_name = str(payload.get("pull_model_name") or "").strip()
             if not pull_name:
@@ -716,6 +726,7 @@ class OllamaProvider:
             "ok": False,
             "message": "Docker runtime is unavailable",
             "error": "Docker runtime is unavailable",
+            "details": {},
         }
 
     def _docker_state_snapshot(self) -> dict[str, Any]:
@@ -889,7 +900,7 @@ class OllamaProvider:
                 "details": {"container": ensured, "health": health, "base_url": self._docker_base_url()},
             }
         except Exception as e:
-            return {"ok": False, "message": str(e), "error": str(e)}
+            return {"ok": False, "message": str(e), "error": str(e), "details": {}}
 
     def _stop_service_with_docker(self) -> dict[str, Any]:
         docker = self._docker_runtime()
@@ -903,7 +914,7 @@ class OllamaProvider:
                 "details": result,
             }
         except Exception as e:
-            return {"ok": False, "message": str(e), "error": str(e)}
+            return {"ok": False, "message": str(e), "error": str(e), "details": {}}
 
     def _yield_chat_api_events(self, model: str, data: Any) -> Iterator[LLMStreamEvent]:
         payload = data if isinstance(data, dict) else {}

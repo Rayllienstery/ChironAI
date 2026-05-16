@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 
 def _ensure_root_on_path() -> None:
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12,15 +14,49 @@ def _ensure_root_on_path() -> None:
         sys.path.insert(0, root)
 
 
+@pytest.fixture(autouse=True)
+def _disable_background_extension_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
+    _ensure_root_on_path()
+    from llm_interactor import ExtensionManager
+
+    monkeypatch.setattr(ExtensionManager, "start_background_bootstrap", lambda self: None)
+
+
 class _FakeExtensionsService:
     def registry_entries(self) -> list[dict[str, Any]]:
-        return [{"id": "ollama-provider", "title": "Ollama Provider"}]
+        return [{"id": "ollama-provider", "title": "Ollama"}]
 
     def installed_extensions(self) -> list[dict[str, Any]]:
         return [{"id": "ollama-provider", "enabled": True, "version": "0.1.0"}]
 
     def provider_rows(self, _runtime: Any) -> list[dict[str, Any]]:
-        return [{"provider_id": "ollama", "extension_id": "ollama-provider", "models": []}]
+        return [
+            {
+                "provider_id": "ollama",
+                "extension_id": "ollama-provider",
+                "title": "Ollama",
+                "capabilities": {"chat": True},
+                "models": [{"id": "tiny-model:latest", "label": "tiny-model:latest", "description": "test model"}],
+            }
+        ]
+
+    def provider_catalog(self, *, runtime: Any | None = None, capability: str | None = None) -> dict[str, Any]:
+        rows = self.provider_rows(runtime)
+        return {
+            "providers": rows,
+            "models": [
+                {
+                    "provider_id": "ollama",
+                    "provider_title": "Ollama",
+                    "extension_id": "ollama-provider",
+                    "id": "tiny-model:latest",
+                    "name": "tiny-model:latest",
+                    "label": "tiny-model:latest",
+                    "description": "test model",
+                    "metadata": {},
+                }
+            ],
+        }
 
     def extension_tabs(self, *, runtime: Any | None = None) -> list[dict[str, Any]]:
         return [
@@ -34,7 +70,7 @@ class _FakeExtensionsService:
         ]
 
     def ui_payload(self) -> dict[str, Any]:
-        return {"extensions": [{"id": "ollama-provider", "title": "Ollama Provider", "ui_schema": {}}], "failed": []}
+        return {"extensions": [{"id": "ollama-provider", "title": "Ollama", "ui_schema": {}}], "failed": []}
 
     def install(self, extension_id: str, *, version: str | None = None) -> dict[str, Any]:
         return {"id": extension_id, "version": version or "0.1.0", "restart_required": True}
@@ -61,18 +97,49 @@ def test_extensions_routes_expose_registry_and_ui() -> None:
     registry = client.get("/api/webui/extensions/registry")
     installed = client.get("/api/webui/extensions/installed")
     providers = client.get("/api/webui/extensions/providers")
+    catalog = client.get("/api/webui/providers/catalog")
+    models = client.get("/api/webui/models")
     tabs = client.get("/api/webui/extensions/tabs")
     ui = client.get("/api/webui/extensions/ui")
 
     assert registry.status_code == 200
     assert installed.status_code == 200
     assert providers.status_code == 200
+    assert catalog.status_code == 200
+    assert models.status_code == 200
     assert tabs.status_code == 200
     assert ui.status_code == 200
     assert (registry.get_json() or {}).get("registry")[0]["id"] == "ollama-provider"
-    assert (providers.get_json() or {}).get("providers")[0]["provider_id"] == "ollama"
+    assert (registry.get_json() or {}).get("registry")[0]["title"] == "Ollama"
+    provider = (providers.get_json() or {}).get("providers")[0]
+    assert provider["provider_id"] == "ollama"
+    assert provider["title"] == "Ollama"
+    assert (catalog.get_json() or {}).get("models")[0]["provider_title"] == "Ollama"
+    assert any(model.get("provider_title") == "Ollama" for model in (models.get_json() or {}).get("models") or [])
     assert (tabs.get_json() or {}).get("tabs")[0]["status"]["running"] is True
     assert (ui.get_json() or {}).get("extensions")[0]["id"] == "ollama-provider"
+    assert (ui.get_json() or {}).get("extensions")[0]["title"] == "Ollama"
+
+
+def test_create_app_syncs_extension_runtime_after_background_bootstrap() -> None:
+    _ensure_root_on_path()
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    manager = app.extensions["llm_extensions_service"]
+    runtime = object()
+    registry = object()
+    manager._runtime = runtime
+    manager._registry = registry
+
+    assert "llm_interactor_runtime" not in app.extensions
+    assert "llm_provider_registry" not in app.extensions
+
+    response = app.test_client().get("/")
+
+    assert response.status_code == 302
+    assert app.extensions["llm_interactor_runtime"] is runtime
+    assert app.extensions["llm_provider_registry"] is registry
 
 
 def test_open_webui_core_routes_are_removed() -> None:

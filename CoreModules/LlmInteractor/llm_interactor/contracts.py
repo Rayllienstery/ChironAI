@@ -93,7 +93,15 @@ class LLMRequest:
 
     model: str
     provider_id: str | None = None
-    operation: Literal["chat", "chat_api", "chat_api_stream_events", "embed", "rerank"] = "chat"
+    operation: Literal[
+        "chat",
+        "chat_api",
+        "chat_api_stream_events",
+        "embed",
+        "rerank",
+        "generate",
+        "raw_ollama",
+    ] = "chat"
     messages: list[dict[str, Any]] = field(default_factory=list)
     stream: bool = False
     options: dict[str, Any] | None = None

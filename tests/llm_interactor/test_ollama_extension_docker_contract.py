@@ -77,7 +77,7 @@ def _provider(docker_runtime: Any | None, *, repo: Any | None = None, module: An
     )
     manifest = SimpleNamespace(
         id="ollama-provider",
-        title="Ollama Provider",
+        title="Ollama",
         description="",
         icon="icons/ollama-light.svg",
         tab_ui={},

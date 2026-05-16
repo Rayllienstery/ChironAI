@@ -54,6 +54,21 @@ except ImportError:
 from api.http.llm_proxy_wiring import build_llm_proxy_wiring
 
 
+def _sync_llm_extension_runtime(app: Flask) -> bool:
+    """Copy a background-bootstrapped LLM runtime into Flask extension state."""
+    svc = app.extensions.get("llm_extensions_service")
+    runtime = getattr(svc, "runtime", None) if svc is not None else None
+    registry = getattr(svc, "registry", None) if svc is not None else None
+    changed = False
+    if runtime is not None and app.extensions.get("llm_interactor_runtime") is not runtime:
+        app.extensions["llm_interactor_runtime"] = runtime
+        changed = True
+    if registry is not None and app.extensions.get("llm_provider_registry") is not registry:
+        app.extensions["llm_provider_registry"] = registry
+        changed = True
+    return changed
+
+
 def create_app(
     webui_dir: str | None = None,
     system_prefix: str | None = None,
@@ -81,6 +96,11 @@ def create_app(
     if getattr(wiring, "extension_manager", None) is not None:
         app.extensions["llm_extensions_service"] = wiring.extension_manager
     app.register_blueprint(create_v1_blueprint(wiring))
+    _sync_llm_extension_runtime(app)
+
+    @app.before_request
+    def _refresh_llm_extension_runtime() -> None:
+        _sync_llm_extension_runtime(app)
 
     @app.route("/")
     def index() -> Response:

@@ -3,7 +3,7 @@
   "version": "0.1.6",
   "api_version": "1",
   "type": "llm_provider",
-  "title": "Ollama Provider",
+  "title": "Ollama",
   "description": "Trusted local provider that exposes the existing Ollama runtime through LlmInteractor.",
   "icon": "icons/ollama-light.svg",
   "tab_ui": {

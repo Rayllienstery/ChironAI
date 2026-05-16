@@ -27,6 +27,11 @@ class RuntimeBackedChatClient:
         self._default_options = dict(default_options or {})
         self._delegate = delegate
 
+    def _options(self, options: dict[str, Any] | None) -> dict[str, Any] | None:
+        merged = dict(self._default_options)
+        merged.update(dict(options or {}))
+        return merged or None
+
     def chat(
         self,
         messages: list[dict[str, Any]],
@@ -42,7 +47,7 @@ class RuntimeBackedChatClient:
                     "model": model,
                     "messages": messages,
                     "stream": True,
-                    "options": options or {},
+                    "options": self._options(options) or {},
                     "think": think,
                 }
             ):
@@ -56,7 +61,7 @@ class RuntimeBackedChatClient:
                 operation="chat",
                 messages=messages,
                 stream=False,
-                options=options,
+                options=self._options(options),
                 think=think,
             )
         )
@@ -74,7 +79,7 @@ class RuntimeBackedChatClient:
                 "model": model,
                 "messages": messages,
                 "stream": True,
-                "options": options or {},
+                "options": self._options(options) or {},
                 "think": think,
             }
         ):

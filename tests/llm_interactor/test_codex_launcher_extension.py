@@ -75,7 +75,8 @@ def test_codex_launcher_tab_payload_reports_ide_builds(monkeypatch) -> None:
     assert descriptor["id"] == "codex"
     assert descriptor["icon"] == "icons/codex-light.svg"
     assert descriptor["status"]["ide_builds_count"] == 1
-    components = payload["schema"]["pages"][0]["sections"][1]["components"]
+    sections = payload["schema"]["pages"][0]["sections"]
+    components = next(section["components"] for section in sections if section.get("id") == "builds")
     assert any(item.get("type") == "select" and item.get("key") == "selected_build" for item in components)
     table = next(item for item in components if item.get("type") == "table")
     assert table["rows"][0]["id"] == "Agent-high"

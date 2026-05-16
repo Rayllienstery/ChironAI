@@ -359,6 +359,7 @@ class ExtensionManager:
                         "icon": desc.icon,
                         "icon_url": self._asset_url(desc.extension_id, desc.icon),
                         "capabilities": desc.capabilities.__dict__,
+                        "metadata": dict(desc.metadata or {}),
                         "health": {
                             "ok": bool(health.ok) if health else False,
                             "status": health.status if health else "unknown",

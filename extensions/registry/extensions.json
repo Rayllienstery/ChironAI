@@ -2,7 +2,7 @@
   "extensions": [
     {
       "id": "ollama-provider",
-      "title": "Ollama Provider",
+      "title": "Ollama",
       "description": "Trusted local Ollama provider for ChironAI LLM runtime.",
       "icon": "icons/ollama-light.svg",
       "source_path": "extensions/bundled/ollama-provider",

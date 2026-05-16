@@ -91,6 +91,9 @@ except ImportError:
     get_keyword_collections_repository = None  # type: ignore[assignment,misc]
 
 _RAG_LOG = logging.getLogger("trag.rag")
+DEFAULT_LLM_PROVIDER_ID = "ollama"
+
+
 def _get_proxy_rerank_enabled_for_proxy() -> bool:
     """
     Single contract for /v1 rerank toggle.
@@ -340,11 +343,11 @@ def _build_extension_manager(
         host_context=host_context,
         settings_repo=settings_repo,
         registry_client=ExtensionRegistryClient(project_root=_workspace_root()),
-        default_provider_id=None,
+        default_provider_id=DEFAULT_LLM_PROVIDER_ID,
     )
     manager.start_background_bootstrap()
     _RAG_LOG.info("Extension runtime bootstrap started in background")
-    return manager, None, None, None, None
+    return manager, None, None, None, DEFAULT_LLM_PROVIDER_ID
 
 
 def build_llm_proxy_wiring(
@@ -363,8 +366,9 @@ def build_llm_proxy_wiring(
     llm_runtime = None
     provider_registry = None
     runtime_chat_client = None
-    default_provider_id = None
+    default_provider_id = DEFAULT_LLM_PROVIDER_ID
     extension_manager, llm_runtime, provider_registry, runtime_chat_client, default_provider_id = _build_extension_manager(deps=deps)
+    default_provider_id = default_provider_id or DEFAULT_LLM_PROVIDER_ID
     return LlmProxyWiring(
         runtime=LlmProxyRuntimeConfig.from_env(),
         base=LlmProxyBaseContext(
