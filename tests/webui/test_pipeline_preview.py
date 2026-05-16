@@ -1,5 +1,14 @@
 """GET /api/webui/pipeline-preview returns proxy/RAG flags for the Web UI diagram."""
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _disable_background_extension_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
+    from llm_interactor import ExtensionManager
+
+    monkeypatch.setattr(ExtensionManager, "start_background_bootstrap", lambda self: None)
+
 
 def test_pipeline_preview_returns_expected_keys() -> None:
     from api.http.rag_routes import create_app

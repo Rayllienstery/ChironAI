@@ -116,6 +116,7 @@ def _rag_routes_llm_proxy_app_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 
     import api.http.rag_routes as rag_routes
     import api.http.webui_routes as webui_routes
+    from llm_interactor import ExtensionManager
 
     original_open = FlaskClient.open
 
@@ -157,6 +158,7 @@ def _rag_routes_llm_proxy_app_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: fake_repo)
     monkeypatch.setattr(webui_routes, "get_settings_repository", lambda: fake_repo)
+    monkeypatch.setattr(ExtensionManager, "start_background_bootstrap", lambda self: None)
 
 
 def test_proxy_logs_passes_autocomplete_only_to_repository(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -183,7 +185,9 @@ def test_proxy_logs_passes_autocomplete_only_to_repository(monkeypatch: pytest.M
 
     monkeypatch.setattr(wr, "get_logs_repository", lambda: FakeRepo())
 
-    client = _webui_blueprint_client()
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
     r = client.get("/api/webui/proxy-logs?autocomplete_only=1&limit=5")
     assert r.status_code == 200
     assert last_kwargs.get("autocomplete_only") is True
@@ -213,7 +217,9 @@ def test_proxy_logs_default_no_autocomplete_filter(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(wr, "get_logs_repository", lambda: FakeRepo())
 
-    client = _webui_blueprint_client()
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
     r = client.get("/api/webui/proxy-logs?limit=5")
     assert r.status_code == 200
     assert last_kwargs.get("autocomplete_only") is None
@@ -527,7 +533,9 @@ def test_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("infrastructure.stack_health.requests.get", fake_get)
 
-    client = _webui_blueprint_client()
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
     r = client.get("/health")
     assert r.status_code == 200
     data = r.get_json() or {}
@@ -684,7 +692,8 @@ def test_webui_reveal_proxy_api_key_returns_404_for_hash_only_legacy_key() -> No
 
     r = client.post("/api/webui/llm-proxy/api-key/reveal")
     assert r.status_code == 404
-    assert "not recoverable" in ((r.get_json() or {}).get("error") or "")
+    error = (r.get_json() or {}).get("error") or {}
+    assert "not recoverable" in (error.get("message") or "")
 
 
 def test_webui_generate_proxy_api_key_returns_plaintext_once_and_enables_v1() -> None:
@@ -860,6 +869,107 @@ def test_non_v1_routes_remain_reachable_without_proxy_api_key(monkeypatch: pytes
     assert (api_tags.get_json() or {}).get("models") == []
 
 
+def test_ollama_api_passthrough_preserves_raw_request_shapes(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    import api.http.rag_routes as rag_routes
+
+    captured: list[dict[str, Any]] = []
+
+    class FakeOllamaResponse:
+        headers = {"Content-Type": "application/x-ndjson"}
+
+        def __init__(self, payload: dict[str, Any] | None = None, lines: list[str] | None = None) -> None:
+            self._payload = payload or {"ok": True}
+            self._lines = lines or []
+
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, Any]:
+            return dict(self._payload)
+
+        def iter_lines(self, decode_unicode: bool = False):
+            yield from self._lines
+
+        def close(self) -> None:
+            pass
+
+    def fake_get(url, params=None, timeout=None, headers=None):
+        captured.append({"method": "GET", "url": url, "params": dict(params or {}), "headers": headers})
+        return FakeOllamaResponse({"models": [{"name": "tiny-model:latest"}]})
+
+    def fake_post(url, json=None, timeout=None, stream=False, headers=None):
+        captured.append(
+            {
+                "method": "POST",
+                "url": url,
+                "json": dict(json or {}),
+                "timeout": timeout,
+                "stream": stream,
+                "headers": headers,
+            }
+        )
+        if stream:
+            return FakeOllamaResponse(lines=['{"message":{"content":"hi"},"done":false}', '{"done":true}'])
+        return FakeOllamaResponse({"echo": dict(json or {}), "done": True})
+
+    monkeypatch.setattr("llm_proxy.ollama_upstream.requests.get", fake_get)
+    monkeypatch.setattr("llm_proxy.ollama_upstream.requests.post", fake_post)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+
+    tags = client.get("/api/tags?keep=1")
+    show_body = {"name": "tiny-model:latest", "verbose": True}
+    generate_body = {
+        "model": "tiny-model:latest",
+        "prompt": "prefix",
+        "suffix": "suffix",
+        "raw": True,
+        "format": "json",
+        "keep_alive": "5m",
+        "options": {"num_predict": 7},
+        "stream": False,
+    }
+    chat_body = {
+        "model": "tiny-model:latest",
+        "messages": [{"role": "user", "content": "hello"}],
+        "think": "medium",
+        "tools": [{"type": "function", "function": {"name": "noop"}}],
+        "stream": True,
+    }
+    show = client.post("/api/show", json=show_body)
+    generate = client.post("/api/generate", json=generate_body)
+    chat = client.post("/api/chat", json=chat_body)
+
+    assert tags.status_code == 200
+    assert (tags.get_json() or {}).get("models")[0]["name"] == "tiny-model:latest"
+    assert show.status_code == 200
+    assert (show.get_json() or {}).get("echo") == show_body
+    assert generate.status_code == 200
+    assert (generate.get_json() or {}).get("echo") == generate_body
+    assert chat.status_code == 200
+    assert b'"done":true' in chat.data
+
+    assert captured[0]["url"].endswith("/api/tags")
+    assert captured[0]["params"] == {"keep": "1"}
+    assert captured[1]["url"].endswith("/api/show")
+    assert captured[1]["json"] == show_body
+    assert captured[2]["url"].endswith("/api/generate")
+    assert captured[2]["json"] == generate_body
+    assert captured[2]["stream"] is False
+    assert captured[3]["url"].endswith("/api/chat")
+    assert captured[3]["json"] == chat_body
+    assert captured[3]["stream"] is True
+    assert captured[3]["timeout"] is None
+
+
 def test_models_endpoint() -> None:
     import os
     import sys
@@ -889,7 +999,9 @@ def test_models_endpoint_includes_chironai_autocomplete_when_backend_configured(
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     if root not in sys.path:
         sys.path.insert(0, root)
-    client = _webui_blueprint_client()
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
     r = client.get("/v1/models")
     assert r.status_code == 200
     data = r.get_json() or {}

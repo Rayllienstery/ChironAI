@@ -40,14 +40,66 @@ Target state: `ollama-provider` owns Ollama behavior. Core talks through provide
 
 ## Phase 0 - Audit And Behavior Lock
 
-- [ ] Run the direct-dependency inventory before changing implementation code.
-- [ ] Add or update tests that pin current public behavior for `/v1/models`, `/v1/chat/completions`, `/v1/completions`, `/api/tags`, `/api/show`, `/api/generate`, and `/api/chat`.
-- [ ] Add or update tests that pin current WebUI behavior for provider catalog, model selectors, Ollama tab loading, model visibility, pull progress, and health/status cards.
-- [ ] Add or update tests that pin current RAG behavior for chat, embeddings, rerank, indexing, and RAG test runner paths.
-- [ ] Add or update tests that pin current service behavior for starting/stopping Ollama through the UI and through ServiceStarter-adjacent helpers.
-- [ ] Capture current env/config compatibility expectations for `OLLAMA_BASE_URL`, `OLLAMA_CHAT_URL`, `OLLAMA_URL`, `OLLAMA_EMBED_URL`, `OLLAMA_CHAT_MODEL`, `OLLAMA_EMBED_MODEL`, `OLLAMA_RERANK_MODEL`, `OLLAMA_EMBED_TIMEOUT`, `LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL`, and related YAML model settings.
-- [ ] Define the allowed temporary direct-Ollama files for the next phase before adding any new compatibility code.
-- [ ] Add a regression search command to the final verification notes for each PR that touches Ollama migration.
+- [x] Run the direct-dependency inventory before changing implementation code.
+- [x] Add or update tests that pin current public behavior for `/v1/models`, `/v1/chat/completions`, `/v1/completions`, `/api/tags`, `/api/show`, `/api/generate`, and `/api/chat`.
+- [x] Add or update tests that pin current WebUI behavior for provider catalog, model selectors, Ollama tab loading, model visibility, pull progress, and health/status cards.
+- [x] Add or update tests that pin current RAG behavior for chat, embeddings, rerank, indexing, and RAG test runner paths.
+- [x] Add or update tests that pin current service behavior for starting/stopping Ollama through the UI and through ServiceStarter-adjacent helpers.
+- [x] Capture current env/config compatibility expectations for `OLLAMA_BASE_URL`, `OLLAMA_CHAT_URL`, `OLLAMA_URL`, `OLLAMA_EMBED_URL`, `OLLAMA_CHAT_MODEL`, `OLLAMA_EMBED_MODEL`, `OLLAMA_RERANK_MODEL`, `OLLAMA_EMBED_TIMEOUT`, `LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL`, and related YAML model settings.
+- [x] Define the allowed temporary direct-Ollama files for the next phase before adding any new compatibility code.
+- [x] Add a regression search command to the final verification notes for each PR that touches Ollama migration.
+
+### Phase 0 Inventory Classification
+
+| Area | Direct dependency | Classification | Baseline / migration note |
+| --- | --- | --- | --- |
+| `CoreModules/LlmProxy` `/v1` and `/api/*` routes | `chat_completions_*`, `completions_generate.py`, `ollama_upstream.py`, `v1_blueprint.py` imports/calls to root Ollama helpers and raw `/api/*` paths | keep temporarily / replace with provider runtime | Public compatibility is pinned by `tests/api/test_http_endpoints.py`; Phase 3 and Phase 6 move provider calls behind `LLMRuntime` or compatibility adapters. |
+| `api/http/webui_routes.py` and `api/http/webui_llm_proxy_routes.py` | `_get_ollama_url()`, `OLLAMA_BASE_URL`, `OLLAMA_URL`, CLI runner calls, provider catalog fallback helpers | move to extension | Phase 2 moves model listing, show/details, health, and diagnostics behind provider catalog or extension actions while preserving WebUI response shapes. |
+| `api/http/webui_crawler_routes.py` | `OLLAMA_EMBED_MODEL` default for crawler/embed flows | replace with provider runtime | Phase 4 replaces direct embed defaults with provider-backed embed selection; current env behavior remains compatibility input. |
+| `api/http/llm_proxy_wiring.py` | `OllamaEmbedAdapter` for external docs ingestion | replace with provider runtime | Phase 4 replaces external-docs ingestion embed calls with provider-backed adapter; direct adapter is allowed until then. |
+| `CoreModules/WebUIBackend/webui_backend/ingest_markdown_local.py` | direct `invoke_embed`, `OLLAMA_EMBED_URL`, local ingest embed URL/model handling | replace with provider runtime | Phase 4 moves local ingestion embeddings behind provider-backed embedding while preserving failure counts and payload reporting. |
+| root `infrastructure/ollama/*` | chat/embed/rerank clients, CLI runner wrappers, model metadata, tool bridge, multipart vision helpers | delete after migration | Canonical legacy adapters until proxy/RAG/WebUI call sites are migrated; tests pin stream merge, tool bridge, and CLI behavior. |
+| `CoreModules/RagService/rag_service/infrastructure/ollama_*` and `container.py` | duplicated chat/embed/rerank adapters and default RAG wiring | replace with provider runtime / delete after migration | Phase 4 supplies provider-backed chat/embed/rerank clients while keeping RAG prompt/retrieval/Qdrant ownership in RAG modules. |
+| `CoreModules/OllamaInteractor` | low-level Ollama HTTP/CLI command module | keep temporarily | Host-level transport remains usable by legacy adapters and extension self-contained HTTP client during migration. |
+| `CoreModules/ServiceStarter/servicestarter/ollama_ops.py` | low-level native Ollama ping/stop helpers | keep temporarily | ServiceStarter remains a host capability; app-level start/stop UX belongs to `ollama-provider` extension actions. |
+| `extensions/bundled/ollama-provider/backend/*` | extension-owned Ollama HTTP, embed, rerank, model visibility, service actions | move to extension | This is the target owner; direct Ollama behavior here is intentional and self-contained. |
+| Tests under `tests/api`, `tests/llm_proxy`, `tests/infrastructure`, `tests/rag_service`, `tests/llm_interactor`, `tests/servicestarter`, `tests/config` | direct Ollama names, fake clients, URLs, env names, compatibility request shapes | keep temporarily | Tests are allowed when they pin public compatibility, legacy adapter behavior, or extension ownership boundaries. |
+
+### Allowed Temporary Direct-Ollama Files
+
+- `CoreModules/LlmProxy/llm_proxy/chat_completions*.py`, `completions_generate.py`, `ollama_upstream.py`, and `v1_blueprint.py` may keep direct Ollama compatibility until Phase 3 and Phase 6.
+- `infrastructure/ollama/*` may remain as legacy root adapters until every app caller is provider-backed.
+- `CoreModules/RagService/rag_service/infrastructure/ollama_*.py`, `cli_runner.py`, `openai_ollama_tool_bridge.py`, `openai_multipart_vision.py`, and `container.py` may remain until Phase 4.
+- `api/http/webui_routes.py`, `api/http/webui_llm_proxy_routes.py`, `api/http/webui_crawler_routes.py`, and `CoreModules/WebUIBackend/webui_backend/ingest_markdown_local.py` may keep documented compatibility reads until Phase 2 and Phase 4.
+- `api/http/llm_proxy_wiring.py` may keep `OllamaEmbedAdapter` only for external-docs ingestion until Phase 4.
+- Tests may keep direct Ollama imports and names only when they pin public compatibility, legacy adapters, or extension boundaries.
+
+### Env And Config Compatibility Baseline
+
+| Input | Current owner / reader | Compatibility expectation |
+| --- | --- | --- |
+| `OLLAMA_BASE_URL` | root config, WebUI routes, OllamaInteractor, ServiceStarter, Open WebUI extension, Ollama provider service metadata | Base URL override; may include `/api/...` in some callers and must be normalized where supported. |
+| `OLLAMA_CHAT_URL` | root config and RagService config | Full `/api/chat` URL override for chat clients; also feeds base URL derivation when `OLLAMA_BASE_URL` is absent. |
+| `OLLAMA_URL` | root config and WebUI fallback helpers | Legacy base URL fallback; preserve until explicitly deprecated. |
+| `OLLAMA_EMBED_URL` | root config, RagService config, WebUIBackend local ingest, external docs adapter | Full `/api/embed` URL override for embedding paths. |
+| `OLLAMA_CHAT_MODEL` | root config and RagService config | Default concrete chat model tag. |
+| `OLLAMA_EMBED_MODEL` | root config, RagService config, crawler routes | Default concrete embedding model tag. |
+| `OLLAMA_RERANK_MODEL` | root config and RagService config | Default rerank model tag; empty value disables rerank where current code does so. |
+| `OLLAMA_EMBED_TIMEOUT` | root config | Embedding timeout in seconds for root config callers. |
+| `OLLAMA_EMBED_TIMEOUT_SECONDS` | RagService config | Embedding timeout in seconds for RagService callers. |
+| `LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL` | proxy wiring and completions/chat model resolution | Concrete autocomplete Ollama tag; overrides WebUI `proxy_autocomplete_model`. |
+| YAML `ollama.*` settings | `config/models.yaml`, `config/rag.yaml`, RagService config | Preserve as fallback config until provider-owned settings consume compatibility inputs. |
+
+### Phase 0 Verification Notes
+
+- [x] Behavior lock added for raw `/api/tags`, `/api/show`, `/api/generate`, and `/api/chat` passthrough request/response shapes.
+- [x] Behavior lock added for Ollama extension show/hide/unhide/delete/pull action response shapes.
+- [x] Existing tests already pin `/v1/models`, `/v1/chat/completions`, `/v1/completions`, provider catalog, RAG use cases, RAG test runner paths, ServiceStarter, and config/env compatibility.
+- [x] Regression searches are listed in `Suggested Regression Searches` and were run during Phase 0 implementation.
+- [x] `pytest tests/api/test_http_endpoints.py tests/api/test_extensions_routes.py` passed: 114 tests.
+- [x] `PYTHONPATH=CoreModules/ErrorManager;$PYTHONPATH pytest tests/application/test_rag_use_cases.py tests/api/test_rag_tests_routes.py tests/webui tests/rag_service` passed: 50 tests.
+- [x] `pytest tests/llm_interactor tests/servicestarter tests/config/test_ollama_base_url.py` passed: 40 tests.
+- [x] Regression searches currently report only classified legacy, extension-owned, config-owned, ServiceStarter-owned, or test-owned Ollama references.
 
 ## Phase 1 - Harden Extension And Runtime Contracts
 

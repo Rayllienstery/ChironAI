@@ -114,6 +114,57 @@ def test_ollama_extension_reports_missing_docker_runtime() -> None:
     assert stopped["message"] == "Docker runtime is unavailable"
 
 
+def test_ollama_extension_model_actions_have_stable_response_shapes(monkeypatch: Any) -> None:
+    module = _load_ollama_provider_module()
+    repo = _Repo()
+    shown: list[dict[str, Any]] = []
+    deleted: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(module, "invoke_tags", lambda **_: {"models": [{"name": "tiny-model:latest"}]})
+
+    def fake_show(**kwargs):
+        shown.append(dict(kwargs))
+        return {"model_info": {"general.architecture": "llama"}, "capabilities": ["completion"]}
+
+    def fake_delete(**kwargs):
+        deleted.append(dict(kwargs))
+        return {"deleted": True}
+
+    monkeypatch.setattr(module, "invoke_show", fake_show)
+    monkeypatch.setattr(module, "invoke_delete", fake_delete)
+    monkeypatch.setattr(
+        module,
+        "iter_pull_objects",
+        lambda **_: iter([{"status": "pulling"}, {"status": "success", "completed": 1}]),
+    )
+
+    provider = _provider(_DockerRuntime(), repo=repo, module=module)
+
+    shown_result = provider.run_action("show_model", {"selected_model": "tiny-model:latest"})
+    hidden_result = provider.run_action("hide_model", {"selected_model": "tiny-model:latest"})
+    unhidden_result = provider.run_action("unhide_model", {"selected_model": "tiny-model:latest"})
+    deleted_result = provider.run_action("delete_model", {"selected_model": "tiny-model:latest"})
+    pulled_result = provider.run_action("pull_model", {"pull_model_name": "tiny-model:latest"})
+
+    assert shown_result["ok"] is True
+    assert shown_result["message"] == "Loaded details for tiny-model:latest"
+    assert shown_result["details"]["model_info"]["general.architecture"] == "llama"
+    assert hidden_result["ok"] is True
+    assert hidden_result["message"] == "Hidden tiny-model:latest"
+    assert hidden_result["details"] == {"model": "tiny-model:latest"}
+    assert hidden_result["hidden_model_ids"] == ["tiny-model:latest"]
+    assert unhidden_result["ok"] is True
+    assert unhidden_result["message"] == "Unhid tiny-model:latest"
+    assert unhidden_result["details"] == {"model": "tiny-model:latest"}
+    assert unhidden_result["hidden_model_ids"] == []
+    assert deleted_result == {"ok": True, "message": "Deleted tiny-model:latest", "details": {}}
+    assert pulled_result["ok"] is True
+    assert pulled_result["message"] == "Pull completed for tiny-model:latest"
+    assert pulled_result["details"] == {"status": "success", "completed": 1}
+    assert shown[0]["name"] == "tiny-model:latest"
+    assert deleted[0]["name"] == "tiny-model:latest"
+
+
 def test_ollama_extension_tab_reports_missing_container(monkeypatch: Any) -> None:
     module = _load_ollama_provider_module()
     monkeypatch.setattr(module, "invoke_ping", lambda **_: {"ok": False})
