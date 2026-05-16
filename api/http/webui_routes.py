@@ -226,7 +226,6 @@ import requests
 
 from infrastructure.ollama.cli_runner import (
     invoke_ping,
-    invoke_tags,
 )
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import (
@@ -1703,12 +1702,17 @@ def dashboard_metrics() -> Any:
         "running": bool(q.get("running")),
         "collections_count": int(q.get("collections_count") or 0),
     }
-    url_o = _get_ollama_url().rstrip("/")
-    try:
-        ping_o = invoke_ping(base_url=url_o, timeout=1.0)
-        payload["ollama"] = {"running": bool(ping_o.get("ok"))}
-    except Exception:
-        payload["ollama"] = {"running": False}
+    provider_row = _default_provider_row()
+    provider_health = provider_row.get("health") if isinstance(provider_row, dict) else None
+    if isinstance(provider_health, dict):
+        payload["ollama"] = {"running": bool(provider_health.get("ok"))}
+    else:
+        url_o = _get_ollama_url().rstrip("/")
+        try:
+            ping_o = invoke_ping(base_url=url_o, timeout=1.0)
+            payload["ollama"] = {"running": bool(ping_o.get("ok"))}
+        except Exception:
+            payload["ollama"] = {"running": False}
     payload["gpu"] = _get_gpu_metrics()
     payload["proxy_status"] = get_proxy_status_label()
     payload["latest_request_seconds"] = get_latest_request_seconds()

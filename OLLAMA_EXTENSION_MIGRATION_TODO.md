@@ -118,19 +118,30 @@ Target state: `ollama-provider` owns Ollama behavior. Core talks through provide
 
 ## Phase 2 - Move Model Listing, Health, Show/Tags, And WebUI Diagnostics
 
-- [ ] Replace WebUI model-listing helpers that call `_get_ollama_url()` and `/api/tags` with provider catalog calls.
+- [x] Replace WebUI model-listing helpers that call `_get_ollama_url()` and `/api/tags` with provider catalog calls.
 - [x] Normalize provider labels used by CoreUI model selectors, settings screens, status cards, and extension tabs so users see `Ollama` as the provider name.
-- [ ] Replace build diagnostics that fetch Ollama tag names directly with `llm_extensions_service.provider_catalog(..., capability="chat")` or a dedicated extension action.
-- [ ] Move model `show` details for context length, thinking support, and form helpers behind an extension action or provider metadata call.
-- [ ] Move model hide/unhide/delete/pull behavior fully behind `ollama-provider` actions.
-- [ ] Replace root `infrastructure/stack_health.py` direct Ollama `/api/tags` probing with provider health when an extension runtime is available.
-- [ ] Keep Qdrant health in core/RAG ownership; do not move Qdrant checks into `ollama-provider`.
-- [ ] Keep WebUI response shapes stable for dashboard cards and settings forms.
-- [ ] Preserve fallback behavior when extension runtime is loading or unavailable: return `available=false`, cached provider rows, or existing degraded status rather than crashing.
-- [ ] Add WebUI tests proving model selectors still populate from provider catalog.
+- [x] Replace build diagnostics that fetch Ollama tag names directly with `llm_extensions_service.provider_catalog(..., capability="chat")` or a dedicated extension action.
+- [x] Move model `show` details for context length, thinking support, and form helpers behind an extension action or provider metadata call.
+- [x] Move model hide/unhide/delete/pull behavior fully behind `ollama-provider` actions.
+- [x] Replace root `infrastructure/stack_health.py` direct Ollama `/api/tags` probing with provider health when an extension runtime is available.
+- [x] Keep Qdrant health in core/RAG ownership; do not move Qdrant checks into `ollama-provider`.
+- [x] Keep WebUI response shapes stable for dashboard cards and settings forms.
+- [x] Preserve fallback behavior when extension runtime is loading or unavailable: return `available=false`, cached provider rows, or existing degraded status rather than crashing.
+- [x] Add WebUI tests proving model selectors still populate from provider catalog.
 - [x] Add WebUI tests proving provider-facing labels render as `Ollama` and do not expose `Ollama Provider` in normal frontend surfaces.
-- [ ] Add WebUI tests proving health/status cards still report Ollama unavailable when the provider health check fails.
-- [ ] Add extension action tests for `show_model`, `hide_model`, `unhide_model`, `delete_model`, `pull_model`, and refresh/status behavior.
+- [x] Add WebUI tests proving health/status cards still report Ollama unavailable when the provider health check fails.
+- [x] Add extension action tests for `show_model`, `hide_model`, `unhide_model`, `delete_model`, `pull_model`, and refresh/status behavior.
+
+### Phase 2 Verification Notes
+
+- [x] Build diagnostics now read Ollama model ids from provider catalog instead of direct `invoke_tags`.
+- [x] `/api/webui/llm-proxy/builds/preview-model` uses the `show_model` extension action and preserves `{ok: false, error}` failures when runtime/provider action is unavailable.
+- [x] `/health` uses provider health when extension runtime is available, keeps Qdrant probing in core, and falls back to direct `/api/tags` only during startup/runtime-unavailable compatibility.
+- [x] Dashboard Ollama status reads provider health when available and keeps the previous ping fallback for runtime-loading compatibility.
+- [x] `pytest tests/api/test_http_endpoints.py tests/api/test_extensions_routes.py` passed: 119 tests.
+- [x] `pytest tests/llm_interactor/test_runtime.py tests/llm_interactor/test_ollama_extension_docker_contract.py` passed: 15 tests.
+- [x] Regression search `rg "invoke_tags|/api/tags|_get_ollama_url" api infrastructure application -S` reports only startup/dashboard compatibility fallbacks, root legacy adapters, or documented compatibility.
+- [x] Regression search `rg "Ollama Provider" CoreModules/CoreUI api extensions tests -S` reports no matches.
 
 ## Phase 3 - Move Chat And Streaming Paths
 
@@ -239,7 +250,7 @@ Target state: `ollama-provider` owns Ollama behavior. Core talks through provide
 
 - [ ] Phase 0 is complete when every direct Ollama dependency is inventoried, classified, and protected by at least one baseline test or documented compatibility reason.
 - [ ] Phase 1 is complete when `ollama-provider` can be discovered, described, listed in provider catalog, invoked in unit tests, and used as the default provider id without blocking startup.
-- [ ] Phase 2 is complete when WebUI model lists, provider labels, health/status, model details, and model actions use provider catalog or extension actions instead of direct `/api/tags`/`/api/show` calls.
+- [x] Phase 2 is complete when WebUI model lists, provider labels, health/status, model details, and model actions use provider catalog or extension actions instead of direct `/api/tags`/`/api/show` calls.
 - [ ] Phase 3 is complete when `/v1/chat/completions` non-streaming and streaming Ollama calls go through `LLMRuntime` or `RuntimeBackedChatClient` while preserving OpenAI-compatible output, trace fields, tools, thinking, and vision.
 - [ ] Phase 4 is complete when RAG, indexing, external-docs ingestion, embeddings, and rerank use provider-backed adapters while preserving retries, timeouts, batch behavior, truncation, and error reporting.
 - [ ] Phase 5 is complete when app-level Ollama start/stop/pull/status behavior is extension-owned and Docker/native-process boundaries are enforced by tests.

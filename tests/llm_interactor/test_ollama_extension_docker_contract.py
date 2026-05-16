@@ -145,6 +145,7 @@ def test_ollama_extension_model_actions_have_stable_response_shapes(monkeypatch:
     unhidden_result = provider.run_action("unhide_model", {"selected_model": "tiny-model:latest"})
     deleted_result = provider.run_action("delete_model", {"selected_model": "tiny-model:latest"})
     pulled_result = provider.run_action("pull_model", {"pull_model_name": "tiny-model:latest"})
+    refreshed_result = provider.run_action("refresh", {})
 
     assert shown_result["ok"] is True
     assert shown_result["message"] == "Loaded details for tiny-model:latest"
@@ -161,6 +162,7 @@ def test_ollama_extension_model_actions_have_stable_response_shapes(monkeypatch:
     assert pulled_result["ok"] is True
     assert pulled_result["message"] == "Pull completed for tiny-model:latest"
     assert pulled_result["details"] == {"status": "success", "completed": 1}
+    assert refreshed_result == {"ok": True, "message": "Refreshed", "details": {}}
     assert shown[0]["name"] == "tiny-model:latest"
     assert deleted[0]["name"] == "tiny-model:latest"
 

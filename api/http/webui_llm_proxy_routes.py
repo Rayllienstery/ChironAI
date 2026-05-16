@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sys
 import threading
 import time
@@ -43,10 +42,6 @@ from infrastructure.database import (
     get_settings_repository,
 )
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
-from infrastructure.ollama.cli_runner import (
-    invoke_tags,
-)
-
 import requests
 
 
@@ -117,16 +112,6 @@ def _qdrant_status_snapshot(timeout_sec: float) -> dict[str, Any]:
             _LAST_QDRANT_WARN_AT = now
             _WEBUI_LOG.warning("Failed to get Qdrant status: %s", e)
     return status
-
-
-def _get_ollama_url() -> str:
-    """Ollama HTTP base for WebUI (model list, ping): same origin as RAG/chat (config), not ServiceStarter port 11343."""
-    try:
-        from config import get_ollama_base_url
-
-        return get_ollama_base_url().rstrip("/")
-    except Exception:
-        return (os.getenv("OLLAMA_BASE_URL") or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
 
 
 def _get_qdrant_collection_names() -> list[str]:
@@ -379,25 +364,30 @@ def register_llm_proxy_routes(
             return _error_response(e)
 
     def _ollama_tag_name_set_for_builds_diag() -> set[str]:
-        cache_key = f"llm_proxy_builds_diag_ollama_names:{_get_ollama_url().rstrip('/')}"
+        svc = current_app.extensions.get("llm_extensions_service")
+        runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+        cache_key = f"llm_proxy_builds_diag_provider_catalog_ollama_names:{id(svc)}:{id(runtime)}"
         cached = _get_cached_status(
             cache_key,
             ttl_sec=3.0,
-            compute=lambda: {"names": sorted(_fetch_ollama_tag_name_set_for_builds_diag(timeout_sec=0.8))},
+            compute=lambda: {"names": sorted(_provider_catalog_model_name_set_for_builds_diag())},
         )
         return set(cached.get("names") or [])
 
-    def _fetch_ollama_tag_name_set_for_builds_diag(timeout_sec: float) -> set[str]:
+    def _provider_catalog_model_name_set_for_builds_diag() -> set[str]:
         names: set[str] = set()
         try:
-            url = _get_ollama_url().rstrip("/")
-            data = invoke_tags(base_url=url, timeout=timeout_sec)
-            for m in data.get("models") or []:
-                if not isinstance(m, dict):
+            catalog = _provider_catalog_payload(capability="chat")
+            for model in catalog.get("models") or []:
+                if not isinstance(model, dict):
                     continue
-                n = (m.get("name") or m.get("model") or "").strip()
-                if n:
-                    names.add(n)
+                provider_id = str(model.get("provider_id") or "").strip()
+                if provider_id != "ollama":
+                    continue
+                for key in ("id", "name", "label"):
+                    value = str(model.get(key) or "").strip()
+                    if value:
+                        names.add(value)
         except Exception:
             pass
         return names
@@ -405,10 +395,9 @@ def register_llm_proxy_routes(
     def _enrich_builds_with_diagnostics(builds: list[dict[str, Any]]) -> list[dict[str, Any]]:
         from concurrent.futures import ThreadPoolExecutor
 
+        ollama_names = _ollama_tag_name_set_for_builds_diag()
         with ThreadPoolExecutor(max_workers=2) as pool:
-            fut_o = pool.submit(_ollama_tag_name_set_for_builds_diag)
             fut_q = pool.submit(_get_cached_qdrant_collection_name_set_for_builds_diag)
-            ollama_names = fut_o.result()
             qset = fut_q.result()
         out: list[dict[str, Any]] = []
         for b in builds:

@@ -309,6 +309,160 @@ def test_llm_proxy_builds_diagnostics_zero_returns_light_rows(monkeypatch: pytes
     assert row.get("ide_mode") is True
 
 
+def test_llm_proxy_builds_diagnostics_use_provider_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    import api.http.webui_llm_proxy_routes as llm_proxy_routes
+    import api.http.webui_routes as wr
+
+    sample = [
+        {
+            "id": "present",
+            "backend": "dumb",
+            "provider_id": "ollama",
+            "model": "tiny-model:latest",
+            "use_prompt_template": False,
+        },
+        {
+            "id": "missing",
+            "backend": "dumb",
+            "provider_id": "ollama",
+            "model": "missing-model:latest",
+            "use_prompt_template": False,
+        },
+    ]
+
+    class FakeSettings:
+        def get_app_setting(self, key: str) -> str | None:
+            if key == wr.LLM_PROXY_BUILDS_APP_KEY:
+                return json.dumps(sample)
+            return None
+
+    class FakeExtensionsService:
+        runtime = object()
+
+        def provider_catalog(self, *, runtime: Any | None = None, capability: str | None = None) -> dict[str, Any]:
+            return {
+                "providers": [{"provider_id": "ollama", "title": "Ollama"}],
+                "models": [
+                    {
+                        "provider_id": "ollama",
+                        "provider_title": "Ollama",
+                        "id": "tiny-model:latest",
+                        "label": "tiny-model:latest",
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(wr, "get_settings_repository", lambda: FakeSettings())
+    monkeypatch.setattr(llm_proxy_routes, "_get_cached_qdrant_collection_name_set_for_builds_diag", lambda: set())
+    monkeypatch.setattr("api.http.webui_llm_proxy_routes.invoke_tags", lambda **_: pytest.fail("direct tags used"), raising=False)
+
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    app.extensions["llm_extensions_service"] = FakeExtensionsService()
+    app.extensions["llm_interactor_runtime"] = FakeExtensionsService.runtime
+    r = app.test_client().get("/api/webui/llm-proxy/builds")
+
+    assert r.status_code == 200
+    rows = {row["id"]: row for row in (r.get_json() or {}).get("builds") or []}
+    assert rows["present"]["healthy"] is True
+    assert rows["present"]["issues"] == []
+    assert rows["missing"]["healthy"] is False
+    assert any("missing-model:latest" in issue for issue in rows["missing"]["issues"])
+
+
+def test_llm_proxy_build_preview_model_uses_extension_action(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    calls: list[dict[str, Any]] = []
+
+    class FakeExtensionsService:
+        runtime = object()
+
+        def provider_rows(self, _runtime: Any) -> list[dict[str, Any]]:
+            return [{"provider_id": "ollama", "extension_id": "ollama-provider", "title": "Ollama"}]
+
+        def run_extension_action(
+            self,
+            extension_id: str,
+            action_id: str,
+            *,
+            payload: dict[str, Any],
+            runtime: Any | None = None,
+        ) -> dict[str, Any]:
+            calls.append(
+                {
+                    "extension_id": extension_id,
+                    "action_id": action_id,
+                    "payload": payload,
+                    "runtime": runtime,
+                }
+            )
+            return {
+                "ok": True,
+                "details": {
+                    "model_info": {"llama.context_length": 8192},
+                    "capabilities": ["completion", "thinking"],
+                },
+            }
+
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    app.extensions["llm_extensions_service"] = FakeExtensionsService()
+    app.extensions["llm_interactor_runtime"] = FakeExtensionsService.runtime
+    r = app.test_client().post("/api/webui/llm-proxy/builds/preview-model", json={"model": "tiny-model:latest"})
+
+    assert r.status_code == 200
+    assert r.get_json() == {
+        "ok": True,
+        "context_length": 8192,
+        "supports_thinking": True,
+        "capabilities": ["completion", "thinking"],
+    }
+    assert calls == [
+        {
+            "extension_id": "ollama-provider",
+            "action_id": "show_model",
+            "payload": {"selected_model": "tiny-model:latest"},
+            "runtime": FakeExtensionsService.runtime,
+        }
+    ]
+
+
+def test_llm_proxy_build_preview_model_reports_runtime_unavailable() -> None:
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    app.extensions["llm_extensions_service"] = None
+    app.extensions.pop("llm_interactor_runtime", None)
+    r = app.test_client().post("/api/webui/llm-proxy/builds/preview-model", json={"model": "tiny-model:latest"})
+
+    assert r.status_code == 502
+    data = r.get_json() or {}
+    assert data.get("ok") is False
+    assert "provider extension" in (data.get("error") or "")
+
+
 def test_llm_proxy_builds_put_roundtrips_ide_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     import json
     import os
@@ -576,6 +730,94 @@ def test_health_endpoint_503_when_qdrant_unavailable(monkeypatch: pytest.MonkeyP
     data = r.get_json() or {}
     assert data.get("status") == "unhealthy"
     assert (data.get("components") or {}).get("qdrant") == "unhealthy"
+
+
+def test_health_endpoint_uses_provider_health_when_runtime_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+    import sys
+    from unittest.mock import MagicMock
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    qdrant_ok = MagicMock()
+    qdrant_ok.ok = True
+    requested: list[str] = []
+
+    def fake_get(url: str, timeout: float = 0) -> MagicMock:
+        requested.append(url)
+        return qdrant_ok
+
+    class FakeExtensionsService:
+        runtime = object()
+
+        def provider_rows(self, _runtime: Any) -> list[dict[str, Any]]:
+            return [
+                {
+                    "provider_id": "ollama",
+                    "extension_id": "ollama-provider",
+                    "title": "Ollama",
+                    "health": {"ok": True, "status": "ok", "message": "", "details": {}},
+                }
+            ]
+
+    monkeypatch.setattr("infrastructure.stack_health.requests.get", fake_get)
+
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    app.extensions["llm_extensions_service"] = FakeExtensionsService()
+    app.extensions["llm_interactor_runtime"] = FakeExtensionsService.runtime
+    r = app.test_client().get("/health")
+
+    assert r.status_code == 200
+    data = r.get_json() or {}
+    assert data.get("status") == "healthy"
+    assert (data.get("components") or {}).get("ollama") == "healthy"
+    assert (data.get("components") or {}).get("qdrant") == "healthy"
+    assert requested and all("/api/tags" not in url for url in requested)
+
+
+def test_health_endpoint_503_when_provider_health_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+    import sys
+    from unittest.mock import MagicMock
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    qdrant_ok = MagicMock()
+    qdrant_ok.ok = True
+
+    class FakeExtensionsService:
+        runtime = object()
+
+        def provider_rows(self, _runtime: Any) -> list[dict[str, Any]]:
+            return [
+                {
+                    "provider_id": "ollama",
+                    "extension_id": "ollama-provider",
+                    "title": "Ollama",
+                    "health": {"ok": False, "status": "error", "message": "offline", "details": {}},
+                }
+            ]
+
+    monkeypatch.setattr("infrastructure.stack_health.requests.get", lambda *_a, **_k: qdrant_ok)
+
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    app.extensions["llm_extensions_service"] = FakeExtensionsService()
+    app.extensions["llm_interactor_runtime"] = FakeExtensionsService.runtime
+    r = app.test_client().get("/health")
+
+    assert r.status_code == 503
+    data = r.get_json() or {}
+    assert data.get("status") == "unhealthy"
+    assert (data.get("components") or {}).get("ollama") == "unhealthy"
+    assert (data.get("components") or {}).get("qdrant") == "healthy"
 
 
 def test_v1_models_returns_503_when_proxy_api_key_not_configured(monkeypatch: pytest.MonkeyPatch) -> None:
