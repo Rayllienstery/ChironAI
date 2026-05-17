@@ -46,13 +46,34 @@ Risk: coupling, regression risk, hard ownership.
 - Intentional legacy-compatible endpoints and request shapes:
   - OpenAI legacy completions (`/v1/completions`)
   - prompt/suffix normalization
-  - inline `/api/generate` bridge
+  - raw Ollama-compatible `/api/tags`, `/api/show`, `/api/generate`, and `/api/chat`
 - Main files:
   - `CoreModules/LlmProxy/llm_proxy/v1_blueprint.py`
   - `CoreModules/LlmProxy/llm_proxy/completions_generate.py`
-  - `CoreModules/LlmProxy/llm_proxy/chat_completions.py`
+  - `CoreModules/LlmProxy/llm_proxy/ollama_upstream.py`
+  - `extensions/bundled/ollama-provider/backend/provider.py`
 
 Risk: complexity if undocumented; low risk if treated as explicit contract.
+
+Current ownership: these public routes remain on the compatibility blueprint so
+existing clients keep their base URLs and status shapes. Their first-choice
+implementation delegates to `ollama-provider` through `LLMRuntime` operation
+`raw_ollama`; direct upstream HTTP remains as a fallback when the extension
+runtime is still loading or unavailable.
+
+## G) Ollama compatibility adapters
+
+- Root `infrastructure/ollama/*` and duplicate RagService
+  `rag_service.infrastructure.ollama_*` modules are retained as temporary
+  compatibility boundaries for public proxy helpers, standalone tests, and
+  fallback runtime paths.
+- New provider behavior belongs in `extensions/bundled/ollama-provider`.
+- New app call sites should use `LLMRuntime`, provider catalog/actions, or a
+  clearly documented compatibility adapter.
+
+Guardrail: `tests/application/test_ollama_migration_guardrails.py` rejects new
+direct `infrastructure.ollama` imports unless the file is explicitly allowlisted
+as a compatibility or test boundary.
 
 ## D) Retrieval mode compatibility
 
@@ -87,6 +108,8 @@ Risk: medium-low; manageable with explicit state contract.
 Keep (intentional compatibility):
 - `/v1/completions` if needed by existing clients (document + test).
 - prompt/suffix mapping for old clients, if still in active use.
+- raw Ollama-compatible `/api/*` passthrough routes for clients that use this
+  app as an Ollama base URL.
 
 Remove (technical legacy):
 - dead compatibility wrappers around stable internal contracts.

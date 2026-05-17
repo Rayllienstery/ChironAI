@@ -3,6 +3,7 @@ import { useNotificationCenter } from './NotificationCenterContext';
 import {
   cancelOllamaPullJob,
   ollamaPullProgressText,
+  ollamaPullRateText,
   subscribeOllamaPullJob,
 } from './ollamaPullJobStore';
 
@@ -12,6 +13,7 @@ function PullJobView({ job, onOpenOllama }) {
   const cancelled = Boolean(progress.cancelled);
   const failed = Boolean(!cancelled && (job?.error || progress.error));
   const progressText = ollamaPullProgressText(progress);
+  const rateText = job?.running && !failed && !cancelled ? ollamaPullRateText(progress) : '';
   const tone = failed ? 'error' : cancelled ? 'cancelled' : '';
   return (
     <div className={`notification-ollama-pull${tone ? ` notification-ollama-pull--${tone}` : ''}`}>
@@ -25,6 +27,7 @@ function PullJobView({ job, onOpenOllama }) {
         <div>
           <strong>{progress.model || job?.model || 'Ollama model'}</strong>
           <span>{failed ? (progress.error || job?.error) : progressText}</span>
+          {rateText ? <span className="notification-ollama-pull__rate">{rateText}</span> : null}
         </div>
         {pct != null ? <b>{pct}%</b> : null}
       </div>

@@ -583,6 +583,12 @@
   font-size: 12px;
 }
 
+.notification-ollama-pull__header .notification-ollama-pull__rate {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
 .notification-ollama-pull__header b {
   color: var(--md-sys-color-primary);
   font-size: 12px;

@@ -60,16 +60,16 @@ The repository root is an installable project **`chironai`** ([`pyproject.toml`]
 
 - **Editable install**: `pip install -e ".[dev]"` installs top-level packages (`application`, `api`, `config`, `core`, `domain`, `infrastructure`, `utils`) and console scripts `tmrag` / `chironai`.
 - **`modules/*`**: treated as separate subtrees (many already ship their own README / layout). They are on `sys.path` for tests via pytest `pythonpath`, not necessarily part of the `chironai` distribution—add them to setuptools `packages.find` only if you want a single wheel to include everything.
-- **`CoreModules/OllamaInteractor`**: separate distribution `ollama-interactor`; the app invokes it via subprocess (see `infrastructure/ollama/cli_runner.py`).
-- **`CoreModules/ServiceStarter`**: separate distribution `service-starter`; Docker Desktop + Ollama install (Windows), Qdrant/Open WebUI containers, and status (`pip install -e CoreModules/ServiceStarter`). WebUI delegates start/stop to it (see `api/http/webui_routes.py`).
+- **`CoreModules/OllamaInteractor`**: separate distribution `ollama-interactor`; temporary compatibility adapters and the bundled `ollama-provider` HTTP helper may invoke it for Ollama REST calls.
+- **`CoreModules/ServiceStarter`**: separate distribution `service-starter`; Docker Desktop + host-level dependency helpers remain available as host capabilities. App-level Ollama start/stop/status UX belongs to the bundled `ollama-provider` extension, which receives Docker access through `host_context.docker_runtime`.
 - **`CoreModules/LlmProxy`**: separate distribution `llm-proxy`; OpenAI-compatible `/v1` HTTP surface plus **Anthropic-compatible** `POST /v1/messages` and multiplexed `GET /v1/models` (via `anthropic-version` header), sharing the same RAG pipeline as `chat/completions`; also apply-edit and external-docs ingest. The host app supplies a `LlmProxyWiring` built in [`api/http/llm_proxy_wiring.py`](../api/http/llm_proxy_wiring.py); see [`CoreModules/LlmProxy/README.md`](../CoreModules/LlmProxy/README.md).
 - **`CoreModules/WebInteraction`**: separate distribution `web-interaction`; free web snippet helpers (DuckDuckGo search, trigger heuristics) used when building the proxy system prompt. Wired from [`api/http/llm_proxy_wiring.py`](../api/http/llm_proxy_wiring.py); see [`CoreModules/WebInteraction/README.md`](../CoreModules/WebInteraction/README.md).
 - **Import boundaries**: [import-linter](https://github.com/seddonym/import-linter) contract `domain_is_inner_layer` forbids `domain` → `application` | `api` | `infrastructure`. Run `lint-imports` after `pip install -r requirements-dev.txt`.
 
 ## Adding a new source or model
 
-- **New embedding model**: configure in `config/models.yaml` (or env `RAG_EMBED_MODEL`); `OllamaEmbeddingProvider` uses it. No code change in domain/application.
-- **New chat model**: configure in `config/models.yaml`; `OllamaChatClient` and `create_app` use it.
+- **New Ollama model**: configure in `config/models.yaml` or the WebUI settings that feed the provider catalog. The main app routes Ollama chat/embed/rerank/raw compatibility through `ollama-provider` via `LLMRuntime` when that runtime is available.
+- **Temporary compatibility adapters**: root `infrastructure/ollama/*` and duplicate RagService Ollama adapters still exist for public API compatibility, standalone tests, and fallback behavior. New app code should not import them directly without documenting the compatibility reason.
 - **New crawl source**: add source configuration under the crawler config/source loader used by `crawler_service`; crawl CLI and index flow use it. For a new crawler implementation, implement `CrawlRunner` in `infrastructure/crawl/` and wire it in the application layer.
 - **New vector store**: implement `RagRepository` in `infrastructure/` and wire it in `application/container.py` instead of `QdrantRagRepository`.
 

@@ -15,11 +15,15 @@ class _Repo:
         return None
 
 
-def _write_extension(root: Path, *, extension_id: str, provider_py: str) -> Path:
+def _write_extension(root: Path, *, extension_id: str, provider_py: str, extra_files: dict[str, str] | None = None) -> Path:
     ext = root / extension_id
     backend = ext / "backend"
     backend.mkdir(parents=True)
     (backend / "provider.py").write_text(provider_py, encoding="utf-8")
+    for rel_path, text in (extra_files or {}).items():
+        path = ext / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
     (ext / "chironai-extension.json").write_text(
         json.dumps(
             {
@@ -87,6 +91,32 @@ def create_provider(host_context, manifest):
 
     assert report.loaded == []
     assert report.failed[0].extension_id == "bad-subprocess-extension"
+    assert "host_context.docker_runtime" in report.failed[0].error
+
+
+def test_extension_subprocess_docker_access_in_backend_helper_is_rejected(tmp_path: Path) -> None:
+    ext = _write_extension(
+        tmp_path,
+        extension_id="bad-helper-extension",
+        provider_py="""
+def create_provider(host_context, manifest):
+    return object()
+""",
+        extra_files={
+            "backend/helper.py": """
+import subprocess
+
+def docker_ps():
+    return subprocess.run(["docker", "ps"], check=False)
+"""
+        },
+    )
+
+    report = discover_extensions([ext], host_context=_host(tmp_path))
+
+    assert report.loaded == []
+    assert report.failed[0].extension_id == "bad-helper-extension"
+    assert "backend" in report.failed[0].error
     assert "host_context.docker_runtime" in report.failed[0].error
 
 

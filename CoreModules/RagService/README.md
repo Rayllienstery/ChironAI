@@ -4,7 +4,7 @@ Single installable distribution **`chironai-rag-service`** with two top-level pa
 
 | Package | Role |
 |--------|------|
-| **`rag_service`** | Hexagonal RAG pipeline: domain, application use cases, Qdrant/Ollama infrastructure, optional Flask API (`rag_service.api.http`), keyword collections SQLite. |
+| **`rag_service`** | Hexagonal RAG pipeline: domain, application use cases, Qdrant/Ollama compatibility infrastructure, optional Flask API (`rag_service.api.http`), keyword collections SQLite. |
 | **`chironai_rag`** | Thin boundary: `RagConsumer` kinds, app-setting keys, `ConsumerRagBindings`, `RagProjectPolicy` for proxies and WebUI. |
 
 ## Install (monorepo)
@@ -33,7 +33,11 @@ flask --app rag_service.api.http:create_app run --port 5001
 
 ## Runtime Health / Start
 
-The module now owns its own runtime dependency helpers for `ollama` and `qdrant`.
+The standalone module still exposes runtime dependency helpers for `ollama` and
+`qdrant`, but app-level Ollama UX is owned by the bundled `ollama-provider`
+extension in the main ChironAI app. ServiceStarter and RagService helpers are
+host capabilities and compatibility fallbacks, not the primary WebUI Ollama
+control surface.
 
 ```bash
 python -m rag_service health
@@ -52,6 +56,15 @@ rag-service start-deps --services ollama,qdrant
 ## Data
 
 Keyword collections DB defaults to `rag_service/data/rag_keywords.db` (created next to the `rag_service` package).
+
+## Ollama Provider Boundary
+
+When the main app supplies an `LLMRuntime`, RagService clients should prefer the
+provider-backed adapters in `rag_service.infrastructure.provider_runtime`.
+The legacy `rag_service.infrastructure.ollama_*` modules remain for standalone
+operation and fallback tests until RagService can be run entirely with injected
+provider clients. New app-level code should not import those legacy modules
+directly.
 
 ## Tests
 

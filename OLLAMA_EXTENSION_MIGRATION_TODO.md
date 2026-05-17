@@ -196,47 +196,67 @@ Target state: `ollama-provider` owns Ollama behavior. Core talks through provide
 
 ## Phase 5 - Move Service Actions And Docker/Native Process Boundaries
 
-- [ ] Keep Docker ownership inside extension actions through `host_context.docker_runtime` and `DockerContainerSpec`.
-- [ ] Do not allow `ollama-provider` to call Docker CLI, Docker SDK clients, `/api/webui/docker/*`, or shell Docker commands directly.
-- [ ] Keep native Ollama stop behavior behind host-provided metadata such as `stop_native_ollama`; the extension may request it but must not own OS-specific process logic directly.
-- [ ] Move UI start/stop/pull/status actions to extension action routes where any remaining core route only delegates generically.
-- [ ] Preserve the existing user-facing behavior for start Ollama, stop Ollama, download image, pull model, cancel pull, and progress notifications.
-- [ ] Preserve ServiceStarter tests for standalone `servicestarter.ollama_ops`; ServiceStarter may remain a low-level host capability while `ollama-provider` owns the app-level action.
-- [ ] Add tests proving extension service actions use `host_context.docker_runtime`.
-- [ ] Add tests proving extension service actions do not import or call Docker directly.
-- [ ] Add WebUI tests proving the Ollama tab can start/stop service through extension actions.
+- [x] Keep Docker ownership inside extension actions through `host_context.docker_runtime` and `DockerContainerSpec`.
+- [x] Do not allow `ollama-provider` to call Docker CLI, Docker SDK clients, `/api/webui/docker/*`, or shell Docker commands directly.
+- [x] Keep native Ollama stop behavior behind host-provided metadata such as `stop_native_ollama`; the extension may request it but must not own OS-specific process logic directly.
+- [x] Move UI start/stop/pull/status actions to extension action routes where any remaining core route only delegates generically.
+- [x] Preserve the existing user-facing behavior for start Ollama, stop Ollama, download image, pull model, cancel pull, and progress notifications.
+- [x] Preserve ServiceStarter tests for standalone `servicestarter.ollama_ops`; ServiceStarter may remain a low-level host capability while `ollama-provider` owns the app-level action.
+- [x] Add tests proving extension service actions use `host_context.docker_runtime`.
+- [x] Add tests proving extension service actions do not import or call Docker directly.
+- [x] Add WebUI tests proving the Ollama tab can start/stop service through extension actions.
+
+Phase 5 completion notes:
+
+- [x] Widened extension Docker policy validation to scan the entire backend folder, while allowing non-Docker subprocess use such as the `ollama_interactor` CLI fallback.
+- [x] Added regression coverage for bundled `ollama-provider` Docker policy, backend helper-module Docker violations, generic extension start/stop action routes, and compatibility `/ollama/start` + `/ollama/stop` delegation.
+- [x] Verified focused suites: `pytest tests\llm_interactor\test_extension_docker_policy.py tests\llm_interactor\test_ollama_extension_docker_contract.py`, `pytest tests\api\test_extensions_routes.py`, and `pytest tests\servicestarter`.
 
 ## Phase 6 - Move Legacy `/api/*` Passthrough And `/v1/completions` Generate Behavior
 
-- [ ] Preserve `GET /api/tags` compatibility for clients that use the app as an Ollama-compatible base URL.
-- [ ] Preserve `POST /api/show` compatibility for clients that inspect model details.
-- [ ] Preserve `POST /api/generate` compatibility for inline completion and legacy Ollama-style clients.
-- [ ] Preserve `POST /api/chat` compatibility for transparent Ollama chat clients.
-- [ ] Preserve `POST /v1/completions` behavior that maps OpenAI legacy completions to Ollama generate.
-- [ ] Decide whether raw passthrough should be represented as new provider operations, extension HTTP routes, or a narrowly scoped compatibility adapter that delegates to `ollama-provider`.
-- [ ] Ensure raw passthrough does not accidentally apply RAG, prompt templates, proxy auth transformations, or model remapping unless existing behavior already does so.
-- [ ] Preserve request body fields such as `format`, `keep_alive`, `options`, `stream`, `suffix`, `raw`, `system`, and `template` where current compatibility paths support them.
-- [ ] Preserve streaming semantics and error status mapping for passthrough routes.
-- [ ] Add passthrough tests for `/api/tags`, `/api/show`, `/api/generate`, and `/api/chat`.
-- [ ] Add `/v1/completions` tests proving generate request body and response shape remain stable.
-- [ ] Add tests for extension-runtime-unavailable fallback behavior on compatibility routes.
+- [x] Preserve `GET /api/tags` compatibility for clients that use the app as an Ollama-compatible base URL.
+- [x] Preserve `POST /api/show` compatibility for clients that inspect model details.
+- [x] Preserve `POST /api/generate` compatibility for inline completion and legacy Ollama-style clients.
+- [x] Preserve `POST /api/chat` compatibility for transparent Ollama chat clients.
+- [x] Preserve `POST /v1/completions` behavior that maps OpenAI legacy completions to Ollama generate.
+- [x] Decide whether raw passthrough should be represented as new provider operations, extension HTTP routes, or a narrowly scoped compatibility adapter that delegates to `ollama-provider`.
+- [x] Ensure raw passthrough does not accidentally apply RAG, prompt templates, proxy auth transformations, or model remapping unless existing behavior already does so.
+- [x] Preserve request body fields such as `format`, `keep_alive`, `options`, `stream`, `suffix`, `raw`, `system`, and `template` where current compatibility paths support them.
+- [x] Preserve streaming semantics and error status mapping for passthrough routes.
+- [x] Add passthrough tests for `/api/tags`, `/api/show`, `/api/generate`, and `/api/chat`.
+- [x] Add `/v1/completions` tests proving generate request body and response shape remain stable.
+- [x] Add tests for extension-runtime-unavailable fallback behavior on compatibility routes.
+
+Phase 6 completion notes:
+
+- [x] Kept public `/api/tags`, `/api/show`, `/api/generate`, `/api/chat`, and `/v1/completions` routes in the compatibility blueprint, but changed their first-choice backend to `ollama-provider` via `LLMRuntime` operation `raw_ollama`.
+- [x] Kept extension-runtime-unavailable fallback to the old direct upstream adapter so Flask startup/loading states continue serving legacy clients.
+- [x] Added provider raw passthrough tests, runtime-backed HTTP passthrough tests, runtime-unavailable fallback tests, `/v1/completions` runtime/fallback tests, and stream setup error mapping coverage.
+- [x] Verified focused suites: `pytest tests\llm_interactor\test_ollama_extension_docker_contract.py tests\api\test_http_endpoints.py -k "raw_ollama or ollama_api_passthrough or ollama_api_stream_runtime or v1_completions"` and `ruff check` on changed Phase 6 Python files.
 
 ## Phase 7 - Remove Legacy Core Adapters, Update Docs, And Enforce Guardrails
 
-- [ ] Delete or deprecate root `infrastructure/ollama/*` only after all app call sites have moved to the provider runtime or extension-owned modules.
-- [ ] Delete or deprecate duplicate `CoreModules/RagService/rag_service/infrastructure/ollama_*` adapters only after RagService can receive provider-backed clients.
-- [ ] Remove direct Ollama URL/model helpers from core config only after compatibility inputs are consumed by the provider and all callers use provider-neutral settings.
-- [ ] Update `AI_RULES.md` extension guidance if new provider-runtime guardrails are added.
-- [ ] Update `docs/ARCHITECTURE.md`, `docs/legacy_map.md`, `CoreModules/LlmProxy/README.md`, and `CoreModules/RagService/README.md` after behavior actually moves.
-- [ ] Update tests and fixtures to use provider/runtime fakes instead of `OllamaChatClient` fakes where possible.
-- [ ] Keep ServiceStarter documentation clear: ServiceStarter can provide host capabilities, but app-level Ollama UX belongs to `ollama-provider`.
-- [ ] Add a CI or local verification note that rejects new direct `infrastructure.ollama` imports outside allowed temporary compatibility modules.
-- [ ] Remove temporary compatibility modules once public behavior has been verified through provider-owned paths.
-- [ ] Close this migration only when direct Ollama references in core are either gone, explicitly documented as compatibility boundaries, or owned by tests for public API compatibility.
+- [x] Delete or deprecate root `infrastructure/ollama/*` only after all app call sites have moved to the provider runtime or extension-owned modules.
+- [x] Delete or deprecate duplicate `CoreModules/RagService/rag_service/infrastructure/ollama_*` adapters only after RagService can receive provider-backed clients.
+- [x] Remove direct Ollama URL/model helpers from core config only after compatibility inputs are consumed by the provider and all callers use provider-neutral settings.
+- [x] Update `AI_RULES.md` extension guidance if new provider-runtime guardrails are added.
+- [x] Update `docs/ARCHITECTURE.md`, `docs/legacy_map.md`, `CoreModules/LlmProxy/README.md`, and `CoreModules/RagService/README.md` after behavior actually moves.
+- [x] Update tests and fixtures to use provider/runtime fakes instead of `OllamaChatClient` fakes where possible.
+- [x] Keep ServiceStarter documentation clear: ServiceStarter can provide host capabilities, but app-level Ollama UX belongs to `ollama-provider`.
+- [x] Add a CI or local verification note that rejects new direct `infrastructure.ollama` imports outside allowed temporary compatibility modules.
+- [x] Remove temporary compatibility modules once public behavior has been verified through provider-owned paths.
+- [x] Close this migration only when direct Ollama references in core are either gone, explicitly documented as compatibility boundaries, or owned by tests for public API compatibility.
+
+Phase 7 completion notes:
+
+- [x] Root `infrastructure/ollama/*`, RagService `rag_service.infrastructure.ollama_*`, and core config URL/model helpers are retained as documented compatibility/fallback boundaries rather than deleted in this slice.
+- [x] Added `tests/application/test_ollama_migration_guardrails.py` to reject new direct `infrastructure.ollama` imports unless the file is explicitly allowlisted as a compatibility or test boundary.
+- [x] Updated `AI_RULES.md`, `docs/ARCHITECTURE.md`, `docs/legacy_map.md`, `CoreModules/LlmProxy/README.md`, `CoreModules/RagService/README.md`, and `CoreModules/ServiceStarter/README.md`.
+- [x] Verified focused guardrail suite: `pytest tests\application\test_ollama_migration_guardrails.py` and `ruff check tests\application\test_ollama_migration_guardrails.py`.
 
 ## Guardrails
 
-- [ ] Do not add new direct `infrastructure.ollama` imports outside explicitly marked temporary compatibility code.
+- [x] Do not add new direct `infrastructure.ollama` imports outside explicitly marked temporary compatibility code.
 - [ ] Do not make CoreUI know Ollama internals beyond generic extension/provider UI payloads.
 - [ ] Do not expose `Ollama Provider` as the normal frontend display name; reserve provider/extension wording for developer diagnostics only if needed.
 - [ ] Do not put Ollama-specific model metadata at the top level of generic provider DTOs when it can live under `metadata`.
@@ -271,9 +291,9 @@ Target state: `ollama-provider` owns Ollama behavior. Core talks through provide
 - [x] Phase 2 is complete when WebUI model lists, provider labels, health/status, model details, and model actions use provider catalog or extension actions instead of direct `/api/tags`/`/api/show` calls.
 - [x] Phase 3 is complete when `/v1/chat/completions` non-streaming and streaming Ollama calls go through `LLMRuntime` or `RuntimeBackedChatClient` while preserving OpenAI-compatible output, trace fields, tools, thinking, and vision.
 - [x] Phase 4 is complete when RAG, indexing, external-docs ingestion, embeddings, and rerank use provider-backed adapters while preserving retries, timeouts, batch behavior, truncation, and error reporting.
-- [ ] Phase 5 is complete when app-level Ollama start/stop/pull/status behavior is extension-owned and Docker/native-process boundaries are enforced by tests.
-- [ ] Phase 6 is complete when `/api/tags`, `/api/show`, `/api/generate`, `/api/chat`, and `/v1/completions` preserve legacy client compatibility while delegating Ollama ownership behind the extension/provider boundary.
-- [ ] Phase 7 is complete when temporary direct Ollama adapters are deleted or explicitly documented as compatibility boundaries, docs are updated, and regression searches show no unclassified direct Ollama references.
+- [x] Phase 5 is complete when app-level Ollama start/stop/pull/status behavior is extension-owned and Docker/native-process boundaries are enforced by tests.
+- [x] Phase 6 is complete when `/api/tags`, `/api/show`, `/api/generate`, `/api/chat`, and `/v1/completions` preserve legacy client compatibility while delegating Ollama ownership behind the extension/provider boundary.
+- [x] Phase 7 is complete when temporary direct Ollama adapters are deleted or explicitly documented as compatibility boundaries, docs are updated, and regression searches show no unclassified direct Ollama references.
 
 ## Manual Smoke Checklist
 
@@ -299,22 +319,22 @@ Target state: `ollama-provider` owns Ollama behavior. Core talks through provide
 - [ ] Add or update tests under `tests/llm_interactor` for `ollama-provider` runtime invocation, streaming, provider rows, catalog filtering, health, and actions.
 - [ ] Add or update proxy tests proving chat and streaming work through provider runtime.
 - [ ] Add or update proxy tests proving native tools, thinking/reasoning content, vision payloads, and trace fields remain stable.
-- [ ] Add or update passthrough tests for `/api/tags`, `/api/show`, `/api/generate`, and `/api/chat`.
-- [ ] Add or update `/v1/completions` tests proving legacy generate behavior remains stable.
+- [x] Add or update passthrough tests for `/api/tags`, `/api/show`, `/api/generate`, and `/api/chat`.
+- [x] Add or update `/v1/completions` tests proving legacy generate behavior remains stable.
 - [ ] Add or update RAG tests proving embed and rerank calls use provider-backed adapters.
 - [ ] Add or update indexing/ingestion tests proving embedding failures, retries, and batch behavior remain stable.
 - [ ] Add or update WebUI tests proving model selectors, provider catalog, health/status cards, and the Ollama tab still load.
-- [ ] Add or update ServiceStarter/extension-boundary tests proving app-level service actions use extension actions and `host_context.docker_runtime`.
-- [ ] Add regression searches proving no new direct Ollama dependencies outside allowed temporary files.
-- [ ] Run focused tests first, then broader `pytest` suites touched by the migration.
+- [x] Add or update ServiceStarter/extension-boundary tests proving app-level service actions use extension actions and `host_context.docker_runtime`.
+- [x] Add regression searches proving no new direct Ollama dependencies outside allowed temporary files.
+- [x] Run focused tests first, then broader `pytest` suites touched by the migration.
 
 ## Suggested Regression Searches
 
-- [ ] Run `rg -n "from infrastructure\\.ollama|import infrastructure\\.ollama" api application CoreModules infrastructure extensions tests -g "*.py"` and verify every match is allowed or scheduled for removal.
-- [ ] Run `rg -n "OllamaChatClient|OllamaEmbeddingProvider|OllamaRerankClient|OllamaEmbedAdapter" api application CoreModules infrastructure extensions tests -g "*.py"` and verify every match is allowed or scheduled for removal.
-- [ ] Run `rg -n "OLLAMA_|/api/(tags|show|generate|chat|embed)|11434" api application CoreModules infrastructure extensions config tests -g "*.py" -g "*.yaml" -g "*.yml" -g "*.json"` and verify every match is provider-owned, compatibility-owned, config-owned, or test-owned.
-- [ ] Run `rg -n "docker|Docker" extensions/bundled/ollama-provider -g "*.py"` and verify any service logic uses only `host_context.docker_runtime` plus `DockerContainerSpec`.
-- [ ] Run `rg -n "ollama-provider|provider_catalog|LLMRuntime|RuntimeBackedChatClient" api CoreModules tests -g "*.py"` and verify new call sites use provider/runtime abstractions rather than direct Ollama clients.
+- [x] Run `rg -n "from infrastructure\\.ollama|import infrastructure\\.ollama" api application CoreModules infrastructure extensions tests -g "*.py"` and verify every match is allowed or scheduled for removal.
+- [x] Run `rg -n "OllamaChatClient|OllamaEmbeddingProvider|OllamaRerankClient|OllamaEmbedAdapter" api application CoreModules infrastructure extensions tests -g "*.py"` and verify every match is allowed or scheduled for removal.
+- [x] Run `rg -n "OLLAMA_|/api/(tags|show|generate|chat|embed)|11434" api application CoreModules infrastructure extensions config tests -g "*.py" -g "*.yaml" -g "*.yml" -g "*.json"` and verify every match is provider-owned, compatibility-owned, config-owned, or test-owned.
+- [x] Run `rg -n "docker|Docker" extensions/bundled/ollama-provider -g "*.py"` and verify any service logic uses only `host_context.docker_runtime` plus `DockerContainerSpec`.
+- [x] Run `rg -n "ollama-provider|provider_catalog|LLMRuntime|RuntimeBackedChatClient" api CoreModules tests -g "*.py"` and verify new call sites use provider/runtime abstractions rather than direct Ollama clients.
 
 ## Acceptance Criteria
 

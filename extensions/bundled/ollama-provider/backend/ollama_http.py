@@ -16,6 +16,7 @@ import time
 from collections.abc import Iterator
 from typing import Any
 
+import requests
 
 class OllamaHttpError(Exception):
     """CLI exited non-zero or produced invalid output."""
@@ -176,6 +177,57 @@ def invoke_tags(*, base_url: str, timeout: float = 30.0) -> dict[str, Any]:
     )
 
 
+def invoke_raw_json(
+    *,
+    base_url: str,
+    api_segment: str,
+    method: str = "POST",
+    body: dict[str, Any] | None = None,
+    params: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: float = 600.0,
+) -> dict[str, Any]:
+    """Forward a raw Ollama-compatible JSON request."""
+    base = base_url.rstrip("/")
+    segment = api_segment.strip().lstrip("/")
+    url = f"{base}/api/{segment}"
+    if method.upper() == "GET":
+        resp = requests.get(url, params=params or {}, timeout=timeout, headers=headers or None)
+    else:
+        resp = requests.request(method.upper(), url, json=dict(body or {}), timeout=timeout, headers=headers or None)
+    resp.raise_for_status()
+    try:
+        return resp.json()
+    finally:
+        resp.close()
+
+
+def iter_raw_lines(
+    *,
+    base_url: str,
+    api_segment: str,
+    body: dict[str, Any],
+    headers: dict[str, str] | None = None,
+    read_timeout: float = 86400.0,
+) -> Iterator[str]:
+    """Forward a raw Ollama-compatible streaming request and yield NDJSON lines."""
+    url = f"{base_url.rstrip('/')}/api/{api_segment.strip().lstrip('/')}"
+    resp = requests.post(
+        url,
+        json=dict(body or {}),
+        timeout=(30.0, max(float(read_timeout), 60.0)),
+        stream=True,
+        headers=headers or None,
+    )
+    resp.raise_for_status()
+    try:
+        for line in resp.iter_lines(decode_unicode=True):
+            if line:
+                yield str(line)
+    finally:
+        resp.close()
+
+
 def invoke_show(*, base_url: str, name: str, timeout: float = 120.0) -> dict[str, Any]:
     """POST Ollama ``/api/show`` via OllamaInteractor HTTP helpers, else CLI."""
     oh = _ollama_interactor_http_module()
@@ -334,7 +386,9 @@ __all__ = [
     "invoke_generate",
     "invoke_ping",
     "invoke_rerank",
+    "invoke_raw_json",
     "invoke_show",
     "invoke_tags",
+    "iter_raw_lines",
     "iter_pull_objects",
 ]

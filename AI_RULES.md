@@ -63,6 +63,7 @@ Ambiguous “WebUI” in conversation: clarify—**`WebUI/` data folder**, **Web
 - **Backend:** Must define a `create_provider(host_context, manifest)` entry point in the configured backend module.
 - **UI Integration:** Extensions can provide `tab_ui` (prefer `iframe_tab` for complex UIs) or declarative `ui_schema` for settings/status pages.
 - **Docker contract:** Extensions MUST NOT call Docker directly, shell out to Docker, resolve Docker CLI paths, use Docker SDK clients, or call CoreUI routes such as `/api/webui/docker/*`. Extension-owned containers MUST be declared with `DockerContainerSpec` and managed only through `host_context.docker_runtime`.
+- **Ollama ownership:** `ollama-provider` is the canonical owner of Ollama provider behavior. Core code should use `LLMRuntime`, provider catalog/actions, or explicitly documented compatibility adapters for public `/api/*` and `/v1/completions` behavior. Do not add new direct `infrastructure.ollama` imports without updating the migration guardrail allowlist and documenting why the import is a temporary compatibility boundary.
 
 ---
 

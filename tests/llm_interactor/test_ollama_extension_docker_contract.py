@@ -5,7 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from llm_interactor import ProviderHostContext
+from llm_interactor import LLMRequest, ProviderHostContext
+from llm_interactor.discovery import load_manifest_from_dir, validate_extension_backend_docker_policy
 
 
 def _load_ollama_provider_module():
@@ -16,6 +17,15 @@ def _load_ollama_provider_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_bundled_ollama_provider_backend_satisfies_docker_policy() -> None:
+    root = Path(__file__).resolve().parents[2]
+    source_dir = root / "extensions" / "bundled" / "ollama-provider"
+    manifest = load_manifest_from_dir(source_dir)
+
+    assert manifest.backend is not None
+    validate_extension_backend_docker_policy(source_dir, manifest.backend.entrypoint)
 
 
 class _ChatClient:
@@ -165,6 +175,57 @@ def test_ollama_extension_model_actions_have_stable_response_shapes(monkeypatch:
     assert refreshed_result == {"ok": True, "message": "Refreshed", "details": {}}
     assert shown[0]["name"] == "tiny-model:latest"
     assert deleted[0]["name"] == "tiny-model:latest"
+
+
+def test_ollama_extension_raw_ollama_operations_delegate_to_provider_http(monkeypatch: Any) -> None:
+    module = _load_ollama_provider_module()
+    raw_calls: list[dict[str, Any]] = []
+    stream_calls: list[dict[str, Any]] = []
+
+    def fake_raw_json(**kwargs):
+        raw_calls.append(dict(kwargs))
+        return {"echo": kwargs.get("body"), "segment": kwargs.get("api_segment")}
+
+    def fake_raw_lines(**kwargs):
+        stream_calls.append(dict(kwargs))
+        yield '{"done":false}'
+        yield '{"done":true}'
+
+    monkeypatch.setattr(module, "invoke_raw_json", fake_raw_json)
+    monkeypatch.setattr(module, "iter_raw_lines", fake_raw_lines)
+
+    provider = _provider(_DockerRuntime(), repo=_Repo(), module=module)
+    response = provider.invoke(
+        LLMRequest(
+            provider_id="ollama",
+            model="tiny-model:latest",
+            operation="raw_ollama",
+            body={"model": "tiny-model:latest", "prompt": "hi", "stream": False},
+            metadata={"api_segment": "generate", "method": "POST", "headers": {"Authorization": "Bearer x"}},
+        )
+    )
+    events = list(
+        provider.stream_invoke(
+            LLMRequest(
+                provider_id="ollama",
+                model="tiny-model:latest",
+                operation="raw_ollama",
+                body={"model": "tiny-model:latest", "messages": [], "stream": True},
+                stream=True,
+                metadata={"api_segment": "chat"},
+            )
+        )
+    )
+
+    assert response.raw == {
+        "echo": {"model": "tiny-model:latest", "prompt": "hi", "stream": False},
+        "segment": "generate",
+    }
+    assert raw_calls[0]["api_segment"] == "generate"
+    assert raw_calls[0]["headers"] == {"Authorization": "Bearer x"}
+    assert stream_calls[0]["api_segment"] == "chat"
+    assert [event.type for event in events] == ["raw_line", "raw_line"]
+    assert [event.data for event in events] == ['{"done":false}', '{"done":true}']
 
 
 def test_ollama_extension_tab_reports_missing_container(monkeypatch: Any) -> None:

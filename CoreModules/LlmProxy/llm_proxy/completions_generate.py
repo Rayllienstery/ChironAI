@@ -9,6 +9,7 @@ from typing import Any
 
 import requests
 from flask import Response, jsonify, request, stream_with_context
+from llm_interactor.contracts import LLMRequest
 
 from llm_proxy.openai_text_completion_format import (
     legacy_completions_stream_line,
@@ -127,6 +128,52 @@ def _openai_to_ollama_generate_body(openai: dict[str, Any], ollama_model: str, p
     return body
 
 
+def _ollama_runtime(w: LlmProxyWiring) -> Any | None:
+    runtime = getattr(w, "llm_runtime", None)
+    registry = getattr(runtime, "registry", None)
+    get_provider = getattr(registry, "get", None)
+    if runtime is None or not callable(get_provider):
+        return None
+    try:
+        return runtime if get_provider("ollama") is not None else None
+    except Exception:
+        return None
+
+
+def _post_generate(w: LlmProxyWiring, ollama_body: dict[str, Any], *, model: str) -> dict[str, Any] | tuple[Response, int]:
+    runtime = _ollama_runtime(w)
+    if runtime is not None:
+        try:
+            response = runtime.invoke(
+                LLMRequest(
+                    provider_id="ollama",
+                    model=model,
+                    operation="raw_ollama",
+                    body=ollama_body,
+                    metadata={"api_segment": "generate", "method": "POST", "timeout": 600.0},
+                )
+            )
+            return response.raw if isinstance(response.raw, dict) else {}
+        except Exception as e:
+            return jsonify({"error": str(e)}), 502
+
+    chat_url = get_configured_ollama_chat_url(w)
+    base = ollama_api_base_from_chat_url(chat_url)
+    url = f"{base}/api/generate"
+
+    try:
+        upstream = requests.post(url, json=ollama_body, timeout=600, stream=False)
+        upstream.raise_for_status()
+    except requests.RequestException as e:
+        return jsonify({"error": str(e)}), 502
+
+    try:
+        data = upstream.json()
+    finally:
+        upstream.close()
+    return data if isinstance(data, dict) else {}
+
+
 def run_legacy_completions_via_ollama_generate(
     w: LlmProxyWiring,
 ) -> Response | tuple[Response, int]:
@@ -152,20 +199,9 @@ def run_legacy_completions_via_ollama_generate(
     ollama_body = _openai_to_ollama_generate_body(openai_body, ollama_tag, prompt)
     client_stream = bool(openai_body.get("stream", False))
 
-    chat_url = get_configured_ollama_chat_url(w)
-    base = ollama_api_base_from_chat_url(chat_url)
-    url = f"{base}/api/generate"
-
-    try:
-        upstream = requests.post(url, json=ollama_body, timeout=600, stream=False)
-        upstream.raise_for_status()
-    except requests.RequestException as e:
-        return jsonify({"error": str(e)}), 502
-
-    try:
-        data = upstream.json()
-    finally:
-        upstream.close()
+    data = _post_generate(w, ollama_body, model=ollama_tag)
+    if isinstance(data, tuple):
+        return data
 
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid response from Ollama"}), 502

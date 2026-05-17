@@ -6,6 +6,7 @@ import { getExtensionTab, runExtensionTabAction } from '../services/api';
 import { useOptionalNotificationCenter } from './NotificationCenterContext';
 import {
   ollamaPullProgressText,
+  ollamaPullRateText,
   startOllamaPullJob,
   subscribeOllamaPullJob,
   cancelOllamaPullJob,
@@ -223,6 +224,7 @@ function PullModelProgressView({ job, onCancelDownload }) {
 
   const pct = progress.percent;
   const progressText = ollamaPullProgressText(progress);
+  const rateText = running && !failed && !cancelled ? ollamaPullRateText(progress) : '';
   const tone = progress.error ? 'error' : cancelled ? 'cancelled' : '';
   const exiting = dismissPhase === 'exiting';
   return (
@@ -242,6 +244,7 @@ function PullModelProgressView({ job, onCancelDownload }) {
         <div>
           <strong>{progress.model || 'Ollama model'}</strong>
           <span>{progressText}</span>
+          {rateText ? <span className="extensions-runtime-pull-progress__rate">{rateText}</span> : null}
         </div>
         {pct != null ? <b>{pct}%</b> : null}
       </div>

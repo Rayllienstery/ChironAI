@@ -8,7 +8,7 @@ Installable package **`llm-proxy`**: **OpenAI-** and **Anthropic Messages–** c
 | GET | `/v1/models` | **OpenAI clients:** `object`/`data` list of **build ids** plus optional **ChironAI-Autocomplete** when configured. Each OpenAI-shaped row includes Chiron extension **`supports_vision`: always `true`** so clients (e.g. Kilo) do not hide image attachment; purely text-only upstream models may still reject or ignore images. **Anthropic clients:** send header `anthropic-version` (any non-empty value, e.g. `2023-06-01`) for Anthropic-shaped `data` / `first_id` / `has_more`. |
 | POST | `/v1/messages` | **Anthropic Messages API** — translated to the same pipeline as `POST /v1/chat/completions` (RAG, tools, streaming). |
 | POST | `/v1/chat/completions` | Chat with optional RAG, tools, streaming |
-| POST | `/v1/completions` | OpenAI legacy completions (`choices[].text`) — implemented as transparent **`POST …/api/generate`** upstream (same as raw Ollama). No RAG, no WebUI prompt template, no web supplement. Optional `LLM_PROXY_COMPLETIONS_RAW` (`true` by default: sets Ollama `raw`). Zed **edit prediction** (`open_ai_compatible_api`): use `http://<host>:<port>/v1/completions`. |
+| POST | `/v1/completions` | OpenAI legacy completions (`choices[].text`) — implemented as transparent **`POST …/api/generate`** through `ollama-provider` when the extension runtime is available, with direct upstream fallback while the runtime is unavailable. No RAG, no WebUI prompt template, no web supplement. Optional `LLM_PROXY_COMPLETIONS_RAW` (`true` by default: sets Ollama `raw`). Zed **edit prediction** (`open_ai_compatible_api`): use `http://<host>:<port>/v1/completions`. |
 | POST | `/v1/files/apply-edit` | Apply a line/column range edit in the workspace |
 | POST | `/v1/external-docs/ingest` | Ingest an external-docs source (host-dependent) |
 | GET | `/api/tags` | Transparent proxy to upstream Ollama (model list) |
@@ -27,7 +27,12 @@ Use **`POST /v1/chat/completions`** (or **`POST /v1/messages`** for Anthropic-sh
 - **LLM Proxy builds** from app settings (`llm_proxy_builds`): `dumb` (RAG + Ollama chat), or a **concrete Ollama model id** for the same RAG/template path as a plain tag.
 - **SQLite proxy history** (WebUI **Proxy Logs**, `session_id=proxy`) for completed requests, plus RAG timing metadata where applicable (`GET /api/webui/proxy-logs`).
 
-The **`/api/tags`**, **`/api/show`**, **`/api/generate`**, and **`/api/chat`** routes exist so clients can point at this host as an **Ollama base URL** (e.g. Zed). They **forward the JSON body to upstream Ollama** and do **not** apply RAG, WebUI prompt templates, build presets, or the same **proxy** logging as `/v1/chat/completions`. Prefer **`/v1/chat/completions`** for observability and RAG unless you intentionally want raw Ollama.
+The **`/api/tags`**, **`/api/show`**, **`/api/generate`**, and **`/api/chat`** routes exist so clients can point at this host as an **Ollama base URL** (e.g. Zed). They **forward the JSON body to Ollama through `ollama-provider`** when the extension runtime is ready, and fall back to direct upstream HTTP while the runtime is unavailable. They do **not** apply RAG, WebUI prompt templates, build presets, or the same **proxy** logging as `/v1/chat/completions`. Prefer **`/v1/chat/completions`** for observability and RAG unless you intentionally want raw Ollama.
+
+Compatibility ownership is intentional: `llm_proxy/ollama_upstream.py` and
+`llm_proxy/completions_generate.py` are public-route adapters, not new Ollama
+business logic owners. New Ollama provider behavior belongs in the bundled
+`ollama-provider` extension and should be reached through `LLMRuntime`.
 
 ### Vision (multimodal images) on `POST /v1/chat/completions`
 
@@ -120,6 +125,7 @@ The host must supply:
 - **Workspace**: `workspace_root: Callable[[], Path]` — repository root for path resolution and apply-edit.
 - **RAG**: `get_rag_answer_params`, `build_rag_context`, `prepare_ollama_messages`, factories for `RagContext` / `RagQuestionRequest`, prompt resolution (`get_rag_prompt_prefix_suffix`, `rag_prompt_file_exists`).
 - **Observability**: proxy status + trace hooks (`set_proxy_status`, `set_current_trace`, …), `log_webui_error`, optional session/logs for request history.
+- **Provider runtime**: `llm_runtime` / `provider_registry` should include `provider_id="ollama"` when the extension runtime is available. Raw `/api/*` passthrough and `/v1/completions` use this runtime first.
 - **Autocomplete**: `get_autocomplete_ollama_model` on `LlmProxyWiring` — returns the resolved Ollama tag for the autocomplete logical id (or `None` if unset); used to list `/v1/models` and route completions without RAG.
 - **External docs (optional)**: `LlmProxyExternalDocsBundle` with merged RAG / GitHub ingest callables; if `available` is false, merged retrieval is skipped.
 - **Web supplement (optional)**: `build_web_supplement_for_proxy` on `LlmProxyWiring`—free DuckDuckGo snippets from [`CoreModules/WebInteraction`](../WebInteraction/README.md), gated by saved WebUI settings and env (`WEB_INTERACTION_ENABLED`, `WEB_INTERACTION_MAX_RESULTS`). Injected via `prepare_ollama_messages(..., web_supplement=...)`.

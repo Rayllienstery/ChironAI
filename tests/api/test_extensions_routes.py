@@ -23,6 +23,9 @@ def _disable_background_extension_bootstrap(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 class _FakeExtensionsService:
+    def __init__(self) -> None:
+        self.action_calls: list[dict[str, Any]] = []
+
     def registry_entries(self) -> list[dict[str, Any]]:
         return [{"id": "ollama-provider", "title": "Ollama"}]
 
@@ -83,6 +86,24 @@ class _FakeExtensionsService:
 
     def disable(self, extension_id: str) -> dict[str, Any]:
         return {"id": extension_id, "enabled": False, "restart_required": True}
+
+    def run_extension_action(
+        self,
+        extension_id: str,
+        action_id: str,
+        *,
+        payload: dict[str, Any],
+        runtime: Any | None = None,
+    ) -> dict[str, Any]:
+        self.action_calls.append(
+            {
+                "extension_id": extension_id,
+                "action_id": action_id,
+                "payload": payload,
+                "runtime": runtime,
+            }
+        )
+        return {"ok": True, "message": f"{action_id} ok", "details": {"action_id": action_id}}
 
 
 def test_extensions_routes_expose_registry_and_ui() -> None:
@@ -176,6 +197,53 @@ def test_extension_lifecycle_routes_return_restart_required() -> None:
     assert (disable.get_json() or {}).get("restart_required") is True
     assert (enable.get_json() or {}).get("restart_required") is True
     assert (remove.get_json() or {}).get("restart_required") is True
+
+
+def test_ollama_extension_start_stop_actions_are_invoked_through_generic_route() -> None:
+    _ensure_root_on_path()
+    from api.http.rag_routes import create_app
+
+    svc = _FakeExtensionsService()
+    runtime = object()
+    app = create_app()
+    app.extensions["llm_extensions_service"] = svc
+    app.extensions["llm_interactor_runtime"] = runtime
+    client = app.test_client()
+
+    start = client.post("/api/webui/extensions/ollama-provider/actions/start_service", json={})
+    stop = client.post("/api/webui/extensions/ollama-provider/actions/stop_service", json={})
+
+    assert start.status_code == 200
+    assert stop.status_code == 200
+    assert (start.get_json() or {}).get("message") == "start_service ok"
+    assert (stop.get_json() or {}).get("message") == "stop_service ok"
+    assert svc.action_calls == [
+        {"extension_id": "ollama-provider", "action_id": "start_service", "payload": {}, "runtime": runtime},
+        {"extension_id": "ollama-provider", "action_id": "stop_service", "payload": {}, "runtime": runtime},
+    ]
+
+
+def test_ollama_compat_start_stop_routes_delegate_to_extension_actions() -> None:
+    _ensure_root_on_path()
+    from api.http.rag_routes import create_app
+
+    svc = _FakeExtensionsService()
+    runtime = object()
+    app = create_app()
+    app.extensions["llm_extensions_service"] = svc
+    app.extensions["llm_interactor_runtime"] = runtime
+    client = app.test_client()
+
+    start = client.post("/api/webui/ollama/start", json={})
+    stop = client.post("/api/webui/ollama/stop", json={})
+
+    assert start.status_code == 200
+    assert stop.status_code == 200
+    assert (start.get_json() or {}).get("output") == "start_service ok"
+    assert (stop.get_json() or {}).get("output") == "stop_service ok"
+    assert [call["action_id"] for call in svc.action_calls] == ["start_service", "stop_service"]
+    assert {call["extension_id"] for call in svc.action_calls} == {"ollama-provider"}
+    assert all(call["runtime"] is runtime for call in svc.action_calls)
 
 
 def test_extension_asset_route_serves_installed_assets_and_blocks_escape(tmp_path: Path) -> None:

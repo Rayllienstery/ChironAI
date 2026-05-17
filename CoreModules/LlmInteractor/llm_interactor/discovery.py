@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import json
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -53,7 +54,7 @@ def _backend_source_paths(source_dir: Path, entrypoint: str) -> list[Path]:
     py_path = source_dir / f"{module_rel}.py"
     package_init = source_dir / module_rel / "__init__.py"
     if py_path.is_file():
-        return [py_path]
+        return sorted(py_path.parent.rglob("*.py"))
     if package_init.is_file():
         return sorted(package_init.parent.rglob("*.py"))
     return []
@@ -63,9 +64,6 @@ def validate_extension_backend_docker_policy(source_dir: Path, entrypoint: str) 
     """Reject extension backends that bypass host_context.docker_runtime."""
 
     banned_patterns = [
-        "import subprocess",
-        "from subprocess import",
-        "subprocess.",
         "class DockerRunner",
         "_docker_executable",
         "_resolved_" + "docker_executable",
@@ -86,6 +84,8 @@ def validate_extension_backend_docker_policy(source_dir: Path, entrypoint: str) 
             needle = pattern.lower() if haystack is lowered else pattern
             if needle in haystack:
                 violations.append(f"{path.relative_to(source_dir)} contains {pattern!r}")
+        if re.search(r"subprocess\.\w+\s*\([^\n]*(?:[\"']docker[\"']|docker\s)", text):
+            violations.append(f"{path.relative_to(source_dir)} calls Docker through subprocess")
 
     if violations:
         details = "; ".join(violations)

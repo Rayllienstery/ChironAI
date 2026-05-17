@@ -16,7 +16,60 @@ let state = {
 /** @type {AbortController | null} */
 let pullAbortController = null;
 
+const SPEED_MIN_SAMPLE_INTERVAL_S = 0.5;
+const SPEED_WARMUP_S = 2;
+const SPEED_STALL_HIDE_S = 8;
+const SPEED_MIN_BPS = 256;
+
+/** @type {{ lastCompleted: number, lastSampleAt: number, firstSampleAt: number, lastProgressAt: number, smoothedBytesPerSec: number }} */
+let speedSampler = {
+  lastCompleted: 0,
+  lastSampleAt: 0,
+  firstSampleAt: 0,
+  lastProgressAt: 0,
+  smoothedBytesPerSec: 0,
+};
+
+function resetPullSpeedSampler() {
+  speedSampler = {
+    lastCompleted: 0,
+    lastSampleAt: 0,
+    firstSampleAt: 0,
+    lastProgressAt: 0,
+    smoothedBytesPerSec: 0,
+  };
+}
+
+function updatePullSpeedSampler(progress) {
+  if (!progress || progress.done || progress.cancelled || progress.error) return;
+  const completed = Number(progress.completed || 0);
+  const now = Date.now();
+  if (completed > speedSampler.lastCompleted) {
+    speedSampler.lastProgressAt = now;
+  }
+  if (completed <= 0) return;
+  if (speedSampler.lastSampleAt <= 0) {
+    speedSampler.lastCompleted = completed;
+    speedSampler.lastSampleAt = now;
+    speedSampler.firstSampleAt = now;
+    return;
+  }
+  const deltaBytes = completed - speedSampler.lastCompleted;
+  const deltaSec = (now - speedSampler.lastSampleAt) / 1000;
+  if (deltaBytes > 0 && deltaSec >= SPEED_MIN_SAMPLE_INTERVAL_S) {
+    const instantBps = deltaBytes / deltaSec;
+    speedSampler.smoothedBytesPerSec = speedSampler.smoothedBytesPerSec <= 0
+      ? instantBps
+      : speedSampler.smoothedBytesPerSec * 0.7 + instantBps * 0.3;
+    speedSampler.lastCompleted = completed;
+    speedSampler.lastSampleAt = now;
+  }
+}
+
 function emit() {
+  if (state.running && state.progress) {
+    updatePullSpeedSampler(state.progress);
+  }
   listeners.forEach((listener) => listener(state));
 }
 
@@ -66,6 +119,55 @@ export function ollamaPullProgressText(progress) {
   if (completed && total) return `Downloaded ${completed} / ${total}`;
   if (completed) return `Downloaded ${completed}`;
   return 'Preparing download';
+}
+
+function formatOllamaSpeed(bytesPerSec) {
+  const speed = formatOllamaBytes(bytesPerSec);
+  return speed ? `${speed}/s` : '';
+}
+
+function formatOllamaEta(seconds) {
+  const sec = Math.ceil(Number(seconds) || 0);
+  if (sec <= 0) return '';
+  if (sec < 60) return `~${sec} sec left`;
+  const min = Math.ceil(sec / 60);
+  if (min < 60) return `~${min} min left`;
+  const hr = Math.floor(min / 60);
+  const remMin = min % 60;
+  if (remMin <= 0) return `~${hr} hr left`;
+  return `~${hr} hr ${remMin} min left`;
+}
+
+export function ollamaPullRateText(progress) {
+  if (!progress || progress.cancelled || progress.error || progress.done) return '';
+  const total = Number(progress.total || 0);
+  const completed = Number(progress.completed || 0);
+  if (total <= 0 || completed <= 0) return '';
+
+  const now = Date.now();
+  if (
+    speedSampler.lastProgressAt > 0
+    && now - speedSampler.lastProgressAt > SPEED_STALL_HIDE_S * 1000
+  ) {
+    return '';
+  }
+
+  const smoothedBps = speedSampler.smoothedBytesPerSec;
+  if (!Number.isFinite(smoothedBps) || smoothedBps < SPEED_MIN_BPS) return '';
+  if (
+    speedSampler.firstSampleAt <= 0
+    || now - speedSampler.firstSampleAt < SPEED_WARMUP_S * 1000
+  ) {
+    return '';
+  }
+
+  const remaining = total - completed;
+  if (remaining <= 0) return '';
+
+  const eta = formatOllamaEta(remaining / smoothedBps);
+  const speed = formatOllamaSpeed(smoothedBps);
+  if (!eta || !speed) return '';
+  return `${eta} · ${speed}`;
 }
 
 function pullProgressFromEvent(event, modelName, previousLayers = {}) {
@@ -128,6 +230,7 @@ export function startOllamaPullJob(modelName) {
   }
 
   cancelOllamaPullJob();
+  resetPullSpeedSampler();
   pullAbortController = new AbortController();
   const signal = pullAbortController.signal;
 

@@ -39,7 +39,15 @@ from model_visibility import (  # noqa: E402
     get_hidden_ollama_model_ids,
     patch_hidden_ollama_model_ids,
 )
-from ollama_http import invoke_delete, invoke_ping, invoke_show, invoke_tags, iter_pull_objects  # noqa: E402
+from ollama_http import (  # noqa: E402
+    invoke_delete,
+    invoke_ping,
+    invoke_raw_json,
+    invoke_show,
+    invoke_tags,
+    iter_pull_objects,
+    iter_raw_lines,
+)
 from embed_client import OllamaEmbeddingProvider  # noqa: E402
 from rerank_client import OllamaRerankClient  # noqa: E402
 
@@ -166,6 +174,8 @@ class OllamaProvider:
         return out
 
     def invoke(self, request: LLMRequest) -> LLMResponse:
+        if request.operation == "raw_ollama":
+            return self._invoke_raw_ollama(request)
         if request.operation == "embed":
             return self._invoke_embed(request)
         if request.operation == "rerank":
@@ -197,6 +207,9 @@ class OllamaProvider:
         raise RuntimeError(f"Unsupported invoke operation: {request.operation}")
 
     def stream_invoke(self, request: LLMRequest) -> Iterator[LLMStreamEvent]:
+        if request.operation == "raw_ollama":
+            yield from self._stream_raw_ollama(request)
+            return
         if self._chat_client is None:
             yield LLMStreamEvent(
                 provider_id=self._provider_id,
@@ -376,7 +389,7 @@ class OllamaProvider:
             fut_models.cancel()
             fut_docker.cancel()
         finally:
-            # Do not let a stuck HTTP or Docker CLI probe hold the tab endpoint open.
+            # Do not let a stuck HTTP or Docker runtime probe hold the tab endpoint open.
             pool.shutdown(wait=False, cancel_futures=True)
 
         visible_models = filter_ollama_tag_entries_for_editors(all_models, hidden_frozen)
@@ -711,6 +724,45 @@ class OllamaProvider:
             text=str(response_text or ""),
             raw={"response": response_text},
         )
+
+    def _invoke_raw_ollama(self, request: LLMRequest) -> LLMResponse:
+        metadata = dict(request.metadata or {})
+        segment = str(metadata.get("api_segment") or "").strip()
+        if not segment:
+            raise RuntimeError("raw_ollama api_segment is required")
+        data = invoke_raw_json(
+            base_url=self._base_url(),
+            api_segment=segment,
+            method=str(metadata.get("method") or "POST"),
+            body=dict(request.body or {}),
+            params=metadata.get("params") if isinstance(metadata.get("params"), dict) else None,
+            headers=metadata.get("headers") if isinstance(metadata.get("headers"), dict) else None,
+            timeout=float(metadata.get("timeout") or 600.0),
+        )
+        return LLMResponse(provider_id=self._provider_id, model=request.model, raw=data if isinstance(data, dict) else {})
+
+    def _stream_raw_ollama(self, request: LLMRequest) -> Iterator[LLMStreamEvent]:
+        metadata = dict(request.metadata or {})
+        segment = str(metadata.get("api_segment") or "").strip()
+        if not segment:
+            yield LLMStreamEvent(
+                provider_id=self._provider_id,
+                model=request.model,
+                type="error",
+                data="raw_ollama api_segment is required",
+            )
+            return
+        try:
+            for line in iter_raw_lines(
+                base_url=self._base_url(),
+                api_segment=segment,
+                body=dict(request.body or {}),
+                headers=metadata.get("headers") if isinstance(metadata.get("headers"), dict) else None,
+                read_timeout=float(metadata.get("read_timeout") or 86400.0),
+            ):
+                yield LLMStreamEvent(provider_id=self._provider_id, model=request.model, type="raw_line", data=line)
+        except Exception as e:
+            yield LLMStreamEvent(provider_id=self._provider_id, model=request.model, type="error", data=str(e))
 
     def _docker_runtime(self) -> Any | None:
         runtime = getattr(self._host, "docker_runtime", None)
