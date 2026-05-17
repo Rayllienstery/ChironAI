@@ -145,36 +145,54 @@ Target state: `ollama-provider` owns Ollama behavior. Core talks through provide
 
 ## Phase 3 - Move Chat And Streaming Paths
 
-- [ ] Route non-streaming `/v1/chat/completions` Ollama calls through `LLMRuntime.invoke(...)` or `RuntimeBackedChatClient`.
-- [ ] Route streaming `/v1/chat/completions` Ollama calls through `LLMRuntime.stream_invoke(...)` or `RuntimeBackedChatClient`.
-- [ ] Preserve OpenAI-compatible response shape, including `choices`, deltas, finish reasons, usage estimates, and trace metadata.
-- [ ] Preserve existing Ollama `think` behavior and reasoning-content mapping during the migration.
-- [ ] Preserve native tool call behavior and OpenAI/Ollama tool bridge behavior during the migration.
-- [ ] Preserve vision/multipart message handling during the migration.
-- [ ] Keep prompt assembly and RAG orchestration outside `ollama-provider`; the extension owns the provider call, not the application decision to use RAG.
+- [x] Route non-streaming `/v1/chat/completions` Ollama calls through `LLMRuntime.invoke(...)` or `RuntimeBackedChatClient`.
+- [x] Route streaming `/v1/chat/completions` Ollama calls through `LLMRuntime.stream_invoke(...)` or `RuntimeBackedChatClient`.
+- [x] Preserve OpenAI-compatible response shape, including `choices`, deltas, finish reasons, usage estimates, and trace metadata.
+- [x] Preserve existing Ollama `think` behavior and reasoning-content mapping during the migration.
+- [x] Preserve native tool call behavior and OpenAI/Ollama tool bridge behavior during the migration.
+- [x] Preserve vision/multipart message handling during the migration.
+- [x] Keep prompt assembly and RAG orchestration outside `ollama-provider`; the extension owns the provider call, not the application decision to use RAG.
 - [ ] Move Ollama-specific request-body formation into the provider where it belongs, leaving proxy code provider-neutral where feasible.
 - [ ] Replace direct imports of `infrastructure.ollama.model_capabilities`, `openai_ollama_tool_bridge`, and related helpers in proxy code with provider/runtime-owned helpers or a clearly temporary compatibility module.
-- [ ] Add proxy tests proving non-streaming chat still works through provider runtime.
-- [ ] Add proxy tests proving streaming chat still works through provider runtime.
-- [ ] Add proxy tests proving native tools, reasoning content, and vision payloads retain their public response shape.
+- [x] Add proxy tests proving non-streaming chat still works through provider runtime.
+- [x] Add proxy tests proving streaming chat still works through provider runtime.
+- [x] Add proxy tests proving native tools, reasoning content, and vision payloads retain their public response shape.
 - [ ] Add trace tests proving provider id, model id, timings, Ollama payload metrics, and tool-call diagnostics remain visible.
+
+### Phase 3 Verification Notes
+
+- [x] `/v1/chat/completions` non-streaming now reaches the bundled Ollama provider through `RuntimeBackedChatClient` and `LLMRuntime.invoke(..., operation="chat_api")` once extension runtime bootstrap is ready.
+- [x] `/v1/chat/completions` streaming now reaches the bundled Ollama provider through `RuntimeBackedChatClient` and `LLMRuntime.stream_invoke(..., operation="chat_api_stream_events")` once extension runtime bootstrap is ready.
+- [x] Runtime-unavailable startup behavior still falls back to the legacy chat client.
+- [x] `pytest tests/api/test_http_endpoints.py` passed: 116 tests.
+- [x] `pytest tests/llm_interactor/test_runtime.py` passed: 10 tests.
 
 ## Phase 4 - Move Embed/Rerank And RAG/Indexing Callers
 
-- [ ] Replace root `infrastructure.ollama.embed_client.OllamaEmbeddingProvider` usage with a provider-backed embedding adapter.
-- [ ] Replace root `infrastructure.ollama.rerank_client.OllamaRerankClient` usage with a provider-backed rerank adapter.
-- [ ] Replace `CoreModules/RagService/rag_service/infrastructure/ollama_embedding.py` with a provider-backed adapter or mark it as temporary compatibility until RagService can receive provider clients through its container.
-- [ ] Replace `CoreModules/RagService/rag_service/infrastructure/ollama_rerank.py` with a provider-backed adapter or mark it as temporary compatibility until RagService can receive provider clients through its container.
-- [ ] Replace `CoreModules/RagService/rag_service/infrastructure/ollama_chat.py` with `RuntimeBackedChatClient` or another provider-backed chat adapter.
-- [ ] Update `rag_service.infrastructure.container` so default chat/embed/rerank clients can be supplied by `LlmInteractor` runtime when available.
-- [ ] Keep RAG prompt building, retrieval, chunking, and Qdrant ownership inside RAG modules; only the Ollama provider calls move.
-- [ ] Replace `CoreModules/WebUIBackend` local ingestion direct embed calls with a provider-backed embed call or a documented temporary compatibility adapter.
-- [ ] Replace external-docs ingestion direct `OllamaEmbedAdapter` usage in proxy wiring with a provider-backed embed adapter.
-- [ ] Preserve batch embedding behavior, timeout behavior, retry behavior, and input truncation behavior.
-- [ ] Preserve rerank fallback behavior where current code falls back from `/api/rerank` to `/api/generate`.
-- [ ] Add RAG unit tests proving `build_rag_context` and indexing paths use provider-backed embeddings.
-- [ ] Add RAG tests proving rerank can succeed and fail through the provider-backed adapter.
-- [ ] Add ingestion tests proving embed failures are still reported with useful counts/errors.
+- [x] Replace root `infrastructure.ollama.embed_client.OllamaEmbeddingProvider` usage with a provider-backed embedding adapter.
+- [x] Replace root `infrastructure.ollama.rerank_client.OllamaRerankClient` usage with a provider-backed rerank adapter.
+- [x] Replace `CoreModules/RagService/rag_service/infrastructure/ollama_embedding.py` with a provider-backed adapter or mark it as temporary compatibility until RagService can receive provider clients through its container.
+- [x] Replace `CoreModules/RagService/rag_service/infrastructure/ollama_rerank.py` with a provider-backed adapter or mark it as temporary compatibility until RagService can receive provider clients through its container.
+- [x] Replace `CoreModules/RagService/rag_service/infrastructure/ollama_chat.py` with `RuntimeBackedChatClient` or another provider-backed adapter.
+- [x] Update `rag_service.infrastructure.container` so default chat/embed/rerank clients can be supplied by `LlmInteractor` runtime when available.
+- [x] Keep RAG prompt building, retrieval, chunking, and Qdrant ownership inside RAG modules; only the Ollama provider calls move.
+- [x] Replace `CoreModules/WebUIBackend` local ingestion direct embed calls with a provider-backed embed call or a documented temporary compatibility adapter.
+- [x] Replace external-docs ingestion direct `OllamaEmbedAdapter` usage in proxy wiring with a provider-backed embed adapter.
+- [x] Preserve batch embedding behavior, timeout behavior, retry behavior, and input truncation behavior.
+- [x] Preserve rerank fallback behavior where current code falls back from `/api/rerank` to `/api/generate`.
+- [x] Add RAG unit tests proving `build_rag_context` and indexing paths use provider-backed embeddings.
+- [x] Add RAG tests proving rerank can succeed and fail through the provider-backed adapter.
+- [x] Add ingestion tests proving embed failures are still reported with useful counts/errors.
+
+### Phase 4 Verification Notes
+
+- [x] Proxy RAG dependencies now wrap embed and rerank clients with lazy provider-runtime adapters when the extension manager is available.
+- [x] External-docs ingestion no longer constructs `OllamaEmbedAdapter` in proxy wiring; it receives the provider-backed embedding adapter used by proxy RAG.
+- [x] `CoreModules/WebUIBackend` local Markdown ingestion now calls the extension-owned `ollama-provider` HTTP helper instead of root `infrastructure.ollama` embed helpers.
+- [x] `rag_service.infrastructure.container` can supply runtime-backed chat, embed, and rerank clients while preserving legacy fallback clients for standalone callers.
+- [x] `PYTHONPATH=CoreModules/ErrorManager;$PYTHONPATH pytest tests/rag_service tests/application/test_rag_use_cases.py tests/rag_service/test_provider_runtime_adapters.py` passed: 37 tests.
+- [x] `pytest tests/external_docs_rag` passed: 2 tests.
+- [x] `pytest tests/webui/test_ingest_markdown_local.py` passed: 2 tests.
 
 ## Phase 5 - Move Service Actions And Docker/Native Process Boundaries
 
@@ -251,8 +269,8 @@ Target state: `ollama-provider` owns Ollama behavior. Core talks through provide
 - [ ] Phase 0 is complete when every direct Ollama dependency is inventoried, classified, and protected by at least one baseline test or documented compatibility reason.
 - [ ] Phase 1 is complete when `ollama-provider` can be discovered, described, listed in provider catalog, invoked in unit tests, and used as the default provider id without blocking startup.
 - [x] Phase 2 is complete when WebUI model lists, provider labels, health/status, model details, and model actions use provider catalog or extension actions instead of direct `/api/tags`/`/api/show` calls.
-- [ ] Phase 3 is complete when `/v1/chat/completions` non-streaming and streaming Ollama calls go through `LLMRuntime` or `RuntimeBackedChatClient` while preserving OpenAI-compatible output, trace fields, tools, thinking, and vision.
-- [ ] Phase 4 is complete when RAG, indexing, external-docs ingestion, embeddings, and rerank use provider-backed adapters while preserving retries, timeouts, batch behavior, truncation, and error reporting.
+- [x] Phase 3 is complete when `/v1/chat/completions` non-streaming and streaming Ollama calls go through `LLMRuntime` or `RuntimeBackedChatClient` while preserving OpenAI-compatible output, trace fields, tools, thinking, and vision.
+- [x] Phase 4 is complete when RAG, indexing, external-docs ingestion, embeddings, and rerank use provider-backed adapters while preserving retries, timeouts, batch behavior, truncation, and error reporting.
 - [ ] Phase 5 is complete when app-level Ollama start/stop/pull/status behavior is extension-owned and Docker/native-process boundaries are enforced by tests.
 - [ ] Phase 6 is complete when `/api/tags`, `/api/show`, `/api/generate`, `/api/chat`, and `/v1/completions` preserve legacy client compatibility while delegating Ollama ownership behind the extension/provider boundary.
 - [ ] Phase 7 is complete when temporary direct Ollama adapters are deleted or explicitly documented as compatibility boundaries, docs are updated, and regression searches show no unclassified direct Ollama references.

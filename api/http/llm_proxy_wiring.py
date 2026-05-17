@@ -67,7 +67,6 @@ try:
     from external_docs_rag.config_loader import load_external_sources, load_github_repos, load_rag_sources_config
     from external_docs_rag.infrastructure import HttpFetchClient, QdrantChunkSink, QdrantRagSearchAdapter
     from external_docs_rag.infrastructure.github_discovery import get_latest_release_tag
-    from external_docs_rag.infrastructure.ollama_embed_adapter import OllamaEmbedAdapter
 
     _EXTERNAL_DOCS_RAG_AVAILABLE = True
 except ImportError:
@@ -82,7 +81,6 @@ except ImportError:
     QdrantRagSearchAdapter = None  # type: ignore[assignment,misc]
     get_latest_release_tag = None  # type: ignore[assignment,misc]
     ingest_source_to_collection = None  # type: ignore[assignment,misc]
-    OllamaEmbedAdapter = None  # type: ignore[assignment,misc]
     _EXTERNAL_DOCS_RAG_AVAILABLE = False
 
 try:
@@ -92,6 +90,56 @@ except ImportError:
 
 _RAG_LOG = logging.getLogger("trag.rag")
 DEFAULT_LLM_PROVIDER_ID = "ollama"
+
+
+class _RuntimeResolvingChatClient:
+    """Chat-client bridge that switches to the extension runtime once it is ready."""
+
+    def __init__(
+        self,
+        *,
+        delegate: Any,
+        extension_manager: Any | None,
+        runtime: Any | None,
+        provider_id: str | None,
+    ) -> None:
+        self._delegate = delegate
+        self._extension_manager = extension_manager
+        self._runtime = runtime
+        self._provider_id = provider_id or DEFAULT_LLM_PROVIDER_ID
+        self._url = getattr(delegate, "_url", None)
+        self._default_options = dict(getattr(delegate, "_default_options", None) or {})
+
+    def _resolved_runtime(self) -> Any | None:
+        if self._runtime is not None:
+            return self._runtime
+        manager = self._extension_manager
+        if manager is None:
+            return None
+        return getattr(manager, "runtime", None)
+
+    def _client(self) -> Any:
+        runtime = self._resolved_runtime()
+        if runtime is None:
+            return self._delegate
+        from llm_interactor import RuntimeBackedChatClient  # noqa: PLC0415
+
+        return RuntimeBackedChatClient(
+            runtime,
+            provider_id=self._provider_id,
+            upstream_url=self._url,
+            default_options=self._default_options,
+            delegate=self._delegate,
+        )
+
+    def chat(self, *args: Any, **kwargs: Any) -> Any:
+        return self._client().chat(*args, **kwargs)
+
+    def stream_chat(self, *args: Any, **kwargs: Any) -> Any:
+        return self._client().stream_chat(*args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._client(), name)
 
 
 def _get_proxy_rerank_enabled_for_proxy() -> bool:
@@ -244,7 +292,51 @@ def _external_docs_bundle() -> LlmProxyExternalDocsBundle:
     )
 
 
-def _ingest_external_source(source_id: str) -> tuple[dict[str, Any], int]:
+def _extension_runtime_getter(extension_manager: Any | None, llm_runtime: Any | None) -> Any | None:
+    if llm_runtime is not None:
+        return llm_runtime
+    if extension_manager is None:
+        return None
+    return getattr(extension_manager, "runtime", None)
+
+
+def _runtime_backed_embed_provider(
+    *,
+    delegate: Any,
+    extension_manager: Any | None,
+    llm_runtime: Any | None,
+    provider_id: str | None,
+) -> Any:
+    if extension_manager is None and llm_runtime is None:
+        return delegate
+    from rag_service.infrastructure.provider_runtime import RuntimeBackedEmbeddingProvider  # noqa: PLC0415
+
+    return RuntimeBackedEmbeddingProvider(
+        runtime_getter=lambda: _extension_runtime_getter(extension_manager, llm_runtime),
+        provider_id=provider_id or DEFAULT_LLM_PROVIDER_ID,
+        delegate=delegate,
+    )
+
+
+def _runtime_backed_rerank_client(
+    *,
+    delegate: Any,
+    extension_manager: Any | None,
+    llm_runtime: Any | None,
+    provider_id: str | None,
+) -> Any:
+    if extension_manager is None and llm_runtime is None:
+        return delegate
+    from rag_service.infrastructure.provider_runtime import RuntimeBackedRerankClient  # noqa: PLC0415
+
+    return RuntimeBackedRerankClient(
+        runtime_getter=lambda: _extension_runtime_getter(extension_manager, llm_runtime),
+        provider_id=provider_id or DEFAULT_LLM_PROVIDER_ID,
+        delegate=delegate,
+    )
+
+
+def _ingest_external_source(source_id: str, *, embed_provider: Any) -> tuple[dict[str, Any], int]:
     if not _EXTERNAL_DOCS_RAG_AVAILABLE or ingest_source_to_collection is None:
         return {"error": "external_docs_rag module not available"}, 503
     try:
@@ -260,7 +352,7 @@ def _ingest_external_source(source_id: str) -> tuple[dict[str, Any], int]:
             source,
             HttpFetchClient(),
             QdrantChunkSink(base_url=qdrant_url),
-            OllamaEmbedAdapter(),
+            embed_provider,
         )
         return (
             {
@@ -346,8 +438,14 @@ def _build_extension_manager(
         default_provider_id=DEFAULT_LLM_PROVIDER_ID,
     )
     manager.start_background_bootstrap()
+    runtime_chat_client = _RuntimeResolvingChatClient(
+        delegate=deps.chat_client,
+        extension_manager=manager,
+        runtime=None,
+        provider_id=DEFAULT_LLM_PROVIDER_ID,
+    )
     _RAG_LOG.info("Extension runtime bootstrap started in background")
-    return manager, None, None, None, DEFAULT_LLM_PROVIDER_ID
+    return manager, None, None, runtime_chat_client, DEFAULT_LLM_PROVIDER_ID
 
 
 def build_llm_proxy_wiring(
@@ -369,6 +467,18 @@ def build_llm_proxy_wiring(
     default_provider_id = DEFAULT_LLM_PROVIDER_ID
     extension_manager, llm_runtime, provider_registry, runtime_chat_client, default_provider_id = _build_extension_manager(deps=deps)
     default_provider_id = default_provider_id or DEFAULT_LLM_PROVIDER_ID
+    runtime_embed_provider = _runtime_backed_embed_provider(
+        delegate=deps.embed_provider,
+        extension_manager=extension_manager,
+        llm_runtime=llm_runtime,
+        provider_id=default_provider_id,
+    )
+    runtime_rerank_client = _runtime_backed_rerank_client(
+        delegate=deps.rerank_client,
+        extension_manager=extension_manager,
+        llm_runtime=llm_runtime,
+        provider_id=default_provider_id,
+    )
     return LlmProxyWiring(
         runtime=LlmProxyRuntimeConfig.from_env(),
         base=LlmProxyBaseContext(
@@ -383,8 +493,8 @@ def build_llm_proxy_wiring(
             ollama_model=params.model_name,
             log_preview=params.log_preview_chars,
             rag_repo=deps.rag_repo,
-            embed_provider=deps.embed_provider,
-            rerank_client=deps.rerank_client,
+            embed_provider=runtime_embed_provider,
+            rerank_client=runtime_rerank_client,
             chat_client=runtime_chat_client or deps.chat_client,
         ),
         workspace_root=_workspace_root,
@@ -421,6 +531,9 @@ def build_llm_proxy_wiring(
         extension_manager=extension_manager,
         default_provider_id=default_provider_id,
         external_docs=_external_docs_bundle(),
-        ingest_external_source=_ingest_external_source,
+        ingest_external_source=lambda source_id: _ingest_external_source(
+            source_id,
+            embed_provider=runtime_embed_provider,
+        ),
         build_web_supplement_for_proxy=build_web_supplement_for_proxy,
     )

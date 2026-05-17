@@ -23,6 +23,7 @@ Requirements:
 import os
 import re
 import sys
+import importlib.util
 from pathlib import Path
 from typing import List
 
@@ -32,7 +33,6 @@ _ROOT = str(project_root())
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_embed
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import VectorParams, Distance, PointStruct
 
@@ -56,6 +56,22 @@ EMBED_MODEL_NAME = get_ollama_embed_model()
 EMBED_BATCH_SIZE = 32
 QDRANT_URL = "http://localhost:6333"
 COLLECTION_FILE = str(webui_data_dir() / "last_collection.txt")
+
+
+def _load_ollama_provider_http():
+    """Load the bundled ollama-provider HTTP helper for standalone CLI ingestion."""
+    provider_http = project_root() / "extensions" / "bundled" / "ollama-provider" / "backend" / "ollama_http.py"
+    spec = importlib.util.spec_from_file_location("chironai_ollama_provider_http", provider_http)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load ollama-provider HTTP helper: {provider_http}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_OLLAMA_PROVIDER_HTTP = _load_ollama_provider_http()
+OllamaProviderHttpError = _OLLAMA_PROVIDER_HTTP.OllamaHttpError
+invoke_embed = _OLLAMA_PROVIDER_HTTP.invoke_embed
 
 
 def get_embeddings(texts: List[str]) -> List[List[float]]:
@@ -88,7 +104,7 @@ def get_embeddings(texts: List[str]) -> List[List[float]]:
                 },
                 default_timeout=120,
             )
-        except OllamaInteractorCliError as e:
+        except OllamaProviderHttpError as e:
             raise RuntimeError(str(e)) from e
         vectors = data.get("embeddings", [])
         if len(vectors) != len(batch):
@@ -149,7 +165,7 @@ def main() -> None:
             },
             default_timeout=60,
         )
-    except OllamaInteractorCliError as e:
+    except OllamaProviderHttpError as e:
         raise RuntimeError(str(e)) from e
     dim = len(dim_data["embeddings"][0])
     print(f"Embedding dimension: {dim}")

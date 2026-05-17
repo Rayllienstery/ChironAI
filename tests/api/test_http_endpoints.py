@@ -4768,6 +4768,214 @@ def test_stream_trace_separates_reasoning_and_final_content_in_sse(
     assert artifacts.get("visible_content") == "Plan: Answer"
 
 
+def test_chat_completions_non_stream_uses_ollama_provider_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+    from llm_interactor import ExtensionManager
+    from llm_interactor.contracts import LLMResponse
+
+    class Runtime:
+        def __init__(self) -> None:
+            self.requests: list[Any] = []
+
+        def invoke(self, request: Any) -> LLMResponse:
+            self.requests.append(request)
+            return LLMResponse(
+                provider_id="ollama",
+                model=request.model,
+                text="Final answer.",
+                raw={
+                    "message": {
+                        "role": "assistant",
+                        "thinking": "Plan.",
+                        "content": "Final answer.",
+                    },
+                    "done_reason": "stop",
+                    "eval_count": 8,
+                    "prompt_eval_count": 4,
+                },
+            )
+
+    runtime = Runtime()
+
+    def bootstrap_runtime(self: Any) -> None:
+        self._runtime = runtime
+        self._runtime_status = "ready"
+
+    class DelegateChatClient:
+        def chat_api(self, _payload: dict[str, Any]) -> dict[str, Any]:
+            raise AssertionError("legacy chat_api should not be used when runtime is ready")
+
+        def chat(self, *_a: Any, **_k: Any) -> str:
+            raise AssertionError("legacy chat should not be used when runtime is ready")
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fake-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=DelegateChatClient(),
+    )
+
+    monkeypatch.setattr(ExtensionManager, "start_background_bootstrap", bootstrap_runtime)
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+
+    def prepare_messages(request: Any, *_a: Any, **_k: Any) -> tuple[list[dict[str, Any]], str]:
+        return (
+            [
+                {
+                    "role": "user",
+                    "content": "describe this",
+                    "images": ["base64-image"],
+                }
+            ],
+            "fake-model",
+        )
+
+    monkeypatch.setattr(rag_routes, "prepare_ollama_messages", prepare_messages)
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    r = app.test_client().post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-proxy-ollama-model",
+            "messages": [{"role": "user", "content": "describe this"}],
+            "think": True,
+        },
+    )
+
+    assert r.status_code == 200
+    payload = r.get_json() or {}
+    assert payload["choices"][0]["message"]["content"] == "Final answer."
+    assert runtime.requests
+    request = runtime.requests[0]
+    assert request.provider_id == "ollama"
+    assert request.operation == "chat_api"
+    assert request.model == "fake-model"
+    assert request.body["think"] is True
+    assert request.body["messages"][0]["images"] == ["base64-image"]
+
+
+def test_chat_completions_stream_uses_ollama_provider_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+    from llm_interactor import ExtensionManager
+    from llm_interactor.contracts import LLMStreamEvent
+
+    class Runtime:
+        def __init__(self) -> None:
+            self.requests: list[Any] = []
+
+        def stream_invoke(self, request: Any):
+            self.requests.append(request)
+            yield LLMStreamEvent(
+                provider_id="ollama",
+                model=request.model,
+                type="thinking_delta",
+                data="Plan: ",
+            )
+            yield LLMStreamEvent(
+                provider_id="ollama",
+                model=request.model,
+                type="content_delta",
+                data="Answer",
+            )
+            yield LLMStreamEvent(
+                provider_id="ollama",
+                model=request.model,
+                type="done",
+                data={"done_reason": "stop", "eval_count": 9, "prompt_eval_count": 3},
+            )
+
+    runtime = Runtime()
+
+    def bootstrap_runtime(self: Any) -> None:
+        self._runtime = runtime
+        self._runtime_status = "ready"
+
+    class DelegateChatClient:
+        def iter_chat_api_stream_events(self, _payload: dict[str, Any]):
+            raise AssertionError("legacy stream should not be used when runtime is ready")
+
+        def chat(self, *_a: Any, **_k: Any) -> str:
+            raise AssertionError("legacy chat should not be used when runtime is ready")
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fake-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=DelegateChatClient(),
+    )
+
+    monkeypatch.setattr(ExtensionManager, "start_background_bootstrap", bootstrap_runtime)
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda request, *_a, **_k: ([{"role": "user", "content": request.messages[-1]["content"]}], "fake-model"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    r = app.test_client().post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-proxy-ollama-model",
+            "stream": True,
+            "messages": [{"role": "user", "content": "hi"}],
+            "think": "medium",
+        },
+    )
+
+    assert r.status_code == 200
+    body = r.get_data(as_text=True)
+    assert '"reasoning_content": "Plan: "' in body
+    assert '"content": "Answer"' in body
+    assert "data: [DONE]" in body
+    assert runtime.requests
+    request = runtime.requests[0]
+    assert request.provider_id == "ollama"
+    assert request.operation == "chat_api_stream_events"
+    assert request.stream is True
+    assert request.body["think"] == "medium"
+
+
 def test_stream_reasoning_only_guard_stops_visible_repeat(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
