@@ -5081,6 +5081,7 @@ def test_chat_completions_non_stream_uses_ollama_provider_runtime(
                         "thinking": "Plan.",
                         "content": "Final answer.",
                     },
+                    "details": {"family": "qwen"},
                     "done_reason": "stop",
                     "eval_count": 8,
                     "prompt_eval_count": 4,
@@ -5143,7 +5144,8 @@ def test_chat_completions_non_stream_uses_ollama_provider_runtime(
     monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
 
     app = rag_routes.create_app()
-    r = app.test_client().post(
+    client = app.test_client()
+    r = client.post(
         "/v1/chat/completions",
         json={
             "model": "fake-proxy-ollama-model",
@@ -5162,6 +5164,20 @@ def test_chat_completions_non_stream_uses_ollama_provider_runtime(
     assert request.model == "fake-model"
     assert request.body["think"] is True
     assert request.body["messages"][0]["images"] == ["base64-image"]
+    trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
+    ollama_trace = trace.get("ollama") or {}
+    response_trace = trace.get("response") or {}
+    token_estimates = ollama_trace.get("tokens_estimates") or {}
+    assert ollama_trace.get("provider_id") == "ollama"
+    assert ollama_trace.get("provider_model_id") == "fake-model"
+    assert ollama_trace.get("provider_operation") == "chat_api"
+    assert ollama_trace.get("provider_runtime") is True
+    assert response_trace.get("latency_ms") is not None
+    assert response_trace.get("ollama_eval_count") == 8
+    assert response_trace.get("ollama_prompt_eval_count") == 4
+    assert response_trace.get("brand_key") == "qwen"
+    assert int(token_estimates.get("prompt_tokens_estimated") or 0) >= 1
+    assert int(token_estimates.get("completion_tokens_estimated") or 0) >= 1
 
 
 def test_chat_completions_stream_uses_ollama_provider_runtime(
@@ -5243,7 +5259,8 @@ def test_chat_completions_stream_uses_ollama_provider_runtime(
     monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
 
     app = rag_routes.create_app()
-    r = app.test_client().post(
+    client = app.test_client()
+    r = client.post(
         "/v1/chat/completions",
         json={
             "model": "fake-proxy-ollama-model",
@@ -5264,6 +5281,21 @@ def test_chat_completions_stream_uses_ollama_provider_runtime(
     assert request.operation == "chat_api_stream_events"
     assert request.stream is True
     assert request.body["think"] == "medium"
+    trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
+    ollama_trace = trace.get("ollama") or {}
+    response_trace = trace.get("response") or {}
+    token_estimates = ollama_trace.get("tokens_estimates") or {}
+    assert ollama_trace.get("provider_id") == "ollama"
+    assert ollama_trace.get("provider_model_id") == "fake-model"
+    assert ollama_trace.get("provider_operation") == "chat_api_stream_events"
+    assert ollama_trace.get("provider_runtime") is True
+    assert response_trace.get("latency_ms") is not None
+    assert response_trace.get("final_content_preview") == "Answer"
+    assert response_trace.get("reasoning_preview") == "Plan: "
+    assert response_trace.get("ollama_eval_count") == 9
+    assert response_trace.get("ollama_prompt_eval_count") == 3
+    assert int(token_estimates.get("prompt_tokens_estimated") or 0) >= 1
+    assert int(token_estimates.get("completion_tokens_estimated") or 0) >= 1
 
 
 def test_stream_reasoning_only_guard_stops_visible_repeat(

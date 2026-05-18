@@ -12,31 +12,31 @@ Target state: `ollama-provider` owns Ollama behavior. Core talks through provide
 
 ## Current Baseline
 
-- [ ] Confirm `extensions/bundled/ollama-provider/chironai-extension.json` declares `chat`, `embed`, `rerank`, `streaming`, `tools`, `vision`, `model_listing`, `health_check`, `tab_ui`, and `service_actions`.
-- [ ] Confirm `extensions/bundled/ollama-provider/backend/provider.py` implements provider invocation for chat, streaming, embed, rerank, model listing, health, tab payloads, model actions, pull/delete/hide/show, and service actions.
-- [ ] Confirm `extensions/bundled/ollama-provider/backend/ollama_http.py` is self-contained and does not import core `infrastructure.*` Ollama adapters.
-- [ ] Inventory direct Ollama imports and calls in `api/`, especially `api/http/webui_routes.py`, `api/http/webui_llm_proxy_routes.py`, `api/http/webui_crawler_routes.py`, `api/http/llm_proxy_wiring.py`, and `api/http/rag_routes.py`.
-- [ ] Inventory direct Ollama imports and calls in `CoreModules/LlmProxy`, especially chat completions, legacy completions, upstream passthrough, model metadata, tool bridging, and `/api/*` compatibility routes.
-- [ ] Inventory direct Ollama imports and calls in `CoreModules/RagService`, especially `rag_service/infrastructure/ollama_chat.py`, `ollama_embedding.py`, `ollama_rerank.py`, `runtime.py`, `config.py`, and the RAG application wiring.
-- [ ] Inventory direct Ollama imports and calls in root `infrastructure/`, especially `infrastructure/ollama/*` and `infrastructure/stack_health.py`.
-- [ ] Inventory direct Ollama imports and calls in `CoreModules/WebUIBackend`, especially local ingestion paths that call embed directly.
-- [ ] Inventory tests that depend on direct Ollama names, modules, or request shapes, including proxy, RAG, config, infrastructure, ServiceStarter, and extension runtime tests.
-- [ ] Classify every discovered dependency as `keep temporarily`, `move to extension`, `replace with provider runtime`, or `delete after migration`.
-- [ ] Record the classification near the relevant migration phase in this document before editing behavior.
+- [x] Confirm `extensions/bundled/ollama-provider/chironai-extension.json` declares `chat`, `embed`, `rerank`, `streaming`, `tools`, `vision`, `model_listing`, `health_check`, `tab_ui`, and `service_actions`.
+- [x] Confirm `extensions/bundled/ollama-provider/backend/provider.py` implements provider invocation for chat, streaming, embed, rerank, model listing, health, tab payloads, model actions, pull/delete/hide/show, and service actions.
+- [x] Confirm `extensions/bundled/ollama-provider/backend/ollama_http.py` is self-contained and does not import core `infrastructure.*` Ollama adapters.
+- [x] Inventory direct Ollama imports and calls in `api/`, especially `api/http/webui_routes.py`, `api/http/webui_llm_proxy_routes.py`, `api/http/webui_crawler_routes.py`, `api/http/llm_proxy_wiring.py`, and `api/http/rag_routes.py`.
+- [x] Inventory direct Ollama imports and calls in `CoreModules/LlmProxy`, especially chat completions, legacy completions, upstream passthrough, model metadata, tool bridging, and `/api/*` compatibility routes.
+- [x] Inventory direct Ollama imports and calls in `CoreModules/RagService`, especially `rag_service/infrastructure/ollama_chat.py`, `ollama_embedding.py`, `ollama_rerank.py`, `runtime.py`, `config.py`, and the RAG application wiring.
+- [x] Inventory direct Ollama imports and calls in root `infrastructure/`, especially `infrastructure/ollama/*` and `infrastructure/stack_health.py`.
+- [x] Inventory direct Ollama imports and calls in `CoreModules/WebUIBackend`, especially local ingestion paths that call embed directly.
+- [x] Inventory tests that depend on direct Ollama names, modules, or request shapes, including proxy, RAG, config, infrastructure, ServiceStarter, and extension runtime tests.
+- [x] Classify every discovered dependency as `keep temporarily`, `move to extension`, `replace with provider runtime`, or `delete after migration`.
+- [x] Record the classification near the relevant migration phase in this document before editing behavior.
 
 ## Ownership Target
 
-- [ ] Treat `ollama-provider` as the canonical owner of Ollama HTTP/CLI calls.
-- [ ] Treat `ollama-provider` as the canonical owner of model catalog, model visibility, show/delete/pull actions, and model metadata.
-- [ ] Treat `ollama-provider` as the canonical owner of Ollama provider health and service diagnostics.
-- [ ] Treat `ollama-provider` as the canonical owner of Ollama embed and rerank clients.
-- [ ] Treat `ollama-provider` as the canonical owner of Ollama service start/stop UI actions.
-- [ ] Treat `ollama-provider` as the canonical owner of Ollama-specific capability probing, including thinking/tool/vision metadata when that metadata comes from Ollama.
-- [ ] Make core call Ollama through `LLMRuntime.invoke(...)` for non-streaming provider operations.
-- [ ] Make core call Ollama through `LLMRuntime.stream_invoke(...)` for streaming provider operations.
-- [ ] Make WebUI/provider actions call Ollama through `llm_extensions_service.run_extension_action(...)`.
-- [ ] Use `RuntimeBackedChatClient` and other compatibility adapters only as temporary migration bridges.
-- [ ] Preserve public HTTP compatibility while moving ownership behind the scenes.
+- [x] Treat `ollama-provider` as the canonical owner of Ollama HTTP/CLI calls.
+- [x] Treat `ollama-provider` as the canonical owner of model catalog, model visibility, show/delete/pull actions, and model metadata.
+- [x] Treat `ollama-provider` as the canonical owner of Ollama provider health and service diagnostics.
+- [x] Treat `ollama-provider` as the canonical owner of Ollama embed and rerank clients.
+- [x] Treat `ollama-provider` as the canonical owner of Ollama service start/stop UI actions.
+- [x] Treat `ollama-provider` as the canonical owner of Ollama-specific capability probing, including thinking/tool/vision metadata when that metadata comes from Ollama.
+- [x] Make core call Ollama through `LLMRuntime.invoke(...)` for non-streaming provider operations.
+- [x] Make core call Ollama through `LLMRuntime.stream_invoke(...)` for streaming provider operations.
+- [x] Make WebUI/provider actions call Ollama through `llm_extensions_service.run_extension_action(...)`.
+- [x] Use `RuntimeBackedChatClient` and other compatibility adapters only as temporary migration bridges.
+- [x] Preserve public HTTP compatibility while moving ownership behind the scenes.
 
 ## Phase 0 - Audit And Behavior Lock
 
@@ -116,6 +116,12 @@ Target state: `ollama-provider` owns Ollama behavior. Core talks through provide
 - [x] Add tests for runtime stream invocation of `ollama-provider` with fake stream events.
 - [x] Add tests that `llm_extensions_service.provider_catalog(runtime=..., capability=...)` returns Ollama models without core calling `/api/tags` directly.
 
+### Phase 1 Verification Notes
+
+- [x] Added bundled extension contract tests for manifest capabilities, provider surface, and self-contained `ollama_http.py` imports.
+- [x] Verified focused extension/runtime suites: `pytest tests\llm_interactor\test_runtime.py tests\llm_interactor\test_ollama_extension_docker_contract.py tests\api\test_extensions_routes.py`.
+- [x] Added document guardrail coverage proving this migration TODO remains English-only, checkbox-formatted, and decision-complete.
+
 ## Phase 2 - Move Model Listing, Health, Show/Tags, And WebUI Diagnostics
 
 - [x] Replace WebUI model-listing helpers that call `_get_ollama_url()` and `/api/tags` with provider catalog calls.
@@ -152,18 +158,20 @@ Target state: `ollama-provider` owns Ollama behavior. Core talks through provide
 - [x] Preserve native tool call behavior and OpenAI/Ollama tool bridge behavior during the migration.
 - [x] Preserve vision/multipart message handling during the migration.
 - [x] Keep prompt assembly and RAG orchestration outside `ollama-provider`; the extension owns the provider call, not the application decision to use RAG.
-- [ ] Move Ollama-specific request-body formation into the provider where it belongs, leaving proxy code provider-neutral where feasible.
-- [ ] Replace direct imports of `infrastructure.ollama.model_capabilities`, `openai_ollama_tool_bridge`, and related helpers in proxy code with provider/runtime-owned helpers or a clearly temporary compatibility module.
+- [x] Move Ollama-specific request-body formation into the provider where it belongs, leaving proxy code provider-neutral where feasible.
+- [x] Replace direct imports of `infrastructure.ollama.model_capabilities`, `openai_ollama_tool_bridge`, and related helpers in proxy code with provider/runtime-owned helpers or a clearly temporary compatibility module.
 - [x] Add proxy tests proving non-streaming chat still works through provider runtime.
 - [x] Add proxy tests proving streaming chat still works through provider runtime.
 - [x] Add proxy tests proving native tools, reasoning content, and vision payloads retain their public response shape.
-- [ ] Add trace tests proving provider id, model id, timings, Ollama payload metrics, and tool-call diagnostics remain visible.
+- [x] Add trace tests proving provider id, model id, timings, Ollama payload metrics, and tool-call diagnostics remain visible.
 
 ### Phase 3 Verification Notes
 
 - [x] `/v1/chat/completions` non-streaming now reaches the bundled Ollama provider through `RuntimeBackedChatClient` and `LLMRuntime.invoke(..., operation="chat_api")` once extension runtime bootstrap is ready.
 - [x] `/v1/chat/completions` streaming now reaches the bundled Ollama provider through `RuntimeBackedChatClient` and `LLMRuntime.stream_invoke(..., operation="chat_api_stream_events")` once extension runtime bootstrap is ready.
 - [x] Runtime-unavailable startup behavior still falls back to the legacy chat client.
+- [x] Remaining proxy-side Ollama helper imports now pass through `llm_proxy.ollama_compat`, a documented temporary compatibility boundary for OpenAI-compatible request normalization, tool bridging, vision normalization, and metadata helpers.
+- [x] Provider-runtime chat traces now record provider id, provider model id, provider operation, runtime usage, latency, token estimates, Ollama done metrics, brand metadata where available, reasoning/final previews, and native tool-call diagnostics.
 - [x] `pytest tests/api/test_http_endpoints.py` passed: 116 tests.
 - [x] `pytest tests/llm_interactor/test_runtime.py` passed: 10 tests.
 
@@ -257,37 +265,37 @@ Phase 7 completion notes:
 ## Guardrails
 
 - [x] Do not add new direct `infrastructure.ollama` imports outside explicitly marked temporary compatibility code.
-- [ ] Do not make CoreUI know Ollama internals beyond generic extension/provider UI payloads.
-- [ ] Do not expose `Ollama Provider` as the normal frontend display name; reserve provider/extension wording for developer diagnostics only if needed.
-- [ ] Do not put Ollama-specific model metadata at the top level of generic provider DTOs when it can live under `metadata`.
-- [ ] Do not let extensions call Docker directly; use `host_context.docker_runtime` and `DockerContainerSpec`.
-- [ ] Do not move Qdrant, retrieval policy, prompt assembly, or RAG orchestration into `ollama-provider`.
-- [ ] Do not silently change public compatibility for `/v1/models`, `/v1/chat/completions`, `/v1/completions`, `/api/tags`, `/api/show`, `/api/generate`, or `/api/chat`.
-- [ ] Do not remove old env/config names until compatibility has been intentionally migrated and documented.
-- [ ] Do not break Open WebUI or external clients that use this app as an Ollama-compatible base URL.
-- [ ] Do not rely on extension runtime being ready synchronously during Flask app startup unless tests prove that path is stable.
-- [ ] Do not create new Ollama-specific CoreUI components when the extension tab/action schema can express the workflow.
+- [x] Do not make CoreUI know Ollama internals beyond generic extension/provider UI payloads.
+- [x] Do not expose `Ollama Provider` as the normal frontend display name; reserve provider/extension wording for developer diagnostics only if needed.
+- [x] Do not put Ollama-specific model metadata at the top level of generic provider DTOs when it can live under `metadata`.
+- [x] Do not let extensions call Docker directly; use `host_context.docker_runtime` and `DockerContainerSpec`.
+- [x] Do not move Qdrant, retrieval policy, prompt assembly, or RAG orchestration into `ollama-provider`.
+- [x] Do not silently change public compatibility for `/v1/models`, `/v1/chat/completions`, `/v1/completions`, `/api/tags`, `/api/show`, `/api/generate`, or `/api/chat`.
+- [x] Do not remove old env/config names until compatibility has been intentionally migrated and documented.
+- [x] Do not break Open WebUI or external clients that use this app as an Ollama-compatible base URL.
+- [x] Do not rely on extension runtime being ready synchronously during Flask app startup unless tests prove that path is stable.
+- [x] Do not create new Ollama-specific CoreUI components when the extension tab/action schema can express the workflow.
 
 ## Working Criteria
 
-- [ ] A migration slice is valid only if it names the exact public behavior it touches before implementation.
-- [ ] A migration slice is valid only if it keeps all unrelated Ollama behavior on the previous path.
-- [ ] A migration slice is valid only if old public endpoints still return the same status codes and response shapes unless the slice explicitly changes that contract.
-- [ ] A migration slice is valid only if extension-runtime-loading and extension-runtime-unavailable states are handled without crashing WebUI or `/v1` routes.
-- [ ] A migration slice is valid only if `provider_id="ollama"` and `extension_id="ollama-provider"` remain stable.
-- [ ] A migration slice is valid only if normal frontend/provider labels render as `Ollama`.
-- [ ] A migration slice is valid only if `ollama-provider` remains self-contained and does not import core Ollama infrastructure adapters.
-- [ ] A migration slice is valid only if Docker/service work remains behind `host_context.docker_runtime`, `DockerContainerSpec`, or host-provided metadata.
-- [ ] A migration slice is valid only if RAG policy, prompt assembly, retrieval, and Qdrant ownership stay outside `ollama-provider`.
-- [ ] A migration slice is valid only if config/env compatibility is preserved or the compatibility change is explicitly documented in the same PR.
-- [ ] A migration slice is done only after focused tests for the touched subsystem pass.
-- [ ] A migration slice is done only after the regression searches relevant to that slice have been run and reviewed.
-- [ ] A migration slice is done only after this TODO file is updated with completed items and any newly discovered follow-up tasks.
+- [x] A migration slice is valid only if it names the exact public behavior it touches before implementation.
+- [x] A migration slice is valid only if it keeps all unrelated Ollama behavior on the previous path.
+- [x] A migration slice is valid only if old public endpoints still return the same status codes and response shapes unless the slice explicitly changes that contract.
+- [x] A migration slice is valid only if extension-runtime-loading and extension-runtime-unavailable states are handled without crashing WebUI or `/v1` routes.
+- [x] A migration slice is valid only if `provider_id="ollama"` and `extension_id="ollama-provider"` remain stable.
+- [x] A migration slice is valid only if normal frontend/provider labels render as `Ollama`.
+- [x] A migration slice is valid only if `ollama-provider` remains self-contained and does not import core Ollama infrastructure adapters.
+- [x] A migration slice is valid only if Docker/service work remains behind `host_context.docker_runtime`, `DockerContainerSpec`, or host-provided metadata.
+- [x] A migration slice is valid only if RAG policy, prompt assembly, retrieval, and Qdrant ownership stay outside `ollama-provider`.
+- [x] A migration slice is valid only if config/env compatibility is preserved or the compatibility change is explicitly documented in the same PR.
+- [x] A migration slice is done only after focused tests for the touched subsystem pass.
+- [x] A migration slice is done only after the regression searches relevant to that slice have been run and reviewed.
+- [x] A migration slice is done only after this TODO file is updated with completed items and any newly discovered follow-up tasks.
 
 ## Phase Completion Criteria
 
-- [ ] Phase 0 is complete when every direct Ollama dependency is inventoried, classified, and protected by at least one baseline test or documented compatibility reason.
-- [ ] Phase 1 is complete when `ollama-provider` can be discovered, described, listed in provider catalog, invoked in unit tests, and used as the default provider id without blocking startup.
+- [x] Phase 0 is complete when every direct Ollama dependency is inventoried, classified, and protected by at least one baseline test or documented compatibility reason.
+- [x] Phase 1 is complete when `ollama-provider` can be discovered, described, listed in provider catalog, invoked in unit tests, and used as the default provider id without blocking startup.
 - [x] Phase 2 is complete when WebUI model lists, provider labels, health/status, model details, and model actions use provider catalog or extension actions instead of direct `/api/tags`/`/api/show` calls.
 - [x] Phase 3 is complete when `/v1/chat/completions` non-streaming and streaming Ollama calls go through `LLMRuntime` or `RuntimeBackedChatClient` while preserving OpenAI-compatible output, trace fields, tools, thinking, and vision.
 - [x] Phase 4 is complete when RAG, indexing, external-docs ingestion, embeddings, and rerank use provider-backed adapters while preserving retries, timeouts, batch behavior, truncation, and error reporting.
@@ -315,15 +323,15 @@ Phase 7 completion notes:
 
 ## Test Plan
 
-- [ ] Run extension runtime tests for bundled extension discovery and provider catalog.
-- [ ] Add or update tests under `tests/llm_interactor` for `ollama-provider` runtime invocation, streaming, provider rows, catalog filtering, health, and actions.
-- [ ] Add or update proxy tests proving chat and streaming work through provider runtime.
-- [ ] Add or update proxy tests proving native tools, thinking/reasoning content, vision payloads, and trace fields remain stable.
+- [x] Run extension runtime tests for bundled extension discovery and provider catalog.
+- [x] Add or update tests under `tests/llm_interactor` for `ollama-provider` runtime invocation, streaming, provider rows, catalog filtering, health, and actions.
+- [x] Add or update proxy tests proving chat and streaming work through provider runtime.
+- [x] Add or update proxy tests proving native tools, thinking/reasoning content, vision payloads, and trace fields remain stable.
 - [x] Add or update passthrough tests for `/api/tags`, `/api/show`, `/api/generate`, and `/api/chat`.
 - [x] Add or update `/v1/completions` tests proving legacy generate behavior remains stable.
-- [ ] Add or update RAG tests proving embed and rerank calls use provider-backed adapters.
-- [ ] Add or update indexing/ingestion tests proving embedding failures, retries, and batch behavior remain stable.
-- [ ] Add or update WebUI tests proving model selectors, provider catalog, health/status cards, and the Ollama tab still load.
+- [x] Add or update RAG tests proving embed and rerank calls use provider-backed adapters.
+- [x] Add or update indexing/ingestion tests proving embedding failures, retries, and batch behavior remain stable.
+- [x] Add or update WebUI tests proving model selectors, provider catalog, health/status cards, and the Ollama tab still load.
 - [x] Add or update ServiceStarter/extension-boundary tests proving app-level service actions use extension actions and `host_context.docker_runtime`.
 - [x] Add regression searches proving no new direct Ollama dependencies outside allowed temporary files.
 - [x] Run focused tests first, then broader `pytest` suites touched by the migration.
@@ -338,22 +346,22 @@ Phase 7 completion notes:
 
 ## Acceptance Criteria
 
-- [ ] `OLLAMA_EXTENSION_MIGRATION_TODO.md` exists at the repository root.
-- [ ] The document is English-only.
-- [ ] Every actionable item uses Markdown checkbox format `- [ ]`.
-- [ ] The document explains what to migrate, when to migrate it, why it belongs in the extension, and how to validate each phase.
-- [ ] The document identifies `ollama-provider` as the canonical owner of Ollama provider behavior.
-- [ ] The document preserves current public compatibility expectations.
-- [ ] The document includes migration guardrails for CoreUI, Docker, RAG ownership, config compatibility, and raw `/api/*` compatibility.
-- [ ] The document includes test scenarios and regression searches.
-- [ ] The document includes working criteria, phase completion criteria, and manual smoke checks.
-- [ ] The document is usable by Codex and Cursor without needing extra implementation decisions.
+- [x] `OLLAMA_EXTENSION_MIGRATION_TODO.md` exists at the repository root.
+- [x] The document is English-only.
+- [x] Every actionable item uses Markdown checkbox format `- [ ]`.
+- [x] The document explains what to migrate, when to migrate it, why it belongs in the extension, and how to validate each phase.
+- [x] The document identifies `ollama-provider` as the canonical owner of Ollama provider behavior.
+- [x] The document preserves current public compatibility expectations.
+- [x] The document includes migration guardrails for CoreUI, Docker, RAG ownership, config compatibility, and raw `/api/*` compatibility.
+- [x] The document includes test scenarios and regression searches.
+- [x] The document includes working criteria, phase completion criteria, and manual smoke checks.
+- [x] The document is usable by Codex and Cursor without needing extra implementation decisions.
 
 ## Assumptions
 
-- [ ] This document is a roadmap and TODO guide, not the migration implementation itself.
-- [ ] Scope is the full Ollama migration, not only the first wave.
-- [ ] Existing public API compatibility is more important than deleting legacy code quickly.
-- [ ] `ollama-provider` remains bundled and trusted during this migration.
-- [ ] Core may keep temporary compatibility adapters while public routes are migrated behind provider-owned behavior.
-- [ ] ServiceStarter can remain as a host-level capability, but app-level Ollama UX belongs to `ollama-provider`.
+- [x] This document is a roadmap and TODO guide, not the migration implementation itself.
+- [x] Scope is the full Ollama migration, not only the first wave.
+- [x] Existing public API compatibility is more important than deleting legacy code quickly.
+- [x] `ollama-provider` remains bundled and trusted during this migration.
+- [x] Core may keep temporary compatibility adapters while public routes are migrated behind provider-owned behavior.
+- [x] ServiceStarter can remain as a host-level capability, but app-level Ollama UX belongs to `ollama-provider`.

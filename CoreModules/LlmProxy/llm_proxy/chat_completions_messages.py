@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from infrastructure.ollama.openai_multipart_vision import (
+from llm_proxy.ollama_compat import (
     openai_parts_to_flat_text,
     promote_inline_data_image_urls_in_content,
     sanitize_openai_text_part,

@@ -26,13 +26,13 @@ from application.rag.proxy_settings_contract import (
     resolve_rag_collection,
 )
 
-from infrastructure.ollama.model_capabilities import (
+from llm_proxy.ollama_compat import (
     caps_supports_tools,
     chat_error_suggests_no_think,
     chat_error_suggests_no_tools,
     get_cached_ollama_capabilities,
-)
-from infrastructure.ollama.openai_ollama_tool_bridge import (
+    ollama_message_to_openai_assistant,
+    ollama_tools_from_openai,
     ollama_chat_tool_choice_payload_value,
     openai_finish_reason_from_ollama,
     openai_tool_choice_means_none,
@@ -79,6 +79,7 @@ from llm_proxy.chat_completions_gemini_native import (
     _tool_round_stats_since_last_user,
 )
 from llm_proxy.chat_completions_ollama_proxy import (
+    _apply_provider_trace_fields,
     _append_trace_warning,
     _apply_response_diagnostics,
     _apply_trace_response_text_fields,
@@ -1433,11 +1434,6 @@ def run_chat_completions(
         return jsonify({"error": str(e)}), 500
 
     if use_native_tools:
-        from infrastructure.ollama.openai_ollama_tool_bridge import (
-            ollama_message_to_openai_assistant,
-            ollama_tools_from_openai,
-        )
-
         trace["request"]["native_tools"] = True
         native_tools_diag: dict[str, Any] = {}
         native_tools_input = list(tools)
@@ -1535,6 +1531,12 @@ def run_chat_completions(
                 yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
 
                 try:
+                    _apply_provider_trace_fields(
+                        trace,
+                        chat_client,
+                        model_id=use_model,
+                        operation="chat_api_stream_events",
+                    )
                     for kind, data in _iter_proxy_ollama_chat_stream(
                         chat_client, native_ollama_messages, use_model, ollama_think,
                         options_overlay=ollama_options_overlay(),
@@ -1774,6 +1776,12 @@ def run_chat_completions(
         _native_err: str | None = None
         data: dict[str, object] = {}
         try:
+            _apply_provider_trace_fields(
+                trace,
+                chat_client,
+                model_id=use_model,
+                operation="chat_api",
+            )
             chat_fn = getattr(chat_client, "chat_api", None)
             if callable(chat_fn):
                 attempt: dict[str, object] = dict(body_ollama)
@@ -2372,6 +2380,12 @@ def run_chat_completions(
             yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
 
             try:
+                _apply_provider_trace_fields(
+                    trace,
+                    chat_client,
+                    model_id=use_model,
+                    operation="chat_api_stream_events",
+                )
                 for kind, data in _iter_proxy_ollama_chat_stream(
                     chat_client, ollama_messages, use_model, ollama_think,
                     options_overlay=ollama_options_overlay(),
@@ -2470,7 +2484,7 @@ def run_chat_completions(
             trace["response"] = {
                 "latency_ms": stream_latency_ms,
                 "reasoning_only_guard_triggered": bool(reasoning_guard_triggered),
-                **_trace_ollama_api_metrics(ollama_done_payload),
+                **_trace_ollama_api_metrics(ollama_done_payload, model_id=use_model),
             }
             _record_reasoning_token_estimates(trace["response"], reasoning_content, final_content)
             _apply_trace_response_text_fields(
@@ -2548,6 +2562,12 @@ def run_chat_completions(
     budget_error = ""
     try:
         w.set_proxy_status(w.status_response)
+        _apply_provider_trace_fields(
+            trace,
+            chat_client,
+            model_id=use_model,
+            operation="chat_api",
+        )
         content_parts = _proxy_ollama_chat_text_parts(
             chat_client,
             ollama_messages,

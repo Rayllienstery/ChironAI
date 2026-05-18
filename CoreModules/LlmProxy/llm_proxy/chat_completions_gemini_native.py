@@ -10,8 +10,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from infrastructure.ollama.gemini_model_id import is_gemini_family_model_name
 from llm_proxy.contracts import LlmProxyWiring
+from llm_proxy.ollama_compat import is_gemini_family_model_name
 
 
 def _sanitize_tool_name(raw: object, *, fallback: str = "tool") -> str:

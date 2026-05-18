@@ -8,10 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 ALLOWED_INFRASTRUCTURE_OLLAMA_IMPORT_FILES = {
     "api/http/webui_routes.py",
-    "CoreModules/LlmProxy/llm_proxy/chat_completions_gemini_native.py",
-    "CoreModules/LlmProxy/llm_proxy/chat_completions_handler.py",
-    "CoreModules/LlmProxy/llm_proxy/chat_completions_messages.py",
-    "CoreModules/LlmProxy/llm_proxy/chat_completions_ollama_proxy.py",
+    "CoreModules/LlmProxy/llm_proxy/ollama_compat.py",
     "infrastructure/ollama/__init__.py",
     "infrastructure/ollama/chat_client.py",
     "infrastructure/ollama/embed_client.py",
@@ -24,6 +21,7 @@ ALLOWED_INFRASTRUCTURE_OLLAMA_IMPORT_FILES = {
 }
 
 IMPORT_RE = re.compile(r"^\s*(?:from\s+infrastructure\.ollama\b|import\s+infrastructure\.ollama\b)", re.MULTILINE)
+CHECKBOX_RE = re.compile(r"^\s*-\s\[[ x]\]\s+\S")
 
 
 def _python_files() -> list[Path]:
@@ -47,3 +45,30 @@ def test_no_new_direct_infrastructure_ollama_imports_without_allowlist() -> None
 
     assert offenders == []
 
+
+def test_ollama_migration_todo_remains_decision_complete() -> None:
+    path = ROOT / "OLLAMA_EXTENSION_MIGRATION_TODO.md"
+    text = path.read_text(encoding="utf-8")
+
+    assert path.is_file()
+    assert not re.search(r"[А-Яа-яЁё]", text)
+    for line in text.splitlines():
+        if "- [" in line:
+            assert CHECKBOX_RE.match(line), line
+
+    required_phrases = [
+        "decision-complete migration guide",
+        "`ollama-provider` owns Ollama behavior",
+        "Preserve public HTTP compatibility",
+        "Do not make CoreUI know Ollama internals",
+        "host_context.docker_runtime",
+        "DockerContainerSpec",
+        "Do not move Qdrant",
+        "Do not remove old env/config names",
+        "Preserve `GET /api/tags` compatibility",
+        "Manual Smoke Checklist",
+        "Suggested Regression Searches",
+        "Acceptance Criteria",
+    ]
+    for phrase in required_phrases:
+        assert phrase in text

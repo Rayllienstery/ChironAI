@@ -8,11 +8,12 @@ import urllib.request
 from collections.abc import Iterator
 from typing import Any
 
-from infrastructure.ollama.model_brand import resolve_brand_key
-from infrastructure.ollama.model_capabilities import caps_supports_thinking
-from infrastructure.ollama.openai_ollama_tool_bridge import ollama_chat_tool_choice_payload_value
-
 from llm_proxy.chat_completions_upstream_budget import _ollama_message_content_str
+from llm_proxy.ollama_compat import (
+    caps_supports_thinking,
+    ollama_chat_tool_choice_payload_value,
+    resolve_brand_key,
+)
 
 
 _OLLAMA_TRACE_MSG_PREVIEW = 300
@@ -68,6 +69,28 @@ def _trace_ollama_api_metrics(src: dict[str, Any] | None, model_id: str | None =
         if brand_key:
             out["brand_key"] = brand_key
     return out
+
+
+def _apply_provider_trace_fields(
+    trace: dict[str, Any],
+    chat_client: Any,
+    *,
+    model_id: str,
+    operation: str,
+) -> None:
+    """Record the provider-runtime boundary used for the upstream chat call."""
+    ollama = trace.setdefault("ollama", {})
+    request = trace.setdefault("request", {})
+    provider_id = str(getattr(chat_client, "_provider_id", "") or "").strip()
+    if provider_id:
+        ollama["provider_id"] = provider_id
+        request["provider_id"] = provider_id
+    if model_id:
+        ollama["provider_model_id"] = str(model_id)
+    if operation:
+        ollama["provider_operation"] = str(operation)
+    if provider_id or getattr(chat_client, "_runtime", None) is not None:
+        ollama["provider_runtime"] = True
 
 
 def _merge_ollama_visible_text(thinking: str | None, content: str | None) -> str:

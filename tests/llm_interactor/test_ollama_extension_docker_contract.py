@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -17,6 +19,71 @@ def _load_ollama_provider_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_bundled_ollama_manifest_declares_expected_capabilities() -> None:
+    root = Path(__file__).resolve().parents[2]
+    manifest_path = root / "extensions" / "bundled" / "ollama-provider" / "chironai-extension.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["id"] == "ollama-provider"
+    assert manifest["title"] == "Ollama"
+    capabilities = manifest.get("capabilities") or {}
+    for key in (
+        "chat",
+        "embed",
+        "rerank",
+        "streaming",
+        "tools",
+        "vision",
+        "model_listing",
+        "health_check",
+        "tab_ui",
+        "service_actions",
+    ):
+        assert capabilities.get(key) is True
+
+
+def test_bundled_ollama_provider_surface_covers_migration_baseline() -> None:
+    provider = _provider(_DockerRuntime())
+    descriptor = provider.describe()
+
+    assert descriptor.id == "ollama"
+    assert descriptor.extension_id == "ollama-provider"
+    assert descriptor.title == "Ollama"
+    assert descriptor.capabilities.chat is True
+    assert descriptor.capabilities.embed is True
+    assert descriptor.capabilities.rerank is True
+    assert descriptor.capabilities.streaming is True
+    assert descriptor.capabilities.tools is True
+    assert descriptor.capabilities.vision is True
+    assert descriptor.capabilities.model_listing is True
+    assert descriptor.capabilities.health_check is True
+    assert descriptor.capabilities.tab_ui is True
+    assert descriptor.capabilities.service_actions is True
+    for name in (
+        "invoke",
+        "stream_invoke",
+        "list_models",
+        "health_check",
+        "get_tab_payload",
+        "run_action",
+        "_invoke_embed",
+        "_invoke_rerank",
+        "_invoke_raw_ollama",
+        "_stream_raw_ollama",
+    ):
+        assert callable(getattr(provider, name))
+
+
+def test_ollama_extension_http_helper_is_self_contained() -> None:
+    root = Path(__file__).resolve().parents[2]
+    http_path = root / "extensions" / "bundled" / "ollama-provider" / "backend" / "ollama_http.py"
+    text = http_path.read_text(encoding="utf-8")
+
+    assert not re.search(r"^\s*(?:from|import)\s+infrastructure\b", text, re.MULTILINE)
+    assert not re.search(r"^\s*(?:from|import)\s+api\b", text, re.MULTILINE)
+    assert not re.search(r"^\s*(?:from|import)\s+rag_service\b", text, re.MULTILINE)
 
 
 def test_bundled_ollama_provider_backend_satisfies_docker_policy() -> None:
