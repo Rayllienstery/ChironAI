@@ -1158,7 +1158,7 @@ def test_ollama_api_passthrough_preserves_raw_request_shapes(monkeypatch: pytest
             }
         )
         if stream:
-            return FakeOllamaResponse(lines=['{"message":{"content":"hi"},"done":false}', '{"done":true}'])
+            return FakeOllamaResponse(lines=[b'{"message":{"content":"hi"},"done":false}', b'{"done":true}'])
         return FakeOllamaResponse({"echo": dict(json or {}), "done": True})
 
     monkeypatch.setattr("llm_proxy.ollama_upstream.requests.get", fake_get)

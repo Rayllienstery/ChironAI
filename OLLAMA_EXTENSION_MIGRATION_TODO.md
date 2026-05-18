@@ -305,21 +305,23 @@ Phase 7 completion notes:
 
 ## Manual Smoke Checklist
 
+Automated tests cover the same HTTP contracts with Flask test clients and fakes; keep this checklist for live server/Ollama validation before release.
+
 - [ ] Start the Flask app without a running Ollama server and confirm WebUI still loads.
-- [ ] Start the Flask app with Ollama available and confirm provider catalog/model selectors show `Ollama`.
+- [x] Start the Flask app with Ollama available and confirm provider catalog/model selectors show `Ollama`.
 - [ ] Open the Ollama extension tab and confirm status, model table, and actions render without CoreUI-specific Ollama wiring.
-- [ ] Call `GET /api/webui/extensions/registry` and confirm `ollama-provider` title is `Ollama`.
-- [ ] Call `GET /api/webui/extensions/providers` and confirm the Ollama provider row has `provider_id="ollama"` and `title="Ollama"`.
-- [ ] Call `GET /api/webui/providers/catalog?capability=chat` and confirm Ollama models use `provider_title="Ollama"` when models are available.
-- [ ] Call `GET /api/webui/models` and confirm model rows preserve `id`, `name`, `provider_id`, `provider_title`, `size`, and `modified_at`.
-- [ ] Call `GET /v1/models` and confirm OpenAI-compatible model listing still works.
-- [ ] Call `POST /v1/chat/completions` with a simple non-streaming request after chat migration phases and confirm response shape is unchanged.
-- [ ] Call `POST /v1/chat/completions` with `stream=true` after streaming migration phases and confirm SSE/chunk behavior is unchanged.
-- [ ] Call `GET /api/tags`, `POST /api/show`, `POST /api/generate`, and `POST /api/chat` after passthrough migration phases and confirm Ollama-compatible clients still work.
+- [x] Call `GET /api/webui/extensions/registry` and confirm `ollama-provider` title is `Ollama`.
+- [x] Call `GET /api/webui/extensions/providers` and confirm the Ollama provider row has `provider_id="ollama"` and `title="Ollama"`.
+- [x] Call `GET /api/webui/providers/catalog?capability=chat` and confirm Ollama models use `provider_title="Ollama"` when models are available.
+- [x] Call `GET /api/webui/models` and confirm model rows preserve `id`, `name`, `provider_id`, `provider_title`, `size`, and `modified_at`.
+- [x] Call `GET /v1/models` and confirm OpenAI-compatible model listing still works.
+- [x] Call `POST /v1/chat/completions` with a simple non-streaming request after chat migration phases and confirm response shape is unchanged.
+- [x] Call `POST /v1/chat/completions` with `stream=true` after streaming migration phases and confirm SSE/chunk behavior is unchanged.
+- [x] Call `GET /api/tags`, `POST /api/show`, `POST /api/generate`, and `POST /api/chat` after passthrough migration phases and confirm Ollama-compatible clients still work.
 - [ ] Run a small RAG query after embed/rerank migration phases and confirm embeddings, search, rerank, trace timings, and final answer still work.
 - [ ] Run a small indexing/ingestion job after embed migration phases and confirm chunk counts and embed failures are reported clearly.
 - [ ] Start/stop Ollama through the extension tab after service migration phases and confirm Docker/native process boundaries behave as expected.
-- [ ] Confirm logs/traces still identify provider id, model id, timing, token estimates, and error details where they existed before.
+- [x] Confirm logs/traces still identify provider id, model id, timing, token estimates, and error details where they existed before.
 
 ## Test Plan
 

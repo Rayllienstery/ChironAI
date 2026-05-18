@@ -43,6 +43,12 @@ def _ollama_runtime(wiring: Any) -> Any | None:
         return None
 
 
+def _ndjson_line_text(line: Any) -> str:
+    if isinstance(line, bytes):
+        return line.decode("utf-8", errors="replace")
+    return str(line)
+
+
 def _forward_ollama_api_via_runtime(
     wiring: Any,
     api_segment: str,
@@ -82,10 +88,10 @@ def _forward_ollama_api_via_runtime(
 
             def generate():
                 if first is not None and first.type == "raw_line":
-                    yield str(first.data) + "\n"
+                    yield _ndjson_line_text(first.data) + "\n"
                 for event in events:
                     if event.type == "raw_line":
-                        yield str(event.data) + "\n"
+                        yield _ndjson_line_text(event.data) + "\n"
                     elif event.type == "error":
                         yield json.dumps({"error": str(event.data)}) + "\n"
 
@@ -167,7 +173,7 @@ def forward_ollama_api(
             try:
                 for line in upstream.iter_lines(decode_unicode=True):
                     if line:
-                        yield line + "\n"
+                        yield _ndjson_line_text(line) + "\n"
             finally:
                 upstream.close()
 
