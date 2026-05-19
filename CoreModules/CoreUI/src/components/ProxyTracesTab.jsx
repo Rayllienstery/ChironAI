@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getLlmProxyStatus, getProxyTraces, clearProxyTraces } from '../services/api';
 import '../styles/components/DashboardTab.css';
 import CoreUIButton from './CoreUIButton';
+import CoreUIModal from './CoreUIModal';
+import CoreUIPillTabs from './CoreUIPillTabs';
 import { summarizeAgentTraceMeta } from '../utils/agentTraceSummary';
 import AgentTraceSummaryCards from './AgentTraceSummaryCards';
 
@@ -13,6 +15,9 @@ export default function ProxyTracesTab() {
   const [liveTraces, setLiveTraces] = useState([]);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [selectedTrace, setSelectedTrace] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTab, setModalTab] = useState('formatted');
 
   const loadDetailTraces = useCallback(async () => {
     setErr(null);
@@ -122,18 +127,22 @@ export default function ProxyTracesTab() {
         <div className="dashboard-card-scroll">
           {traces.length === 0 && <p className="dashboard-card-muted">No traces yet.</p>}
           {traces.map((t, i) => (
-            <details key={`${t.trace_id || 'trace'}-d-${i}`} className="dashboard-trace-item">
-              <summary>
+            <button
+              key={`${t.trace_id || 'trace'}-d-${i}`}
+              type="button"
+              className="dashboard-trace-item dashboard-trace-item--clickable"
+              onClick={() => {
+                setSelectedTrace(t);
+                setModalTab('formatted');
+                setModalOpen(true);
+              }}
+            >
+              <div className="dashboard-trace-item-header">
                 <code>{(t.trace_id || '').slice(0, 8)}</code> · {t.elapsed_ms}ms · {t.step_count} steps ·{' '}
                 {t.resolved_model}
                 {t.error ? ` · error: ${t.error}` : ''}
-              </summary>
-              <AgentTraceSummaryCards summary={summarizeAgentTraceMeta(t)} />
-              <details className="dashboard-trace-item coreui-section-block">
-                <summary>Full JSON</summary>
-                <pre className="coreui-mono-block">{JSON.stringify(t, null, 2)}</pre>
-              </details>
-            </details>
+              </div>
+            </button>
           ))}
         </div>
       </section>
@@ -158,6 +167,37 @@ export default function ProxyTracesTab() {
           ))}
         </div>
       </section>
+
+      {modalOpen && selectedTrace && (
+        <CoreUIModal
+          title={`Trace ${(selectedTrace.trace_id || '').slice(0, 8)}`}
+          onClose={() => setModalOpen(false)}
+        >
+          <CoreUIPillTabs
+            tabs={[
+              { id: 'formatted', label: 'Formatted' },
+              { id: 'full-json', label: 'Full Json' },
+            ]}
+            value={modalTab}
+            onChange={setModalTab}
+            ariaLabel="Trace view mode"
+          />
+          <div style={{ marginTop: 'var(--md-sys-spacing-md)' }}>
+            {modalTab === 'formatted' && (
+              <>
+                <AgentTraceSummaryCards summary={summarizeAgentTraceMeta(selectedTrace)} />
+                <details className="dashboard-trace-item coreui-section-block" style={{ marginTop: 'var(--md-sys-spacing-md)' }}>
+                  <summary>Full JSON</summary>
+                  <pre className="coreui-mono-block">{JSON.stringify(selectedTrace, null, 2)}</pre>
+                </details>
+              </>
+            )}
+            {modalTab === 'full-json' && (
+              <pre className="coreui-mono-block">{JSON.stringify(selectedTrace, null, 2)}</pre>
+            )}
+          </div>
+        </CoreUIModal>
+      )}
     </div>
   );
 }

@@ -370,6 +370,18 @@
   min-width: 0;
 }
 
+.proxy-live-notification-trace-count {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-label-small-font);
+  line-height: 1.4;
+}
+
 .proxy-live-notification-model-value {
   display: inline-flex;
   align-items: center;

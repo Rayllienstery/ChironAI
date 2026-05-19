@@ -5,11 +5,16 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import json
-import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from chironai_security import (
+    ExtensionSecurityError,
+    audit_extension,
+    audit_extension_or_raise,
+    format_blocking_error,
+)
 from llm_interactor.contracts import LLMProvider, ProviderHostContext
 from llm_interactor.manifest import ExtensionManifest, manifest_from_dict
 
@@ -30,6 +35,7 @@ class FailedExtension:
     source_dir: Path
     error: str
     manifest: ExtensionManifest | None = None
+    security_findings: list[dict[str, object]] = field(default_factory=list)
 
 
 @dataclass
@@ -47,51 +53,19 @@ def load_manifest_from_dir(source_dir: Path) -> ExtensionManifest:
 
 
 def _backend_source_paths(source_dir: Path, entrypoint: str) -> list[Path]:
-    module_name, _, attr_name = entrypoint.partition(":")
-    if not module_name or not attr_name:
-        raise ValueError("backend.entrypoint must be 'module:callable'")
-    module_rel = module_name.replace(".", "/")
-    py_path = source_dir / f"{module_rel}.py"
-    package_init = source_dir / module_rel / "__init__.py"
-    if py_path.is_file():
-        return sorted(py_path.parent.rglob("*.py"))
-    if package_init.is_file():
-        return sorted(package_init.parent.rglob("*.py"))
-    return []
+    from chironai_security.extension_audit import backend_source_paths
+
+    return backend_source_paths(source_dir, entrypoint)
 
 
 def validate_extension_backend_docker_policy(source_dir: Path, entrypoint: str) -> None:
     """Reject extension backends that bypass host_context.docker_runtime."""
 
-    banned_patterns = [
-        "class DockerRunner",
-        "_docker_executable",
-        "_resolved_" + "docker_executable",
-        "DOCKER" + "_EXE",
-        'shutil.which("' + "docker" + '")',
-        "shutil.which('" + "docker" + "')",
-        "docker.from_env",
-        "docker compose",
-        "docker-compose",
-        "/api/webui/docker",
-    ]
-    violations: list[str] = []
-    for path in _backend_source_paths(source_dir, entrypoint):
-        text = path.read_text(encoding="utf-8")
-        lowered = text.lower()
-        for pattern in banned_patterns:
-            haystack = lowered if pattern in {"docker compose", "docker-compose"} else text
-            needle = pattern.lower() if haystack is lowered else pattern
-            if needle in haystack:
-                violations.append(f"{path.relative_to(source_dir)} contains {pattern!r}")
-        if re.search(r"subprocess\.\w+\s*\([^\n]*(?:[\"']docker[\"']|docker\s)", text):
-            violations.append(f"{path.relative_to(source_dir)} calls Docker through subprocess")
-
-    if violations:
-        details = "; ".join(violations)
+    report = audit_extension(source_dir, entrypoint=entrypoint)
+    docker_findings = [item for item in report.blocking_findings if item.code == "docker_contract_violation"]
+    if docker_findings:
         raise ValueError(
-            "Extension backend violates Docker contract: use host_context.docker_runtime "
-            f"and DockerContainerSpec instead of direct Docker access ({details})"
+            format_blocking_error(type(report)(source_dir=report.source_dir, findings=docker_findings))
         )
 
 
@@ -148,7 +122,7 @@ def discover_extensions(
                 continue
             if manifest.backend is None:
                 raise ValueError("manifest backend is required")
-            validate_extension_backend_docker_policy(source_dir, manifest.backend.entrypoint)
+            audit_extension_or_raise(source_dir, manifest=manifest, entrypoint=manifest.backend.entrypoint)
             factory = _load_factory_from_entrypoint(source_dir, manifest.backend.entrypoint)
             provider = factory(host_context, manifest)
             report.loaded.append(LoadedExtension(manifest=manifest, source_dir=source_dir, provider=provider))
@@ -160,12 +134,16 @@ def discover_extensions(
                 ext_id = manifest.id
             except Exception:
                 pass
+            security_findings: list[dict[str, object]] = []
+            if isinstance(e, ExtensionSecurityError):
+                security_findings = [item.to_dict() for item in e.report.findings]
             report.failed.append(
                 FailedExtension(
                     extension_id=ext_id,
                     source_dir=source_dir,
                     error=f"{type(e).__name__}: {e}",
                     manifest=manifest,
+                    security_findings=security_findings,
                 )
             )
     return report

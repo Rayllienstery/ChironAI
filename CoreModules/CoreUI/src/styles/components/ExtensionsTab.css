@@ -167,6 +167,22 @@
   font-size: 12px;
 }
 
+.extensions-security-findings {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-error) 35%, transparent);
+  border-radius: var(--coreui-radius-card);
+  background: color-mix(in srgb, var(--md-sys-color-error-container) 35%, transparent);
+}
+
+.extensions-security-findings ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--md-sys-color-on-error-container);
+  font-size: 12px;
+}
+
 .extensions-failed-list {
   display: grid;
   gap: 10px;

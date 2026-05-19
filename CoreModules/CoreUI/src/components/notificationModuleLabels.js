@@ -8,6 +8,7 @@ const LABELS = {
   /** @deprecated persisted history may still use the old key */
   'dumb-proxy': 'RAG Fusion Proxy',
   'llm-proxy': 'LLM Proxy',
+  extensions: 'Extensions',
   ollama: 'Ollama',
   logs: 'Logs',
   testing: 'Testing',

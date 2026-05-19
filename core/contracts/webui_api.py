@@ -158,6 +158,8 @@ class InstalledExtensionDTO(TypedDict, total=False):
     restart_required: bool
     status: str
     error: str
+    security_blocked: bool
+    security_findings: list[dict[str, Any]]
 
 
 class ProviderHealthDTO(TypedDict, total=False):

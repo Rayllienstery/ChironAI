@@ -34,12 +34,32 @@ function traceChainId(trace) {
 }
 
 function traceSlotKey(trace) {
-  return nonEmptyString(trace?.trace_id) || traceChainId(trace) || 'unknown';
+  const chainId = traceChainId(trace);
+  if (chainId) return `chain:${chainId}`;
+  const traceId = nonEmptyString(trace?.trace_id);
+  if (traceId) return `trace:${traceId}`;
+  return 'unknown';
 }
 
 function traceShortId(value) {
   const s = nonEmptyString(value);
   return s ? s.slice(0, 12) : '';
+}
+
+function groupActiveTraces(traces) {
+  const groups = new Map();
+  (Array.isArray(traces) ? traces : []).forEach((trace) => {
+    if (!trace || typeof trace !== 'object') return;
+    const slotKey = traceSlotKey(trace);
+    const current = groups.get(slotKey);
+    if (!current) {
+      groups.set(slotKey, { slotKey, latestTrace: trace, traces: [trace] });
+      return;
+    }
+    current.latestTrace = trace;
+    current.traces.push(trace);
+  });
+  return [...groups.values()];
 }
 
 function numOrNull(value) {
@@ -216,8 +236,18 @@ function WindDownLinearBar({ endsAt }) {
   );
 }
 
+function TraceCountBadge({ count }) {
+  const n = Number(count || 0);
+  if (!Number.isFinite(n) || n <= 1) return null;
+  return (
+    <span className="proxy-live-notification-trace-count">
+      {n} traces
+    </span>
+  );
+}
+
 function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
-  const { endsAt, status, model, traceId, chainId, steps, brandKey } = wd;
+  const { endsAt, status, model, traceId, chainId, steps, brandKey, traceCount } = wd;
   const stepCapsules = buildStepCapsules(steps);
   return (
     <div className="proxy-live-notification notification-proxy-embed notification-proxy-embed--winddown">
@@ -225,6 +255,7 @@ function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
       <div className="proxy-live-notification-status">
         <span className="proxy-live-notification-label">Status</span>
         <span className="proxy-live-notification-value">{status}</span>
+        <TraceCountBadge count={traceCount} />
       </div>
       <div className="proxy-live-notification-row">
         <span className="proxy-live-notification-label">Model</span>
@@ -260,7 +291,7 @@ function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
   );
 }
 
-function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
+function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace, traceCount = 1) {
   const status = (
     proxyPayload.status != null && proxyPayload.status !== '' ? String(proxyPayload.status) : 'Idle'
   ).trim();
@@ -283,6 +314,7 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace) {
       <div className="proxy-live-notification-status">
         <span className="proxy-live-notification-label">Status</span>
         <span className="proxy-live-notification-value">{status}</span>
+        <TraceCountBadge count={traceCount} />
       </div>
       <div className="proxy-live-notification-row">
         <span className="proxy-live-notification-label">Model</span>
@@ -427,12 +459,14 @@ export default function ProxiesLiveNotificationBridge({
     if (!p) return;
 
     const status = payloadStatus(p);
-    const activeTraces = payloadActiveTraces(p);
+    const activeTraceGroups = groupActiveTraces(payloadActiveTraces(p));
     const nextActive = new Map();
-    activeTraces.forEach((trace) => {
-      const slotKey = traceSlotKey(trace);
-      nextActive.set(slotKey, trace);
-      clearLiveSuppression(proxyLiveSlotId(slotKey === 'unknown' ? null : slotKey));
+    activeTraceGroups.forEach((group) => {
+      const { slotKey } = group;
+      nextActive.set(slotKey, group);
+      if (!prevActiveProxyTracesRef.current.has(slotKey)) {
+        clearLiveSuppression(proxyLiveSlotId(slotKey === 'unknown' ? null : slotKey));
+      }
       if (llmWindDownsRef.current.has(slotKey)) {
         llmWindDownsRef.current.delete(slotKey);
         const scheduled = llmWindDownTimersRef.current;
@@ -445,8 +479,10 @@ export default function ProxiesLiveNotificationBridge({
       }
     });
 
-    prevActiveProxyTracesRef.current.forEach((trace, slotKey) => {
+    prevActiveProxyTracesRef.current.forEach((group, slotKey) => {
       if (nextActive.has(slotKey)) return;
+      const trace = group?.latestTrace;
+      if (!trace || typeof trace !== 'object') return;
       const model = traceModelFields(trace).headerShort;
       const stepLine = pickLastStepName(trace?.steps);
       const chainIdFull = traceChainId(trace);
@@ -464,6 +500,7 @@ export default function ProxiesLiveNotificationBridge({
         chainIdShort,
         chainId: chainIdFull,
         steps: Array.isArray(trace.steps) ? trace.steps : [],
+        traceCount: Array.isArray(group?.traces) ? group.traces.length : 1,
       });
       bumpLlmWindDowns();
     });
@@ -513,12 +550,16 @@ export default function ProxiesLiveNotificationBridge({
             if (wd.stepLine) parts.push(`Step: ${wd.stepLine}`);
             if (wd.chainIdShort) parts.push(`Chain: ${wd.chainIdShort}`);
             if (wd.traceIdShort) parts.push(`Trace: ${wd.traceIdShort}`);
+            const aggKey = wd.chainId
+              ? `llm-proxy-finished|${wd.chainId}`
+              : `llm-proxy-finished|trace:${wd.traceId || traceKey}`;
             await persistNotification({
               kind: 'event',
               source: 'rag-fusion-proxy',
               title: 'RAG Fusion Proxy finished',
               message: parts.join(' · ').slice(0, 800),
               metadata: { historyOnly: true },
+              aggregation_key: aggKey,
             });
           } catch (e) {
             console.error('NotificationCenter: LLM wind-down persist failed', e);
@@ -562,13 +603,18 @@ export default function ProxiesLiveNotificationBridge({
     const rows = [];
     const llmWd = llmWindDownsRef.current;
 
-    const activeTraces = payloadActiveTraces(proxyPayload);
-    activeTraces.forEach((trace) => {
-      const tk = traceSlotKey(trace);
+    const activeTraceGroups = groupActiveTraces(payloadActiveTraces(proxyPayload));
+    activeTraceGroups.forEach((group) => {
+      const { slotKey, latestTrace, traces } = group;
       rows.push({
-        id: proxyLiveSlotId(tk === 'unknown' ? null : tk),
+        id: proxyLiveSlotId(slotKey === 'unknown' ? null : slotKey),
         source: 'rag-fusion-proxy',
-        node: renderLlmBusyCard({ ...proxyPayload, trace }, true, onOpenLlmProxyTrace),
+        node: renderLlmBusyCard(
+          { ...proxyPayload, trace: latestTrace },
+          true,
+          onOpenLlmProxyTrace,
+          traces.length,
+        ),
       });
     });
     llmWd.forEach((wd, traceKey) => {

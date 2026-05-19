@@ -240,6 +240,36 @@ input.dashboard-card-field {
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 
+.dashboard-trace-item--clickable {
+  display: block;
+  width: 100%;
+  padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
+  margin: 0 0 var(--md-sys-spacing-sm) 0;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-medium-font);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.dashboard-trace-item--clickable:hover {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+  border-color: var(--md-sys-color-primary);
+}
+
+.dashboard-trace-item-header {
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.dashboard-trace-item-header code {
+  font-weight: 600;
+  color: var(--md-sys-color-primary);
+}
+
 .dashboard-trace-item:last-child {
   border-bottom: none;
   margin-bottom: 0;

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import zipfile
+from io import BytesIO
 import sys
 from pathlib import Path
 
@@ -428,6 +430,104 @@ def test_removed_bundled_extension_is_not_reinstalled(tmp_path: Path) -> None:
     manager.bootstrap_runtime()
 
     assert not any(item["id"] == "open-webui" for item in manager.installed_extensions())
+
+
+def test_extension_install_rejects_unsafe_staged_extension_and_cleans_target(tmp_path: Path) -> None:
+    class _Repo:
+        def __init__(self) -> None:
+            self.data: dict[str, str] = {}
+
+        def get_app_setting(self, key: str):
+            return self.data.get(key)
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            self.data[key] = value
+
+    class _Registry:
+        def load(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "id": "unsafe-ext",
+                    "title": "Unsafe",
+                    "source_path": str(source),
+                    "latest_version": "1.0.0",
+                }
+            ]
+
+    source = tmp_path / "source" / "unsafe-ext"
+    backend = source / "backend"
+    backend.mkdir(parents=True)
+    manifest = {
+        "id": "unsafe-ext",
+        "version": "1.0.0",
+        "api_version": EXTENSION_API_VERSION,
+        "type": "ui_extension",
+        "title": "Unsafe",
+        "backend": {"entrypoint": "backend.provider:create_provider"},
+    }
+    (source / "chironai-extension.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (backend / "provider.py").write_text(
+        "import subprocess\n"
+        "def create_provider(host_context, manifest):\n"
+        "    subprocess.run(['cmd.exe', '/c', 'whoami'], check=False)\n"
+        "    return object()\n",
+        encoding="utf-8",
+    )
+
+    repo = _Repo()
+    root = Path(__file__).resolve().parents[2]
+    installed_dir = tmp_path / "installed"
+    host = ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None)
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=host,
+        settings_repo=repo,
+        registry_client=_Registry(),  # type: ignore[arg-type]
+        installed_dir=installed_dir,
+        bundled_dir=tmp_path / "bundled",
+    )
+
+    with pytest.raises(ValueError, match="Extension security audit blocked"):
+        manager.install("unsafe-ext")
+
+    assert not (installed_dir / "unsafe-ext" / "1.0.0").exists()
+    assert ExtensionsRepository(repo).list_records() == []
+
+
+def test_extension_zip_install_rejects_path_traversal_member(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Repo:
+        def get_app_setting(self, key: str):
+            return None
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            return None
+
+    class _Response:
+        def __init__(self, content: bytes) -> None:
+            self.content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("../evil.txt", "bad")
+    monkeypatch.setattr("requests.get", lambda url, timeout: _Response(buf.getvalue()))
+
+    root = Path(__file__).resolve().parents[2]
+    repo = _Repo()
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+
+    with pytest.raises(ValueError, match="unsafe zip member path"):
+        manager._download_zip_to_dir("https://example.invalid/ext.zip", tmp_path / "installed" / "unsafe" / "1")
+
+    assert not (tmp_path / "evil.txt").exists()
 
 
 def test_registry_client_reads_local_registry() -> None:

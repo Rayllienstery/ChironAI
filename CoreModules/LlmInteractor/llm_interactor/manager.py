@@ -13,8 +13,9 @@ from urllib.parse import quote
 
 import requests
 
+from chironai_security import audit_extension_or_raise
 from llm_interactor.contracts import ProviderHostContext
-from llm_interactor.discovery import FailedExtension, LoadedExtension, MANIFEST_FILENAME, discover_extensions
+from llm_interactor.discovery import FailedExtension, LoadedExtension, MANIFEST_FILENAME, discover_extensions, load_manifest_from_dir
 from llm_interactor.install_state import ExtensionsRepository, InstalledExtensionRecord
 from llm_interactor.manifest import EXTENSION_TYPE_LLM_PROVIDER
 from llm_interactor.registry_client import ExtensionRegistryClient
@@ -328,6 +329,8 @@ class ExtensionManager:
                         else "installed"
                     ),
                     "error": failed.error if failed is not None else "",
+                    "security_blocked": bool(failed.security_findings) if failed is not None else False,
+                    "security_findings": list(failed.security_findings) if failed is not None else [],
                     "source": dict(record.source or {}),
                 }
             )
@@ -521,6 +524,7 @@ class ExtensionManager:
                 {
                     "id": item.extension_id,
                     "error": item.error,
+                    "security_findings": list(item.security_findings),
                 }
                 for item in self._failed
             ],
@@ -538,7 +542,16 @@ class ExtensionManager:
             raise ValueError("registry entry has no latest_version/default_ref")
         target_dir = self._installed_dir / ext_id / target_version
         target_dir.parent.mkdir(parents=True, exist_ok=True)
-        self._install_entry_payload(entry, target_dir)
+        try:
+            self._install_entry_payload(entry, target_dir)
+            manifest = load_manifest_from_dir(target_dir)
+            if manifest.backend is None:
+                raise ValueError("manifest backend is required")
+            audit_extension_or_raise(target_dir, manifest=manifest, entrypoint=manifest.backend.entrypoint)
+        except Exception:
+            if target_dir.exists():
+                shutil.rmtree(target_dir, ignore_errors=True)
+            raise
         records = [r for r in self._repo.list_records() if r.id != ext_id]
         records.append(
             InstalledExtensionRecord(
@@ -584,18 +597,39 @@ class ExtensionManager:
             tmp_path = Path(tmp.name)
         try:
             with zipfile.ZipFile(tmp_path) as zf:
-                members = zf.namelist()
+                infos = [info for info in zf.infolist() if info.filename and not info.filename.endswith("/")]
+                names = [info.filename.replace("\\", "/") for info in infos]
+                for name in names:
+                    parts = [part for part in name.split("/") if part]
+                    if (
+                        not parts
+                        or name.startswith("/")
+                        or ":" in parts[0]
+                        or any(part == ".." for part in parts)
+                    ):
+                        raise ValueError(f"unsafe zip member path: {name}")
                 root_prefix = ""
-                if members:
-                    first = members[0].split("/")[0]
-                    if first:
+                if names:
+                    first = names[0].split("/")[0]
+                    if first and all(name == first or name.startswith(first + "/") for name in names):
                         root_prefix = first + "/"
-                zf.extractall(target_dir.parent)
-                extracted_root = target_dir.parent / root_prefix.rstrip("/")
-                if extracted_root.is_dir() and extracted_root != target_dir:
-                    if target_dir.exists():
-                        shutil.rmtree(target_dir)
-                    shutil.move(str(extracted_root), str(target_dir))
+                if target_dir.exists():
+                    shutil.rmtree(target_dir)
+                target_dir.mkdir(parents=True, exist_ok=True)
+                for info in infos:
+                    name = info.filename.replace("\\", "/")
+                    rel = name[len(root_prefix):] if root_prefix and name.startswith(root_prefix) else name
+                    if not rel:
+                        continue
+                    dest = (target_dir / rel).resolve()
+                    root = target_dir.resolve()
+                    try:
+                        dest.relative_to(root)
+                    except ValueError as e:
+                        raise ValueError(f"unsafe zip member path: {name}") from e
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(info) as src, dest.open("wb") as dst:
+                        shutil.copyfileobj(src, dst)
         finally:
             tmp_path.unlink(missing_ok=True)
 

@@ -18,6 +18,7 @@ const NotificationCenterContext = createContext(undefined);
 
 export function NotificationCenterProvider({ sessionId, children }) {
   const [persisted, setPersisted] = useState([]);
+  const [persistedLoaded, setPersistedLoaded] = useState(false);
   const [liveMap, setLiveMap] = useState(() => new Map());
   const [liveSuppressedIds, setLiveSuppressedIds] = useState(() => []);
   const liveMapRef = useRef(liveMap);
@@ -26,13 +27,17 @@ export function NotificationCenterProvider({ sessionId, children }) {
   const refreshPersisted = useCallback(async () => {
     if (!sessionId) {
       setPersisted([]);
+      setPersistedLoaded(true);
       return;
     }
+    setPersistedLoaded(false);
     try {
       const data = await getCoreuiNotifications(sessionId, { includeDismissed: true, limit: 200 });
       setPersisted(data.notifications || []);
     } catch (e) {
       console.error('NotificationCenter: failed to load', e);
+    } finally {
+      setPersistedLoaded(true);
     }
   }, [sessionId]);
 
@@ -150,6 +155,7 @@ export function NotificationCenterProvider({ sessionId, children }) {
     () => ({
       sessionId,
       persisted,
+      persistedLoaded,
       liveActivities: liveMap,
       liveSuppressedIds,
       refreshPersisted,
@@ -165,6 +171,7 @@ export function NotificationCenterProvider({ sessionId, children }) {
     [
       sessionId,
       persisted,
+      persistedLoaded,
       liveMap,
       liveSuppressedIds,
       refreshPersisted,

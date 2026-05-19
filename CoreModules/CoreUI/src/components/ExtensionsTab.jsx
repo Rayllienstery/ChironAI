@@ -83,6 +83,25 @@ function HealthPill({ health }) {
   return <CoreUIBadge tone={tone}>{status}</CoreUIBadge>;
 }
 
+function SecurityFindings({ findings }) {
+  const rows = Array.isArray(findings) ? findings : [];
+  if (!rows.length) return null;
+  return (
+    <div className="extensions-security-findings">
+      <div className="extensions-schema-label">Security findings</div>
+      <ul>
+        {rows.slice(0, 5).map((finding, index) => (
+          <li key={`${finding.code || 'finding'}:${finding.file || ''}:${finding.line || index}`}>
+            <strong>{finding.severity || 'finding'}</strong>
+            {finding.code ? ` ${finding.code}` : ''}: {finding.message || 'Security audit finding'}
+            {finding.file ? ` (${finding.file}${finding.line ? `:${finding.line}` : ''})` : ''}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function SchemaRenderer({ schema, providerByExtensionId }) {
   const pages = Array.isArray(schema?.pages) ? schema.pages : [];
   if (!pages.length) return null;
@@ -393,8 +412,10 @@ export default function ExtensionsTab({ onErrorStateChange }) {
                 <span>Version: {item.version}</span>
                 <span>Enabled: {String(Boolean(item.enabled))}</span>
                 {item.restart_required ? <span>Restart required</span> : null}
+                {item.security_blocked ? <span>Security blocked</span> : null}
               </div>
               {item.error ? <pre className="extensions-card__error">{item.error}</pre> : null}
+              <SecurityFindings findings={item.security_findings} />
             </article>
             ))}
             {!installed.length && !loading ? <div className="extensions-empty">No installed extensions.</div> : null}
@@ -432,4 +453,3 @@ export default function ExtensionsTab({ onErrorStateChange }) {
     </div>
   );
 }
-

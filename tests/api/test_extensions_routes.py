@@ -30,7 +30,15 @@ class _FakeExtensionsService:
         return [{"id": "ollama-provider", "title": "Ollama"}]
 
     def installed_extensions(self) -> list[dict[str, Any]]:
-        return [{"id": "ollama-provider", "enabled": True, "version": "0.1.0"}]
+        return [
+            {
+                "id": "ollama-provider",
+                "enabled": True,
+                "version": "0.1.0",
+                "security_blocked": False,
+                "security_findings": [],
+            }
+        ]
 
     def provider_rows(self, _runtime: Any) -> list[dict[str, Any]]:
         return [
@@ -132,6 +140,9 @@ def test_extensions_routes_expose_registry_and_ui() -> None:
     assert ui.status_code == 200
     assert (registry.get_json() or {}).get("registry")[0]["id"] == "ollama-provider"
     assert (registry.get_json() or {}).get("registry")[0]["title"] == "Ollama"
+    installed_item = (installed.get_json() or {}).get("extensions")[0]
+    assert installed_item["security_blocked"] is False
+    assert installed_item["security_findings"] == []
     provider = (providers.get_json() or {}).get("providers")[0]
     assert provider["provider_id"] == "ollama"
     assert provider["title"] == "Ollama"
