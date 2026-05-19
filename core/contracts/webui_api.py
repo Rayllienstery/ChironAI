@@ -160,6 +160,9 @@ class InstalledExtensionDTO(TypedDict, total=False):
     error: str
     security_blocked: bool
     security_findings: list[dict[str, Any]]
+    sandboxed: bool
+    sandbox_status: str
+    sandbox_error: str
 
 
 class ProviderHealthDTO(TypedDict, total=False):

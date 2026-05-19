@@ -246,6 +246,7 @@ def test_ollama_provider_runtime_invocation_streaming_and_catalog(
         installed_dir=tmp_path / "installed",
         bundled_dir=root / "extensions" / "bundled",
         default_provider_id="ollama",
+        use_sandbox=False,
     )
     bootstrap = manager.bootstrap_runtime()
     provider = bootstrap.registry.get("ollama")

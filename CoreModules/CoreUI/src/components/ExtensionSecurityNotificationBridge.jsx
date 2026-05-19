@@ -32,6 +32,13 @@ function blockedExtensions(items) {
   });
 }
 
+function sandboxFailedExtensions(items) {
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    const status = String(item?.sandbox_status || '').toLowerCase();
+    return Boolean(item?.sandbox_error) || ['crashed', 'timeout', 'protocol_error', 'error'].includes(status);
+  });
+}
+
 function notificationMessage(item) {
   const findings = Array.isArray(item?.security_findings) ? item.security_findings : [];
   const first = findings.find((finding) => finding?.severity === 'critical') || findings[0];
@@ -49,6 +56,7 @@ export default function ExtensionSecurityNotificationBridge() {
     persistNotification,
   } = useNotificationCenter();
   const [blocked, setBlocked] = useState([]);
+  const [sandboxFailed, setSandboxFailed] = useState([]);
   const notifiedRef = useRef(new Set());
 
   useEffect(() => {
@@ -57,9 +65,16 @@ export default function ExtensionSecurityNotificationBridge() {
     const load = async () => {
       try {
         const data = await getExtensionInstalled();
-        if (!cancelled) setBlocked(blockedExtensions(data?.extensions || []));
+        if (!cancelled) {
+          const extensions = data?.extensions || [];
+          setBlocked(blockedExtensions(extensions));
+          setSandboxFailed(sandboxFailedExtensions(extensions));
+        }
       } catch {
-        if (!cancelled) setBlocked([]);
+        if (!cancelled) {
+          setBlocked([]);
+          setSandboxFailed([]);
+        }
       }
     };
     load();
@@ -99,6 +114,33 @@ export default function ExtensionSecurityNotificationBridge() {
       });
     });
   }, [blocked, existingKeys, persistedLoaded, persistNotification, sessionId]);
+
+  useEffect(() => {
+    if (!sessionId || !persistedLoaded || !persistNotification) return;
+    sandboxFailed.forEach((item) => {
+      const extId = String(item?.id || '').trim();
+      if (!extId) return;
+      const raw = `${item?.sandbox_status || 'error'}:${item?.sandbox_error || item?.error || ''}`;
+      let hash = 0;
+      for (let i = 0; i < raw.length; i += 1) {
+        hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0;
+      }
+      const aggregationKey = `extensions-sandbox:${extId}:${Math.abs(hash).toString(36)}`;
+      if (existingKeys.has(aggregationKey) || notifiedRef.current.has(aggregationKey)) return;
+      notifiedRef.current.add(aggregationKey);
+      void persistNotification({
+        kind: 'error',
+        source: 'extensions',
+        title: 'Extension sandbox failed',
+        message: `${item?.title || extId}: ${item?.sandbox_error || item?.error || 'Sandbox worker failed.'}`.slice(0, 800),
+        metadata: {
+          extension_id: extId,
+          sandbox_status: item?.sandbox_status || '',
+        },
+        aggregation_key: aggregationKey,
+      });
+    });
+  }, [existingKeys, persistedLoaded, persistNotification, sandboxFailed, sessionId]);
 
   return null;
 }

@@ -56,6 +56,7 @@ include = [
   "config*",
   "core*",
   "chironai_security*",
+  "extensions_sandbox*",
   "domain*",
   "infrastructure*",
   "utils*",
@@ -65,6 +66,7 @@ exclude = ["tests*", "tests"]
 
 [tool.setuptools.package-dir]
 chironai_security = "CoreModules/Security/chironai_security"
+extensions_sandbox = "CoreModules/ExtensionsSandbox/extensions_sandbox"
 webui_backend = "CoreModules/WebUIBackend/webui_backend"
 
 [tool.pytest.ini_options]
@@ -75,6 +77,7 @@ pythonpath = [
     "modules/html_md",
     "CoreModules/LlmInteractor",
     "CoreModules/Security",
+    "CoreModules/ExtensionsSandbox",
     "CoreModules/DockerManager",
     "CoreModules/ServiceStarter",
     "CoreModules/LlmProxy",
@@ -102,6 +105,7 @@ src = [
   "tests",
   "CoreModules/LlmInteractor/llm_interactor",
   "CoreModules/Security/chironai_security",
+  "CoreModules/ExtensionsSandbox/extensions_sandbox",
   "CoreModules/DockerManager/docker_manager",
   "CoreModules/LlmProxy/llm_proxy",
   "CoreModules/RagService/chironai_rag",

@@ -413,8 +413,10 @@ export default function ExtensionsTab({ onErrorStateChange }) {
                 <span>Enabled: {String(Boolean(item.enabled))}</span>
                 {item.restart_required ? <span>Restart required</span> : null}
                 {item.security_blocked ? <span>Security blocked</span> : null}
+                {item.sandboxed ? <span>Sandbox: {item.sandbox_status || "ready"}</span> : null}
               </div>
               {item.error ? <pre className="extensions-card__error">{item.error}</pre> : null}
+              {item.sandbox_error ? <pre className="extensions-card__error">{item.sandbox_error}</pre> : null}
               <SecurityFindings findings={item.security_findings} />
             </article>
             ))}

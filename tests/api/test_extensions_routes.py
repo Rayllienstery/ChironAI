@@ -37,6 +37,9 @@ class _FakeExtensionsService:
                 "version": "0.1.0",
                 "security_blocked": False,
                 "security_findings": [],
+                "sandboxed": True,
+                "sandbox_status": "ready",
+                "sandbox_error": "",
             }
         ]
 
@@ -143,6 +146,8 @@ def test_extensions_routes_expose_registry_and_ui() -> None:
     installed_item = (installed.get_json() or {}).get("extensions")[0]
     assert installed_item["security_blocked"] is False
     assert installed_item["security_findings"] == []
+    assert installed_item["sandboxed"] is True
+    assert installed_item["sandbox_status"] == "ready"
     provider = (providers.get_json() or {}).get("providers")[0]
     assert provider["provider_id"] == "ollama"
     assert provider["title"] == "Ollama"

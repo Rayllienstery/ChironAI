@@ -51,6 +51,9 @@ if os.path.isdir(_LLM_INTERACTOR) and _LLM_INTERACTOR not in sys.path:
 _SECURITY = os.path.join(_ROOT, "CoreModules", "Security")
 if os.path.isdir(_SECURITY) and _SECURITY not in sys.path:
     sys.path.insert(0, _SECURITY)
+_EXTENSIONS_SANDBOX = os.path.join(_ROOT, "CoreModules", "ExtensionsSandbox")
+if os.path.isdir(_EXTENSIONS_SANDBOX) and _EXTENSIONS_SANDBOX not in sys.path:
+    sys.path.insert(0, _EXTENSIONS_SANDBOX)
 _DOCKER_MANAGER = os.path.join(_ROOT, "CoreModules", "DockerManager")
 if os.path.isdir(_DOCKER_MANAGER) and _DOCKER_MANAGER not in sys.path:
     sys.path.insert(0, _DOCKER_MANAGER)

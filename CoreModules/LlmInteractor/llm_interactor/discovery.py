@@ -27,6 +27,9 @@ class LoadedExtension:
     manifest: ExtensionManifest
     source_dir: Path
     provider: LLMProvider
+    sandboxed: bool = False
+    sandbox_status: str = ""
+    sandbox_error: str = ""
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,8 @@ class FailedExtension:
     error: str
     manifest: ExtensionManifest | None = None
     security_findings: list[dict[str, object]] = field(default_factory=list)
+    sandbox_status: str = ""
+    sandbox_error: str = ""
 
 
 @dataclass
@@ -105,11 +110,26 @@ def _load_factory_from_entrypoint(source_dir: Path, entrypoint: str):
     return factory
 
 
+def load_extension_provider_in_process(
+    source_dir: Path,
+    *,
+    manifest: ExtensionManifest,
+    host_context: ProviderHostContext,
+) -> LLMProvider:
+    """Test/helper path for direct provider loading after security audit."""
+
+    if manifest.backend is None:
+        raise ValueError("manifest backend is required")
+    factory = _load_factory_from_entrypoint(source_dir, manifest.backend.entrypoint)
+    return factory(host_context, manifest)
+
+
 def discover_extensions(
     source_dirs: list[Path],
     *,
     host_context: ProviderHostContext,
     enabled_extension_ids: set[str] | None = None,
+    use_sandbox: bool = True,
 ) -> ExtensionLoadReport:
     report = ExtensionLoadReport()
     enabled = enabled_extension_ids or set()
@@ -123,9 +143,31 @@ def discover_extensions(
             if manifest.backend is None:
                 raise ValueError("manifest backend is required")
             audit_extension_or_raise(source_dir, manifest=manifest, entrypoint=manifest.backend.entrypoint)
-            factory = _load_factory_from_entrypoint(source_dir, manifest.backend.entrypoint)
-            provider = factory(host_context, manifest)
-            report.loaded.append(LoadedExtension(manifest=manifest, source_dir=source_dir, provider=provider))
+            if use_sandbox:
+                from extensions_sandbox import start_sandboxed_extension_provider
+
+                provider = start_sandboxed_extension_provider(
+                    source_dir=source_dir,
+                    entrypoint=manifest.backend.entrypoint,
+                    manifest=manifest,
+                    host_context=host_context,
+                )
+                report.loaded.append(
+                    LoadedExtension(
+                        manifest=manifest,
+                        source_dir=source_dir,
+                        provider=provider,
+                        sandboxed=True,
+                        sandbox_status=str(getattr(provider, "sandbox_status", "ready") or "ready"),
+                    )
+                )
+            else:
+                provider = load_extension_provider_in_process(
+                    source_dir,
+                    manifest=manifest,
+                    host_context=host_context,
+                )
+                report.loaded.append(LoadedExtension(manifest=manifest, source_dir=source_dir, provider=provider))
         except Exception as e:  # pragma: no cover - exercised via manager diagnostics
             ext_id = source_dir.name
             manifest = None
@@ -137,6 +179,7 @@ def discover_extensions(
             security_findings: list[dict[str, object]] = []
             if isinstance(e, ExtensionSecurityError):
                 security_findings = [item.to_dict() for item in e.report.findings]
+            sandbox_status = str(getattr(e, "status", "") or "")
             report.failed.append(
                 FailedExtension(
                     extension_id=ext_id,
@@ -144,6 +187,8 @@ def discover_extensions(
                     error=f"{type(e).__name__}: {e}",
                     manifest=manifest,
                     security_findings=security_findings,
+                    sandbox_status=sandbox_status,
+                    sandbox_error=f"{type(e).__name__}: {e}" if not security_findings else "",
                 )
             )
     return report

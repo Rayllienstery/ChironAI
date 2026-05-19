@@ -47,6 +47,7 @@ class ExtensionManager:
         bundled_dir: Path | None = None,
         installed_dir: Path | None = None,
         default_provider_id: str | None = None,
+        use_sandbox: bool = True,
     ) -> None:
         self._project_root = project_root
         self._host_context = host_context
@@ -57,6 +58,7 @@ class ExtensionManager:
         self._installed_dir = installed_dir or (project_root / DEFAULT_INSTALLED_DIR)
         self._installed_dir.mkdir(parents=True, exist_ok=True)
         self._default_provider_id = default_provider_id
+        self._use_sandbox = bool(use_sandbox)
         self._loaded: list[LoadedExtension] = []
         self._failed: list[FailedExtension] = []
         self._runtime: LLMRuntime | None = None
@@ -66,6 +68,15 @@ class ExtensionManager:
         self._bootstrap_thread: threading.Thread | None = None
         self._provider_rows_cache: list[dict[str, Any]] = []
         self._lock = threading.RLock()
+
+    def _shutdown_loaded_extensions(self, loaded: list[LoadedExtension] | None = None) -> None:
+        for item in list(loaded if loaded is not None else self._loaded):
+            close = getattr(item.provider, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
 
     @property
     def runtime_status(self) -> str:
@@ -176,6 +187,7 @@ class ExtensionManager:
             source_dirs,
             host_context=self._host_context,
             enabled_extension_ids={r.id for r in records},
+            use_sandbox=self._use_sandbox,
         )
         registry = ProviderRegistry()
         failed = list(report.failed)
@@ -185,14 +197,23 @@ class ExtensionManager:
             try:
                 registry.register(loaded.provider)
             except Exception as e:
+                close = getattr(loaded.provider, "close", None)
+                if callable(close):
+                    try:
+                        close()
+                    except Exception:
+                        pass
                 failed.append(
                     FailedExtension(
                         extension_id=loaded.manifest.id,
                         source_dir=loaded.source_dir,
                         error=f"{type(e).__name__}: {e}",
                         manifest=loaded.manifest,
+                        sandbox_status=str(getattr(loaded.provider, "sandbox_status", "") or ""),
+                        sandbox_error=str(getattr(loaded.provider, "sandbox_error", "") or f"{type(e).__name__}: {e}"),
                     )
                 )
+        previous_loaded = self._loaded
         self._loaded = list(report.loaded)
         self._failed = failed
         runtime = LLMRuntime(registry, default_provider_id=self._default_provider_id)
@@ -204,6 +225,7 @@ class ExtensionManager:
             failed=self._failed,
         )
         with self._lock:
+            self._shutdown_loaded_extensions(previous_loaded)
             self._runtime = bootstrap.runtime
             self._registry = bootstrap.registry
             self._provider_rows_cache = provider_rows_cache
@@ -331,6 +353,17 @@ class ExtensionManager:
                     "error": failed.error if failed is not None else "",
                     "security_blocked": bool(failed.security_findings) if failed is not None else False,
                     "security_findings": list(failed.security_findings) if failed is not None else [],
+                    "sandboxed": bool(getattr(loaded, "sandboxed", False)) if loaded is not None else False,
+                    "sandbox_status": (
+                        str(getattr(loaded, "sandbox_status", "") or getattr(loaded.provider, "sandbox_status", ""))
+                        if loaded is not None
+                        else str(failed.sandbox_status if failed is not None else "")
+                    ),
+                    "sandbox_error": (
+                        str(getattr(loaded, "sandbox_error", "") or getattr(loaded.provider, "sandbox_error", ""))
+                        if loaded is not None
+                        else str(failed.sandbox_error if failed is not None else "")
+                    ),
                     "source": dict(record.source or {}),
                 }
             )
@@ -525,6 +558,8 @@ class ExtensionManager:
                     "id": item.extension_id,
                     "error": item.error,
                     "security_findings": list(item.security_findings),
+                    "sandbox_status": item.sandbox_status,
+                    "sandbox_error": item.sandbox_error,
                 }
                 for item in self._failed
             ],
@@ -675,6 +710,14 @@ class ExtensionManager:
         install_dir = self._installed_dir / target.id / target.version
         if install_dir.exists():
             shutil.rmtree(install_dir, ignore_errors=True)
+        for item in list(self._loaded):
+            if item.manifest.id == ext_id:
+                close = getattr(item.provider, "close", None)
+                if callable(close):
+                    try:
+                        close()
+                    except Exception:
+                        pass
         tombstone = InstalledExtensionRecord(
             id=target.id,
             version=target.version,
