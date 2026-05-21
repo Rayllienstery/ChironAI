@@ -125,6 +125,43 @@ def create_provider(host_context, manifest):
     return Provider(host_context, manifest)
 """
 
+DIAGNOSTIC_PROVIDER = """
+import os
+import time
+from llm_interactor.contracts import ProviderCapabilities, ProviderDescriptor, ProviderHealth
+
+class Provider:
+    def __init__(self, host_context, manifest):
+        self._manifest = manifest
+
+    def describe(self):
+        return ProviderDescriptor(
+            id="sandbox-diag",
+            extension_id=self._manifest.id,
+            title="Sandbox Diagnostics",
+            capabilities=ProviderCapabilities(service_actions=True),
+        )
+
+    def list_models(self):
+        return []
+
+    def health_check(self):
+        return ProviderHealth(provider_id="sandbox-diag", ok=True, status="ok")
+
+    def run_action(self, action_id, payload):
+        if action_id == "pid":
+            return {"ok": True, "pid": os.getpid()}
+        if action_id == "sleep":
+            time.sleep(2)
+            return {"ok": True}
+        if action_id == "crash":
+            os._exit(7)
+        return {"ok": True, "action_id": action_id}
+
+def create_provider(host_context, manifest):
+    return Provider(host_context, manifest)
+"""
+
 
 def test_sandboxed_extension_provider_round_trips_runtime_calls(tmp_path: Path) -> None:
     repo = _Repo()
@@ -148,6 +185,22 @@ def test_sandboxed_extension_provider_round_trips_runtime_calls(tmp_path: Path) 
     provider.close()
 
 
+def test_worker_protocol_preserves_unicode_payloads(tmp_path: Path) -> None:
+    provider_py = PROVIDER.replace(
+        'return {"id": "sandbox", "title": "Sandbox", "frame": {}}',
+        'return {"id": "sandbox", "title": "Layered architecture: Presentation → Domain", "frame": {}}',
+    )
+    ext = _write_extension(tmp_path, provider_py=provider_py)
+    report = discover_extensions([ext], host_context=_host(tmp_path))
+
+    assert report.failed == []
+    provider = report.loaded[0].provider
+    try:
+        assert provider.get_tab_descriptor()["title"] == "Layered architecture: Presentation → Domain"
+    finally:
+        provider.close()
+
+
 def test_worker_client_times_out_slow_calls(tmp_path: Path) -> None:
     ext = _write_extension(tmp_path, provider_py=PROVIDER)
     manifest = load_manifest_from_dir(ext)
@@ -163,6 +216,70 @@ def test_worker_client_times_out_slow_calls(tmp_path: Path) -> None:
     try:
         with pytest.raises(ExtensionWorkerTimeout):
             client.call("run_action", {"action_id": "sleep", "payload": {}}, timeout_sec=0.1)
+    finally:
+        client.close()
+
+
+def test_worker_client_exposes_pid_and_manual_restart_kill(tmp_path: Path) -> None:
+    ext = _write_extension(tmp_path, provider_py=DIAGNOSTIC_PROVIDER)
+    manifest = load_manifest_from_dir(ext)
+    assert manifest.backend is not None
+    client = ExtensionWorkerClient(
+        source_dir=ext,
+        entrypoint=manifest.backend.entrypoint,
+        manifest=manifest,
+        project_root=Path(__file__).resolve().parents[2],
+        host_context=_host(tmp_path),
+    )
+    try:
+        first_pid = client.pid
+        assert first_pid
+        assert client.status == "ready"
+        assert client.restart_count == 0
+
+        client.restart()
+        restarted_pid = client.pid
+        assert restarted_pid and restarted_pid != first_pid
+        assert client.status == "ready"
+        assert client.restart_count == 1
+
+        client.kill()
+        assert client.pid is None
+        assert client.status == "manual_stop"
+        assert client.manual_restart_required is True
+
+        client.restart()
+        assert client.pid
+        assert client.status == "ready"
+        assert client.manual_restart_required is False
+        assert client.restart_count == 2
+    finally:
+        client.close()
+
+
+def test_worker_client_auto_restarts_then_blocks_crash_loop(tmp_path: Path) -> None:
+    ext = _write_extension(tmp_path, provider_py=DIAGNOSTIC_PROVIDER)
+    manifest = load_manifest_from_dir(ext)
+    assert manifest.backend is not None
+    client = ExtensionWorkerClient(
+        source_dir=ext,
+        entrypoint=manifest.backend.entrypoint,
+        manifest=manifest,
+        project_root=Path(__file__).resolve().parents[2],
+        host_context=_host(tmp_path),
+    )
+    try:
+        with pytest.raises(Exception):
+            client.call("run_action", {"action_id": "crash", "payload": {}}, timeout_sec=1.0)
+        assert client.restart_count == 2
+        assert client.blocked is True
+        assert client.status == "blocked"
+        assert client.manual_restart_required is True
+
+        client.restart()
+        assert client.blocked is False
+        assert client.status == "ready"
+        assert client.call("run_action", {"action_id": "pid", "payload": {}})["ok"] is True
     finally:
         client.close()
 

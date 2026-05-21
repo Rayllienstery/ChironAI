@@ -35,7 +35,8 @@ function blockedExtensions(items) {
 function sandboxFailedExtensions(items) {
   return (Array.isArray(items) ? items : []).filter((item) => {
     const status = String(item?.sandbox_status || '').toLowerCase();
-    return Boolean(item?.sandbox_error) || ['crashed', 'timeout', 'protocol_error', 'error'].includes(status);
+    return Boolean(item?.sandbox_error || item?.sandbox_last_error || item?.sandbox_blocked)
+      || ['blocked', 'crashed', 'timeout', 'protocol_error', 'error'].includes(status);
   });
 }
 
@@ -120,7 +121,7 @@ export default function ExtensionSecurityNotificationBridge() {
     sandboxFailed.forEach((item) => {
       const extId = String(item?.id || '').trim();
       if (!extId) return;
-      const raw = `${item?.sandbox_status || 'error'}:${item?.sandbox_error || item?.error || ''}`;
+      const raw = `${item?.sandbox_status || 'error'}:${item?.sandbox_last_error || item?.sandbox_error || item?.error || ''}`;
       let hash = 0;
       for (let i = 0; i < raw.length; i += 1) {
         hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0;
@@ -132,7 +133,7 @@ export default function ExtensionSecurityNotificationBridge() {
         kind: 'error',
         source: 'extensions',
         title: 'Extension sandbox failed',
-        message: `${item?.title || extId}: ${item?.sandbox_error || item?.error || 'Sandbox worker failed.'}`.slice(0, 800),
+        message: `${item?.title || extId}: ${item?.sandbox_last_error || item?.sandbox_error || item?.error || 'Sandbox worker failed.'}`.slice(0, 800),
         metadata: {
           extension_id: extId,
           sandbox_status: item?.sandbox_status || '',

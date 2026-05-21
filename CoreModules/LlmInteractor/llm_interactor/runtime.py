@@ -30,6 +30,9 @@ class ProviderRegistry:
     def get(self, provider_id: str) -> LLMProvider | None:
         return self._providers.get(provider_id)
 
+    def providers(self) -> list[LLMProvider]:
+        return list(self._providers.values())
+
     def descriptors(self) -> list[ProviderDescriptor]:
         return [provider.describe() for provider in self._providers.values()]
 

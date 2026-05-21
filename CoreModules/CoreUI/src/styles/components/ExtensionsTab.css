@@ -53,7 +53,8 @@
 .extensions-ui {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
 }
 
 .extensions-card {
@@ -183,6 +184,33 @@
   font-size: 12px;
 }
 
+.extensions-sandbox-diagnostics {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 24%, transparent);
+  border-radius: var(--coreui-radius-card);
+  background: var(--coreui-surface-panel-alt);
+}
+
+.extensions-sandbox-diagnostics__grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.extensions-sandbox-diagnostics__grid > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.extensions-sandbox-diagnostics__grid strong {
+  font-size: 13px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
 .extensions-failed-list {
   display: grid;
   gap: 10px;
@@ -225,5 +253,10 @@
 
   .extensions-tab__header {
     flex-direction: column;
+  }
+
+  .extensions-cards,
+  .extensions-ui {
+    grid-template-columns: 1fr;
   }
 }

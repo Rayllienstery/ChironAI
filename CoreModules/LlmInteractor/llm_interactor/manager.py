@@ -332,6 +332,16 @@ class ExtensionManager:
                 continue
             loaded = loaded_by_id.get(record.id)
             failed = failed_by_id.get(record.id)
+            sandbox = self._sandbox_diagnostics(loaded, failed)
+            status = "loaded" if loaded is not None else "failed" if failed is not None else "installed"
+            if loaded is not None and sandbox["sandbox_status"] in {
+                "blocked",
+                "crashed",
+                "timeout",
+                "protocol_error",
+                "manual_stop",
+            }:
+                status = "failed"
             out.append(
                 {
                     "id": record.id,
@@ -343,48 +353,87 @@ class ExtensionManager:
                     "description": record.description or (loaded.manifest.description if loaded else ""),
                     "icon": record.icon or (loaded.manifest.icon if loaded else ""),
                     "icon_url": self._asset_url(record.id, record.icon or (loaded.manifest.icon if loaded else "")),
-                    "status": (
-                        "loaded"
-                        if loaded is not None
-                        else "failed"
-                        if failed is not None
-                        else "installed"
-                    ),
+                    "status": status,
                     "error": failed.error if failed is not None else "",
                     "security_blocked": bool(failed.security_findings) if failed is not None else False,
                     "security_findings": list(failed.security_findings) if failed is not None else [],
-                    "sandboxed": bool(getattr(loaded, "sandboxed", False)) if loaded is not None else False,
-                    "sandbox_status": (
-                        str(getattr(loaded, "sandbox_status", "") or getattr(loaded.provider, "sandbox_status", ""))
-                        if loaded is not None
-                        else str(failed.sandbox_status if failed is not None else "")
-                    ),
-                    "sandbox_error": (
-                        str(getattr(loaded, "sandbox_error", "") or getattr(loaded.provider, "sandbox_error", ""))
-                        if loaded is not None
-                        else str(failed.sandbox_error if failed is not None else "")
-                    ),
+                    **sandbox,
                     "source": dict(record.source or {}),
                 }
             )
         return out
 
+    def _sandbox_diagnostics(
+        self,
+        loaded: LoadedExtension | None,
+        failed: FailedExtension | None = None,
+    ) -> dict[str, Any]:
+        provider = loaded.provider if loaded is not None else None
+        sandboxed = bool(getattr(loaded, "sandboxed", False)) if loaded is not None else bool(failed and failed.sandbox_status)
+        sandbox_status = (
+            str(getattr(provider, "sandbox_status", "") or getattr(loaded, "sandbox_status", ""))
+            if loaded is not None
+            else str(failed.sandbox_status if failed is not None else "")
+        )
+        sandbox_error = (
+            str(
+                getattr(provider, "sandbox_last_error", "")
+                or getattr(provider, "sandbox_error", "")
+                or getattr(loaded, "sandbox_error", "")
+            )
+            if loaded is not None
+            else str(failed.sandbox_error if failed is not None else "")
+        )
+        sandbox_pid = getattr(provider, "sandbox_pid", None) if provider is not None else None
+        sandbox_restart_count = int(getattr(provider, "sandbox_restart_count", 0) or 0) if provider is not None else 0
+        sandbox_blocked = bool(getattr(provider, "sandbox_blocked", False)) if provider is not None else False
+        manual_required = (
+            bool(getattr(provider, "sandbox_manual_restart_required", False))
+            if provider is not None
+            else sandbox_status in {"blocked", "manual_stop"}
+        )
+        return {
+            "sandboxed": sandboxed,
+            "sandbox_pid": sandbox_pid,
+            "sandbox_status": sandbox_status,
+            "sandbox_error": sandbox_error,
+            "sandbox_last_error": sandbox_error,
+            "sandbox_restart_count": sandbox_restart_count,
+            "sandbox_blocked": sandbox_blocked,
+            "sandbox_manual_restart_required": manual_required,
+            "sandbox_can_restart": bool(loaded is not None and sandboxed),
+            "sandbox_can_kill": bool(loaded is not None and sandboxed and sandbox_pid is not None),
+        }
+
     def _provider_rows_from_runtime(self, runtime: LLMRuntime | None = None) -> list[dict[str, Any]]:
         rt = runtime
         rows: list[dict[str, Any]] = []
         if rt is not None:
-            healths = {item.provider_id: item for item in rt.registry.healths()}
+            healths = {}
+            for provider in rt.registry.providers():
+                try:
+                    health = provider.health_check()
+                    healths[health.provider_id] = health
+                except Exception:
+                    continue
             models_by_provider: dict[str, list[dict[str, Any]]] = {}
-            for model in rt.registry.list_models():
-                models_by_provider.setdefault(model.provider_id, []).append(
-                    {
-                        "id": model.id,
-                        "label": model.label,
-                        "description": model.description,
-                        "metadata": dict(model.metadata or {}),
-                    }
-                )
-            for desc in rt.registry.descriptors():
+            descriptors = []
+            for provider in rt.registry.providers():
+                try:
+                    desc = provider.describe()
+                    descriptors.append(desc)
+                    for model in provider.list_models():
+                        models_by_provider.setdefault(model.provider_id, []).append(
+                            {
+                                "id": model.id,
+                                "label": model.label,
+                                "description": model.description,
+                                "metadata": dict(model.metadata or {}),
+                            }
+                        )
+                except Exception:
+                    continue
+            for desc in descriptors:
                 health = healths.get(desc.id)
                 rows.append(
                     {
@@ -469,7 +518,14 @@ class ExtensionManager:
             try:
                 raw = fn(runtime=runtime)
             except TypeError:
-                raw = fn()
+                try:
+                    raw = fn()
+                except Exception as e:
+                    out.append(self._failed_tab_row(item, e))
+                    continue
+            except Exception as e:
+                out.append(self._failed_tab_row(item, e))
+                continue
             if not isinstance(raw, dict):
                 continue
             tab_id = str(raw.get("id") or "").strip() or item.manifest.id
@@ -490,6 +546,26 @@ class ExtensionManager:
             )
         out.sort(key=lambda row: (int(row.get("order") or 0), str(row.get("title") or "").lower()))
         return out
+
+    def _failed_tab_row(self, item: LoadedExtension, error: Exception) -> dict[str, Any]:
+        sandbox_status = str(getattr(item.provider, "sandbox_status", "") or "failed")
+        sandbox_error = str(getattr(item.provider, "sandbox_error", "") or f"{type(error).__name__}: {error}")
+        return {
+            "id": item.manifest.id,
+            "extension_id": item.manifest.id,
+            "title": item.manifest.title,
+            "icon": item.manifest.icon,
+            "icon_url": self._asset_url(item.manifest.id, item.manifest.icon),
+            "description": item.manifest.description,
+            "frame": {},
+            "order": 0,
+            "status": {
+                "runtime": sandbox_status,
+                "tone": "warning" if sandbox_status == "manual_stop" else "error",
+                "message": sandbox_error,
+                "running": False,
+            },
+        }
 
     def extension_tab_payload(self, extension_id: str, *, runtime: LLMRuntime | None = None) -> dict[str, Any]:
         item = self._find_loaded_extension(extension_id)
@@ -539,6 +615,69 @@ class ExtensionManager:
             return result
         return {"ok": True, "result": result}
 
+    def restart_extension_sandbox(self, extension_id: str) -> dict[str, Any]:
+        ext_id = str(extension_id or "").strip()
+        if not ext_id:
+            raise ValueError("extension_id is required")
+        with self._lock:
+            item = self._find_loaded_extension(ext_id)
+            if item is None:
+                return self._restart_failed_extension_sandbox(ext_id)
+            restart = getattr(item.provider, "restart_sandbox", None)
+            if not callable(restart):
+                raise ValueError(f"Extension '{ext_id}' is not sandboxed")
+            restart()
+            self._provider_rows_cache = []
+            sandbox = self._sandbox_diagnostics(item)
+            return {"id": ext_id, "ok": True, "action": "restart", **sandbox}
+
+    def kill_extension_sandbox(self, extension_id: str) -> dict[str, Any]:
+        ext_id = str(extension_id or "").strip()
+        if not ext_id:
+            raise ValueError("extension_id is required")
+        with self._lock:
+            item = self._find_loaded_extension(ext_id)
+            if item is None:
+                raise ValueError(f"Extension '{ext_id}' is not loaded")
+            kill = getattr(item.provider, "kill_sandbox", None)
+            if not callable(kill):
+                raise ValueError(f"Extension '{ext_id}' is not sandboxed")
+            kill()
+            sandbox = self._sandbox_diagnostics(item)
+            return {"id": ext_id, "ok": True, "action": "kill", **sandbox}
+
+    def _restart_failed_extension_sandbox(self, extension_id: str) -> dict[str, Any]:
+        failed = next((item for item in self._failed if item.extension_id == extension_id), None)
+        if failed is None:
+            raise ValueError(f"Extension '{extension_id}' is not loaded")
+        if failed.security_findings:
+            raise ValueError(f"Extension '{extension_id}' is security blocked")
+        manifest = failed.manifest or load_manifest_from_dir(failed.source_dir)
+        if manifest.backend is None:
+            raise ValueError("manifest backend is required")
+        from extensions_sandbox import start_sandboxed_extension_provider
+
+        provider = start_sandboxed_extension_provider(
+            source_dir=failed.source_dir,
+            entrypoint=manifest.backend.entrypoint,
+            manifest=manifest,
+            host_context=self._host_context,
+        )
+        loaded = LoadedExtension(
+            manifest=manifest,
+            source_dir=failed.source_dir,
+            provider=provider,
+            sandboxed=True,
+            sandbox_status=str(getattr(provider, "sandbox_status", "ready") or "ready"),
+        )
+        if manifest.type == EXTENSION_TYPE_LLM_PROVIDER and self._registry is not None:
+            self._registry.register(provider)
+        self._loaded = [item for item in self._loaded if item.manifest.id != extension_id] + [loaded]
+        self._failed = [item for item in self._failed if item.extension_id != extension_id]
+        self._provider_rows_cache = []
+        sandbox = self._sandbox_diagnostics(loaded)
+        return {"id": extension_id, "ok": True, "action": "restart", **sandbox}
+
     def ui_payload(self) -> dict[str, Any]:
         return {
             "extensions": [
@@ -558,8 +697,7 @@ class ExtensionManager:
                     "id": item.extension_id,
                     "error": item.error,
                     "security_findings": list(item.security_findings),
-                    "sandbox_status": item.sandbox_status,
-                    "sandbox_error": item.sandbox_error,
+                    **self._sandbox_diagnostics(None, item),
                 }
                 for item in self._failed
             ],

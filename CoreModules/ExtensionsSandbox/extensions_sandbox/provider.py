@@ -62,8 +62,34 @@ class SandboxedExtensionProvider:
     def sandbox_error(self) -> str:
         return self._client.error
 
+    @property
+    def sandbox_pid(self) -> int | None:
+        return self._client.pid
+
+    @property
+    def sandbox_last_error(self) -> str:
+        return self._client.last_error
+
+    @property
+    def sandbox_restart_count(self) -> int:
+        return self._client.restart_count
+
+    @property
+    def sandbox_blocked(self) -> bool:
+        return self._client.blocked
+
+    @property
+    def sandbox_manual_restart_required(self) -> bool:
+        return self._client.manual_restart_required
+
     def close(self) -> None:
         self._client.close()
+
+    def restart_sandbox(self) -> None:
+        self._client.restart()
+
+    def kill_sandbox(self) -> None:
+        self._client.kill()
 
     def describe(self) -> ProviderDescriptor:
         return _descriptor(self._client.call("describe", timeout_sec=5.0))

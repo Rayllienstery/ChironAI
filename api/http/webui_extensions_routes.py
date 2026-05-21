@@ -152,6 +152,28 @@ def register_extension_routes(
             error_log.error("webui_extensions_routes.run_extension_action", exc_info=True)
             return jsonify({"error": str(e)}), 400
 
+    @bp.route("/extensions/<extension_id>/sandbox/restart", methods=["POST"])
+    def restart_extension_sandbox(extension_id: str) -> Any:
+        try:
+            svc = _get_extensions_service()
+            if svc is None:
+                return jsonify({"error": "Extensions runtime is unavailable"}), 503
+            return jsonify(svc.restart_extension_sandbox(extension_id))
+        except Exception as e:
+            error_log.error("webui_extensions_routes.restart_extension_sandbox", exc_info=True)
+            return jsonify({"error": str(e)}), 400
+
+    @bp.route("/extensions/<extension_id>/sandbox/kill", methods=["POST"])
+    def kill_extension_sandbox(extension_id: str) -> Any:
+        try:
+            svc = _get_extensions_service()
+            if svc is None:
+                return jsonify({"error": "Extensions runtime is unavailable"}), 503
+            return jsonify(svc.kill_extension_sandbox(extension_id))
+        except Exception as e:
+            error_log.error("webui_extensions_routes.kill_extension_sandbox", exc_info=True)
+            return jsonify({"error": str(e)}), 400
+
     @bp.route("/extensions/<extension_id>/assets/<path:asset_path>", methods=["GET"])
     def get_extension_asset(extension_id: str, asset_path: str) -> Any:
         try:

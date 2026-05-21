@@ -11,6 +11,7 @@ import pytest
 from llm_interactor import (
     EXTENSION_API_VERSION,
     ExtensionManager,
+    ExtensionManifest,
     ExtensionRegistryClient,
     ExtensionsRepository,
     InstalledExtensionRecord,
@@ -25,6 +26,7 @@ from llm_interactor import (
     ProviderHostContext,
     ProviderRegistry,
     RuntimeBackedChatClient,
+    LoadedExtension,
 )
 
 
@@ -58,6 +60,37 @@ class _StubProvider:
 
     def health_check(self) -> ProviderHealth:
         return ProviderHealth(provider_id=self._provider_id, ok=True, status="ok")
+
+
+class _SandboxDiagnosticsProvider(_StubProvider):
+    sandboxed = True
+
+    def __init__(self) -> None:
+        super().__init__("sandbox-diag")
+        self.sandbox_pid = 111
+        self.sandbox_status = "ready"
+        self.sandbox_error = ""
+        self.sandbox_last_error = ""
+        self.sandbox_restart_count = 0
+        self.sandbox_blocked = False
+        self.sandbox_manual_restart_required = False
+
+    def restart_sandbox(self) -> None:
+        self.sandbox_pid = 222
+        self.sandbox_status = "ready"
+        self.sandbox_restart_count += 1
+        self.sandbox_blocked = False
+        self.sandbox_manual_restart_required = False
+
+    def kill_sandbox(self) -> None:
+        self.sandbox_pid = None
+        self.sandbox_status = "manual_stop"
+        self.sandbox_manual_restart_required = True
+
+    def get_tab_descriptor(self, *, runtime=None) -> dict[str, object]:
+        if self.sandbox_status == "manual_stop":
+            raise RuntimeError("extension worker is stopped until manual restart")
+        return {"id": "sandbox-ext", "title": "Sandbox", "frame": {}}
 
 
 class _FakeCompletedProcess:
@@ -305,6 +338,77 @@ def test_provider_host_context_accepts_docker_runtime() -> None:
     )
 
     assert host.docker_runtime is docker_runtime
+
+
+def test_extension_manager_exposes_and_controls_sandbox_diagnostics(tmp_path: Path) -> None:
+    class _Repo:
+        def __init__(self) -> None:
+            self.data: dict[str, str] = {}
+
+        def get_app_setting(self, key: str):
+            return self.data.get(key)
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            self.data[key] = value
+
+    repo = _Repo()
+    root = Path(__file__).resolve().parents[2]
+    host = ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None)
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=host,
+        settings_repo=repo,
+        registry_client=ExtensionRegistryClient(project_root=root),
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+    ExtensionsRepository(repo).save_records(
+        [
+            InstalledExtensionRecord(
+                id="sandbox-ext",
+                version="1.0.0",
+                enabled=True,
+                installed=True,
+                title="Sandbox",
+            )
+        ]
+    )
+    manifest = ExtensionManifest(
+        id="sandbox-ext",
+        version="1.0.0",
+        api_version=EXTENSION_API_VERSION,
+        type="llm_provider",
+        title="Sandbox",
+    )
+    provider = _SandboxDiagnosticsProvider()
+    manager._loaded = [
+        LoadedExtension(
+            manifest=manifest,
+            source_dir=tmp_path / "installed" / "sandbox-ext" / "1.0.0",
+            provider=provider,
+            sandboxed=True,
+        )
+    ]
+
+    installed = manager.installed_extensions()[0]
+    assert installed["sandbox_pid"] == 111
+    assert installed["sandbox_status"] == "ready"
+    assert installed["sandbox_restart_count"] == 0
+    assert installed["sandbox_can_restart"] is True
+    assert installed["sandbox_can_kill"] is True
+
+    killed = manager.kill_extension_sandbox("sandbox-ext")
+    assert killed["sandbox_status"] == "manual_stop"
+    assert killed["sandbox_pid"] is None
+    assert manager.installed_extensions()[0]["status"] == "failed"
+    assert manager.provider_rows(LLMRuntime(ProviderRegistry())) == []
+    tabs = manager.extension_tabs(runtime=LLMRuntime(ProviderRegistry()))
+    assert tabs[0]["status"]["runtime"] == "manual_stop"
+
+    restarted = manager.restart_extension_sandbox("sandbox-ext")
+    assert restarted["sandbox_pid"] == 222
+    assert restarted["sandbox_restart_count"] == 1
+    assert manager.installed_extensions()[0]["status"] == "loaded"
 
 
 def test_extension_manager_exposes_manifest_tabs_before_runtime_ready(tmp_path: Path) -> None:

@@ -38,8 +38,14 @@ class _FakeExtensionsService:
                 "security_blocked": False,
                 "security_findings": [],
                 "sandboxed": True,
+                "sandbox_pid": 1234,
                 "sandbox_status": "ready",
                 "sandbox_error": "",
+                "sandbox_last_error": "",
+                "sandbox_restart_count": 0,
+                "sandbox_blocked": False,
+                "sandbox_can_restart": True,
+                "sandbox_can_kill": True,
             }
         ]
 
@@ -98,6 +104,32 @@ class _FakeExtensionsService:
     def disable(self, extension_id: str) -> dict[str, Any]:
         return {"id": extension_id, "enabled": False, "restart_required": True}
 
+    def restart_extension_sandbox(self, extension_id: str) -> dict[str, Any]:
+        return {
+            "id": extension_id,
+            "ok": True,
+            "action": "restart",
+            "sandboxed": True,
+            "sandbox_pid": 4321,
+            "sandbox_status": "ready",
+            "sandbox_restart_count": 1,
+            "sandbox_can_restart": True,
+            "sandbox_can_kill": True,
+        }
+
+    def kill_extension_sandbox(self, extension_id: str) -> dict[str, Any]:
+        return {
+            "id": extension_id,
+            "ok": True,
+            "action": "kill",
+            "sandboxed": True,
+            "sandbox_pid": None,
+            "sandbox_status": "manual_stop",
+            "sandbox_restart_count": 1,
+            "sandbox_can_restart": True,
+            "sandbox_can_kill": False,
+        }
+
     def run_extension_action(
         self,
         extension_id: str,
@@ -147,7 +179,9 @@ def test_extensions_routes_expose_registry_and_ui() -> None:
     assert installed_item["security_blocked"] is False
     assert installed_item["security_findings"] == []
     assert installed_item["sandboxed"] is True
+    assert installed_item["sandbox_pid"] == 1234
     assert installed_item["sandbox_status"] == "ready"
+    assert installed_item["sandbox_restart_count"] == 0
     provider = (providers.get_json() or {}).get("providers")[0]
     assert provider["provider_id"] == "ollama"
     assert provider["title"] == "Ollama"
@@ -213,6 +247,25 @@ def test_extension_lifecycle_routes_return_restart_required() -> None:
     assert (disable.get_json() or {}).get("restart_required") is True
     assert (enable.get_json() or {}).get("restart_required") is True
     assert (remove.get_json() or {}).get("restart_required") is True
+
+
+def test_extension_sandbox_control_routes_return_diagnostics() -> None:
+    _ensure_root_on_path()
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    app.extensions["llm_extensions_service"] = _FakeExtensionsService()
+    client = app.test_client()
+
+    restart = client.post("/api/webui/extensions/ollama-provider/sandbox/restart", json={})
+    kill = client.post("/api/webui/extensions/ollama-provider/sandbox/kill", json={})
+
+    assert restart.status_code == 200
+    assert kill.status_code == 200
+    assert (restart.get_json() or {}).get("sandbox_pid") == 4321
+    assert (restart.get_json() or {}).get("sandbox_restart_count") == 1
+    assert (kill.get_json() or {}).get("sandbox_status") == "manual_stop"
+    assert (kill.get_json() or {}).get("sandbox_can_kill") is False
 
 
 def test_ollama_extension_start_stop_actions_are_invoked_through_generic_route() -> None:

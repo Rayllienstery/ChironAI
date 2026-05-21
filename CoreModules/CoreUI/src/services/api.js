@@ -1423,6 +1423,14 @@ export async function disableExtension(extensionId) {
   return postExtensionAction('/extensions/disable', { extension_id: extensionId });
 }
 
+export async function restartExtensionSandbox(extensionId) {
+  return postExtensionAction(`/extensions/${encodeURIComponent(extensionId)}/sandbox/restart`, {});
+}
+
+export async function killExtensionSandbox(extensionId) {
+  return postExtensionAction(`/extensions/${encodeURIComponent(extensionId)}/sandbox/kill`, {});
+}
+
 export async function getDockerStatus() {
   const response = await fetch(`${API_BASE}/docker/status`, {
     cache: 'no-store',

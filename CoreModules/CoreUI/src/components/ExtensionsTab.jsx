@@ -11,14 +11,16 @@ import {
   getExtensionRegistry,
   getExtensionUiPayload,
   installExtension,
+  killExtensionSandbox,
   removeExtension,
+  restartExtensionSandbox,
 } from "../services/api";
 import "../styles/components/ExtensionsTab.css";
 
 const EXTENSION_VIEWS = [
-  { id: "registry", label: "Registry" },
   { id: "installed", label: "Installed" },
   { id: "providers", label: "Providers" },
+  { id: "registry", label: "Registry" },
 ];
 
 function ExtensionIcon({ icon, iconUrl }) {
@@ -98,6 +100,52 @@ function SecurityFindings({ findings }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function SandboxDiagnostics({ item, busyId, runAction }) {
+  if (!item?.sandboxed) return null;
+  const status = item.sandbox_status || "ready";
+  const lastError = item.sandbox_last_error || item.sandbox_error || "";
+  const canRestart = item.sandbox_can_restart !== false || ["manual_stop", "blocked", "crashed", "timeout", "protocol_error"].includes(status);
+  return (
+    <div className="extensions-sandbox-diagnostics">
+      <div className="extensions-sandbox-diagnostics__grid">
+        <div>
+          <span className="extensions-schema-label">Worker PID</span>
+          <strong>{item.sandbox_pid || "not running"}</strong>
+        </div>
+        <div>
+          <span className="extensions-schema-label">Sandbox status</span>
+          <strong>{status}</strong>
+        </div>
+        <div>
+          <span className="extensions-schema-label">Restart count</span>
+          <strong>{Number(item.sandbox_restart_count || 0)}</strong>
+        </div>
+        <div>
+          <span className="extensions-schema-label">Restart policy</span>
+          <strong>{item.sandbox_blocked ? "manual restart required" : "auto retry 2x"}</strong>
+        </div>
+      </div>
+      {lastError ? <pre className="extensions-card__error">{lastError}</pre> : null}
+      <div className="extensions-card__actions">
+        <CoreUIButton
+          variant="primary"
+          disabled={busyId === item.id || !canRestart}
+          onClick={() => runAction(item.id, (id) => restartExtensionSandbox(id))}
+        >
+          Restart worker
+        </CoreUIButton>
+        <CoreUIButton
+          variant="danger"
+          disabled={busyId === item.id || !item.sandbox_can_kill}
+          onClick={() => runAction(item.id, (id) => killExtensionSandbox(id))}
+        >
+          Kill worker
+        </CoreUIButton>
+      </div>
     </div>
   );
 }
@@ -206,7 +254,7 @@ function SchemaRenderer({ schema, providerByExtensionId }) {
 }
 
 export default function ExtensionsTab({ onErrorStateChange }) {
-  const [activeView, setActiveView] = useState("registry");
+  const [activeView, setActiveView] = useState("installed");
   const [registry, setRegistry] = useState([]);
   const [installed, setInstalled] = useState([]);
   const [providers, setProviders] = useState([]);
@@ -414,9 +462,10 @@ export default function ExtensionsTab({ onErrorStateChange }) {
                 {item.restart_required ? <span>Restart required</span> : null}
                 {item.security_blocked ? <span>Security blocked</span> : null}
                 {item.sandboxed ? <span>Sandbox: {item.sandbox_status || "ready"}</span> : null}
+                {item.sandbox_blocked ? <span>Manual restart required</span> : null}
               </div>
               {item.error ? <pre className="extensions-card__error">{item.error}</pre> : null}
-              {item.sandbox_error ? <pre className="extensions-card__error">{item.sandbox_error}</pre> : null}
+              <SandboxDiagnostics item={item} busyId={busyId} runAction={runAction} />
               <SecurityFindings findings={item.security_findings} />
             </article>
             ))}

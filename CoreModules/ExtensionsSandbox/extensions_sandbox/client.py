@@ -41,6 +41,8 @@ def _terminate_process(proc: subprocess.Popen[str]) -> None:
 class ExtensionWorkerClient:
     """Line-delimited JSON RPC client for one extension worker."""
 
+    MAX_AUTO_RESTARTS = 2
+
     def __init__(
         self,
         *,
@@ -59,28 +61,68 @@ class ExtensionWorkerClient:
         self.timeout_sec = float(timeout_sec)
         self.status = "starting"
         self.error = ""
+        self.restart_count = 0
+        self._consecutive_failures = 0
+        self._blocked = False
+        self._manual_stopped = False
         self._next_id = 0
         self._lock = threading.RLock()
         self._lines: queue.Queue[str | None] = queue.Queue()
         self._closed = False
+        self._proc: subprocess.Popen[str] | None = None
+        self._finalizer: weakref.finalize[Any] | None = None
+        self._reader: threading.Thread | None = None
+        self._start_worker(increment_restart_count=False)
+        self._initialize_worker()
+        self.status = "ready"
+
+    @property
+    def pid(self) -> int | None:
+        proc = self._proc
+        if proc is None or proc.poll() is not None:
+            return None
+        return int(proc.pid)
+
+    @property
+    def last_error(self) -> str:
+        return self.error
+
+    @property
+    def blocked(self) -> bool:
+        return self._blocked
+
+    @property
+    def manual_restart_required(self) -> bool:
+        return self._blocked or self._manual_stopped
+
+    def _start_worker(self, *, increment_restart_count: bool) -> None:
+        self._lines = queue.Queue()
         self._proc = self._start_process()
+        if increment_restart_count:
+            self.restart_count += 1
         self._finalizer = weakref.finalize(self, _terminate_process, self._proc)
-        self._reader = threading.Thread(target=self._read_stdout, name=f"extension-worker-reader-{self.source_dir.name}", daemon=True)
+        self._reader = threading.Thread(
+            target=self._read_stdout,
+            args=(self._proc, self._lines),
+            name=f"extension-worker-reader-{self.source_dir.name}",
+            daemon=True,
+        )
         self._reader.start()
-        self.call(
+
+    def _initialize_worker(self) -> None:
+        self._raw_call(
             "initialize",
             {
                 "source_dir": str(self.source_dir),
                 "entrypoint": self.entrypoint,
-                "manifest": self._manifest_dict(manifest),
+                "manifest": self._manifest_dict(self.manifest),
                 "project_root": str(self.project_root),
                 "chat_client_attrs": self._chat_client_attrs(),
-                "has_docker_runtime": getattr(host_context, "docker_runtime", None) is not None,
+                "has_docker_runtime": getattr(self.host_context, "docker_runtime", None) is not None,
                 "metadata_callables": self._metadata_callables(),
             },
             timeout_sec=max(8.0, self.timeout_sec),
         )
-        self.status = "ready"
 
     def _start_process(self) -> subprocess.Popen[str]:
         env = dict(os.environ)
@@ -97,6 +139,8 @@ class ExtensionWorkerClient:
         ]
         current = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = os.pathsep.join([*paths, current] if current else paths)
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["PYTHONUTF8"] = "1"
         return subprocess.Popen(
             [sys.executable, "-m", "extensions_sandbox.worker"],
             stdin=subprocess.PIPE,
@@ -109,13 +153,16 @@ class ExtensionWorkerClient:
             env=env,
         )
 
-    def _read_stdout(self) -> None:
-        assert self._proc.stdout is not None
+    def _read_stdout(self, proc: subprocess.Popen[str] | None, lines: queue.Queue[str | None]) -> None:
+        if proc is None:
+            lines.put(None)
+            return
+        assert proc.stdout is not None
         try:
-            for line in self._proc.stdout:
-                self._lines.put(line)
+            for line in proc.stdout:
+                lines.put(line)
         finally:
-            self._lines.put(None)
+            lines.put(None)
 
     def _manifest_dict(self, manifest: Any) -> dict[str, Any]:
         if is_dataclass(manifest):
@@ -145,8 +192,32 @@ class ExtensionWorkerClient:
 
     def call(self, method: str, params: dict[str, Any] | None = None, *, timeout_sec: float | None = None) -> Any:
         with self._lock:
+            if self._blocked:
+                raise ExtensionWorkerError(self.error or "extension worker is blocked until manual restart")
+            if self._manual_stopped:
+                raise ExtensionWorkerError("extension worker is stopped until manual restart")
+            attempt = 0
+            while True:
+                try:
+                    result = self._raw_call(method, params, timeout_sec=timeout_sec)
+                    self.status = "ready"
+                    self.error = ""
+                    self._consecutive_failures = 0
+                    return result
+                except (ExtensionWorkerTimeout, ExtensionWorkerError):
+                    if not self._should_auto_restart():
+                        raise
+                    attempt += 1
+                    self._restart_after_failure()
+                    if attempt > self.MAX_AUTO_RESTARTS:
+                        raise
+
+    def _raw_call(self, method: str, params: dict[str, Any] | None = None, *, timeout_sec: float | None = None) -> Any:
+        with self._lock:
             if self._closed:
                 raise ExtensionWorkerError("extension worker is closed")
+            if self._proc is None:
+                raise ExtensionWorkerError("extension worker is unavailable")
             if self._proc.poll() is not None:
                 self.status = "crashed"
                 self.error = self._stderr_tail()
@@ -155,12 +226,42 @@ class ExtensionWorkerClient:
             self._write({"type": "request", "id": req_id, "method": method, "params": dict(params or {})})
             return self._wait_response(req_id, timeout_sec or self.timeout_sec)
 
+    def _should_auto_restart(self) -> bool:
+        if self._closed or self._blocked or self._manual_stopped:
+            return False
+        if self.status not in {"crashed", "timeout", "protocol_error"}:
+            return False
+        self._consecutive_failures += 1
+        if self._consecutive_failures > self.MAX_AUTO_RESTARTS:
+            self._blocked = True
+            self.status = "blocked"
+            if not self.error:
+                self.error = "extension worker failed repeatedly and is blocked until manual restart"
+            return False
+        return True
+
+    def _restart_after_failure(self) -> None:
+        previous_error = self.error
+        self._shutdown_process()
+        self.status = "restarting"
+        try:
+            self._start_worker(increment_restart_count=True)
+            self._initialize_worker()
+            self.status = "ready"
+            self.error = ""
+            self._manual_stopped = False
+        except Exception as e:
+            self.status = "crashed"
+            self.error = f"{type(e).__name__}: {e}" if str(e) else previous_error
+            self._shutdown_process()
+            raise
+
     def _next(self) -> int:
         self._next_id += 1
         return self._next_id
 
     def _write(self, payload: dict[str, Any]) -> None:
-        if self._proc.stdin is None:
+        if self._proc is None or self._proc.stdin is None:
             raise ExtensionWorkerError("extension worker stdin is closed")
         self._proc.stdin.write(json.dumps(to_jsonable(payload), ensure_ascii=False) + "\n")
         self._proc.stdin.flush()
@@ -176,7 +277,7 @@ class ExtensionWorkerClient:
             try:
                 line = self._lines.get(timeout=min(0.2, remaining))
             except queue.Empty:
-                if self._proc.poll() is not None:
+                if self._proc is not None and self._proc.poll() is not None:
                     self.status = "crashed"
                     self.error = self._stderr_tail()
                     raise ExtensionWorkerError(f"extension worker exited with {self._proc.returncode}: {self.error}")
@@ -263,23 +364,57 @@ class ExtensionWorkerClient:
             if self._closed:
                 return
             self._closed = True
+            self.status = "closed"
+            self._shutdown_process(send_shutdown=True)
+
+    def kill(self) -> None:
+        with self._lock:
+            if self._closed:
+                raise ExtensionWorkerError("extension worker is closed")
+            self._manual_stopped = True
+            self._blocked = False
+            self.status = "manual_stop"
+            self.error = ""
+            self._shutdown_process(send_shutdown=False)
+
+    def restart(self) -> None:
+        with self._lock:
+            if self._closed:
+                raise ExtensionWorkerError("extension worker is closed")
+            self._blocked = False
+            self._manual_stopped = False
+            self._consecutive_failures = 0
+            self.error = ""
+            self.status = "restarting"
+            self._shutdown_process(send_shutdown=False)
+            self._start_worker(increment_restart_count=True)
             try:
-                if self._proc.poll() is None:
+                self._initialize_worker()
+            except Exception as e:
+                self.status = "crashed"
+                self.error = f"{type(e).__name__}: {e}" if str(e) else self.error
+                self._shutdown_process(send_shutdown=False)
+                raise
+            self.status = "ready"
+
+    def _shutdown_process(self, *, send_shutdown: bool = False) -> None:
+        proc = self._proc
+        if proc is None:
+            return
+        if send_shutdown:
+            try:
+                if proc.poll() is None:
                     self._write({"type": "request", "id": self._next(), "method": "shutdown", "params": {}})
             except Exception:
                 pass
-            try:
-                self._proc.terminate()
-                self._proc.wait(timeout=3)
-            except Exception:
-                try:
-                    self._proc.kill()
-                except Exception:
-                    pass
+        _terminate_process(proc)
+        if self._finalizer is not None:
             self._finalizer.detach()
+            self._finalizer = None
+        self._proc = None
 
     def _stderr_tail(self) -> str:
-        if self._proc.stderr is None:
+        if self._proc is None or self._proc.stderr is None:
             return ""
         try:
             return self._proc.stderr.read()[-1000:]
