@@ -337,12 +337,12 @@ class DockerManager:
                 "details": str(status.get("error") or "Docker CLI/Engine unavailable"),
             }
 
-        pulled = self.pull_image(spec.image)
-        if not pulled.get("ok"):
-            return pulled
-
         desired_hash = self._spec_hash(spec)
         state = self.inspect_container(spec.name)
+        if self._image_inspect(spec.image) is None:
+            pulled = self.pull_image(spec.image)
+            if not pulled.get("ok"):
+                return pulled
         if not state.exists:
             created = self._run_container(spec, desired_hash)
             if not created.get("ok"):

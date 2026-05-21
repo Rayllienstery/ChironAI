@@ -6,6 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from llm_proxy.api_key import generate_proxy_api_key_record, store_proxy_api_key_record
+
 
 def _load_open_webui_provider_module():
     root = Path(__file__).resolve().parents[2]
@@ -34,6 +36,8 @@ class _Docker:
         self.running = False
         self.exists = False
         self.env = ""
+        self.image = ""
+        self.volumes: list[str] = []
         self.ensure_spec: Any | None = None
         self.stopped = ""
 
@@ -42,6 +46,8 @@ class _Docker:
             exists=self.exists or self.running,
             running=self.running,
             name=name,
+            image=self.image,
+            volumes=self.volumes,
             env={"OLLAMA_BASE_URL": self.env} if self.env else {},
         )
 
@@ -99,10 +105,12 @@ def test_open_webui_extension_descriptor_and_iframe_payload() -> None:
     assert payload["content"]["type"] == "service_panel"
     assert payload["content"]["title"] == "Open WebUI"
     assert any(field.get("key") == "backend_url" for field in payload["content"]["fields"])
+    assert any(action.get("id") == "apply_config" for action in payload["content"]["actions"])
     assert any(action.get("id") == "stop" for action in payload["content"]["actions"])
     assert any(item.get("label") == "Container" and item.get("value") == "open-webui" for item in payload["content"]["details"])
     assert "schema" in payload
     components = payload["schema"]["pages"][0]["sections"][0]["components"]
+    assert any(c.get("type") == "action" and c.get("action_id") == "apply_config" for c in components)
     assert any(c.get("type") == "action" and c.get("action_id") == "stop" for c in components)
 
 
@@ -127,15 +135,62 @@ def test_open_webui_extension_actions_and_legacy_setting_migration() -> None:
     assert started["ok"] is True
     assert docker.running is True
     assert docker.ensure_spec.name == "open-webui"
-    assert docker.ensure_spec.image == "open-webui/open-webui:main"
+    assert docker.ensure_spec.image == "ghcr.io/open-webui/open-webui:main"
     assert docker.ensure_spec.ports == ["3000:8080"]
-    assert docker.ensure_spec.env == {"OLLAMA_BASE_URL": "http://localhost:9999"}
+    assert docker.ensure_spec.env["OLLAMA_BASE_URL"] == "http://localhost:9999"
+    assert docker.ensure_spec.env["ENABLE_OPENAI_API"] == "True"
+    assert docker.ensure_spec.env["OPENAI_API_BASE_URLS"] == "http://host.docker.internal:8080/v1"
+    assert docker.ensure_spec.env["OPENAI_API_KEYS"].startswith("chiron_sk_")
+    assert docker.ensure_spec.volumes == ["open-webui:/app/backend/data"]
     assert docker.ensure_spec.restart == "unless-stopped"
     assert docker.ensure_spec.labels["chironai.extension"] == "open-webui"
 
     stopped = ext.run_action("stop", {})
     assert stopped["ok"] is True
     assert docker.stopped == "open-webui"
+
+
+def test_open_webui_extension_uses_existing_recoverable_chiron_key() -> None:
+    repo = _Repo()
+    docker = _Docker()
+    ext, _mod = _extension(repo, docker)
+    plaintext, record = generate_proxy_api_key_record(repo)
+    store_proxy_api_key_record(repo, record)
+
+    started = ext.run_action("start", {})
+
+    assert started["ok"] is True
+    assert docker.ensure_spec.env["OPENAI_API_KEYS"] == plaintext
+    assert docker.ensure_spec.env["OPENAI_API_BASE_URLS"] == "http://host.docker.internal:8080/v1"
+
+
+def test_open_webui_extension_reuses_existing_container_image_for_apply_config() -> None:
+    repo = _Repo()
+    docker = _Docker()
+    docker.exists = True
+    docker.image = "open-webui/open-webui:main"
+    ext, _mod = _extension(repo, docker)
+
+    applied = ext.run_action("apply_config", {})
+
+    assert applied["ok"] is True
+    assert docker.ensure_spec.image == "open-webui/open-webui:main"
+    assert docker.ensure_spec.env["OPENAI_API_BASE_URLS"] == "http://host.docker.internal:8080/v1"
+    assert docker.ensure_spec.volumes == ["open-webui:/app/backend/data"]
+
+
+def test_open_webui_extension_preserves_existing_container_data_volume_for_apply_config() -> None:
+    repo = _Repo()
+    docker = _Docker()
+    docker.exists = True
+    docker.image = "open-webui/open-webui:main"
+    docker.volumes = ["existing_open_webui:/app/backend/data"]
+    ext, _mod = _extension(repo, docker)
+
+    applied = ext.run_action("apply_config", {})
+
+    assert applied["ok"] is True
+    assert docker.ensure_spec.volumes == ["existing_open_webui:/app/backend/data"]
 
 
 def test_open_webui_extension_reports_missing_docker_runtime() -> None:

@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 from urllib.parse import urlparse
 
@@ -17,6 +17,7 @@ import requests
 
 LEGACY_BACKEND_KEY = "open_webui_ollama_base_url"
 BACKEND_KEY = "extensions.open-webui.ollama_base_url"
+DEFAULT_OPEN_WEBUI_IMAGE = "ghcr.io/open-webui/open-webui:main"
 
 
 def _manifest_tab_ui(manifest: Any) -> dict[str, Any]:
@@ -73,6 +74,8 @@ class OpenWebUiConfig:
     host_port: int
     container_port: int
     ollama_url_for_container: str
+    openai_base_url_for_container: str
+    volumes: list[str]
 
 
 class OpenWebUiExtension:
@@ -86,12 +89,19 @@ class OpenWebUiExtension:
 
     def _server_port(self) -> int:
         raw = (
-            os.getenv("WEBUI_PORT")
+            os.getenv("SERVER_PORT")
+            or os.getenv("CHIRONAI_PROXY_PORT")
             or os.getenv("PORT")
             or os.getenv("CHIRONAI_WEBUI_PORT")
-            or "8080"
         )
-        return _as_int(raw, 8080)
+        if raw:
+            return _as_int(raw, 8080)
+        try:
+            from config import get_server_port
+
+            return int(get_server_port())
+        except Exception:
+            return 8080
 
     def _default_ollama_for_container(self) -> str:
         ollama_port = _as_int(os.getenv("OLLAMA_PORT"), 11343)
@@ -127,11 +137,37 @@ class OpenWebUiExtension:
         return OpenWebUiConfig(
             container_name=os.getenv("OPEN_WEBUI_CONTAINER_NAME", "open-webui"),
             host_url=host_url,
-            image=os.getenv("OPEN_WEBUI_IMAGE", "open-webui/open-webui:main"),
+            image=os.getenv("OPEN_WEBUI_IMAGE", DEFAULT_OPEN_WEBUI_IMAGE),
             host_port=host_port,
             container_port=container_port,
             ollama_url_for_container=(saved or env_backend or self._default_ollama_for_container()).rstrip("/"),
+            openai_base_url_for_container=f"http://host.docker.internal:{self._server_port()}/v1",
+            volumes=[os.getenv("OPEN_WEBUI_DATA_VOLUME", "open-webui") + ":/app/backend/data"],
         )
+
+    def _chiron_openai_api_key(self, *, create_if_missing: bool = False) -> tuple[str, str]:
+        """Return (key, state) for OpenWebUI's OpenAI-compatible Chiron provider."""
+        try:
+            from llm_proxy.api_key import (
+                generate_proxy_api_key_record,
+                proxy_api_key_status,
+                reveal_proxy_api_key,
+                store_proxy_api_key_record,
+            )
+        except Exception:
+            return "", "unavailable"
+
+        repo = self._settings_repo()
+        status = proxy_api_key_status(repo)
+        if bool(status.get("configured")) and bool(status.get("recoverable")):
+            return reveal_proxy_api_key(repo).strip(), "recoverable"
+        if not bool(status.get("configured")) and create_if_missing:
+            plaintext, record = generate_proxy_api_key_record(repo)
+            store_proxy_api_key_record(repo, record)
+            return plaintext.strip(), "generated"
+        if bool(status.get("configured")):
+            return "", "not recoverable"
+        return "", "missing"
 
     def _docker_runtime(self) -> Any | None:
         if self._docker_override is not None:
@@ -151,17 +187,26 @@ class OpenWebUiExtension:
             "error": "Docker runtime is unavailable",
         }
 
-    def _docker_spec(self, cfg: OpenWebUiConfig) -> Any:
+    def _docker_spec(self, cfg: OpenWebUiConfig, *, chiron_api_key: str | None = None) -> Any:
         from docker_manager import DockerContainerSpec
 
         extra_hosts: list[str] = []
         if sys.platform != "win32":
             extra_hosts = ["host.docker.internal:host-gateway"]
+        if chiron_api_key is None:
+            chiron_api_key, _state = self._chiron_openai_api_key(create_if_missing=True)
+        env = {
+            "OLLAMA_BASE_URL": cfg.ollama_url_for_container,
+            "ENABLE_OPENAI_API": "True",
+            "OPENAI_API_BASE_URLS": cfg.openai_base_url_for_container,
+            "OPENAI_API_KEYS": chiron_api_key,
+        }
         return DockerContainerSpec(
             name=cfg.container_name,
             image=cfg.image,
             ports=[f"{cfg.host_port}:{cfg.container_port}"],
-            env={"OLLAMA_BASE_URL": cfg.ollama_url_for_container},
+            env=env,
+            volumes=cfg.volumes,
             restart="unless-stopped",
             extra_hosts=extra_hosts,
             labels={
@@ -169,6 +214,27 @@ class OpenWebUiExtension:
                 "chironai.provider": "open-webui",
             },
         )
+
+    def _runtime_config(self, cfg: OpenWebUiConfig) -> OpenWebUiConfig:
+        """Prefer the already-created container image when the default image cannot be pulled."""
+        if (os.getenv("OPEN_WEBUI_IMAGE") or "").strip():
+            return cfg
+        docker = self._docker_runtime()
+        if docker is None:
+            return cfg
+        try:
+            state = docker.inspect_container(cfg.container_name)
+            if bool(getattr(state, "exists", False)):
+                image = str(getattr(state, "image", "") or "").strip()
+                raw_volumes = getattr(state, "volumes", None)
+                volumes = [str(v).strip() for v in raw_volumes or [] if str(v).strip()]
+                if not volumes:
+                    volumes = cfg.volumes
+                if image:
+                    return replace(cfg, image=image, volumes=volumes)
+        except Exception:
+            pass
+        return cfg
 
     def _status(self, *, ping: bool = False) -> dict[str, Any]:
         cfg = self._config()
@@ -225,10 +291,19 @@ class OpenWebUiExtension:
         saved = self._saved_backend_url()
         source = "saved" if saved else "environment" if env_set else "default"
         llm_proxy_hint = f"http://host.docker.internal:{self._server_port()}"
+        _chiron_api_key, chiron_key_state = self._chiron_openai_api_key(create_if_missing=False)
         running = bool(status.get("running"))
 
         actions = [{"id": "refresh", "label": "Refresh", "variant": "secondary"}]
         if running:
+            actions.append(
+                {
+                    "id": "apply_config",
+                    "label": "Apply configuration",
+                    "variant": "primary",
+                    "confirm": "Recreate Open WebUI container with the current Chiron provider configuration?",
+                }
+            )
             actions.append(
                 {
                     "id": "stop",
@@ -288,6 +363,8 @@ class OpenWebUiExtension:
                     {"label": "Host URL", "value": cfg.host_url},
                     {"label": "Port", "value": f"{cfg.host_port}:{cfg.container_port}"},
                     {"label": "Backend source", "value": source},
+                    {"label": "Chiron OpenAI URL", "value": cfg.openai_base_url_for_container},
+                    {"label": "Chiron API key", "value": chiron_key_state},
                 ],
             },
             "schema": {
@@ -336,7 +413,9 @@ class OpenWebUiExtension:
                                             f"Image={cfg.image} | "
                                             f"Host URL={cfg.host_url} | "
                                             f"Container port={cfg.container_port} | "
-                                            f"Backend source={source}"
+                                            f"Backend source={source} | "
+                                            f"Chiron OpenAI URL={cfg.openai_base_url_for_container} | "
+                                            f"Chiron API key={chiron_key_state}"
                                         ),
                                     },
                                 ],
@@ -351,7 +430,15 @@ class OpenWebUiExtension:
         docker = self._docker_runtime()
         if docker is None:
             return False, "Docker runtime is unavailable"
-        result = docker.ensure_container(self._docker_spec(cfg))
+        cfg = self._runtime_config(cfg)
+        chiron_api_key, chiron_key_state = self._chiron_openai_api_key(create_if_missing=True)
+        if not chiron_api_key:
+            return (
+                False,
+                "Chiron proxy API key is "
+                f"{chiron_key_state}. Generate or regenerate a recoverable key in RAG Fusion Proxy -> Security.",
+            )
+        result = docker.ensure_container(self._docker_spec(cfg, chiron_api_key=chiron_api_key))
         return bool(result.get("ok")), str(result.get("message") or result.get("details") or result.get("error") or "")
 
     def run_action(
@@ -367,7 +454,7 @@ class OpenWebUiExtension:
             return {"ok": True, "message": "Refreshed", "status": self._status(ping=True)}
         if action == "open_external":
             return {"ok": True, "message": cfg.host_url, "open_external_url": cfg.host_url}
-        if action == "start":
+        if action in ("start", "apply_config"):
             ok, msg = self._ensure_container(cfg)
             return {"ok": bool(ok), "message": msg, "status": self._status(ping=True)}
         if action == "stop":

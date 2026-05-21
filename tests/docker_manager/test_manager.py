@@ -268,6 +268,8 @@ def test_ensure_container_creates_missing_container() -> None:
             return _proc(args, out="ready")
         if args[1:3] == ["pull", spec.image]:
             return _proc(args, out="pulled")
+        if args[1:4] == ["image", "inspect", spec.image]:
+            return _proc(args, code=1, err="No such image")
         if args[1:3] == ["inspect", spec.name]:
             return _proc(args, code=1, err="No such object")
         if args[1:3] == ["run", "-d"]:
@@ -298,6 +300,8 @@ def test_ensure_container_starts_existing_stopped_compatible_container() -> None
             return _proc(args)
         if args[1:3] == ["pull", spec.image]:
             return _proc(args)
+        if args[1:4] == ["image", "inspect", spec.image]:
+            return _proc(args, out=json.dumps({"Id": "local"}))
         if args[1:3] == ["inspect", spec.name]:
             return _proc(args, out=_inspect_payload(spec, running=False))
         if args[1:3] == ["start", spec.name]:
@@ -325,6 +329,8 @@ def test_ensure_container_keeps_existing_running_compatible_container() -> None:
             return _proc(args)
         if args[1:3] == ["pull", spec.image]:
             return _proc(args)
+        if args[1:4] == ["image", "inspect", spec.image]:
+            return _proc(args, out=json.dumps({"Id": "local"}))
         if args[1:3] == ["inspect", spec.name]:
             return _proc(args, out=_inspect_payload(spec, running=True))
         raise AssertionError(args)
@@ -334,7 +340,36 @@ def test_ensure_container_keeps_existing_running_compatible_container() -> None:
 
     assert result["ok"] is True
     assert result["action"] == "already_running"
+    assert ["pull", spec.image] not in calls
     assert not any(call[0] in {"start", "rm", "run"} for call in calls)
+
+
+def test_ensure_container_uses_local_image_when_pull_would_not_be_needed() -> None:
+    spec = DockerContainerSpec(name="svc", image="example/service:latest")
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], **_: object) -> CompletedProcess[str]:
+        calls.append(args[1:])
+        if args[1:3] == ["version", "--format"]:
+            return _proc(args, out=json.dumps({"Client": {"Version": "1"}, "Server": {"Version": "1"}}))
+        if args[1:] == ["info"]:
+            return _proc(args)
+        if args[1:4] == ["image", "inspect", spec.image]:
+            return _proc(args, out=json.dumps({"Id": "local"}))
+        if args[1:3] == ["inspect", spec.name]:
+            return _proc(args, code=1, err="No such object")
+        if args[1:3] == ["run", "-d"]:
+            return _proc(args, out="container-id")
+        if args[1:3] == ["pull", spec.image]:
+            raise AssertionError("pull should be skipped for a local image")
+        raise AssertionError(args)
+
+    with patch("docker_manager.manager.subprocess.run", side_effect=fake_run):
+        result = DockerManager(docker_exe="docker").ensure_container(spec)
+
+    assert result["ok"] is True
+    assert result["action"] == "created"
+    assert ["pull", spec.image] not in calls
 
 
 def test_ensure_container_recreates_incompatible_container() -> None:
@@ -349,6 +384,8 @@ def test_ensure_container_recreates_incompatible_container() -> None:
             return _proc(args)
         if args[1:3] == ["pull", spec.image]:
             return _proc(args)
+        if args[1:4] == ["image", "inspect", spec.image]:
+            return _proc(args, out=json.dumps({"Id": "local"}))
         if args[1:3] == ["inspect", spec.name]:
             return _proc(args, out=_inspect_payload(spec, running=True, spec_hash="old"))
         if args[1:4] == ["inspect", "-f", "{{.State.Running}}"]:
