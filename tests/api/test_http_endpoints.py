@@ -5997,6 +5997,7 @@ def test_model_build_max_agent_steps_suppresses_tools_at_limit(
     from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
 
     captured_payload: dict[str, Any] = {}
+    chat_calls = {"count": 0}
 
     class Repo:
         def get_app_setting(self, key: str):
@@ -6023,6 +6024,7 @@ def test_model_build_max_agent_steps_suppresses_tools_at_limit(
         _default_options = {"num_predict": 3072, "temperature": 0.0, "top_p": 1.0}
 
         def chat_api(self, payload: dict[str, Any]) -> dict[str, Any]:
+            chat_calls["count"] += 1
             captured_payload.clear()
             captured_payload.update(payload)
             return {
@@ -6087,17 +6089,20 @@ def test_model_build_max_agent_steps_suppresses_tools_at_limit(
     )
 
     assert r.status_code == 200
+    assert chat_calls["count"] == 0
     assert "tools" not in captured_payload
     assert "tool_choice" not in captured_payload
     payload = r.get_json() or {}
     message = ((payload.get("choices") or [{}])[0]).get("message") or {}
     assert not message.get("tool_calls")
+    assert "max_agent_steps limit reached after 2 tool rounds (grep)" in str(message.get("content") or "")
     trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
     req = trace.get("request") or {}
     assert req.get("effective_max_agent_steps") == 2
     assert req.get("tool_loop_limit_reached") is True
     assert req.get("tools_suppressed_for_step_limit") is True
     assert "tool_loop_limit_reached" in (trace.get("warnings") or [])
+    assert "tool_loop_limit_response_forced" in (trace.get("warnings") or [])
 
 
 def test_streaming_budget_exhaustion_is_visible_to_client(

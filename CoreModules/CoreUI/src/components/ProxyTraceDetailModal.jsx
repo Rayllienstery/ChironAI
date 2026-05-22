@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { summarizeAgentTraceMeta } from '../utils/agentTraceSummary';
+import { proxyTraceToolLimitWarning } from '../utils/proxyTraceWarnings';
 import AgentTraceSummaryCards from './AgentTraceSummaryCards';
 import Card from './Card';
 import '../styles/components/DashboardTab.css';
@@ -168,6 +169,7 @@ function AgentTraceStepBlock({ step, index }) {
 function ProxyRequestStructuredBody({ log, meta }) {
   const isAc = Boolean(meta.is_autocomplete);
   const backend = meta.proxy_backend;
+  const toolLimitWarning = proxyTraceToolLimitWarning(meta);
   const ragContext = meta.rag_context || {};
   const chunksCount = ragContext.chunks_count || 0;
   const maxScore = ragContext.max_score;
@@ -184,6 +186,12 @@ function ProxyRequestStructuredBody({ log, meta }) {
           {isAc ? ' · Autocomplete' : ''}
         </p>
       </Card>
+
+      {toolLimitWarning ? (
+        <div className="coreui-panel-note coreui-panel-note--warning" role="alert">
+          {toolLimitWarning}
+        </div>
+      ) : null}
 
       <Card className="coreui-p-md coreui-stack-xs">
         <strong>User query</strong>
@@ -284,6 +292,7 @@ export default function ProxyTraceDetailModal({ log, isOpen, onClose }) {
 
   const meta = useMemo(() => (log ? readMetadata(log) : null), [log]);
   const traceSummary = useMemo(() => summarizeAgentTraceMeta(meta), [meta]);
+  const toolLimitWarning = useMemo(() => proxyTraceToolLimitWarning(meta), [meta]);
   const agentTraceStyle = log && meta ? isAgentTraceDetailLog(log, meta) : false;
   const titleId = 'proxy-trace-detail-modal-title';
 
@@ -355,6 +364,11 @@ export default function ProxyTraceDetailModal({ log, isOpen, onClose }) {
           {!showRaw && agentTraceStyle && meta && (
             <>
               <AgentTraceSummaryCards summary={traceSummary} />
+              {toolLimitWarning ? (
+                <div className="coreui-panel-note coreui-panel-note--warning" role="alert">
+                  {toolLimitWarning}
+                </div>
+              ) : null}
               {meta.request != null && (
                 <details className="dashboard-trace-item">
                   <summary>

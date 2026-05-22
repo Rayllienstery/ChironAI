@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.2] - 2026-05-22
+### Added
+- Welcome notification with version and changelog on WebUI startup.
+- Centralized version management in `core/version.py`.
+
+## [0.4.1] - 2026-05-22
+### Changed
+- Translated Russian comments and documentation to English for project uniformity.
+- Updated `AI_RULES.md` with versioning and changelog requirements.
+
 ## [0.4.0] - 2026-05-22
 ### Added
 - Project version bumped to 0.4.0.

@@ -3,7 +3,7 @@
 ## First of the first
 - [ ] Xcode example
 
-## Быстрые заметки (из Notes)
+## Quick Notes (from Notes)
 
 - [ ] Auto start docker
 - [ ] Esp 32 integration
@@ -13,7 +13,7 @@
 - [ ] Web framework search - work the same as crawl...
 
 - [ ] Check RAG Quality TASK
-- [ ] Crawler / Indexer - улучшить понимание того что было проиндексировано, а что нет - Indexed is ok, but skipped count is mandatory
+- [ ] Crawler / Indexer - improve understanding of what was indexed and what was not - Indexed is ok, but skipped count is mandatory
 - [ ] Indexing debug - why so much <400 chars filtering, probably it is useful files
 - [ ] Indexing debug - Embedding failed: 3
 
@@ -21,65 +21,63 @@
 
 ## 1. RAG (retrieval)
 
-### 1.2 Чанкинг и контекст
-- [ ] **A/B‑тесты лимитов контекста** — сравнение качества для разных моделей и размеров контекста после фиксации базовых лимитов.
+### 1.2 Chunking and context
+- [ ] **A/B tests of context limits** — quality comparison for different models and context sizes after fixing base limits.
 
-### 1.4 Concept Coverage (новый приоритетный слой)
-
----
-
-## 2. Промпт
-
-### 2.1 Содержание
-- [ ] **A/B тесты** — возможность передавать вариант промпта через query param или header (например `X-Prompt-Variant: short`) для сравнения качества без деплоя.
-
-## 4. Модели и эмбеддинги
+### 1.4 Concept Coverage (new priority layer)
 
 ---
 
-## 5. Тестирование и оценка качества
+## 2. Prompt
 
-### 5.1 Регрессионные тесты
-- [x] **Эталонный набор в JSON/YAML** — реализовано через Markdown-тесты в `rag_tests/` и хранение результатов в SQLite.
-- [x] **Интеграция с app_tester** — реализовано через `rag_tests_routes.py` и `runner.py`.
+### 2.1 Content
+- [ ] **A/B tests** — ability to pass a prompt variant via query param or header (e.g., `X-Prompt-Variant: short`) for quality comparison without deployment.
 
-### 5.2 Бенчмарки
-- [x] **Латентность** — логируется `latency_ms`, отображается в UI (p50/p95).
-- [x] **Качество retrieval** — реализовано в RAG тестах (Hit@K, MRR).
-- [x] **Качество ответов** — реализована валидация концептов в `validator.py`.
+## 4. Models and embeddings
 
 ---
 
-## 6. Наблюдаемость и эксплуатация
+## 5. Testing and quality assessment
 
-- [ ] **Экспорт метрик** — выгрузка в Prometheus/StatsD или отдельный `GET /metrics` (сейчас только in-memory collector).
-- [ ] **Health: probe `/api/embed`** — добавить проверку эмбеддинга (см. чеклист в `Improvement.md` §6.1).
+### 5.1 Regression tests
+- [x] **Reference set in JSON/YAML** — implemented via Markdown tests in `rag_tests/` and result storage in SQLite.
+- [x] **Integration with app_tester** — implemented via `rag_tests_routes.py` and `runner.py`.
 
----
-
-## 7. Документация и структура проекта
-
-- [x] **README** — в корне проекта: назначение (ChironAI v0.3), требования, установка, запуск.
-- [ ] **CHANGELOG** — версии 0.1, 0.2, 0.3, 0.4 с перечнем изменений.
-- [ ] **Описание промпта** — отдельный документ (например `docs/PROMPT.md`).
+### 5.2 Benchmarks
+- [x] **Latency** — `latency_ms` is logged, displayed in UI (p50/p95).
+- [x] **Retrieval quality** — implemented in RAG tests (Hit@K, MRR).
+- [x] **Answer quality** — concept validation implemented in `validator.py`.
 
 ---
 
-## 8. Качество кода (проект)
+## 6. Observability and operations
 
-- [ ] **Типизация** — включить проверку типов (mypy или pyright) для `rag_proxy.py`, ключевых функций в `app.py`.
-- [x] **Русские комментарии** — перевести на английский для единообразия.
+- [ ] **Metrics export** — export to Prometheus/StatsD or a separate `GET /metrics` (currently only in-memory collector).
+- [ ] **Health: probe `/api/embed`** — add embedding check (see checklist in `Improvement.md` §6.1).
 
 ---
 
-## Приоритеты v0.4 (Качество и Эксплуатация)
+## 7. Documentation and project structure
 
-1. **Наблюдаемость:** [ ] Экспорт метрик в Prometheus (`/metrics`), [ ] Health probe для `/api/embed`.
-2. **RAG:** [ ] Улучшение отчётности индексатора (skipped count), [ ] Отладка фильтрации коротких файлов (<400 симв).
-3. **Промпт:** [ ] Механизм A/B тестов промптов через заголовки.
-4. **Документация:** [ ] Создание CHANGELOG.md, [ ] Описание архитектуры промпта.
+- [ ] **Prompt description** — separate document (e.g., `docs/PROMPT.md`).
+
+---
+
+## 8. Code quality (project)
+
+- [ ] **Typing** — enable type checking (mypy or pyright) for `rag_proxy.py`, key functions in `app.py`.
+- [x] **Russian comments** — translate to English for uniformity.
+
+---
+
+## Priorities v0.4 (Quality and Operations)
+
+1. **Observability:** [ ] Export metrics to Prometheus (`/metrics`), [ ] Health probe for `/api/embed`.
+2. **RAG:** [ ] Improve indexer reporting (skipped count), [ ] Debug filtering of short files (<400 chars).
+3. **Prompt:** [ ] A/B test mechanism for prompts via headers.
+4. **Documentation:** [ ] Create CHANGELOG.md, [ ] Describe prompt architecture.
 
 ---
 
 ## Post MVP
-Задачи перенесены в **[POST_MVP.md](POST_MVP.md)**.
+Tasks moved to **[POST_MVP.md](POST_MVP.md)**.

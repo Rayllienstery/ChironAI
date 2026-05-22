@@ -48,6 +48,15 @@ async function fetchJsonWithTimeout(url, options = {}) {
   }
 }
 
+export async function getVersion() {
+  const response = await fetch(`${API_BASE}/version`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(extractApiError(data, 'Failed to get version'));
+  }
+  return data;
+}
+
 export async function getSession() {
   let url = `${API_BASE}/sessions`;
   try {

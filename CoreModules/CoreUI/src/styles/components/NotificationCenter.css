@@ -453,6 +453,16 @@
   word-break: break-word;
 }
 
+.proxy-live-notification-warning {
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--coreui-color-on-warning-container);
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--coreui-color-warning) 45%, transparent);
+  border-radius: var(--md-sys-shape-corner-small, 6px);
+  background: var(--coreui-color-warning-container);
+  word-break: break-word;
+}
+
 .proxy-live-notification-actions {
   display: flex;
   flex-wrap: wrap;

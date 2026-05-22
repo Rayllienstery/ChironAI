@@ -5,9 +5,23 @@ import CoreUIButton from './CoreUIButton';
 import CoreUIModal from './CoreUIModal';
 import CoreUIPillTabs from './CoreUIPillTabs';
 import { summarizeAgentTraceMeta } from '../utils/agentTraceSummary';
+import { proxyTraceToolLimitWarning } from '../utils/proxyTraceWarnings';
 import AgentTraceSummaryCards from './AgentTraceSummaryCards';
 
 const LIVE_POLL_MS = 3000;
+
+function TraceToolLimitWarning({ trace, compact = false }) {
+  const warning = proxyTraceToolLimitWarning(trace);
+  if (!warning) return null;
+  if (compact) {
+    return <span className="coreui-status-pill coreui-status-pill--warning">Tool cap reached</span>;
+  }
+  return (
+    <div className="coreui-panel-note coreui-panel-note--warning" role="alert">
+      {warning}
+    </div>
+  );
+}
 
 export default function ProxyTracesTab() {
   const [status, setStatus] = useState(null);
@@ -142,6 +156,7 @@ export default function ProxyTracesTab() {
                 {t.resolved_model}
                 {t.error ? ` · error: ${t.error}` : ''}
               </div>
+              <TraceToolLimitWarning trace={t} />
             </button>
           ))}
         </div>
@@ -163,6 +178,7 @@ export default function ProxyTracesTab() {
                 {t.elapsed_ms}ms · {t.step_count} steps · {t.resolved_model}
                 {t.error ? ` · ${t.error}` : ''}
               </span>
+              <TraceToolLimitWarning trace={t} compact />
             </div>
           ))}
         </div>
@@ -186,6 +202,7 @@ export default function ProxyTracesTab() {
             {modalTab === 'formatted' && (
               <>
                 <AgentTraceSummaryCards summary={summarizeAgentTraceMeta(selectedTrace)} />
+                <TraceToolLimitWarning trace={selectedTrace} />
                 <details className="dashboard-trace-item coreui-section-block" style={{ marginTop: 'var(--md-sys-spacing-md)' }}>
                   <summary>Full JSON</summary>
                   <pre className="coreui-mono-block">{JSON.stringify(selectedTrace, null, 2)}</pre>

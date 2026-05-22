@@ -1391,7 +1391,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 <div className="llm-proxy-prefab-panel">
                   <div className="llm-proxy-param-card-header">
                     <span className="llm-proxy-param-card-icon material-symbols-outlined" aria-hidden="true">dashboard_customize</span>
-                    <h4 className="llm-proxy-param-card-title">Префабы</h4>
+                    <h4 className="llm-proxy-param-card-title">Prefabs</h4>
                   </div>
                   <div className="coreui-card-actions llm-proxy-prefab-actions" aria-label="Parameter prefabs">
                     {PARAMETER_PREFABS.map((prefab) => {

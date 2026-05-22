@@ -116,7 +116,15 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 
 ---
 
-## 8. AI checklist before finishing a task
+## 8. Versioning and Changelog
+
+- **Version Increment:** Every time a task is completed that involves changing at least one file in the project code, the version must be incremented: `X.Y.Z` -> `X.Y.(Z+1)`.
+- **Source of Truth:** The canonical version is stored in `core/version.py`.
+- **CHANGELOG.md:** Must be updated for every version bump. Use a concise bulleted list to describe **what** was done, but **not how** it was done.
+
+---
+
+## 9. AI checklist before finishing a task
 
 - [ ] If the Web UI API changed: updated `webui_api.py`, `api.js` (and contract types/comments if needed), server routes.
 - [ ] No import-boundary violations for `domain/`?
@@ -128,10 +136,11 @@ Risk and “tail” summary: `docs/legacy_map.md`.
     - [ ] Is `chironai-extension.json` present and valid?
     - [ ] Is the `create_provider` entry point implemented?
     - [ ] If it needs Docker, does it use only `host_context.docker_runtime` + `DockerContainerSpec`?
+- [ ] **Version bumped and CHANGELOG.md updated?**
 
 ---
 
-## 9. Further reading
+## 10. Further reading
 
 | Document / module | Purpose |
 |-------------------|---------|

@@ -1,9 +1,9 @@
 # Post MVP
 
-Backlog после минимально жизнеспособной версии: качество RAG, проверки ответов, эксперименты с промптами и внешняя оценка. Исходное место в списке задач: [TODO.md](TODO.md) (раздел «Post MVP»).
+Backlog after the Minimum Viable Product: RAG quality, answer validation, prompt experiments, and external evaluation. Original location in the task list: [TODO.md](TODO.md) (section "Post MVP").
 
-- [ ] **Локальные метрики качества RAG** — реализовать измерения Hit@K / MRR / «нужный чанк в топ-N» на основе эталонного набора запросов; считать распределение по моделям и конфигам, сохранять результаты в файл/БД для сравнения между версиями.
-- [ ] **Автоматические проверки ответов** — добавить проверки на наличие запрещённых паттернов (force unwrap, выдуманные API, русские комментарии в коде, отсутствие ссылок на RAG-чанки при их наличии), падать тестами или помечать запрос как «failed».
-- [ ] **A/B тестирование промптов** — возможность прогонять один и тот же набор запросов через разные варианты системного промпта (Swift 5 / Swift 6 / short / strict) и сравнивать метрики качества и количество ошибок.
-- [ ] **Полу‑ручная экспертная оценка** — небольшой, но тщательно размеченный набор сложных запросов (Observation, Liquid Glass, сложные RAG‑кейсы), где эксперт вручную помечает правильность фактов, архитектурных рекомендаций и соблюдение принципов самопроверки.
-- [ ] **AI-анализ тестовых запросов** — интеграция с внешним AI API для анализа тестовых запросов: кнопка в WebUI отправляет всю информацию о тестовом запросе (вопрос пользователя, найденные RAG-чанки, ответ модели, метрики) во внешний AI, который комментирует качество ответа, релевантность найденных чанков, соблюдение принципов и предлагает улучшения. Конфигурация API ключа через env, опциональное включение функции.
+- [ ] **Local RAG quality metrics** — implement Hit@K / MRR / "correct chunk in top-N" measurements based on a reference set of queries; calculate distribution by models and configs, save results to a file/DB for comparison between versions.
+- [ ] **Automatic answer checks** — add checks for forbidden patterns (force unwrap, hallucinated APIs, Russian comments in code, missing links to RAG chunks when present), fail tests or mark the query as "failed".
+- [ ] **A/B testing of prompts** — ability to run the same set of queries through different system prompt variants (Swift 5 / Swift 6 / short / strict) and compare quality metrics and error counts.
+- [ ] **Semi-manual expert evaluation** — a small but carefully labeled set of complex queries (Observation, Liquid Glass, complex RAG cases), where an expert manually marks the correctness of facts, architectural recommendations, and adherence to self-check principles.
+- [ ] **AI analysis of test queries** — integration with an external AI API for analyzing test queries: a button in the WebUI sends all information about a test query (user question, found RAG chunks, model answer, metrics) to an external AI, which comments on answer quality, relevance of found chunks, adherence to principles, and suggests improvements. API key configuration via env, optional feature enablement.

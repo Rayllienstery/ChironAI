@@ -208,6 +208,7 @@ from api.http.webui_llm_proxy_routes import register_llm_proxy_routes
 from api.http.webui_observability_routes import register_observability_routes
 from api.http.webui_prompt_routes import register_prompt_routes
 from api.http.webui_session_routes import register_session_routes
+from api.http.webui_version_routes import register_version_routes
 from api.http.webui_settings_routes import register_settings_routes
 from api.http.webui_prompts import is_readme_name
 from api.http.webui_session import log_to_database
@@ -344,6 +345,10 @@ register_docker_routes(
     error_log=_ERROR_LOG,
 )
 register_session_routes(
+    webui_bp,
+    error_log=_ERROR_LOG,
+)
+register_version_routes(
     webui_bp,
     error_log=_ERROR_LOG,
 )

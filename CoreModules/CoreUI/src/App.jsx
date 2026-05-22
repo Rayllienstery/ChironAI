@@ -105,6 +105,7 @@ import RagTestRunNotificationBridge from "./components/RagTestRunNotificationBri
 import ProxiesLiveNotificationBridge from "./components/ProxiesLiveNotificationBridge";
 import OllamaPullNotificationBridge from "./components/OllamaPullNotificationBridge";
 import InfrastructureAlertsBridge from "./components/InfrastructureAlertsBridge";
+import WelcomeNotificationBridge from "./components/WelcomeNotificationBridge";
 import ExtensionSecurityNotificationBridge from "./components/ExtensionSecurityNotificationBridge";
 import "./styles/layout.css";
 import "./styles/default-card.css";
@@ -729,6 +730,7 @@ function App() {
         <InfrastructureAlertsBridge pollIntervalSec={serviceStatusPollIntervalSec} />
       )}
       {sessionId && <ExtensionSecurityNotificationBridge />}
+      {sessionId && <WelcomeNotificationBridge />}
       {sessionId && <NotificationCenterShell onOpenRagRunDetails={openCompletedRagRunModal} />}
       </div>
     </NotificationCenterProvider>

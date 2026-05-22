@@ -5,6 +5,7 @@ import {
   OLLAMA_BRAND_ICON_URL,
 } from '../utils/ollamaModelBrandIcons';
 import { traceModelFields } from '../utils/proxyTraceModel';
+import { proxyTraceToolLimitWarning } from '../utils/proxyTraceWarnings';
 import CoreUIButton from './CoreUIButton';
 import { useNotificationCenter } from './NotificationCenterContext';
 
@@ -247,7 +248,7 @@ function TraceCountBadge({ count }) {
 }
 
 function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
-  const { endsAt, status, model, traceId, chainId, steps, brandKey, traceCount } = wd;
+  const { endsAt, status, model, traceId, chainId, steps, brandKey, traceCount, toolLimitWarning } = wd;
   const stepCapsules = buildStepCapsules(steps);
   return (
     <div className="proxy-live-notification notification-proxy-embed notification-proxy-embed--winddown">
@@ -271,6 +272,11 @@ function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
         <div className="proxy-live-notification-row">
           <span className="proxy-live-notification-label">Chain ID</span>
           <span className="proxy-live-notification-value proxy-live-notification-mono">{chainId}</span>
+        </div>
+      ) : null}
+      {toolLimitWarning ? (
+        <div className="proxy-live-notification-warning" role="alert">
+          {toolLimitWarning}
         </div>
       ) : null}
       {stepCapsules.length ? (
@@ -301,6 +307,7 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace, traceCoun
   const stepCapsules = buildStepCapsules(trace?.steps);
   const traceId = trace?.trace_id != null && trace.trace_id !== '' ? String(trace.trace_id) : '';
   const chainId = traceChainId(trace);
+  const toolLimitWarning = proxyTraceToolLimitWarning(trace);
   const genTps = computeGenTokensPerSecond(trace);
   const tpsDisplay = genTps != null && genTps.value > 0 ? `${genTps.value.toFixed(2)} tok/s` : null;
   const tpsTitle = genTps != null ? genTpsSourceTitle(genTps.source) : null;
@@ -330,6 +337,11 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace, traceCoun
         <div className="proxy-live-notification-row">
           <span className="proxy-live-notification-label">Chain ID</span>
           <span className="proxy-live-notification-value proxy-live-notification-mono">{chainId}</span>
+        </div>
+      ) : null}
+      {toolLimitWarning ? (
+        <div className="proxy-live-notification-warning" role="alert">
+          {toolLimitWarning}
         </div>
       ) : null}
       {tpsDisplay ? (
@@ -487,6 +499,7 @@ export default function ProxiesLiveNotificationBridge({
       const stepLine = pickLastStepName(trace?.steps);
       const chainIdFull = traceChainId(trace);
       const chainIdShort = traceShortId(chainIdFull);
+      const toolLimitWarning = proxyTraceToolLimitWarning(trace);
       const gen = ++llmWindDownGenRef.current;
       llmWindDownsRef.current.set(slotKey, {
         gen,
@@ -499,6 +512,7 @@ export default function ProxiesLiveNotificationBridge({
         traceId: nonEmptyString(trace?.trace_id),
         chainIdShort,
         chainId: chainIdFull,
+        toolLimitWarning,
         steps: Array.isArray(trace.steps) ? trace.steps : [],
         traceCount: Array.isArray(group?.traces) ? group.traces.length : 1,
       });
@@ -547,6 +561,7 @@ export default function ProxiesLiveNotificationBridge({
             const cur = llmWindDownsRef.current.get(traceKey);
             if (!cur || cur.gen !== myGen || cur.endsAt !== myEndsAt) return;
             const parts = [wd.model && `Model: ${wd.model}`, wd.status && `Last status: ${wd.status}`].filter(Boolean);
+            if (wd.toolLimitWarning) parts.push(wd.toolLimitWarning);
             if (wd.stepLine) parts.push(`Step: ${wd.stepLine}`);
             if (wd.chainIdShort) parts.push(`Chain ID: ${wd.chainIdShort}`);
             if (wd.traceIdShort) parts.push(`Trace: ${wd.traceIdShort}`);

@@ -189,6 +189,7 @@ def _tool_loop_limit_final_message(trace: dict[str, Any]) -> str:
     return (
         f"[Error: max_agent_steps limit reached{detail}. "
         "The model requested another tool call after tools were disabled for this turn. "
+        "The answer may be incomplete and the task may not be finished. "
         "Increase the build max_agent_steps limit, narrow the task, or continue in a new turn.]"
     )
 
@@ -1404,18 +1405,6 @@ def run_chat_completions(
         if use_model == autocomplete_id:
             use_model = effective_ollama_model
 
-        if tool_loop_limit_reached:
-            ollama_messages = [
-                *ollama_messages,
-                {
-                    "role": "system",
-                    "content": (
-                        "The configured max_agent_steps limit has been reached for this turn. "
-                        "Do not call tools. Summarize what is known and provide the best final answer now."
-                    ),
-                },
-            ]
-
         if input_budget is not None:
             try:
                 _upstream_cap_raw = os.getenv(
@@ -1444,6 +1433,124 @@ def run_chat_completions(
         trace["ollama"]["think"] = ollama_think
         trace["ollama"]["chat_stream"] = False
         client_visible_model = requested_model if dumb_build_pipeline else use_model
+
+        if tool_loop_limit_reached:
+            content = _tool_loop_limit_final_message(trace) or (
+                "[Error: max_agent_steps limit reached. Tools were disabled for this turn.]"
+            )
+            _append_trace_warning(trace, "tool_loop_limit_response_forced")
+            latency_ms = int((time.time() - start_time) * 1000)
+            _prompt_text = " ".join(
+                _ollama_message_content_str(m.get("content"))
+                for m in ollama_messages
+                if isinstance(m, dict)
+            )
+            prompt_tokens_approx = max(1, int(len(_prompt_text) / 4))
+            completion_tokens_approx = max(1, int(len(content) / 4))
+            _total_tokens_approx = prompt_tokens_approx + completion_tokens_approx
+            w.set_proxy_status(w.status_idle)
+            w.set_latest_request_seconds(time.time() - start_time)
+            w.set_latest_request_total_tokens(_total_tokens_approx)
+            trace["ollama"]["chat_skipped"] = "tool_loop_limit_reached"
+            trace["ollama"]["tokens_estimates"] = {
+                "prompt_tokens_estimated": prompt_tokens_approx,
+                "completion_tokens_estimated": completion_tokens_approx,
+                "total_tokens_estimated": _total_tokens_approx,
+            }
+            trace["response"] = {
+                "latency_ms": latency_ms,
+                "tool_calls_count": 0,
+            }
+            _record_reasoning_token_estimates(trace["response"], "", content)
+            _apply_trace_response_text_fields(
+                trace["response"],
+                visible_content=content,
+                reasoning_content="",
+                final_content=content,
+                log_preview=log_preview,
+            )
+            trace["steps"].append(
+                {
+                    "name": "tool_loop_limit_response",
+                    "duration_ms": latency_ms,
+                    "tokens_in_est": prompt_tokens_approx,
+                    "tokens_out_est": completion_tokens_approx,
+                }
+            )
+            publish_response_artifacts(
+                visible_content=content,
+                reasoning_content="",
+                final_content=content,
+            )
+            publish_trace(trace)
+            response_data: dict[str, object] = {
+                "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
+                "object": "chat.completion",
+                "created": 0,
+                "model": client_visible_model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": content},
+                        "finish_reason": "stop",
+                    }
+                ],
+            }
+            if include_rag_metadata and rag_ctx:
+                response_data["rag_metadata"] = {
+                    "chunks_info": rag_ctx.chunks_info,
+                    "max_score": rag_ctx.max_score,
+                    "chunks_count": len(rag_ctx.chunks_info),
+                }
+
+            if stream:
+                rid = str(response_data["id"])
+
+                def generate_sse_tool_limit() -> Iterator[str]:
+                    yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+                    yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': content}, 'finish_reason': None}]})}\n\n"
+                    yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+                    yield "data: [DONE]\n\n"
+                    if not private_build:
+                        persist_proxy_request_log(
+                            message=f"Proxy request (tool limit): {user_query[:100]}...",
+                            response_preview=content[:log_preview],
+                            latency_ms_value=latency_ms,
+                            trace_payload=trace,
+                            stream_value=True,
+                            include_rag_fields=True,
+                            include_token_fields=True,
+                            prompt_tokens_value=prompt_tokens_approx,
+                            completion_tokens_value=completion_tokens_approx,
+                            total_tokens_value=_total_tokens_approx,
+                            ollama_chat_stream=False,
+                            sse_single_chunk=True,
+                            extra_metadata={"tool_loop_limit_response": True},
+                            warn_label="tool limit",
+                        )
+
+                return Response(
+                    generate_sse_tool_limit(),
+                    mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                )
+
+            if not private_build:
+                persist_proxy_request_log(
+                    message=f"Proxy request (tool limit): {user_query[:100]}...",
+                    response_preview=content[:log_preview],
+                    latency_ms_value=latency_ms,
+                    trace_payload=trace,
+                    stream_value=False,
+                    include_rag_fields=True,
+                    include_token_fields=True,
+                    prompt_tokens_value=prompt_tokens_approx,
+                    completion_tokens_value=completion_tokens_approx,
+                    total_tokens_value=_total_tokens_approx,
+                    extra_metadata={"tool_loop_limit_response": True},
+                    warn_label="tool limit",
+                )
+            return jsonify(response_data)
     except Exception as e:
         if not private_build:
             w.log_webui_error("rag_routes.chat_completions", e, {"stage": "prepare_rag"})
