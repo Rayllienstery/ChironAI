@@ -269,7 +269,7 @@ function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
       ) : null}
       {chainId ? (
         <div className="proxy-live-notification-row">
-          <span className="proxy-live-notification-label">Chain</span>
+          <span className="proxy-live-notification-label">Chain ID</span>
           <span className="proxy-live-notification-value proxy-live-notification-mono">{chainId}</span>
         </div>
       ) : null}
@@ -328,7 +328,7 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace, traceCoun
       ) : null}
       {chainId ? (
         <div className="proxy-live-notification-row">
-          <span className="proxy-live-notification-label">Chain</span>
+          <span className="proxy-live-notification-label">Chain ID</span>
           <span className="proxy-live-notification-value proxy-live-notification-mono">{chainId}</span>
         </div>
       ) : null}
@@ -548,7 +548,7 @@ export default function ProxiesLiveNotificationBridge({
             if (!cur || cur.gen !== myGen || cur.endsAt !== myEndsAt) return;
             const parts = [wd.model && `Model: ${wd.model}`, wd.status && `Last status: ${wd.status}`].filter(Boolean);
             if (wd.stepLine) parts.push(`Step: ${wd.stepLine}`);
-            if (wd.chainIdShort) parts.push(`Chain: ${wd.chainIdShort}`);
+            if (wd.chainIdShort) parts.push(`Chain ID: ${wd.chainIdShort}`);
             if (wd.traceIdShort) parts.push(`Trace: ${wd.traceIdShort}`);
             const aggKey = wd.chainId
               ? `llm-proxy-finished|${wd.chainId}`

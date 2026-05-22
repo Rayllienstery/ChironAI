@@ -401,10 +401,22 @@ def _resolve_trace_chain_id(
         return client_id, "client_request_id"
 
     meta = proxy_trace_meta if isinstance(proxy_trace_meta, dict) else {}
-    for key in ("incoming_request_id", "x_trace_id", "x_request_id", "request_id", "trace_id"):
+    for key in (
+        "trace_chain_id",
+        "chain_id",
+        "responses_chain_id",
+        "conversation_id",
+        "thread_id",
+        "session_id",
+        "incoming_request_id",
+        "x_trace_id",
+        "x_request_id",
+        "request_id",
+        "trace_id",
+    ):
         value = _non_empty_str(meta.get(key))
         if value:
-            return value, "incoming_request_id"
+            return value, key
     return "", ""
 
 
@@ -909,7 +921,12 @@ def run_chat_completions(
         trace["request"]["tool_loop_stats"] = tool_loop_stats
     if _proxy_trace_meta:
         for _k, _v in _proxy_trace_meta.items():
-            if _k in ("proxy_v1_route", "responses_client_stream", "incoming_request_id"):
+            if _k in (
+                "proxy_v1_route",
+                "responses_client_stream",
+                "incoming_request_id",
+                "responses_previous_response_id",
+            ):
                 trace["request"][_k] = _v
     if body.get("tools_count_raw") is not None:
         trace["request"]["tools_count_raw"] = body.get("tools_count_raw")

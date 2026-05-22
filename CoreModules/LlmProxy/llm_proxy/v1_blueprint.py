@@ -91,6 +91,7 @@ def _post_body_is_openai_completions_shape(body: object) -> bool:
 
 
 _RESPONSES_HISTORY: dict[str, list[dict[str, Any]]] = {}
+_RESPONSES_CHAIN_IDS: dict[str, str] = {}
 _RESPONSES_HISTORY_MAX = 200
 
 
@@ -115,6 +116,49 @@ def _with_proxy_trace_meta(body: dict[str, Any], extra: dict[str, Any]) -> dict[
     if meta:
         out["_proxy_trace_meta"] = meta
     return out
+
+
+def _first_non_empty(*values: Any) -> str:
+    for value in values:
+        if value is None:
+            continue
+        s = str(value).strip()
+        if s:
+            return s
+    return ""
+
+
+def _responses_explicit_chain_id(raw: dict[str, Any]) -> str:
+    metadata = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
+    return _first_non_empty(
+        raw.get("client_request_id"),
+        raw.get("trace_chain_id"),
+        raw.get("chain_id"),
+        metadata.get("trace_chain_id"),
+        metadata.get("chain_id"),
+        metadata.get("conversation_id"),
+        metadata.get("thread_id"),
+        metadata.get("session_id"),
+    )
+
+
+def _responses_chain_id_for_request(raw: dict[str, Any], inbound_request_id: str = "") -> str:
+    explicit = _responses_explicit_chain_id(raw)
+    if explicit:
+        return explicit
+
+    previous_response_id = str(raw.get("previous_response_id") or "").strip()
+    if previous_response_id:
+        previous_chain = str(_RESPONSES_CHAIN_IDS.get(previous_response_id) or "").strip()
+        if previous_chain:
+            return previous_chain
+        return f"responses:{previous_response_id}"
+
+    inbound = str(inbound_request_id or "").strip()
+    if inbound:
+        return inbound
+
+    return f"responses:{uuid.uuid4().hex[:12]}"
 
 
 def _responses_content_to_text(content: Any) -> str:
@@ -789,10 +833,23 @@ def _responses_history_put(resp_id: str, messages: list[dict[str, Any]]) -> None
     if not resp_id:
         return
     _RESPONSES_HISTORY[resp_id] = messages[-200:]
+    if len(_RESPONSES_HISTORY) > _RESPONSES_HISTORY_MAX:
+        for k in list(_RESPONSES_HISTORY.keys())[: len(_RESPONSES_HISTORY) - _RESPONSES_HISTORY_MAX]:
+            _RESPONSES_HISTORY.pop(k, None)
+            _RESPONSES_CHAIN_IDS.pop(k, None)
+
+
+def _responses_chain_id_put(resp_id: str, chain_id: str) -> None:
+    resp = str(resp_id or "").strip()
+    chain = str(chain_id or "").strip()
+    if not resp or not chain:
+        return
+    _RESPONSES_CHAIN_IDS[resp] = chain
     if len(_RESPONSES_HISTORY) <= _RESPONSES_HISTORY_MAX:
         return
     for k in list(_RESPONSES_HISTORY.keys())[: len(_RESPONSES_HISTORY) - _RESPONSES_HISTORY_MAX]:
         _RESPONSES_HISTORY.pop(k, None)
+        _RESPONSES_CHAIN_IDS.pop(k, None)
 
 
 def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
@@ -1001,10 +1058,15 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
                 **_input_summary,
             },
         )
+        responses_chain_id = _responses_chain_id_for_request(raw, inbound_request_id)
         oa_body, wants_stream, diag = _responses_request_to_openai_chat_body(raw)
         oa_body = _with_proxy_trace_meta(
             oa_body,
-            {"incoming_request_id": inbound_request_id},
+            {
+                "incoming_request_id": inbound_request_id,
+                "trace_chain_id": responses_chain_id,
+                "responses_previous_response_id": raw.get("previous_response_id") or "",
+            },
         )
         _V1_LOG.info(
             "v1.responses.normalized_tools",
@@ -1060,6 +1122,7 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
         history_seed = list(oa_body.get("messages") or [])
         history_seed.extend(assistant_tail)
         _responses_history_put(str(out.get("id") or ""), history_seed)
+        _responses_chain_id_put(str(out.get("id") or ""), responses_chain_id)
         if wants_stream:
             return _responses_sse_payload(out)
         return jsonify(out)

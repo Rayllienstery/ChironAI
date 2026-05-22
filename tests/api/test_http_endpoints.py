@@ -4450,6 +4450,7 @@ def test_v1_responses_followup_with_function_call_output_uses_previous_response_
     from flask import jsonify
 
     v1_blueprint._RESPONSES_HISTORY.clear()
+    v1_blueprint._RESPONSES_CHAIN_IDS.clear()
     calls: list[dict[str, Any]] = []
 
     def fake_chat_completions(_wiring, body_override=None):
@@ -4533,6 +4534,10 @@ def test_v1_responses_followup_with_function_call_output_uses_previous_response_
     )
     assert has_prior_assistant_tool_call
     assert has_tool_output
+    first_meta = calls[0].get("_proxy_trace_meta") or {}
+    second_meta = calls[1].get("_proxy_trace_meta") or {}
+    assert str(first_meta.get("trace_chain_id") or "").startswith("responses:")
+    assert second_meta.get("trace_chain_id") == first_meta.get("trace_chain_id")
 
 
 def test_v1_responses_input_parses_function_call_output_id_aliases() -> None:
@@ -4825,6 +4830,17 @@ def test_resolve_trace_chain_id_uses_incoming_meta_when_client_id_missing() -> N
     )
     assert chain_id == "header-chain-1"
     assert source == "incoming_request_id"
+
+
+def test_resolve_trace_chain_id_prefers_explicit_proxy_trace_meta() -> None:
+    import llm_proxy.chat_completions as cc
+
+    chain_id, source = cc._resolve_trace_chain_id(
+        client_request_id="",
+        proxy_trace_meta={"incoming_request_id": "header-chain-1", "trace_chain_id": "responses-chain-1"},
+    )
+    assert chain_id == "responses-chain-1"
+    assert source == "trace_chain_id"
 
 
 def test_v1_chat_completions_route_injects_incoming_request_id_into_proxy_trace_meta(
