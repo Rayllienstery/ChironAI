@@ -244,6 +244,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
   const [draft, setDraft] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [detailId, setDetailId] = useState(null);
+  const [detailModalBuild, setDetailModalBuild] = useState(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [previewMsg, setPreviewMsg] = useState(null);
   const [buildModalPipelineSnap, setBuildModalPipelineSnap] = useState(null);
@@ -462,6 +463,14 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
     setDetailId(null);
   };
 
+  const openDetailModal = (b) => {
+    setDetailModalBuild(b);
+  };
+
+  const closeDetailModal = () => {
+    setDetailModalBuild(null);
+  };
+
   const saveForm = async () => {
     if (!draft) return;
     const payload = draftToPayload(draft);
@@ -642,7 +651,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   role="listitem"
                 >
                   <div className="llm-proxy-build-row-header">
-                    <div className="llm-proxy-build-main">
+<div className="llm-proxy-build-main">
                       <div className="llm-proxy-build-title">
                         <span
                           className={`llm-proxy-build-issue-icon material-symbols-outlined${hasIssues ? ' llm-proxy-build-issue-icon--on' : ''}`}
@@ -656,148 +665,97 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                           <span className="llm-proxy-build-display-name">{b.display_name}</span>
                         ) : null}
                       </div>
-                      <div className="llm-proxy-build-params-list">
-                        {[
-                          {
-                            label: 'Basic',
-                            items: [
-                              { key: 'provider_id', label: 'Provider', icon: 'hub', val: v => v },
-                              { key: 'model', label: 'Model', icon: 'smart_toy', val: v => v || b.ollama_model },
-                            ]
-                          },
-                          {
-                            label: 'RAG',
-                            items: [
-                              { key: 'rag_enabled', label: 'RAG', icon: 'search', val: v => v ? 'enabled' : 'disabled' },
-                              { key: 'rag_collection', label: 'Coll', icon: 'database', val: v => v },
-                              { key: 'code_only', label: 'Code', icon: 'code', val: v => v ? 'on' : 'off' },
-                            ]
-                          },
-                          {
-                            label: 'Parameters',
-                            items: [
-                              { key: 'temperature', label: 'Temp', icon: 'thermostat', val: v => v },
-                              { key: 'top_p', label: 'TopP', icon: 'filter_list', val: v => v },
-                              { key: 'num_ctx', label: 'Ctx', icon: 'memory', val: v => v },
-                              { key: 'num_predict', label: 'Pred', icon: 'data_object', val: v => v },
-                              { key: 'max_agent_steps', label: 'Steps', icon: 'route', val: v => v },
-                              { key: 'sse_streaming', label: 'Stream', icon: 'stream', val: v => v === false ? 'off' : 'on' },
-                              { key: 'chat_think', label: 'Think', icon: 'psychology', val: v => v ? 'on' : 'off' },
-                            ]
-                          },
-                          {
-                            label: 'Web',
-                            items: [
-                              { key: 'web_enabled', label: 'Web', icon: 'public', val: v => v ? 'on' : 'off' },
-                              { key: 'fetch_web_knowledge', label: 'WebDocs', icon: 'cloud_download', val: v => v ? 'on' : 'off' },
-                              { key: 'web_interaction_ddg_news', label: 'DDG', icon: 'travel_explore', val: v => v ? 'on' : 'off' },
-                              { key: 'web_interaction_fetch_page', label: 'Fetch', icon: 'web', val: v => v ? 'on' : 'off' },
-                              { key: 'web_interaction_wikipedia', label: 'Wiki', icon: 'menu_book', val: v => v ? 'on' : 'off' },
-                            ]
-                          },
-                          {
-                            label: 'Agent & Privacy',
-                            items: [
-                              { key: 'prompt_name', label: 'Prompt', icon: 'description', val: v => v },
-                              { key: 'use_prompt_template', label: 'Agent', icon: 'code_blocks', val: v => v === false ? 'on' : 'off' },
-                              { key: 'private', label: 'Priv', icon: 'visibility_off', val: v => v ? 'on' : 'off' },
-                            ]
-                          }
-                        ].map(cat => {
-                          const visibleItems = cat.items.filter(p => {
-                            const v = b[p.key];
-                            const display = p.val(v);
-                            return display !== null && display !== undefined && display !== '';
-                          });
-
-                          if (visibleItems.length === 0) return null;
-
-                          return (
-                            <div key={cat.label} className="llm-proxy-build-param-section">
-                              <div className="llm-proxy-build-param-section-title">{cat.label}</div>
-                              {visibleItems.map(p => (
-                                <div key={p.key} className="llm-proxy-build-param-item">
-                                  <div className="llm-proxy-build-param-label">
-                                    <span className="material-symbols-outlined" aria-hidden="true">{p.icon}</span>
-                                    <span>{p.label}</span>
-                                  </div>
-                                  <code className="llm-proxy-build-param-value">{p.val(b[p.key])}</code>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        })}
+                      <div className="llm-proxy-build-basic-info">
+                        <span className="llm-proxy-build-basic-item">
+                          <span className="material-symbols-outlined" aria-hidden="true">hub</span>
+                          Provider: <code>{b.provider_id || '—'}</code>
+                        </span>
+                        <span className="llm-proxy-build-basic-item">
+                          <span className="material-symbols-outlined" aria-hidden="true">smart_toy</span>
+                          Model: <code>{b.model || b.ollama_model || '—'}</code>
+                        </span>
                       </div>
                     </div>
 
-                    <div
-                      className="llm-proxy-build-menu-root"
-                      ref={openMenuModel === name ? modelMenuRootRef : null}
-                    >
+                    <div className="llm-proxy-build-actions">
                       <button
                         type="button"
-                        className="llm-proxy-build-menu-trigger"
-                        aria-haspopup="menu"
-                        aria-expanded={openMenuModel === name}
-                        aria-label={`Actions for ${name}`}
+                        className="llm-proxy-build-details-btn"
                         disabled={busy}
-                        onClick={() =>
-                          setOpenMenuModel((cur) => (cur === name ? null : name))
-                        }
+                        onClick={() => openDetailModal(b)}
                       >
-                        <span className="material-symbols-outlined" aria-hidden="true">
-                          more_vert
-                        </span>
+                        <span className="material-symbols-outlined" aria-hidden="true">description</span>
+                        Details
                       </button>
-                      {openMenuModel === name ? (
-                        <div className="llm-proxy-build-menu" role="menu">
-                          <button
-                            type="button"
-                            className="llm-proxy-build-menu-item"
-                            role="menuitem"
-                            disabled={busy}
-                            onClick={() => {
-                              setOpenMenuModel(null);
-                              det ? closeDetails() : openDetails(name);
-                            }}
-                          >
-                            <span className="material-symbols-outlined" aria-hidden="true">
-                              {det ? 'expand_less' : 'description'}
-                            </span>
-                            <span>{det ? 'Hide details' : 'Show details'}</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="llm-proxy-build-menu-item"
-                            role="menuitem"
-                            disabled={busy || !!draft}
-                            onClick={() => {
-                              setOpenMenuModel(null);
-                              openEdit(b);
-                            }}
-                          >
-                            <span className="material-symbols-outlined" aria-hidden="true">
-                              edit
-                            </span>
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="llm-proxy-build-menu-item llm-proxy-build-menu-item--danger"
-                            role="menuitem"
-                            disabled={busy || saving}
-                            onClick={() => {
-                              setOpenMenuModel(null);
-                              deleteBuild(name);
-                            }}
-                          >
-                            <span className="material-symbols-outlined" aria-hidden="true">
-                              delete_forever
-                            </span>
-                            <span>Delete</span>
-                          </button>
-                        </div>
-                      ) : null}
+                      <div
+                        className="llm-proxy-build-menu-root"
+                        ref={openMenuModel === name ? modelMenuRootRef : null}
+                      >
+                        <button
+                          type="button"
+                          className="llm-proxy-build-menu-trigger"
+                          aria-haspopup="menu"
+                          aria-expanded={openMenuModel === name}
+                          aria-label={`Actions for ${name}`}
+                          disabled={busy}
+                          onClick={() =>
+                            setOpenMenuModel((cur) => (cur === name ? null : name))
+                          }
+                        >
+                          <span className="material-symbols-outlined" aria-hidden="true">
+                            more_vert
+                          </span>
+                        </button>
+                        {openMenuModel === name ? (
+                          <div className="llm-proxy-build-menu" role="menu">
+                            <button
+                              type="button"
+                              className="llm-proxy-build-menu-item"
+                              role="menuitem"
+                              disabled={busy}
+                              onClick={() => {
+                                setOpenMenuModel(null);
+                                det ? closeDetails() : openDetails(name);
+                              }}
+                            >
+                              <span className="material-symbols-outlined" aria-hidden="true">
+                                {det ? 'expand_less' : 'description'}
+                              </span>
+                              <span>{det ? 'Hide details' : 'Show details'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="llm-proxy-build-menu-item"
+                              role="menuitem"
+                              disabled={busy || !!draft}
+                              onClick={() => {
+                                setOpenMenuModel(null);
+                                openEdit(b);
+                              }}
+                            >
+                              <span className="material-symbols-outlined" aria-hidden="true">
+                                edit
+                              </span>
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="llm-proxy-build-menu-item llm-proxy-build-menu-item--danger"
+                              role="menuitem"
+                              disabled={busy || saving}
+                              onClick={() => {
+                                setOpenMenuModel(null);
+                                deleteBuild(name);
+                              }}
+                            >
+                              <span className="material-symbols-outlined" aria-hidden="true">
+                                delete_forever
+                              </span>
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
 
@@ -840,6 +798,95 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
           </div>
         )}
       </section>
+
+      {detailModalBuild && (
+        <CoreUIModal
+          title={`Build details: ${detailModalBuild.id}`}
+          onClose={closeDetailModal}
+        >
+          <div className="llm-proxy-detail-modal-body">
+            {Array.isArray(detailModalBuild.issues) && detailModalBuild.issues.length > 0 && (
+              <div className="dashboard-card-error llm-proxy-section-gap-sm">
+                {detailModalBuild.issues.map((i) => (
+                  <div key={i}>{i}</div>
+                ))}
+              </div>
+            )}
+            <div className="llm-proxy-build-params-list">
+              {[
+                {
+                  label: 'Basic',
+                  items: [
+                    { key: 'provider_id', label: 'Provider', icon: 'hub', val: v => v },
+                    { key: 'model', label: 'Model', icon: 'smart_toy', val: v => v || detailModalBuild.ollama_model },
+                  ]
+                },
+                {
+                  label: 'RAG',
+                  items: [
+                    { key: 'rag_enabled', label: 'RAG', icon: 'search', val: v => v ? 'enabled' : 'disabled' },
+                    { key: 'rag_collection', label: 'Coll', icon: 'database', val: v => v },
+                    { key: 'code_only', label: 'Code', icon: 'code', val: v => v ? 'on' : 'off' },
+                  ]
+                },
+                {
+                  label: 'Parameters',
+                  items: [
+                    { key: 'temperature', label: 'Temp', icon: 'thermostat', val: v => v },
+                    { key: 'top_p', label: 'TopP', icon: 'filter_list', val: v => v },
+                    { key: 'num_ctx', label: 'Ctx', icon: 'memory', val: v => v },
+                    { key: 'num_predict', label: 'Pred', icon: 'data_object', val: v => v },
+                    { key: 'max_agent_steps', label: 'Steps', icon: 'route', val: v => v },
+                    { key: 'se_streaming', label: 'Stream', icon: 'stream', val: v => v === false ? 'off' : 'on' },
+                    { key: 'chat_think', label: 'Think', icon: 'psychology', val: v => v ? 'on' : 'off' },
+                  ]
+                },
+                {
+                  label: 'Web',
+                  items: [
+                    { key: 'web_enabled', label: 'Web', icon: 'public', val: v => v ? 'on' : 'off' },
+                    { key: 'fetch_web_knowledge', label: 'WebDocs', icon: 'cloud_download', val: v => v ? 'on' : 'off' },
+                    { key: 'web_interaction_ddg_news', label: 'DDG', icon: 'travel_explore', val: v => v ? 'on' : 'off' },
+                    { key: 'web_interaction_fetch_page', label: 'Fetch', icon: 'web', val: v => v ? 'on' : 'off' },
+                    { key: 'web_interaction_wikipedia', label: 'Wiki', icon: 'menu_book', val: v => v ? 'on' : 'off' },
+                  ]
+                },
+                {
+                  label: 'Agent & Privacy',
+                  items: [
+                    { key: 'prompt_name', label: 'Prompt', icon: 'description', val: v => v },
+                    { key: 'use_prompt_template', label: 'Agent', icon: 'code_blocks', val: v => v === false ? 'on' : 'off' },
+                    { key: 'private', label: 'Priv', icon: 'visibility_off', val: v => v ? 'on' : 'off' },
+                  ]
+                }
+              ].map(cat => {
+                const visibleItems = cat.items.filter(p => {
+                  const v = detailModalBuild[p.key];
+                  const display = p.val(v);
+                  return display !== null && display !== undefined && display !== '';
+                });
+
+                if (visibleItems.length === 0) return null;
+
+                return (
+                  <div key={cat.label} className="llm-proxy-build-param-section">
+                    <div className="llm-proxy-build-param-section-title">{cat.label}</div>
+                    {visibleItems.map(p => (
+                      <div key={p.key} className="llm-proxy-build-param-item">
+                        <div className="llm-proxy-build-param-label">
+                          <span className="material-symbols-outlined" aria-hidden="true">{p.icon}</span>
+                          <span>{p.label}</span>
+                        </div>
+                        <code className="llm-proxy-build-param-value">{p.val(detailModalBuild[p.key])}</code>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </CoreUIModal>
+      )}
 
       {draft && (
         <CoreUIModal

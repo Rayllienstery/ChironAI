@@ -20,6 +20,8 @@ const ACCENT_COLORS = [
 const SERVICE_STATUS_POLL_DEFAULT = 5;
 const SERVICE_STATUS_POLL_MIN = 2;
 const SERVICE_STATUS_POLL_MAX = 300;
+const SERVER_PORT_MIN = 1;
+const SERVER_PORT_MAX = 65535;
 
 function clampServiceStatusPollSec(raw) {
   const n = parseInt(String(raw ?? ''), 10);
@@ -94,12 +96,37 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
   };
 
   const handleSave = async () => {
-    setSaving(true);
     try {
       const pollSec = clampServiceStatusPollSec(settings.service_status_poll_interval_sec);
       const payload = { ...settings, service_status_poll_interval_sec: pollSec };
-      await updateSettings(payload);
-      setSettings((prev) => ({ ...prev, service_status_poll_interval_sec: pollSec }));
+      delete payload.server_port_active;
+      delete payload.server_port_source;
+      delete payload.server_port_restart_required;
+      delete payload.server_port_last_active;
+
+      if (settings.server_port_source === 'env') {
+        delete payload.server_port;
+      } else {
+        const serverPort = parseInt(String(settings.server_port ?? ''), 10);
+        if (
+          Number.isNaN(serverPort) ||
+          serverPort < SERVER_PORT_MIN ||
+          serverPort > SERVER_PORT_MAX
+        ) {
+          alert(`Server port must be between ${SERVER_PORT_MIN} and ${SERVER_PORT_MAX}`);
+          return;
+        }
+        payload.server_port = serverPort;
+      }
+      setSaving(true);
+      const saved = await updateSettings(payload);
+      const { status: _status, ...savedSettings } = saved;
+      setSettings((prev) => ({
+        ...prev,
+        ...savedSettings,
+        service_status_poll_interval_sec: pollSec,
+        server_port: payload.server_port ?? prev.server_port,
+      }));
       alert('Settings saved successfully');
       if (typeof onAppSettingsSaved === 'function') {
         onAppSettingsSaved(payload);
@@ -115,6 +142,10 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
   if (loading) {
     return <div className="loading">Loading settings...</div>;
   }
+
+  const serverPortSource = settings.server_port_source || 'config';
+  const serverPortEnvOverride = serverPortSource === 'env';
+  const serverPortRestartRequired = Boolean(settings.server_port_restart_required);
 
   return (
     <div className="settings-tab tab-view">
@@ -209,6 +240,28 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
               value={settings.db_path || 'logs/webui.db'}
               onChange={(e) => handleChange('db_path', e.target.value)}
               placeholder="logs/webui.db"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Server Port</label>
+            <p className="settings-form-hint coreui-text-muted-sm">
+              {serverPortEnvOverride
+                ? `SERVER_PORT is set, so this process uses ${settings.server_port_active || settings.server_port}.`
+                : serverPortRestartRequired
+                  ? `Restart the app to switch from ${settings.server_port_active} to ${settings.server_port}.`
+                  : 'Changing the server port takes effect after restarting the app.'}
+            </p>
+            <input
+              type="number"
+              value={settings.server_port || 8080}
+              onChange={(e) =>
+                handleChange('server_port', e.target.value === '' ? '' : parseInt(e.target.value, 10))
+              }
+              min={SERVER_PORT_MIN}
+              max={SERVER_PORT_MAX}
+              step={1}
+              disabled={serverPortEnvOverride}
             />
           </div>
 

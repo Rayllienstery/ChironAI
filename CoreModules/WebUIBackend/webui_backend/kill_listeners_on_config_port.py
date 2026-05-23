@@ -1,11 +1,11 @@
-"""Stop processes listening on the configured WebUI / rag_proxy port (Windows)."""
+"""Stop processes listening on known WebUI / rag_proxy ports (Windows)."""
 
 from __future__ import annotations
 
 import subprocess
 import sys
 
-from config import get_server_port
+from config import get_server_port_candidate_ports
 
 
 def _kill_port(port: int) -> None:
@@ -24,7 +24,8 @@ def _kill_port(port: int) -> None:
 def main() -> None:
     if sys.platform != "win32":
         return
-    _kill_port(get_server_port())
+    for port in get_server_port_candidate_ports():
+        _kill_port(port)
 
 
 if __name__ == "__main__":

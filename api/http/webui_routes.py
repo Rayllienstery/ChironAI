@@ -137,7 +137,6 @@ from config import (
     get_retrieval_bool,
     get_retrieval_int,
     get_server_host,
-    get_server_port,
 )
 from application.rag.hybrid_sparse import is_hybrid_sparse_enabled
 from infrastructure.rag.qdrant_point_builder import build_named_vectors
@@ -304,6 +303,7 @@ def _register_extension_http_routes(bp: Blueprint) -> None:
     """
     import importlib.util
     import pathlib
+    import sys
 
     here = pathlib.Path(__file__).parent.parent.parent  # project root
     bundled = here / "extensions" / "bundled"
@@ -322,6 +322,7 @@ def _register_extension_http_routes(bp: Blueprint) -> None:
             if spec is None or spec.loader is None:
                 continue
             mod = importlib.util.module_from_spec(spec)
+            sys.modules[mod_name] = mod
             spec.loader.exec_module(mod)  # type: ignore[union-attr]
             fn = getattr(mod, "register_http_routes_on_blueprint", None)
             if callable(fn):

@@ -4,11 +4,6 @@ cd /d "%~dp0"
 
 echo Starting ChironAI server...
 echo Working directory: %CD%
-echo WebUI will be available at: http://localhost:8080/webui
-echo (API: /api/webui/* ; frontend: CoreModules\CoreUI)
-echo.
-echo If you updated the code, run start_webui.bat again to load changes (this window closes when the server stops).
-echo.
 
 set "PYTHONPATH=%CD%;%CD%\CoreModules\WebUIBackend;%PYTHONPATH%"
 
@@ -18,13 +13,22 @@ if errorlevel 1 (
   exit /b 1
 )
 
-REM Stop any process already listening on the configured server port (avoids "address already in use")
-echo Stopping any previous WebUI / rag_proxy listener on this port...
+for /f "usebackq delims=" %%U in (`python -m webui_backend.print_server_url`) do set "WEBUI_URL=%%U"
+if not defined WEBUI_URL set "WEBUI_URL=http://localhost:8080/webui"
+
+echo WebUI will be available at: %WEBUI_URL%
+echo (API: /api/webui/* ; frontend: CoreModules\CoreUI)
+echo.
+echo If you updated the code, run start_webui.bat again to load changes (this window closes when the server stops).
+echo.
+
+REM Stop any process already listening on known server ports (avoids "address already in use")
+echo Stopping any previous WebUI / rag_proxy listener on known ports...
 python -m webui_backend.kill_listeners_on_config_port
 echo.
 
 REM Open browser in the background
-start "" "http://localhost:8080/webui"
+start "" "%WEBUI_URL%"
 
 REM Run Flask server (rag_proxy registers webui_bp so /api/webui/* is available)
 python -m webui_backend.rag_proxy

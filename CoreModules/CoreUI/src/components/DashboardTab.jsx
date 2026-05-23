@@ -12,6 +12,7 @@ const INFO_TABS = [
 
 function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOpenLlmProxySecurity }) {
   const [infoSubTab, setInfoSubTab] = useState('intro');
+  const webuiOrigin = typeof window !== 'undefined' ? window.location.origin : 'the configured server URL';
 
   const go = (tabId) => {
     if (typeof onNavigate === 'function') onNavigate(tabId);
@@ -296,7 +297,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                       <h4>Launch WebUI</h4>
                       <p>Start the WebUI server and open in browser:</p>
                       <code>.\start_webui.bat</code>
-                      <p className="qs-hint">Access at <code>http://localhost:8080</code>. Use RAG tab to test queries.</p>
+                      <p className="qs-hint">Access at <code>{webuiOrigin}</code>. Use RAG tab to test queries.</p>
                     </div>
                   </div>
                 </div>

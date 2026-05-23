@@ -97,9 +97,9 @@ class OpenWebUiExtension:
         if raw:
             return _as_int(raw, 8080)
         try:
-            from config import get_server_port
+            from config import get_active_server_port
 
-            return int(get_server_port())
+            return int(get_active_server_port())
         except Exception:
             return 8080
 

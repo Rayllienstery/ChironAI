@@ -53,6 +53,18 @@ function ModuleFooter({ source, notification }) {
   );
 }
 
+function FormattedMessage({ text }) {
+  if (!text) return null;
+  return text.split('\n').map((line, i) => {
+    const dotMatch = line.match(/^●\s+(.*)/);
+    return (
+      <div key={i}>
+        {dotMatch ? <><span className="notification-changelog-dot" />{dotMatch[1]}</> : line}
+      </div>
+    );
+  });
+}
+
 function BroomIcon() {
   return (
     <svg
@@ -148,7 +160,7 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
                   <div className="notification-center-popover-row-main">
                     <div className="notification-center-popover-row-title">{notificationDisplayTitle(n)}</div>
                     {n.message ? (
-                      <div className="notification-center-popover-row-msg">{n.message}</div>
+                      <div className="notification-center-popover-row-msg"><FormattedMessage text={n.message} /></div>
                     ) : null}
                   </div>
                   <ModuleFooter source={n.source} notification={n} />
@@ -179,8 +191,8 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
               </button>
             </div>
             <div className="notification-center-card-main">
-              {n.message ? (
-                <div className="notification-center-card-message">{n.message}</div>
+{n.message ? (
+                <div className="notification-center-card-message"><FormattedMessage text={n.message} /></div>
               ) : null}
               {n.source === 'rag-tests' && extractRagRunId(n) ? (
                 <div className="notification-center-card-actions">

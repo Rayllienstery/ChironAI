@@ -10,6 +10,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
+REM start_webui.bat resolves the configured mutable server port.
 call start_webui.bat
 set "WEBUI_EXIT=%ERRORLEVEL%"
 exit /b %WEBUI_EXIT%

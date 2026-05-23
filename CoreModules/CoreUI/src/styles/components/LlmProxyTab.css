@@ -1073,3 +1073,79 @@ code.llm-proxy-build-summary-val {
   color: var(--md-sys-color-on-surface-variant);
   opacity: 0.6;
 }
+
+/* Flat basic info row on main screen (no card styling) */
+.llm-proxy-build-basic-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--md-sys-spacing-md);
+  margin-top: var(--md-sys-spacing-xs);
+}
+
+.llm-proxy-build-basic-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: var(--md-sys-typescale-label-medium-font);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.llm-proxy-build-basic-item .material-symbols-outlined {
+  font-size: 16px;
+  color: var(--md-sys-color-primary);
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+
+.llm-proxy-build-basic-item code {
+  font-family: var(--coreui-font-family-mono);
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+  font-size: 12px;
+}
+
+/* Build row actions row (Details button + kebab menu) */
+.llm-proxy-build-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-xs);
+  flex-shrink: 0;
+}
+
+.llm-proxy-build-details-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-large-font);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.llm-proxy-build-details-btn:hover:not(:disabled) {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+  border-color: var(--md-sys-color-primary);
+}
+
+.llm-proxy-build-details-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.llm-proxy-build-details-btn .material-symbols-outlined {
+  font-size: 18px;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Detail modal body */
+.llm-proxy-detail-modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  max-height: 70vh;
+}

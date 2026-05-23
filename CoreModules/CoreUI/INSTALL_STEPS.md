@@ -45,4 +45,4 @@ cd C:\Users\Raylee\AI
 python -m webui_backend.rag_proxy
 ```
 
-WebUI will be available at: http://localhost:8080/webui
+WebUI will be available at the configured server port, for example: http://localhost:8080/webui

@@ -21,9 +21,20 @@ export default function WelcomeNotificationBridge() {
         if (lastShownVersion === data.version) return;
 
         // Show notification
+        const lines = (data.changelog || '').split('\n');
+        const formatted = lines
+          .map((line, i) => {
+            const isHeader = /^###\s+/.test(line);
+            if (!isHeader) return line;
+            const label = line.replace(/^###\s+/, '');
+            return (i > 0 ? '\n' : '') + '● ' + label;
+          })
+          .filter(Boolean)
+          .join('\n');
+
         await persistNotification({
           title: data.display_name || `Chiron AI BETA ${data.version}`,
-          message: data.changelog || 'New version is here!',
+          message: formatted || 'New version is here!',
           tone: 'info',
           source: 'system',
           sticky: true,

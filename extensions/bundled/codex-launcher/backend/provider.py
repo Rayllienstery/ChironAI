@@ -20,7 +20,7 @@ from application.codex_launcher import (
     selected_ide_build,
     write_codex_profile,
 )
-from config import get_server_port
+from config import get_active_server_port
 
 
 def _manifest_tab_ui(manifest: Any) -> dict[str, Any]:
@@ -55,7 +55,7 @@ class CodexLauncherExtension:
 
     def _diagnostics(self, *, ping_proxy: bool = True) -> dict[str, Any]:
         repo = self._settings_repo()
-        base_url = proxy_base_url(get_server_port())
+        base_url = proxy_base_url(get_active_server_port())
         codex = codex_status()
         key_status = proxy_key_status(repo)
         builds = ide_builds(load_builds(repo))
@@ -336,7 +336,7 @@ class CodexLauncherExtension:
             return {"ok": True, "message": command, "command": command}
         if action == "configure_codex":
             reveal_existing_proxy_key(self._settings_repo())
-            base_url = proxy_base_url(get_server_port())
+            base_url = proxy_base_url(get_active_server_port())
             raw_config_path = str(payload.get("config_path") or "").strip()
             config_path = Path(raw_config_path) if raw_config_path else None
             written = write_codex_profile(base_url, config_path=config_path, build=build)

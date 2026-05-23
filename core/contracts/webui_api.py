@@ -102,6 +102,17 @@ class ModelSettingsPostResponse(TypedDict):
     settings: dict[str, Any]
 
 
+class AppSettingsResponse(TypedDict, total=False):
+    """GET/POST /settings — app settings plus main server port metadata."""
+
+    status: Literal["ok"]
+    rag_collection: str
+    server_port: int
+    server_port_active: int
+    server_port_source: Literal["env", "settings", "config", "default"]
+    server_port_restart_required: bool
+
+
 class LlmProxyStatusResponse(TypedDict):
     """GET /llm-proxy/status — card “Fusion Proxy” in CoreUI."""
 
@@ -200,6 +211,7 @@ __all__ = [
     "PromptContentResponse",
     "ModelSettingsGetResponse",
     "ModelSettingsPostResponse",
+    "AppSettingsResponse",
     "LlmProxyStatusResponse",
     "OpenAiModelsUrls",
     "LlmProxyBuildRow",

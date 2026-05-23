@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.4] - 2026-05-23
+### Changed
+- Notification changelog formatting: `###` headers replaced with accent-colored dot markers, lines separated properly.
+
+## [0.4.3] - 2026-05-22
+### Added
+- Configurable WebUI/backend server port in Settings with restart-required status.
+
+### Changed
+- Startup scripts now resolve and open the configured WebUI port.
+
 ## [0.4.2] - 2026-05-22
 ### Added
 - Welcome notification with version and changelog on WebUI startup.

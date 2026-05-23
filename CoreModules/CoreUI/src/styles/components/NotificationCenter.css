@@ -257,6 +257,16 @@
   margin-bottom: 8px;
 }
 
+.notification-changelog-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--md-sys-color-primary);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
 .notification-center-card-actions {
   margin-bottom: 8px;
 }

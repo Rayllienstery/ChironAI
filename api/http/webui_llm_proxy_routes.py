@@ -31,9 +31,9 @@ from llm_proxy.api_key import (
     store_proxy_api_key_record,
 )
 from config import (
+    get_active_server_port,
     get_qdrant_url,
     get_server_host,
-    get_server_port,
 )
 from config.rag_prompts import (
     rag_prompt_file_exists,
@@ -302,7 +302,7 @@ def register_llm_proxy_routes(
         try:
             bind_host = get_server_host()
             display_host = "127.0.0.1" if bind_host == "0.0.0.0" else bind_host
-            port = get_server_port()
+            port = get_active_server_port()
             base_url = f"http://{display_host}:{port}"
             payload: dict[str, Any] = {
                 "enabled": True,
@@ -446,7 +446,7 @@ def register_llm_proxy_routes(
                 enriched = _light_build_rows_for_webui(builds)
             sh = get_server_host()
             dh = "127.0.0.1" if sh in ("0.0.0.0", "::", "") else sh
-            main_port = get_server_port()
+            main_port = get_active_server_port()
             return jsonify(
                 {
                     "builds": enriched,

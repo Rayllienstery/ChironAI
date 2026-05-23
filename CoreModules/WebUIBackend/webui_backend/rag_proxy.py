@@ -1,13 +1,13 @@
 """
 OpenAI-compatible RAG proxy for Zed (and other clients).
 Accepts POST /v1/chat/completions, runs RAG (embed -> Qdrant), calls Ollama /api/chat,
-returns OpenAI-format response. Listen on 0.0.0.0:8080 for remote access (e.g. Zed on Mac).
+returns OpenAI-format response. Listen on the configured server port for remote access (e.g. Zed on Mac).
 
 Legacy second listener (build proxy) has been removed. Use the main server port only.
 
 Usage:
   On PC: python rag_proxy.py  (after starting Ollama and Qdrant)
-  On Mac Zed: OpenAI API Compatible -> API URL: http://<PC_IP>:8080
+  On Mac Zed: OpenAI API Compatible -> API URL: http://<PC_IP>:<configured_port>
 
 Uses api.http.rag_routes.create_app; prompt and model come from config via application.rag.params.
 """
@@ -17,7 +17,7 @@ import os
 
 from flask import make_response, send_from_directory
 
-from config import get_log_level, get_server_port
+from config import get_log_level, get_server_port, record_active_server_port
 from api.http.rag_routes import create_app
 from webui_backend.paths import coreui_dir, project_root, webui_data_dir
 
@@ -106,5 +106,6 @@ def webui_assets(filename: str):
 
 if __name__ == "__main__":
     port = get_server_port()
+    record_active_server_port(port)
     # Allow GET /proxy-trace/current (and other polls) while a long POST /v1/chat/completions runs.
     app.run(host="0.0.0.0", port=port, threaded=True)

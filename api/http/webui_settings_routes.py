@@ -6,8 +6,23 @@ from typing import Any, Callable
 
 from flask import Blueprint, jsonify, request
 
+from config import (
+    SERVER_PORT_APP_SETTING,
+    SERVER_PORT_LAST_ACTIVE_APP_SETTING,
+    _valid_server_port,
+    get_server_port_metadata,
+)
 from error_manager.http import error_response as _error_response
 from infrastructure.database import get_settings_repository
+
+
+_SERVER_PORT_METADATA_KEYS = {
+    "status",
+    "server_port_active",
+    "server_port_source",
+    "server_port_restart_required",
+    SERVER_PORT_LAST_ACTIVE_APP_SETTING,
+}
 
 
 def register_settings_routes(
@@ -29,6 +44,7 @@ def register_settings_routes(
             # Ensure rag_collection field exists
             if "rag_collection" not in settings:
                 settings["rag_collection"] = ""
+            settings.update(get_server_port_metadata(settings_repo))
             return jsonify(settings)
         except Exception as e:
             error_log.error("webui_settings_routes.get_settings", exc_info=True)
@@ -41,11 +57,22 @@ def register_settings_routes(
         try:
             body = request.get_json(force=True, silent=True) or {}
             settings_repo = get_settings_repository()
-        
+
+            if SERVER_PORT_APP_SETTING in body:
+                port = _valid_server_port(body.get(SERVER_PORT_APP_SETTING))
+                if port is None:
+                    return _error_response("server_port must be an integer between 1 and 65535", 400)
+
             for key, value in body.items():
+                if key in _SERVER_PORT_METADATA_KEYS:
+                    continue
+                if key == SERVER_PORT_APP_SETTING and body.get("server_port_source") == "env":
+                    continue
+                if key == SERVER_PORT_APP_SETTING:
+                    value = _valid_server_port(value)
                 settings_repo.set_app_setting(key, str(value))
-        
-            return jsonify({"status": "ok"})
+
+            return jsonify({"status": "ok", **get_server_port_metadata(settings_repo)})
         except Exception as e:
             error_log.error("webui_settings_routes.update_settings", exc_info=True)
             return _error_response(e)

@@ -482,15 +482,111 @@ def get_server_host() -> str:
     return os.getenv("SERVER_HOST", SERVER_CONFIG.get("host", "0.0.0.0"))
 
 
-def get_server_port() -> int:
-    """Return server port, allowing env override."""
+SERVER_PORT_APP_SETTING = "server_port"
+SERVER_PORT_LAST_ACTIVE_APP_SETTING = "server_port_last_active"
+ACTIVE_SERVER_PORT_ENV = "CHIRONAI_ACTIVE_SERVER_PORT"
+DEFAULT_SERVER_PORT = 8080
+
+
+def _valid_server_port(raw: Any) -> int | None:
+    """Return a TCP port in range, or None for invalid input."""
     try:
-        port = os.getenv("SERVER_PORT")
-        if port:
-            return int(port)
+        port = int(str(raw).strip())
     except (TypeError, ValueError):
+        return None
+    if 1 <= port <= 65535:
+        return port
+    return None
+
+
+def _get_app_setting_value(key: str, settings_repo: Any | None = None) -> str | None:
+    try:
+        repo = settings_repo
+        if repo is None:
+            from infrastructure.database import get_settings_repository  # noqa: PLC0415
+
+            repo = get_settings_repository()
+        value = repo.get_app_setting(key)
+        return None if value is None else str(value)
+    except Exception:
+        return None
+
+
+def _resolve_server_port(settings_repo: Any | None = None) -> tuple[int, str]:
+    env_port = _valid_server_port(os.getenv("SERVER_PORT"))
+    if env_port is not None:
+        return env_port, "env"
+
+    settings_port = _valid_server_port(_get_app_setting_value(SERVER_PORT_APP_SETTING, settings_repo))
+    if settings_port is not None:
+        return settings_port, "settings"
+
+    config_port = _valid_server_port(SERVER_CONFIG.get("port"))
+    if config_port is not None:
+        return config_port, "config"
+
+    return DEFAULT_SERVER_PORT, "default"
+
+
+def get_server_port() -> int:
+    """Return desired server port: env > app_settings > YAML config > default."""
+    port, _source = _resolve_server_port()
+    return port
+
+
+def get_active_server_port(settings_repo: Any | None = None) -> int:
+    """Return the port this process should advertise while running."""
+    active_port = _valid_server_port(os.getenv(ACTIVE_SERVER_PORT_ENV))
+    if active_port is not None:
+        return active_port
+    return get_server_port_metadata(settings_repo)["server_port"]
+
+
+def record_active_server_port(port: int, settings_repo: Any | None = None) -> None:
+    """Remember the currently bound server port for status URLs and next restart cleanup."""
+    valid_port = _valid_server_port(port)
+    if valid_port is None:
+        return
+    os.environ[ACTIVE_SERVER_PORT_ENV] = str(valid_port)
+    try:
+        repo = settings_repo
+        if repo is None:
+            from infrastructure.database import get_settings_repository  # noqa: PLC0415
+
+            repo = get_settings_repository()
+        repo.set_app_setting(SERVER_PORT_LAST_ACTIVE_APP_SETTING, str(valid_port))
+    except Exception:
         pass
-    return int(SERVER_CONFIG.get("port", 8080))
+
+
+def get_server_port_metadata(settings_repo: Any | None = None) -> dict[str, Any]:
+    """Return effective, active, and source metadata for the main WebUI/backend port."""
+    port, source = _resolve_server_port(settings_repo)
+    active_port = _valid_server_port(os.getenv(ACTIVE_SERVER_PORT_ENV)) or port
+    return {
+        "server_port": port,
+        "server_port_active": active_port,
+        "server_port_source": source,
+        "server_port_restart_required": port != active_port,
+    }
+
+
+def get_server_port_candidate_ports(settings_repo: Any | None = None) -> list[int]:
+    """Ports worth stopping before launch: desired, active, previous active, config, default."""
+    desired_port = get_server_port_metadata(settings_repo)["server_port"]
+    candidates = [
+        desired_port,
+        _valid_server_port(os.getenv(ACTIVE_SERVER_PORT_ENV)),
+        _valid_server_port(_get_app_setting_value(SERVER_PORT_LAST_ACTIVE_APP_SETTING, settings_repo)),
+        _valid_server_port(_get_app_setting_value(SERVER_PORT_APP_SETTING, settings_repo)),
+        _valid_server_port(SERVER_CONFIG.get("port")),
+        DEFAULT_SERVER_PORT,
+    ]
+    out: list[int] = []
+    for port in candidates:
+        if port is not None and port not in out:
+            out.append(port)
+    return out
 
 
 def get_webui_port() -> int:
@@ -522,4 +618,3 @@ def get_v1_include_autocomplete_logical_model() -> bool:
     if env in ("1", "true", "yes", "on"):
         return True
     return bool(LLM_PROXY_SERVER_CONFIG.get("v1_include_autocomplete_logical_model", True))
-
