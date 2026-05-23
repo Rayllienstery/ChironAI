@@ -35,6 +35,17 @@ Ambiguous “WebUI” in conversation: clarify—**`WebUI/` data folder**, **Web
   3. Flask Web UI blueprint — `url_prefix` (today around `api/http/webui_routes.py` and related registration).
 - Any new endpoint: update the contract (types/DTOs in `webui_api.py` as needed), the client in `api.js`, and server routes. Otherwise you get **docs ↔ frontend ↔ backend** drift.
 
+### UI Ownership Rule
+
+**CoreUI is the single source of truth for all UI components** (screens, tabs, modals, buttons, inputs, etc.). No other module may introduce its own UI layer, CSS, or component files that would be rendered in the browser.
+
+**Exception:** Extensions may provide their own UI, but ONLY within the Extension's own directory and ONLY through the supported Extension integration points (`tab_ui`, `iframe_tab`, `ui_schema`). Extensions must not inject UI into CoreUI's component tree or styles.
+
+In practice:
+- Core code lives in `CoreModules/CoreUI/src/components/`, `styles/`, etc.
+- Extensions inject via `iframe_tab` or `ui_schema`; they cannot modify CoreUI internals.
+- If a feature needs UI and isn't an Extension, it must be added to CoreUI proper.
+
 ### Code layout (as in the repo)
 
 - `CoreModules/CoreUI/src/components/` — screens, tabs, modals.
