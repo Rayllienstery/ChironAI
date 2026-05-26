@@ -139,17 +139,29 @@
   width: min(760px, 100%);
 }
 
+.proxy-api-key-modal .coreui-modal-body {
+  padding: var(--md-sys-spacing-xl);
+  overflow: auto;
+}
+
+.proxy-api-key-modal .coreui-modal-footer {
+  padding: var(--md-sys-spacing-md) var(--md-sys-spacing-xl);
+}
+
 .proxy-key-quick-start {
   display: grid;
-  gap: var(--md-sys-spacing-md);
+  gap: var(--md-sys-spacing-lg);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .proxy-key-hero {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: var(--md-sys-spacing-md);
+  gap: var(--md-sys-spacing-lg);
   align-items: start;
-  padding: var(--md-sys-spacing-md);
+  padding: var(--md-sys-spacing-lg);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-surface-container-low);
@@ -183,10 +195,13 @@
 
 .proxy-key-steps {
   display: grid;
-  gap: var(--md-sys-spacing-sm);
+  gap: var(--md-sys-spacing-md);
+  width: 100%;
+  min-width: 0;
   margin: 0;
   padding: 0;
   list-style: none;
+  box-sizing: border-box;
 }
 
 .proxy-key-steps li {
@@ -194,7 +209,17 @@
   grid-template-columns: auto 1fr;
   gap: var(--md-sys-spacing-sm);
   align-items: start;
-  padding: var(--md-sys-spacing-sm);
+  width: 100%;
+  min-width: 0;
+  padding: var(--md-sys-spacing-md);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface);
+  box-sizing: border-box;
+}
+
+.proxy-key-steps li > div {
+  min-width: 0;
 }
 
 .proxy-key-step-index {
@@ -226,14 +251,14 @@
 .proxy-key-header-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--md-sys-spacing-sm);
+  gap: var(--md-sys-spacing-md);
 }
 
 .proxy-key-header-card {
   display: grid;
   gap: var(--md-sys-spacing-xs);
   min-width: 0;
-  padding: var(--md-sys-spacing-md);
+  padding: var(--md-sys-spacing-lg);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-surface);
@@ -257,9 +282,9 @@
 .proxy-key-note {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: var(--md-sys-spacing-sm);
+  gap: var(--md-sys-spacing-md);
   align-items: start;
-  padding: var(--md-sys-spacing-md);
+  padding: var(--md-sys-spacing-lg);
   border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-tertiary-container);
   color: var(--md-sys-color-on-tertiary-container);

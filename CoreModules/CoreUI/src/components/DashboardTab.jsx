@@ -447,6 +447,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
             <p className="dashboard-info-card-subtitle">
               HTTP client setup (OpenAI and Anthropic-style endpoints, build ids, env vars) is on{' '}
               <strong>RAG Fusion Proxy</strong> → <strong>Overview</strong>.
+              API keys live in <strong>Tokens and Security</strong>.
             </p>
           </div>
           <div className="dashboard-section-inner">
@@ -482,7 +483,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
               variant="primary"
               onClick={() => {
                 setShowProxyKeyModal(false);
-                typeof onOpenLlmProxySecurity === 'function' ? onOpenLlmProxySecurity() : go('rag-fusion-proxy');
+                typeof onOpenLlmProxySecurity === 'function' ? onOpenLlmProxySecurity() : go('tokens-security');
               }}
             >
               Open key generator
@@ -507,8 +508,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                 <div>
                   <strong>Open Security</strong>
                   <p>
-                    In <strong>RAG Fusion Proxy</strong>, open <strong>Overview</strong>, then use the{' '}
-                    <strong>Security</strong> card.
+                    Open <strong>Tokens and Security</strong>, then use the <strong>Security</strong> card.
                   </p>
                 </div>
               </li>

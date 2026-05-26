@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.14] - 2026-05-26
+### Changed
+- Moved proxy API key security controls into a dedicated Tokens and Security tab.
+
+## [0.4.13] - 2026-05-26
+### Fixed
+- Proxy API key modal content now keeps scoped internal padding and full-width step rows.
+
 ## [0.4.12] - 2026-05-26
 ### Fixed
 - LLM Proxy native tool turns no longer append system messages after tool results for Ollama.

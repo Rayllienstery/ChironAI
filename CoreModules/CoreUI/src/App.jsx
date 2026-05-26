@@ -84,6 +84,7 @@ const ExtensionsTab = lazyWithRetry("ExtensionsTab", () => import("./components/
 const DevDocumentationTab = lazyWithRetry("DevDocumentationTab", () => import("./components/DevDocumentationTab"));
 const ExtensionRuntimeTab = lazyWithRetry("ExtensionRuntimeTab", () => import("./components/ExtensionRuntimeTab"));
 const DockerTab = lazyWithRetry("DockerTab", () => import("./components/DockerTab"));
+const TokensSecurityTab = lazyWithRetry("TokensSecurityTab", () => import("./components/TokensSecurityTab"));
 
 import DockerTabIcon from "./assets/docker-mark.svg?url";
 import Card from "./components/Card";
@@ -153,7 +154,6 @@ function App() {
   const [ragTestRunError, setRagTestRunError] = useState(null);
   const [pendingRagRunOpenId, setPendingRagRunOpenId] = useState(null);
   const ragTestStatusPollFailuresRef = useRef(0);
-  const [llmProxyFocusSubTab, setLlmProxyFocusSubTab] = useState(null);
   const [llmProxyBuildsFocusSubTab, setLlmProxyBuildsFocusSubTab] = useState(null);
   const [logsFocusSubTab, setLogsFocusSubTab] = useState(null);
   const [tabErrors, setTabErrors] = useState({});
@@ -420,12 +420,7 @@ function App() {
   }, []);
 
   const handleOpenLlmProxySecurity = useCallback(() => {
-    setActiveTab("rag-fusion-proxy");
-    setLlmProxyFocusSubTab("security");
-  }, []);
-
-  const consumeLlmProxyFocusSubTab = useCallback(() => {
-    setLlmProxyFocusSubTab(null);
+    setActiveTab("tokens-security");
   }, []);
 
   const consumeLlmProxyBuildsFocusSubTab = useCallback(() => {
@@ -485,6 +480,7 @@ function App() {
   const tabs = [
     { id: "dashboard", label: "Dashboard", section: "Main" },
     { id: "docker", label: "Docker", section: "Main", iconUrl: DockerTabIcon },
+    { id: "tokens-security", label: "Tokens and Security", section: "Main" },
     { id: "llm-proxy", label: "LLM Proxy", section: "Main" },
     { id: "rag-fusion-proxy", label: "RAG Fusion Proxy", section: "Main" },
     { id: "logs", label: "Logs", section: "Main" },
@@ -560,6 +556,8 @@ function App() {
         );
       case "docker":
         return <DockerTab />;
+      case "tokens-security":
+        return <TokensSecurityTab />;
       case "rag":
         return (
           <RagTab
@@ -578,8 +576,6 @@ function App() {
             }}
             onNavigateToRag={() => setActiveTab("rag")}
             onOpenLogs={() => setActiveTab("logs")}
-            focusSubTab={llmProxyFocusSubTab}
-            onFocusSubTabConsumed={consumeLlmProxyFocusSubTab}
           />
         );
       case "llm-proxy":
