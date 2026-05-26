@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.12] - 2026-05-26
+### Fixed
+- LLM Proxy native tool turns no longer append system messages after tool results for Ollama.
+
 ## [0.4.11] - 2026-05-26
 ### Changed
 - Proxy API key modal now presents a focused quick start for external client setup.

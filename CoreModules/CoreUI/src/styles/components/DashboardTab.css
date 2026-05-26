@@ -194,7 +194,7 @@
   grid-template-columns: auto 1fr;
   gap: var(--md-sys-spacing-sm);
   align-items: start;
-  padding: var(--md-sys-spacing-sm) 0;
+  padding: var(--md-sys-spacing-sm);
 }
 
 .proxy-key-step-index {
@@ -233,7 +233,7 @@
   display: grid;
   gap: var(--md-sys-spacing-xs);
   min-width: 0;
-  padding: var(--md-sys-spacing-sm);
+  padding: var(--md-sys-spacing-md);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-surface);
@@ -259,7 +259,7 @@
   grid-template-columns: auto 1fr;
   gap: var(--md-sys-spacing-sm);
   align-items: start;
-  padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
+  padding: var(--md-sys-spacing-md);
   border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-tertiary-container);
   color: var(--md-sys-color-on-tertiary-container);

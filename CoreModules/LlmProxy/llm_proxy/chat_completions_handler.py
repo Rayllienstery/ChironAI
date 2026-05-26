@@ -159,6 +159,20 @@ def _record_reasoning_token_estimates(response: dict[str, Any], reasoning: str, 
     response["final_tokens_estimated"] = max(0, int(len(final or "") / 4))
 
 
+def _with_initial_system_message(messages: list[dict[str, Any]], content: str) -> list[dict[str, Any]]:
+    text = (content or "").strip()
+    if not text:
+        return messages
+    out = list(messages)
+    if out and isinstance(out[0], dict) and out[0].get("role") == "system":
+        first = dict(out[0])
+        existing = str(first.get("content") or "").strip()
+        first["content"] = f"{existing}\n\n{text}" if existing else text
+        out[0] = first
+        return out
+    return [{"role": "system", "content": text}, *out]
+
+
 def _final_or_compat_content(parts: dict[str, Any], *, include_reasoning_content: bool) -> str:
     if include_reasoning_content:
         return str(parts.get("visible_content") or "")
@@ -1613,16 +1627,13 @@ def run_chat_completions(
             and not tool_result_indicates_failure
             and _tool_loop_needs_finalize_nudge(tool_loop_stats)
         ):
-            native_ollama_messages = [
-                *native_ollama_messages,
-                {
-                    "role": "system",
-                    "content": (
-                        "You have already completed multiple consecutive tool rounds of the same type. "
-                        "Prefer synthesizing the final answer now, and call another tool only if a concrete blocker remains."
-                    ),
-                },
-            ]
+            native_ollama_messages = _with_initial_system_message(
+                native_ollama_messages,
+                (
+                    "You have already completed multiple consecutive tool rounds of the same type. "
+                    "Prefer synthesizing the final answer now, and call another tool only if a concrete blocker remains."
+                ),
+            )
             native_tools_diag["tool_loop_finalize_nudge"] = True
             native_ollama_messages_for_upstream = native_ollama_messages
             trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(native_ollama_messages_for_upstream)
@@ -2216,7 +2227,7 @@ def run_chat_completions(
                 selected_edit_tool_name, selected_edit_tool
             )
             if tool_json_instruction:
-                ollama_messages.append({"role": "system", "content": tool_json_instruction})
+                ollama_messages = _with_initial_system_message(ollama_messages, tool_json_instruction)
             excerpt_sys = _workspace_selection_snippet(user_query or last_user or "").strip()
             if not excerpt_sys:
                 excerpt_sys = (
@@ -2224,7 +2235,7 @@ def run_chat_completions(
                     or _client_files_snippet(user_query or last_user or "").strip()
                 )
             if excerpt_sys:
-                ollama_messages.append({"role": "system", "content": excerpt_sys})
+                ollama_messages = _with_initial_system_message(ollama_messages, excerpt_sys)
 
         if input_budget is not None:
             try:

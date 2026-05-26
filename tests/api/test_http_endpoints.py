@@ -5032,6 +5032,93 @@ def test_native_tools_stream_trace_includes_tokens_estimates_and_latency(
     assert int(resp.get("latency_ms") or 0) >= 0
 
 
+def test_native_tools_finalize_nudge_stays_in_initial_system_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+
+    captured_payload: dict[str, Any] = {}
+
+    class NativeStreamChatClient:
+        def iter_chat_api_stream_events(self, payload: dict[str, Any]):
+            captured_payload.clear()
+            captured_payload.update(payload)
+            yield ("content_delta", "done")
+            yield ("done", {"done_reason": "stop", "eval_count": 12, "prompt_eval_count": 4})
+
+        def chat(self, *_a: Any, **_k: Any) -> str:
+            return ""
+
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fake-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=NativeStreamChatClient(),
+    )
+
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+
+    def _prepare_native(request: Any, *_a: Any, **kw: Any) -> tuple[list[dict[str, Any]], str]:
+        from infrastructure.ollama.openai_ollama_tool_bridge import openai_messages_to_ollama
+
+        if kw.get("native_tools"):
+            oll = openai_messages_to_ollama([m for m in request.messages if isinstance(m, dict)])
+            return [{"role": "system", "content": "system"}] + oll, "fake-model"
+        return ([{"role": "user", "content": "x"}], "fake-model")
+
+    monkeypatch.setattr(rag_routes, "prepare_ollama_messages", _prepare_native)
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-proxy-ollama-model",
+            "stream": True,
+            "messages": [
+                {"role": "user", "content": "fix it"},
+                {"role": "assistant", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "read"}}]},
+                {"role": "tool", "tool_call_id": "c1", "content": "ok"},
+                {"role": "assistant", "tool_calls": [{"id": "c2", "type": "function", "function": {"name": "read"}}]},
+                {"role": "tool", "tool_call_id": "c2", "content": "ok"},
+                {"role": "assistant", "tool_calls": [{"id": "c3", "type": "function", "function": {"name": "read"}}]},
+                {"role": "tool", "tool_call_id": "c3", "content": "ok"},
+            ],
+            "tools": [{"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}}],
+            "tool_choice": "auto",
+        },
+    )
+
+    assert r.status_code == 200
+    _ = r.get_data(as_text=True)
+    upstream_messages = captured_payload.get("messages") or []
+    assert upstream_messages[0]["role"] == "system"
+    assert "Prefer synthesizing the final answer now" in upstream_messages[0]["content"]
+    assert [m.get("role") for m in upstream_messages].count("system") == 1
+    assert upstream_messages[-1]["role"] == "tool"
+    trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
+    native_diag = ((trace.get("request") or {}).get("native_tools_preflight") or {})
+    assert native_diag.get("tool_loop_finalize_nudge") is True
+
+
 def test_stream_trace_separates_reasoning_and_final_content_in_sse(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
