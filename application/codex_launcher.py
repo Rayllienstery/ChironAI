@@ -26,6 +26,12 @@ CODEX_PROVIDER_NAME = "ChironAI LLM Proxy"
 CHIRONAI_CODEX_HOME = Path.home() / ".chironai" / "codex"
 CODEX_MODEL_CATALOG_FILENAME = "models.json"
 DEFAULT_CODEX_CONTEXT_WINDOW = 131072
+CODEX_SANDBOX_MODE = "danger-full-access" if sys.platform == "win32" else "workspace-write"
+CODEX_BASE_INSTRUCTIONS = (
+    "You are Codex, a coding agent running through the ChironAI LLM Proxy. "
+    "You and the user share one workspace; help complete coding tasks carefully."
+)
+CODEX_INSTRUCTIONS_TEMPLATE = CODEX_BASE_INSTRUCTIONS + "\n\n{{ personality }}"
 
 
 class CodexLauncherError(RuntimeError):
@@ -181,6 +187,17 @@ def _section_block(header: str, lines: list[str]) -> str:
     return "\n".join([header, *lines]) + "\n"
 
 
+def _remove_section(text: str, header: str) -> str:
+    idx = text.find(header)
+    if idx < 0:
+        return text
+    rest = text[idx + len(header) :]
+    end_idx = rest.find("\n[")
+    if end_idx >= 0:
+        return text[:idx] + rest[end_idx + 1 :]
+    return text[:idx].rstrip() + ("\n" if text[:idx].strip() else "")
+
+
 def _toml_string(value: str | Path) -> str:
     return json.dumps(str(value))
 
@@ -228,18 +245,52 @@ def codex_model_catalog_entry(build: dict[str, Any]) -> dict[str, Any]:
         else "ChironAI IDE build."
     )
     return {
+        "prefer_websockets": False,
+        "support_verbosity": False,
+        "default_verbosity": None,
         "slug": build_id,
         "display_name": display_name,
         "description": description,
+        "default_reasoning_level": None,
+        "supported_reasoning_levels": [],
         "context_window": context_window,
         "max_context_window": context_window,
         "max_output_tokens": max_output_tokens,
+        "auto_compact_token_limit": None,
         "apply_patch_tool_type": "freeform",
+        "web_search_tool_type": "text",
         "shell_type": "shell_command",
         "input_modalities": ["text", "image"],
+        "supports_image_detail_original": True,
+        "truncation_policy": {"mode": "tokens", "limit": 10000},
         "supports_parallel_tool_calls": True,
+        "reasoning_summary_format": "none",
+        "default_reasoning_summary": "none",
         "visibility": "list",
+        "minimal_client_version": "0.0.1",
         "supported_in_api": True,
+        "availability_nux": None,
+        "upgrade": None,
+        "priority": 100,
+        "base_instructions": CODEX_BASE_INSTRUCTIONS,
+        "model_messages": {
+            "instructions_template": CODEX_INSTRUCTIONS_TEMPLATE,
+            "instructions_variables": {
+                "personality_default": "",
+                "personality_pragmatic": (
+                    "# Personality\n\n"
+                    "You are concise, practical, and careful. Keep the user informed, "
+                    "use tools deliberately, and verify important coding changes."
+                ),
+            },
+        },
+        "supports_reasoning_summaries": False,
+        "effective_context_window_percent": 95,
+        "experimental_supported_tools": [],
+        "available_in_plans": [],
+        "supports_search_tool": True,
+        "service_tiers": [],
+        "additional_speed_tiers": [],
     }
 
 
@@ -283,7 +334,7 @@ def write_codex_profile(
     profile_lines = [
         'forced_login_method = "api"',
         f'model_provider = "{CODEX_PROFILE_NAME}"',
-        'sandbox_mode = "workspace-write"',
+        f'sandbox_mode = "{CODEX_SANDBOX_MODE}"',
     ]
     if build:
         build_id = str(build.get("id") or "").strip()
@@ -305,6 +356,7 @@ def write_codex_profile(
         ),
     ]
     text = target.read_text(encoding="utf-8") if target.is_file() else ""
+    text = _remove_section(text, f"[profiles.{CODEX_PROFILE_NAME}.windows]")
     for header, lines in sections:
         block = _section_block(header, lines)
         idx = text.find(header)

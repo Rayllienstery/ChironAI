@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.11] - 2026-05-26
+### Changed
+- Proxy API key modal now presents a focused quick start for external client setup.
+
+## [0.4.10] - 2026-05-26
+### Fixed
+- ChironAI Codex profiles now bypass the broken Codex v0.133 Windows sandbox setup path.
+
+## [0.4.9] - 2026-05-26
+### Fixed
+- Responses SSE message events now initialize empty content before text deltas for Codex clients.
+
+## [0.4.8] - 2026-05-26
+### Fixed
+- Codex build catalog entries now include model message templates for personality-aware launches.
+
+## [0.4.7] - 2026-05-26
+### Fixed
+- Codex build catalog entries now include the full required metadata set for current Codex CLI.
+
+## [0.4.6] - 2026-05-26
+### Fixed
+- Codex model catalog entries now include required reasoning metadata.
+
 ## [0.4.5] - 2026-05-23
 ### Added
 - Codex launcher now generates ChironAI build metadata for IDE models.

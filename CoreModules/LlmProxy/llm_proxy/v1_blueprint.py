@@ -745,6 +745,7 @@ def _responses_sse_payload(out: dict[str, Any]) -> Response:
                             "type": "message",
                             "role": "assistant",
                             "status": "in_progress",
+                            "content": [],
                         },
                     },
                     {

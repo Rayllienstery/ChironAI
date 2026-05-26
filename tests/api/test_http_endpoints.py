@@ -4355,6 +4355,41 @@ def test_responses_sse_payload_output_item_done_includes_full_message_item() -> 
     raise AssertionError("message output_item.done with content not found")
 
 
+def test_responses_sse_payload_message_added_initializes_empty_content() -> None:
+    import json
+
+    import llm_proxy.v1_blueprint as v1_blueprint
+
+    out = {
+        "id": "resp_sse_added_msg",
+        "object": "response",
+        "model": "Hard-worker",
+        "output": [
+            {
+                "id": "msg_sse_added",
+                "type": "message",
+                "role": "assistant",
+                "status": "completed",
+                "content": [{"type": "output_text", "text": "Hello", "annotations": []}],
+            }
+        ],
+        "output_text": "Hello",
+    }
+    resp = v1_blueprint._responses_sse_payload(out)
+    cur_event: str | None = None
+    for line in resp.get_data(as_text=True).split("\n"):
+        if line.startswith("event: "):
+            cur_event = line[len("event: ") :].strip()
+            continue
+        if line.startswith("data: ") and cur_event == "response.output_item.added":
+            data = json.loads(line[len("data: ") :])
+            item = data.get("item") or {}
+            if item.get("type") == "message":
+                assert item.get("content") == []
+                return
+    raise AssertionError("message output_item.added event not found")
+
+
 def test_responses_sse_payload_emits_function_call_stream_events() -> None:
     import llm_proxy.v1_blueprint as v1_blueprint
 

@@ -429,8 +429,18 @@
 .coreui-modal-body {
   display: flex;
   flex: 1;
+  padding: var(--md-sys-spacing-lg);
   flex-direction: column;
   overflow: auto;
+}
+
+.coreui-modal-body p {
+  margin: 0 0 var(--md-sys-spacing-md);
+  line-height: 1.6;
+}
+
+.coreui-modal-body p:last-child {
+  margin-bottom: 0;
 }
 
 .coreui-modal-footer {

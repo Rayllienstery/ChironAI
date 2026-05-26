@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import CoreUISubtabs from './CoreUISubtabs';
+import CoreUIModal from './CoreUIModal';
+import CoreUIButton from './CoreUIButton';
 import '../styles/components/DashboardTab.css';
 
 const INFO_TABS = [
@@ -12,6 +14,7 @@ const INFO_TABS = [
 
 function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOpenLlmProxySecurity }) {
   const [infoSubTab, setInfoSubTab] = useState('intro');
+  const [showProxyKeyModal, setShowProxyKeyModal] = useState(false);
   const webuiOrigin = typeof window !== 'undefined' ? window.location.origin : 'the configured server URL';
 
   const go = (tabId) => {
@@ -63,6 +66,13 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                     → implementation → summary), adherence to architecture (Clean/MVVM), Swift 6 strict concurrency,
                     Observation, UI rules, and controlled variability (minimal randomness in generation).
                   </p>
+                  <button
+                    type="button"
+                    className="dashboard-primary-btn"
+                    onClick={() => setShowProxyKeyModal(true)}
+                  >
+                    Quick start
+                  </button>
                 </div>
               </>
             )}
@@ -431,32 +441,6 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
           </div>
         </section>
 
-        <section className="dashboard-info-card dashboard-proxy-hint-card" aria-label="Chiron proxy API key">
-          <div className="dashboard-info-card-header">
-            <h2 className="dashboard-info-card-title">Proxy API Key</h2>
-            <p className="dashboard-info-card-subtitle">
-              Protect direct <code>/v1</code> access before connecting external OpenAI-compatible clients.
-            </p>
-          </div>
-          <div className="dashboard-section-inner">
-            <p className="dashboard-card-muted">
-              Generate or reveal the key in WebUI, then use it as <code>Authorization: Bearer &lt;key&gt;</code> or{' '}
-              <code>x-api-key</code>. The Ollama-style <code>/api/*</code> routes stay open for compatibility.
-            </p>
-            <div className="dashboard-proxy-hint-actions">
-              <button
-                type="button"
-                className="dashboard-text-btn"
-                onClick={() =>
-                  typeof onOpenLlmProxySecurity === 'function' ? onOpenLlmProxySecurity() : go('rag-fusion-proxy')
-                }
-              >
-                Open key generator
-              </button>
-            </div>
-          </div>
-        </section>
-
         <section className="dashboard-info-card dashboard-proxy-hint-card" aria-label="RAG Fusion Proxy HTTP clients">
           <div className="dashboard-info-card-header">
             <h2 className="dashboard-info-card-title">RAG Fusion Proxy</h2>
@@ -487,6 +471,88 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
           </div>
         </section>
       </div>
+
+      {showProxyKeyModal && (
+        <CoreUIModal
+          title="Proxy API Key"
+          className="proxy-api-key-modal"
+          onClose={() => setShowProxyKeyModal(false)}
+          footer={
+            <CoreUIButton
+              variant="primary"
+              onClick={() => {
+                setShowProxyKeyModal(false);
+                typeof onOpenLlmProxySecurity === 'function' ? onOpenLlmProxySecurity() : go('rag-fusion-proxy');
+              }}
+            >
+              Open key generator
+            </CoreUIButton>
+          }
+        >
+          <div className="proxy-key-quick-start">
+            <div className="proxy-key-hero">
+              <span className="material-symbols-outlined" aria-hidden="true">vpn_key</span>
+              <div>
+                <p className="proxy-key-eyebrow">Quick start</p>
+                <p className="proxy-key-summary">
+                  Create one WebUI-managed key before wiring IDEs, OpenWebUI, or other OpenAI-compatible clients to
+                  Chiron <code>/v1</code> endpoints.
+                </p>
+              </div>
+            </div>
+
+            <ol className="proxy-key-steps" aria-label="Proxy API key setup steps">
+              <li>
+                <span className="proxy-key-step-index">1</span>
+                <div>
+                  <strong>Open Security</strong>
+                  <p>
+                    In <strong>RAG Fusion Proxy</strong>, open <strong>Overview</strong>, then use the{' '}
+                    <strong>Security</strong> card.
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span className="proxy-key-step-index">2</span>
+                <div>
+                  <strong>Generate or reveal the key</strong>
+                  <p>
+                    Use <strong>Generate key</strong> for the first setup, <strong>Reveal key</strong> to copy it again,
+                    or <strong>Regenerate key</strong> to rotate clients.
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span className="proxy-key-step-index">3</span>
+                <div>
+                  <strong>Paste it into the client</strong>
+                  <p>Use the server base URL with the key as either header below.</p>
+                </div>
+              </li>
+            </ol>
+
+            <div className="proxy-key-header-grid">
+              <div className="proxy-key-header-card">
+                <span>Bearer token</span>
+                <code>Authorization: Bearer &lt;key&gt;</code>
+              </div>
+              <div className="proxy-key-header-card">
+                <span>API key header</span>
+                <code>x-api-key: &lt;key&gt;</code>
+              </div>
+            </div>
+
+            <div className="proxy-key-note">
+              <span className="material-symbols-outlined" aria-hidden="true">info</span>
+              <p>
+                The protected surface is Chiron <code>/v1*</code>. Ollama-style compatibility routes such as{' '}
+                <code>/api/tags</code>, <code>/api/generate</code>, and <code>/api/chat</code> remain open for
+                Ollama/OpenWebUI compatibility.
+              </p>
+            </div>
+          </div>
+        </CoreUIModal>
+      )}
     </div>
   );
 }

@@ -69,7 +69,11 @@ def test_reveal_existing_proxy_key_requires_recoverable_key() -> None:
 
 def test_write_codex_profile_is_idempotent(tmp_path) -> None:
     target = tmp_path / "config.toml"
-    target.write_text('[profiles.other]\nmodel_provider = "other"\n', encoding="utf-8")
+    target.write_text(
+        '[profiles.other]\nmodel_provider = "other"\n\n'
+        '[profiles.chironai-proxy.windows]\nsandbox = "elevated"\n',
+        encoding="utf-8",
+    )
     build = {
         "id": "Hard-worker",
         "display_name": "Hard worker",
@@ -90,6 +94,9 @@ def test_write_codex_profile_is_idempotent(tmp_path) -> None:
     assert text.count("[model_providers.chironai-proxy]") == 1
     assert "openai_base_url" not in text
     assert "model_context_window" not in text
+    assert "[profiles.chironai-proxy.windows]" not in text
+    assert 'sandbox = "elevated"' not in text
+    assert f'sandbox_mode = "{codex_launcher.CODEX_SANDBOX_MODE}"' in text
     assert 'model = "Hard-worker"' in text
     assert "model_catalog_json" in text
     assert 'base_url = "http://127.0.0.1:9090/v1/"' in text
@@ -104,12 +111,27 @@ def test_write_codex_profile_is_idempotent(tmp_path) -> None:
     assert rows["Hard-worker"]["context_window"] == 202752
     assert rows["Hard-worker"]["max_context_window"] == 202752
     assert rows["Hard-worker"]["max_output_tokens"] == 32768
+    assert rows["Hard-worker"]["prefer_websockets"] is False
+    assert rows["Hard-worker"]["default_reasoning_level"] is None
     assert rows["Hard-worker"]["apply_patch_tool_type"] == "freeform"
+    assert rows["Hard-worker"]["web_search_tool_type"] == "text"
     assert rows["Hard-worker"]["shell_type"] == "shell_command"
     assert rows["Hard-worker"]["input_modalities"] == ["text", "image"]
+    assert rows["Hard-worker"]["supports_image_detail_original"] is True
+    assert rows["Hard-worker"]["truncation_policy"] == {"mode": "tokens", "limit": 10000}
     assert rows["Hard-worker"]["supports_parallel_tool_calls"] is True
+    assert rows["Hard-worker"]["supported_reasoning_levels"] == []
+    assert rows["Hard-worker"]["reasoning_summary_format"] == "none"
+    assert rows["Hard-worker"]["default_reasoning_summary"] == "none"
     assert rows["Hard-worker"]["visibility"] == "list"
     assert rows["Hard-worker"]["supported_in_api"] is True
+    assert rows["Hard-worker"]["priority"] == 100
+    assert "ChironAI LLM Proxy" in rows["Hard-worker"]["base_instructions"]
+    assert rows["Hard-worker"]["model_messages"]["instructions_template"].endswith("{{ personality }}")
+    assert "personality_pragmatic" in rows["Hard-worker"]["model_messages"]["instructions_variables"]
+    assert rows["Hard-worker"]["supports_reasoning_summaries"] is False
+    assert rows["Hard-worker"]["effective_context_window_percent"] == 95
+    assert rows["Hard-worker"]["experimental_supported_tools"] == []
 
 
 def test_codex_model_catalog_entry_uses_build_token_limits() -> None:
