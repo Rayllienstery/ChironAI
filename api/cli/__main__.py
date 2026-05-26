@@ -173,7 +173,7 @@ def cmd_codex(ns: argparse.Namespace) -> int:
             if build is None:
                 raise CodexLauncherError("No build selected")
         build_id = str(build.get("id") or "").strip()
-        config_path = write_codex_profile(base_url, build=build)
+        config_path = write_codex_profile(base_url, build=build, builds=builds)
         extra_args = _strip_dashdash(list(getattr(ns, "extra_args", None) or []))
         argv = build_codex_argv(build_id, extra_args)
         print(f"Configured Codex profile at {config_path}")

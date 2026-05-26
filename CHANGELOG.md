@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.5] - 2026-05-23
+### Added
+- Codex launcher now generates ChironAI build metadata for IDE models.
+
 ## [0.4.4] - 2026-05-23
 ### Changed
 - Notification changelog formatting: `###` headers replaced with accent-colored dot markers, lines separated properly.

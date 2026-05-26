@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -95,6 +96,7 @@ def test_codex_launcher_configure_action_writes_profile(tmp_path) -> None:
                     "model": "qwen3:latest",
                     "prompt_name": "system_senior_ios_assistant_v1",
                     "ide_mode": True,
+                    "num_ctx": 65536,
                 }
             ]
         ),
@@ -109,4 +111,10 @@ def test_codex_launcher_configure_action_writes_profile(tmp_path) -> None:
 
     assert result["ok"] is True
     assert result["command"] == "chironai codex --model Agent-high"
-    assert target.read_text(encoding="utf-8").count("[profiles.chironai-proxy]") == 1
+    text = target.read_text(encoding="utf-8")
+    assert text.count("[profiles.chironai-proxy]") == 1
+    assert 'model = "Agent-high"' in text
+    assert "model_catalog_json" in text
+    catalog = json.loads((tmp_path / "models.json").read_text(encoding="utf-8"))
+    assert catalog["models"][0]["slug"] == "Agent-high"
+    assert catalog["models"][0]["context_window"] == 65536

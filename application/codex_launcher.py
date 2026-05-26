@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import importlib
 import importlib.util
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -13,11 +14,18 @@ from typing import Any
 
 import requests
 
-from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY, find_build_by_id, load_builds_json
+from application.llm_proxy_builds import (
+    DEFAULT_NUM_PREDICT,
+    LLM_PROXY_BUILDS_APP_KEY,
+    find_build_by_id,
+    load_builds_json,
+)
 
 CODEX_PROFILE_NAME = "chironai-proxy"
 CODEX_PROVIDER_NAME = "ChironAI LLM Proxy"
 CHIRONAI_CODEX_HOME = Path.home() / ".chironai" / "codex"
+CODEX_MODEL_CATALOG_FILENAME = "models.json"
+DEFAULT_CODEX_CONTEXT_WINDOW = 131072
 
 
 class CodexLauncherError(RuntimeError):
@@ -173,6 +181,10 @@ def _section_block(header: str, lines: list[str]) -> str:
     return "\n".join([header, *lines]) + "\n"
 
 
+def _toml_string(value: str | Path) -> str:
+    return json.dumps(str(value))
+
+
 def codex_home() -> Path:
     return CHIRONAI_CODEX_HOME
 
@@ -181,17 +193,92 @@ def codex_config_path() -> Path:
     return codex_home() / "config.toml"
 
 
+def codex_model_catalog_path(config_path: Path | None = None) -> Path:
+    if config_path is not None:
+        return config_path.parent / CODEX_MODEL_CATALOG_FILENAME
+    return codex_home() / CODEX_MODEL_CATALOG_FILENAME
+
+
+def _positive_int(value: Any, *, default: int, minimum: int = 1) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return default
+    return n if n >= minimum else default
+
+
+def codex_model_catalog_entry(build: dict[str, Any]) -> dict[str, Any]:
+    build_id = str(build.get("id") or "").strip()
+    display_name = str(build.get("display_name") or build_id).strip() or build_id
+    context_window = _positive_int(
+        build.get("num_ctx") or build.get("context_length"),
+        default=DEFAULT_CODEX_CONTEXT_WINDOW,
+        minimum=256,
+    )
+    max_output_tokens = _positive_int(
+        build.get("num_predict"),
+        default=DEFAULT_NUM_PREDICT,
+        minimum=1,
+    )
+    max_output_tokens = min(max_output_tokens, max(1, context_window - 1))
+    upstream_model = str(build.get("model") or build.get("ollama_model") or "").strip()
+    description = (
+        f"ChironAI IDE build backed by {upstream_model}."
+        if upstream_model
+        else "ChironAI IDE build."
+    )
+    return {
+        "slug": build_id,
+        "display_name": display_name,
+        "description": description,
+        "context_window": context_window,
+        "max_context_window": context_window,
+        "max_output_tokens": max_output_tokens,
+        "apply_patch_tool_type": "freeform",
+        "shell_type": "shell_command",
+        "input_modalities": ["text", "image"],
+        "supports_parallel_tool_calls": True,
+        "visibility": "list",
+        "supported_in_api": True,
+    }
+
+
+def write_codex_model_catalog(
+    builds: list[dict[str, Any]],
+    *,
+    catalog_path: Path | None = None,
+) -> Path:
+    target = catalog_path or codex_model_catalog_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    entries = [
+        codex_model_catalog_entry(build)
+        for build in builds
+        if str(build.get("id") or "").strip()
+    ]
+    data = {"models": sorted(entries, key=lambda item: str(item.get("slug") or "").lower())}
+    target.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return target
+
+
 def write_codex_profile(
     base_url: str,
     *,
     config_path: Path | None = None,
     build: dict[str, Any] | None = None,
+    builds: list[dict[str, Any]] | None = None,
 ) -> Path:
     target = config_path
     if target is None:
         target = codex_config_path()
     target.parent.mkdir(parents=True, exist_ok=True)
     normalized_base = base_url.rstrip("/") + "/"
+    catalog_builds = list(builds or ([] if build is None else [build]))
+    catalog_path = None
+    if catalog_builds:
+        catalog_path = write_codex_model_catalog(
+            catalog_builds,
+            catalog_path=codex_model_catalog_path(target),
+        )
 
     profile_lines = [
         'forced_login_method = "api"',
@@ -199,12 +286,11 @@ def write_codex_profile(
         'sandbox_mode = "workspace-write"',
     ]
     if build:
-        ctx = build.get("num_ctx") or build.get("context_length")
-        if ctx:
-            try:
-                profile_lines.append(f"model_context_window = {int(ctx)}")
-            except (ValueError, TypeError):
-                pass
+        build_id = str(build.get("id") or "").strip()
+        if build_id:
+            profile_lines.append(f"model = {_toml_string(build_id)}")
+    if catalog_path is not None:
+        profile_lines.append(f"model_catalog_json = {_toml_string(catalog_path.resolve())}")
 
     sections = [
         (f"[profiles.{CODEX_PROFILE_NAME}]", profile_lines),

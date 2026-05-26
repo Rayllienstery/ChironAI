@@ -339,7 +339,7 @@ class CodexLauncherExtension:
             base_url = proxy_base_url(get_active_server_port())
             raw_config_path = str(payload.get("config_path") or "").strip()
             config_path = Path(raw_config_path) if raw_config_path else None
-            written = write_codex_profile(base_url, config_path=config_path, build=build)
+            written = write_codex_profile(base_url, config_path=config_path, build=build, builds=builds)
             return {
                 "ok": True,
                 "message": f"Configured Codex profile for {build_id}",
