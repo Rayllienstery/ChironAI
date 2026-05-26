@@ -144,7 +144,60 @@
   overflow: auto;
 }
 
+.proxy-key-modal-tabs-wrapper {
+  margin-bottom: var(--md-sys-spacing-lg);
+}
+
+.proxy-key-how-to-use {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--md-sys-spacing-md);
+}
+
+.proxy-how-to-card {
+  padding: var(--md-sys-spacing-md);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-xs);
+}
+
+.proxy-how-to-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-sm);
+  color: var(--md-sys-color-primary);
+}
+
+.proxy-how-to-card-header .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.proxy-how-to-card h3 {
+  margin: 0;
+  font: var(--md-sys-typescale-title-small-font);
+  color: inherit;
+}
+
+.proxy-how-to-card p {
+  margin: 0;
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+  line-height: 1.5;
+}
+
+.proxy-how-to-card code {
+  background: var(--md-sys-color-surface-container-low);
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-family: var(--coreui-font-family-mono);
+  font-size: 0.85rem;
+}
+
 .proxy-api-key-modal .coreui-modal-footer {
+
   padding: var(--md-sys-spacing-md) var(--md-sys-spacing-xl);
 }
 

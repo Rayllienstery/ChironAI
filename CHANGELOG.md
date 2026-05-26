@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.16] - 2026-05-26
+### Changed
+- Redesigned "How to use" tab in Proxy API Key modal with a card-based layout.
+- Integrated real proxy base URL from settings into the "How to use" instructions.
+
+## [0.4.15] - 2026-05-26
+### Changed
+- Added sub-tabs to the Proxy API Key modal (API Key and How to use).
+- Moved proxy usage instructions from the RAG Fusion Proxy tab into the modal.
+
 ## [0.4.14] - 2026-05-26
 ### Changed
 - Moved proxy API key security controls into a dedicated Tokens and Security tab.

@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import CoreUISubtabs from './CoreUISubtabs';
 import CoreUIModal from './CoreUIModal';
 import CoreUIButton from './CoreUIButton';
+import CoreUIPillTabs from './CoreUIPillTabs';
+import { getLlmProxyStatus } from '../services/api';
 import '../styles/components/DashboardTab.css';
+import '../styles/components/SettingsTab.css';
 
 const INFO_TABS = [
   { id: 'intro', label: 'Intro' },
@@ -12,10 +15,25 @@ const INFO_TABS = [
   { id: 'credits', label: 'Credits' },
 ];
 
+const PROXY_KEY_MODAL_TABS = [
+  { id: 'api-key', label: 'API Key' },
+  { id: 'how-to-use', label: 'How to use' },
+];
+
 function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOpenLlmProxySecurity }) {
   const [infoSubTab, setInfoSubTab] = useState('intro');
   const [showProxyKeyModal, setShowProxyKeyModal] = useState(false);
+  const [proxyKeyModalTab, setProxyKeyModalTab] = useState('api-key');
+  const [proxyStatus, setProxyStatus] = useState(null);
   const webuiOrigin = typeof window !== 'undefined' ? window.location.origin : 'the configured server URL';
+
+  useEffect(() => {
+    if (showProxyKeyModal) {
+      getLlmProxyStatus().then(setProxyStatus).catch(() => {});
+    }
+  }, [showProxyKeyModal]);
+
+  const proxyBaseUrl = proxyStatus?.base_url || 'http://localhost:<port>';
 
   const go = (tabId) => {
     if (typeof onNavigate === 'function') onNavigate(tabId);
@@ -490,69 +508,142 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
             </CoreUIButton>
           }
         >
-          <div className="proxy-key-quick-start">
-            <div className="proxy-key-hero">
-              <span className="material-symbols-outlined" aria-hidden="true">vpn_key</span>
-              <div>
-                <p className="proxy-key-eyebrow">Quick start</p>
-                <p className="proxy-key-summary">
-                  Create one WebUI-managed key before wiring IDEs, OpenWebUI, or other OpenAI-compatible clients to
-                  Chiron <code>/v1</code> endpoints.
+          <div className="proxy-key-modal-tabs-wrapper">
+            <CoreUIPillTabs
+              tabs={PROXY_KEY_MODAL_TABS}
+              value={proxyKeyModalTab}
+              onChange={setProxyKeyModalTab}
+              ariaLabel="Proxy API Key sections"
+            />
+          </div>
+
+          {proxyKeyModalTab === 'api-key' && (
+            <div className="proxy-key-quick-start">
+              <div className="proxy-key-hero">
+                <span className="material-symbols-outlined" aria-hidden="true">vpn_key</span>
+                <div>
+                  <p className="proxy-key-eyebrow">Quick start</p>
+                  <p className="proxy-key-summary">
+                    Create one WebUI-managed key before wiring IDEs, OpenWebUI, or other OpenAI-compatible clients to
+                    Chiron <code>/v1</code> endpoints.
+                  </p>
+                </div>
+              </div>
+
+              <ol className="proxy-key-steps" aria-label="Proxy API key setup steps">
+                <li>
+                  <span className="proxy-key-step-index">1</span>
+                  <div>
+                    <strong>Open Security</strong>
+                    <p>
+                      Open <strong>Tokens and Security</strong>, then use the <strong>Security</strong> card.
+                    </p>
+                  </div>
+                </li>
+                <li>
+                  <span className="proxy-key-step-index">2</span>
+                  <div>
+                    <strong>Generate or reveal the key</strong>
+                    <p>
+                      Use <strong>Generate key</strong> for the first setup, <strong>Reveal key</strong> to copy it again,
+                      or <strong>Regenerate key</strong> to rotate clients.
+                    </p>
+                  </div>
+                </li>
+                <li>
+                  <span className="proxy-key-step-index">3</span>
+                  <div>
+                    <strong>Paste it into the client</strong>
+                    <p>Use the server base URL with the key as either header below.</p>
+                  </div>
+                </li>
+              </ol>
+
+              <div className="proxy-key-header-grid">
+                <div className="proxy-key-header-card">
+                  <span>Bearer token</span>
+                  <code>Authorization: Bearer &lt;key&gt;</code>
+                </div>
+                <div className="proxy-key-header-card">
+                  <span>API key header</span>
+                  <code>x-api-key: &lt;key&gt;</code>
+                </div>
+              </div>
+
+              <div className="proxy-key-note">
+                <span className="material-symbols-outlined" aria-hidden="true">info</span>
+                <p>
+                  The protected surface is Chiron <code>/v1*</code>. Ollama-style compatibility routes such as{' '}
+                  <code>/api/tags</code>, <code>/api/generate</code>, and <code>/api/chat</code> remain open for
+                  unauthenticated local use.
                 </p>
               </div>
             </div>
+          )}
 
-            <ol className="proxy-key-steps" aria-label="Proxy API key setup steps">
-              <li>
-                <span className="proxy-key-step-index">1</span>
-                <div>
-                  <strong>Open Security</strong>
-                  <p>
-                    Open <strong>Tokens and Security</strong>, then use the <strong>Security</strong> card.
-                  </p>
+          {proxyKeyModalTab === 'how-to-use' && (
+            <div className="proxy-key-how-to-use">
+              <div className="proxy-how-to-card">
+                <div className="proxy-how-to-card-header">
+                  <span className="material-symbols-outlined">info</span>
+                  <h3>Overview</h3>
                 </div>
-              </li>
-              <li>
-                <span className="proxy-key-step-index">2</span>
-                <div>
-                  <strong>Generate or reveal the key</strong>
-                  <p>
-                    Use <strong>Generate key</strong> for the first setup, <strong>Reveal key</strong> to copy it again,
-                    or <strong>Regenerate key</strong> to rotate clients.
-                  </p>
-                </div>
-              </li>
-              <li>
-                <span className="proxy-key-step-index">3</span>
-                <div>
-                  <strong>Paste it into the client</strong>
-                  <p>Use the server base URL with the key as either header below.</p>
-                </div>
-              </li>
-            </ol>
-
-            <div className="proxy-key-header-grid">
-              <div className="proxy-key-header-card">
-                <span>Bearer token</span>
-                <code>Authorization: Bearer &lt;key&gt;</code>
+                <p>
+                  This RAG proxy speaks <strong>OpenAI</strong> (<code>POST /v1/chat/completions</code>) and{' '}
+                  <strong>Anthropic Messages</strong> (<code>POST /v1/messages</code>) over the same base URL, backed by Ollama
+                  and Qdrant.
+                </p>
               </div>
-              <div className="proxy-key-header-card">
-                <span>API key header</span>
-                <code>x-api-key: &lt;key&gt;</code>
+
+              <div className="proxy-how-to-card">
+                <div className="proxy-how-to-card-header">
+                  <span className="material-symbols-outlined">link</span>
+                  <h3>Base URL</h3>
+                </div>
+                <p>
+                  Use <code>{proxyBaseUrl}</code> on the machine where this proxy runs
+                  (or <code>http://&lt;PC_IP&gt;:&lt;port&gt;</code> from another device).
+                </p>
+              </div>
+
+              <div className="proxy-how-to-card">
+                <div className="proxy-how-to-card-header">
+                  <span className="material-symbols-outlined">integration_instructions</span>
+                  <h3>VSCode + Continue.dev</h3>
+                </div>
+                <p>
+                  Configure an OpenAI-compatible provider, set the base URL to this
+                  proxy, and use your <strong>build id</strong> as the model.
+                </p>
+              </div>
+
+              <div className="proxy-how-to-card">
+                <div className="proxy-how-to-card-header">
+                  <span className="material-symbols-outlined">api</span>
+                  <h3>Anthropic Messages</h3>
+                </div>
+                <p>
+                  Set <code>ANTHROPIC_BASE_URL</code> to <code>{proxyBaseUrl}</code> (no path suffix),{' '}
+                  <code>ANTHROPIC_API_KEY</code> empty, and <code>ANTHROPIC_AUTH_TOKEN</code> to your token policy.
+                </p>
+              </div>
+
+              <div className="proxy-how-to-card">
+                <div className="proxy-how-to-card-header">
+                  <span className="material-symbols-outlined">settings</span>
+                  <h3>Configuration</h3>
+                </div>
+                <p>
+                  Set <code>model</code> to a <strong>build id</strong> from <strong>LLM Proxy</strong> (builds), or
+                  a concrete Ollama tag for passthrough. Optional inline completions use logical id{' '}
+                  <code>ChironAI-Autocomplete</code>.
+                </p>
               </div>
             </div>
-
-            <div className="proxy-key-note">
-              <span className="material-symbols-outlined" aria-hidden="true">info</span>
-              <p>
-                The protected surface is Chiron <code>/v1*</code>. Ollama-style compatibility routes such as{' '}
-                <code>/api/tags</code>, <code>/api/generate</code>, and <code>/api/chat</code> remain open for
-                Ollama/OpenWebUI compatibility.
-              </p>
-            </div>
-          </div>
+          )}
         </CoreUIModal>
       )}
+
     </div>
   );
 }

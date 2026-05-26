@@ -105,41 +105,8 @@ function LlmProxyTab({ onOpenRagModels, onNavigateToRag, onOpenLogs }) {
             )}
           </section>
 
-          <div className="settings-section">
-            <h3>How to use the proxy</h3>
-            <p className="settings-intro">
-              This RAG proxy speaks <strong>OpenAI</strong> (<code>POST /v1/chat/completions</code>) and{' '}
-              <strong>Anthropic Messages</strong> (<code>POST /v1/messages</code>) over the same base URL, backed by Ollama
-              and Qdrant. Set <code>model</code> to a <strong>build id</strong> from <strong>LLM Proxy</strong> (builds), or
-              a concrete Ollama tag for passthrough. Optional inline completions use logical id{' '}
-              <code>ChironAI-Autocomplete</code> — configure it under <strong>LLM Proxy</strong> → <strong>Autocomplete</strong>.
-            </p>
-            <ul className="settings-instructions">
-              <li>
-                <strong>Base URL</strong>: <code>http://localhost:&lt;port&gt;</code> on the machine where this proxy runs
-                (or <code>http://&lt;PC_IP&gt;:&lt;port&gt;</code> from another device). The port comes from the server
-                configuration.
-              </li>
-              <li>
-                <strong>VSCode + Continue.dev</strong>: configure an OpenAI-compatible provider, set the base URL to this
-                proxy, and use your <strong>build id</strong> as the model.
-              </li>
-              <li>
-                <strong>Anthropic Messages clients</strong>: set <code>ANTHROPIC_BASE_URL</code> to this proxy&apos;s base URL
-                (no path suffix), <code>ANTHROPIC_API_KEY</code> empty, <code>ANTHROPIC_AUTH_TOKEN</code> to your token policy
-                (e.g. <code>ollama</code> for local). Send requests to <code>POST /v1/messages</code> with{' '}
-                <code>model</code> set to a <strong>build id</strong>; list ids with <code>GET /v1/models</code> and header{' '}
-                <code>anthropic-version: 2023-06-01</code>. See <code>CoreModules/LlmProxy/README.md</code>.
-              </li>
-              <li>
-                Per-request behavior (Ollama model, prompts, RAG/web flags) is configured per <strong>build</strong> in the{' '}
-                <strong>LLM Proxy</strong> tab. Global defaults remain in app settings / RAG. Web and GitHub options for the
-                dumb pipeline live under the <strong>Web Interaction</strong> tab unless overridden by a build.
-              </li>
-            </ul>
-          </div>
-
           <details className="settings-section pipeline-details">
+
             <summary>
               <strong>Request pipeline (algorithm)</strong>
               <span className="settings-hint"> — end-to-end path from HTTP body to response</span>
