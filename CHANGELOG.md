@@ -2,6 +2,58 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.32] - 2026-05-27
+### Added
+- Added the Phase 1 Extensions contract lock and shared Extensions API DTO contract.
+
+### Changed
+- Marked Phase 1 of the Extensions GitHub migration plan complete.
+
+## [0.4.31] - 2026-05-27
+### Changed
+- Marked the Extensions GitHub migration as targeting project release `0.5.0`.
+
+## [0.4.30] - 2026-05-27
+### Changed
+- Expanded the Extensions GitHub migration plan with red-team failure modes and guardrails.
+
+## [0.4.29] - 2026-05-27
+### Changed
+- Expanded the Extensions GitHub migration plan with extension-management module boundaries outside core.
+- Updated the modular structure target with the Extensions backend and host boundary.
+
+## [0.4.28] - 2026-05-27
+### Changed
+- Expanded the Extensions GitHub migration plan with targeted reload and fault isolation requirements.
+
+## [0.4.27] - 2026-05-27
+### Changed
+- Named the target extension registry repository `ChironAI Extensions Registry`.
+
+## [0.4.26] - 2026-05-27
+### Changed
+- Expanded the Extensions GitHub migration plan with marketplace and supply-chain research findings.
+
+## [0.4.25] - 2026-05-27
+### Changed
+- Expanded the Extensions GitHub migration plan with provenance, atomic updates, README safety, permission previews, and removal ownership requirements.
+
+## [0.4.24] - 2026-05-27
+### Changed
+- Expanded the Extensions GitHub migration plan with full install controls in the extension details header.
+
+## [0.4.23] - 2026-05-27
+### Changed
+- Expanded the Extensions GitHub migration plan with README modals, repository-backed version selection, and update security enforcement.
+
+## [0.4.22] - 2026-05-27
+### Changed
+- Expanded the Extensions GitHub migration plan with Notifications center lifecycle coverage.
+
+## [0.4.21] - 2026-05-27
+### Added
+- Added the Extensions GitHub migration task plan and readiness checklist.
+
 ## [0.4.20] - 2026-05-27
 ### Changed
 - Wrapped Architecture sub-tab content in a styled card with borders and shadows.
