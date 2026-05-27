@@ -179,8 +179,19 @@
   margin-top: var(--md-sys-spacing-sm);
 }
 
-.llm-proxy-instructions-list {
-  margin: 0;
+.llm-proxy-pipeline-wrap {
+  padding: var(--md-sys-spacing-md) 0;
+  max-width: 800px;
+}
+
+.llm-proxy-tab .pipeline-details summary {
+  cursor: pointer;
+  padding: var(--md-sys-spacing-sm) 0;
+  user-select: none;
+}
+
+.llm-proxy-tab .pipeline-details summary:hover {
+  color: var(--md-sys-color-primary);
 }
 /* LLM Proxy Builds list - OllamaTab-inspired card design */
 .llm-proxy-builds-list {

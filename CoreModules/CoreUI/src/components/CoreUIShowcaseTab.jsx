@@ -397,11 +397,11 @@ function CoreUIShowcaseTab() {
               <CoreUIPipelinePreview
                 animated
                 steps={[
-                  { id: '1', label: 'Parse / gate', description: 'Prepare request, resolve settings, and decide retrieval/supplement gates.', icon: 'login', active: true, tone: 'success' },
-                  { id: '2', label: 'Vector RAG', description: 'Run RAG retrieval against the selected Qdrant collection when configured.', icon: 'database', active: true, tone: 'success' },
-                  { id: '3', label: 'Hybrid sparse', description: 'Use dense+sparse retrieval fusion when hybrid sparse is enabled.', icon: 'vertical_align_top', active: true, tone: 'info', badges: ['Hybrid On'] },
-                  { id: '4', label: 'LLM rerank', description: 'Rerank retrieved chunks when rerank-for-rag is enabled.', icon: 'swap_vert', active: false, tone: 'neutral' },
-                  { id: '5', label: 'Build context', description: 'Assemble final context block for prompt construction.', icon: 'build', active: true, tone: 'success' },
+                  { id: '1', label: 'Parse request', description: 'Read messages, model, and tools from OpenAI/Anthropic body.', icon: 'login', active: true, tone: 'success' },
+                  { id: '2', label: 'RAG gate', description: 'Compute trigger score and decide if vector search is needed.', icon: 'gate', active: true, tone: 'success' },
+                  { id: '3', label: 'Retrieval', description: 'Search Qdrant with dense/sparse vectors and hybrid fusion.', icon: 'database', active: true, tone: 'success' },
+                  { id: '4', label: 'Rank & Rerank', description: 'Sort by priority and optional LLM rerank on candidates.', icon: 'swap_vert', active: true, tone: 'info', badges: ['Rerank On'] },
+                  { id: '5', label: 'LLM call', description: 'Send assembled prompt to Ollama for final completion.', icon: 'smart_toy', active: true, tone: 'success' },
                 ]}
               />
             </div>

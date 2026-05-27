@@ -10,7 +10,6 @@ import '../styles/components/SettingsTab.css';
 const INFO_TABS = [
   { id: 'intro', label: 'Intro' },
   { id: 'features', label: 'Features' },
-  { id: 'architecture', label: 'Architecture' },
   { id: 'quick-start', label: 'Quick Start' },
   { id: 'credits', label: 'Credits' },
 ];
@@ -166,107 +165,6 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                     <h4>Multi-Port Architecture</h4>
                     <p>8080 (main app) — auxiliary services on their own ports</p>
                   </div>
-                </div>
-              </div>
-            )}
-            {infoSubTab === 'architecture' && (
-              <div className="dashboard-section-inner">
-                <h3>Architecture Overview</h3>
-                <p className="architecture-intro">
-                  ChironAI is built on a <strong>modular, domain-driven architecture</strong> with clear separation of concerns.
-                  The system is designed for maintainability, testability, and domain flexibility—swap knowledge domains without touching core logic.
-                </p>
-
-                <div className="architecture-section">
-                  <h4>Core Layers (Hexagonal Design)</h4>
-                  <div className="architecture-grid">
-                    <div className="arch-layer-card arch-layer-api">
-                      <div className="arch-layer-icon">📡</div>
-                      <h5>Presentation</h5>
-                      <p>HTTP routes (Flask), CLI entrypoints, API blueprints. Zero infrastructure imports—uses application use cases only.</p>
-                    </div>
-                    <div className="arch-layer-card arch-layer-application">
-                      <div className="arch-layer-icon">⚙️</div>
-                      <h5>Application</h5>
-                      <p>Use cases (RAG, crawl, ingestion), container/wiring, DTOs. Orchestrates domain services and ports.</p>
-                    </div>
-                    <div className="arch-layer-card arch-layer-domain">
-                      <div className="arch-layer-icon">🎯</div>
-                      <h5>Domain</h5>
-                      <p>Entities (RagChunk, CrawlSource), services (retrieval, rerank, chunking), ports (repositories, providers). Pure business logic—no external dependencies.</p>
-                    </div>
-                    <div className="arch-layer-card arch-layer-infrastructure">
-                      <div className="arch-layer-icon">🏗️</div>
-                      <h5>Infrastructure</h5>
-                      <p>Adapters: Qdrant (RagRepository), Ollama (embed/chat/rerank), FS (MarkdownStore), Playwright (crawl), logging.</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="architecture-section">
-                  <h4>CoreModules (Independent Services)</h4>
-                  <div className="modules-grid">
-                    <div className="module-card">
-                      <h5>RagService</h5>
-                      <p>Full RAG pipeline: retrieval → rerank → prompt → LLM answer. pip: <code>chironai-rag-service</code></p>
-                    </div>
-                    <div className="module-card">
-                      <h5>LlmProxy</h5>
-                      <p>OpenAI + Anthropic API compatibility. Build presets, streaming synthesis, autocomplete model. pip: <code>llm-proxy</code></p>
-                    </div>
-                    <div className="module-card">
-                      <h5>MdIngestionService</h5>
-                      <p>Config-driven markdown preprocessing: filtering, chunking, noise removal. Feeds RAG via HTTP contract.</p>
-                    </div>
-                    <div className="module-card">
-                      <h5>ServiceStarter</h5>
-                      <p>Auto-install/start: Docker Desktop, Ollama, Qdrant (Windows). pip: <code>service-starter</code></p>
-                    </div>
-                    <div className="module-card">
-                      <h5>WebInteraction</h5>
-                      <p>External context: DuckDuckGo search, snippet extraction, trigger heuristics. pip: <code>web-interaction</code></p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="architecture-section">
-                  <h4>Data Flow (Request Lifecycle)</h4>
-                  <div className="data-flow-diagram">
-                    <div className="flow-step">
-                      <span className="flow-label">Client</span>
-                      <span className="flow-arrow">→</span>
-                    </div>
-                    <div className="flow-step">
-                      <span className="flow-label">API Layer</span>
-                      <span className="flow-arrow">→</span>
-                    </div>
-                    <div className="flow-step">
-                      <span className="flow-label">Use Cases</span>
-                      <span className="flow-arrow">→</span>
-                    </div>
-                    <div className="flow-step">
-                      <span className="flow-label">Domain Services</span>
-                      <span className="flow-arrow">→</span>
-                    </div>
-                    <div className="flow-step">
-                      <span className="flow-label">Ports</span>
-                      <span className="flow-arrow">→</span>
-                    </div>
-                    <div className="flow-step">
-                      <span className="flow-label">Infrastructure</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="architecture-principles">
-                  <h4>Design Principles</h4>
-                  <ul className="principle-list">
-                    <li><strong>Dependency Rule:</strong> Domain → never imports Application, API, or Infrastructure. Enforced by import-linter contracts.</li>
-                    <li><strong>Module Isolation:</strong> CoreModules communicate via HTTP contracts or interfaces (Protocol/ABC), never direct imports.</li>
-                    <li><strong>Domain Agnostic:</strong> Swap knowledge domains (Apple → any) by changing sources and prompts—no core code changes.</li>
-                    <li><strong>Testability:</strong> Domain/application tests use mocks; API tests use Flask client with wired use cases.</li>
-                    <li><strong>Local-First:</strong> All services (Ollama, Qdrant) run locally via Docker. Optional cloud LLM fallback.</li>
-                  </ul>
                 </div>
               </div>
             )}
@@ -519,62 +417,56 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
 
           {proxyKeyModalTab === 'api-key' && (
             <div className="proxy-key-quick-start">
-              <div className="proxy-key-hero">
-                <span className="material-symbols-outlined" aria-hidden="true">vpn_key</span>
-                <div>
-                  <p className="proxy-key-eyebrow">Quick start</p>
-                  <p className="proxy-key-summary">
-                    Create one WebUI-managed key before wiring IDEs, OpenWebUI, or other OpenAI-compatible clients to
-                    Chiron <code>/v1</code> endpoints.
-                  </p>
+              <div className="proxy-how-to-card proxy-how-to-card--hero">
+                <div className="proxy-how-to-card-header">
+                  <span className="material-symbols-outlined">vpn_key</span>
+                  <h3>Quick start</h3>
                 </div>
-              </div>
-
-              <ol className="proxy-key-steps" aria-label="Proxy API key setup steps">
-                <li>
-                  <span className="proxy-key-step-index">1</span>
-                  <div>
-                    <strong>Open Security</strong>
-                    <p>
-                      Open <strong>Tokens and Security</strong>, then use the <strong>Security</strong> card.
-                    </p>
-                  </div>
-                </li>
-                <li>
-                  <span className="proxy-key-step-index">2</span>
-                  <div>
-                    <strong>Generate or reveal the key</strong>
-                    <p>
-                      Use <strong>Generate key</strong> for the first setup, <strong>Reveal key</strong> to copy it again,
-                      or <strong>Regenerate key</strong> to rotate clients.
-                    </p>
-                  </div>
-                </li>
-                <li>
-                  <span className="proxy-key-step-index">3</span>
-                  <div>
-                    <strong>Paste it into the client</strong>
-                    <p>Use the server base URL with the key as either header below.</p>
-                  </div>
-                </li>
-              </ol>
-
-              <div className="proxy-key-header-grid">
-                <div className="proxy-key-header-card">
-                  <span>Bearer token</span>
-                  <code>Authorization: Bearer &lt;key&gt;</code>
-                </div>
-                <div className="proxy-key-header-card">
-                  <span>API key header</span>
-                  <code>x-api-key: &lt;key&gt;</code>
-                </div>
-              </div>
-
-              <div className="proxy-key-note">
-                <span className="material-symbols-outlined" aria-hidden="true">info</span>
                 <p>
-                  The protected surface is Chiron <code>/v1*</code>. Ollama-style compatibility routes such as{' '}
-                  <code>/api/tags</code>, <code>/api/generate</code>, and <code>/api/chat</code> remain open for
+                  Create one WebUI-managed key before wiring IDEs, OpenWebUI, or other OpenAI-compatible clients to
+                  Chiron <code>/v1</code> endpoints.
+                </p>
+              </div>
+
+              <div className="proxy-how-to-card">
+                <div className="proxy-how-to-card-header">
+                  <span className="proxy-key-step-index">1</span>
+                  <h3>Open Security</h3>
+                </div>
+                <p>
+                  Open <strong>Tokens and Security</strong>, then use the <strong>Security</strong> card.
+                </p>
+              </div>
+
+              <div className="proxy-how-to-card">
+                <div className="proxy-how-to-card-header">
+                  <span className="proxy-key-step-index">2</span>
+                  <h3>Generate or reveal</h3>
+                </div>
+                <p>
+                  Use <strong>Generate key</strong> for the first setup, <strong>Reveal key</strong> to copy it again,
+                  or <strong>Regenerate key</strong> to rotate clients.
+                </p>
+              </div>
+
+              <div className="proxy-how-to-card">
+                <div className="proxy-how-to-card-header">
+                  <span className="proxy-key-step-index">3</span>
+                  <h3>Paste into client</h3>
+                </div>
+                <p>
+                  Use the server base URL with the key as either <code>Authorization: Bearer &lt;key&gt;</code> or{' '}
+                  <code>x-api-key: &lt;key&gt;</code> header.
+                </p>
+              </div>
+
+              <div className="proxy-how-to-card proxy-how-to-card--note">
+                <div className="proxy-how-to-card-header">
+                  <span className="material-symbols-outlined">info</span>
+                  <h3>Note</h3>
+                </div>
+                <p>
+                  The protected surface is Chiron <code>/v1*</code>. Ollama-style compatibility routes remain open for
                   unauthenticated local use.
                 </p>
               </div>
@@ -583,7 +475,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
 
           {proxyKeyModalTab === 'how-to-use' && (
             <div className="proxy-key-how-to-use">
-              <div className="proxy-how-to-card">
+              <div className="proxy-how-to-card proxy-how-to-card--hero">
                 <div className="proxy-how-to-card-header">
                   <span className="material-symbols-outlined">info</span>
                   <h3>Overview</h3>

@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.20] - 2026-05-27
+### Changed
+- Wrapped Architecture sub-tab content in a styled card with borders and shadows.
+
+## [0.4.19] - 2026-05-27
+### Changed
+- Updated Dev Documentation to use `CoreUIPillTabs` for sub-tab navigation.
+- Moved sub-tab selector below the header title and description.
+
+## [0.4.18] - 2026-05-27
+### Changed
+- Moved "Architecture Overview" from Dashboard to a new "Architecture" sub-tab in Dev Documentation.
+- Added sub-tabs to Dev Documentation: "Overview" (extension guide) and "Architecture".
+
+## [0.4.17] - 2026-05-26
+### Changed
+- Unified the visual style of both tabs in the Proxy API Key modal using a card-based grid layout.
+- Refactored "API Key" tab to use the same card components as the "How to use" tab.
+
 ## [0.4.16] - 2026-05-26
 ### Changed
 - Redesigned "How to use" tab in Proxy API Key modal with a card-based layout.

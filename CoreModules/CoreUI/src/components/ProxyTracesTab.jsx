@@ -2,11 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getLlmProxyStatus, getProxyTraces, clearProxyTraces } from '../services/api';
 import '../styles/components/DashboardTab.css';
 import CoreUIButton from './CoreUIButton';
-import CoreUIModal from './CoreUIModal';
-import CoreUIPillTabs from './CoreUIPillTabs';
-import { summarizeAgentTraceMeta } from '../utils/agentTraceSummary';
+import ProxyTraceDetailModal from './ProxyTraceDetailModal';
 import { proxyTraceToolLimitWarning } from '../utils/proxyTraceWarnings';
-import AgentTraceSummaryCards from './AgentTraceSummaryCards';
 
 const LIVE_POLL_MS = 3000;
 
@@ -23,6 +20,41 @@ function TraceToolLimitWarning({ trace, compact = false }) {
   );
 }
 
+function formatLogMessage(trace) {
+  let text = trace.user_query || '';
+  if (!text) return 'Trace ' + (trace.trace_id || '').slice(0, 8);
+  return text.replace(/<environment_details>[\s\S]*?<\/environment_details>/g, '').trim();
+}
+
+function hasImage(trace) {
+  if (trace.has_image) return true;
+  const messages = trace.request?.messages;
+  if (Array.isArray(messages)) {
+    return messages.some((m) => {
+      if (Array.isArray(m.content)) {
+        return m.content.some((c) => c.type === 'image' || c.type === 'image_url');
+      }
+      return false;
+    });
+  }
+  return false;
+}
+
+function formatJournalTime(timestamp) {
+  if (!timestamp) return '-';
+  return new Date(timestamp).toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+}
+
+function formatJournalValue(value, suffix = '') {
+  if (value == null || value === '') return '-';
+  return `${value}${suffix}`;
+}
+
 export default function ProxyTracesTab() {
   const [status, setStatus] = useState(null);
   const [traces, setTraces] = useState([]);
@@ -31,7 +63,6 @@ export default function ProxyTracesTab() {
   const [busy, setBusy] = useState(false);
   const [selectedTrace, setSelectedTrace] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalTab, setModalTab] = useState('formatted');
 
   const loadDetailTraces = useCallback(async () => {
     setErr(null);
@@ -77,6 +108,8 @@ export default function ProxyTracesTab() {
   }, []);
 
   const doClearTraces = async () => {
+    const msg = 'Clear all in-memory traces?';
+    if (!window.confirm(msg)) return;
     setBusy(true);
     setErr(null);
     try {
@@ -122,6 +155,14 @@ export default function ProxyTracesTab() {
   const intro =
     'Recent proxy runs: resolved model, pipeline step timings (RAG sub-steps, ollama_chat), token estimates when present.';
 
+  const selectedLog = useMemo(() => {
+    if (!selectedTrace) return null;
+    return {
+      metadata: selectedTrace,
+      timestamp: selectedTrace.timestamp || new Date().toISOString(),
+    };
+  }, [selectedTrace]);
+
   return (
     <div className="dashboard-layout">
       <section className="app-default-card" aria-labelledby={mainHeadingId}>
@@ -138,27 +179,51 @@ export default function ProxyTracesTab() {
         </div>
         <p className="dashboard-card-muted">{intro}</p>
         {err && <div className="dashboard-card-error">{err}</div>}
-        <div className="dashboard-card-scroll">
-          {traces.length === 0 && <p className="dashboard-card-muted">No traces yet.</p>}
-          {traces.map((t, i) => (
-            <button
-              key={`${t.trace_id || 'trace'}-d-${i}`}
-              type="button"
-              className="dashboard-trace-item dashboard-trace-item--clickable"
-              onClick={() => {
-                setSelectedTrace(t);
-                setModalTab('formatted');
-                setModalOpen(true);
-              }}
-            >
-              <div className="dashboard-trace-item-header">
-                <code>{(t.trace_id || '').slice(0, 8)}</code> · {t.elapsed_ms}ms · {t.step_count} steps ·{' '}
-                {t.resolved_model}
-                {t.error ? ` · error: ${t.error}` : ''}
-              </div>
-              <TraceToolLimitWarning trace={t} />
-            </button>
-          ))}
+
+        <div className="proxy-journal-groups" style={{ marginTop: 'var(--md-sys-spacing-md)' }}>
+          <div className="proxy-journal-group">
+            <ul className="proxy-journal-list">
+              {traces.length === 0 && <li className="dashboard-card-muted coreui-p-md">No traces yet.</li>}
+              {traces.map((t, i) => (
+                <li key={`${t.trace_id || 'trace'}-d-${i}`}>
+                  <button
+                    type="button"
+                    className={`proxy-journal-list-item${
+                      modalOpen && selectedTrace?.trace_id === t.trace_id ? ' proxy-journal-list-item--active' : ''
+                    }`}
+                    onClick={() => {
+                      setSelectedTrace(t);
+                      setModalOpen(true);
+                    }}
+                  >
+                    <div className="proxy-journal-list-item-header">
+                      <span className="proxy-journal-list-item-msg">{formatLogMessage(t)}</span>
+                      {hasImage(t) && (
+                        <span className="material-symbols-outlined proxy-journal-list-item-image-icon">
+                          image
+                        </span>
+                      )}
+                    </div>
+                    <div className="proxy-journal-list-item-meta-row">
+                      <span className="proxy-journal-list-item-trace">
+                        trace id: <code>{t.trace_id ? String(t.trace_id) : '-'}</code>
+                      </span>
+                      <span className="proxy-journal-list-item-time">{formatJournalTime(t.timestamp)}</span>
+                    </div>
+                    <div className="proxy-journal-list-item-stats">
+                      <span>
+                        Model: <code>{formatJournalValue(t.resolved_model || t.model)}</code>
+                      </span>
+                      <span>Latency: {formatJournalValue(t.elapsed_ms || t.latency_ms, ' ms')}</span>
+                      <span>Steps: {formatJournalValue(t.step_count)}</span>
+                      {t.error && <span className="dashboard-card-error">Error: {t.error}</span>}
+                      <TraceToolLimitWarning trace={t} compact />
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </section>
 
@@ -169,52 +234,43 @@ export default function ProxyTracesTab() {
         <p className="dashboard-card-muted">
           In-memory runs only until process restart; polled every few seconds while this tab is open.
         </p>
-        <div className="dashboard-card-scroll coreui-mono-block--compact">
-          {liveTraces.length === 0 && <p className="dashboard-card-muted">No in-memory traces.</p>}
-          {liveTraces.map((t, i) => (
-            <div key={`${t.trace_id || 'trace'}-l-${i}`} className="dashboard-kv-row">
-              <code>{(t.trace_id || '').slice(0, 8)}</code>
-              <span className="dashboard-card-muted">
-                {t.elapsed_ms}ms · {t.step_count} steps · {t.resolved_model}
-                {t.error ? ` · ${t.error}` : ''}
-              </span>
-              <TraceToolLimitWarning trace={t} compact />
-            </div>
-          ))}
+        <div className="proxy-journal-groups" style={{ marginTop: 'var(--md-sys-spacing-md)' }}>
+          <div className="proxy-journal-group">
+            <ul className="proxy-journal-list">
+              {liveTraces.length === 0 && <li className="dashboard-card-muted coreui-p-md">No in-memory traces.</li>}
+              {liveTraces.map((t, i) => (
+                <li key={`${t.trace_id || 'trace'}-l-${i}`}>
+                  <div className="proxy-journal-list-item">
+                    <div className="proxy-journal-list-item-header">
+                      <span className="proxy-journal-list-item-msg">{formatLogMessage(t)}</span>
+                    </div>
+                    <div className="proxy-journal-list-item-meta-row">
+                      <span className="proxy-journal-list-item-trace">
+                        trace id: <code>{t.trace_id ? String(t.trace_id) : '-'}</code>
+                      </span>
+                      <span className="proxy-journal-list-item-time">{formatJournalTime(t.timestamp)}</span>
+                    </div>
+                    <div className="proxy-journal-list-item-stats">
+                      <span>
+                        Model: <code>{formatJournalValue(t.resolved_model || t.model)}</code>
+                      </span>
+                      <span>Latency: {formatJournalValue(t.elapsed_ms || t.latency_ms, ' ms')}</span>
+                      <TraceToolLimitWarning trace={t} compact />
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </section>
 
-      {modalOpen && selectedTrace && (
-        <CoreUIModal
-          title={`Trace ${(selectedTrace.trace_id || '').slice(0, 8)}`}
-          onClose={() => setModalOpen(false)}
-        >
-          <CoreUIPillTabs
-            tabs={[
-              { id: 'formatted', label: 'Formatted' },
-              { id: 'full-json', label: 'Full Json' },
-            ]}
-            value={modalTab}
-            onChange={setModalTab}
-            ariaLabel="Trace view mode"
-          />
-          <div style={{ marginTop: 'var(--md-sys-spacing-md)' }}>
-            {modalTab === 'formatted' && (
-              <>
-                <AgentTraceSummaryCards summary={summarizeAgentTraceMeta(selectedTrace)} />
-                <TraceToolLimitWarning trace={selectedTrace} />
-                <details className="dashboard-trace-item coreui-section-block" style={{ marginTop: 'var(--md-sys-spacing-md)' }}>
-                  <summary>Full JSON</summary>
-                  <pre className="coreui-mono-block">{JSON.stringify(selectedTrace, null, 2)}</pre>
-                </details>
-              </>
-            )}
-            {modalTab === 'full-json' && (
-              <pre className="coreui-mono-block">{JSON.stringify(selectedTrace, null, 2)}</pre>
-            )}
-          </div>
-        </CoreUIModal>
-      )}
+      <ProxyTraceDetailModal
+        log={selectedLog}
+        isOpen={Boolean(modalOpen && selectedLog)}
+        onClose={() => setModalOpen(false)}
+      />
     </div>
   );
 }
+

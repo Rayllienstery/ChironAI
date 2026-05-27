@@ -570,11 +570,6 @@ function App() {
       case "rag-fusion-proxy":
         return (
           <LlmProxyTab
-            onOpenRagModels={() => {
-              setActiveTab("rag");
-              setScrollToRagModelsSection(true);
-            }}
-            onNavigateToRag={() => setActiveTab("rag")}
             onOpenLogs={() => setActiveTab("logs")}
           />
         );
