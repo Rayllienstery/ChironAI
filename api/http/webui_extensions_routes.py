@@ -29,11 +29,13 @@ def register_extension_routes(
             svc = _get_extensions_service()
             if svc is None:
                 return jsonify({"available": False, "registry": [], "registry_url": None}), 200
+            diagnostics = svc.registry_diagnostics() if callable(getattr(svc, "registry_diagnostics", None)) else {}
             return jsonify(
                 {
                     "available": True,
                     "registry": svc.registry_entries(),
                     "registry_url": getattr(getattr(svc, "_registry_client", None), "registry_url", None),
+                    "diagnostics": diagnostics.get("diagnostics", []),
                 }
             )
         except Exception as e:

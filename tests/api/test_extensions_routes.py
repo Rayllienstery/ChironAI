@@ -93,16 +93,16 @@ class _FakeExtensionsService:
         return {"extensions": [{"id": "ollama-provider", "title": "Ollama", "ui_schema": {}}], "failed": []}
 
     def install(self, extension_id: str, *, version: str | None = None) -> dict[str, Any]:
-        return {"id": extension_id, "version": version or "0.1.0", "restart_required": True}
+        return {"id": extension_id, "version": version or "0.1.0", "restart_required": True, "restart_scope": "provider_registry"}
 
     def remove(self, extension_id: str) -> dict[str, Any]:
-        return {"id": extension_id, "removed": True, "restart_required": True}
+        return {"id": extension_id, "removed": True, "restart_required": True, "restart_scope": "provider_registry"}
 
     def enable(self, extension_id: str) -> dict[str, Any]:
-        return {"id": extension_id, "enabled": True, "restart_required": True}
+        return {"id": extension_id, "enabled": True, "restart_required": True, "restart_scope": "provider_registry"}
 
     def disable(self, extension_id: str) -> dict[str, Any]:
-        return {"id": extension_id, "enabled": False, "restart_required": True}
+        return {"id": extension_id, "enabled": False, "restart_required": True, "restart_scope": "provider_registry"}
 
     def restart_extension_sandbox(self, extension_id: str) -> dict[str, Any]:
         return {
@@ -247,6 +247,10 @@ def test_extension_lifecycle_routes_return_restart_required() -> None:
     assert (disable.get_json() or {}).get("restart_required") is True
     assert (enable.get_json() or {}).get("restart_required") is True
     assert (remove.get_json() or {}).get("restart_required") is True
+    assert (install.get_json() or {}).get("restart_scope") == "provider_registry"
+    assert (disable.get_json() or {}).get("restart_scope") == "provider_registry"
+    assert (enable.get_json() or {}).get("restart_scope") == "provider_registry"
+    assert (remove.get_json() or {}).get("restart_scope") == "provider_registry"
 
 
 def test_extension_sandbox_control_routes_return_diagnostics() -> None:

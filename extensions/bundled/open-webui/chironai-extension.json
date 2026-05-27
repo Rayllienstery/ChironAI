@@ -4,7 +4,7 @@
   "api_version": "1",
   "type": "ui_extension",
   "title": "Open WebUI",
-  "description": "Docker runtime owner for Open WebUI.",
+  "description": "Open WebUI service integration through ChironAI host capabilities.",
   "icon": "icons/open-webui-light.svg",
   "tab_ui": {
     "id": "open-webui",

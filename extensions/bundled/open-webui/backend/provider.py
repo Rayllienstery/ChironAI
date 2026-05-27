@@ -1,7 +1,8 @@
 """Open WebUI extension.
 
-The host only sees a generic extension tab. Docker/container ownership stays in
-this bundled extension so the core app can remove or update it independently.
+The host only sees a generic extension tab. Docker execution stays in the
+DockerManager CoreModule; this extension only declares and requests operations
+for its own Open WebUI resources through host capabilities.
 """
 
 from __future__ import annotations

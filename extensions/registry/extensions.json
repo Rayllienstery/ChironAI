@@ -17,7 +17,7 @@
     {
       "id": "open-webui",
       "title": "Open WebUI",
-      "description": "Removable iframe tab and Docker runtime owner for Open WebUI.",
+      "description": "Removable iframe tab and Open WebUI service integration through ChironAI host capabilities.",
       "icon": "icons/open-webui-light.svg",
       "source_path": "extensions/bundled/open-webui",
       "default_ref": "0.1.2",

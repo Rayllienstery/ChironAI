@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import threading
 import tempfile
 import zipfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import requests
 
@@ -17,13 +19,15 @@ from chironai_security import audit_extension_or_raise
 from llm_interactor.contracts import ProviderHostContext
 from llm_interactor.discovery import FailedExtension, LoadedExtension, MANIFEST_FILENAME, discover_extensions, load_manifest_from_dir
 from llm_interactor.install_state import ExtensionsRepository, InstalledExtensionRecord
-from llm_interactor.manifest import EXTENSION_TYPE_LLM_PROVIDER
+from llm_interactor.manifest import EXTENSION_API_VERSION, EXTENSION_TYPE_LLM_PROVIDER
 from llm_interactor.registry_client import ExtensionRegistryClient
 from llm_interactor.runtime import LLMRuntime, ProviderRegistry
 
 
 DEFAULT_BUNDLED_DIR = "extensions/bundled"
 DEFAULT_INSTALLED_DIR = "logs/extensions/installed"
+RESTART_SCOPE_PROVIDER_REGISTRY = "provider_registry"
+_SEMVERISH_RE = re.compile(r"^v?\d+(?:\.\d+){1,3}(?:[-+][0-9A-Za-z.-]+)?$")
 
 
 @dataclass(frozen=True)
@@ -32,6 +36,27 @@ class RuntimeBootstrap:
     registry: ProviderRegistry
     loaded: list[LoadedExtension]
     failed: list[FailedExtension]
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _github_archive_url(repository: str, ref: str) -> str:
+    repo = str(repository or "").strip()
+    selected_ref = str(ref or "").strip()
+    if not repo or not selected_ref:
+        return ""
+    parsed = urlparse(repo)
+    if parsed.scheme not in {"http", "https"} or parsed.netloc.lower() != "github.com":
+        return ""
+    parts = [part for part in parsed.path.strip("/").split("/") if part]
+    if len(parts) < 2:
+        return ""
+    owner = quote(parts[0], safe="")
+    name = quote(parts[1].removesuffix(".git"), safe="")
+    safe_ref = quote(selected_ref, safe="")
+    return f"https://github.com/{owner}/{name}/archive/{safe_ref}.zip"
 
 
 class ExtensionManager:
@@ -161,6 +186,14 @@ class ExtensionManager:
                 description=manifest.description,
                 icon=manifest.icon,
                 restart_required=False,
+                restart_scope="none",
+                provenance={
+                    "provenance_level": "local_source",
+                    "selected_version": manifest.version,
+                    "selected_ref": manifest.version,
+                    "source_path": str(bundled),
+                },
+                security_scan={"status": "passed", "scanner": "chironai_static_audit"},
             )
         )
         self._repo.save_records(next_records)
@@ -189,6 +222,7 @@ class ExtensionManager:
             enabled_extension_ids={r.id for r in records},
             use_sandbox=self._use_sandbox,
         )
+        self._disable_security_blocked_extensions(report.failed)
         registry = ProviderRegistry()
         failed = list(report.failed)
         for loaded in report.loaded:
@@ -232,6 +266,41 @@ class ExtensionManager:
             self._runtime_status = "ready"
             self._runtime_error = ""
         return bootstrap
+
+    def _disable_security_blocked_extensions(self, failed: list[FailedExtension]) -> None:
+        blocked = [item for item in failed if item.security_findings]
+        if not blocked:
+            return
+        records = self._repo.list_records()
+        by_id = {item.extension_id: item for item in blocked}
+        changed = False
+        next_records: list[InstalledExtensionRecord] = []
+        for record in records:
+            failed_item = by_id.get(record.id)
+            if failed_item is None:
+                next_records.append(record)
+                continue
+            scan = {
+                "status": "blocked",
+                "scanner": "chironai_static_audit",
+                "scanned_at": _utc_now(),
+                "findings": list(failed_item.security_findings),
+            }
+            next_records.append(
+                InstalledExtensionRecord(
+                    **{
+                        **record.__dict__,
+                        "enabled": False,
+                        "restart_required": True,
+                        "restart_scope": RESTART_SCOPE_PROVIDER_REGISTRY,
+                        "security_scan": scan,
+                        "blocked_reason": failed_item.error,
+                    }
+                )
+            )
+            changed = True
+        if changed:
+            self._repo.save_records(next_records)
 
     def _asset_url(self, extension_id: str, icon: str) -> str:
         rel = str(icon or "").strip().replace("\\", "/")
@@ -323,6 +392,21 @@ class ExtensionManager:
     def registry_entries(self) -> list[dict[str, Any]]:
         return self._registry_client.load()
 
+    def registry_diagnostics(self) -> dict[str, Any]:
+        loader = getattr(self._registry_client, "load_with_diagnostics", None)
+        if callable(loader):
+            result = loader()
+            return {
+                "registry_url": result.registry_url,
+                "diagnostics": [item.to_dict() for item in result.diagnostics],
+                "entries_count": len(result.entries),
+            }
+        return {
+            "registry_url": getattr(self._registry_client, "registry_url", None),
+            "diagnostics": [],
+            "entries_count": len(self.registry_entries()),
+        }
+
     def installed_extensions(self) -> list[dict[str, Any]]:
         loaded_by_id = {item.manifest.id: item for item in self._loaded}
         failed_by_id = {item.extension_id: item for item in self._failed}
@@ -334,6 +418,8 @@ class ExtensionManager:
             failed = failed_by_id.get(record.id)
             sandbox = self._sandbox_diagnostics(loaded, failed)
             status = "loaded" if loaded is not None else "failed" if failed is not None else "installed"
+            if str((record.security_scan or {}).get("status") or "") == "blocked":
+                status = "blocked"
             if loaded is not None and sandbox["sandbox_status"] in {
                 "blocked",
                 "crashed",
@@ -355,10 +441,18 @@ class ExtensionManager:
                     "icon_url": self._asset_url(record.id, record.icon or (loaded.manifest.icon if loaded else "")),
                     "status": status,
                     "error": failed.error if failed is not None else "",
-                    "security_blocked": bool(failed.security_findings) if failed is not None else False,
-                    "security_findings": list(failed.security_findings) if failed is not None else [],
+                    "security_blocked": bool(failed.security_findings)
+                    if failed is not None
+                    else str((record.security_scan or {}).get("status") or "") == "blocked",
+                    "security_findings": list(failed.security_findings)
+                    if failed is not None
+                    else list((record.security_scan or {}).get("findings") or []),
                     **sandbox,
                     "source": dict(record.source or {}),
+                    "provenance": dict(record.provenance or {}),
+                    "security_scan": dict(record.security_scan or {}),
+                    "blocked_reason": record.blocked_reason,
+                    "restart_scope": str(record.restart_scope or "none"),
                 }
             )
         return out
@@ -713,39 +807,119 @@ class ExtensionManager:
         target_version = str(version or entry.get("latest_version") or entry.get("default_ref") or "").strip()
         if not target_version:
             raise ValueError("registry entry has no latest_version/default_ref")
+        if "/" in target_version or "\\" in target_version or target_version in {".", ".."}:
+            raise ValueError("extension version/ref must be a safe path segment")
         target_dir = self._installed_dir / ext_id / target_version
         target_dir.parent.mkdir(parents=True, exist_ok=True)
+        staging_dir = Path(
+            tempfile.mkdtemp(
+                prefix=f".{ext_id}-{target_version}-staging-",
+                dir=str(target_dir.parent),
+            )
+        )
+        backup_dir: Path | None = None
         try:
-            self._install_entry_payload(entry, target_dir)
-            manifest = load_manifest_from_dir(target_dir)
+            self._install_entry_payload(entry, staging_dir, selected_ref=target_version)
+            manifest = load_manifest_from_dir(staging_dir)
+            self._validate_install_manifest(entry, manifest, target_version)
             if manifest.backend is None:
                 raise ValueError("manifest backend is required")
-            audit_extension_or_raise(target_dir, manifest=manifest, entrypoint=manifest.backend.entrypoint)
-        except Exception:
+            audit_extension_or_raise(staging_dir, manifest=manifest, entrypoint=manifest.backend.entrypoint)
             if target_dir.exists():
-                shutil.rmtree(target_dir, ignore_errors=True)
+                backup_dir = target_dir.with_name(f"{target_dir.name}.previous-{_utc_now().replace(':', '')}")
+                if backup_dir.exists():
+                    shutil.rmtree(backup_dir, ignore_errors=True)
+                target_dir.rename(backup_dir)
+            shutil.move(str(staging_dir), str(target_dir))
+        except Exception:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            if backup_dir is not None and backup_dir.exists() and not target_dir.exists():
+                shutil.move(str(backup_dir), str(target_dir))
             raise
+        finally:
+            if backup_dir is not None and backup_dir.exists():
+                shutil.rmtree(backup_dir, ignore_errors=True)
         records = [r for r in self._repo.list_records() if r.id != ext_id]
+        provenance = self._install_provenance(entry, target_version)
+        security_scan = {
+            "status": "passed",
+            "scanner": "chironai_static_audit",
+            "scanned_at": _utc_now(),
+            "findings": [],
+        }
         records.append(
             InstalledExtensionRecord(
                 id=ext_id,
                 version=target_version,
                 enabled=True,
                 installed=True,
-                source={k: v for k, v in entry.items() if k in {"repo_url", "source_path", "archive_url", "default_ref"}},
+                source={
+                    k: v
+                    for k, v in entry.items()
+                    if k in {"repository", "repo_url", "source_path", "archive_url", "default_ref"}
+                },
                 title=str(entry.get("title") or ext_id),
                 description=str(entry.get("description") or ""),
                 icon=str(entry.get("icon") or ""),
                 restart_required=True,
+                restart_scope=RESTART_SCOPE_PROVIDER_REGISTRY,
+                provenance=provenance,
+                security_scan=security_scan,
+                blocked_reason="",
             )
         )
         self._repo.save_records(records)
-        return {"id": ext_id, "version": target_version, "restart_required": True, "status": "installed"}
+        return {
+            "id": ext_id,
+            "version": target_version,
+            "restart_required": True,
+            "restart_scope": RESTART_SCOPE_PROVIDER_REGISTRY,
+            "reload_status": "pending",
+            "status": "installed",
+        }
 
-    def _install_entry_payload(self, entry: dict[str, Any], target_dir: Path) -> None:
+    def _validate_install_manifest(self, entry: dict[str, Any], manifest: Any, target_version: str) -> None:
+        expected_id = str(entry.get("id") or "").strip()
+        if manifest.id != expected_id:
+            raise ValueError(f"manifest id mismatch: expected '{expected_id}', got '{manifest.id}'")
+        if _SEMVERISH_RE.match(target_version) and manifest.version.lstrip("v") != target_version.lstrip("v"):
+            raise ValueError(f"manifest version mismatch: expected '{target_version}', got '{manifest.version}'")
+        self._validate_compatibility(dict(getattr(manifest, "compatibility", {}) or {}))
+        registry_compat = entry.get("compatibility")
+        if isinstance(registry_compat, dict):
+            self._validate_compatibility(dict(registry_compat))
+
+    def _validate_compatibility(self, compatibility: dict[str, Any]) -> None:
+        api_version = str(compatibility.get("extension_api_version") or EXTENSION_API_VERSION).strip()
+        if api_version != EXTENSION_API_VERSION:
+            raise ValueError(f"unsupported extension_api_version: {api_version}")
+        app = str(compatibility.get("app") or "chironai").strip().lower()
+        if app not in {"chironai", "chiron ai"}:
+            raise ValueError(f"unsupported extension app compatibility: {app}")
+
+    def _install_provenance(self, entry: dict[str, Any], target_version: str) -> dict[str, Any]:
+        repository = str(entry.get("repository") or entry.get("repo_url") or "").strip()
+        archive_url = str(entry.get("archive_url") or "").strip()
+        source_path = str(entry.get("source_path") or "").strip()
+        provenance_level = "local_source" if source_path else "github_release_asset" if archive_url else "unknown"
+        return {
+            "repository": repository,
+            "repository_id": str(entry.get("repository_id") or ""),
+            "selected_ref": target_version,
+            "selected_version": target_version,
+            "target_kind": "release" if _SEMVERISH_RE.match(target_version) else "branch",
+            "resolved_commit_sha": str(entry.get("resolved_commit_sha") or ""),
+            "archive_url": archive_url,
+            "digest": str(entry.get("digest") or ""),
+            "provenance_level": provenance_level,
+            "source_path": source_path,
+            "installed_at": _utc_now(),
+        }
+
+    def _install_entry_payload(self, entry: dict[str, Any], target_dir: Path, *, selected_ref: str = "") -> None:
         source_path = str(entry.get("source_path") or "").strip()
         archive_url = str(entry.get("archive_url") or "").strip()
-        repo_url = str(entry.get("repo_url") or "").strip()
+        repo_url = str(entry.get("repository") or entry.get("repo_url") or "").strip()
         if source_path:
             src = Path(source_path)
             if not src.is_absolute():
@@ -759,6 +933,10 @@ class ExtensionManager:
             return
         if repo_url and repo_url.endswith(".zip"):
             self._download_zip_to_dir(repo_url, target_dir)
+            return
+        github_archive_url = _github_archive_url(repo_url, selected_ref)
+        if github_archive_url:
+            self._download_zip_to_dir(github_archive_url, target_dir)
             return
         raise ValueError("registry entry must define source_path or archive_url/repo_url zip")
 
@@ -823,18 +1001,34 @@ class ExtensionManager:
             "version": result.version,
             "enabled": result.enabled,
             "restart_required": result.restart_required,
+            "restart_scope": result.restart_scope or RESTART_SCOPE_PROVIDER_REGISTRY,
+            "reload_status": "pending" if result.restart_required else "not_required",
         }
 
     def enable(self, extension_id: str) -> dict[str, Any]:
         return self._rewrite_record(
             extension_id,
-            lambda r: InstalledExtensionRecord(**{**r.__dict__, "enabled": True, "restart_required": True}),
+            lambda r: InstalledExtensionRecord(
+                **{
+                    **r.__dict__,
+                    "enabled": True,
+                    "restart_required": True,
+                    "restart_scope": RESTART_SCOPE_PROVIDER_REGISTRY,
+                }
+            ),
         )
 
     def disable(self, extension_id: str) -> dict[str, Any]:
         return self._rewrite_record(
             extension_id,
-            lambda r: InstalledExtensionRecord(**{**r.__dict__, "enabled": False, "restart_required": True}),
+            lambda r: InstalledExtensionRecord(
+                **{
+                    **r.__dict__,
+                    "enabled": False,
+                    "restart_required": True,
+                    "restart_scope": RESTART_SCOPE_PROVIDER_REGISTRY,
+                }
+            ),
         )
 
     def remove(self, extension_id: str) -> dict[str, Any]:
@@ -866,6 +1060,16 @@ class ExtensionManager:
             description=target.description,
             icon=target.icon,
             restart_required=True,
+            restart_scope=RESTART_SCOPE_PROVIDER_REGISTRY,
+            provenance=dict(target.provenance or {}),
+            security_scan=dict(target.security_scan or {}),
+            blocked_reason=target.blocked_reason,
         )
         self._repo.save_records([r for r in records if r.id != ext_id] + [tombstone])
-        return {"id": ext_id, "removed": True, "restart_required": True}
+        return {
+            "id": ext_id,
+            "removed": True,
+            "restart_required": True,
+            "restart_scope": RESTART_SCOPE_PROVIDER_REGISTRY,
+            "reload_status": "pending",
+        }

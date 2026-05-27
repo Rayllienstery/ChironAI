@@ -20,6 +20,10 @@ class InstalledExtensionRecord:
     description: str = ""
     icon: str = ""
     restart_required: bool = False
+    restart_scope: str = "none"
+    provenance: dict[str, Any] = field(default_factory=dict)
+    security_scan: dict[str, Any] = field(default_factory=dict)
+    blocked_reason: str = ""
 
 
 class ExtensionsRepository:
@@ -57,6 +61,10 @@ class ExtensionsRepository:
                     description=str(item.get("description") or ""),
                     icon=str(item.get("icon") or ""),
                     restart_required=bool(item.get("restart_required", False)),
+                    restart_scope=str(item.get("restart_scope") or "none"),
+                    provenance=dict(item.get("provenance") or {}),
+                    security_scan=dict(item.get("security_scan") or {}),
+                    blocked_reason=str(item.get("blocked_reason") or ""),
                 )
             )
         return out
@@ -73,6 +81,10 @@ class ExtensionsRepository:
                 "description": record.description,
                 "icon": record.icon,
                 "restart_required": bool(record.restart_required),
+                "restart_scope": str(record.restart_scope or "none"),
+                "provenance": dict(record.provenance or {}),
+                "security_scan": dict(record.security_scan or {}),
+                "blocked_reason": str(record.blocked_reason or ""),
             }
             for record in records
         ]

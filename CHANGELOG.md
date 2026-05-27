@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.35] - 2026-05-27
+### Changed
+- Clarified Open WebUI extension wording so Docker runtime ownership remains with the DockerManager CoreModule and extensions only use host capabilities.
+
+## [0.4.34] - 2026-05-27
+### Added
+- Created the public ChironAI Extensions Registry GitHub repository with initial registry entries, schema, validation script, CI, and contribution policy.
+
+### Changed
+- Marked Phase 3 of the Extensions GitHub migration plan complete.
+
+## [0.4.33] - 2026-05-27
+### Added
+- Added Phase 2 registry diagnostics, GitHub repository metadata client support, install provenance fields, and hardening tests.
+
+### Changed
+- Hardened extension install activation with manifest compatibility checks, atomic staging, rollback preservation, security scan state, and targeted reload scope responses.
+
 ## [0.4.32] - 2026-05-27
 ### Added
 - Added the Phase 1 Extensions contract lock and shared Extensions API DTO contract.

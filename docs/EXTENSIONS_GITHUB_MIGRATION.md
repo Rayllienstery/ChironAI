@@ -443,7 +443,7 @@ Registry validation should also protect against ownership drift and name squatti
 - The version selector should live in the header area so users can choose a release before installing without hunting through the README.
 - The details modal must show install controls: latest release by default, version dropdown from repository releases/tags, and an explicit branch/ref override.
 - The selected version in the header, README/details state, and install request payload must stay synchronized.
-- The details modal should show capability and permission badges before install, including provider type, `tab_ui`, `iframe_tab`, service actions, Docker runtime use, settings/secrets, and other high-risk capabilities declared by the selected manifest.
+- The details modal should show capability and permission badges before install, including provider type, `tab_ui`, `iframe_tab`, service actions, Docker host-capability use, settings/secrets, and other high-risk capabilities declared by the selected manifest.
 - The details modal should show publisher trust information: publisher name, verified/official/trusted state, repository URL, license, selected ref/release, and whether the selected artifact has digest/signature/attestation evidence.
 - The details modal should warn when a selected version adds new capabilities, requests new sensitive settings/secrets, changes service/Docker behavior, or comes from a branch/ref rather than a release.
 - The details modal should show provenance level: attested release asset, digest-only release asset, GitHub tag archive, or branch/ref archive.
@@ -604,31 +604,55 @@ Phase 1 artifacts:
 
 - [ ] Move extension discovery/registry polling/status ownership out of core wiring into the extension-management module.
 - [ ] Replace direct core/API checks of `extensions/bundled` and `llm_extensions_service` implementation state with calls through the extension API contract.
-- [ ] Add tests for remote registry loading.
-- [ ] Add tests for bad registry shapes and missing required fields.
-- [ ] Add manifest id/version mismatch checks during install.
-- [ ] Add compatibility checks for `extension_api_version` and app version.
-- [ ] Add user-facing diagnostics for registry load/install failures.
+- [x] Add tests for remote registry loading.
+- [x] Add tests for bad registry shapes and missing required fields.
+- [x] Add manifest id/version mismatch checks during install.
+- [x] Add compatibility checks for `extension_api_version` and app version.
+- [x] Add user-facing diagnostics for registry load/install failures.
 - [ ] Add notification events for registry load failures and remote install/download failures.
-- [ ] Add repository API client support for README, latest release, tags/releases list, and explicit ref archive resolution.
-- [ ] Add security scan enforcement for update activation and unsafe-extension disabling.
-- [ ] Add atomic install/update staging and previous-safe-version rollback support.
-- [ ] Add install-state provenance fields for repository, selected ref, resolved commit, archive URL, security scan status, and blocked reason.
+- [x] Add repository API client support for README, latest release, tags/releases list, and explicit ref archive resolution.
+- [x] Add security scan enforcement for update activation and unsafe-extension disabling.
+- [x] Add atomic install/update staging and previous-safe-version rollback support.
+- [x] Add install-state provenance fields for repository, selected ref, resolved commit, archive URL, security scan status, and blocked reason.
 - [ ] Add emergency blocklist enforcement and update-capability-expansion detection.
-- [ ] Replace broad `restart_required` extension lifecycle responses with targeted reload status and `restart_scope`.
+- [x] Replace broad `restart_required` extension lifecycle responses with targeted reload status and `restart_scope`.
 - [ ] Add tests proving a failed extension reload does not crash the host and preserves the previous stable runtime where possible.
 - [ ] Add guardrail tests for boundary drift, frontend token leaks, blocklist enforcement, and direct folder/registry polling from core.
 
+Phase 2 implementation notes:
+
+- `modules/extensions_backend` now exists as the target owner for GitHub repository metadata. Full service wiring is still migration tail in `CoreModules/LlmInteractor` and Flask app wiring.
+- Registry loading now produces structured diagnostics instead of silently discarding bad registry entries.
+- Installs now stage payloads before activation, validate manifest id/version/compatibility, preserve the previous installed payload on failed scans, and record provenance/security state.
+- Unsafe installed extensions are disabled during runtime bootstrap and surfaced as blocked in installed-extension status.
+
 ### Phase 3: GitHub Registry Repository
 
-- [ ] Create the `ChironAI Extensions Registry` repository.
-- [ ] Add `extensions.json`.
-- [ ] Add JSON schema or equivalent validator.
-- [ ] Add CI that validates registry entries.
-- [ ] Add CI checks for allowed repository domains/orgs, publisher identity, repository identity, duplicate/confusing names, and required metadata.
-- [ ] Add registry CI checks for suspicious branch/ref defaults, weak provenance metadata, and capability expansion review flags.
-- [ ] Add contribution and review policy.
-- [ ] Publish repository entries for the first three extensions.
+- [x] Create the `ChironAI Extensions Registry` repository.
+- [x] Add `extensions.json`.
+- [x] Add JSON schema or equivalent validator.
+- [x] Add CI that validates registry entries.
+- [x] Add CI checks for allowed repository domains/orgs, publisher identity, repository identity, duplicate/confusing names, and required metadata.
+- [x] Add registry CI checks for suspicious branch/ref defaults, weak provenance metadata, and capability expansion review flags.
+- [x] Add contribution and review policy.
+- [x] Publish repository entries for the first three extensions.
+
+Phase 3 artifacts:
+
+- Repository: `https://github.com/Rayllienstery/ChironAI-Extensions-Registry`
+- GitHub repository slug: `ChironAI-Extensions-Registry`
+- Initial branch: `main`
+- Registry entry point: `extensions.json`
+- Validator: `scripts/validate_registry.py`
+- Schema: `schemas/registry.schema.json`
+- CI: `.github/workflows/validate.yml`
+
+Phase 3 implementation notes:
+
+- The registry stores discovery metadata only. It intentionally does not store `latest_version`, `default_ref`, `archive_url`, or `source_path`.
+- The initial registry points to the planned per-extension repositories for `ollama-provider`, `open-webui`, and `codex-launcher`.
+- Registry CI validates required metadata, allowed GitHub owner/domain, publisher trust state, duplicate repositories, duplicate/confusing names, compatibility, high-risk consent flags, and the absence of central version/ref/archive fields.
+- The validation workflow uses `actions/checkout@v6` and `actions/setup-python@v6` to avoid the GitHub Actions Node.js 20 deprecation path.
 
 ### Phase 4: Extension Repository Extraction
 
@@ -735,7 +759,7 @@ The migration is ready when all of the following are true:
 14. Add Notifications center coverage, rate limiting, and aggregation for extension lifecycle failures.
 15. Create the `ChironAI Extensions Registry` repository with the current three entries and CI validation.
 16. Extract `codex-launcher` first because it is smaller than the service-owning extensions.
-17. Extract `open-webui` and verify Docker ownership remains exclusively through host capabilities.
+17. Extract `open-webui` and verify Docker control remains exclusively in the DockerManager CoreModule through host capabilities.
 18. Extract `ollama-provider` last because it is the canonical Ollama owner and has the broadest runtime surface.
 
 ## Open Questions

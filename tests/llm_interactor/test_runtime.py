@@ -139,6 +139,42 @@ class _FakeOllamaChatClient:
         yield ("done", {"done": True, "total_duration": 42})
 
 
+class _MemorySettingsRepo:
+    def __init__(self) -> None:
+        self.data: dict[str, str] = {}
+
+    def get_app_setting(self, key: str):
+        return self.data.get(key)
+
+    def set_app_setting(self, key: str, value: str) -> None:
+        self.data[key] = value
+
+
+def _write_minimal_extension(source: Path, *, ext_id: str, version: str = "1.0.0", unsafe: bool = False) -> None:
+    backend = source / "backend"
+    backend.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "id": ext_id,
+        "version": version,
+        "api_version": EXTENSION_API_VERSION,
+        "type": "ui_extension",
+        "title": ext_id,
+        "compatibility": {"extension_api_version": EXTENSION_API_VERSION, "app": "chironai"},
+        "backend": {"entrypoint": "backend.provider:create_provider"},
+    }
+    (source / "chironai-extension.json").write_text(json.dumps(manifest), encoding="utf-8")
+    if unsafe:
+        provider_source = (
+            "import subprocess\n"
+            "def create_provider(host_context, manifest):\n"
+            "    subprocess.run(['cmd.exe', '/c', 'whoami'], check=False)\n"
+            "    return object()\n"
+        )
+    else:
+        provider_source = "def create_provider(host_context, manifest):\n    return object()\n"
+    (backend / "provider.py").write_text(provider_source, encoding="utf-8")
+
+
 def test_runtime_without_provider_raises_clear_error() -> None:
     runtime = LLMRuntime(ProviderRegistry())
     with pytest.raises(RuntimeError, match="no provider configured"):
@@ -642,3 +678,220 @@ def test_registry_client_reads_local_registry() -> None:
     assert any(row["id"] == "ollama-provider" for row in rows)
     assert any(row["id"] == "open-webui" for row in rows)
     assert any(row["id"] == "codex-launcher" for row in rows)
+
+
+def test_registry_client_loads_remote_registry_with_diagnostics(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "extensions": [
+                    {
+                        "id": "remote-ext",
+                        "title": "Remote",
+                        "repository": "https://github.com/acme/remote-ext",
+                        "compatibility": {"extension_api_version": EXTENSION_API_VERSION, "app": "chironai"},
+                    }
+                ]
+            }
+
+    monkeypatch.setattr("requests.get", lambda url, timeout: _Response())
+
+    client = ExtensionRegistryClient("https://example.invalid/extensions.json", project_root=Path.cwd())
+    result = client.load_with_diagnostics()
+
+    assert result.diagnostics == []
+    assert result.entries[0]["id"] == "remote-ext"
+
+
+def test_registry_client_reports_bad_registry_shapes_and_missing_fields(tmp_path: Path) -> None:
+    registry_path = tmp_path / "extensions.json"
+    registry_path.write_text(
+        json.dumps(
+            {
+                "extensions": [
+                    "bad",
+                    {"id": "missing-title", "repository": "https://github.com/acme/missing-title"},
+                    {"id": "missing-source", "title": "Missing Source"},
+                    {"id": "wrong-api", "title": "Wrong API", "repository": "https://github.com/acme/wrong-api", "compatibility": {"extension_api_version": "2"}},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = ExtensionRegistryClient(str(registry_path), project_root=tmp_path).load_with_diagnostics()
+    codes = {item.code for item in result.diagnostics}
+
+    assert result.entries == []
+    assert "registry_entry_invalid" in codes
+    assert "registry_entry_missing_title" in codes
+    assert "registry_entry_missing_source" in codes
+    assert "registry_entry_unsupported_api" in codes
+
+
+def test_extension_install_rejects_manifest_id_mismatch(tmp_path: Path) -> None:
+    class _Registry:
+        def load(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "id": "expected-ext",
+                    "title": "Expected",
+                    "source_path": str(source),
+                    "latest_version": "1.0.0",
+                }
+            ]
+
+    source = tmp_path / "source"
+    _write_minimal_extension(source, ext_id="actual-ext", version="1.0.0")
+    repo = _MemorySettingsRepo()
+    root = Path(__file__).resolve().parents[2]
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        registry_client=_Registry(),  # type: ignore[arg-type]
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+
+    with pytest.raises(ValueError, match="manifest id mismatch"):
+        manager.install("expected-ext")
+
+    assert not (tmp_path / "installed" / "expected-ext" / "1.0.0").exists()
+
+
+def test_extension_install_rejects_manifest_version_mismatch(tmp_path: Path) -> None:
+    class _Registry:
+        def load(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "id": "sample-ext",
+                    "title": "Sample",
+                    "source_path": str(source),
+                    "latest_version": "1.0.0",
+                }
+            ]
+
+    source = tmp_path / "source"
+    _write_minimal_extension(source, ext_id="sample-ext", version="2.0.0")
+    repo = _MemorySettingsRepo()
+    root = Path(__file__).resolve().parents[2]
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        registry_client=_Registry(),  # type: ignore[arg-type]
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+
+    with pytest.raises(ValueError, match="manifest version mismatch"):
+        manager.install("sample-ext")
+
+
+def test_extension_install_rejects_unsupported_registry_compatibility(tmp_path: Path) -> None:
+    class _Registry:
+        def load(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "id": "sample-ext",
+                    "title": "Sample",
+                    "source_path": str(source),
+                    "latest_version": "1.0.0",
+                    "compatibility": {"extension_api_version": "2", "app": "chironai"},
+                }
+            ]
+
+    source = tmp_path / "source"
+    _write_minimal_extension(source, ext_id="sample-ext", version="1.0.0")
+    repo = _MemorySettingsRepo()
+    root = Path(__file__).resolve().parents[2]
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        registry_client=_Registry(),  # type: ignore[arg-type]
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+
+    with pytest.raises(ValueError, match="unsupported extension_api_version"):
+        manager.install("sample-ext")
+
+
+def test_extension_install_preserves_previous_safe_version_when_update_scan_fails(tmp_path: Path) -> None:
+    class _Registry:
+        def load(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "id": "sample-ext",
+                    "title": "Sample",
+                    "source_path": str(source),
+                    "latest_version": "1.0.0",
+                }
+            ]
+
+    source = tmp_path / "source"
+    _write_minimal_extension(source, ext_id="sample-ext", version="1.0.0")
+    repo = _MemorySettingsRepo()
+    root = Path(__file__).resolve().parents[2]
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        registry_client=_Registry(),  # type: ignore[arg-type]
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+
+    manager.install("sample-ext")
+    installed_provider = tmp_path / "installed" / "sample-ext" / "1.0.0" / "backend" / "provider.py"
+    assert "subprocess" not in installed_provider.read_text(encoding="utf-8")
+
+    _write_minimal_extension(source, ext_id="sample-ext", version="1.0.0", unsafe=True)
+
+    with pytest.raises(ValueError, match="Extension security audit blocked"):
+        manager.install("sample-ext")
+
+    assert "subprocess" not in installed_provider.read_text(encoding="utf-8")
+    record = ExtensionsRepository(repo).list_records()[0]
+    assert record.provenance["selected_ref"] == "1.0.0"
+    assert record.security_scan["status"] == "passed"
+
+
+def test_extension_security_failure_disables_installed_extension(tmp_path: Path) -> None:
+    repo = _MemorySettingsRepo()
+    root = Path(__file__).resolve().parents[2]
+    installed = tmp_path / "installed" / "sample-ext" / "1.0.0"
+    _write_minimal_extension(installed, ext_id="sample-ext", version="1.0.0", unsafe=True)
+    ExtensionsRepository(repo).save_records(
+        [
+            InstalledExtensionRecord(
+                id="sample-ext",
+                version="1.0.0",
+                enabled=True,
+                installed=True,
+                source={"type": "test"},
+                title="Sample",
+            )
+        ]
+    )
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+        use_sandbox=False,
+    )
+
+    manager.bootstrap_runtime()
+
+    record = ExtensionsRepository(repo).list_records()[0]
+    assert record.enabled is False
+    assert record.security_scan["status"] == "blocked"
+    assert record.restart_scope == "provider_registry"
+    assert manager.installed_extensions()[0]["status"] == "blocked"
