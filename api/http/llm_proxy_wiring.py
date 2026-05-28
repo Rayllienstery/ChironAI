@@ -20,6 +20,7 @@ from llm_proxy.contracts import LlmProxyBaseContext, LlmProxyExternalDocsBundle,
 
 try:
     from config import (
+        get_extensions_blocklist_url,
         get_extensions_local_registry_fallback,
         get_extensions_registry_url,
         get_framework_collection_ttl_days,
@@ -32,6 +33,7 @@ except ImportError:
     get_framework_collection_ttl_days = lambda: 90  # type: ignore[assignment,misc]
     get_extensions_registry_url = lambda: ""  # type: ignore[assignment,misc]
     get_extensions_local_registry_fallback = lambda: "extensions/registry/extensions.json"  # type: ignore[assignment,misc]
+    get_extensions_blocklist_url = lambda: "extensions/registry/blocklist.json"  # type: ignore[assignment,misc]
 
 from api.http.proxy_status import (
     STATUS_IDLE,
@@ -405,6 +407,7 @@ def _build_extension_manager(
             ExtensionRegistryClient,
             ProviderHostContext,
         )
+        from extensions_backend import ExtensionBlocklistPolicy
     except Exception as e:
         _RAG_LOG.warning("LlmInteractor unavailable; falling back to direct chat client: %s", e)
         return None, None, None, None, None
@@ -452,6 +455,10 @@ def _build_extension_manager(
             get_extensions_registry_url() or None,
             project_root=_workspace_root(),
             fallback_url=get_extensions_local_registry_fallback(),
+        ),
+        blocklist_policy=ExtensionBlocklistPolicy(
+            get_extensions_blocklist_url() or None,
+            project_root=_workspace_root(),
         ),
         default_provider_id=DEFAULT_LLM_PROVIDER_ID,
     )

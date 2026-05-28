@@ -162,6 +162,7 @@ class ExtensionCardDTO(TypedDict, total=False):
     repository_id: str
     publisher: dict[str, Any]
     capabilities: list[dict[str, Any]]
+    blocklist: dict[str, Any]
     visibility: str
 
 
@@ -186,6 +187,7 @@ class InstalledExtensionDTO(TypedDict, total=False):
     error: str
     security_blocked: bool
     security_findings: list[dict[str, Any]]
+    blocklist: dict[str, Any]
     sandboxed: bool
     sandbox_status: str
     sandbox_error: str

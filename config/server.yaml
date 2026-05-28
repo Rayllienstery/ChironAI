@@ -32,11 +32,14 @@ llm_proxy:
 ## Extensions registry
 ## - registry_url: GitHub-hosted registry used for development and release testing.
 ## - local_fallback_url: local registry used when GitHub/network is unavailable.
+## - blocklist_url: emergency blocklist cache used during offline startup.
 ## Override with CHIRONAI_EXTENSIONS_REGISTRY_URL and
-## CHIRONAI_EXTENSIONS_LOCAL_REGISTRY_FALLBACK.
+## CHIRONAI_EXTENSIONS_LOCAL_REGISTRY_FALLBACK and
+## CHIRONAI_EXTENSIONS_BLOCKLIST_URL.
 extensions:
   registry_url: "https://raw.githubusercontent.com/Rayllienstery/ChironAI-Extensions-Registry/main/extensions.json"
   local_fallback_url: "extensions/registry/extensions.json"
+  blocklist_url: "extensions/registry/blocklist.json"
 
 ## Logging (rag_proxy, RAG routes)
 ## - logging.level: DEBUG | INFO | WARNING | ERROR (default INFO). Override with env LOG_LEVEL.

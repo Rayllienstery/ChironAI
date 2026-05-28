@@ -7,9 +7,9 @@ import shutil
 import threading
 import tempfile
 import zipfile
-from hashlib import sha256
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlparse
@@ -25,8 +25,9 @@ from llm_interactor.registry_client import ExtensionRegistryClient
 from llm_interactor.runtime import LLMRuntime, ProviderRegistry
 
 try:
-    from extensions_backend import GitHubExtensionRepositoryClient
+    from extensions_backend import ExtensionBlocklistPolicy, GitHubExtensionRepositoryClient
 except Exception:  # pragma: no cover - optional module path during migration
+    ExtensionBlocklistPolicy = None  # type: ignore[assignment,misc]
     GitHubExtensionRepositoryClient = None  # type: ignore[assignment,misc]
 
 
@@ -90,6 +91,7 @@ class ExtensionManager:
         default_provider_id: str | None = None,
         use_sandbox: bool = True,
         repository_client: Any | None = None,
+        blocklist_policy: Any | None = None,
     ) -> None:
         self._project_root = project_root
         self._host_context = host_context
@@ -97,6 +99,7 @@ class ExtensionManager:
         self._repo = ExtensionsRepository(settings_repo)
         self._registry_client = registry_client or ExtensionRegistryClient(project_root=project_root)
         self._repository_client = repository_client or (GitHubExtensionRepositoryClient() if GitHubExtensionRepositoryClient else None)
+        self._blocklist_policy = blocklist_policy or (ExtensionBlocklistPolicy(project_root=project_root) if ExtensionBlocklistPolicy else None)
         self._bundled_dir = bundled_dir or (project_root / DEFAULT_BUNDLED_DIR)
         self._installed_dir = installed_dir or (project_root / DEFAULT_INSTALLED_DIR)
         self._installed_dir.mkdir(parents=True, exist_ok=True)
@@ -149,6 +152,7 @@ class ExtensionManager:
             self._runtime_status = "loading"
             self._runtime_error = ""
             self.ensure_bundled_installed()
+            self._disable_blocklisted_records()
             thread = threading.Thread(
                 target=self._bootstrap_runtime_worker,
                 name="chironai-extension-bootstrap",
@@ -175,6 +179,14 @@ class ExtensionManager:
 
             manifest = load_manifest_from_dir(bundled)
         except Exception:
+            return
+        match = self._blocklist_match_for_values(
+            extension_id=manifest.id,
+            version=manifest.version,
+            ref=manifest.version,
+            source_path=str(bundled),
+        )
+        if match.get("matched"):
             return
         records = self._repo.list_records()
         existing = next((r for r in records if r.id == manifest.id), None)
@@ -228,6 +240,7 @@ class ExtensionManager:
             self._runtime_status = "loading"
             self._runtime_error = ""
         self.ensure_bundled_installed()
+        self._disable_blocklisted_records()
         records = [r for r in self._repo.list_records() if r.installed and r.enabled]
         source_dirs = [
             self._installed_dir / record.id / record.version
@@ -320,6 +333,102 @@ class ExtensionManager:
         if changed:
             self._repo.save_records(next_records)
 
+    def _disable_blocklisted_records(self) -> None:
+        records = self._repo.list_records()
+        changed = False
+        next_records: list[InstalledExtensionRecord] = []
+        for record in records:
+            if not record.installed:
+                next_records.append(record)
+                continue
+            match = self._blocklist_match_for_record(record)
+            if not match.get("matched"):
+                next_records.append(record)
+                continue
+            scan = {
+                "status": "blocked",
+                "scanner": "chironai_blocklist",
+                "scanned_at": _utc_now(),
+                "findings": [
+                    {
+                        "severity": "critical",
+                        "code": "EXTENSION_BLOCKLISTED",
+                        "message": match.get("reason") or "Extension is blocked by emergency policy.",
+                    }
+                ],
+            }
+            next_records.append(
+                InstalledExtensionRecord(
+                    **{
+                        **record.__dict__,
+                        "enabled": False,
+                        "restart_required": True,
+                        "restart_scope": RESTART_SCOPE_PROVIDER_REGISTRY,
+                        "security_scan": scan,
+                        "blocked_reason": str(match.get("reason") or "Extension is blocked by emergency policy."),
+                    }
+                )
+            )
+            changed = True
+        if changed:
+            self._repo.save_records(next_records)
+
+    def _publisher_name(self, value: Any) -> str:
+        if isinstance(value, dict):
+            return str(value.get("name") or value.get("id") or "").strip()
+        return str(value or "").strip()
+
+    def _blocklist_match_for_values(
+        self,
+        *,
+        extension_id: str,
+        version: str = "",
+        ref: str = "",
+        repository: str = "",
+        repository_id: str = "",
+        publisher: str = "",
+        source_path: str = "",
+    ) -> dict[str, Any]:
+        if self._blocklist_policy is None:
+            return {"matched": False}
+        try:
+            match = self._blocklist_policy.match(
+                extension_id=extension_id,
+                version=version,
+                ref=ref,
+                repository=repository or source_path,
+                repository_id=repository_id,
+                publisher=publisher,
+            )
+            return match.to_dict() if hasattr(match, "to_dict") else dict(match)
+        except Exception:
+            return {"matched": False}
+
+    def _blocklist_match_for_entry(self, entry: dict[str, Any], *, version: str = "", ref: str = "") -> dict[str, Any]:
+        return self._blocklist_match_for_values(
+            extension_id=str(entry.get("id") or ""),
+            version=version,
+            ref=ref,
+            repository=str(entry.get("repository") or entry.get("repo_url") or ""),
+            repository_id=str(entry.get("repository_id") or ""),
+            publisher=self._publisher_name(entry.get("publisher")),
+            source_path=str(entry.get("source_path") or ""),
+        )
+
+    def _blocklist_match_for_record(self, record: InstalledExtensionRecord) -> dict[str, Any]:
+        provenance = dict(record.provenance or {})
+        source = dict(record.source or {})
+        selected_ref = str(provenance.get("selected_ref") or provenance.get("selected_version") or record.version)
+        return self._blocklist_match_for_values(
+            extension_id=record.id,
+            version=record.version,
+            ref=selected_ref,
+            repository=str(provenance.get("repository") or source.get("repository") or source.get("repo_url") or source.get("source_path") or ""),
+            repository_id=str(provenance.get("repository_id") or ""),
+            publisher="",
+            source_path=str(source.get("source_path") or provenance.get("source_path") or ""),
+        )
+
     def _asset_url(self, extension_id: str, icon: str) -> str:
         rel = str(icon or "").strip().replace("\\", "/")
         if not rel or rel.startswith(("http://", "https://", "data:")):
@@ -408,7 +517,15 @@ class ExtensionManager:
         return out
 
     def registry_entries(self) -> list[dict[str, Any]]:
-        return self._registry_client.load()
+        rows: list[dict[str, Any]] = []
+        for entry in self._registry_client.load():
+            out = dict(entry)
+            match = self._blocklist_match_for_entry(out)
+            if match.get("matched"):
+                out["blocklist"] = match
+                out["visibility"] = "blocked"
+            rows.append(out)
+        return rows
 
     def registry_diagnostics(self) -> dict[str, Any]:
         loader = getattr(self._registry_client, "load_with_diagnostics", None)
@@ -495,8 +612,9 @@ class ExtensionManager:
             loaded = loaded_by_id.get(record.id)
             failed = failed_by_id.get(record.id)
             sandbox = self._sandbox_diagnostics(loaded, failed)
+            blocklist = self._blocklist_match_for_record(record)
             status = "loaded" if loaded is not None else "failed" if failed is not None else "installed"
-            if str((record.security_scan or {}).get("status") or "") == "blocked":
+            if blocklist.get("matched") or str((record.security_scan or {}).get("status") or "") == "blocked":
                 status = "blocked"
             if loaded is not None and sandbox["sandbox_status"] in {
                 "blocked",
@@ -521,7 +639,8 @@ class ExtensionManager:
                     "error": failed.error if failed is not None else "",
                     "security_blocked": bool(failed.security_findings)
                     if failed is not None
-                    else str((record.security_scan or {}).get("status") or "") == "blocked",
+                    else bool(blocklist.get("matched"))
+                    or str((record.security_scan or {}).get("status") or "") == "blocked",
                     "security_findings": list(failed.security_findings)
                     if failed is not None
                     else list((record.security_scan or {}).get("findings") or []),
@@ -529,6 +648,7 @@ class ExtensionManager:
                     "source": dict(record.source or {}),
                     "provenance": dict(record.provenance or {}),
                     "security_scan": dict(record.security_scan or {}),
+                    "blocklist": blocklist,
                     "blocked_reason": record.blocked_reason,
                     "restart_scope": str(record.restart_scope or "none"),
                 }
@@ -902,6 +1022,10 @@ class ExtensionManager:
         selected_ref = resolved_target
         if not selected_ref:
             raise ValueError("registry entry has no latest_version/default_ref and repository latest release could not be resolved")
+        blocklist = self._blocklist_match_for_entry(entry, version=selected_ref, ref=selected_ref)
+        if blocklist.get("matched"):
+            reason = str(blocklist.get("reason") or "Extension is blocked by emergency policy.")
+            raise ValueError(f"Extension '{ext_id}' is blocked by emergency blocklist: {reason}")
         storage_version = _install_storage_segment(selected_ref)
         if not storage_version:
             raise ValueError("extension version/ref must be a safe path segment")
@@ -1135,6 +1259,12 @@ class ExtensionManager:
         }
 
     def enable(self, extension_id: str) -> dict[str, Any]:
+        target = next((record for record in self._repo.list_records() if record.id == extension_id and record.installed), None)
+        if target is not None:
+            match = self._blocklist_match_for_record(target)
+            if match.get("matched"):
+                reason = str(match.get("reason") or "Extension is blocked by emergency policy.")
+                raise ValueError(f"Extension '{extension_id}' is blocked by emergency blocklist: {reason}")
         return self._rewrite_record(
             extension_id,
             lambda r: InstalledExtensionRecord(

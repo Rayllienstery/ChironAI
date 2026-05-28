@@ -73,6 +73,7 @@ DEFAULT_EXTENSIONS_REGISTRY_URL = (
     "https://raw.githubusercontent.com/Rayllienstery/ChironAI-Extensions-Registry/main/extensions.json"
 )
 DEFAULT_EXTENSIONS_LOCAL_REGISTRY_FALLBACK = "extensions/registry/extensions.json"
+DEFAULT_EXTENSIONS_BLOCKLIST_URL = "extensions/registry/blocklist.json"
 
 
 def get_extensions_registry_url() -> str:
@@ -88,6 +89,14 @@ def get_extensions_local_registry_fallback() -> str:
     return os.getenv(
         "CHIRONAI_EXTENSIONS_LOCAL_REGISTRY_FALLBACK",
         str(EXTENSIONS_CONFIG.get("local_fallback_url") or DEFAULT_EXTENSIONS_LOCAL_REGISTRY_FALLBACK),
+    )
+
+
+def get_extensions_blocklist_url() -> str:
+    """Return configured extension emergency blocklist URL/path."""
+    return os.getenv(
+        "CHIRONAI_EXTENSIONS_BLOCKLIST_URL",
+        str(EXTENSIONS_CONFIG.get("blocklist_url") or DEFAULT_EXTENSIONS_BLOCKLIST_URL),
     )
 
 

@@ -711,9 +711,9 @@ Phase 4 implementation notes:
 - [x] Verify repeated crash/security events are aggregated and rate-limited in Notifications center.
 - [x] Verify Notifications center entries for install, remove, enable, disable, restart, kill, sandbox, and security flows.
 - [ ] Verify Notifications center entries for download progress, update, runtime processing, and extension processing flows.
-- [ ] Verify unsafe install/update payloads are blocked or disabled with Notifications center alerts.
-- [ ] Verify blocklisted extension ids/versions/refs are disabled or hidden with Notifications center alerts.
-- [ ] Verify blocklist enforcement works from local cache during offline startup.
+- [x] Verify unsafe install/update payloads are blocked or disabled with Notifications center alerts.
+- [x] Verify blocklisted extension ids/versions/refs are disabled or hidden with Notifications center alerts.
+- [x] Verify blocklist enforcement works from local cache during offline startup.
 - [x] Verify atomic update failure keeps the previous safe version active or leaves the extension durably disabled.
 - [x] Verify offline startup behavior with no network.
 - [x] Update docs and changelog.
@@ -721,14 +721,15 @@ Phase 4 implementation notes:
 Phase 5 implementation notes:
 
 - `config/server.yaml` now points development to the GitHub-hosted registry, with `extensions/registry/extensions.json` as local fallback.
-- Environment overrides are `CHIRONAI_EXTENSIONS_REGISTRY_URL` and `CHIRONAI_EXTENSIONS_LOCAL_REGISTRY_FALLBACK`.
+- Environment overrides are `CHIRONAI_EXTENSIONS_REGISTRY_URL`, `CHIRONAI_EXTENSIONS_LOCAL_REGISTRY_FALLBACK`, and `CHIRONAI_EXTENSIONS_BLOCKLIST_URL`.
 - Registry loading falls back locally when the configured GitHub registry is unavailable, while preserving diagnostics for the UI/API.
 - CoreUI registry cards for not-installed extensions open a details modal backed by repository README/release metadata.
 - The details header includes icon/title, version dropdown, manual ref input, provenance/digest/repository metadata, capability badges, and an install action.
 - Remote installs can resolve the latest GitHub release and install its release zip asset while recording provenance and security scan state.
 - Manual branch/ref installs support GitHub branch names with path separators by separating the selected ref from the safe on-disk install folder name.
 - Extension lifecycle actions now persist Notifications center entries for install, remove, enable, disable, sandbox restart, and sandbox kill; existing security/sandbox bridge aggregates blocked/crashing extension notifications.
-- Remaining Phase 5 tail: full boundary cleanup away from `llm_extensions_service`, download/update/processing notification coverage, blocklist UI/enforcement, capability-expansion consent, and stricter weak-provenance policy.
+- Emergency blocklist enforcement blocks install/enable, disables installed extensions during bootstrap, marks registry/installed rows, and works from the local offline cache.
+- Remaining Phase 5 tail: full boundary cleanup away from `llm_extensions_service`, download/update/processing notification coverage, capability-expansion consent, and stricter weak-provenance policy.
 
 ### Phase 6: Cleanup
 
@@ -743,6 +744,24 @@ Phase 6 implementation notes:
 - `extensions/registry/README.md` defines the local registry as an offline fallback and explicitly separates its local fields from the public registry contract.
 - `scripts/sync_bundled_extensions.py` can check or sync the runtime payload files from local extension repository clones.
 - `docs/ARCHITECTURE.md`, `docs/legacy_map.md`, and related module READMEs now point new extension behavior to the dedicated repositories first, with bundled copies as temporary/offline mirrors.
+
+### Phase 7: Security Policy Tail
+
+- [x] Add emergency blocklist policy owned by `extensions_backend`.
+- [x] Wire blocklist URL configuration and offline blocklist cache.
+- [x] Block installs of blocklisted extension ids, refs, repositories, repository ids, or publishers.
+- [x] Disable already installed blocklisted extensions during runtime bootstrap.
+- [x] Prevent re-enabling blocklisted installed extensions.
+- [x] Surface blocklist matches in registry and installed extension status.
+- [ ] Add remote blocklist publishing/validation to the public registry repository.
+- [ ] Add capability-expansion consent before updating an installed extension to a release with new high-risk capabilities.
+
+Phase 7 implementation notes:
+
+- `modules/extensions_backend/extensions_backend/blocklist.py` evaluates emergency blocklist rules from a local or remote JSON document.
+- `extensions/registry/blocklist.json` is the offline cache and defaults to an empty blocklist.
+- Blocklist matches are persisted as `chironai_blocklist` security scans with critical findings, so the existing Notifications center bridge reports dangerous extensions.
+- The remaining security-policy tail is update-time capability expansion consent and publishing/validating a remote blocklist in `ChironAI-Extensions-Registry`.
 
 ## Definition Of Done
 
@@ -773,9 +792,9 @@ The migration is ready when all of the following are true:
 - [ ] Runtime reload uses generation snapshots or equivalent atomic swap semantics.
 - [ ] `host_context` is least-privilege, capability-scoped, deny-by-default, and auditable.
 - [ ] Every install and update is scanned by the Security module before activation.
-- [ ] Emergency blocklist disables unsafe extension ids/versions/refs across restarts.
+- [x] Emergency blocklist disables unsafe extension ids/versions/refs across restarts.
 - [ ] Repeated extension failures are rate-limited and aggregated in Notifications center.
-- [ ] Unsafe extensions are blocked or disabled and the user receives a dangerous-extension notification.
+- [x] Unsafe extensions are blocked or disabled and the user receives a dangerous-extension notification.
 - [ ] Registry metadata and extension manifest versions are consistent.
 - [ ] Each extension lives in its own repository with README, manifest, backend entrypoint, assets, tests, and release workflow.
 - [ ] CoreUI shows registry and installed extension status without contract drift.

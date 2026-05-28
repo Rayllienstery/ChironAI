@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.39] - 2026-05-28
+### Added
+- Added emergency extension blocklist policy, offline blocklist cache configuration, and tests for blocked installs and startup disablement.
+
+### Changed
+- Extension registry and installed status now surface blocklist matches, and blocklisted installed extensions cannot be re-enabled.
+
 ## [0.4.38] - 2026-05-28
 ### Added
 - Added bundled extension bootstrap-copy documentation, local registry fallback documentation, and a sync/check script for bundled extension payloads.

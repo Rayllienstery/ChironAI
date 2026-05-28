@@ -28,6 +28,7 @@ from llm_interactor import (
     RuntimeBackedChatClient,
     LoadedExtension,
 )
+from extensions_backend import ExtensionBlocklistPolicy
 
 
 class _StubProvider:
@@ -1020,6 +1021,88 @@ def test_extension_install_preserves_previous_safe_version_when_update_scan_fail
     record = ExtensionsRepository(repo).list_records()[0]
     assert record.provenance["selected_ref"] == "1.0.0"
     assert record.security_scan["status"] == "passed"
+
+
+def test_extension_install_rejects_blocklisted_ref(tmp_path: Path) -> None:
+    class _Registry:
+        def load(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "id": "sample-ext",
+                    "title": "Sample",
+                    "source_path": str(source),
+                    "latest_version": "1.0.0",
+                }
+            ]
+
+    source = tmp_path / "source"
+    _write_minimal_extension(source, ext_id="sample-ext", version="1.0.0")
+    blocklist = tmp_path / "blocklist.json"
+    blocklist.write_text(
+        json.dumps({"blocked": [{"extension_id": "sample-ext", "ref": "1.0.0", "reason": "compromised"}]}),
+        encoding="utf-8",
+    )
+    repo = _MemorySettingsRepo()
+    root = Path(__file__).resolve().parents[2]
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        registry_client=_Registry(),  # type: ignore[arg-type]
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+        blocklist_policy=ExtensionBlocklistPolicy(str(blocklist), project_root=tmp_path),
+    )
+
+    with pytest.raises(ValueError, match="blocked by emergency blocklist"):
+        manager.install("sample-ext")
+
+    assert ExtensionsRepository(repo).list_records() == []
+
+
+def test_blocklisted_installed_extension_is_disabled_on_bootstrap(tmp_path: Path) -> None:
+    repo = _MemorySettingsRepo()
+    root = Path(__file__).resolve().parents[2]
+    installed = tmp_path / "installed" / "sample-ext" / "1.0.0"
+    _write_minimal_extension(installed, ext_id="sample-ext", version="1.0.0")
+    ExtensionsRepository(repo).save_records(
+        [
+            InstalledExtensionRecord(
+                id="sample-ext",
+                version="1.0.0",
+                enabled=True,
+                installed=True,
+                source={"type": "test"},
+                title="Sample",
+                provenance={"selected_ref": "1.0.0"},
+            )
+        ]
+    )
+    blocklist = tmp_path / "blocklist.json"
+    blocklist.write_text(
+        json.dumps({"blocked": [{"extension_id": "sample-ext", "reason": "emergency disable"}]}),
+        encoding="utf-8",
+    )
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+        use_sandbox=False,
+        blocklist_policy=ExtensionBlocklistPolicy(str(blocklist), project_root=tmp_path),
+    )
+
+    manager.bootstrap_runtime()
+
+    record = ExtensionsRepository(repo).list_records()[0]
+    row = manager.installed_extensions()[0]
+    assert record.enabled is False
+    assert record.security_scan["scanner"] == "chironai_blocklist"
+    assert row["status"] == "blocked"
+    assert row["blocklist"]["matched"] is True
+    with pytest.raises(ValueError, match="blocked by emergency blocklist"):
+        manager.enable("sample-ext")
 
 
 def test_extension_security_failure_disables_installed_extension(tmp_path: Path) -> None:
