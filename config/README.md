@@ -67,6 +67,7 @@ export RAG_TOP_K=12
 | Knob | YAML | Env (read in code) | Per-request (dumb build id) |
 |------|------|--------------------|-----------------------------|
 | Chunk / total context chars | `rag.yaml` (`context_chunk_chars`, `context_total_chars`) | `RAG_CONTEXT_CHUNK_CHARS`, `RAG_CONTEXT_TOTAL_CHARS` (`get_rag_int`) | Optional build fields `context_chunk_chars`, `context_total_chars`; merged via `merge_build_into_proxy_settings` into `proxy_settings` and applied in LLM Proxy after build selection. |
+| Extensions registry | `server.yaml` (`extensions.registry_url`, `extensions.local_fallback_url`) | `CHIRONAI_EXTENSIONS_REGISTRY_URL`, `CHIRONAI_EXTENSIONS_LOCAL_REGISTRY_FALLBACK` | Defaults to the GitHub-hosted `ChironAI-Extensions-Registry` with local fallback to `extensions/registry/extensions.json`. |
 | Retrieval `top_k` | `retrieval.yaml` (`top_k`, etc.) | `RAG_TOP_K` overrides `get_retrieval_int("top_k", …)` | Optional build field `rag_top_k` (same merge path). |
 
 Passthrough requests (concrete Ollama tag, no build id) still use YAML/env and collection-specific params from `get_rag_answer_params`; they do not read build fields.

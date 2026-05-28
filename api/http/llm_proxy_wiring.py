@@ -19,11 +19,19 @@ from llm_proxy.config import LlmProxyRuntimeConfig
 from llm_proxy.contracts import LlmProxyBaseContext, LlmProxyExternalDocsBundle, LlmProxyWiring
 
 try:
-    from config import get_framework_collection_ttl_days, get_proxy_rerank_enabled, get_qdrant_url
+    from config import (
+        get_extensions_local_registry_fallback,
+        get_extensions_registry_url,
+        get_framework_collection_ttl_days,
+        get_proxy_rerank_enabled,
+        get_qdrant_url,
+    )
 except ImportError:
     get_proxy_rerank_enabled = lambda: False  # type: ignore[assignment,misc]
     get_qdrant_url = lambda: "http://localhost:6333"  # type: ignore[assignment,misc]
     get_framework_collection_ttl_days = lambda: 90  # type: ignore[assignment,misc]
+    get_extensions_registry_url = lambda: ""  # type: ignore[assignment,misc]
+    get_extensions_local_registry_fallback = lambda: "extensions/registry/extensions.json"  # type: ignore[assignment,misc]
 
 from api.http.proxy_status import (
     STATUS_IDLE,
@@ -440,7 +448,11 @@ def _build_extension_manager(
         project_root=_workspace_root(),
         host_context=host_context,
         settings_repo=settings_repo,
-        registry_client=ExtensionRegistryClient(project_root=_workspace_root()),
+        registry_client=ExtensionRegistryClient(
+            get_extensions_registry_url() or None,
+            project_root=_workspace_root(),
+            fallback_url=get_extensions_local_registry_fallback(),
+        ),
         default_provider_id=DEFAULT_LLM_PROVIDER_ID,
     )
     manager.start_background_bootstrap()

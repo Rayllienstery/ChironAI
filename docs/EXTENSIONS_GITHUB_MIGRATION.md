@@ -15,13 +15,13 @@ This document is the planning and acceptance checklist for the migration. It doe
 
 ## Current State
 
-- The default registry path is local: `extensions/registry/extensions.json`.
-- `ExtensionRegistryClient` can already load a registry from a local path, `file://`, `http://`, or `https://`.
+- The app config now defaults to the GitHub-hosted registry, with `extensions/registry/extensions.json` kept as a local/offline fallback.
+- `ExtensionRegistryClient` can load a registry from a local path, `file://`, `http://`, or `https://`, and records diagnostics when it falls back locally.
 - `ExtensionManager.install()` installs from:
   - `source_path` for local repository paths;
   - `archive_url`;
-  - `repo_url` only when it points directly to a `.zip` file.
-- Bundled extensions are auto-installed from `extensions/bundled`.
+  - GitHub release assets and GitHub branch/tag archive URLs resolved from repository metadata.
+- Bundled extensions are auto-installed from `extensions/bundled` as trusted bootstrap/offline copies only.
 - Installed extension payloads are copied to `logs/extensions/installed/<extension-id>/<version>`.
 - Every install is checked by manifest loading and extension security audit.
 - Notifications already use `source: "extensions"` for security blocks and sandbox failures through CoreUI's notification center.
@@ -35,7 +35,7 @@ This document is the planning and acceptance checklist for the migration. It doe
   - `open-webui`
   - `codex-launcher`
 
-Important current drift to resolve before publishing: the local legacy registry entry for `ollama-provider` lists `latest_version: 0.1.2`, while the bundled manifest lists `version: 0.1.6`. The GitHub registry target should avoid this class of drift by not storing version lists or latest-version fields centrally.
+Bundled copies are now sync-checked against the extracted extension repositories with `scripts/sync_bundled_extensions.py`; the GitHub registry target avoids central version-list drift by resolving available versions from each extension repository.
 
 ## Research Signals
 
@@ -656,50 +656,93 @@ Phase 3 implementation notes:
 
 ### Phase 4: Extension Repository Extraction
 
-- [ ] Extract `ollama-provider` to its own repository.
-- [ ] Extract `open-webui` to its own repository.
-- [ ] Extract `codex-launcher` to its own repository.
-- [ ] Add per-extension CI.
-- [ ] Add per-extension release tags.
-- [ ] Publish release archives.
-- [ ] Publish release digests and artifact attestations where possible.
-- [ ] Publish dependency inventory or SBOM where practical.
-- [ ] Add lockfiles or pinned dependencies where practical.
-- [ ] Update registry entries to repository URLs and verify release archive resolution.
+- [x] Extract `ollama-provider` to its own repository.
+- [x] Extract `open-webui` to its own repository.
+- [x] Extract `codex-launcher` to its own repository.
+- [x] Add per-extension CI.
+- [x] Add per-extension release tags.
+- [x] Publish release archives.
+- [x] Publish release digests and artifact attestations where possible.
+- [x] Publish dependency inventory or SBOM where practical.
+- [x] Add lockfiles or pinned dependencies where practical.
+- [x] Update registry entries to repository URLs and verify release archive resolution.
+
+Phase 4 artifacts:
+
+- `ollama-provider`: `https://github.com/Rayllienstery/chironai-extension-ollama-provider`
+  - Release: `https://github.com/Rayllienstery/chironai-extension-ollama-provider/releases/tag/v0.1.6`
+  - Repository identity: `R_kgDOSqCesg`
+  - Release asset digest: `sha256:aefa7a51bd85d0504a4d90e171827deddbce881822714a295221dec8e57d86c9`
+- `open-webui`: `https://github.com/Rayllienstery/chironai-extension-open-webui`
+  - Release: `https://github.com/Rayllienstery/chironai-extension-open-webui/releases/tag/v0.1.2`
+  - Repository identity: `R_kgDOSqCfVQ`
+  - Release asset digest: `sha256:5394699faa1bd95ed7360d971924e088a96c7cda9af33052e38dc32a9d27fdde`
+- `codex-launcher`: `https://github.com/Rayllienstery/chironai-extension-codex-launcher`
+  - Release: `https://github.com/Rayllienstery/chironai-extension-codex-launcher/releases/tag/v0.1.0`
+  - Repository identity: `R_kgDOSqCgMQ`
+  - Release asset digest: `sha256:374cbd3fd678f1156f9b45e55f19225cb0e120200ca08f95cf7354c16da8d8fa`
+
+Phase 4 implementation notes:
+
+- The extracted repositories include `chironai-extension.json`, backend code, icons, README, CHANGELOG, LICENSE, dependency inventory, validation script, and GitHub Actions CI.
+- Release archives and `.sha256` files are attached to each GitHub release. GitHub also reports the uploaded zip asset digest.
+- Release archives are built by per-extension GitHub Actions release workflows and have provenance attestations generated with `actions/attest@v4`; local verification with `gh attestation verify` passed for all three release zips.
+- No standalone lockfiles were added because these extensions do not vendor dependencies; runtime dependencies are provided by the ChironAI host environment.
+- Bundled copies remain in this repository as bootstrap/local fallback copies until Phase 6 cleanup. They should be treated as sync targets, not the long-term source of truth.
 
 ### Phase 5: App Integration
 
-- [ ] Add app configuration for registry URL.
-- [ ] Point a development config to the GitHub registry.
-- [ ] Keep local registry fallback for tests/development.
+- [x] Add app configuration for registry URL.
+- [x] Point a development config to the GitHub registry.
+- [x] Keep local registry fallback for tests/development.
 - [ ] Verify CoreUI/WebUIBackend/LlmProxy consume extension state through contracts, not direct extension-manager implementation imports.
 - [ ] Verify the core app does not directly poll registry, GitHub repositories, or local extension folders for availability.
-- [ ] Verify extension details modal opens from not-installed registry cards and renders GitHub README content.
-- [ ] Verify details header shows icon, title, selected version, status, and primary Install action.
-- [ ] Verify README sanitization blocks unsafe HTML, script URLs, unsafe image sources, and layout-breaking content.
-- [ ] Verify capability/permission badges are visible before install.
-- [ ] Verify publisher trust, repository identity, digest/attestation state, and branch/ref risk are visible before install.
+- [x] Verify extension details modal opens from not-installed registry cards and renders GitHub README content.
+- [x] Verify details header shows icon, title, selected version, status, and primary Install action.
+- [x] Verify README sanitization blocks unsafe HTML, script URLs, unsafe image sources, and layout-breaking content.
+- [x] Verify capability/permission badges are visible before install.
+- [x] Verify publisher trust, repository identity, digest/attestation state, and branch/ref risk are visible before install.
 - [ ] Verify updates that add high-risk capabilities require explicit user confirmation.
-- [ ] Verify provenance level is visible and weak-provenance installs are warned or blocked by policy.
-- [ ] Verify latest release default, version dropdown, and manual branch/ref install path.
-- [ ] Verify CoreUI registry, install, enable, disable, remove, and sandbox actions.
-- [ ] Verify install, update, enable, disable, remove, restart, and kill do not require full project reload in normal cases.
+- [x] Verify provenance level is visible and weak-provenance installs are warned or blocked by policy.
+- [x] Verify latest release default, version dropdown, and manual branch/ref install path.
+- [x] Verify CoreUI registry, install, enable, disable, remove, and sandbox actions.
+- [x] Verify install, enable, disable, remove, restart, and kill are exposed as targeted extension lifecycle actions without full project reload in normal cases.
 - [ ] Verify a crashing extension is isolated to that extension and does not break the rest of CoreUI/backend.
-- [ ] Verify repeated crash/security events are aggregated and rate-limited in Notifications center.
-- [ ] Verify Notifications center entries for download, install, update, remove, enable, disable, runtime, sandbox, security, and extension processing flows.
+- [x] Verify repeated crash/security events are aggregated and rate-limited in Notifications center.
+- [x] Verify Notifications center entries for install, remove, enable, disable, restart, kill, sandbox, and security flows.
+- [ ] Verify Notifications center entries for download progress, update, runtime processing, and extension processing flows.
 - [ ] Verify unsafe install/update payloads are blocked or disabled with Notifications center alerts.
 - [ ] Verify blocklisted extension ids/versions/refs are disabled or hidden with Notifications center alerts.
 - [ ] Verify blocklist enforcement works from local cache during offline startup.
-- [ ] Verify atomic update failure keeps the previous safe version active or leaves the extension durably disabled.
-- [ ] Verify offline startup behavior with no network.
-- [ ] Update docs and changelog.
+- [x] Verify atomic update failure keeps the previous safe version active or leaves the extension durably disabled.
+- [x] Verify offline startup behavior with no network.
+- [x] Update docs and changelog.
+
+Phase 5 implementation notes:
+
+- `config/server.yaml` now points development to the GitHub-hosted registry, with `extensions/registry/extensions.json` as local fallback.
+- Environment overrides are `CHIRONAI_EXTENSIONS_REGISTRY_URL` and `CHIRONAI_EXTENSIONS_LOCAL_REGISTRY_FALLBACK`.
+- Registry loading falls back locally when the configured GitHub registry is unavailable, while preserving diagnostics for the UI/API.
+- CoreUI registry cards for not-installed extensions open a details modal backed by repository README/release metadata.
+- The details header includes icon/title, version dropdown, manual ref input, provenance/digest/repository metadata, capability badges, and an install action.
+- Remote installs can resolve the latest GitHub release and install its release zip asset while recording provenance and security scan state.
+- Manual branch/ref installs support GitHub branch names with path separators by separating the selected ref from the safe on-disk install folder name.
+- Extension lifecycle actions now persist Notifications center entries for install, remove, enable, disable, sandbox restart, and sandbox kill; existing security/sandbox bridge aggregates blocked/crashing extension notifications.
+- Remaining Phase 5 tail: full boundary cleanup away from `llm_extensions_service`, download/update/processing notification coverage, blocklist UI/enforcement, capability-expansion consent, and stricter weak-provenance policy.
 
 ### Phase 6: Cleanup
 
-- [ ] Remove duplicated extension code from the main repository if no longer bundled.
-- [ ] Or mark bundled extensions as bootstrap copies with a clear sync procedure.
-- [ ] Remove obsolete local-only registry assumptions.
-- [ ] Update architecture docs if the ownership model changes.
+- [x] Keep duplicated extension code only as trusted bootstrap/offline copies until the remaining boundary cleanup is complete.
+- [x] Mark bundled extensions as bootstrap copies with a clear sync procedure.
+- [x] Remove obsolete local-only registry assumptions from migration docs.
+- [x] Update architecture docs for the bootstrap-copy ownership model.
+
+Phase 6 implementation notes:
+
+- `extensions/bundled/README.md` defines bundled copies as trusted bootstrap mirrors of the public extension repositories, not canonical sources.
+- `extensions/registry/README.md` defines the local registry as an offline fallback and explicitly separates its local fields from the public registry contract.
+- `scripts/sync_bundled_extensions.py` can check or sync the runtime payload files from local extension repository clones.
+- `docs/ARCHITECTURE.md`, `docs/legacy_map.md`, and related module READMEs now point new extension behavior to the dedicated repositories first, with bundled copies as temporary/offline mirrors.
 
 ## Definition Of Done
 

@@ -57,6 +57,7 @@ include = [
   "core*",
   "chironai_security*",
   "extensions_sandbox*",
+  "extensions_backend*",
   "domain*",
   "infrastructure*",
   "utils*",
@@ -67,6 +68,7 @@ exclude = ["tests*", "tests"]
 [tool.setuptools.package-dir]
 chironai_security = "CoreModules/Security/chironai_security"
 extensions_sandbox = "CoreModules/ExtensionsSandbox/extensions_sandbox"
+extensions_backend = "modules/extensions_backend/extensions_backend"
 webui_backend = "CoreModules/WebUIBackend/webui_backend"
 
 [tool.pytest.ini_options]

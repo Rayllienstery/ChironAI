@@ -34,10 +34,11 @@ flask --app rag_service.api.http:create_app run --port 5001
 ## Runtime Health / Start
 
 The standalone module still exposes runtime dependency helpers for `ollama` and
-`qdrant`, but app-level Ollama UX is owned by the bundled `ollama-provider`
-extension in the main ChironAI app. ServiceStarter and RagService helpers are
-host capabilities and compatibility fallbacks, not the primary WebUI Ollama
-control surface.
+`qdrant`, but app-level Ollama UX is owned by the `ollama-provider` extension
+in the main ChironAI app. The canonical extension source is its dedicated
+repository; the bundled copy is only a trusted bootstrap/offline mirror.
+ServiceStarter and RagService helpers are host capabilities and compatibility
+fallbacks, not the primary WebUI Ollama control surface.
 
 ```bash
 python -m rag_service health

@@ -3,14 +3,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import CoreUIBadge from "./CoreUIBadge";
 import CoreUIButton from "./CoreUIButton";
 import CoreUIPillTabs from "./CoreUIPillTabs";
+import { useOptionalNotificationCenter } from "./NotificationCenterContext";
 import {
   disableExtension,
   enableExtension,
   getExtensionInstalled,
+  getExtensionDetails,
   getExtensionProviders,
   getExtensionRegistry,
   getExtensionUiPayload,
   installExtension,
+  installExtensionTarget,
   killExtensionSandbox,
   removeExtension,
   restartExtensionSandbox,
@@ -104,6 +107,117 @@ function SecurityFindings({ findings }) {
   );
 }
 
+function CapabilityList({ capabilities }) {
+  const rows = Array.isArray(capabilities) ? capabilities : [];
+  if (!rows.length) return null;
+  return (
+    <div className="extensions-capabilities">
+      {rows.slice(0, 8).map((capability) => (
+        <CoreUIBadge
+          key={capability.id || capability.label}
+          tone={capability.risk === "high" || capability.risk === "critical" ? "warning" : "neutral"}
+        >
+          {capability.label || capability.id}
+        </CoreUIBadge>
+      ))}
+    </div>
+  );
+}
+
+function ExtensionDetailsModal({
+  details,
+  selectedRef,
+  setSelectedRef,
+  manualRef,
+  setManualRef,
+  busy,
+  onInstall,
+  onClose,
+}) {
+  if (!details) return null;
+  const entry = details.entry || {};
+  const versions = Array.isArray(details.versions) ? details.versions : [];
+  const selectedVersion = versions.find((version) => (version.ref || version.version) === selectedRef) || details.latest || {};
+  const readme = details.readme || {};
+  const publisher = details.publisher || entry.publisher || {};
+  const effectiveRef = manualRef.trim() || selectedRef || selectedVersion.ref || selectedVersion.version || "";
+  const provenance = manualRef.trim() ? "branch_or_commit_archive" : selectedVersion.provenance_level || "unknown";
+  const weakProvenance = ["github_tag_archive", "branch_or_commit_archive", "unknown"].includes(provenance);
+
+  return (
+    <div className="extensions-modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <div className="extensions-modal" role="dialog" aria-modal="true" aria-labelledby="extension-details-title" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="extensions-modal__header">
+          <div className="extensions-card__title-row">
+            <ExtensionIcon icon={entry.icon} iconUrl={entry.icon_url} />
+            <div>
+              <h3 id="extension-details-title">{entry.title || entry.id}</h3>
+              <p>{entry.description || ""}</p>
+            </div>
+          </div>
+          <CoreUIBadge tone="info">Not installed</CoreUIBadge>
+          <CoreUIButton variant="ghost" onClick={onClose}>
+            Close
+          </CoreUIButton>
+        </div>
+
+        <div className="extensions-modal__toolbar">
+          <label className="extensions-modal__field">
+            <span>Version</span>
+            <select value={selectedRef} onChange={(event) => setSelectedRef(event.target.value)}>
+              {!versions.length ? <option value="">unavailable</option> : null}
+              {versions.map((version) => {
+                const ref = version.ref || version.version;
+                return (
+                  <option key={ref} value={ref}>
+                    {version.is_latest ? `${ref} latest` : ref}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+          <label className="extensions-modal__field">
+            <span>Ref</span>
+            <input value={manualRef} onChange={(event) => setManualRef(event.target.value)} placeholder="branch, tag, or commit" />
+          </label>
+          <CoreUIButton
+            variant="primary"
+            disabled={busy || !effectiveRef}
+            onClick={() =>
+              onInstall({
+                version: effectiveRef,
+                ref: effectiveRef,
+                target_kind: manualRef.trim() ? "branch" : selectedVersion.target_kind || "release",
+                archive_url: manualRef.trim() ? "" : selectedVersion.archive_url || "",
+              })
+            }
+          >
+            Install
+          </CoreUIButton>
+        </div>
+
+        <div className="extensions-modal__meta">
+          <span>Publisher: {publisher.name || "unknown"}</span>
+          <span>Trust: {publisher.trust_state || entry.visibility || "unknown"}</span>
+          <span>Repository: {entry.repository_id || entry.repository || "unknown"}</span>
+          <span>Provenance: {provenance}</span>
+          {selectedVersion.digest ? <span>Digest: sha256:{selectedVersion.digest}</span> : null}
+        </div>
+        <CapabilityList capabilities={entry.capabilities} />
+        {weakProvenance ? (
+          <div className="coreui-panel-note coreui-panel-note--warning">
+            Weak provenance: {provenance}
+          </div>
+        ) : null}
+        {Array.isArray(details.warnings) && details.warnings.length ? (
+          <div className="coreui-panel-note coreui-panel-note--warning">{details.warnings.join(" | ")}</div>
+        ) : null}
+        <pre className="extensions-readme">{readme.markdown || readme.error || "README unavailable."}</pre>
+      </div>
+    </div>
+  );
+}
+
 function SandboxDiagnostics({ item, busyId, runAction }) {
   if (!item?.sandboxed) return null;
   const status = item.sandbox_status || "ready";
@@ -134,14 +248,14 @@ function SandboxDiagnostics({ item, busyId, runAction }) {
         <CoreUIButton
           variant="primary"
           disabled={busyId === item.id || !canRestart}
-          onClick={() => runAction(item.id, (id) => restartExtensionSandbox(id))}
+          onClick={() => runAction(item.id, (id) => restartExtensionSandbox(id), "restart")}
         >
           Restart worker
         </CoreUIButton>
         <CoreUIButton
           variant="danger"
           disabled={busyId === item.id || !item.sandbox_can_kill}
-          onClick={() => runAction(item.id, (id) => killExtensionSandbox(id))}
+          onClick={() => runAction(item.id, (id) => killExtensionSandbox(id), "kill")}
         >
           Kill worker
         </CoreUIButton>
@@ -254,6 +368,7 @@ function SchemaRenderer({ schema, providerByExtensionId }) {
 }
 
 export default function ExtensionsTab({ onErrorStateChange }) {
+  const notificationCenter = useOptionalNotificationCenter();
   const [activeView, setActiveView] = useState("installed");
   const [registry, setRegistry] = useState([]);
   const [installed, setInstalled] = useState([]);
@@ -262,6 +377,10 @@ export default function ExtensionsTab({ onErrorStateChange }) {
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [details, setDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [selectedRef, setSelectedRef] = useState("");
+  const [manualRef, setManualRef] = useState("");
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -299,6 +418,35 @@ export default function ExtensionsTab({ onErrorStateChange }) {
     () => new Map(providers.map((item) => [item.extension_id, item])),
     [providers]
   );
+  const persistExtensionNotification = notificationCenter?.persistNotification;
+  const extensionTitle = useCallback(
+    (extensionId) => {
+      const installedItem = installedById.get(extensionId);
+      if (installedItem?.title) return installedItem.title;
+      const registryItem = registry.find((item) => item.id === extensionId);
+      return registryItem?.title || extensionId;
+    },
+    [installedById, registry]
+  );
+  const notifyExtensionEvent = useCallback(
+    (extensionId, operation, kind, message, metadata = {}) => {
+      if (!persistExtensionNotification || !extensionId) return;
+      const title = extensionTitle(extensionId);
+      void persistExtensionNotification({
+        kind,
+        source: "extensions",
+        title: `${title}: ${operation}`,
+        message,
+        metadata: {
+          extension_id: extensionId,
+          operation,
+          ...metadata,
+        },
+        aggregation_key: `extensions-lifecycle:${extensionId}:${operation}:${kind}`,
+      });
+    },
+    [extensionTitle, persistExtensionNotification]
+  );
   const viewTabs = useMemo(
     () =>
       EXTENSION_VIEWS.map((view) => ({
@@ -320,22 +468,77 @@ export default function ExtensionsTab({ onErrorStateChange }) {
   );
 
   const runAction = useCallback(
-    async (extensionId, fn) => {
+    async (extensionId, fn, operation = "action") => {
       setBusyId(extensionId);
       setError("");
       try {
-        await fn(extensionId);
+        const result = await fn(extensionId);
+        notifyExtensionEvent(extensionId, operation, "success", `${operation} completed.`, result || {});
         await loadAll();
         onErrorStateChange?.(false);
       } catch (e) {
         const msg = String(e?.message || e || "Action failed");
         setError(msg);
+        notifyExtensionEvent(extensionId, operation, "error", msg);
         onErrorStateChange?.(true);
       } finally {
         setBusyId("");
       }
     },
-    [loadAll, onErrorStateChange]
+    [loadAll, notifyExtensionEvent, onErrorStateChange]
+  );
+
+  const openDetails = useCallback(
+    async (item) => {
+      if (!item?.id || installedById.has(item.id)) return;
+      setDetailsLoading(true);
+      setError("");
+      try {
+        const payload = await getExtensionDetails(item.id);
+        const versions = Array.isArray(payload.versions) ? payload.versions : [];
+        const latestRef = payload.latest?.ref || payload.latest?.version || versions[0]?.ref || versions[0]?.version || "";
+        setDetails(payload);
+        setSelectedRef(latestRef);
+        setManualRef("");
+      } catch (e) {
+        const msg = String(e?.message || e || "Failed to load extension details");
+        setError(msg);
+        onErrorStateChange?.(true);
+      } finally {
+        setDetailsLoading(false);
+      }
+    },
+    [installedById, onErrorStateChange]
+  );
+
+  const installFromDetails = useCallback(
+    async (target) => {
+      const extId = details?.entry?.id;
+      if (!extId) return;
+      setBusyId(extId);
+      setError("");
+      try {
+        const result = await installExtensionTarget(extId, target);
+        notifyExtensionEvent(
+          extId,
+          "install",
+          "success",
+          `Installed ${result?.selected_ref || result?.version || target?.ref || target?.version || "selected version"}.`,
+          result || {}
+        );
+        setDetails(null);
+        await loadAll();
+        onErrorStateChange?.(false);
+      } catch (e) {
+        const msg = String(e?.message || e || "Install failed");
+        setError(msg);
+        notifyExtensionEvent(extId, "install", "error", msg);
+        onErrorStateChange?.(true);
+      } finally {
+        setBusyId("");
+      }
+    },
+    [details, loadAll, notifyExtensionEvent, onErrorStateChange]
   );
 
   return (
@@ -376,7 +579,11 @@ export default function ExtensionsTab({ onErrorStateChange }) {
               const installedItem = installedById.get(item.id);
               const isBusy = busyId === item.id;
               return (
-                <article key={item.id} className="coreui-card-shell coreui-p-md extensions-card">
+                <article
+                  key={item.id}
+                  className={`coreui-card-shell coreui-p-md extensions-card ${!installedItem ? "extensions-card--clickable" : ""}`}
+                  onClick={() => openDetails(item)}
+                >
                   <div className="extensions-card__head">
                     <div className="extensions-card__title-row">
                       <ExtensionIcon icon={item.icon} iconUrl={item.icon_url} />
@@ -385,27 +592,49 @@ export default function ExtensionsTab({ onErrorStateChange }) {
                         <p>{item.description || "No description."}</p>
                       </div>
                     </div>
-                    <CoreUIBadge>{item.latest_version || item.default_ref || "latest"}</CoreUIBadge>
+                    <CoreUIBadge>{item.latest_version || item.default_ref || "GitHub"}</CoreUIBadge>
                   </div>
                   <div className="extensions-card__meta">
                     <span>ID: {item.id}</span>
                     <span>Visibility: {item.visibility || "trusted"}</span>
+                    {item.repository ? <span>Repository: {item.repository_id || item.repository}</span> : null}
                   </div>
+                  <CapabilityList capabilities={item.capabilities} />
                   <div className="extensions-card__actions">
                     {!installedItem ? (
-                      <CoreUIButton
-                        variant="primary"
-                        disabled={isBusy}
-                        onClick={() => runAction(item.id, (id) => installExtension(id))}
-                      >
-                        Install
-                      </CoreUIButton>
+                      <>
+                        <CoreUIButton
+                          variant="primary"
+                          disabled={isBusy || detailsLoading}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openDetails(item);
+                          }}
+                        >
+                          Details
+                        </CoreUIButton>
+                        {item.latest_version || item.default_ref ? (
+                          <CoreUIButton
+                            variant="ghost"
+                            disabled={isBusy}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              runAction(item.id, (id) => installExtension(id), "install");
+                            }}
+                          >
+                            Install
+                          </CoreUIButton>
+                        ) : null}
+                      </>
                     ) : (
                       <>
                         <CoreUIButton
                           variant="danger"
                           disabled={isBusy}
-                          onClick={() => runAction(item.id, (id) => removeExtension(id))}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            runAction(item.id, (id) => removeExtension(id), "remove");
+                          }}
                         >
                           Remove
                         </CoreUIButton>
@@ -413,7 +642,10 @@ export default function ExtensionsTab({ onErrorStateChange }) {
                           <CoreUIButton
                             variant="ghost"
                             disabled={isBusy}
-                            onClick={() => runAction(item.id, (id) => disableExtension(id))}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              runAction(item.id, (id) => disableExtension(id), "disable");
+                            }}
                           >
                             Disable
                           </CoreUIButton>
@@ -421,7 +653,10 @@ export default function ExtensionsTab({ onErrorStateChange }) {
                           <CoreUIButton
                             variant="primary"
                             disabled={isBusy}
-                            onClick={() => runAction(item.id, (id) => enableExtension(id))}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              runAction(item.id, (id) => enableExtension(id), "enable");
+                            }}
                           >
                             Enable
                           </CoreUIButton>
@@ -458,6 +693,9 @@ export default function ExtensionsTab({ onErrorStateChange }) {
               </div>
               <div className="extensions-card__meta">
                 <span>Version: {item.version}</span>
+                {item.provenance?.selected_ref && item.provenance.selected_ref !== item.version ? (
+                  <span>Ref: {item.provenance.selected_ref}</span>
+                ) : null}
                 <span>Enabled: {String(Boolean(item.enabled))}</span>
                 {item.restart_required ? <span>Restart required</span> : null}
                 {item.security_blocked ? <span>Security blocked</span> : null}
@@ -501,6 +739,17 @@ export default function ExtensionsTab({ onErrorStateChange }) {
           </div>
         </section>
       ) : null}
+
+      <ExtensionDetailsModal
+        details={details}
+        selectedRef={selectedRef}
+        setSelectedRef={setSelectedRef}
+        manualRef={manualRef}
+        setManualRef={setManualRef}
+        busy={Boolean(busyId)}
+        onInstall={installFromDetails}
+        onClose={() => setDetails(null)}
+      />
     </div>
   );
 }

@@ -31,8 +31,10 @@ The **`/api/tags`**, **`/api/show`**, **`/api/generate`**, and **`/api/chat`** r
 
 Compatibility ownership is intentional: `llm_proxy/ollama_upstream.py` and
 `llm_proxy/completions_generate.py` are public-route adapters, not new Ollama
-business logic owners. New Ollama provider behavior belongs in the bundled
-`ollama-provider` extension and should be reached through `LLMRuntime`.
+business logic owners. New Ollama provider behavior belongs in the
+`chironai-extension-ollama-provider` repository first; the bundled
+`ollama-provider` copy is only a trusted bootstrap/offline mirror. App code
+should reach it through `LLMRuntime`.
 
 ### Vision (multimodal images) on `POST /v1/chat/completions`
 

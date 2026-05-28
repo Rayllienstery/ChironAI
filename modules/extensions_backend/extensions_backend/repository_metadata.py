@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import html
+import re
 from typing import Any
 from urllib.parse import quote, urlparse
 
@@ -38,7 +40,13 @@ class GitHubExtensionRepositoryClient:
             timeout=self._timeout,
         )
         response.raise_for_status()
-        return {"repository": repo.slug, "ref": ref or "", "markdown": response.text}
+        markdown = response.text
+        return {
+            "repository": repo.slug,
+            "ref": ref or "",
+            "markdown": markdown,
+            "sanitized_html": sanitize_readme_markdown(markdown),
+        }
 
     def releases(self, repository: str) -> list[dict[str, Any]]:
         repo = self._parse_repository(repository)
@@ -107,12 +115,14 @@ class GitHubExtensionRepositoryClient:
         tag = str(item.get("tag_name") or "").strip()
         assets = item.get("assets") if isinstance(item.get("assets"), list) else []
         asset_url = ""
+        digest = ""
         for asset in assets:
             if not isinstance(asset, dict):
                 continue
             candidate = str(asset.get("browser_download_url") or "").strip()
             if candidate.endswith(".zip"):
                 asset_url = candidate
+                digest = str(asset.get("digest") or "").removeprefix("sha256:")
                 break
         return {
             "version": tag,
@@ -120,6 +130,7 @@ class GitHubExtensionRepositoryClient:
             "target_kind": "release",
             "release_url": str(item.get("html_url") or ""),
             "archive_url": asset_url or f"https://github.com/{repo.slug}/archive/{quote(tag, safe='')}.zip",
+            "digest": digest,
             "provenance_level": "github_release_asset" if asset_url else "github_tag_archive",
             "published_at": str(item.get("published_at") or ""),
             "is_latest": latest,
@@ -139,3 +150,22 @@ class GitHubExtensionRepositoryClient:
             raise ValueError("GitHub repository must be owner/name or https://github.com/owner/name")
         return GitHubRepositoryRef(owner=parts[0], name=parts[1])
 
+
+_UNSAFE_MD_LINK_RE = re.compile(r"(!?\[[^\]]*\]\()(?P<url>[^)]+)(\))", re.IGNORECASE)
+
+
+def sanitize_readme_markdown(markdown: str) -> str:
+    """Return escaped, display-safe HTML for README previews."""
+
+    def _safe_link(match: re.Match[str]) -> str:
+        prefix = match.group(1)
+        url = match.group("url").strip().strip("'\"")
+        suffix = match.group(3)
+        lowered = url.lower()
+        if lowered.startswith(("http://", "https://", "#")):
+            return f"{html.escape(prefix)}{html.escape(url)}{html.escape(suffix)}"
+        return html.escape(f"{prefix}unsafe-link-removed{suffix}")
+
+    cleaned = re.sub(r"<[^>]+>", "", markdown or "")
+    cleaned = _UNSAFE_MD_LINK_RE.sub(_safe_link, cleaned)
+    return "<pre>" + html.escape(cleaned, quote=False) + "</pre>"

@@ -158,7 +158,22 @@ class ExtensionCardDTO(TypedDict, total=False):
     description: str
     icon: str
     latest_version: str
+    repository: str
+    repository_id: str
+    publisher: dict[str, Any]
+    capabilities: list[dict[str, Any]]
     visibility: str
+
+
+class ExtensionDetailsDTO(TypedDict, total=False):
+    """GET /extensions/{extension_id}/details."""
+
+    entry: ExtensionCardDTO
+    versions: list[dict[str, Any]]
+    latest: dict[str, Any]
+    readme: dict[str, Any]
+    publisher: dict[str, Any]
+    warnings: list[str]
 
 
 class InstalledExtensionDTO(TypedDict, total=False):
@@ -218,6 +233,7 @@ __all__ = [
     "LlmProxyBuildsGetResponse",
     "LlmProxyBuildsPutOkResponse",
     "ExtensionCardDTO",
+    "ExtensionDetailsDTO",
     "InstalledExtensionDTO",
     "ProviderHealthDTO",
     "ExtensionUiSchemaDTO",

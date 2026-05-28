@@ -68,6 +68,27 @@ RETRIEVAL_CONFIG: Dict[str, Any] = _retrieval_cfg.get("retrieval", {})
 CRAWLER_CONFIG: Dict[str, Any] = _crawler_cfg.get("crawler", {})
 INDEXING_CONFIG: Dict[str, Any] = _indexing_cfg.get("indexing", {})
 LLM_PROXY_SERVER_CONFIG: Dict[str, Any] = _server_cfg.get("llm_proxy", {})
+EXTENSIONS_CONFIG: Dict[str, Any] = _server_cfg.get("extensions", {})
+DEFAULT_EXTENSIONS_REGISTRY_URL = (
+    "https://raw.githubusercontent.com/Rayllienstery/ChironAI-Extensions-Registry/main/extensions.json"
+)
+DEFAULT_EXTENSIONS_LOCAL_REGISTRY_FALLBACK = "extensions/registry/extensions.json"
+
+
+def get_extensions_registry_url() -> str:
+    """Return configured extension registry URL/path."""
+    return os.getenv(
+        "CHIRONAI_EXTENSIONS_REGISTRY_URL",
+        str(EXTENSIONS_CONFIG.get("registry_url") or DEFAULT_EXTENSIONS_REGISTRY_URL),
+    )
+
+
+def get_extensions_local_registry_fallback() -> str:
+    """Return local extension registry fallback URL/path."""
+    return os.getenv(
+        "CHIRONAI_EXTENSIONS_LOCAL_REGISTRY_FALLBACK",
+        str(EXTENSIONS_CONFIG.get("local_fallback_url") or DEFAULT_EXTENSIONS_LOCAL_REGISTRY_FALLBACK),
+    )
 
 
 def get_ollama_chat_url() -> str:

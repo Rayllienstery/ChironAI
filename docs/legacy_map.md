@@ -67,7 +67,9 @@ runtime is still loading or unavailable.
   `rag_service.infrastructure.ollama_*` modules are retained as temporary
   compatibility boundaries for public proxy helpers, standalone tests, and
   fallback runtime paths.
-- New provider behavior belongs in `extensions/bundled/ollama-provider`.
+- New provider behavior belongs in the `chironai-extension-ollama-provider`
+  repository first. `extensions/bundled/ollama-provider` is a trusted
+  bootstrap/offline mirror only.
 - New app call sites should use `LLMRuntime`, provider catalog/actions, or a
   clearly documented compatibility adapter.
 

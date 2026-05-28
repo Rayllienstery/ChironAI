@@ -92,8 +92,23 @@ class _FakeExtensionsService:
     def ui_payload(self) -> dict[str, Any]:
         return {"extensions": [{"id": "ollama-provider", "title": "Ollama", "ui_schema": {}}], "failed": []}
 
-    def install(self, extension_id: str, *, version: str | None = None) -> dict[str, Any]:
-        return {"id": extension_id, "version": version or "0.1.0", "restart_required": True, "restart_scope": "provider_registry"}
+    def extension_details(self, extension_id: str, *, ref: str | None = None) -> dict[str, Any]:
+        return {
+            "entry": {"id": extension_id, "title": "Ollama", "repository": "https://github.com/acme/ollama"},
+            "versions": [{"version": "v0.1.0", "ref": "v0.1.0", "is_latest": True}],
+            "latest": {"version": "v0.1.0", "ref": "v0.1.0", "is_latest": True},
+            "readme": {"markdown": "# Ollama", "sanitized_html": "<pre># Ollama</pre>"},
+        }
+
+    def install(
+        self,
+        extension_id: str,
+        *,
+        version: str | None = None,
+        target: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        selected = version or (target or {}).get("version") or "0.1.0"
+        return {"id": extension_id, "version": selected, "restart_required": True, "restart_scope": "provider_registry"}
 
     def remove(self, extension_id: str) -> dict[str, Any]:
         return {"id": extension_id, "removed": True, "restart_required": True, "restart_scope": "provider_registry"}
@@ -159,6 +174,7 @@ def test_extensions_routes_expose_registry_and_ui() -> None:
     client = app.test_client()
 
     registry = client.get("/api/webui/extensions/registry")
+    details = client.get("/api/webui/extensions/ollama-provider/details")
     installed = client.get("/api/webui/extensions/installed")
     providers = client.get("/api/webui/extensions/providers")
     catalog = client.get("/api/webui/providers/catalog")
@@ -167,6 +183,7 @@ def test_extensions_routes_expose_registry_and_ui() -> None:
     ui = client.get("/api/webui/extensions/ui")
 
     assert registry.status_code == 200
+    assert details.status_code == 200
     assert installed.status_code == 200
     assert providers.status_code == 200
     assert catalog.status_code == 200
@@ -174,6 +191,7 @@ def test_extensions_routes_expose_registry_and_ui() -> None:
     assert tabs.status_code == 200
     assert ui.status_code == 200
     assert (registry.get_json() or {}).get("registry")[0]["id"] == "ollama-provider"
+    assert (details.get_json() or {}).get("latest", {}).get("ref") == "v0.1.0"
     assert (registry.get_json() or {}).get("registry")[0]["title"] == "Ollama"
     installed_item = (installed.get_json() or {}).get("extensions")[0]
     assert installed_item["security_blocked"] is False
@@ -234,7 +252,10 @@ def test_extension_lifecycle_routes_return_restart_required() -> None:
     app.extensions["llm_extensions_service"] = _FakeExtensionsService()
     client = app.test_client()
 
-    install = client.post("/api/webui/extensions/install", json={"extension_id": "ollama-provider"})
+    install = client.post(
+        "/api/webui/extensions/install",
+        json={"extension_id": "ollama-provider", "target": {"version": "v0.1.0", "ref": "v0.1.0"}},
+    )
     disable = client.post("/api/webui/extensions/disable", json={"extension_id": "ollama-provider"})
     enable = client.post("/api/webui/extensions/enable", json={"extension_id": "ollama-provider"})
     remove = client.post("/api/webui/extensions/remove", json={"extension_id": "ollama-provider"})
@@ -244,6 +265,7 @@ def test_extension_lifecycle_routes_return_restart_required() -> None:
     assert enable.status_code == 202
     assert remove.status_code == 202
     assert (install.get_json() or {}).get("restart_required") is True
+    assert (install.get_json() or {}).get("version") == "v0.1.0"
     assert (disable.get_json() or {}).get("restart_required") is True
     assert (enable.get_json() or {}).get("restart_required") is True
     assert (remove.get_json() or {}).get("restart_required") is True

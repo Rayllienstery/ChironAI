@@ -62,6 +62,15 @@
   gap: 12px;
 }
 
+.extensions-card--clickable {
+  cursor: pointer;
+}
+
+.extensions-card--clickable:focus-within,
+.extensions-card--clickable:hover {
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 45%, var(--md-sys-color-outline));
+}
+
 .extensions-card__head,
 .extensions-card__meta,
 .extensions-card__actions,
@@ -122,6 +131,92 @@
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.extensions-capabilities {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.extensions-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--md-sys-color-scrim, #000) 45%, transparent);
+}
+
+.extensions-modal {
+  width: min(920px, 100%);
+  max-height: min(820px, calc(100vh - 40px));
+  overflow: auto;
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--coreui-radius-card);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  box-shadow: var(--coreui-elevation-3);
+}
+
+.extensions-modal__header,
+.extensions-modal__toolbar,
+.extensions-modal__meta {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.extensions-modal__header {
+  justify-content: space-between;
+}
+
+.extensions-modal__toolbar {
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.extensions-modal__field {
+  display: grid;
+  gap: 4px;
+  min-width: min(220px, 100%);
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.extensions-modal__field select,
+.extensions-modal__field input {
+  min-height: 38px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-on-surface);
+}
+
+.extensions-modal__meta {
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.extensions-readme {
+  margin: 0;
+  max-height: 380px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--coreui-radius-card);
+  padding: 14px;
+  background: var(--coreui-surface-panel-alt);
+  color: var(--md-sys-color-on-surface);
+  font-size: 13px;
 }
 
 .extensions-schema {
@@ -258,5 +353,11 @@
   .extensions-cards,
   .extensions-ui {
     grid-template-columns: 1fr;
+  }
+
+  .extensions-modal__header,
+  .extensions-modal__toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

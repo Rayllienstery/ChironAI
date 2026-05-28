@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.38] - 2026-05-28
+### Added
+- Added bundled extension bootstrap-copy documentation, local registry fallback documentation, and a sync/check script for bundled extension payloads.
+
+### Changed
+- Clarified architecture docs so dedicated extension repositories are the source of truth and bundled copies are offline/bootstrap mirrors.
+
+## [0.4.37] - 2026-05-28
+### Added
+- Added GitHub extension registry configuration with local fallback, repository-backed extension details, README/version loading, and CoreUI install details modal.
+- Added Notifications center persistence for extension install, remove, enable, disable, restart, and kill actions.
+
+### Changed
+- Wired remote extension installs to resolve latest GitHub release artifacts and record release provenance.
+- Preserved explicit GitHub branch/ref provenance while using safe on-disk folder names for refs that contain path separators.
+
+## [0.4.36] - 2026-05-28
+### Added
+- Extracted the initial bundled extensions into dedicated GitHub repositories with validation CI, release tags, release archives, digests, dependency inventories, and provenance attestations.
+
+### Changed
+- Marked Phase 4 of the Extensions GitHub migration plan complete and documented the extracted extension repositories and release artifacts.
+
 ## [0.4.35] - 2026-05-27
 ### Changed
 - Clarified Open WebUI extension wording so Docker runtime ownership remains with the DockerManager CoreModule and extensions only use host capabilities.

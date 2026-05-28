@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from extensions_backend import GitHubExtensionRepositoryClient
+from extensions_backend.repository_metadata import sanitize_readme_markdown
 
 
 def test_github_repository_client_maps_latest_release(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -18,7 +19,12 @@ def test_github_repository_client_maps_latest_release(monkeypatch: pytest.Monkey
                 "html_url": "https://github.com/acme/ext/releases/tag/v1.2.3",
                 "published_at": "2026-05-27T00:00:00Z",
                 "prerelease": False,
-                "assets": [{"browser_download_url": "https://github.com/acme/ext/releases/download/v1.2.3/ext.zip"}],
+                "assets": [
+                    {
+                        "browser_download_url": "https://github.com/acme/ext/releases/download/v1.2.3/ext.zip",
+                        "digest": "sha256:abc123",
+                    }
+                ],
             }
 
     monkeypatch.setattr("requests.get", lambda url, headers, timeout, params=None: _Response())
@@ -29,8 +35,10 @@ def test_github_repository_client_maps_latest_release(monkeypatch: pytest.Monkey
 
     assert release["version"] == "v1.2.3"
     assert release["archive_url"].endswith("/ext.zip")
+    assert release["digest"] == "abc123"
     assert release["provenance_level"] == "github_release_asset"
     assert readme["markdown"] == "# Readme"
+    assert readme["sanitized_html"] == "<pre># Readme</pre>"
 
 
 def test_github_repository_client_rejects_non_github_repositories() -> None:
@@ -39,3 +47,11 @@ def test_github_repository_client_rejects_non_github_repositories() -> None:
     with pytest.raises(ValueError, match="only github.com"):
         client.latest_release("https://example.com/acme/ext")
 
+
+def test_readme_sanitizer_strips_html_and_unsafe_urls() -> None:
+    html = sanitize_readme_markdown("<script>alert(1)</script>[x](javascript:alert(1))![p](file:///tmp/a.png)")
+
+    assert "<script" not in html
+    assert "javascript:" not in html
+    assert "file://" not in html
+    assert "unsafe-link-removed" in html

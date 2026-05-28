@@ -41,6 +41,7 @@ ChironAI `config/models.yaml` still defaults Ollama HTTP to port `11434`. Set `O
 
 ServiceStarter may remain a low-level host capability for installing or
 starting dependencies. In the main ChironAI WebUI, app-level Ollama service
-actions are owned by the bundled `ollama-provider` extension, which receives
-Docker/native-process capabilities from the host instead of importing
-ServiceStarter as provider behavior.
+actions are owned by the `ollama-provider` extension, whose canonical source is
+its dedicated repository. The bundled copy is only a trusted bootstrap/offline
+mirror. The extension receives Docker/native-process capabilities from the host
+instead of importing ServiceStarter as provider behavior.

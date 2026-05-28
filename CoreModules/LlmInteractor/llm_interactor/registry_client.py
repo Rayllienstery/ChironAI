@@ -45,9 +45,16 @@ class ExtensionRegistryLoadResult:
 class ExtensionRegistryClient:
     """Loads an extension registry from file or URL."""
 
-    def __init__(self, registry_url: str | None = None, *, project_root: Path | None = None) -> None:
+    def __init__(
+        self,
+        registry_url: str | None = None,
+        *,
+        project_root: Path | None = None,
+        fallback_url: str | None = None,
+    ) -> None:
         self._project_root = project_root or Path.cwd()
         self._registry_url = registry_url or self._default_registry_url()
+        self._fallback_url = fallback_url or ""
 
     def _default_registry_url(self) -> str:
         return str((self._project_root / DEFAULT_REGISTRY_PATH).resolve())
@@ -56,30 +63,57 @@ class ExtensionRegistryClient:
     def registry_url(self) -> str:
         return self._registry_url
 
+    @property
+    def fallback_url(self) -> str:
+        return self._fallback_url
+
     def load(self) -> list[dict[str, Any]]:
         return self.load_with_diagnostics().entries
 
     def load_with_diagnostics(self) -> ExtensionRegistryLoadResult:
+        diagnostics: list[ExtensionRegistryDiagnostic] = []
+        raw: Any
+        active_url = self._registry_url
         try:
-            raw = self._load_json_obj(self._registry_url)
+            raw = self._load_json_obj(active_url)
         except Exception as e:
-            return ExtensionRegistryLoadResult(
-                registry_url=self._registry_url,
-                diagnostics=[
+            if self._fallback_url and self._fallback_url != active_url:
+                diagnostics.append(
                     ExtensionRegistryDiagnostic(
-                        severity="error",
-                        code="registry_load_failed",
+                        severity="warning",
+                        code="registry_load_failed_using_fallback",
                         message=f"{type(e).__name__}: {e}",
                     )
-                ],
-            )
-        diagnostics: list[ExtensionRegistryDiagnostic] = []
+                )
+                active_url = self._fallback_url
+                try:
+                    raw = self._load_json_obj(active_url)
+                except Exception as fallback_error:
+                    diagnostics.append(
+                        ExtensionRegistryDiagnostic(
+                            severity="error",
+                            code="registry_fallback_load_failed",
+                            message=f"{type(fallback_error).__name__}: {fallback_error}",
+                        )
+                    )
+                    return ExtensionRegistryLoadResult(registry_url=active_url, diagnostics=diagnostics)
+            else:
+                return ExtensionRegistryLoadResult(
+                    registry_url=active_url,
+                    diagnostics=[
+                        ExtensionRegistryDiagnostic(
+                            severity="error",
+                            code="registry_load_failed",
+                            message=f"{type(e).__name__}: {e}",
+                        )
+                    ],
+                )
         if isinstance(raw, dict) and isinstance(raw.get("extensions"), list):
             raw = raw["extensions"]
         if not isinstance(raw, list):
             return ExtensionRegistryLoadResult(
-                registry_url=self._registry_url,
-                diagnostics=[
+                registry_url=active_url,
+                diagnostics=diagnostics + [
                     ExtensionRegistryDiagnostic(
                         severity="error",
                         code="registry_shape_invalid",
@@ -113,7 +147,7 @@ class ExtensionRegistryClient:
                 )
                 continue
             out.append(candidate)
-        return ExtensionRegistryLoadResult(registry_url=self._registry_url, entries=out, diagnostics=diagnostics)
+        return ExtensionRegistryLoadResult(registry_url=active_url, entries=out, diagnostics=diagnostics)
 
     def _validate_entry(self, entry: dict[str, Any]) -> list[tuple[str, str]]:
         errors: list[tuple[str, str]] = []

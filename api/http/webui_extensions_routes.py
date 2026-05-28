@@ -135,6 +135,20 @@ def register_extension_routes(
             error_log.error("webui_extensions_routes.get_extension_ui_payload", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
+    @bp.route("/extensions/<extension_id>/details", methods=["GET"])
+    def get_extension_details(extension_id: str) -> Any:
+        try:
+            svc = _get_extensions_service()
+            if svc is None:
+                return jsonify({"error": "Extensions runtime is unavailable"}), 503
+            details = getattr(svc, "extension_details", None)
+            if not callable(details):
+                return jsonify({"error": "Extension details are unavailable"}), 501
+            return jsonify(details(extension_id, ref=request.args.get("ref")))
+        except Exception as e:
+            error_log.error("webui_extensions_routes.get_extension_details", exc_info=True)
+            return jsonify({"error": str(e)}), 400
+
     @bp.route("/extensions/<extension_id>/actions/<action_id>", methods=["POST"])
     def run_extension_action(extension_id: str, action_id: str) -> Any:
         try:
@@ -194,7 +208,11 @@ def register_extension_routes(
             if svc is None:
                 return jsonify({"error": "Extensions runtime is unavailable"}), 503
             body = request.get_json(force=True, silent=True) or {}
-            result = svc.install(str(body.get("extension_id") or ""), version=body.get("version"))
+            result = svc.install(
+                str(body.get("extension_id") or ""),
+                version=body.get("version"),
+                target=body.get("target") if isinstance(body.get("target"), dict) else None,
+            )
             return jsonify(result), 202
         except Exception as e:
             error_log.error("webui_extensions_routes.install_extension", exc_info=True)

@@ -1403,6 +1403,16 @@ export async function getExtensionUiPayload() {
   return response.json();
 }
 
+export async function getExtensionDetails(extensionId, ref = null) {
+  const query = ref ? `?ref=${encodeURIComponent(ref)}` : '';
+  const response = await fetch(`${API_BASE}/extensions/${encodeURIComponent(extensionId)}/details${query}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(extractApiError(error, 'Failed to load extension details'));
+  }
+  return response.json();
+}
+
 async function postExtensionAction(path, body) {
   const response = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
@@ -1418,6 +1428,10 @@ async function postExtensionAction(path, body) {
 
 export async function installExtension(extensionId, version = null) {
   return postExtensionAction('/extensions/install', { extension_id: extensionId, version });
+}
+
+export async function installExtensionTarget(extensionId, target = {}) {
+  return postExtensionAction('/extensions/install', { extension_id: extensionId, target });
 }
 
 export async function removeExtension(extensionId) {

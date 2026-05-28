@@ -732,6 +732,28 @@ def test_registry_client_reports_bad_registry_shapes_and_missing_fields(tmp_path
     assert "registry_entry_unsupported_api" in codes
 
 
+def test_registry_client_uses_local_fallback_when_remote_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    registry_path = tmp_path / "extensions.json"
+    registry_path.write_text(
+        json.dumps({"extensions": [{"id": "fallback-ext", "title": "Fallback", "source_path": "extensions/bundled/open-webui"}]}),
+        encoding="utf-8",
+    )
+
+    def _raise(*args, **kwargs):
+        raise OSError("network unavailable")
+
+    monkeypatch.setattr("requests.get", _raise)
+
+    result = ExtensionRegistryClient(
+        "https://example.invalid/extensions.json",
+        project_root=Path.cwd(),
+        fallback_url=str(registry_path),
+    ).load_with_diagnostics()
+
+    assert result.entries[0]["id"] == "fallback-ext"
+    assert {item.code for item in result.diagnostics} == {"registry_load_failed_using_fallback"}
+
+
 def test_extension_install_rejects_manifest_id_mismatch(tmp_path: Path) -> None:
     class _Registry:
         def load(self) -> list[dict[str, object]]:
@@ -820,6 +842,144 @@ def test_extension_install_rejects_unsupported_registry_compatibility(tmp_path: 
 
     with pytest.raises(ValueError, match="unsupported extension_api_version"):
         manager.install("sample-ext")
+
+
+def test_extension_details_and_install_resolve_latest_github_release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Registry:
+        def load(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "id": "sample-ext",
+                    "title": "Sample",
+                    "repository": "https://github.com/acme/sample-ext",
+                    "repository_id": "repo-1",
+                    "compatibility": {"extension_api_version": EXTENSION_API_VERSION, "app": "chironai"},
+                }
+            ]
+
+    class _RepositoryClient:
+        def latest_release(self, repository: str) -> dict[str, object]:
+            return {
+                "version": "v1.0.0",
+                "ref": "v1.0.0",
+                "target_kind": "release",
+                "archive_url": "https://example.invalid/sample.zip",
+                "digest": "abc123",
+                "provenance_level": "github_release_asset",
+                "is_latest": True,
+            }
+
+        def releases(self, repository: str) -> list[dict[str, object]]:
+            return [self.latest_release(repository)]
+
+        def tags(self, repository: str) -> list[dict[str, object]]:
+            return [{"version": "v1.0.0", "ref": "v1.0.0", "target_kind": "tag"}]
+
+        def readme(self, repository: str, *, ref: str | None = None) -> dict[str, object]:
+            return {"repository": repository, "ref": ref or "", "markdown": "# Sample", "sanitized_html": "<pre># Sample</pre>"}
+
+    class _Response:
+        def __init__(self, content: bytes) -> None:
+            self.content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+    buf = BytesIO()
+    manifest = {
+        "id": "sample-ext",
+        "version": "1.0.0",
+        "api_version": EXTENSION_API_VERSION,
+        "type": "ui_extension",
+        "title": "Sample",
+        "compatibility": {"extension_api_version": EXTENSION_API_VERSION, "app": "chironai"},
+        "backend": {"entrypoint": "backend.provider:create_provider"},
+    }
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("sample-ext/chironai-extension.json", json.dumps(manifest))
+        zf.writestr("sample-ext/backend/provider.py", "def create_provider(host_context, manifest):\n    return object()\n")
+    monkeypatch.setattr("requests.get", lambda url, timeout: _Response(buf.getvalue()))
+
+    repo = _MemorySettingsRepo()
+    root = Path(__file__).resolve().parents[2]
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        registry_client=_Registry(),  # type: ignore[arg-type]
+        repository_client=_RepositoryClient(),
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+
+    details = manager.extension_details("sample-ext")
+    installed = manager.install("sample-ext")
+    record = ExtensionsRepository(repo).list_records()[0]
+
+    assert details["latest"]["ref"] == "v1.0.0"
+    assert details["readme"]["markdown"] == "# Sample"
+    assert installed["version"] == "v1.0.0"
+    assert record.provenance["archive_url"] == "https://example.invalid/sample.zip"
+    assert record.provenance["digest"] == "abc123"
+
+
+def test_extension_install_accepts_branch_refs_with_slashes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Registry:
+        def load(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "id": "sample-ext",
+                    "title": "Sample",
+                    "repository": "https://github.com/acme/sample-ext",
+                }
+            ]
+
+    class _RepositoryClient:
+        def releases(self, repository: str) -> list[dict[str, object]]:
+            return []
+
+    class _Response:
+        def __init__(self, content: bytes) -> None:
+            self.content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+    buf = BytesIO()
+    manifest = {
+        "id": "sample-ext",
+        "version": "1.0.0",
+        "api_version": EXTENSION_API_VERSION,
+        "type": "ui_extension",
+        "title": "Sample",
+        "compatibility": {"extension_api_version": EXTENSION_API_VERSION, "app": "chironai"},
+        "backend": {"entrypoint": "backend.provider:create_provider"},
+    }
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("sample-ext/chironai-extension.json", json.dumps(manifest))
+        zf.writestr("sample-ext/backend/provider.py", "def create_provider(host_context, manifest):\n    return object()\n")
+    monkeypatch.setattr("requests.get", lambda url, timeout: _Response(buf.getvalue()))
+
+    repo = _MemorySettingsRepo()
+    root = Path(__file__).resolve().parents[2]
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        registry_client=_Registry(),  # type: ignore[arg-type]
+        repository_client=_RepositoryClient(),
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+
+    result = manager.install("sample-ext", target={"ref": "feature/github-registry", "target_kind": "branch"})
+    record = ExtensionsRepository(repo).list_records()[0]
+
+    assert result["selected_ref"] == "feature/github-registry"
+    assert "/" not in result["version"]
+    assert record.provenance["selected_ref"] == "feature/github-registry"
+    assert record.provenance["storage_version"] == result["version"]
+    assert (tmp_path / "installed" / "sample-ext" / result["version"]).is_dir()
 
 
 def test_extension_install_preserves_previous_safe_version_when_update_scan_fails(tmp_path: Path) -> None:

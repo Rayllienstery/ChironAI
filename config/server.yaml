@@ -29,6 +29,15 @@ webui:
 llm_proxy:
   v1_include_autocomplete_logical_model: true
 
+## Extensions registry
+## - registry_url: GitHub-hosted registry used for development and release testing.
+## - local_fallback_url: local registry used when GitHub/network is unavailable.
+## Override with CHIRONAI_EXTENSIONS_REGISTRY_URL and
+## CHIRONAI_EXTENSIONS_LOCAL_REGISTRY_FALLBACK.
+extensions:
+  registry_url: "https://raw.githubusercontent.com/Rayllienstery/ChironAI-Extensions-Registry/main/extensions.json"
+  local_fallback_url: "extensions/registry/extensions.json"
+
 ## Logging (rag_proxy, RAG routes)
 ## - logging.level: DEBUG | INFO | WARNING | ERROR (default INFO). Override with env LOG_LEVEL.
 ## - File errors: logs/webui_errors.log (clean one-line or JSON Lines if LOG_FORMAT=json).
@@ -38,4 +47,3 @@ logging:
 qdrant:
   url: "http://localhost:6333"
   collection_name: "Apple_Collection"
-

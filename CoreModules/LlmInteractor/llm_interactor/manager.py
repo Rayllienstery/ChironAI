@@ -7,6 +7,7 @@ import shutil
 import threading
 import tempfile
 import zipfile
+from hashlib import sha256
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +23,11 @@ from llm_interactor.install_state import ExtensionsRepository, InstalledExtensio
 from llm_interactor.manifest import EXTENSION_API_VERSION, EXTENSION_TYPE_LLM_PROVIDER
 from llm_interactor.registry_client import ExtensionRegistryClient
 from llm_interactor.runtime import LLMRuntime, ProviderRegistry
+
+try:
+    from extensions_backend import GitHubExtensionRepositoryClient
+except Exception:  # pragma: no cover - optional module path during migration
+    GitHubExtensionRepositoryClient = None  # type: ignore[assignment,misc]
 
 
 DEFAULT_BUNDLED_DIR = "extensions/bundled"
@@ -59,6 +65,16 @@ def _github_archive_url(repository: str, ref: str) -> str:
     return f"https://github.com/{owner}/{name}/archive/{safe_ref}.zip"
 
 
+def _install_storage_segment(selected_ref: str) -> str:
+    ref = str(selected_ref or "").strip()
+    if not ref:
+        return ""
+    if "/" not in ref and "\\" not in ref and ref not in {".", ".."}:
+        return ref
+    normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", ref).strip(".-")[:48] or "ref"
+    return f"{normalized}-{sha256(ref.encode('utf-8')).hexdigest()[:12]}"
+
+
 class ExtensionManager:
     """Owns install state, discovery, and runtime bootstrap."""
 
@@ -73,12 +89,14 @@ class ExtensionManager:
         installed_dir: Path | None = None,
         default_provider_id: str | None = None,
         use_sandbox: bool = True,
+        repository_client: Any | None = None,
     ) -> None:
         self._project_root = project_root
         self._host_context = host_context
         self._settings_repo = settings_repo
         self._repo = ExtensionsRepository(settings_repo)
         self._registry_client = registry_client or ExtensionRegistryClient(project_root=project_root)
+        self._repository_client = repository_client or (GitHubExtensionRepositoryClient() if GitHubExtensionRepositoryClient else None)
         self._bundled_dir = bundled_dir or (project_root / DEFAULT_BUNDLED_DIR)
         self._installed_dir = installed_dir or (project_root / DEFAULT_INSTALLED_DIR)
         self._installed_dir.mkdir(parents=True, exist_ok=True)
@@ -406,6 +424,66 @@ class ExtensionManager:
             "diagnostics": [],
             "entries_count": len(self.registry_entries()),
         }
+
+    def extension_details(self, extension_id: str, *, ref: str | None = None) -> dict[str, Any]:
+        ext_id = str(extension_id or "").strip()
+        if not ext_id:
+            raise ValueError("extension_id is required")
+        entry = next((item for item in self.registry_entries() if str(item.get("id") or "").strip() == ext_id), None)
+        if entry is None:
+            raise ValueError(f"Extension '{ext_id}' not found in registry")
+        repository = str(entry.get("repository") or entry.get("repo_url") or "").strip()
+        details: dict[str, Any] = {
+            "entry": dict(entry),
+            "versions": [],
+            "latest": {},
+            "readme": {"extension_id": ext_id, "repository": repository, "markdown": "", "sanitized_html": ""},
+            "publisher": dict(entry.get("publisher") or {}) if isinstance(entry.get("publisher"), dict) else {},
+        }
+        if not repository or self._repository_client is None:
+            return details
+        errors: list[str] = []
+        try:
+            latest = self._repository_client.latest_release(repository)
+            details["latest"] = latest
+        except Exception as e:
+            latest = {}
+            errors.append(f"latest_release: {type(e).__name__}: {e}")
+        try:
+            releases = self._repository_client.releases(repository)
+        except Exception as e:
+            releases = []
+            errors.append(f"releases: {type(e).__name__}: {e}")
+        try:
+            tags = self._repository_client.tags(repository)
+        except Exception as e:
+            tags = []
+            errors.append(f"tags: {type(e).__name__}: {e}")
+        versions_by_ref: dict[str, dict[str, Any]] = {}
+        for row in [latest, *releases, *tags]:
+            if not isinstance(row, dict):
+                continue
+            key = str(row.get("ref") or row.get("version") or "").strip()
+            if key and key not in versions_by_ref:
+                versions_by_ref[key] = dict(row)
+        details["versions"] = list(versions_by_ref.values())
+        readme_ref = str(ref or (latest or {}).get("ref") or (latest or {}).get("version") or "").strip() or None
+        try:
+            readme = self._repository_client.readme(repository, ref=readme_ref)
+            details["readme"] = {"extension_id": ext_id, **readme}
+        except Exception as e:
+            errors.append(f"readme: {type(e).__name__}: {e}")
+            details["readme"] = {
+                "extension_id": ext_id,
+                "repository": repository,
+                "ref": readme_ref or "",
+                "markdown": "",
+                "sanitized_html": "",
+                "error": f"{type(e).__name__}: {e}",
+            }
+        if errors:
+            details["warnings"] = errors
+        return details
 
     def installed_extensions(self) -> list[dict[str, Any]]:
         loaded_by_id = {item.manifest.id: item for item in self._loaded}
@@ -797,31 +875,49 @@ class ExtensionManager:
             ],
         }
 
-    def install(self, extension_id: str, *, version: str | None = None) -> dict[str, Any]:
+    def install(
+        self,
+        extension_id: str,
+        *,
+        version: str | None = None,
+        target: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         ext_id = str(extension_id or "").strip()
         if not ext_id:
             raise ValueError("extension_id is required")
         entry = next((item for item in self.registry_entries() if str(item.get("id") or "").strip() == ext_id), None)
         if entry is None:
             raise ValueError(f"Extension '{ext_id}' not found in registry")
-        target_version = str(version or entry.get("latest_version") or entry.get("default_ref") or "").strip()
-        if not target_version:
-            raise ValueError("registry entry has no latest_version/default_ref")
-        if "/" in target_version or "\\" in target_version or target_version in {".", ".."}:
+        target_payload = dict(target or {})
+        requested_ref = str(
+            version
+            or target_payload.get("version")
+            or target_payload.get("ref")
+            or entry.get("latest_version")
+            or entry.get("default_ref")
+            or ""
+        ).strip()
+        resolved_entry, resolved_target = self._resolve_install_target(entry, requested_ref)
+        entry = resolved_entry
+        selected_ref = resolved_target
+        if not selected_ref:
+            raise ValueError("registry entry has no latest_version/default_ref and repository latest release could not be resolved")
+        storage_version = _install_storage_segment(selected_ref)
+        if not storage_version:
             raise ValueError("extension version/ref must be a safe path segment")
-        target_dir = self._installed_dir / ext_id / target_version
+        target_dir = self._installed_dir / ext_id / storage_version
         target_dir.parent.mkdir(parents=True, exist_ok=True)
         staging_dir = Path(
             tempfile.mkdtemp(
-                prefix=f".{ext_id}-{target_version}-staging-",
+                prefix=f".{ext_id}-{storage_version}-staging-",
                 dir=str(target_dir.parent),
             )
         )
         backup_dir: Path | None = None
         try:
-            self._install_entry_payload(entry, staging_dir, selected_ref=target_version)
+            self._install_entry_payload(entry, staging_dir, selected_ref=selected_ref)
             manifest = load_manifest_from_dir(staging_dir)
-            self._validate_install_manifest(entry, manifest, target_version)
+            self._validate_install_manifest(entry, manifest, selected_ref)
             if manifest.backend is None:
                 raise ValueError("manifest backend is required")
             audit_extension_or_raise(staging_dir, manifest=manifest, entrypoint=manifest.backend.entrypoint)
@@ -840,7 +936,7 @@ class ExtensionManager:
             if backup_dir is not None and backup_dir.exists():
                 shutil.rmtree(backup_dir, ignore_errors=True)
         records = [r for r in self._repo.list_records() if r.id != ext_id]
-        provenance = self._install_provenance(entry, target_version)
+        provenance = self._install_provenance(entry, selected_ref, storage_version=storage_version)
         security_scan = {
             "status": "passed",
             "scanner": "chironai_static_audit",
@@ -850,7 +946,7 @@ class ExtensionManager:
         records.append(
             InstalledExtensionRecord(
                 id=ext_id,
-                version=target_version,
+                version=storage_version,
                 enabled=True,
                 installed=True,
                 source={
@@ -871,7 +967,8 @@ class ExtensionManager:
         self._repo.save_records(records)
         return {
             "id": ext_id,
-            "version": target_version,
+            "version": storage_version,
+            "selected_ref": selected_ref,
             "restart_required": True,
             "restart_scope": RESTART_SCOPE_PROVIDER_REGISTRY,
             "reload_status": "pending",
@@ -897,18 +994,50 @@ class ExtensionManager:
         if app not in {"chironai", "chiron ai"}:
             raise ValueError(f"unsupported extension app compatibility: {app}")
 
-    def _install_provenance(self, entry: dict[str, Any], target_version: str) -> dict[str, Any]:
+    def _resolve_install_target(self, entry: dict[str, Any], requested_ref: str) -> tuple[dict[str, Any], str]:
+        resolved = dict(entry)
+        repository = str(resolved.get("repository") or resolved.get("repo_url") or "").strip()
+        if not repository or self._repository_client is None:
+            return resolved, requested_ref
+        if requested_ref:
+            try:
+                for version in self._repository_client.releases(repository):
+                    ref = str(version.get("ref") or version.get("version") or "").strip()
+                    if ref == requested_ref or ref.lstrip("v") == requested_ref.lstrip("v"):
+                        return self._entry_with_version_payload(resolved, version), ref
+            except Exception:
+                pass
+            return resolved, requested_ref
+        latest = self._repository_client.latest_release(repository)
+        latest_ref = str(latest.get("ref") or latest.get("version") or "").strip()
+        return self._entry_with_version_payload(resolved, latest), latest_ref
+
+    def _entry_with_version_payload(self, entry: dict[str, Any], version: dict[str, Any]) -> dict[str, Any]:
+        out = dict(entry)
+        archive_url = str(version.get("archive_url") or "").strip()
+        if archive_url:
+            out["archive_url"] = archive_url
+        for key in ("digest", "commit_sha", "provenance_level", "release_url", "target_kind"):
+            if version.get(key):
+                out[key] = version[key]
+        return out
+
+    def _install_provenance(self, entry: dict[str, Any], selected_ref: str, *, storage_version: str) -> dict[str, Any]:
         repository = str(entry.get("repository") or entry.get("repo_url") or "").strip()
         archive_url = str(entry.get("archive_url") or "").strip()
         source_path = str(entry.get("source_path") or "").strip()
-        provenance_level = "local_source" if source_path else "github_release_asset" if archive_url else "unknown"
+        provenance_level = str(
+            entry.get("provenance_level")
+            or ("local_source" if source_path else "github_release_asset" if archive_url else "unknown")
+        )
         return {
             "repository": repository,
             "repository_id": str(entry.get("repository_id") or ""),
-            "selected_ref": target_version,
-            "selected_version": target_version,
-            "target_kind": "release" if _SEMVERISH_RE.match(target_version) else "branch",
-            "resolved_commit_sha": str(entry.get("resolved_commit_sha") or ""),
+            "selected_ref": selected_ref,
+            "selected_version": selected_ref,
+            "storage_version": storage_version,
+            "target_kind": str(entry.get("target_kind") or ("release" if _SEMVERISH_RE.match(selected_ref) else "branch")),
+            "resolved_commit_sha": str(entry.get("resolved_commit_sha") or entry.get("commit_sha") or ""),
             "archive_url": archive_url,
             "digest": str(entry.get("digest") or ""),
             "provenance_level": provenance_level,
