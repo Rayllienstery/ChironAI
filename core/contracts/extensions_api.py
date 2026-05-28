@@ -20,6 +20,10 @@ from typing import Any, Literal, TypedDict
 EXTENSIONS_API_VERSION: str = "1"
 EXTENSIONS_API_PREFIX: str = "/api/extensions"
 WEBUI_EXTENSIONS_PROXY_PREFIX: str = "/api/webui/extensions"
+EXTENSIONS_SERVICE_APP_KEY: str = "extensions_service"
+LEGACY_EXTENSIONS_SERVICE_APP_KEY: str = "llm_extensions_service"
+EXTENSIONS_RUNTIME_APP_KEY: str = "llm_interactor_runtime"
+EXTENSIONS_PROVIDER_REGISTRY_APP_KEY: str = "llm_provider_registry"
 
 
 ExtensionType = Literal["llm_provider", "ui_extension"]
@@ -338,6 +342,10 @@ __all__ = [
     "EXTENSIONS_API_VERSION",
     "EXTENSIONS_API_PREFIX",
     "WEBUI_EXTENSIONS_PROXY_PREFIX",
+    "EXTENSIONS_SERVICE_APP_KEY",
+    "LEGACY_EXTENSIONS_SERVICE_APP_KEY",
+    "EXTENSIONS_RUNTIME_APP_KEY",
+    "EXTENSIONS_PROVIDER_REGISTRY_APP_KEY",
     "ExtensionType",
     "ExtensionVisibility",
     "PublisherTrustState",

@@ -155,16 +155,26 @@ _UNSAFE_MD_LINK_RE = re.compile(r"(!?\[[^\]]*\]\()(?P<url>[^)]+)(\))", re.IGNORE
 
 
 def sanitize_readme_markdown(markdown: str) -> str:
-    """Return escaped, display-safe HTML for README previews."""
+    """Return escaped, display-safe HTML for README previews.
+
+    Pipeline:
+    1. Strip raw HTML tags (prevent injected tags from surviving).
+    2. Replace unsafe markdown link/image URLs with a placeholder — safe URLs
+       (http/https/#) are kept as-is; everything else is removed.
+    3. HTML-escape the entire result once so the final ``<pre>`` block is safe.
+
+    The escaping in step 3 is the single escape point; ``_safe_link`` must NOT
+    pre-escape its return value, otherwise characters like ``&`` would be
+    double-escaped (``&`` → ``&amp;`` → ``&amp;amp;``).
+    """
 
     def _safe_link(match: re.Match[str]) -> str:
         prefix = match.group(1)
         url = match.group("url").strip().strip("'\"")
         suffix = match.group(3)
-        lowered = url.lower()
-        if lowered.startswith(("http://", "https://", "#")):
-            return f"{html.escape(prefix)}{html.escape(url)}{html.escape(suffix)}"
-        return html.escape(f"{prefix}unsafe-link-removed{suffix}")
+        if url.lower().startswith(("http://", "https://", "#")):
+            return f"{prefix}{url}{suffix}"
+        return f"{prefix}unsafe-link-removed{suffix}"
 
     cleaned = re.sub(r"<[^>]+>", "", markdown or "")
     cleaned = _UNSAFE_MD_LINK_RE.sub(_safe_link, cleaned)

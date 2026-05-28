@@ -6,16 +6,15 @@ from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request, send_file
 
+from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
+
 
 def _get_extensions_service() -> Any:
-    return current_app.extensions.get("llm_extensions_service")
+    return get_extensions_service(current_app)
 
 
 def _get_extensions_runtime(svc: Any) -> Any:
-    runtime = current_app.extensions.get("llm_interactor_runtime")
-    if runtime is not None:
-        return runtime
-    return getattr(svc, "runtime", None) if svc is not None else None
+    return get_extensions_runtime(current_app, svc)
 
 
 def register_extension_routes(
@@ -29,12 +28,12 @@ def register_extension_routes(
             svc = _get_extensions_service()
             if svc is None:
                 return jsonify({"available": False, "registry": [], "registry_url": None}), 200
-            diagnostics = svc.registry_diagnostics() if callable(getattr(svc, "registry_diagnostics", None)) else {}
+            diagnostics = svc.registry_diagnostics()
             return jsonify(
                 {
                     "available": True,
                     "registry": svc.registry_entries(),
-                    "registry_url": getattr(getattr(svc, "_registry_client", None), "registry_url", None),
+                    "registry_url": diagnostics.get("registry_url"),
                     "diagnostics": diagnostics.get("diagnostics", []),
                 }
             )
@@ -141,13 +140,13 @@ def register_extension_routes(
             svc = _get_extensions_service()
             if svc is None:
                 return jsonify({"error": "Extensions runtime is unavailable"}), 503
-            details = getattr(svc, "extension_details", None)
-            if not callable(details):
-                return jsonify({"error": "Extension details are unavailable"}), 501
-            return jsonify(details(extension_id, ref=request.args.get("ref")))
-        except Exception as e:
+            return jsonify(svc.extension_details(extension_id, ref=request.args.get("ref")))
+        except ValueError as e:
             error_log.error("webui_extensions_routes.get_extension_details", exc_info=True)
             return jsonify({"error": str(e)}), 400
+        except Exception as e:
+            error_log.error("webui_extensions_routes.get_extension_details", exc_info=True)
+            return jsonify({"error": str(e)}), 502
 
     @bp.route("/extensions/<extension_id>/actions/<action_id>", methods=["POST"])
     def run_extension_action(extension_id: str, action_id: str) -> Any:
@@ -211,7 +210,19 @@ def register_extension_routes(
             result = svc.install(
                 str(body.get("extension_id") or ""),
                 version=body.get("version"),
-                target=body.get("target") if isinstance(body.get("target"), dict) else None,
+                target={
+                    **(body.get("target") if isinstance(body.get("target"), dict) else {}),
+                    **(
+                        {"allow_capability_expansion": body.get("allow_capability_expansion")}
+                        if "allow_capability_expansion" in body
+                        else {}
+                    ),
+                    **(
+                        {"accepted_capabilities": body.get("accepted_capabilities")}
+                        if "accepted_capabilities" in body
+                        else {}
+                    ),
+                },
             )
             return jsonify(result), 202
         except Exception as e:

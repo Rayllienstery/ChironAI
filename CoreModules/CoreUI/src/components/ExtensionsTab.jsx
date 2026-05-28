@@ -381,6 +381,7 @@ export default function ExtensionsTab({ onErrorStateChange }) {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [selectedRef, setSelectedRef] = useState("");
   const [manualRef, setManualRef] = useState("");
+  const persistExtensionNotification = notificationCenter?.persistNotification;
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -400,11 +401,21 @@ export default function ExtensionsTab({ onErrorStateChange }) {
     } catch (e) {
       const msg = String(e?.message || e || "Failed to load extensions");
       setError(msg);
+      if (persistExtensionNotification) {
+        void persistExtensionNotification({
+          kind: "error",
+          source: "extensions",
+          title: "Extensions registry",
+          message: msg,
+          metadata: { operation: "registry_load" },
+          aggregation_key: "extensions-registry:load:error",
+        });
+      }
       onErrorStateChange?.(true);
     } finally {
       setLoading(false);
     }
-  }, [onErrorStateChange]);
+  }, [onErrorStateChange, persistExtensionNotification]);
 
   useEffect(() => {
     loadAll();
@@ -418,7 +429,6 @@ export default function ExtensionsTab({ onErrorStateChange }) {
     () => new Map(providers.map((item) => [item.extension_id, item])),
     [providers]
   );
-  const persistExtensionNotification = notificationCenter?.persistNotification;
   const extensionTitle = useCallback(
     (extensionId) => {
       const installedItem = installedById.get(extensionId);
@@ -503,12 +513,13 @@ export default function ExtensionsTab({ onErrorStateChange }) {
       } catch (e) {
         const msg = String(e?.message || e || "Failed to load extension details");
         setError(msg);
+        notifyExtensionEvent(item.id, "details", "error", msg);
         onErrorStateChange?.(true);
       } finally {
         setDetailsLoading(false);
       }
     },
-    [installedById, onErrorStateChange]
+    [installedById, notifyExtensionEvent, onErrorStateChange]
   );
 
   const installFromDetails = useCallback(

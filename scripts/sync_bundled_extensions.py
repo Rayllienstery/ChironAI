@@ -76,6 +76,7 @@ def _copy_payload(source: Path, dest: Path) -> None:
             shutil.copytree(src, dst)
         else:
             shutil.copy2(src, dst)
+    filecmp.clear_cache()
 
 
 def check_target(source_root: Path, target: ExtensionSyncTarget) -> list[str]:

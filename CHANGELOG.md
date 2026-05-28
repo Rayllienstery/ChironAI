@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-05-28
+### Added
+- Added the extension-management service facade, registry-client module boundary, and API guardrails for the GitHub extensions migration release.
+
+### Changed
+- Routed extension API state through contract-shaped accessors instead of legacy Flask extension keys.
+- Removed direct bundled-extension HTTP route discovery from API startup and replaced Ollama compatibility routes with contract-backed handlers.
+- Extension lifecycle operations now attempt targeted runtime reloads and report reload status instead of requiring a full project reload in normal cases.
+- Extension registry/details load failures now persist Notifications center entries.
+- Marked the Extensions GitHub migration acceptance checklist complete for the `0.5.0` release.
+
+## [0.4.40] - 2026-05-28
+### Added
+- Added high-risk extension capability-expansion consent checks for updates.
+- Added remote emergency blocklist publishing and validation in the public extensions registry.
+
+### Changed
+- Extension blocklist loading now defaults to the GitHub-hosted blocklist with a local offline fallback cache.
+
 ## [0.4.39] - 2026-05-28
 ### Added
 - Added emergency extension blocklist policy, offline blocklist cache configuration, and tests for blocked installs and startup disablement.

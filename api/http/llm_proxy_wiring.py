@@ -21,9 +21,11 @@ from llm_proxy.contracts import LlmProxyBaseContext, LlmProxyExternalDocsBundle,
 try:
     from config import (
         get_extensions_blocklist_url,
+        get_extensions_local_blocklist_fallback,
         get_extensions_local_registry_fallback,
         get_extensions_registry_url,
         get_framework_collection_ttl_days,
+        get_github_token,
         get_proxy_rerank_enabled,
         get_qdrant_url,
     )
@@ -34,6 +36,8 @@ except ImportError:
     get_extensions_registry_url = lambda: ""  # type: ignore[assignment,misc]
     get_extensions_local_registry_fallback = lambda: "extensions/registry/extensions.json"  # type: ignore[assignment,misc]
     get_extensions_blocklist_url = lambda: "extensions/registry/blocklist.json"  # type: ignore[assignment,misc]
+    get_extensions_local_blocklist_fallback = lambda: "extensions/registry/blocklist.json"  # type: ignore[assignment,misc]
+    get_github_token = lambda: ""  # type: ignore[assignment,misc]
 
 from api.http.proxy_status import (
     STATUS_IDLE,
@@ -404,10 +408,14 @@ def _build_extension_manager(
     try:
         from llm_interactor import (
             ExtensionManager,
-            ExtensionRegistryClient,
             ProviderHostContext,
         )
-        from extensions_backend import ExtensionBlocklistPolicy
+        from extensions_backend import (
+            ExtensionBlocklistPolicy,
+            ExtensionManagementService,
+            ExtensionRegistryClient,
+            GitHubExtensionRepositoryClient,
+        )
     except Exception as e:
         _RAG_LOG.warning("LlmInteractor unavailable; falling back to direct chat client: %s", e)
         return None, None, None, None, None
@@ -447,6 +455,7 @@ def _build_extension_manager(
             "stop_native_ollama": _stop_native_ollama,
         },
     )
+    github_token = get_github_token() or None
     manager = ExtensionManager(
         project_root=_workspace_root(),
         host_context=host_context,
@@ -459,18 +468,21 @@ def _build_extension_manager(
         blocklist_policy=ExtensionBlocklistPolicy(
             get_extensions_blocklist_url() or None,
             project_root=_workspace_root(),
+            fallback_url=get_extensions_local_blocklist_fallback(),
         ),
+        repository_client=GitHubExtensionRepositoryClient(token=github_token),
         default_provider_id=DEFAULT_LLM_PROVIDER_ID,
     )
-    manager.start_background_bootstrap()
+    service = ExtensionManagementService(manager)
+    service.start_background_bootstrap()
     runtime_chat_client = _RuntimeResolvingChatClient(
         delegate=deps.chat_client,
-        extension_manager=manager,
+        extension_manager=service,
         runtime=None,
         provider_id=DEFAULT_LLM_PROVIDER_ID,
     )
     _RAG_LOG.info("Extension runtime bootstrap started in background")
-    return manager, None, None, runtime_chat_client, DEFAULT_LLM_PROVIDER_ID
+    return service, None, None, runtime_chat_client, DEFAULT_LLM_PROVIDER_ID
 
 
 def build_llm_proxy_wiring(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import zipfile
 from io import BytesIO
 import sys
@@ -151,7 +152,14 @@ class _MemorySettingsRepo:
         self.data[key] = value
 
 
-def _write_minimal_extension(source: Path, *, ext_id: str, version: str = "1.0.0", unsafe: bool = False) -> None:
+def _write_minimal_extension(
+    source: Path,
+    *,
+    ext_id: str,
+    version: str = "1.0.0",
+    unsafe: bool = False,
+    capabilities: dict[str, object] | None = None,
+) -> None:
     backend = source / "backend"
     backend.mkdir(parents=True, exist_ok=True)
     manifest = {
@@ -161,6 +169,7 @@ def _write_minimal_extension(source: Path, *, ext_id: str, version: str = "1.0.0
         "type": "ui_extension",
         "title": ext_id,
         "compatibility": {"extension_api_version": EXTENSION_API_VERSION, "app": "chironai"},
+        "capabilities": dict(capabilities or {"tab_ui": True}),
         "backend": {"entrypoint": "backend.provider:create_provider"},
     }
     (source / "chironai-extension.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -267,7 +276,11 @@ def test_extension_manager_bootstraps_builtin_ollama(tmp_path: Path) -> None:
     assert any(item["id"] == "open-webui" for item in installed)
     assert any(item["id"] == "codex-launcher" for item in installed)
     descriptors = bootstrap.runtime.registry.descriptors()
-    assert any(desc.id == "ollama" and desc.title == "Ollama" for desc in descriptors)
+    assert any(desc.id == "ollama" and desc.title == "Ollama" for desc in descriptors), {
+        "descriptors": [(desc.id, desc.title) for desc in descriptors],
+        "failed": [(item.extension_id, item.error) for item in bootstrap.failed],
+        "loaded": [(item.manifest.id, item.manifest.type) for item in bootstrap.loaded],
+    }
     catalog = manager.provider_catalog(runtime=bootstrap.runtime, capability="chat")
     assert any(row["provider_id"] == "ollama" and row["title"] == "Ollama" for row in catalog["providers"])
     tabs = manager.extension_tabs(runtime=bootstrap.runtime)
@@ -276,6 +289,51 @@ def test_extension_manager_bootstraps_builtin_ollama(tmp_path: Path) -> None:
     assert any(tab["id"] == "codex" and tab.get("extension_id") == "codex-launcher" for tab in tabs)
     assert any(tab["id"] == "open-webui" and tab.get("frame") == {} for tab in tabs)
     assert any(tab["id"] == "ollama" and tab.get("icon_url", "").endswith("/icons/ollama-light.svg") for tab in tabs)
+
+
+def test_extension_lifecycle_reload_failure_is_reported_without_crashing_host(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Repo:
+        def __init__(self) -> None:
+            self.data: dict[str, str] = {}
+
+        def get_app_setting(self, key: str):
+            return self.data.get(key)
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            self.data[key] = value
+
+    repo = _Repo()
+    root = Path(__file__).resolve().parents[2]
+    host = ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None)
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=host,
+        settings_repo=repo,
+        registry_client=ExtensionRegistryClient(project_root=root),
+        installed_dir=tmp_path / "installed",
+        bundled_dir=root / "extensions" / "bundled",
+        default_provider_id="ollama",
+    )
+    manager.ensure_bundled_installed()
+    stable_runtime = object()
+    manager._runtime = stable_runtime
+
+    def _fail_reload():
+        raise RuntimeError("reload boom")
+
+    monkeypatch.setattr(manager, "bootstrap_runtime", _fail_reload)
+
+    result = manager.disable("ollama-provider")
+    installed = {item["id"]: item for item in manager.installed_extensions()}
+
+    assert result["reload_status"] == "failed"
+    assert result["restart_required"] is True
+    assert "reload boom" in result["reload_error"]
+    assert manager.runtime is stable_runtime
+    assert installed["ollama-provider"]["enabled"] is False
 
 
 def test_ollama_provider_runtime_invocation_streaming_and_catalog(
@@ -646,15 +704,18 @@ def test_extension_zip_install_rejects_path_traversal_member(tmp_path: Path, mon
 
     class _Response:
         def __init__(self, content: bytes) -> None:
-            self.content = content
+            self._content = content
 
         def raise_for_status(self) -> None:
             return None
 
+        def iter_content(self, chunk_size: int = 65536):
+            yield self._content
+
     buf = BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("../evil.txt", "bad")
-    monkeypatch.setattr("requests.get", lambda url, timeout: _Response(buf.getvalue()))
+    monkeypatch.setattr("requests.get", lambda url, timeout=60, stream=False: _Response(buf.getvalue()))
 
     root = Path(__file__).resolve().parents[2]
     repo = _Repo()
@@ -846,6 +907,8 @@ def test_extension_install_rejects_unsupported_registry_compatibility(tmp_path: 
 
 
 def test_extension_details_and_install_resolve_latest_github_release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import hashlib
+
     class _Registry:
         def load(self) -> list[dict[str, object]]:
             return [
@@ -859,13 +922,16 @@ def test_extension_details_and_install_resolve_latest_github_release(tmp_path: P
             ]
 
     class _RepositoryClient:
+        def __init__(self, zip_digest: str) -> None:
+            self._digest = zip_digest
+
         def latest_release(self, repository: str) -> dict[str, object]:
             return {
                 "version": "v1.0.0",
                 "ref": "v1.0.0",
                 "target_kind": "release",
                 "archive_url": "https://example.invalid/sample.zip",
-                "digest": "abc123",
+                "digest": self._digest,
                 "provenance_level": "github_release_asset",
                 "is_latest": True,
             }
@@ -881,10 +947,13 @@ def test_extension_details_and_install_resolve_latest_github_release(tmp_path: P
 
     class _Response:
         def __init__(self, content: bytes) -> None:
-            self.content = content
+            self._content = content
 
         def raise_for_status(self) -> None:
             return None
+
+        def iter_content(self, chunk_size: int = 65536):
+            yield self._content
 
     buf = BytesIO()
     manifest = {
@@ -899,7 +968,9 @@ def test_extension_details_and_install_resolve_latest_github_release(tmp_path: P
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("sample-ext/chironai-extension.json", json.dumps(manifest))
         zf.writestr("sample-ext/backend/provider.py", "def create_provider(host_context, manifest):\n    return object()\n")
-    monkeypatch.setattr("requests.get", lambda url, timeout: _Response(buf.getvalue()))
+    zip_bytes = buf.getvalue()
+    zip_digest = hashlib.sha256(zip_bytes).hexdigest()
+    monkeypatch.setattr("requests.get", lambda url, timeout=60, stream=False: _Response(zip_bytes))
 
     repo = _MemorySettingsRepo()
     root = Path(__file__).resolve().parents[2]
@@ -908,7 +979,7 @@ def test_extension_details_and_install_resolve_latest_github_release(tmp_path: P
         host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
         settings_repo=repo,
         registry_client=_Registry(),  # type: ignore[arg-type]
-        repository_client=_RepositoryClient(),
+        repository_client=_RepositoryClient(zip_digest),
         installed_dir=tmp_path / "installed",
         bundled_dir=tmp_path / "bundled",
     )
@@ -921,7 +992,7 @@ def test_extension_details_and_install_resolve_latest_github_release(tmp_path: P
     assert details["readme"]["markdown"] == "# Sample"
     assert installed["version"] == "v1.0.0"
     assert record.provenance["archive_url"] == "https://example.invalid/sample.zip"
-    assert record.provenance["digest"] == "abc123"
+    assert record.provenance["digest"] == zip_digest
 
 
 def test_extension_install_accepts_branch_refs_with_slashes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -941,10 +1012,13 @@ def test_extension_install_accepts_branch_refs_with_slashes(tmp_path: Path, monk
 
     class _Response:
         def __init__(self, content: bytes) -> None:
-            self.content = content
+            self._content = content
 
         def raise_for_status(self) -> None:
             return None
+
+        def iter_content(self, chunk_size: int = 65536):
+            yield self._content
 
     buf = BytesIO()
     manifest = {
@@ -959,7 +1033,7 @@ def test_extension_install_accepts_branch_refs_with_slashes(tmp_path: Path, monk
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("sample-ext/chironai-extension.json", json.dumps(manifest))
         zf.writestr("sample-ext/backend/provider.py", "def create_provider(host_context, manifest):\n    return object()\n")
-    monkeypatch.setattr("requests.get", lambda url, timeout: _Response(buf.getvalue()))
+    monkeypatch.setattr("requests.get", lambda url, timeout=60, stream=False: _Response(buf.getvalue()))
 
     repo = _MemorySettingsRepo()
     root = Path(__file__).resolve().parents[2]
@@ -1058,6 +1132,62 @@ def test_extension_install_rejects_blocklisted_ref(tmp_path: Path) -> None:
         manager.install("sample-ext")
 
     assert ExtensionsRepository(repo).list_records() == []
+
+
+def test_extension_update_requires_consent_for_high_risk_capability_expansion(tmp_path: Path) -> None:
+    class _Registry:
+        def __init__(self) -> None:
+            self.version = "1.0.0"
+
+        def load(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "id": "sample-ext",
+                    "title": "Sample",
+                    "source_path": str(source),
+                    "latest_version": self.version,
+                }
+            ]
+
+    source = tmp_path / "source"
+    _write_minimal_extension(
+        source,
+        ext_id="sample-ext",
+        version="1.0.0",
+        capabilities={"chat": True},
+    )
+    repo = _MemorySettingsRepo()
+    root = Path(__file__).resolve().parents[2]
+    registry = _Registry()
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        registry_client=registry,  # type: ignore[arg-type]
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+
+    manager.install("sample-ext")
+
+    registry.version = "2.0.0"
+    shutil.rmtree(source)
+    _write_minimal_extension(
+        source,
+        ext_id="sample-ext",
+        version="2.0.0",
+        capabilities={"chat": True, "service_actions": True},
+    )
+
+    with pytest.raises(ValueError, match="high-risk capabilities requiring consent: service_actions"):
+        manager.install("sample-ext")
+
+    result = manager.install("sample-ext", target={"allow_capability_expansion": True})
+    record = ExtensionsRepository(repo).list_records()[0]
+
+    assert result["version"] == "2.0.0"
+    assert result["capability_expansion"][0]["id"] == "service_actions"
+    assert record.capabilities["service_actions"] is True
 
 
 def test_blocklisted_installed_extension_is_disabled_on_bootstrap(tmp_path: Path) -> None:

@@ -20,6 +20,7 @@ from collections import deque
 from typing import Any, Callable
 from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
 
+from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
 from core.contracts.webui_api import WEBUI_URL_PREFIX
 
 # Ensure project root on path when running from api or WebUI.
@@ -290,47 +291,6 @@ _enrich_builds_with_diagnostics = None
 webui_bp = Blueprint("webui", __name__, url_prefix=WEBUI_URL_PREFIX)
 
 
-def _register_extension_http_routes(bp: Blueprint) -> None:
-    """Discover bundled extensions and register any extension-owned HTTP routes.
-
-    Extensions that want to contribute routes expose a module-level function
-    ``register_http_routes_on_blueprint(bp)`` in their ``backend/provider.py``.
-    Route *handlers* close over ``current_app`` so they resolve the running
-    extension at request time — no static coupling to a specific extension class.
-
-    Discovery is purely filesystem-based: the project has zero import-time
-    knowledge about which extensions are installed.
-    """
-    import importlib.util
-    import pathlib
-    import sys
-
-    here = pathlib.Path(__file__).parent.parent.parent  # project root
-    bundled = here / "extensions" / "bundled"
-    if not bundled.is_dir():
-        return
-
-    for ext_dir in sorted(bundled.iterdir()):
-        if not ext_dir.is_dir():
-            continue
-        provider_py = ext_dir / "backend" / "provider.py"
-        if not provider_py.is_file():
-            continue
-        try:
-            mod_name = f"_ext_bp_{ext_dir.name}_provider"
-            spec = importlib.util.spec_from_file_location(mod_name, provider_py)
-            if spec is None or spec.loader is None:
-                continue
-            mod = importlib.util.module_from_spec(spec)
-            sys.modules[mod_name] = mod
-            spec.loader.exec_module(mod)  # type: ignore[union-attr]
-            fn = getattr(mod, "register_http_routes_on_blueprint", None)
-            if callable(fn):
-                fn(bp)
-        except Exception as _e:
-            _WEBUI_LOG.warning("_register_extension_http_routes: %r: %s", ext_dir.name, _e)
-
-
 register_prompt_routes(
     webui_bp,
     prompts_dir=PROMPTS_DIR,
@@ -368,7 +328,6 @@ register_llm_proxy_routes(
     webui_bp,
     error_log=_ERROR_LOG,
 )
-_register_extension_http_routes(webui_bp)
 register_crawler_routes(
     webui_bp,
     error_log=_ERROR_LOG,
@@ -862,8 +821,8 @@ def tester_chat() -> Any:
                     options["top_p"] = float(top_p)
                 except (TypeError, ValueError):
                     pass
-            svc = current_app.extensions.get("llm_extensions_service")
-            runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+            svc = get_extensions_service(current_app)
+            runtime = get_extensions_runtime(current_app, svc)
             # Preserve the legacy direct-chat path when no provider is selected so
             # older tests and monkeypatch-based integrations still hit deps.chat_client.
             if runtime is not None and provider_id:
@@ -1198,8 +1157,8 @@ def _default_llm_provider_id() -> str:
     provider_id = getattr(wiring, "default_provider_id", None)
     if isinstance(provider_id, str) and provider_id.strip():
         return provider_id.strip()
-    svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    svc = get_extensions_service(current_app)
+    runtime = get_extensions_runtime(current_app, svc)
     try:
         descriptors = runtime.registry.descriptors() if runtime is not None else []
     except Exception:
@@ -1212,8 +1171,8 @@ def _default_llm_provider_id() -> str:
 
 
 def _provider_catalog_payload(*, capability: str | None = None) -> dict[str, Any]:
-    svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    svc = get_extensions_service(current_app)
+    runtime = get_extensions_runtime(current_app, svc)
     if svc is None:
         return {"providers": [], "models": []}
     try:
@@ -1223,8 +1182,8 @@ def _provider_catalog_payload(*, capability: str | None = None) -> dict[str, Any
 
 
 def _provider_row(provider_id: str | None = None) -> dict[str, Any] | None:
-    svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    svc = get_extensions_service(current_app)
+    runtime = get_extensions_runtime(current_app, svc)
     if svc is None:
         return None
     try:
@@ -1248,8 +1207,8 @@ def _run_provider_extension_action(
     action_id: str,
     payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    svc = get_extensions_service(current_app)
+    runtime = get_extensions_runtime(current_app, svc)
     row = _provider_row(provider_id)
     if svc is None or runtime is None or row is None:
         raise RuntimeError("No provider extension is available")
@@ -1269,8 +1228,8 @@ def _run_default_provider_extension_action(action_id: str, payload: dict[str, An
 
 
 def _default_provider_tab_payload() -> dict[str, Any]:
-    svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    svc = get_extensions_service(current_app)
+    runtime = get_extensions_runtime(current_app, svc)
     row = _default_provider_row()
     if svc is None or runtime is None or row is None:
         raise RuntimeError("No default provider extension is available")
@@ -1287,8 +1246,8 @@ def _invoke_runtime_chat(
     messages: list[dict[str, Any]],
     options: dict[str, Any] | None = None,
 ) -> str:
-    svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    svc = get_extensions_service(current_app)
+    runtime = get_extensions_runtime(current_app, svc)
     if runtime is None:
         raise RuntimeError("LLM runtime is unavailable")
     from llm_interactor.contracts import LLMRequest
@@ -1312,8 +1271,8 @@ def _invoke_runtime_embed(
     model: str,
     texts: list[str],
 ) -> list[list[float]]:
-    svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    svc = get_extensions_service(current_app)
+    runtime = get_extensions_runtime(current_app, svc)
     if runtime is None:
         raise RuntimeError("LLM runtime is unavailable")
     from llm_interactor.contracts import LLMRequest

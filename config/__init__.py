@@ -74,6 +74,9 @@ DEFAULT_EXTENSIONS_REGISTRY_URL = (
 )
 DEFAULT_EXTENSIONS_LOCAL_REGISTRY_FALLBACK = "extensions/registry/extensions.json"
 DEFAULT_EXTENSIONS_BLOCKLIST_URL = "extensions/registry/blocklist.json"
+DEFAULT_EXTENSIONS_REMOTE_BLOCKLIST_URL = (
+    "https://raw.githubusercontent.com/Rayllienstery/ChironAI-Extensions-Registry/main/blocklist.json"
+)
 
 
 def get_extensions_registry_url() -> str:
@@ -96,7 +99,28 @@ def get_extensions_blocklist_url() -> str:
     """Return configured extension emergency blocklist URL/path."""
     return os.getenv(
         "CHIRONAI_EXTENSIONS_BLOCKLIST_URL",
-        str(EXTENSIONS_CONFIG.get("blocklist_url") or DEFAULT_EXTENSIONS_BLOCKLIST_URL),
+        str(EXTENSIONS_CONFIG.get("blocklist_url") or DEFAULT_EXTENSIONS_REMOTE_BLOCKLIST_URL),
+    )
+
+
+def get_extensions_local_blocklist_fallback() -> str:
+    """Return local extension emergency blocklist fallback URL/path."""
+    return os.getenv(
+        "CHIRONAI_EXTENSIONS_LOCAL_BLOCKLIST_FALLBACK",
+        str(EXTENSIONS_CONFIG.get("local_blocklist_fallback_url") or DEFAULT_EXTENSIONS_BLOCKLIST_URL),
+    )
+
+
+def get_github_token() -> str:
+    """Return optional GitHub personal access token for authenticated API requests.
+
+    Unauthenticated GitHub API calls are limited to 60 requests per hour per IP.
+    Set CHIRONAI_GITHUB_TOKEN (or extensions.github_token in server.yaml) to raise
+    this limit to 5000 requests per hour and enable private repository access.
+    """
+    return os.getenv(
+        "CHIRONAI_GITHUB_TOKEN",
+        str(EXTENSIONS_CONFIG.get("github_token") or ""),
     )
 
 

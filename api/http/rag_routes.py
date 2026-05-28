@@ -58,19 +58,27 @@ except ImportError:
     get_framework_collection_ttl_days = lambda: 90  # type: ignore[assignment,misc]
 
 from api.http.llm_proxy_wiring import build_llm_proxy_wiring
+from api.http.extensions_service_access import (
+    get_extensions_provider_registry,
+    get_extensions_runtime,
+    get_extensions_service,
+    set_extensions_provider_registry,
+    set_extensions_runtime,
+    set_extensions_service,
+)
 
 
 def _sync_llm_extension_runtime(app: Flask) -> bool:
     """Copy a background-bootstrapped LLM runtime into Flask extension state."""
-    svc = app.extensions.get("llm_extensions_service")
+    svc = get_extensions_service(app)
     runtime = getattr(svc, "runtime", None) if svc is not None else None
     registry = getattr(svc, "registry", None) if svc is not None else None
     changed = False
-    if runtime is not None and app.extensions.get("llm_interactor_runtime") is not runtime:
-        app.extensions["llm_interactor_runtime"] = runtime
+    if runtime is not None and get_extensions_runtime(app, svc) is not runtime:
+        set_extensions_runtime(app, runtime)
         changed = True
-    if registry is not None and app.extensions.get("llm_provider_registry") is not registry:
-        app.extensions["llm_provider_registry"] = registry
+    if registry is not None and get_extensions_provider_registry(app, svc) is not registry:
+        set_extensions_provider_registry(app, registry)
         changed = True
     return changed
 
@@ -96,11 +104,11 @@ def create_app(
     )
     app.extensions["llm_proxy_wiring"] = wiring
     if getattr(wiring, "llm_runtime", None) is not None:
-        app.extensions["llm_interactor_runtime"] = wiring.llm_runtime
+        set_extensions_runtime(app, wiring.llm_runtime)
     if getattr(wiring, "provider_registry", None) is not None:
-        app.extensions["llm_provider_registry"] = wiring.provider_registry
+        set_extensions_provider_registry(app, wiring.provider_registry)
     if getattr(wiring, "extension_manager", None) is not None:
-        app.extensions["llm_extensions_service"] = wiring.extension_manager
+        set_extensions_service(app, wiring.extension_manager)
     app.register_blueprint(create_v1_blueprint(wiring))
     _sync_llm_extension_runtime(app)
 

@@ -14,6 +14,7 @@ from flask import Blueprint, current_app, jsonify, request
 from error_manager.exceptions import ValidationError as _ValidationError
 from error_manager.http import error_response as _error_response
 
+from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
 from application.llm_proxy_builds import (
     LLM_PROXY_BUILDS_APP_KEY,
     diagnose_build,
@@ -156,8 +157,8 @@ def _default_llm_provider_id() -> str:
     provider_id = getattr(wiring, "default_provider_id", None)
     if isinstance(provider_id, str) and provider_id.strip():
         return provider_id.strip()
-    svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    svc = get_extensions_service(current_app)
+    runtime = get_extensions_runtime(current_app, svc)
     try:
         descriptors = runtime.registry.descriptors() if runtime is not None else []
     except Exception:
@@ -170,8 +171,8 @@ def _default_llm_provider_id() -> str:
 
 
 def _provider_catalog_payload(*, capability: str | None = None) -> dict[str, Any]:
-    svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    svc = get_extensions_service(current_app)
+    runtime = get_extensions_runtime(current_app, svc)
     if svc is None:
         return {"providers": [], "models": []}
     try:
@@ -181,8 +182,8 @@ def _provider_catalog_payload(*, capability: str | None = None) -> dict[str, Any
 
 
 def _provider_row(provider_id: str | None = None) -> dict[str, Any] | None:
-    svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    svc = get_extensions_service(current_app)
+    runtime = get_extensions_runtime(current_app, svc)
     if svc is None:
         return None
     try:
@@ -206,8 +207,8 @@ def _run_provider_extension_action(
     action_id: str,
     payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    svc = get_extensions_service(current_app)
+    runtime = get_extensions_runtime(current_app, svc)
     row = _provider_row(provider_id)
     if svc is None or runtime is None or row is None:
         raise RuntimeError("No provider extension is available")
@@ -227,8 +228,8 @@ def _run_default_provider_extension_action(action_id: str, payload: dict[str, An
 
 
 def _default_provider_tab_payload() -> dict[str, Any]:
-    svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    svc = get_extensions_service(current_app)
+    runtime = get_extensions_runtime(current_app, svc)
     row = _default_provider_row()
     if svc is None or runtime is None or row is None:
         raise RuntimeError("No default provider extension is available")
@@ -245,8 +246,8 @@ def _invoke_runtime_chat(
     messages: list[dict[str, Any]],
     options: dict[str, Any] | None = None,
 ) -> str:
-    svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    svc = get_extensions_service(current_app)
+    runtime = get_extensions_runtime(current_app, svc)
     if runtime is None:
         raise RuntimeError("LLM runtime is unavailable")
     from llm_interactor.contracts import LLMRequest
@@ -270,8 +271,8 @@ def _invoke_runtime_embed(
     model: str,
     texts: list[str],
 ) -> list[list[float]]:
-    svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    svc = get_extensions_service(current_app)
+    runtime = get_extensions_runtime(current_app, svc)
     if runtime is None:
         raise RuntimeError("LLM runtime is unavailable")
     from llm_interactor.contracts import LLMRequest
@@ -313,6 +314,52 @@ def register_llm_proxy_routes(
         except Exception as e:
             error_log.error("webui_llm_proxy_routes.llm_proxy_status", exc_info=True)
             return _error_response(e)
+
+    @bp.route("/ollama/status", methods=["GET"])
+    def ollama_provider_status() -> Any:
+        """Compatibility status endpoint backed by the default provider extension."""
+        try:
+            row = _default_provider_row()
+            if row is None:
+                return jsonify({"running": False, "error": "No default provider extension loaded"}), 503
+            health = row.get("health") if isinstance(row.get("health"), dict) else {}
+            metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+            details = health.get("details") if isinstance(health.get("details"), dict) else {}
+            return jsonify(
+                {
+                    "url": metadata.get("base_url") or metadata.get("chat_url") or None,
+                    "running": bool(health.get("ok")),
+                    "http_status": details.get("status_code"),
+                    "error": health.get("message") or "",
+                }
+            )
+        except Exception as e:
+            error_log.error("webui_llm_proxy_routes.ollama_provider_status", exc_info=True)
+            return _error_response(e)
+
+    @bp.route("/ollama/start", methods=["POST"])
+    def ollama_provider_start() -> Any:
+        """Compatibility start endpoint backed by the default provider extension."""
+        try:
+            payload = request.get_json(silent=True) or {}
+            result = _run_default_provider_extension_action("start_service", payload if isinstance(payload, dict) else {})
+            status = 200 if bool(result.get("ok")) else 500
+            return jsonify({"ok": bool(result.get("ok")), "output": result.get("message") or ""}), status
+        except Exception as e:
+            error_log.error("webui_llm_proxy_routes.ollama_provider_start", exc_info=True)
+            return jsonify({"ok": False, "output": str(e)}), 500
+
+    @bp.route("/ollama/stop", methods=["POST"])
+    def ollama_provider_stop() -> Any:
+        """Compatibility stop endpoint backed by the default provider extension."""
+        try:
+            payload = request.get_json(silent=True) or {}
+            result = _run_default_provider_extension_action("stop_service", payload if isinstance(payload, dict) else {})
+            status = 200 if bool(result.get("ok")) else 500
+            return jsonify({"ok": bool(result.get("ok")), "output": result.get("message") or ""}), status
+        except Exception as e:
+            error_log.error("webui_llm_proxy_routes.ollama_provider_stop", exc_info=True)
+            return jsonify({"ok": False, "output": str(e)}), 500
 
     @bp.route("/llm-proxy/api-key", methods=["GET"])
     def llm_proxy_api_key_status() -> Any:
@@ -364,8 +411,8 @@ def register_llm_proxy_routes(
             return _error_response(e)
 
     def _ollama_tag_name_set_for_builds_diag() -> set[str]:
-        svc = current_app.extensions.get("llm_extensions_service")
-        runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+        svc = get_extensions_service(current_app)
+        runtime = get_extensions_runtime(current_app, svc)
         cache_key = f"llm_proxy_builds_diag_provider_catalog_ollama_names:{id(svc)}:{id(runtime)}"
         cached = _get_cached_status(
             cache_key,

@@ -23,6 +23,7 @@ class InstalledExtensionRecord:
     restart_scope: str = "none"
     provenance: dict[str, Any] = field(default_factory=dict)
     security_scan: dict[str, Any] = field(default_factory=dict)
+    capabilities: dict[str, Any] = field(default_factory=dict)
     blocked_reason: str = ""
 
 
@@ -64,6 +65,7 @@ class ExtensionsRepository:
                     restart_scope=str(item.get("restart_scope") or "none"),
                     provenance=dict(item.get("provenance") or {}),
                     security_scan=dict(item.get("security_scan") or {}),
+                    capabilities=dict(item.get("capabilities") or {}),
                     blocked_reason=str(item.get("blocked_reason") or ""),
                 )
             )
@@ -84,6 +86,7 @@ class ExtensionsRepository:
                 "restart_scope": str(record.restart_scope or "none"),
                 "provenance": dict(record.provenance or {}),
                 "security_scan": dict(record.security_scan or {}),
+                "capabilities": dict(record.capabilities or {}),
                 "blocked_reason": str(record.blocked_reason or ""),
             }
             for record in records

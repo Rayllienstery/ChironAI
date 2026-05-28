@@ -31,6 +31,19 @@ def _test_proxy_api_key_setting(key: str) -> str | None:
     return None
 
 
+def _set_extensions_app_state(
+    app: Any,
+    *,
+    service: Any | None = None,
+    runtime: Any | None = None,
+) -> None:
+    from api.http.extensions_service_access import set_extensions_runtime, set_extensions_service
+
+    set_extensions_service(app, service)
+    if runtime is not None:
+        set_extensions_runtime(app, runtime)
+
+
 def _webui_blueprint_client():
     from flask import Flask
 
@@ -366,8 +379,7 @@ def test_llm_proxy_builds_diagnostics_use_provider_catalog(monkeypatch: pytest.M
     from api.http.rag_routes import create_app
 
     app = create_app()
-    app.extensions["llm_extensions_service"] = FakeExtensionsService()
-    app.extensions["llm_interactor_runtime"] = FakeExtensionsService.runtime
+    _set_extensions_app_state(app, service=FakeExtensionsService(), runtime=FakeExtensionsService.runtime)
     r = app.test_client().get("/api/webui/llm-proxy/builds")
 
     assert r.status_code == 200
@@ -421,8 +433,7 @@ def test_llm_proxy_build_preview_model_uses_extension_action(monkeypatch: pytest
     from api.http.rag_routes import create_app
 
     app = create_app()
-    app.extensions["llm_extensions_service"] = FakeExtensionsService()
-    app.extensions["llm_interactor_runtime"] = FakeExtensionsService.runtime
+    _set_extensions_app_state(app, service=FakeExtensionsService(), runtime=FakeExtensionsService.runtime)
     r = app.test_client().post("/api/webui/llm-proxy/builds/preview-model", json={"model": "tiny-model:latest"})
 
     assert r.status_code == 200
@@ -453,8 +464,7 @@ def test_llm_proxy_build_preview_model_reports_runtime_unavailable() -> None:
     from api.http.rag_routes import create_app
 
     app = create_app()
-    app.extensions["llm_extensions_service"] = None
-    app.extensions.pop("llm_interactor_runtime", None)
+    _set_extensions_app_state(app, service=None)
     r = app.test_client().post("/api/webui/llm-proxy/builds/preview-model", json={"model": "tiny-model:latest"})
 
     assert r.status_code == 502
@@ -767,8 +777,7 @@ def test_health_endpoint_uses_provider_health_when_runtime_available(monkeypatch
     from api.http.rag_routes import create_app
 
     app = create_app()
-    app.extensions["llm_extensions_service"] = FakeExtensionsService()
-    app.extensions["llm_interactor_runtime"] = FakeExtensionsService.runtime
+    _set_extensions_app_state(app, service=FakeExtensionsService(), runtime=FakeExtensionsService.runtime)
     r = app.test_client().get("/health")
 
     assert r.status_code == 200
@@ -809,8 +818,7 @@ def test_health_endpoint_503_when_provider_health_fails(monkeypatch: pytest.Monk
     from api.http.rag_routes import create_app
 
     app = create_app()
-    app.extensions["llm_extensions_service"] = FakeExtensionsService()
-    app.extensions["llm_interactor_runtime"] = FakeExtensionsService.runtime
+    _set_extensions_app_state(app, service=FakeExtensionsService(), runtime=FakeExtensionsService.runtime)
     r = app.test_client().get("/health")
 
     assert r.status_code == 503

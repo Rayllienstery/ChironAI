@@ -55,3 +55,27 @@ def test_readme_sanitizer_strips_html_and_unsafe_urls() -> None:
     assert "javascript:" not in html
     assert "file://" not in html
     assert "unsafe-link-removed" in html
+
+
+def test_readme_sanitizer_does_not_double_escape_ampersands() -> None:
+    result = sanitize_readme_markdown("A & B [link](https://example.com?a=1&b=2) <tag>")
+
+    assert "&amp;amp;" not in result, "double-escaping detected: & → &amp; → &amp;amp;"
+    assert "&amp;" in result, "& should be escaped exactly once to &amp;"
+    assert "https://example.com?a=1&amp;b=2" in result, "URL ampersand should be escaped once"
+    assert "<tag>" not in result, "raw HTML tag must be stripped"
+
+
+def test_readme_sanitizer_preserves_safe_https_links() -> None:
+    result = sanitize_readme_markdown("[Docs](https://docs.example.com/page#section)")
+
+    assert "unsafe-link-removed" not in result
+    assert "https://docs.example.com/page#section" in result
+
+
+def test_readme_sanitizer_removes_unsafe_protocol_links() -> None:
+    result = sanitize_readme_markdown("[bad](data:text/html,<h1>xss</h1>) [ok](https://ok.example.com)")
+
+    assert "data:text/html" not in result
+    assert "unsafe-link-removed" in result
+    assert "https://ok.example.com" in result

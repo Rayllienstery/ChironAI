@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 import threading
@@ -21,13 +22,20 @@ from llm_interactor.contracts import ProviderHostContext
 from llm_interactor.discovery import FailedExtension, LoadedExtension, MANIFEST_FILENAME, discover_extensions, load_manifest_from_dir
 from llm_interactor.install_state import ExtensionsRepository, InstalledExtensionRecord
 from llm_interactor.manifest import EXTENSION_API_VERSION, EXTENSION_TYPE_LLM_PROVIDER
-from llm_interactor.registry_client import ExtensionRegistryClient
 from llm_interactor.runtime import LLMRuntime, ProviderRegistry
 
+_log = logging.getLogger(__name__)
+_MAX_EXTENSION_ZIP_BYTES = 500 * 1024 * 1024  # 500 MB hard ceiling
+
 try:
-    from extensions_backend import ExtensionBlocklistPolicy, GitHubExtensionRepositoryClient
-except Exception:  # pragma: no cover - optional module path during migration
+    from extensions_backend import ExtensionBlocklistPolicy, ExtensionRegistryClient, GitHubExtensionRepositoryClient
+except Exception as _ext_backend_import_error:  # pragma: no cover - optional module path during migration
+    _log.warning(
+        "extensions_backend module unavailable — blocklist enforcement and GitHub metadata are DISABLED: %s",
+        _ext_backend_import_error,
+    )
     ExtensionBlocklistPolicy = None  # type: ignore[assignment,misc]
+    ExtensionRegistryClient = None  # type: ignore[assignment,misc]
     GitHubExtensionRepositoryClient = None  # type: ignore[assignment,misc]
 
 
@@ -35,6 +43,22 @@ DEFAULT_BUNDLED_DIR = "extensions/bundled"
 DEFAULT_INSTALLED_DIR = "logs/extensions/installed"
 RESTART_SCOPE_PROVIDER_REGISTRY = "provider_registry"
 _SEMVERISH_RE = re.compile(r"^v?\d+(?:\.\d+){1,3}(?:[-+][0-9A-Za-z.-]+)?$")
+_HIGH_RISK_CAPABILITIES = {
+    "docker",
+    "docker_runtime",
+    "host_services",
+    "service_actions",
+    "settings",
+    "secrets",
+    "network",
+    "filesystem",
+    "shell",
+    "subprocess",
+    "native_process",
+    "iframe_tab",
+    "external_urls",
+    "model_delete",
+}
 
 
 @dataclass(frozen=True)
@@ -85,20 +109,31 @@ class ExtensionManager:
         project_root: Path,
         host_context: ProviderHostContext,
         settings_repo: Any,
-        registry_client: ExtensionRegistryClient | None = None,
+        registry_client: Any | None = None,
         bundled_dir: Path | None = None,
         installed_dir: Path | None = None,
         default_provider_id: str | None = None,
         use_sandbox: bool = True,
         repository_client: Any | None = None,
         blocklist_policy: Any | None = None,
+        github_token: str | None = None,
     ) -> None:
         self._project_root = project_root
         self._host_context = host_context
         self._settings_repo = settings_repo
         self._repo = ExtensionsRepository(settings_repo)
-        self._registry_client = registry_client or ExtensionRegistryClient(project_root=project_root)
-        self._repository_client = repository_client or (GitHubExtensionRepositoryClient() if GitHubExtensionRepositoryClient else None)
+        if registry_client is not None:
+            self._registry_client = registry_client
+        elif ExtensionRegistryClient is not None:
+            self._registry_client = ExtensionRegistryClient(project_root=project_root)
+        else:
+            raise RuntimeError("ExtensionRegistryClient is unavailable")
+        if repository_client is not None:
+            self._repository_client = repository_client
+        elif GitHubExtensionRepositoryClient is not None:
+            self._repository_client = GitHubExtensionRepositoryClient(token=github_token or None)
+        else:
+            self._repository_client = None
         self._blocklist_policy = blocklist_policy or (ExtensionBlocklistPolicy(project_root=project_root) if ExtensionBlocklistPolicy else None)
         self._bundled_dir = bundled_dir or (project_root / DEFAULT_BUNDLED_DIR)
         self._installed_dir = installed_dir or (project_root / DEFAULT_INSTALLED_DIR)
@@ -224,6 +259,7 @@ class ExtensionManager:
                     "source_path": str(bundled),
                 },
                 security_scan={"status": "passed", "scanner": "chironai_static_audit"},
+                capabilities=dict(getattr(manifest, "capabilities", {}) or {}),
             )
         )
         self._repo.save_records(next_records)
@@ -649,6 +685,7 @@ class ExtensionManager:
                     "provenance": dict(record.provenance or {}),
                     "security_scan": dict(record.security_scan or {}),
                     "blocklist": blocklist,
+                    "capabilities": dict(record.capabilities or {}),
                     "blocked_reason": record.blocked_reason,
                     "restart_scope": str(record.restart_scope or "none"),
                 }
@@ -1009,6 +1046,10 @@ class ExtensionManager:
         if entry is None:
             raise ValueError(f"Extension '{ext_id}' not found in registry")
         target_payload = dict(target or {})
+        allow_capability_expansion = bool(
+            target_payload.get("allow_capability_expansion")
+            or target_payload.get("capability_expansion_accepted")
+        )
         requested_ref = str(
             version
             or target_payload.get("version")
@@ -1038,12 +1079,20 @@ class ExtensionManager:
             )
         )
         backup_dir: Path | None = None
+        existing_record = next((record for record in self._repo.list_records() if record.id == ext_id and record.installed), None)
         try:
             self._install_entry_payload(entry, staging_dir, selected_ref=selected_ref)
             manifest = load_manifest_from_dir(staging_dir)
             self._validate_install_manifest(entry, manifest, selected_ref)
             if manifest.backend is None:
                 raise ValueError("manifest backend is required")
+            expansion = self._capability_expansion(existing_record, dict(getattr(manifest, "capabilities", {}) or {}))
+            high_risk_expansion = [
+                item for item in expansion if item.get("risk") in {"high", "critical"} or item.get("requires_user_consent")
+            ]
+            if high_risk_expansion and not allow_capability_expansion:
+                names = ", ".join(item["id"] for item in high_risk_expansion[:8])
+                raise ValueError(f"Extension update adds high-risk capabilities requiring consent: {names}")
             audit_extension_or_raise(staging_dir, manifest=manifest, entrypoint=manifest.backend.entrypoint)
             if target_dir.exists():
                 backup_dir = target_dir.with_name(f"{target_dir.name}.previous-{_utc_now().replace(':', '')}")
@@ -1085,19 +1134,73 @@ class ExtensionManager:
                 restart_scope=RESTART_SCOPE_PROVIDER_REGISTRY,
                 provenance=provenance,
                 security_scan=security_scan,
+                capabilities=dict(getattr(manifest, "capabilities", {}) or {}),
                 blocked_reason="",
             )
         )
         self._repo.save_records(records)
+        reload_status, reload_error = self._reload_runtime_after_state_change()
         return {
             "id": ext_id,
             "version": storage_version,
             "selected_ref": selected_ref,
-            "restart_required": True,
-            "restart_scope": RESTART_SCOPE_PROVIDER_REGISTRY,
-            "reload_status": "pending",
+            "restart_required": reload_status != "reloaded",
+            "restart_scope": "none" if reload_status == "reloaded" else RESTART_SCOPE_PROVIDER_REGISTRY,
+            "reload_status": reload_status,
             "status": "installed",
+            "capability_expansion": expansion if existing_record is not None else [],
+            **({"reload_error": reload_error} if reload_error else {}),
         }
+
+    def _reload_runtime_after_state_change(self) -> tuple[str, str]:
+        try:
+            self.bootstrap_runtime()
+        except Exception as e:
+            return "failed", f"{type(e).__name__}: {e}"
+        return "reloaded", ""
+
+    def _capability_expansion(self, existing: InstalledExtensionRecord | None, next_capabilities: dict[str, Any]) -> list[dict[str, Any]]:
+        if existing is None:
+            return []
+        previous = self._installed_capabilities(existing)
+        previous_ids = self._enabled_capability_ids(previous)
+        next_ids = self._enabled_capability_ids(next_capabilities)
+        added = sorted(next_ids - previous_ids)
+        return [
+            {
+                "id": cap,
+                "label": cap.replace("_", " ").title(),
+                "risk": "high" if cap in _HIGH_RISK_CAPABILITIES else "medium",
+                "requires_user_consent": cap in _HIGH_RISK_CAPABILITIES,
+            }
+            for cap in added
+        ]
+
+    def _installed_capabilities(self, record: InstalledExtensionRecord) -> dict[str, Any]:
+        if record.capabilities:
+            return dict(record.capabilities)
+        source_dir = self._installed_dir / record.id / record.version
+        if not source_dir.is_dir():
+            return {}
+        try:
+            manifest = load_manifest_from_dir(source_dir)
+        except Exception:
+            return {}
+        return dict(getattr(manifest, "capabilities", {}) or {})
+
+    def _enabled_capability_ids(self, capabilities: dict[str, Any]) -> set[str]:
+        out: set[str] = set()
+        for key, value in dict(capabilities or {}).items():
+            cap = str(key or "").strip()
+            if not cap:
+                continue
+            if isinstance(value, dict):
+                enabled = bool(value.get("enabled", True))
+            else:
+                enabled = bool(value)
+            if enabled:
+                out.add(cap)
+        return out
 
     def _validate_install_manifest(self, entry: dict[str, Any], manifest: Any, target_version: str) -> None:
         expected_id = str(entry.get("id") or "").strip()
@@ -1129,8 +1232,14 @@ class ExtensionManager:
                     ref = str(version.get("ref") or version.get("version") or "").strip()
                     if ref == requested_ref or ref.lstrip("v") == requested_ref.lstrip("v"):
                         return self._entry_with_version_payload(resolved, version), ref
-            except Exception:
-                pass
+            except Exception as exc:
+                _log.warning(
+                    "extension install: could not fetch releases for %s (ref=%s): %s: %s",
+                    repository,
+                    requested_ref,
+                    type(exc).__name__,
+                    exc,
+                )
             return resolved, requested_ref
         latest = self._repository_client.latest_release(repository)
         latest_ref = str(latest.get("ref") or latest.get("version") or "").strip()
@@ -1173,6 +1282,7 @@ class ExtensionManager:
         source_path = str(entry.get("source_path") or "").strip()
         archive_url = str(entry.get("archive_url") or "").strip()
         repo_url = str(entry.get("repository") or entry.get("repo_url") or "").strip()
+        expected_digest = str(entry.get("digest") or "").strip()
         if source_path:
             src = Path(source_path)
             if not src.is_absolute():
@@ -1182,24 +1292,45 @@ class ExtensionManager:
             shutil.copytree(src, target_dir, dirs_exist_ok=True)
             return
         if archive_url:
-            self._download_zip_to_dir(archive_url, target_dir)
+            self._download_zip_to_dir(archive_url, target_dir, expected_digest=expected_digest)
             return
         if repo_url and repo_url.endswith(".zip"):
-            self._download_zip_to_dir(repo_url, target_dir)
+            self._download_zip_to_dir(repo_url, target_dir, expected_digest=expected_digest)
             return
         github_archive_url = _github_archive_url(repo_url, selected_ref)
         if github_archive_url:
-            self._download_zip_to_dir(github_archive_url, target_dir)
+            self._download_zip_to_dir(github_archive_url, target_dir, expected_digest=expected_digest)
             return
         raise ValueError("registry entry must define source_path or archive_url/repo_url zip")
 
-    def _download_zip_to_dir(self, url: str, target_dir: Path) -> None:
-        resp = requests.get(url, timeout=60)
+    def _download_zip_to_dir(self, url: str, target_dir: Path, *, expected_digest: str = "") -> None:
+        resp = requests.get(url, stream=True, timeout=60)
         resp.raise_for_status()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
-            tmp.write(resp.content)
-            tmp_path = Path(tmp.name)
+        hasher = sha256()
+        total_bytes = 0
+        tmp_path: Path | None = None
         try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
+                tmp_path = Path(tmp.name)
+                for chunk in resp.iter_content(chunk_size=65536):
+                    if not chunk:
+                        continue
+                    total_bytes += len(chunk)
+                    if total_bytes > _MAX_EXTENSION_ZIP_BYTES:
+                        raise ValueError(
+                            f"extension archive exceeds maximum allowed size "
+                            f"({_MAX_EXTENSION_ZIP_BYTES // (1024 * 1024)} MB): {url}"
+                        )
+                    hasher.update(chunk)
+                    tmp.write(chunk)
+            if expected_digest:
+                actual_digest = hasher.hexdigest()
+                clean_expected = expected_digest.removeprefix("sha256:")
+                if actual_digest != clean_expected:
+                    raise ValueError(
+                        f"extension archive digest mismatch for {url}: "
+                        f"expected sha256:{clean_expected}, got sha256:{actual_digest}"
+                    )
             with zipfile.ZipFile(tmp_path) as zf:
                 infos = [info for info in zf.infolist() if info.filename and not info.filename.endswith("/")]
                 names = [info.filename.replace("\\", "/") for info in infos]
@@ -1235,7 +1366,8 @@ class ExtensionManager:
                     with zf.open(info) as src, dest.open("wb") as dst:
                         shutil.copyfileobj(src, dst)
         finally:
-            tmp_path.unlink(missing_ok=True)
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
 
     def _rewrite_record(self, extension_id: str, fn) -> dict[str, Any]:
         records = self._repo.list_records()
@@ -1249,13 +1381,15 @@ class ExtensionManager:
         if result is None:
             raise ValueError(f"Extension '{extension_id}' is not installed")
         self._repo.save_records(out)
+        reload_status, reload_error = self._reload_runtime_after_state_change()
         return {
             "id": result.id,
             "version": result.version,
             "enabled": result.enabled,
-            "restart_required": result.restart_required,
-            "restart_scope": result.restart_scope or RESTART_SCOPE_PROVIDER_REGISTRY,
-            "reload_status": "pending" if result.restart_required else "not_required",
+            "restart_required": reload_status != "reloaded",
+            "restart_scope": "none" if reload_status == "reloaded" else result.restart_scope or RESTART_SCOPE_PROVIDER_REGISTRY,
+            "reload_status": reload_status,
+            **({"reload_error": reload_error} if reload_error else {}),
         }
 
     def enable(self, extension_id: str) -> dict[str, Any]:
@@ -1325,10 +1459,12 @@ class ExtensionManager:
             blocked_reason=target.blocked_reason,
         )
         self._repo.save_records([r for r in records if r.id != ext_id] + [tombstone])
+        reload_status, reload_error = self._reload_runtime_after_state_change()
         return {
             "id": ext_id,
             "removed": True,
-            "restart_required": True,
-            "restart_scope": RESTART_SCOPE_PROVIDER_REGISTRY,
-            "reload_status": "pending",
+            "restart_required": reload_status != "reloaded",
+            "restart_scope": "none" if reload_status == "reloaded" else RESTART_SCOPE_PROVIDER_REGISTRY,
+            "reload_status": reload_status,
+            **({"reload_error": reload_error} if reload_error else {}),
         }

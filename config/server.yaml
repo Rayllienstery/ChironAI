@@ -32,14 +32,21 @@ llm_proxy:
 ## Extensions registry
 ## - registry_url: GitHub-hosted registry used for development and release testing.
 ## - local_fallback_url: local registry used when GitHub/network is unavailable.
-## - blocklist_url: emergency blocklist cache used during offline startup.
-## Override with CHIRONAI_EXTENSIONS_REGISTRY_URL and
-## CHIRONAI_EXTENSIONS_LOCAL_REGISTRY_FALLBACK and
-## CHIRONAI_EXTENSIONS_BLOCKLIST_URL.
+## - blocklist_url: GitHub-hosted emergency blocklist.
+## - local_blocklist_fallback_url: emergency blocklist cache used during offline startup.
+## - github_token: optional GitHub PAT for authenticated API calls (5000 req/h vs 60).
+##   Leave empty in committed config; set via CHIRONAI_GITHUB_TOKEN env var in production.
+## Override with CHIRONAI_EXTENSIONS_REGISTRY_URL,
+## CHIRONAI_EXTENSIONS_LOCAL_REGISTRY_FALLBACK,
+## CHIRONAI_EXTENSIONS_BLOCKLIST_URL,
+## CHIRONAI_EXTENSIONS_LOCAL_BLOCKLIST_FALLBACK,
+## CHIRONAI_GITHUB_TOKEN.
 extensions:
   registry_url: "https://raw.githubusercontent.com/Rayllienstery/ChironAI-Extensions-Registry/main/extensions.json"
   local_fallback_url: "extensions/registry/extensions.json"
-  blocklist_url: "extensions/registry/blocklist.json"
+  blocklist_url: "https://raw.githubusercontent.com/Rayllienstery/ChironAI-Extensions-Registry/main/blocklist.json"
+  local_blocklist_fallback_url: "extensions/registry/blocklist.json"
+  github_token: ""
 
 ## Logging (rag_proxy, RAG routes)
 ## - logging.level: DEBUG | INFO | WARNING | ERROR (default INFO). Override with env LOG_LEVEL.

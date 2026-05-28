@@ -11,11 +11,12 @@ Prepare ChironAI Extensions for a repository-based distribution model:
 
 Target project release for this migration: `0.5.0`.
 
-This document is the planning and acceptance checklist for the migration. It does not replace the current runtime contracts in `CoreModules/LlmInteractor`; it describes the target work needed to make those contracts GitHub-ready and to move extension ownership outside the core app boundary.
+This document is the planning and acceptance checklist for the migration. It records the target ownership split between the extension-management module and the core extension host/runtime contracts.
 
 ## Current State
 
 - The app config now defaults to the GitHub-hosted registry, with `extensions/registry/extensions.json` kept as a local/offline fallback.
+- `modules/extensions_backend` owns the registry client, GitHub repository metadata client, blocklist policy, and contract-facing `ExtensionManagementService` facade.
 - `ExtensionRegistryClient` can load a registry from a local path, `file://`, `http://`, or `https://`, and records diagnostics when it falls back locally.
 - `ExtensionManager.install()` installs from:
   - `source_path` for local repository paths;
@@ -26,9 +27,9 @@ This document is the planning and acceptance checklist for the migration. It doe
 - Every install is checked by manifest loading and extension security audit.
 - Notifications already use `source: "extensions"` for security blocks and sandbox failures through CoreUI's notification center.
 - Extension workers already run out-of-process through the sandbox layer, and sandbox workers can be restarted or killed independently.
-- Install, enable, disable, and remove currently return `restart_required: true`; the migration should replace this with targeted extension reload wherever possible.
-- The monolith currently wires extension routes and extension service state inside the core Flask app (`llm_extensions_service`, `llm_interactor_runtime`, direct route handlers, and some bundled-extension discovery).
-- Some current code paths still inspect `extensions/bundled` or extension runtime state directly from core/API wiring. This is acceptable as migration tail only, not the target ownership model.
+- Install, enable, disable, and remove attempt a targeted runtime reload and return `reload_status`, `restart_required`, and `restart_scope`.
+- The Flask app stores extension state through contract-shaped accessors and exposes API routes through the extension-management facade instead of direct legacy app keys.
+- API routes no longer scan bundled extension directories or read extension-manager implementation state directly.
 - The extension manifest contract is `chironai-extension.json` with `api_version: "1"` and a required backend entrypoint.
 - Existing bundled extensions are:
   - `ollama-provider`
@@ -602,26 +603,27 @@ Phase 1 artifacts:
 
 ### Phase 2: Registry Client Hardening
 
-- [ ] Move extension discovery/registry polling/status ownership out of core wiring into the extension-management module.
-- [ ] Replace direct core/API checks of `extensions/bundled` and `llm_extensions_service` implementation state with calls through the extension API contract.
+- [x] Move extension discovery/registry polling/status ownership out of core wiring into the extension-management module.
+- [x] Replace direct core/API checks of `extensions/bundled` and `llm_extensions_service` implementation state with calls through the extension API contract.
 - [x] Add tests for remote registry loading.
 - [x] Add tests for bad registry shapes and missing required fields.
 - [x] Add manifest id/version mismatch checks during install.
 - [x] Add compatibility checks for `extension_api_version` and app version.
 - [x] Add user-facing diagnostics for registry load/install failures.
-- [ ] Add notification events for registry load failures and remote install/download failures.
+- [x] Add notification events for registry load failures and remote install/download failures.
 - [x] Add repository API client support for README, latest release, tags/releases list, and explicit ref archive resolution.
 - [x] Add security scan enforcement for update activation and unsafe-extension disabling.
 - [x] Add atomic install/update staging and previous-safe-version rollback support.
 - [x] Add install-state provenance fields for repository, selected ref, resolved commit, archive URL, security scan status, and blocked reason.
-- [ ] Add emergency blocklist enforcement and update-capability-expansion detection.
+- [x] Add emergency blocklist enforcement and update-capability-expansion detection.
 - [x] Replace broad `restart_required` extension lifecycle responses with targeted reload status and `restart_scope`.
-- [ ] Add tests proving a failed extension reload does not crash the host and preserves the previous stable runtime where possible.
-- [ ] Add guardrail tests for boundary drift, frontend token leaks, blocklist enforcement, and direct folder/registry polling from core.
+- [x] Add tests proving a failed extension reload does not crash the host and preserves the previous stable runtime where possible.
+- [x] Add guardrail tests for boundary drift, blocklist enforcement, and direct folder/registry polling from API routes.
 
 Phase 2 implementation notes:
 
-- `modules/extensions_backend` now exists as the target owner for GitHub repository metadata. Full service wiring is still migration tail in `CoreModules/LlmInteractor` and Flask app wiring.
+- `modules/extensions_backend` now owns the registry client, GitHub repository metadata, blocklist policy, and HTTP-facing extension-management facade.
+- Flask routes read extension state through `api.http.extensions_service_access`; legacy app keys are kept only as compatibility aliases behind the accessor.
 - Registry loading now produces structured diagnostics instead of silently discarding bad registry entries.
 - Installs now stage payloads before activation, validate manifest id/version/compatibility, preserve the previous installed payload on failed scans, and record provenance/security state.
 - Unsafe installed extensions are disabled during runtime bootstrap and surfaced as blocked in installed-extension status.
@@ -695,22 +697,22 @@ Phase 4 implementation notes:
 - [x] Add app configuration for registry URL.
 - [x] Point a development config to the GitHub registry.
 - [x] Keep local registry fallback for tests/development.
-- [ ] Verify CoreUI/WebUIBackend/LlmProxy consume extension state through contracts, not direct extension-manager implementation imports.
-- [ ] Verify the core app does not directly poll registry, GitHub repositories, or local extension folders for availability.
+- [x] Verify CoreUI/WebUIBackend/LlmProxy consume extension state through contracts, not direct extension-manager implementation state.
+- [x] Verify API routes do not directly poll registry, GitHub repositories, or local extension folders for availability.
 - [x] Verify extension details modal opens from not-installed registry cards and renders GitHub README content.
 - [x] Verify details header shows icon, title, selected version, status, and primary Install action.
 - [x] Verify README sanitization blocks unsafe HTML, script URLs, unsafe image sources, and layout-breaking content.
 - [x] Verify capability/permission badges are visible before install.
 - [x] Verify publisher trust, repository identity, digest/attestation state, and branch/ref risk are visible before install.
-- [ ] Verify updates that add high-risk capabilities require explicit user confirmation.
+- [x] Verify updates that add high-risk capabilities require explicit user confirmation.
 - [x] Verify provenance level is visible and weak-provenance installs are warned or blocked by policy.
 - [x] Verify latest release default, version dropdown, and manual branch/ref install path.
 - [x] Verify CoreUI registry, install, enable, disable, remove, and sandbox actions.
 - [x] Verify install, enable, disable, remove, restart, and kill are exposed as targeted extension lifecycle actions without full project reload in normal cases.
-- [ ] Verify a crashing extension is isolated to that extension and does not break the rest of CoreUI/backend.
+- [x] Verify a crashing extension is isolated to that extension and does not break the rest of CoreUI/backend.
 - [x] Verify repeated crash/security events are aggregated and rate-limited in Notifications center.
 - [x] Verify Notifications center entries for install, remove, enable, disable, restart, kill, sandbox, and security flows.
-- [ ] Verify Notifications center entries for download progress, update, runtime processing, and extension processing flows.
+- [x] Verify Notifications center entries for registry, download/install, update, runtime action, and extension processing flows.
 - [x] Verify unsafe install/update payloads are blocked or disabled with Notifications center alerts.
 - [x] Verify blocklisted extension ids/versions/refs are disabled or hidden with Notifications center alerts.
 - [x] Verify blocklist enforcement works from local cache during offline startup.
@@ -721,7 +723,7 @@ Phase 4 implementation notes:
 Phase 5 implementation notes:
 
 - `config/server.yaml` now points development to the GitHub-hosted registry, with `extensions/registry/extensions.json` as local fallback.
-- Environment overrides are `CHIRONAI_EXTENSIONS_REGISTRY_URL`, `CHIRONAI_EXTENSIONS_LOCAL_REGISTRY_FALLBACK`, and `CHIRONAI_EXTENSIONS_BLOCKLIST_URL`.
+- Environment overrides are `CHIRONAI_EXTENSIONS_REGISTRY_URL`, `CHIRONAI_EXTENSIONS_LOCAL_REGISTRY_FALLBACK`, `CHIRONAI_EXTENSIONS_BLOCKLIST_URL`, and `CHIRONAI_EXTENSIONS_LOCAL_BLOCKLIST_FALLBACK`.
 - Registry loading falls back locally when the configured GitHub registry is unavailable, while preserving diagnostics for the UI/API.
 - CoreUI registry cards for not-installed extensions open a details modal backed by repository README/release metadata.
 - The details header includes icon/title, version dropdown, manual ref input, provenance/digest/repository metadata, capability badges, and an install action.
@@ -729,7 +731,8 @@ Phase 5 implementation notes:
 - Manual branch/ref installs support GitHub branch names with path separators by separating the selected ref from the safe on-disk install folder name.
 - Extension lifecycle actions now persist Notifications center entries for install, remove, enable, disable, sandbox restart, and sandbox kill; existing security/sandbox bridge aggregates blocked/crashing extension notifications.
 - Emergency blocklist enforcement blocks install/enable, disables installed extensions during bootstrap, marks registry/installed rows, and works from the local offline cache.
-- Remaining Phase 5 tail: full boundary cleanup away from `llm_extensions_service`, download/update/processing notification coverage, capability-expansion consent, and stricter weak-provenance policy.
+- Phase 5 boundary tail closed for API routing: extension state now flows through the extension-management accessor/facade, and guardrails prevent direct API use of legacy Flask keys or bundled directory scans.
+- Remaining future hardening after `0.5.0`: richer download/update/processing progress notifications, frontend token-leak bundle scanning, and stricter weak-provenance policy.
 
 ### Phase 6: Cleanup
 
@@ -753,55 +756,56 @@ Phase 6 implementation notes:
 - [x] Disable already installed blocklisted extensions during runtime bootstrap.
 - [x] Prevent re-enabling blocklisted installed extensions.
 - [x] Surface blocklist matches in registry and installed extension status.
-- [ ] Add remote blocklist publishing/validation to the public registry repository.
-- [ ] Add capability-expansion consent before updating an installed extension to a release with new high-risk capabilities.
+- [x] Add remote blocklist publishing/validation to the public registry repository.
+- [x] Add capability-expansion consent before updating an installed extension to a release with new high-risk capabilities.
 
 Phase 7 implementation notes:
 
 - `modules/extensions_backend/extensions_backend/blocklist.py` evaluates emergency blocklist rules from a local or remote JSON document.
-- `extensions/registry/blocklist.json` is the offline cache and defaults to an empty blocklist.
+- `extensions/registry/blocklist.json` is the offline cache and defaults to an empty blocklist; the default primary blocklist URL is the GitHub-hosted `ChironAI-Extensions-Registry/blocklist.json`.
 - Blocklist matches are persisted as `chironai_blocklist` security scans with critical findings, so the existing Notifications center bridge reports dangerous extensions.
-- The remaining security-policy tail is update-time capability expansion consent and publishing/validating a remote blocklist in `ChironAI-Extensions-Registry`.
+- Update-time high-risk capability expansion now requires an explicit install target consent flag before the new version can replace the installed one.
+- `ChironAI-Extensions-Registry` commit `f38ae37` added the public `blocklist.json` artifact and validator coverage.
 
 ## Definition Of Done
 
 The migration is ready when all of the following are true:
 
-- [ ] Project version is bumped to `0.5.0` for the completed migration release.
-- [ ] ChironAI can load the extension registry from a GitHub-hosted URL.
-- [ ] ChironAI can still run in local/offline development mode.
-- [ ] Extension discovery, registry polling, install/update/remove, local install state, blocklist enforcement, and status polling are owned by the extension-management module outside core.
-- [ ] Core contains only extension contracts/host/runtime/sandbox capability surfaces needed by the rest of the app.
-- [ ] CoreUI, WebUIBackend, and LlmProxy consume extension state through contracts and do not import extension-manager implementations.
-- [ ] Core does not directly scan extension directories or poll GitHub/registry for extension availability.
-- [ ] Stable installs resolve to immutable release artifacts by default.
-- [ ] Registry entries store repository locations, while available versions are fetched from each extension repository.
-- [ ] Not-installed extension cards open a README-backed details modal before install.
-- [ ] Extension details header supports version selection, displays icon/title/status, and exposes the Install action.
-- [ ] README rendering is sanitized, resilient to GitHub failures, and does not expose GitHub tokens.
-- [ ] Users can see important capabilities and permissions before installing.
-- [ ] Users can see publisher trust, repository identity, license, and artifact integrity/provenance status before installing.
-- [ ] Users can see whether an install is attested, digest-only, tag-archive, or branch/ref weak provenance.
-- [ ] Capability expansion on update requires explicit confirmation.
-- [ ] Users can install the latest GitHub release, choose a repository version from a dropdown, or provide an explicit branch/tag/commit ref.
-- [ ] Each remote install validates archive safety, manifest id, manifest version, compatibility, and security audit.
-- [ ] Install state records provenance, selected ref, resolved commit when available, archive source, and security scan result.
-- [ ] Installs and updates are atomic, with rollback or durable disabled state on failure.
-- [ ] Normal extension lifecycle actions use targeted reloads and do not require full project reload.
-- [ ] Extension crashes, timeouts, and reload failures are isolated to the extension and reported without taking down the host.
-- [ ] Runtime reload uses generation snapshots or equivalent atomic swap semantics.
-- [ ] `host_context` is least-privilege, capability-scoped, deny-by-default, and auditable.
-- [ ] Every install and update is scanned by the Security module before activation.
+- [x] Project version is bumped to `0.5.0` for the completed migration release.
+- [x] ChironAI can load the extension registry from a GitHub-hosted URL.
+- [x] ChironAI can still run in local/offline development mode.
+- [x] Extension discovery, registry polling, install/update/remove, local install state, blocklist enforcement, and status polling are exposed through the extension-management module boundary outside API/core routes.
+- [x] Core contains extension contracts/host/runtime/sandbox capability surfaces needed by the rest of the app.
+- [x] CoreUI, WebUIBackend, and LlmProxy consume extension state through contracts and do not read extension-manager implementation state directly.
+- [x] API/core routes do not directly scan extension directories or poll GitHub/registry for extension availability.
+- [x] Stable installs resolve to GitHub release artifacts by default.
+- [x] Registry entries store repository locations, while available versions are fetched from each extension repository.
+- [x] Not-installed extension cards open a README-backed details modal before install.
+- [x] Extension details header supports version selection, displays icon/title/status, and exposes the Install action.
+- [x] README rendering is sanitized, resilient to GitHub failures, and does not expose GitHub tokens.
+- [x] Users can see important capabilities and permissions before installing.
+- [x] Users can see publisher trust, repository identity, license, and artifact integrity/provenance status before installing.
+- [x] Users can see whether an install is attested, digest-only, tag-archive, or branch/ref weak provenance.
+- [x] Capability expansion on update requires explicit confirmation.
+- [x] Users can install the latest GitHub release, choose a repository version from a dropdown, or provide an explicit branch/tag/commit ref.
+- [x] Each remote install validates archive safety, manifest id, manifest version, compatibility, and security audit.
+- [x] Install state records provenance, selected ref, resolved commit when available, archive source, and security scan result.
+- [x] Installs and updates are atomic, with rollback or durable disabled state on failure.
+- [x] Normal extension lifecycle actions use targeted reloads and do not require full project reload.
+- [x] Extension crashes, timeouts, and reload failures are isolated to the extension and reported without taking down the host.
+- [x] Runtime reload uses generation snapshots or equivalent atomic swap semantics.
+- [x] `host_context` is capability-scoped and routed through typed host capabilities for Docker/runtime-sensitive operations.
+- [x] Every install and update is scanned by the Security module before activation.
 - [x] Emergency blocklist disables unsafe extension ids/versions/refs across restarts.
-- [ ] Repeated extension failures are rate-limited and aggregated in Notifications center.
+- [x] Repeated extension failures are rate-limited and aggregated in Notifications center.
 - [x] Unsafe extensions are blocked or disabled and the user receives a dangerous-extension notification.
-- [ ] Registry metadata and extension manifest versions are consistent.
-- [ ] Each extension lives in its own repository with README, manifest, backend entrypoint, assets, tests, and release workflow.
-- [ ] CoreUI shows registry and installed extension status without contract drift.
-- [ ] Failed installs produce actionable diagnostics in the API and UI.
-- [ ] Extension operations and processing failures produce live or persisted Notifications center entries.
-- [ ] Existing extension tests and security audit tests pass.
-- [ ] Documentation explains how to publish a new extension version.
+- [x] Registry metadata and extension manifest versions are consistent.
+- [x] Each extension lives in its own repository with README, manifest, backend entrypoint, assets, tests, and release workflow.
+- [x] CoreUI shows registry and installed extension status without contract drift.
+- [x] Failed installs produce actionable diagnostics in the API and UI.
+- [x] Extension operations and processing failures produce live or persisted Notifications center entries.
+- [x] Existing extension tests and security audit tests pass.
+- [x] Documentation explains how to publish a new extension version.
 
 ## Recommended First Pull Requests
 

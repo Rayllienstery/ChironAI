@@ -1,7 +1,8 @@
 # Local Extension Registry Fallback
 
 `extensions.json` is a local/offline fallback registry for development and
-bootstrap startup. The canonical public registry is:
+bootstrap startup. `blocklist.json` is the local/offline emergency blocklist
+cache. The canonical public registry and blocklist live in:
 
 https://github.com/Rayllienstery/ChironAI-Extensions-Registry
 
@@ -15,3 +16,5 @@ Target public registry behavior:
 - available versions are fetched from each extension GitHub repository;
 - stable installs prefer immutable GitHub release artifacts;
 - local `source_path` is reserved for development and offline fallback only.
+- remote blocklist entries are cached locally so already installed unsafe
+  extensions can still be disabled during offline startup.

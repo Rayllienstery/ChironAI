@@ -8,6 +8,27 @@ from typing import Any
 import pytest
 
 
+def _set_extensions_app_state(
+    app: Any,
+    *,
+    service: Any | None = None,
+    runtime: Any | None = None,
+    registry: Any | None = None,
+) -> None:
+    from api.http.extensions_service_access import (
+        set_extensions_provider_registry,
+        set_extensions_runtime,
+        set_extensions_service,
+    )
+
+    if service is not None:
+        set_extensions_service(app, service)
+    if runtime is not None:
+        set_extensions_runtime(app, runtime)
+    if registry is not None:
+        set_extensions_provider_registry(app, registry)
+
+
 def _ensure_root_on_path() -> None:
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     if root not in sys.path:
@@ -28,6 +49,9 @@ class _FakeExtensionsService:
 
     def registry_entries(self) -> list[dict[str, Any]]:
         return [{"id": "ollama-provider", "title": "Ollama"}]
+
+    def registry_diagnostics(self) -> dict[str, Any]:
+        return {"registry_url": "https://example.invalid/extensions.json", "diagnostics": [], "entries_count": 1}
 
     def installed_extensions(self) -> list[dict[str, Any]]:
         return [
@@ -169,8 +193,7 @@ def test_extensions_routes_expose_registry_and_ui() -> None:
     from api.http.rag_routes import create_app
 
     app = create_app()
-    app.extensions["llm_extensions_service"] = _FakeExtensionsService()
-    app.extensions["llm_interactor_runtime"] = object()
+    _set_extensions_app_state(app, service=_FakeExtensionsService(), runtime=object())
     client = app.test_client()
 
     registry = client.get("/api/webui/extensions/registry")
@@ -212,23 +235,28 @@ def test_extensions_routes_expose_registry_and_ui() -> None:
 
 def test_create_app_syncs_extension_runtime_after_background_bootstrap() -> None:
     _ensure_root_on_path()
+    from api.http.extensions_service_access import (
+        get_extensions_provider_registry,
+        get_extensions_runtime,
+        get_extensions_service,
+    )
     from api.http.rag_routes import create_app
 
     app = create_app()
-    manager = app.extensions["llm_extensions_service"]
+    manager = get_extensions_service(app)
     runtime = object()
     registry = object()
-    manager._runtime = runtime
-    manager._registry = registry
+    manager._manager._runtime = runtime
+    manager._manager._registry = registry
 
-    assert "llm_interactor_runtime" not in app.extensions
-    assert "llm_provider_registry" not in app.extensions
+    assert get_extensions_runtime(app) is runtime
+    assert get_extensions_provider_registry(app) is registry
 
     response = app.test_client().get("/")
 
     assert response.status_code == 302
-    assert app.extensions["llm_interactor_runtime"] is runtime
-    assert app.extensions["llm_provider_registry"] is registry
+    assert get_extensions_runtime(app) is runtime
+    assert get_extensions_provider_registry(app) is registry
 
 
 def test_open_webui_core_routes_are_removed() -> None:
@@ -249,7 +277,7 @@ def test_extension_lifecycle_routes_return_restart_required() -> None:
     from api.http.rag_routes import create_app
 
     app = create_app()
-    app.extensions["llm_extensions_service"] = _FakeExtensionsService()
+    _set_extensions_app_state(app, service=_FakeExtensionsService())
     client = app.test_client()
 
     install = client.post(
@@ -280,7 +308,7 @@ def test_extension_sandbox_control_routes_return_diagnostics() -> None:
     from api.http.rag_routes import create_app
 
     app = create_app()
-    app.extensions["llm_extensions_service"] = _FakeExtensionsService()
+    _set_extensions_app_state(app, service=_FakeExtensionsService())
     client = app.test_client()
 
     restart = client.post("/api/webui/extensions/ollama-provider/sandbox/restart", json={})
@@ -301,8 +329,7 @@ def test_ollama_extension_start_stop_actions_are_invoked_through_generic_route()
     svc = _FakeExtensionsService()
     runtime = object()
     app = create_app()
-    app.extensions["llm_extensions_service"] = svc
-    app.extensions["llm_interactor_runtime"] = runtime
+    _set_extensions_app_state(app, service=svc, runtime=runtime)
     client = app.test_client()
 
     start = client.post("/api/webui/extensions/ollama-provider/actions/start_service", json={})
@@ -325,8 +352,7 @@ def test_ollama_compat_start_stop_routes_delegate_to_extension_actions() -> None
     svc = _FakeExtensionsService()
     runtime = object()
     app = create_app()
-    app.extensions["llm_extensions_service"] = svc
-    app.extensions["llm_interactor_runtime"] = runtime
+    _set_extensions_app_state(app, service=svc, runtime=runtime)
     client = app.test_client()
 
     start = client.post("/api/webui/ollama/start", json={})
@@ -369,7 +395,7 @@ def test_extension_asset_route_serves_installed_assets_and_blocks_escape(tmp_pat
     manager.ensure_bundled_installed()
 
     app = create_app()
-    app.extensions["llm_extensions_service"] = manager
+    _set_extensions_app_state(app, service=manager)
     client = app.test_client()
 
     ok = client.get("/api/webui/extensions/open-webui/assets/icons/open-webui-light.svg")
