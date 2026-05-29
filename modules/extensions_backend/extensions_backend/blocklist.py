@@ -64,7 +64,13 @@ class ExtensionBlocklistPolicy:
         # True only when every source (primary + fallback) failed on the first
         # ever load attempt.  Callers can query this to fail closed.
         self._initial_load_failed: bool = False
+        # _lock: brief atomic reads/writes of _rules/_loaded_at state.
+        # _fetch_lock: serialises HTTP fetches so only one thread goes remote
+        # at a time.  _lock is NEVER held during a network call — keeping it
+        # free lets concurrent readers (e.g. UI threads) access stale-but-valid
+        # cached rules without blocking on the in-flight HTTP request.
         self._lock = threading.Lock()
+        self._fetch_lock = threading.Lock()
 
     @property
     def blocklist_url(self) -> str:
@@ -81,41 +87,67 @@ class ExtensionBlocklistPolicy:
             return self._initial_load_failed
 
     def load(self) -> list[dict[str, Any]]:
-        """Return the current list of blocklist rules, reloading if the TTL has expired."""
+        """Return the current list of blocklist rules, reloading if the TTL has expired.
+
+        The network fetch is performed *outside* any lock so that background
+        bootstrap threads never block UI threads that are reading stale-but-valid
+        cached rules at the same time.
+        """
         now = time.monotonic()
+
+        # Fast path: cache is still valid — brief lock, no I/O.
         with self._lock:
             if self._rules is not None and (now - self._loaded_at) < self._ttl_sec:
                 return [dict(rule) for rule in self._rules]
+
+        # Slow path: cache is stale or uninitialized.  Serialise fetches with
+        # _fetch_lock, but do NOT hold _lock during the HTTP call so that other
+        # threads can still read the (possibly stale) rules without waiting.
+        with self._fetch_lock:
+            # Re-check under _lock after acquiring _fetch_lock — another thread
+            # may have already refreshed the cache while we were waiting.
+            now = time.monotonic()
+            with self._lock:
+                if self._rules is not None and (now - self._loaded_at) < self._ttl_sec:
+                    return [dict(rule) for rule in self._rules]
+
+            # Network fetch — no locks held here.
             try:
                 raw = self._read_payload()
             except Exception as exc:
-                if self._rules is not None:
+                with self._lock:
+                    if self._rules is not None:
+                        _log.warning(
+                            "blocklist reload failed — keeping stale rules (%d entries): %s: %s",
+                            len(self._rules),
+                            type(exc).__name__,
+                            exc,
+                        )
+                        self._loaded_at = time.monotonic()  # back off; retry after TTL
+                        return [dict(rule) for rule in self._rules]
                     _log.warning(
-                        "blocklist reload failed — keeping stale rules (%d entries): %s: %s",
-                        len(self._rules),
+                        "blocklist initial load failed — rules unavailable until next retry: %s: %s",
                         type(exc).__name__,
                         exc,
                     )
-                    self._loaded_at = now  # back off; retry after next TTL
-                    return [dict(rule) for rule in self._rules]
-                _log.warning(
-                    "blocklist initial load failed — rules unavailable until next retry: %s: %s",
-                    type(exc).__name__,
-                    exc,
-                )
-                # Keep _rules as None to signal "never successfully loaded" so
-                # callers can choose to fail closed rather than allow everything.
-                self._initial_load_failed = True
-                self._loaded_at = now  # back off; retry after TTL
-                return []
+                    # Keep _rules as None to signal "never successfully loaded" so
+                    # callers can choose to fail closed rather than allow everything.
+                    self._initial_load_failed = True
+                    self._loaded_at = time.monotonic()  # back off; retry after TTL
+                    return []
+
             payload = json.loads(raw) if raw.strip() else {}
             rules = payload.get("blocked") if isinstance(payload, dict) else []
             if not isinstance(rules, list):
                 rules = []
-            self._rules = [dict(rule) for rule in rules if isinstance(rule, dict)]
-            self._initial_load_failed = False
-            self._loaded_at = now
-            return [dict(rule) for rule in self._rules]
+            fresh_rules = [dict(rule) for rule in rules if isinstance(rule, dict)]
+
+            with self._lock:
+                self._rules = fresh_rules
+                self._initial_load_failed = False
+                self._loaded_at = time.monotonic()
+
+            return fresh_rules
 
     def match(
         self,

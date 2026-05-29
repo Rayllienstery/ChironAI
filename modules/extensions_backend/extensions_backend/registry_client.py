@@ -70,7 +70,13 @@ class ExtensionRegistryClient:
         self._ttl_sec = ttl_sec
         self._cached_result: ExtensionRegistryLoadResult | None = None
         self._cached_at: float = 0.0
+        # _cache_lock: brief atomic reads/writes of cached state.
+        # _fetch_lock: serialises HTTP fetches so only one thread goes remote
+        # at a time.  _cache_lock is NEVER held during a network call — keeping
+        # it free lets concurrent readers (e.g. UI threads) get the cached
+        # result without waiting on an in-flight background fetch.
         self._cache_lock = threading.Lock()
+        self._fetch_lock = threading.Lock()
 
     def _default_registry_url(self) -> str:
         return str((self._project_root / DEFAULT_REGISTRY_PATH).resolve())
@@ -93,16 +99,35 @@ class ExtensionRegistryClient:
         return self.load_with_diagnostics().entries
 
     def load_with_diagnostics(self) -> ExtensionRegistryLoadResult:
+        """Return the cached registry result, refreshing if the TTL has expired.
+
+        The network fetch is performed *outside* any lock so that a background
+        prewarm or bootstrap thread never blocks UI threads that are reading
+        the stale-but-valid cached result at the same time.
+        """
         now = time.monotonic()
+
+        # Fast path: cache is still valid — brief lock, no I/O.
         with self._cache_lock:
             if self._cached_result is not None and (now - self._cached_at) < self._ttl_sec:
                 return self._cached_result
-            # Load while holding the lock so that concurrent threads don't all
-            # fire parallel HTTP requests to GitHub on the same cache miss.
-            # This mirrors the pattern used by ExtensionBlocklistPolicy.
+
+        # Slow path: serialise fetches but do NOT hold _cache_lock during I/O.
+        with self._fetch_lock:
+            # Re-check after acquiring _fetch_lock — another thread may have
+            # already refreshed the cache while we were waiting.
+            now = time.monotonic()
+            with self._cache_lock:
+                if self._cached_result is not None and (now - self._cached_at) < self._ttl_sec:
+                    return self._cached_result
+
+            # Network/file fetch — no locks held here.
             result = self._load_with_diagnostics_uncached()
-            self._cached_result = result
-            self._cached_at = time.monotonic()
+
+            with self._cache_lock:
+                self._cached_result = result
+                self._cached_at = time.monotonic()
+
             return result
 
     def _load_with_diagnostics_uncached(self) -> ExtensionRegistryLoadResult:

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.2] - 2026-05-29
+### Changed
+- Registry extension cards now receive GitHub-backed icon URLs before install.
+- Remote registry SVG icons now render as images in CoreUI instead of local masks.
+
 ## [0.5.1] - 2026-05-28
 ### Added
 - Added extension archive hardening for uncompressed-size bombs, excessive file counts, compression-ratio abuse, and symlink zip entries.

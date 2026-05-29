@@ -111,6 +111,31 @@ def _github_archive_url(repository: str, ref: str) -> str:
     return f"https://github.com/{owner}/{name}/archive/{safe_ref}.zip"
 
 
+def _github_raw_asset_url(repository: str, asset_path: str, *, ref: str = "HEAD") -> str:
+    repo = str(repository or "").strip()
+    rel = str(asset_path or "").strip().replace("\\", "/")
+    selected_ref = str(ref or "").strip() or "HEAD"
+    if not repo or not rel:
+        return ""
+    parsed_asset = urlparse(rel)
+    if parsed_asset.scheme or parsed_asset.netloc or rel.startswith("/"):
+        return ""
+    parts = [part for part in rel.split("/") if part]
+    if not parts or any(part in {".", ".."} for part in parts):
+        return ""
+    parsed_repo = urlparse(repo)
+    if parsed_repo.scheme not in {"http", "https"} or parsed_repo.netloc.lower() != "github.com":
+        return ""
+    repo_parts = [part for part in parsed_repo.path.strip("/").split("/") if part]
+    if len(repo_parts) < 2:
+        return ""
+    owner = quote(repo_parts[0], safe="")
+    name = quote(repo_parts[1].removesuffix(".git"), safe="")
+    safe_ref = quote(selected_ref, safe="")
+    safe_path = "/".join(quote(part, safe="") for part in parts)
+    return f"https://github.com/{owner}/{name}/raw/{safe_ref}/{safe_path}"
+
+
 def _validate_archive_url(url: str) -> None:
     """Raise ValueError if *url* is not from a trusted archive host.
 
@@ -260,8 +285,8 @@ class ExtensionManager:
                 return
             self._runtime_status = "loading"
             self._runtime_error = ""
-            # Discard any stale in-process registry cache so the bootstrap
-            # thread always pulls a fresh copy from the remote source on startup.
+            # Discard any stale in-process registry cache so the first UI
+            # request always fetches a fresh copy from the remote source.
             self.invalidate_registry_cache()
             thread = threading.Thread(
                 target=self._bootstrap_runtime_worker,
@@ -270,6 +295,31 @@ class ExtensionManager:
             )
             self._bootstrap_thread = thread
             thread.start()
+            # Pre-warm the registry cache in a separate thread so the first
+            # tab open is instant.  Runs in parallel with the bootstrap worker
+            # and does not block provider loading.
+            threading.Thread(
+                target=self._prewarm_registry,
+                name="chironai-registry-prewarm",
+                daemon=True,
+            ).start()
+
+    def _prewarm_registry(self) -> None:
+        try:
+            self._registry_client.load_with_diagnostics()
+        except Exception:
+            pass
+
+    def _prewarm_provider_rows(self, runtime: Any) -> None:
+        """Populate _provider_rows_cache without blocking bootstrap or extension tab requests."""
+        try:
+            rows = self._provider_rows_from_runtime(runtime)
+            with self._lock:
+                # Only write if the cache is still empty (no concurrent update beat us).
+                if not self._provider_rows_cache:
+                    self._provider_rows_cache = rows
+        except Exception:
+            pass
 
     def _bootstrap_runtime_worker(self) -> None:
         try:
@@ -356,13 +406,6 @@ class ExtensionManager:
         with self._lock:
             self._runtime_status = "loading"
             self._runtime_error = ""
-        # Pre-warm the registry cache from the remote source while I/O is
-        # already in flight.  Errors are silently swallowed here — the cache
-        # will remain empty and the next UI request will retry.
-        try:
-            self._registry_client.load_with_diagnostics()
-        except Exception:
-            pass
         self.ensure_bundled_installed()
         self._disable_blocklisted_records()
         records = [r for r in self._repo.list_records() if r.installed and r.enabled]
@@ -404,7 +447,6 @@ class ExtensionManager:
                 )
         previous_loaded = self._loaded
         runtime = LLMRuntime(registry, default_provider_id=self._default_provider_id)
-        provider_rows_cache = self._provider_rows_from_runtime(runtime)
         bootstrap = RuntimeBootstrap(
             runtime=runtime,
             registry=registry,
@@ -419,9 +461,21 @@ class ExtensionManager:
             self._failed = list(bootstrap.failed)
             self._runtime = bootstrap.runtime
             self._registry = bootstrap.registry
-            self._provider_rows_cache = provider_rows_cache
+            # Provider rows are computed lazily on first provider_catalog() call.
+            # Pre-computing here would block extension workers (health_check +
+            # list_models RPC calls) for up to ~18s per extension before _runtime
+            # becomes ready, making extension tabs unresponsive.
+            self._provider_rows_cache = []
             self._runtime_status = "ready"
             self._runtime_error = ""
+        # Pre-warm provider rows in a background thread so the LLM Proxy /
+        # providers catalog is fast on first open without blocking tab loading.
+        threading.Thread(
+            target=self._prewarm_provider_rows,
+            args=(runtime,),
+            name="chironai-provider-rows-prewarm",
+            daemon=True,
+        ).start()
         return bootstrap
 
     def _disable_security_blocked_extensions(self, failed: list[FailedExtension]) -> None:
@@ -678,6 +732,12 @@ class ExtensionManager:
         rows: list[dict[str, Any]] = []
         for entry in self._registry_client.load():
             out = dict(entry)
+            if not str(out.get("icon_url") or "").strip():
+                out["icon_url"] = _github_raw_asset_url(
+                    str(out.get("repository") or out.get("repo_url") or ""),
+                    str(out.get("icon") or ""),
+                    ref=str(out.get("default_ref") or "HEAD"),
+                )
             match = self._blocklist_match_for_entry(out)
             if match.get("matched"):
                 out["blocklist"] = match

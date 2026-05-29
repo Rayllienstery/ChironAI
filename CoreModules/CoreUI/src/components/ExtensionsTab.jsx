@@ -36,7 +36,8 @@ function ExtensionIcon({ icon, iconUrl }) {
 
   if (url && !imageFailed) {
     const isSvg = url.toLowerCase().endsWith(".svg") || url.toLowerCase().includes(".svg?");
-    if (isSvg) {
+    const isRemote = /^https?:\/\//i.test(url);
+    if (isSvg && !isRemote) {
       return (
         <span
           className="extensions-card__icon extensions-card__icon--masked"
@@ -423,12 +424,13 @@ export default function ExtensionsTab({ onErrorStateChange }) {
     loadAll();
   }, [loadAll]);
 
-  // Re-fetch registry from GitHub whenever the user navigates to the Registry
-  // sub-tab so the list stays current without requiring a manual Refresh.
+  // Refresh registry (using server cache) when the user navigates to the
+  // Registry sub-tab so the list is up-to-date without hammering GitHub.
+  // Force-refresh is only triggered by the explicit Refresh button.
   const prevActiveViewRef = useRef(null);
   useEffect(() => {
     if (activeView === "registry" && prevActiveViewRef.current !== "registry") {
-      getExtensionRegistry({ forceRefresh: true })
+      getExtensionRegistry()
         .then((data) => {
           setRegistry(data.registry || []);
           setRegistryDiagnostics(data.diagnostics || []);
@@ -542,11 +544,30 @@ export default function ExtensionsTab({ onErrorStateChange }) {
   const installFromDetails = useCallback(
     async (target) => {
       const extId = details?.entry?.id;
+      const extTitle = details?.entry?.title || extId;
       if (!extId) return;
+
+      // Close modal immediately so the user isn't blocked waiting.
+      setDetails(null);
       setBusyId(extId);
       setError("");
+
+      // Show a progress notification right away.
+      let loadingNotifId = null;
+      if (persistExtensionNotification) {
+        loadingNotifId = await persistExtensionNotification({
+          kind: "loading",
+          source: "extensions",
+          title: `${extTitle}: installing`,
+          message: `Downloading and installing from GitHub…`,
+          metadata: { extension_id: extId, operation: "install" },
+          aggregation_key: `extensions-lifecycle:${extId}:install:loading`,
+        });
+      }
+
       try {
         const result = await installExtensionTarget(extId, target);
+        if (loadingNotifId != null) notificationCenter?.dismissPersisted?.(loadingNotifId);
         notifyExtensionEvent(
           extId,
           "install",
@@ -554,10 +575,10 @@ export default function ExtensionsTab({ onErrorStateChange }) {
           `Installed ${result?.selected_ref || result?.version || target?.ref || target?.version || "selected version"}.`,
           result || {}
         );
-        setDetails(null);
         await loadAll();
         onErrorStateChange?.(false);
       } catch (e) {
+        if (loadingNotifId != null) notificationCenter?.dismissPersisted?.(loadingNotifId);
         const msg = String(e?.message || e || "Install failed");
         setError(msg);
         notifyExtensionEvent(extId, "install", "error", msg);
@@ -566,7 +587,7 @@ export default function ExtensionsTab({ onErrorStateChange }) {
         setBusyId("");
       }
     },
-    [details, loadAll, notifyExtensionEvent, onErrorStateChange]
+    [details, loadAll, notificationCenter, notifyExtensionEvent, onErrorStateChange, persistExtensionNotification]
   );
 
   return (

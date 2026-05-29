@@ -338,6 +338,15 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
     void load();
   }, [load]);
 
+  // Auto-retry while runtime is still bootstrapping.
+  useEffect(() => {
+    if (!runtimeLoadingMessage) return undefined;
+    const id = setInterval(() => {
+      void load(true);
+    }, 2000);
+    return () => clearInterval(id);
+  }, [runtimeLoadingMessage, load]);
+
   useEffect(() => subscribeOllamaPullJob(setPullJob), []);
 
   useEffect(() => {

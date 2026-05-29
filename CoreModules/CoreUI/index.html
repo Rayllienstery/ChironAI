@@ -4,11 +4,77 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ChironAI</title>
+
+    <!-- Preconnect to Google Font servers to speed up DNS + TLS handshake -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- Load Material Symbols asynchronously (non-blocking) via media trick.
+         Icons appear slightly after first paint, but they never block rendering. -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap"
       rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap"
+      />
+    </noscript>
+
     <link rel="stylesheet" href="/src/styles/tokens.css" />
+
+    <!-- Apply saved theme BEFORE first paint to avoid purple flash.
+         Reads from localStorage set by applyTheme() in App.jsx. -->
+    <script>
+      (function () {
+        try {
+          var t = JSON.parse(localStorage.getItem('chironai_theme') || '{}');
+          var mode = t.mode || 'system';
+          var light = t.lightAccent || 'purple';
+          var dark = t.darkAccent || 'cyan';
+          var actual =
+            mode === 'system'
+              ? window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+              : mode;
+          document.documentElement.classList.add('theme-' + actual);
+          document.documentElement.setAttribute(
+            'data-accent-color',
+            actual === 'dark' ? dark : light
+          );
+        } catch (e) {}
+      })();
+    </script>
+
+    <!-- Loading spinner shown while #root is empty (before React mounts) -->
+    <style>
+      body {
+        margin: 0;
+      }
+      #root:empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+      }
+      #root:empty::after {
+        content: '';
+        display: block;
+        width: 36px;
+        height: 36px;
+        border: 3px solid rgba(103, 80, 164, 0.2);
+        border-top-color: #6750a4;
+        border-radius: 50%;
+        animation: coreui-spin 0.75s linear infinite;
+      }
+      @keyframes coreui-spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

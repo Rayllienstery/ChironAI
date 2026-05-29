@@ -33,14 +33,33 @@ from infrastructure.database import get_settings_repository
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
 from infrastructure.rag.qdrant_point_builder import build_named_vectors
 from md_ingestion_service.domain.services.indexing_prepare import prepare_markdown_for_indexing
-from qdrant_client import QdrantClient
-from qdrant_client.http.models import (
-    Distance,
-    PayloadSchemaType,
-    PointStruct,
-    SparseVectorParams,
-    VectorParams,
-)
+
+# qdrant_client is loaded lazily inside functions that use it to avoid the
+# ~800ms startup cost when crawling/indexing is not actively in use.
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from qdrant_client import QdrantClient
+    from qdrant_client.http.models import (
+        Distance,
+        PayloadSchemaType,
+        PointStruct,
+        SparseVectorParams,
+        VectorParams,
+    )
+
+
+def _import_qdrant() -> tuple[type, type, type, type, type, type]:
+    """Lazy-load qdrant_client types. Returns (QdrantClient, Distance, PayloadSchemaType, PointStruct, SparseVectorParams, VectorParams)."""
+    from qdrant_client import QdrantClient as _QC  # noqa: PLC0415
+    from qdrant_client.http.models import (  # noqa: PLC0415
+        Distance as _Dist,
+        PayloadSchemaType as _PST,
+        PointStruct as _PS,
+        SparseVectorParams as _SVP,
+        VectorParams as _VP,
+    )
+    return _QC, _Dist, _PST, _PS, _SVP, _VP
 
 from api.http.webui_crawler_helpers import is_safe_identifier
 from api.http.webui_crawler_source_routes import register_crawler_source_routes
@@ -232,6 +251,7 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
         hybrid_sparse: bool = False,
     ) -> None:
         """Create Qdrant collection with specified name if it doesn't exist."""
+        _, Distance, PayloadSchemaType, _, SparseVectorParams, VectorParams = _import_qdrant()
         try:
             qclient.get_collection(collection_name)
             # Collection exists, ensure payload indexes
@@ -349,6 +369,7 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
         """
         sources_dir = _get_crawler_sources_dir()
         qdrant_url = get_qdrant_url().rstrip("/")
+        QdrantClient, _, _, PointStruct, _, _ = _import_qdrant()
         qclient = QdrantClient(url=qdrant_url)
     
         stats: dict[str, Any] = {
@@ -1869,6 +1890,7 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                 return _error_response("Collection name must contain only alphanumeric characters, underscores, and hyphens", 400)
 
             qdrant_url = get_qdrant_url().rstrip("/")
+            QdrantClient, _, _, _, _, _ = _import_qdrant()
             qclient = QdrantClient(url=qdrant_url)
             try:
                 qclient.get_collection(collection_name)

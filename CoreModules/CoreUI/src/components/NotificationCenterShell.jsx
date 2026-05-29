@@ -180,6 +180,9 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
             role="status"
           >
             <div className="notification-center-card-header">
+              {n.kind === 'loading' && (
+                <span className="notification-center-card-spinner" aria-hidden="true" />
+              )}
               <span className="notification-center-card-header-title">{notificationDisplayTitle(n)}</span>
               <button
                 type="button"

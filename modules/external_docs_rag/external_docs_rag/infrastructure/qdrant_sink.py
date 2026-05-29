@@ -6,19 +6,27 @@ Uses qdrant_client when available; otherwise no-op or raise.
 from __future__ import annotations
 
 import hashlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-try:
+if TYPE_CHECKING:
     from qdrant_client import QdrantClient
     from qdrant_client.http.models import Distance, PointStruct, SparseVectorParams, VectorParams
-    _HAS_QDRANT = True
-except ImportError:
-    QdrantClient = None  # type: ignore
-    PointStruct = None  # type: ignore
-    VectorParams = None  # type: ignore
-    SparseVectorParams = None  # type: ignore
-    Distance = None  # type: ignore
-    _HAS_QDRANT = False
+
+# qdrant_client is imported lazily inside methods to avoid the ~800ms startup
+# cost when the sink is not actually used.  _HAS_QDRANT is populated on first use.
+_HAS_QDRANT: bool | None = None
+
+
+def _ensure_qdrant_available() -> bool:
+    """Return True if qdrant_client can be imported; caches the result."""
+    global _HAS_QDRANT
+    if _HAS_QDRANT is None:
+        try:
+            import qdrant_client  # noqa: F401
+            _HAS_QDRANT = True
+        except ImportError:
+            _HAS_QDRANT = False
+    return _HAS_QDRANT
 
 
 def _point_id_from_hash(chunk_hash: str) -> int:
@@ -49,16 +57,16 @@ class QdrantChunkSink:
         self._client: QdrantClient | None = None
 
     def _get_client(self) -> QdrantClient:
-        if not _HAS_QDRANT or QdrantClient is None:
+        if not _ensure_qdrant_available():
             raise RuntimeError("qdrant-client is required for QdrantChunkSink. pip install qdrant-client")
         if self._client is None:
-            self._client = QdrantClient(url=self._base_url)
+            from qdrant_client import QdrantClient as _QdrantClient  # noqa: PLC0415
+            self._client = _QdrantClient(url=self._base_url)
         return self._client
 
     def _ensure_collection(self, collection_name: str, vector_size: int, *, hybrid_sparse: bool) -> None:
+        from qdrant_client.http.models import Distance, SparseVectorParams, VectorParams  # noqa: PLC0415
         client = self._get_client()
-        if VectorParams is None or Distance is None:
-            return
         try:
             info = client.get_collection(collection_name)
             if hasattr(info, "config") and info.config and hasattr(info.config, "params"):
@@ -71,7 +79,7 @@ class QdrantChunkSink:
             return
         except Exception:
             pass
-        if hybrid_sparse and SparseVectorParams is not None:
+        if hybrid_sparse:
             client.recreate_collection(
                 collection_name,
                 vectors_config={
@@ -99,7 +107,7 @@ class QdrantChunkSink:
         """
         if not chunks or not vectors or len(chunks) != len(vectors):
             return 0
-        if not _HAS_QDRANT or PointStruct is None:
+        if not _ensure_qdrant_available():
             return 0
         hybrid_cfg = False
         try:
@@ -123,6 +131,7 @@ class QdrantChunkSink:
             def build_named_vectors(text: str, dense: list[float], *, hybrid_sparse: bool) -> Any:
                 return dense
 
+        from qdrant_client.http.models import PointStruct  # noqa: PLC0415
         points: list[PointStruct] = []
         for payload, vec in zip(chunks, vectors):
             text = payload.get("text", "")

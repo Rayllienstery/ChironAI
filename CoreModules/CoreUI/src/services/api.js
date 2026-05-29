@@ -57,7 +57,7 @@ export async function getVersion() {
   return data;
 }
 
-export async function getSession() {
+export async function getSession({ maxRetries = 6, baseDelayMs = 500 } = {}) {
   let url = `${API_BASE}/sessions`;
   try {
     const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(COREUI_SESSION_STORAGE_KEY) : null;
@@ -68,21 +68,33 @@ export async function getSession() {
   } catch {
     // localStorage unavailable (e.g. private mode)
   }
-  const response = await fetch(url, {
-    method: 'GET',
-  });
-  if (!response.ok) {
-    throw new Error('Failed to get session');
-  }
-  const session = await response.json();
-  try {
-    if (session && session.id && typeof localStorage !== 'undefined') {
-      localStorage.setItem(COREUI_SESSION_STORAGE_KEY, String(session.id));
+
+  let lastError;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    if (attempt > 0) {
+      // Exponential backoff: 500ms, 1s, 2s, 4s, 8s
+      await new Promise(resolve => setTimeout(resolve, baseDelayMs * Math.pow(2, attempt - 1)));
     }
-  } catch {
-    // ignore
+    try {
+      const response = await fetch(url, { method: 'GET' });
+      if (!response.ok) {
+        throw new Error(`Failed to get session: ${response.status}`);
+      }
+      const session = await response.json();
+      try {
+        if (session && session.id && typeof localStorage !== 'undefined') {
+          localStorage.setItem(COREUI_SESSION_STORAGE_KEY, String(session.id));
+        }
+      } catch {
+        // ignore
+      }
+      return session;
+    } catch (e) {
+      lastError = e;
+      // Continue to next retry
+    }
   }
-  return session;
+  throw lastError;
 }
 
 export async function getProviderCatalog(capability = '') {

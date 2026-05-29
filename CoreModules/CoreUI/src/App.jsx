@@ -147,6 +147,7 @@ function App() {
     useState(false);
   const [testingSubTab, setTestingSubTab] = useState("model-tester");
   const [sessionId, setSessionId] = useState(null);
+  const [sessionError, setSessionError] = useState(false);
   const [ragTestRunJobId, setRagTestRunJobId] = useState(null);
   const [ragTestRunning, setRagTestRunning] = useState(false);
   const [ragTestRunProgress, setRagTestRunProgress] = useState(null);
@@ -177,15 +178,21 @@ function App() {
     gpu_temp: [],
   });
 
-  useEffect(() => {
-    // Initialize session
+  const initSession = useCallback(() => {
+    setSessionError(false);
     getSession()
       .then((session) => {
         setSessionId(session.id);
       })
       .catch((error) => {
-        console.error("Failed to initialize session:", error);
+        console.error("Failed to initialize session after retries:", error);
+        setSessionError(true);
       });
+  }, []);
+
+  useEffect(() => {
+    // Initialize session
+    initSession();
 
     // Load theme settings
     loadThemeSettings();
@@ -468,6 +475,14 @@ function App() {
     const accentColor =
       actualTheme === "dark" ? darkAccentColor : lightAccentColor;
     root.setAttribute("data-accent-color", accentColor);
+
+    // Persist for instant restoration on next page load (prevents purple flash).
+    try {
+      localStorage.setItem(
+        "chironai_theme",
+        JSON.stringify({ mode, lightAccent: lightAccentColor, darkAccent: darkAccentColor }),
+      );
+    } catch (_) {}
   };
 
   const handleThemeChange = (mode, lightAccentColor, darkAccentColor) => {
@@ -481,10 +496,10 @@ function App() {
     { id: "dashboard", label: "Dashboard", section: "Main" },
     { id: "docker", label: "Docker", section: "Main", iconUrl: DockerTabIcon },
     { id: "tokens-security", label: "Tokens and Security", section: "Main" },
-    { id: "llm-proxy", label: "LLM Proxy", section: "Main" },
-    { id: "rag-fusion-proxy", label: "RAG Fusion Proxy", section: "Main" },
     { id: "logs", label: "Logs", section: "Main" },
-    { id: "template-editor", label: "Template Editor", section: "Main" },
+    { id: "llm-proxy", label: "LLM Proxy", section: "Core Functionality" },
+    { id: "rag-fusion-proxy", label: "RAG Fusion Proxy", section: "Core Functionality" },
+    { id: "template-editor", label: "Template Editor", section: "Core Functionality" },
     { id: "extensions", label: "Extensions", section: "Extensions" },
     ...extensionTabs.map((tab) => ({
       id: tab.id,
@@ -683,6 +698,13 @@ function App() {
                 {renderTabContent()}
               </Suspense>
             </TabErrorBoundary>
+          ) : sessionError ? (
+            <div className="session-error">
+              <p>Could not connect to the server.</p>
+              <button className="session-retry-btn" onClick={initSession}>
+                Retry
+              </button>
+            </div>
           ) : (
             <div className="loading">Initializing session...</div>
           )}

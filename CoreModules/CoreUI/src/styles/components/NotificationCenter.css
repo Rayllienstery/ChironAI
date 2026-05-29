@@ -239,6 +239,21 @@
   border-color: var(--md-sys-color-error-outline, var(--md-sys-color-error));
 }
 
+.notification-center-card--loading {
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 40%, transparent);
+}
+
+.notification-center-card-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
+  border-top-color: var(--md-sys-color-primary);
+  animation: coreui-kf-spin var(--coreui-motion-duration-spin, 0.8s) linear infinite;
+}
+
 .notification-center-card-main {
   flex: 1;
   min-width: 0;

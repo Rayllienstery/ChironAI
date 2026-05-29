@@ -43,6 +43,14 @@ WEBUI_FRONTEND_DIR = str(coreui_dir())
 # create_app() registers webui_bp, so /api/webui/* (open-webui/status, start, stop, etc.) is available
 app = create_app(webui_dir=BASE_DIR)
 
+# Pre-warm SessionManager: runs DB schema init and migrations synchronously at startup so
+# the very first GET /api/webui/sessions request is fast (no lazy-init overhead on first hit).
+try:
+    from infrastructure.database import get_session_manager as _get_session_manager
+    _get_session_manager()
+except Exception:
+    pass
+
 # Serve static files from CoreModules/CoreUI
 # Check if React build exists, otherwise fall back to old HTML
 REACT_BUILD_DIR = os.path.join(WEBUI_FRONTEND_DIR, "dist")

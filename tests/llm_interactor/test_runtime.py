@@ -866,6 +866,36 @@ def test_registry_client_reads_local_registry() -> None:
     assert any(row["id"] == "codex-launcher" for row in rows)
 
 
+def test_registry_entries_include_github_icon_url(tmp_path: Path) -> None:
+    class _Registry:
+        def load(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "id": "sample-ext",
+                    "title": "Sample",
+                    "icon": "icons/sample.svg",
+                    "repository": "https://github.com/acme/sample-ext",
+                    "compatibility": {"extension_api_version": EXTENSION_API_VERSION, "app": "chironai"},
+                }
+            ]
+
+    repo = _MemorySettingsRepo()
+    root = Path(__file__).resolve().parents[2]
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        registry_client=_Registry(),  # type: ignore[arg-type]
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+
+    row = manager.registry_entries()[0]
+
+    assert row["icon"] == "icons/sample.svg"
+    assert row["icon_url"] == "https://github.com/acme/sample-ext/raw/HEAD/icons/sample.svg"
+
+
 def test_registry_client_loads_remote_registry_with_diagnostics(monkeypatch: pytest.MonkeyPatch) -> None:
     class _Response:
         def raise_for_status(self) -> None:

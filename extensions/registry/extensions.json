@@ -1,0 +1,122 @@
+{
+  "schema_version": "1",
+  "registry": "ChironAI Extensions Registry",
+  "extensions": [
+    {
+      "id": "ollama-provider",
+      "title": "Ollama",
+      "description": "Trusted local provider that exposes the Ollama runtime through ChironAI.",
+      "icon": "icons/ollama-light.svg",
+      "repository": "https://github.com/Rayllienstery/chironai-extension-ollama-provider",
+      "repository_id": "R_kgDOSqCesg",
+      "publisher": {
+        "name": "ChironAI",
+        "url": "https://github.com/Rayllienstery",
+        "trust_state": "official",
+        "verified": true
+      },
+      "visibility": "official",
+      "tags": ["llm", "ollama", "local", "provider"],
+      "compatibility": {
+        "app": "chironai",
+        "extension_api_version": "1"
+      },
+      "capabilities": [
+        {
+          "id": "chat",
+          "label": "Chat",
+          "description": "Provides chat completions through the local Ollama runtime.",
+          "risk": "medium",
+          "requires_user_consent": true
+        },
+        {
+          "id": "model_listing",
+          "label": "Model Listing",
+          "description": "Reads local Ollama model metadata.",
+          "risk": "low",
+          "requires_user_consent": false
+        },
+        {
+          "id": "service_actions",
+          "label": "Service Actions",
+          "description": "Can start, stop, refresh, and manage local Ollama service actions through ChironAI host capabilities.",
+          "risk": "high",
+          "requires_user_consent": true
+        }
+      ]
+    },
+    {
+      "id": "open-webui",
+      "title": "Open WebUI",
+      "description": "Open WebUI tab and service integration through ChironAI host capabilities.",
+      "icon": "icons/open-webui-light.svg",
+      "repository": "https://github.com/Rayllienstery/chironai-extension-open-webui",
+      "repository_id": "R_kgDOSqCfVQ",
+      "publisher": {
+        "name": "ChironAI",
+        "url": "https://github.com/Rayllienstery",
+        "trust_state": "official",
+        "verified": true
+      },
+      "visibility": "official",
+      "tags": ["ui", "docker", "open-webui"],
+      "compatibility": {
+        "app": "chironai",
+        "extension_api_version": "1"
+      },
+      "capabilities": [
+        {
+          "id": "tab_ui",
+          "label": "Extension Tab",
+          "description": "Adds an Open WebUI tab to ChironAI.",
+          "risk": "low",
+          "requires_user_consent": false
+        },
+        {
+          "id": "service_actions",
+          "label": "Service Actions",
+          "description": "Requests Open WebUI service actions through ChironAI Docker host capabilities.",
+          "risk": "high",
+          "requires_user_consent": true
+        }
+      ]
+    },
+    {
+      "id": "codex-launcher",
+      "title": "Codex",
+      "description": "Configure and launch Codex against ChironAI LLM Proxy IDE builds.",
+      "icon": "icons/codex-light.svg",
+      "repository": "https://github.com/Rayllienstery/chironai-extension-codex-launcher",
+      "repository_id": "R_kgDOSqCgMQ",
+      "publisher": {
+        "name": "ChironAI",
+        "url": "https://github.com/Rayllienstery",
+        "trust_state": "official",
+        "verified": true
+      },
+      "visibility": "official",
+      "tags": ["codex", "ide", "llm-proxy"],
+      "compatibility": {
+        "app": "chironai",
+        "extension_api_version": "1"
+      },
+      "capabilities": [
+        {
+          "id": "tab_ui",
+          "label": "Extension Tab",
+          "description": "Adds a Codex configuration tab to ChironAI.",
+          "risk": "low",
+          "requires_user_consent": false
+        },
+        {
+          "id": "service_actions",
+          "label": "Launcher Actions",
+          "description": "Launches Codex through ChironAI-controlled host actions.",
+          "risk": "medium",
+          "requires_user_consent": true
+        }
+      ]
+    }
+  ],
+  "blocklist": []
+}

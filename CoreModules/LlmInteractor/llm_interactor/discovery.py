@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -91,6 +92,72 @@ def load_extension_provider_in_process(
     return factory(host_context, manifest)
 
 
+def _load_one_extension(
+    source_dir: Path,
+    *,
+    host_context: ProviderHostContext,
+    enabled: set[str],
+    use_sandbox: bool,
+) -> LoadedExtension | FailedExtension | None:
+    """Load one extension.
+
+    Returns:
+        LoadedExtension  – provider started successfully.
+        FailedExtension  – startup error (security, init, etc.).
+        None             – extension is not in the enabled set; skip silently.
+    """
+    try:
+        manifest = load_manifest_from_dir(source_dir)
+        if enabled and manifest.id not in enabled:
+            return None  # disabled — skip without recording a failure
+        if manifest.backend is None:
+            raise ValueError("manifest backend is required")
+        audit_extension_or_raise(source_dir, manifest=manifest, entrypoint=manifest.backend.entrypoint)
+        if use_sandbox:
+            from extensions_sandbox import start_sandboxed_extension_provider  # noqa: PLC0415
+
+            provider = start_sandboxed_extension_provider(
+                source_dir=source_dir,
+                entrypoint=manifest.backend.entrypoint,
+                manifest=manifest,
+                host_context=host_context,
+            )
+            return LoadedExtension(
+                manifest=manifest,
+                source_dir=source_dir,
+                provider=provider,
+                sandboxed=True,
+                sandbox_status=str(getattr(provider, "sandbox_status", "ready") or "ready"),
+            )
+        provider = load_extension_provider_in_process(
+            source_dir,
+            manifest=manifest,
+            host_context=host_context,
+        )
+        return LoadedExtension(manifest=manifest, source_dir=source_dir, provider=provider)
+    except Exception as e:
+        ext_id = source_dir.name
+        manifest_for_failed: ExtensionManifest | None = None
+        try:
+            manifest_for_failed = load_manifest_from_dir(source_dir)
+            ext_id = manifest_for_failed.id
+        except Exception:
+            pass
+        security_findings: list[dict[str, object]] = []
+        if isinstance(e, ExtensionSecurityError):
+            security_findings = [item.to_dict() for item in e.report.findings]
+        sandbox_status = str(getattr(e, "status", "") or "")
+        return FailedExtension(
+            extension_id=ext_id,
+            source_dir=source_dir,
+            error=f"{type(e).__name__}: {e}",
+            manifest=manifest_for_failed,
+            security_findings=security_findings,
+            sandbox_status=sandbox_status,
+            sandbox_error=f"{type(e).__name__}: {e}" if not security_findings else "",
+        )
+
+
 def discover_extensions(
     source_dirs: list[Path],
     *,
@@ -98,64 +165,52 @@ def discover_extensions(
     enabled_extension_ids: set[str] | None = None,
     use_sandbox: bool = True,
 ) -> ExtensionLoadReport:
+    """Discover and load extensions, starting sandbox workers in parallel.
+
+    Each sandbox worker startup blocks for its initialization handshake
+    (up to 8 s per extension).  Running them concurrently cuts the total
+    wait from O(n × startup_time) down to O(max(startup_time)).
+    """
     report = ExtensionLoadReport()
     enabled = enabled_extension_ids or set()
-    for source_dir in source_dirs:
-        if not source_dir.is_dir():
-            continue
-        try:
-            manifest = load_manifest_from_dir(source_dir)
-            if enabled and manifest.id not in enabled:
-                continue
-            if manifest.backend is None:
-                raise ValueError("manifest backend is required")
-            audit_extension_or_raise(source_dir, manifest=manifest, entrypoint=manifest.backend.entrypoint)
-            if use_sandbox:
-                from extensions_sandbox import start_sandboxed_extension_provider
 
-                provider = start_sandboxed_extension_provider(
-                    source_dir=source_dir,
-                    entrypoint=manifest.backend.entrypoint,
-                    manifest=manifest,
-                    host_context=host_context,
-                )
-                report.loaded.append(
-                    LoadedExtension(
-                        manifest=manifest,
+    valid_dirs = [d for d in source_dirs if d.is_dir()]
+    if not valid_dirs:
+        return report
+
+    # Parallelise sandbox startup: each ExtensionWorkerClient.__init__ blocks
+    # on an 8-second initialize handshake; running them concurrently caps the
+    # total wait at the slowest single extension instead of the sum.
+    max_workers = max(1, len(valid_dirs))
+    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ext-discovery") as pool:
+        futures = {
+            pool.submit(
+                _load_one_extension,
+                source_dir,
+                host_context=host_context,
+                enabled=enabled,
+                use_sandbox=use_sandbox,
+            ): source_dir
+            for source_dir in valid_dirs
+        }
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+            except Exception as e:
+                source_dir = futures[future]
+                report.failed.append(
+                    FailedExtension(
+                        extension_id=source_dir.name,
                         source_dir=source_dir,
-                        provider=provider,
-                        sandboxed=True,
-                        sandbox_status=str(getattr(provider, "sandbox_status", "ready") or "ready"),
+                        error=f"{type(e).__name__}: {e}",
                     )
                 )
+                continue
+            if result is None:
+                continue  # extension was skipped (not in enabled set)
+            if isinstance(result, LoadedExtension):
+                report.loaded.append(result)
             else:
-                provider = load_extension_provider_in_process(
-                    source_dir,
-                    manifest=manifest,
-                    host_context=host_context,
-                )
-                report.loaded.append(LoadedExtension(manifest=manifest, source_dir=source_dir, provider=provider))
-        except Exception as e:  # pragma: no cover - exercised via manager diagnostics
-            ext_id = source_dir.name
-            manifest = None
-            try:
-                manifest = load_manifest_from_dir(source_dir)
-                ext_id = manifest.id
-            except Exception:
-                pass
-            security_findings: list[dict[str, object]] = []
-            if isinstance(e, ExtensionSecurityError):
-                security_findings = [item.to_dict() for item in e.report.findings]
-            sandbox_status = str(getattr(e, "status", "") or "")
-            report.failed.append(
-                FailedExtension(
-                    extension_id=ext_id,
-                    source_dir=source_dir,
-                    error=f"{type(e).__name__}: {e}",
-                    manifest=manifest,
-                    security_findings=security_findings,
-                    sandbox_status=sandbox_status,
-                    sandbox_error=f"{type(e).__name__}: {e}" if not security_findings else "",
-                )
-            )
+                report.failed.append(result)
+
     return report

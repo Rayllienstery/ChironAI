@@ -234,14 +234,8 @@ import requests
 from infrastructure.ollama.cli_runner import (
     invoke_ping,
 )
-from qdrant_client import QdrantClient
-from qdrant_client.http.models import (
-    Distance,
-    PointStruct,
-    PayloadSchemaType,
-    SparseVectorParams,
-    VectorParams,
-)
+# qdrant_client is imported lazily inside the route handler that needs it
+# to avoid the ~800ms startup cost when Qdrant is not being actively used.
 
 # Import domain services for indexing
 from domain.services.chunking import (
@@ -1781,7 +1775,8 @@ def rag_collections() -> Any:
                 names.append(name)
 
         # Use official QdrantClient to fetch rich info for each collection
-        client = QdrantClient(url=url)
+        from qdrant_client import QdrantClient as _QdrantClient  # noqa: PLC0415
+        client = _QdrantClient(url=url)
 
         detailed: list[dict[str, Any]] = []
         for name in names:
@@ -1844,7 +1839,7 @@ def rag_collections() -> Any:
                     pass
                 detailed.append(item)
             except Exception as e:
-                _WEBUI_LOG.warning("Failed to get collection %s via QdrantClient: %s", name, e)
+                _WEBUI_LOG.warning("Failed to get collection %s: %s", name, e)
                 detailed.append({"name": name})
 
         return jsonify({
