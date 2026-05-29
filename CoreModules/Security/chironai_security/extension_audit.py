@@ -81,6 +81,33 @@ _DANGEROUS_DECODED_TERMS = {
 _BASE64_RE = re.compile(r"(?<![A-Za-z0-9+/=])(?:[A-Za-z0-9+/]{32,}={0,2})(?![A-Za-z0-9+/=])")
 _POWERSHELL_ENCODED_RE = re.compile(r"(?i)(?:-|/)(?:enc|encodedcommand)\b")
 
+# Module names that extensions must not import dynamically.  They must use
+# host_context capabilities (docker_runtime, chat_client, etc.) instead.
+_DANGEROUS_IMPORT_MODULES: frozenset[str] = frozenset(
+    {
+        "subprocess",
+        "os",
+        "sys",
+        "socket",
+        "ctypes",
+        "cffi",
+        "marshal",
+        "pickle",
+        "cPickle",
+        "importlib",
+        "imp",
+        "code",
+        "codeop",
+        "pty",
+        "popen2",
+        "commands",
+        "multiprocessing",
+        "concurrent.futures",
+        "threading",
+        "asyncio",
+    }
+)
+
 
 @dataclass(frozen=True)
 class SecurityFinding:
@@ -348,6 +375,45 @@ def _python_findings(source_dir: Path, path: Path) -> list[SecurityFinding]:
                     evidence=name,
                 )
             )
+        # Detect dynamic import bypasses: __import__("subprocess") and
+        # importlib.import_module("os") are classic audit-evasion techniques.
+        if name in {"__import__", "importlib.import_module"}:
+            import_args = _call_string_values(node)
+            dangerous = [m for m in import_args if any(m == d or m.startswith(d + ".") for d in _DANGEROUS_IMPORT_MODULES)]
+            if dangerous:
+                findings.append(
+                    SecurityFinding(
+                        severity="critical",
+                        code="dynamic_import_dangerous_module",
+                        file=rel,
+                        line=line,
+                        message=f"Dynamic import of restricted module: {', '.join(dangerous)}",
+                        evidence=f"{name}({', '.join(repr(a) for a in import_args[:4])})",
+                    )
+                )
+            elif import_args:
+                findings.append(
+                    SecurityFinding(
+                        severity="warning",
+                        code="dynamic_import",
+                        file=rel,
+                        line=line,
+                        message=f"Dynamic import via {name}() — verify no unsafe modules are loaded at runtime",
+                        evidence=f"{name}({', '.join(repr(a) for a in import_args[:4])})",
+                    )
+                )
+            else:
+                # No literal string arg — could be importing anything at runtime.
+                findings.append(
+                    SecurityFinding(
+                        severity="warning",
+                        code="dynamic_import_unknown",
+                        file=rel,
+                        line=line,
+                        message=f"Dynamic import via {name}() with non-literal argument",
+                        evidence=name,
+                    )
+                )
         if name.startswith("subprocess."):
             values = _call_string_values(node)
             joined = " ".join(values)

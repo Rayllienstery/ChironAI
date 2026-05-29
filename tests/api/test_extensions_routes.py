@@ -303,6 +303,49 @@ def test_extension_lifecycle_routes_return_restart_required() -> None:
     assert (remove.get_json() or {}).get("restart_scope") == "provider_registry"
 
 
+def test_extension_routes_return_sanitized_errors() -> None:
+    _ensure_root_on_path()
+    from api.http.rag_routes import create_app
+
+    class _ExplodingExtensionsService(_FakeExtensionsService):
+        def install(
+            self,
+            extension_id: str,
+            *,
+            version: str | None = None,
+            target: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            raise RuntimeError("internal secret token ghp_this_must_not_leak")
+
+        def run_extension_action(
+            self,
+            extension_id: str,
+            action_id: str,
+            *,
+            payload: dict[str, Any],
+            runtime: Any | None = None,
+        ) -> dict[str, Any]:
+            raise RuntimeError("internal secret path C:/private/config.yaml")
+
+    app = create_app()
+    _set_extensions_app_state(app, service=_ExplodingExtensionsService(), runtime=object())
+    client = app.test_client()
+
+    install = client.post("/api/webui/extensions/install", json={"extension_id": "ollama-provider"})
+    action = client.post("/api/webui/extensions/ollama-provider/actions/start_service", json={})
+
+    install_payload = install.get_json() or {}
+    action_payload = action.get_json() or {}
+    assert install.status_code == 400
+    assert action.status_code == 400
+    assert install_payload["code"] == "extension_install_rejected"
+    assert action_payload["code"] == "extension_action_failed"
+    assert "secret" not in install.get_data(as_text=True).lower()
+    assert "secret" not in action.get_data(as_text=True).lower()
+    assert "ghp_" not in install.get_data(as_text=True)
+    assert "C:/private" not in action.get_data(as_text=True)
+
+
 def test_extension_sandbox_control_routes_return_diagnostics() -> None:
     _ensure_root_on_path()
     from api.http.rag_routes import create_app

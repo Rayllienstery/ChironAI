@@ -3,14 +3,46 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def test_legacy_extension_service_flask_key_is_removed() -> None:
+    root = Path(__file__).resolve().parents[2]
+    legacy_key = "llm_" + "extensions_service"
+    offenders: list[str] = []
+    for base in ("api", "CoreModules", "modules", "core"):
+        for path in (root / base).rglob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            if legacy_key in text:
+                offenders.append(path.relative_to(root).as_posix())
+
+    assert offenders == []
+
+
+def test_extension_runtime_flask_keys_are_confined_to_contract_accessors() -> None:
+    root = Path(__file__).resolve().parents[2]
+    allowed = {
+        "api/http/extensions_service_access.py",
+        "core/contracts/extensions_api.py",
+    }
+    forbidden = ("llm_interactor_runtime", "llm_provider_registry")
+    offenders: list[str] = []
+    for base in ("api", "CoreModules", "modules", "core"):
+        for path in (root / base).rglob("*.py"):
+            rel = path.relative_to(root).as_posix()
+            text = path.read_text(encoding="utf-8")
+            if rel not in allowed and any(token in text for token in forbidden):
+                offenders.append(rel)
+
+    assert offenders == []
+
+
 def test_api_routes_use_extension_service_accessor_not_legacy_flask_keys() -> None:
     root = Path(__file__).resolve().parents[2]
     offenders: list[str] = []
+    legacy_key = "llm_" + "extensions_service"
     for path in (root / "api").rglob("*.py"):
         if path.name == "extensions_service_access.py":
             continue
         text = path.read_text(encoding="utf-8")
-        if "llm_extensions_service" in text or "llm_interactor_runtime" in text or "llm_provider_registry" in text:
+        if legacy_key in text or "llm_interactor_runtime" in text or "llm_provider_registry" in text:
             offenders.append(str(path.relative_to(root)))
 
     assert offenders == []

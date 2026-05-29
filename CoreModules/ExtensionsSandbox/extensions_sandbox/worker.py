@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
-import importlib.util
 import json
 import sys
 import traceback
@@ -51,11 +49,21 @@ def _host_call(target: str, method: str, *args: Any, **kwargs: Any) -> Any:
         raise RuntimeError(str(msg.get("error") or "host call failed"))
 
 
+_EXT_SETTINGS_PREFIX = "ext."
+
+
 class _SettingsProxy:
     def get_app_setting(self, key: str) -> Any:
         return _host_call("settings", "get_app_setting", key)
 
     def set_app_setting(self, key: str, value: Any) -> None:
+        # The host enforces the 'ext.' namespace for writes; validate here too
+        # so extensions get a clear error before the round-trip to the host.
+        if not str(key or "").startswith(_EXT_SETTINGS_PREFIX):
+            raise PermissionError(
+                f"extension settings writes must use the 'ext.' namespace prefix; "
+                f"got key: {key!r}"
+            )
         _host_call("settings", "set_app_setting", key, value)
 
 
@@ -113,39 +121,9 @@ def _metadata_proxy(keys: list[str]) -> dict[str, Any]:
 
 
 def _load_factory_from_entrypoint(source_dir: Path, entrypoint: str):
-    module_name, _, attr_name = entrypoint.partition(":")
-    if not module_name or not attr_name:
-        raise ValueError("backend.entrypoint must be 'module:callable'")
-    module_rel = module_name.replace(".", "/")
-    py_path = source_dir / f"{module_rel}.py"
-    package_init = source_dir / module_rel / "__init__.py"
-    if py_path.is_file():
-        spec = importlib.util.spec_from_file_location(
-            f"chironai_sandbox_ext_{source_dir.name}_{module_name.replace('.', '_')}",
-            py_path,
-        )
-        if spec is None or spec.loader is None:
-            raise ImportError(f"cannot load module from {py_path}")
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = mod
-        spec.loader.exec_module(mod)
-    elif package_init.is_file():
-        spec = importlib.util.spec_from_file_location(
-            f"chironai_sandbox_ext_{source_dir.name}_{module_name.replace('.', '_')}",
-            package_init,
-            submodule_search_locations=[str(package_init.parent)],
-        )
-        if spec is None or spec.loader is None:
-            raise ImportError(f"cannot load package from {package_init}")
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = mod
-        spec.loader.exec_module(mod)
-    else:
-        mod = importlib.import_module(module_name)
-    factory = getattr(mod, attr_name, None)
-    if factory is None:
-        raise AttributeError(f"entrypoint callable not found: {entrypoint}")
-    return factory
+    from extensions_sandbox.loader import load_factory_from_entrypoint
+
+    return load_factory_from_entrypoint(source_dir, entrypoint)
 
 
 def _initialize(params: dict[str, Any]) -> dict[str, Any]:
@@ -205,7 +183,16 @@ def _call(method: str, params: dict[str, Any]) -> Any:
 
 def main() -> None:
     while True:
-        msg = _read_message()
+        try:
+            msg = _read_message()
+        except EOFError:
+            # Host closed stdin — normal shutdown.
+            break
+        except (json.JSONDecodeError, ValueError) as exc:
+            # Malformed message from host: log and keep running rather than
+            # crashing the worker, which would make the extension disappear.
+            print(f"worker: invalid message from host: {exc}", file=sys.stderr, flush=True)
+            continue
         if msg.get("type") != "request":
             continue
         req_id = int(msg.get("id") or 0)

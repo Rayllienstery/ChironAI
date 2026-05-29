@@ -35,6 +35,9 @@ if os.path.isdir(_SECURITY) and _SECURITY not in sys.path:
 _EXTENSIONS_SANDBOX = os.path.join(_ROOT, "CoreModules", "ExtensionsSandbox")
 if os.path.isdir(_EXTENSIONS_SANDBOX) and _EXTENSIONS_SANDBOX not in sys.path:
     sys.path.insert(0, _EXTENSIONS_SANDBOX)
+_EXTENSIONS_BACKEND = os.path.join(_ROOT, "modules", "extensions_backend")
+if os.path.isdir(_EXTENSIONS_BACKEND) and _EXTENSIONS_BACKEND not in sys.path:
+    sys.path.insert(0, _EXTENSIONS_BACKEND)
 _ERROR_MANAGER = os.path.join(_ROOT, "CoreModules", "ErrorManager")
 if os.path.isdir(_ERROR_MANAGER) and _ERROR_MANAGER not in sys.path:
     sys.path.insert(0, _ERROR_MANAGER)

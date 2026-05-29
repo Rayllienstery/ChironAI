@@ -345,9 +345,9 @@ def register_llm_proxy_routes(
             result = _run_default_provider_extension_action("start_service", payload if isinstance(payload, dict) else {})
             status = 200 if bool(result.get("ok")) else 500
             return jsonify({"ok": bool(result.get("ok")), "output": result.get("message") or ""}), status
-        except Exception as e:
+        except Exception:
             error_log.error("webui_llm_proxy_routes.ollama_provider_start", exc_info=True)
-            return jsonify({"ok": False, "output": str(e)}), 500
+            return jsonify({"ok": False, "output": "Provider extension start failed.", "code": "provider_start_failed"}), 500
 
     @bp.route("/ollama/stop", methods=["POST"])
     def ollama_provider_stop() -> Any:
@@ -357,9 +357,9 @@ def register_llm_proxy_routes(
             result = _run_default_provider_extension_action("stop_service", payload if isinstance(payload, dict) else {})
             status = 200 if bool(result.get("ok")) else 500
             return jsonify({"ok": bool(result.get("ok")), "output": result.get("message") or ""}), status
-        except Exception as e:
+        except Exception:
             error_log.error("webui_llm_proxy_routes.ollama_provider_stop", exc_info=True)
-            return jsonify({"ok": False, "output": str(e)}), 500
+            return jsonify({"ok": False, "output": "Provider extension stop failed.", "code": "provider_stop_failed"}), 500
 
     @bp.route("/llm-proxy/api-key", methods=["GET"])
     def llm_proxy_api_key_status() -> Any:
@@ -554,8 +554,9 @@ def register_llm_proxy_routes(
         try:
             result = _run_provider_extension_action(provider_id, "show_model", {"selected_model": model})
             details = result.get("details") if isinstance(result, dict) else {}
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 502
+        except Exception:
+            error_log.error("webui_llm_proxy_routes.llm_proxy_build_preview_model", exc_info=True)
+            return jsonify({"ok": False, "error": "provider extension preview failed.", "code": "provider_preview_failed"}), 502
         ctx_len = extract_context_length_from_show(details if isinstance(details, dict) else None)
         caps = None
         if isinstance(details, dict):

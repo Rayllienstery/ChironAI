@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import stat
 import zipfile
 from io import BytesIO
 import sys
@@ -733,6 +735,128 @@ def test_extension_zip_install_rejects_path_traversal_member(tmp_path: Path, mon
     assert not (tmp_path / "evil.txt").exists()
 
 
+def test_extension_zip_install_rejects_symlink_member(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Repo:
+        def get_app_setting(self, key: str):
+            return None
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            return None
+
+    class _Response:
+        def __init__(self, content: bytes) -> None:
+            self._content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def iter_content(self, chunk_size: int = 65536):
+            yield self._content
+
+    buf = BytesIO()
+    info = zipfile.ZipInfo("sample-ext/assets/link.txt")
+    info.create_system = 3
+    info.external_attr = (stat.S_IFLNK | 0o777) << 16
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(info, "../secret.txt")
+    monkeypatch.setattr("requests.get", lambda url, timeout=60, stream=False: _Response(buf.getvalue()))
+
+    root = Path(__file__).resolve().parents[2]
+    repo = _Repo()
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+
+    with pytest.raises(ValueError, match="symlink"):
+        manager._download_zip_to_dir("https://example.invalid/ext.zip", tmp_path / "installed" / "unsafe" / "1")
+
+
+def test_extension_zip_install_rejects_uncompressed_size_bomb(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import llm_interactor.manager as manager_module
+
+    class _Repo:
+        def get_app_setting(self, key: str):
+            return None
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            return None
+
+    class _Response:
+        def __init__(self, content: bytes) -> None:
+            self._content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def iter_content(self, chunk_size: int = 65536):
+            yield self._content
+
+    monkeypatch.setattr(manager_module, "_MAX_EXTENSION_ZIP_UNCOMPRESSED_BYTES", 1024)
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("sample-ext/payload.bin", b"0" * 2048)
+    monkeypatch.setattr("requests.get", lambda url, timeout=60, stream=False: _Response(buf.getvalue()))
+
+    root = Path(__file__).resolve().parents[2]
+    repo = _Repo()
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+
+    with pytest.raises(ValueError, match="expands beyond maximum allowed size"):
+        manager._download_zip_to_dir("https://example.invalid/ext.zip", tmp_path / "installed" / "bomb" / "1")
+
+
+def test_extension_asset_resolution_rejects_symlink_assets(tmp_path: Path) -> None:
+    repo = _MemorySettingsRepo()
+    installed_root = tmp_path / "installed"
+    ext_root = installed_root / "sample-ext" / "1.0.0"
+    assets = ext_root / "assets"
+    assets.mkdir(parents=True)
+    (assets / "good.txt").write_text("ok", encoding="utf-8")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("secret", encoding="utf-8")
+    link = assets / "link.txt"
+    try:
+        os.symlink(secret, link)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink creation is unavailable in this environment: {exc}")
+    ExtensionsRepository(repo).save_records(
+        [
+            InstalledExtensionRecord(
+                id="sample-ext",
+                version="1.0.0",
+                enabled=True,
+                installed=True,
+                source={},
+            )
+        ]
+    )
+    root = Path(__file__).resolve().parents[2]
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        installed_dir=installed_root,
+        bundled_dir=tmp_path / "bundled",
+    )
+
+    assert manager.resolve_asset_path("sample-ext", "assets/good.txt").name == "good.txt"
+    with pytest.raises(FileNotFoundError):
+        manager.resolve_asset_path("sample-ext", "assets/link.txt")
+
+
 def test_registry_client_reads_local_registry() -> None:
     root = Path(__file__).resolve().parents[2]
     client = ExtensionRegistryClient(project_root=root)
@@ -759,7 +883,10 @@ def test_registry_client_loads_remote_registry_with_diagnostics(monkeypatch: pyt
                 ]
             }
 
-    monkeypatch.setattr("requests.get", lambda url, timeout: _Response())
+        def iter_content(self, chunk_size: int = 65536):
+            yield json.dumps(self.json()).encode("utf-8")
+
+    monkeypatch.setattr("requests.get", lambda url, timeout=30, stream=False: _Response())
 
     client = ExtensionRegistryClient("https://example.invalid/extensions.json", project_root=Path.cwd())
     result = client.load_with_diagnostics()
@@ -930,7 +1057,7 @@ def test_extension_details_and_install_resolve_latest_github_release(tmp_path: P
                 "version": "v1.0.0",
                 "ref": "v1.0.0",
                 "target_kind": "release",
-                "archive_url": "https://example.invalid/sample.zip",
+                "archive_url": "https://github.com/acme/sample-ext/releases/download/v1.0.0/sample.zip",
                 "digest": self._digest,
                 "provenance_level": "github_release_asset",
                 "is_latest": True,
@@ -991,7 +1118,7 @@ def test_extension_details_and_install_resolve_latest_github_release(tmp_path: P
     assert details["latest"]["ref"] == "v1.0.0"
     assert details["readme"]["markdown"] == "# Sample"
     assert installed["version"] == "v1.0.0"
-    assert record.provenance["archive_url"] == "https://example.invalid/sample.zip"
+    assert record.provenance["archive_url"] == "https://github.com/acme/sample-ext/releases/download/v1.0.0/sample.zip"
     assert record.provenance["digest"] == zip_digest
 
 

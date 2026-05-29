@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -15,6 +17,15 @@ from core.contracts.extensions_api import EXTENSIONS_API_VERSION
 
 DEFAULT_REGISTRY_PATH = "extensions/registry/extensions.json"
 SUPPORTED_REGISTRY_APPS = {"", "chironai", "chiron ai"}
+
+# Hard cap on registry HTTP response body to prevent memory exhaustion from a
+# malicious or misconfigured remote registry server (analogous to the blocklist cap).
+_MAX_REGISTRY_RESPONSE_BYTES = 4 * 1024 * 1024  # 4 MB
+
+# TTL for in-process registry cache.  Local file reads are fast enough that a
+# shorter TTL is fine; remote URLs benefit from not hammering GitHub on every
+# call to registry_entries().
+_REGISTRY_TTL_SEC = 120.0  # 2 minutes
 
 
 @dataclass(frozen=True)
@@ -51,10 +62,15 @@ class ExtensionRegistryClient:
         *,
         project_root: Path | None = None,
         fallback_url: str | None = None,
+        ttl_sec: float = _REGISTRY_TTL_SEC,
     ) -> None:
         self._project_root = project_root or Path.cwd()
         self._registry_url = registry_url or self._default_registry_url()
         self._fallback_url = fallback_url or ""
+        self._ttl_sec = ttl_sec
+        self._cached_result: ExtensionRegistryLoadResult | None = None
+        self._cached_at: float = 0.0
+        self._cache_lock = threading.Lock()
 
     def _default_registry_url(self) -> str:
         return str((self._project_root / DEFAULT_REGISTRY_PATH).resolve())
@@ -67,10 +83,29 @@ class ExtensionRegistryClient:
     def fallback_url(self) -> str:
         return self._fallback_url
 
+    def invalidate_cache(self) -> None:
+        """Discard the cached registry result; the next call will re-fetch."""
+        with self._cache_lock:
+            self._cached_result = None
+            self._cached_at = 0.0
+
     def load(self) -> list[dict[str, Any]]:
         return self.load_with_diagnostics().entries
 
     def load_with_diagnostics(self) -> ExtensionRegistryLoadResult:
+        now = time.monotonic()
+        with self._cache_lock:
+            if self._cached_result is not None and (now - self._cached_at) < self._ttl_sec:
+                return self._cached_result
+            # Load while holding the lock so that concurrent threads don't all
+            # fire parallel HTTP requests to GitHub on the same cache miss.
+            # This mirrors the pattern used by ExtensionBlocklistPolicy.
+            result = self._load_with_diagnostics_uncached()
+            self._cached_result = result
+            self._cached_at = time.monotonic()
+            return result
+
+    def _load_with_diagnostics_uncached(self) -> ExtensionRegistryLoadResult:
         diagnostics: list[ExtensionRegistryDiagnostic] = []
         active_url = self._registry_url
         try:
@@ -193,9 +228,21 @@ class ExtensionRegistryClient:
     def _load_json_obj(self, location: str) -> Any:
         parsed = urlparse(location)
         if parsed.scheme in ("http", "https"):
-            resp = requests.get(location, timeout=30)
+            resp = requests.get(location, stream=True, timeout=30)
             resp.raise_for_status()
-            return resp.json()
+            chunks: list[bytes] = []
+            total = 0
+            for chunk in resp.iter_content(chunk_size=65536):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > _MAX_REGISTRY_RESPONSE_BYTES:
+                    raise ValueError(
+                        f"registry response from {location!r} exceeds maximum allowed size "
+                        f"({_MAX_REGISTRY_RESPONSE_BYTES // (1024 * 1024)} MB)"
+                    )
+                chunks.append(chunk)
+            return json.loads(b"".join(chunks).decode("utf-8", errors="replace"))
         if parsed.scheme == "file":
             path = Path(parsed.path)
         else:

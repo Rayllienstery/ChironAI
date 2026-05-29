@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - 2026-05-28
+### Added
+- Added extension archive hardening for uncompressed-size bombs, excessive file counts, compression-ratio abuse, and symlink zip entries.
+- Added extension asset symlink rejection and guardrails that prevent legacy extension Flask keys from returning.
+
+### Changed
+- Extension HTTP routes now return sanitized public error codes/messages while logging internal details server-side.
+- Extension install tests and provenance paths now use trusted GitHub archive hosts.
+- Removed the legacy `llm_extensions_service` Flask extension alias after the migration to contract accessors.
+
 ## [0.5.0] - 2026-05-28
 ### Added
 - Added the extension-management service facade, registry-client module boundary, and API guardrails for the GitHub extensions migration release.

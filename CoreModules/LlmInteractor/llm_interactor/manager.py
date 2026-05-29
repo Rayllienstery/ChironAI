@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+import stat
 import threading
 import tempfile
 import zipfile
@@ -26,6 +27,9 @@ from llm_interactor.runtime import LLMRuntime, ProviderRegistry
 
 _log = logging.getLogger(__name__)
 _MAX_EXTENSION_ZIP_BYTES = 500 * 1024 * 1024  # 500 MB hard ceiling
+_MAX_EXTENSION_ZIP_UNCOMPRESSED_BYTES = 500 * 1024 * 1024  # 500 MB after extraction
+_MAX_EXTENSION_ZIP_ENTRY_COUNT = 5000
+_MAX_EXTENSION_ZIP_COMPRESSION_RATIO = 100.0
 
 try:
     from extensions_backend import ExtensionBlocklistPolicy, ExtensionRegistryClient, GitHubExtensionRepositoryClient
@@ -43,6 +47,23 @@ DEFAULT_BUNDLED_DIR = "extensions/bundled"
 DEFAULT_INSTALLED_DIR = "logs/extensions/installed"
 RESTART_SCOPE_PROVIDER_REGISTRY = "provider_registry"
 _SEMVERISH_RE = re.compile(r"^v?\d+(?:\.\d+){1,3}(?:[-+][0-9A-Za-z.-]+)?$")
+
+# Keys in a tab payload that the extension must not override.  Authoritative
+# values come from the manifest; extension code cannot spoof its own identity.
+_PROTECTED_TAB_PAYLOAD_KEYS: frozenset[str] = frozenset({"extension_id", "title", "icon", "icon_url"})
+
+# Trusted hostnames for extension archive downloads.
+# Only these domains may serve .zip archives; all other URLs are rejected to
+# prevent SSRF attacks against internal services.
+_TRUSTED_ARCHIVE_HOSTS: frozenset[str] = frozenset(
+    {
+        "github.com",
+        "objects.githubusercontent.com",  # GitHub release asset CDN
+        "codeload.github.com",            # GitHub archive download service
+        "raw.githubusercontent.com",
+    }
+)
+
 _HIGH_RISK_CAPABILITIES = {
     "docker",
     "docker_runtime",
@@ -90,6 +111,50 @@ def _github_archive_url(repository: str, ref: str) -> str:
     return f"https://github.com/{owner}/{name}/archive/{safe_ref}.zip"
 
 
+def _validate_archive_url(url: str) -> None:
+    """Raise ValueError if *url* is not from a trusted archive host.
+
+    This is the primary SSRF guard for extension downloads.  Only pre-approved
+    CDN and source-hosting domains may serve extension archives; attempting to
+    download from any other host (including ``localhost``, RFC-1918 addresses,
+    or cloud metadata endpoints) raises immediately.
+    """
+    if not url:
+        raise ValueError("archive URL is required")
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError(
+            f"archive URL must use http or https scheme, got: {parsed.scheme!r}"
+        )
+    host = (parsed.hostname or "").lower().strip()
+    if not host:
+        raise ValueError("archive URL must have a valid hostname")
+    if host not in _TRUSTED_ARCHIVE_HOSTS:
+        raise ValueError(
+            f"archive URL host {host!r} is not in the trusted hosts list; "
+            "only github.com and its CDN domains are permitted"
+        )
+
+
+def _zip_member_is_symlink(info: zipfile.ZipInfo) -> bool:
+    mode = (info.external_attr >> 16) & 0o170000
+    return stat.S_ISLNK(mode)
+
+
+def _path_contains_symlink(root: Path, candidate: Path) -> bool:
+    """Return True if any existing component from root to candidate is a symlink."""
+    try:
+        rel = candidate.relative_to(root)
+    except ValueError:
+        return True
+    current = root
+    for part in rel.parts:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
+
 def _install_storage_segment(selected_ref: str) -> str:
     ref = str(selected_ref or "").strip()
     if not ref:
@@ -116,7 +181,6 @@ class ExtensionManager:
         use_sandbox: bool = True,
         repository_client: Any | None = None,
         blocklist_policy: Any | None = None,
-        github_token: str | None = None,
     ) -> None:
         self._project_root = project_root
         self._host_context = host_context
@@ -131,7 +195,7 @@ class ExtensionManager:
         if repository_client is not None:
             self._repository_client = repository_client
         elif GitHubExtensionRepositoryClient is not None:
-            self._repository_client = GitHubExtensionRepositoryClient(token=github_token or None)
+            self._repository_client = GitHubExtensionRepositoryClient()
         else:
             self._repository_client = None
         self._blocklist_policy = blocklist_policy or (ExtensionBlocklistPolicy(project_root=project_root) if ExtensionBlocklistPolicy else None)
@@ -149,6 +213,10 @@ class ExtensionManager:
         self._bootstrap_thread: threading.Thread | None = None
         self._provider_rows_cache: list[dict[str, Any]] = []
         self._lock = threading.RLock()
+        # Serializes concurrent bootstrap_runtime() calls (background + sync).
+        # Prevents double-starting sandboxes and state corruption when install/
+        # enable triggers a sync reload while the background worker is running.
+        self._bootstrap_lock = threading.Lock()
 
     def _shutdown_loaded_extensions(self, loaded: list[LoadedExtension] | None = None) -> None:
         for item in list(loaded if loaded is not None else self._loaded):
@@ -180,14 +248,21 @@ class ExtensionManager:
             return self._registry
 
     def start_background_bootstrap(self) -> None:
-        """Start provider loading without blocking callers that only need manifests."""
+        """Start provider loading without blocking callers that only need manifests.
+
+        Only the status flag is set under the lock; all I/O (bundled copy,
+        blocklist fetch, sandbox startup) happens in the background thread via
+        bootstrap_runtime() → _bootstrap_runtime_body().  This avoids blocking
+        every reader of runtime_status/runtime/registry during startup.
+        """
         with self._lock:
             if self._runtime_status in {"loading", "ready"}:
                 return
             self._runtime_status = "loading"
             self._runtime_error = ""
-            self.ensure_bundled_installed()
-            self._disable_blocklisted_records()
+            # Discard any stale in-process registry cache so the bootstrap
+            # thread always pulls a fresh copy from the remote source on startup.
+            self.invalidate_registry_cache()
             thread = threading.Thread(
                 target=self._bootstrap_runtime_worker,
                 name="chironai-extension-bootstrap",
@@ -198,6 +273,8 @@ class ExtensionManager:
 
     def _bootstrap_runtime_worker(self) -> None:
         try:
+            # bootstrap_runtime() acquires _bootstrap_lock, serializing against
+            # any concurrent sync call from install/enable/disable/remove.
             self.bootstrap_runtime()
         except Exception as e:  # pragma: no cover - defensive process resilience
             with self._lock:
@@ -272,9 +349,20 @@ class ExtensionManager:
                 self.ensure_builtin_installed(child.name)
 
     def bootstrap_runtime(self) -> RuntimeBootstrap:
+        with self._bootstrap_lock:
+            return self._bootstrap_runtime_body()
+
+    def _bootstrap_runtime_body(self) -> RuntimeBootstrap:
         with self._lock:
             self._runtime_status = "loading"
             self._runtime_error = ""
+        # Pre-warm the registry cache from the remote source while I/O is
+        # already in flight.  Errors are silently swallowed here — the cache
+        # will remain empty and the next UI request will retry.
+        try:
+            self._registry_client.load_with_diagnostics()
+        except Exception:
+            pass
         self.ensure_bundled_installed()
         self._disable_blocklisted_records()
         records = [r for r in self._repo.list_records() if r.installed and r.enabled]
@@ -315,18 +403,20 @@ class ExtensionManager:
                     )
                 )
         previous_loaded = self._loaded
-        self._loaded = list(report.loaded)
-        self._failed = failed
         runtime = LLMRuntime(registry, default_provider_id=self._default_provider_id)
         provider_rows_cache = self._provider_rows_from_runtime(runtime)
         bootstrap = RuntimeBootstrap(
             runtime=runtime,
             registry=registry,
-            loaded=self._loaded,
-            failed=self._failed,
+            loaded=list(report.loaded),
+            failed=list(failed),
         )
         with self._lock:
             self._shutdown_loaded_extensions(previous_loaded)
+            # _loaded and _failed are written inside the lock so readers always
+            # see a consistent pair of values; use bootstrap's already-copied lists.
+            self._loaded = list(bootstrap.loaded)
+            self._failed = list(bootstrap.failed)
             self._runtime = bootstrap.runtime
             self._registry = bootstrap.registry
             self._provider_rows_cache = provider_rows_cache
@@ -426,7 +516,17 @@ class ExtensionManager:
         source_path: str = "",
     ) -> dict[str, Any]:
         if self._blocklist_policy is None:
-            return {"matched": False}
+            # Module-level import failed (migration scenario).  Log loudly so
+            # operators notice, but allow bootstrap to continue — bricking an
+            # existing deployment is worse than running without the emergency
+            # blocklist in this transient state.  Remote installs and enables
+            # are NOT in this code path (they use a stricter guard below).
+            _log.error(
+                "Blocklist policy is unavailable (extensions_backend missing?); "
+                "extension '%s' will not be checked against emergency blocklist.",
+                extension_id,
+            )
+            return {"matched": False, "reason": "", "source": "", "matched_on": ""}
         try:
             match = self._blocklist_policy.match(
                 extension_id=extension_id,
@@ -437,8 +537,19 @@ class ExtensionManager:
                 publisher=publisher,
             )
             return match.to_dict() if hasattr(match, "to_dict") else dict(match)
-        except Exception:
-            return {"matched": False}
+        except Exception as exc:
+            _log.error(
+                "Blocklist evaluation error for '%s' — treating as blocked (fail-closed): %s: %s",
+                extension_id,
+                type(exc).__name__,
+                exc,
+            )
+            return {
+                "matched": True,
+                "reason": f"Blocklist evaluation error — cannot verify extension safety: {type(exc).__name__}",
+                "source": "",
+                "matched_on": "",
+            }
 
     def _blocklist_match_for_entry(self, entry: dict[str, Any], *, version: str = "", ref: str = "") -> dict[str, Any]:
         return self._blocklist_match_for_values(
@@ -485,10 +596,13 @@ class ExtensionManager:
         ]
         for record in records:
             root = (self._installed_dir / record.id / record.version).resolve()
-            candidate = (root / rel).resolve()
+            lexical_candidate = root / rel
+            candidate = lexical_candidate.resolve()
             try:
                 candidate.relative_to(root)
             except ValueError:
+                continue
+            if _path_contains_symlink(root, lexical_candidate):
                 continue
             if candidate.is_file():
                 return candidate
@@ -520,7 +634,9 @@ class ExtensionManager:
         return dict(raw) if isinstance(raw, dict) else {}
 
     def _manifest_tabs(self) -> list[dict[str, Any]]:
-        failed_by_id = {item.extension_id: item for item in self._failed}
+        with self._lock:
+            failed_snapshot = list(self._failed)
+        failed_by_id = {item.extension_id: item for item in failed_snapshot}
         out: list[dict[str, Any]] = []
         for record, _source_dir, manifest in self._installed_manifest_rows(enabled_only=True):
             tab_ui = self._manifest_tab_ui(manifest)
@@ -551,6 +667,12 @@ class ExtensionManager:
             )
         out.sort(key=lambda row: (int(row.get("order") or 0), str(row.get("title") or "").lower()))
         return out
+
+    def invalidate_registry_cache(self) -> None:
+        """Discard the in-process registry cache so the next call re-fetches from the source."""
+        invalidate = getattr(self._registry_client, "invalidate_cache", None)
+        if callable(invalidate):
+            invalidate()
 
     def registry_entries(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -639,8 +761,11 @@ class ExtensionManager:
         return details
 
     def installed_extensions(self) -> list[dict[str, Any]]:
-        loaded_by_id = {item.manifest.id: item for item in self._loaded}
-        failed_by_id = {item.extension_id: item for item in self._failed}
+        with self._lock:
+            loaded_snapshot = list(self._loaded)
+            failed_snapshot = list(self._failed)
+        loaded_by_id = {item.manifest.id: item for item in loaded_snapshot}
+        failed_by_id = {item.extension_id: item for item in failed_snapshot}
         out: list[dict[str, Any]] = []
         for record in self._repo.list_records():
             if not record.installed:
@@ -829,7 +954,9 @@ class ExtensionManager:
         ext_id = str(extension_id or "").strip()
         if not ext_id:
             return None
-        for item in self._loaded:
+        with self._lock:
+            snapshot = list(self._loaded)
+        for item in snapshot:
             if item.manifest.id == ext_id:
                 return item
         return None
@@ -840,7 +967,9 @@ class ExtensionManager:
         if runtime is None:
             return self._manifest_tabs()
         out: list[dict[str, Any]] = []
-        for item in self._loaded:
+        with self._lock:
+            loaded_snapshot = list(self._loaded)
+        for item in loaded_snapshot:
             fn = getattr(item.provider, "get_tab_descriptor", None)
             if not callable(fn):
                 continue
@@ -914,12 +1043,15 @@ class ExtensionManager:
             payload = fn()
         if not isinstance(payload, dict):
             raise ValueError(f"Extension '{extension_id}' returned invalid tab payload")
+        # Strip keys that the extension must not override — extension_id, title,
+        # icon, and icon_url are authoritative from the manifest, not the payload.
+        safe_payload = {k: v for k, v in payload.items() if k not in _PROTECTED_TAB_PAYLOAD_KEYS}
         return {
             "extension_id": item.manifest.id,
             "title": item.manifest.title,
             "icon": item.manifest.icon,
             "icon_url": self._asset_url(item.manifest.id, item.manifest.icon),
-            **payload,
+            **safe_payload,
         }
 
     def run_extension_action(
@@ -948,17 +1080,26 @@ class ExtensionManager:
         ext_id = str(extension_id or "").strip()
         if not ext_id:
             raise ValueError("extension_id is required")
+        # Phase 1: read current state and validate under lock (no I/O).
         with self._lock:
             item = self._find_loaded_extension(ext_id)
-            if item is None:
-                return self._restart_failed_extension_sandbox(ext_id)
-            restart = getattr(item.provider, "restart_sandbox", None)
-            if not callable(restart):
-                raise ValueError(f"Extension '{ext_id}' is not sandboxed")
-            restart()
+            if item is not None:
+                restart_fn = getattr(item.provider, "restart_sandbox", None)
+                if not callable(restart_fn):
+                    raise ValueError(f"Extension '{ext_id}' is not sandboxed")
+        if item is None:
+            # Failed-extension restart also performs subprocess I/O outside the lock.
+            return self._restart_failed_extension_sandbox(ext_id)
+        # Phase 2: restart sandbox subprocess WITHOUT holding the lock.
+        # ExtensionWorkerClient.restart() terminates the old process, spawns a new
+        # one, and sends an initialize RPC (up to 8 s timeout).  Holding self._lock
+        # throughout would freeze every reader of runtime/registry/status.
+        restart_fn()
+        # Phase 3: invalidate cache and snapshot diagnostics under lock.
+        with self._lock:
             self._provider_rows_cache = []
             sandbox = self._sandbox_diagnostics(item)
-            return {"id": ext_id, "ok": True, "action": "restart", **sandbox}
+        return {"id": ext_id, "ok": True, "action": "restart", **sandbox}
 
     def kill_extension_sandbox(self, extension_id: str) -> dict[str, Any]:
         ext_id = str(extension_id or "").strip()
@@ -976,7 +1117,9 @@ class ExtensionManager:
             return {"id": ext_id, "ok": True, "action": "kill", **sandbox}
 
     def _restart_failed_extension_sandbox(self, extension_id: str) -> dict[str, Any]:
-        failed = next((item for item in self._failed if item.extension_id == extension_id), None)
+        # Phase 1: read failed-extension state under lock.
+        with self._lock:
+            failed = next((item for item in self._failed if item.extension_id == extension_id), None)
         if failed is None:
             raise ValueError(f"Extension '{extension_id}' is not loaded")
         if failed.security_findings:
@@ -984,6 +1127,11 @@ class ExtensionManager:
         manifest = failed.manifest or load_manifest_from_dir(failed.source_dir)
         if manifest.backend is None:
             raise ValueError("manifest backend is required")
+        # Phase 2: re-run security audit before restart.  Extension files may have
+        # been modified between the initial load failure and this restart attempt.
+        audit_extension_or_raise(failed.source_dir, manifest=manifest, entrypoint=manifest.backend.entrypoint)
+        # Phase 3: start sandboxed provider WITHOUT holding the lock.
+        # Subprocess startup + initialize RPC can take several seconds.
         from extensions_sandbox import start_sandboxed_extension_provider
 
         provider = start_sandboxed_extension_provider(
@@ -999,15 +1147,20 @@ class ExtensionManager:
             sandboxed=True,
             sandbox_status=str(getattr(provider, "sandbox_status", "ready") or "ready"),
         )
-        if manifest.type == EXTENSION_TYPE_LLM_PROVIDER and self._registry is not None:
-            self._registry.register(provider)
-        self._loaded = [item for item in self._loaded if item.manifest.id != extension_id] + [loaded]
-        self._failed = [item for item in self._failed if item.extension_id != extension_id]
-        self._provider_rows_cache = []
-        sandbox = self._sandbox_diagnostics(loaded)
+        # Phase 4: update runtime state under lock.
+        with self._lock:
+            if manifest.type == EXTENSION_TYPE_LLM_PROVIDER and self._registry is not None:
+                self._registry.register(provider)
+            self._loaded = [item for item in self._loaded if item.manifest.id != extension_id] + [loaded]
+            self._failed = [item for item in self._failed if item.extension_id != extension_id]
+            self._provider_rows_cache = []
+            sandbox = self._sandbox_diagnostics(loaded)
         return {"id": extension_id, "ok": True, "action": "restart", **sandbox}
 
     def ui_payload(self) -> dict[str, Any]:
+        with self._lock:
+            loaded_snapshot = list(self._loaded)
+            failed_snapshot = list(self._failed)
         return {
             "extensions": [
                 {
@@ -1019,7 +1172,7 @@ class ExtensionManager:
                     "settings_schema": item.manifest.settings_schema,
                     "ui_schema": item.manifest.ui_schema,
                 }
-                for item in self._loaded
+                for item in loaded_snapshot
             ],
             "failed": [
                 {
@@ -1028,7 +1181,7 @@ class ExtensionManager:
                     "security_findings": list(item.security_findings),
                     **self._sandbox_diagnostics(None, item),
                 }
-                for item in self._failed
+                for item in failed_snapshot
             ],
         }
 
@@ -1063,6 +1216,11 @@ class ExtensionManager:
         selected_ref = resolved_target
         if not selected_ref:
             raise ValueError("registry entry has no latest_version/default_ref and repository latest release could not be resolved")
+        if self._blocklist_policy is None:
+            raise ValueError(
+                f"Cannot install extension '{ext_id}': blocklist policy is unavailable. "
+                "Ensure extensions_backend is installed and operational before installing extensions."
+            )
         blocklist = self._blocklist_match_for_entry(entry, version=selected_ref, ref=selected_ref)
         if blocklist.get("matched"):
             reason = str(blocklist.get("reason") or "Extension is blocked by emergency policy.")
@@ -1206,8 +1364,18 @@ class ExtensionManager:
         expected_id = str(entry.get("id") or "").strip()
         if manifest.id != expected_id:
             raise ValueError(f"manifest id mismatch: expected '{expected_id}', got '{manifest.id}'")
-        if _SEMVERISH_RE.match(target_version) and manifest.version.lstrip("v") != target_version.lstrip("v"):
-            raise ValueError(f"manifest version mismatch: expected '{target_version}', got '{manifest.version}'")
+        # For semver-shaped refs the manifest version must match exactly (modulo leading 'v').
+        # For non-semver refs (branch names, commit SHAs) we still reject obviously wrong
+        # versions: if the manifest declares a semver version it must not be empty.
+        if _SEMVERISH_RE.match(target_version):
+            if manifest.version.lstrip("v") != target_version.lstrip("v"):
+                raise ValueError(f"manifest version mismatch: expected '{target_version}', got '{manifest.version}'")
+        else:
+            if not str(manifest.version or "").strip():
+                raise ValueError(
+                    f"manifest for extension '{expected_id}' installed from ref '{target_version}' "
+                    "must declare a non-empty version"
+                )
         self._validate_compatibility(dict(getattr(manifest, "compatibility", {}) or {}))
         registry_compat = entry.get("compatibility")
         if isinstance(registry_compat, dict):
@@ -1287,18 +1455,32 @@ class ExtensionManager:
             src = Path(source_path)
             if not src.is_absolute():
                 src = (self._project_root / src).resolve()
+            else:
+                src = src.resolve()
+            # Guard against path traversal: source must stay inside project root.
+            project_root_resolved = self._project_root.resolve()
+            try:
+                src.relative_to(project_root_resolved)
+            except ValueError:
+                raise ValueError(
+                    f"source_path must be within project root, got: {source_path!r}"
+                )
             if not src.is_dir():
                 raise FileNotFoundError(f"extension source_path not found: {src}")
             shutil.copytree(src, target_dir, dirs_exist_ok=True)
             return
         if archive_url:
+            _validate_archive_url(archive_url)
             self._download_zip_to_dir(archive_url, target_dir, expected_digest=expected_digest)
             return
         if repo_url and repo_url.endswith(".zip"):
+            _validate_archive_url(repo_url)
             self._download_zip_to_dir(repo_url, target_dir, expected_digest=expected_digest)
             return
         github_archive_url = _github_archive_url(repo_url, selected_ref)
         if github_archive_url:
+            # _github_archive_url already restricts to github.com; still validate for defence-in-depth.
+            _validate_archive_url(github_archive_url)
             self._download_zip_to_dir(github_archive_url, target_dir, expected_digest=expected_digest)
             return
         raise ValueError("registry entry must define source_path or archive_url/repo_url zip")
@@ -1333,8 +1515,28 @@ class ExtensionManager:
                     )
             with zipfile.ZipFile(tmp_path) as zf:
                 infos = [info for info in zf.infolist() if info.filename and not info.filename.endswith("/")]
+                if len(infos) > _MAX_EXTENSION_ZIP_ENTRY_COUNT:
+                    raise ValueError(
+                        f"extension archive contains too many files "
+                        f"({len(infos)} > {_MAX_EXTENSION_ZIP_ENTRY_COUNT})"
+                    )
+                uncompressed_total = 0
                 names = [info.filename.replace("\\", "/") for info in infos]
-                for name in names:
+                for info, name in zip(infos, names, strict=True):
+                    if _zip_member_is_symlink(info):
+                        raise ValueError(f"unsafe zip member is a symlink: {name}")
+                    uncompressed_total += int(info.file_size or 0)
+                    if uncompressed_total > _MAX_EXTENSION_ZIP_UNCOMPRESSED_BYTES:
+                        raise ValueError(
+                            f"extension archive expands beyond maximum allowed size "
+                            f"({_MAX_EXTENSION_ZIP_UNCOMPRESSED_BYTES // (1024 * 1024)} MB): {url}"
+                        )
+                    if info.file_size and info.compress_size == 0:
+                        raise ValueError(f"unsafe zip member has invalid compressed size: {name}")
+                    if info.file_size and info.compress_size:
+                        ratio = float(info.file_size) / float(info.compress_size)
+                        if ratio > _MAX_EXTENSION_ZIP_COMPRESSION_RATIO:
+                            raise ValueError(f"unsafe zip member compression ratio: {name}")
                     parts = [part for part in name.split("/") if part]
                     if (
                         not parts
@@ -1395,10 +1597,22 @@ class ExtensionManager:
     def enable(self, extension_id: str) -> dict[str, Any]:
         target = next((record for record in self._repo.list_records() if record.id == extension_id and record.installed), None)
         if target is not None:
+            if self._blocklist_policy is None:
+                raise ValueError(
+                    f"Cannot enable extension '{extension_id}': blocklist policy is unavailable."
+                )
             match = self._blocklist_match_for_record(target)
             if match.get("matched"):
                 reason = str(match.get("reason") or "Extension is blocked by emergency policy.")
                 raise ValueError(f"Extension '{extension_id}' is blocked by emergency blocklist: {reason}")
+            # Reject re-enabling extensions that failed a non-blocklist security audit.
+            if str((target.security_scan or {}).get("status") or "") == "blocked":
+                findings = list((target.security_scan or {}).get("findings") or [])
+                detail = findings[0].get("message") if findings else "security audit failed"
+                raise ValueError(
+                    f"Extension '{extension_id}' cannot be enabled: it was blocked by security scan ({detail}). "
+                    "Remove and reinstall after the security issue is resolved."
+                )
         return self._rewrite_record(
             extension_id,
             lambda r: InstalledExtensionRecord(
@@ -1435,7 +1649,9 @@ class ExtensionManager:
         install_dir = self._installed_dir / target.id / target.version
         if install_dir.exists():
             shutil.rmtree(install_dir, ignore_errors=True)
-        for item in list(self._loaded):
+        with self._lock:
+            loaded_snapshot = list(self._loaded)
+        for item in loaded_snapshot:
             if item.manifest.id == ext_id:
                 close = getattr(item.provider, "close", None)
                 if callable(close):

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import CoreUIBadge from "./CoreUIBadge";
 import CoreUIButton from "./CoreUIButton";
@@ -371,6 +371,7 @@ export default function ExtensionsTab({ onErrorStateChange }) {
   const notificationCenter = useOptionalNotificationCenter();
   const [activeView, setActiveView] = useState("installed");
   const [registry, setRegistry] = useState([]);
+  const [registryDiagnostics, setRegistryDiagnostics] = useState([]);
   const [installed, setInstalled] = useState([]);
   const [providers, setProviders] = useState([]);
   const [uiPayload, setUiPayload] = useState({ extensions: [], failed: [] });
@@ -383,17 +384,18 @@ export default function ExtensionsTab({ onErrorStateChange }) {
   const [manualRef, setManualRef] = useState("");
   const persistExtensionNotification = notificationCenter?.persistNotification;
 
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     setError("");
     try {
       const [registryData, installedData, providersData, uiData] = await Promise.all([
-        getExtensionRegistry(),
+        getExtensionRegistry({ forceRefresh }),
         getExtensionInstalled(),
         getExtensionProviders(),
         getExtensionUiPayload(),
       ]);
       setRegistry(registryData.registry || []);
+      setRegistryDiagnostics(registryData.diagnostics || []);
       setInstalled(installedData.extensions || []);
       setProviders(providersData.providers || []);
       setUiPayload({ extensions: uiData.extensions || [], failed: uiData.failed || [] });
@@ -420,6 +422,21 @@ export default function ExtensionsTab({ onErrorStateChange }) {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // Re-fetch registry from GitHub whenever the user navigates to the Registry
+  // sub-tab so the list stays current without requiring a manual Refresh.
+  const prevActiveViewRef = useRef(null);
+  useEffect(() => {
+    if (activeView === "registry" && prevActiveViewRef.current !== "registry") {
+      getExtensionRegistry({ forceRefresh: true })
+        .then((data) => {
+          setRegistry(data.registry || []);
+          setRegistryDiagnostics(data.diagnostics || []);
+        })
+        .catch(() => {});
+    }
+    prevActiveViewRef.current = activeView;
+  }, [activeView]);
 
   const installedById = useMemo(
     () => new Map(installed.map((item) => [item.id, item])),
@@ -559,7 +576,7 @@ export default function ExtensionsTab({ onErrorStateChange }) {
           <h2>Extensions</h2>
           <p>Trusted registry, installed providers, and declarative CoreUI schemas.</p>
         </div>
-        <CoreUIButton variant="primary" onClick={loadAll} disabled={loading || Boolean(busyId)}>
+        <CoreUIButton variant="primary" onClick={() => loadAll(true)} disabled={loading || Boolean(busyId)}>
           Refresh
         </CoreUIButton>
       </div>
@@ -583,8 +600,18 @@ export default function ExtensionsTab({ onErrorStateChange }) {
         <section className="app-default-card extensions-view" aria-labelledby="extensions-registry-heading">
           <div className="extensions-view__header">
             <h3 id="extensions-registry-heading">Registry</h3>
-            <CoreUIBadge tone="info">{registry.length} available</CoreUIBadge>
+            {registry.length > 0
+              ? <CoreUIBadge tone="info">{registry.length} available</CoreUIBadge>
+              : registryDiagnostics.some((d) => d.severity === "error")
+                ? <CoreUIBadge tone="error">unavailable</CoreUIBadge>
+                : <CoreUIBadge tone="neutral">0 available</CoreUIBadge>
+            }
           </div>
+          {registry.length === 0 && registryDiagnostics.some((d) => d.severity === "error") && (
+            <div className="coreui-panel-note coreui-panel-note--error" role="alert">
+              GitHub registry unavailable. Check your network connection and click Refresh to retry.
+            </div>
+          )}
           <div className="extensions-cards">
             {registry.map((item) => {
               const installedItem = installedById.get(item.id);

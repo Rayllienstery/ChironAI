@@ -36,8 +36,10 @@ def _provider_health_component() -> str | None:
     if not has_app_context():
         return None
 
-    svc = current_app.extensions.get("llm_extensions_service")
-    runtime = current_app.extensions.get("llm_interactor_runtime") or getattr(svc, "runtime", None)
+    from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
+
+    svc = get_extensions_service(current_app)
+    runtime = get_extensions_runtime(current_app, svc)
     if svc is None or runtime is None:
         return None
 

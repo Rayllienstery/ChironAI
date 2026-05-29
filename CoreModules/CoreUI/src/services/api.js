@@ -1367,8 +1367,11 @@ export async function getCreateCollectionStatus(jobId) {
   return response.json();
 }
 
-export async function getExtensionRegistry() {
-  const response = await fetch(`${API_BASE}/extensions/registry`);
+export async function getExtensionRegistry({ forceRefresh = false } = {}) {
+  const url = forceRefresh
+    ? `${API_BASE}/extensions/registry?refresh=1`
+    : `${API_BASE}/extensions/registry`;
+  const response = await fetch(url);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(extractApiError(error, 'Failed to load extension registry'));

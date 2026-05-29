@@ -263,8 +263,14 @@ class ExtensionWorkerClient:
     def _write(self, payload: dict[str, Any]) -> None:
         if self._proc is None or self._proc.stdin is None:
             raise ExtensionWorkerError("extension worker stdin is closed")
-        self._proc.stdin.write(json.dumps(to_jsonable(payload), ensure_ascii=False) + "\n")
-        self._proc.stdin.flush()
+        try:
+            self._proc.stdin.write(json.dumps(to_jsonable(payload), ensure_ascii=False) + "\n")
+            self._proc.stdin.flush()
+        except (BrokenPipeError, OSError) as exc:
+            # Worker process died between the poll() check and the write.
+            self.status = "crashed"
+            self.error = self._stderr_tail() or str(exc)
+            raise ExtensionWorkerError(f"extension worker stdin broken: {exc}") from exc
 
     def _wait_response(self, req_id: int, timeout_sec: float) -> Any:
         deadline = time.monotonic() + float(timeout_sec)
@@ -317,21 +323,43 @@ class ExtensionWorkerClient:
         except Exception as e:
             self._write({"type": "host_response", "id": call_id, "ok": False, "error": f"{type(e).__name__}: {e}"})
 
+    # Explicit allowlist for chat_client methods callable from sandboxed extensions.
+    # docker_runtime already has an allowlist; this mirrors that pattern for chat.
+    _CHAT_CLIENT_ALLOWED_METHODS: frozenset[str] = frozenset(
+        {
+            "chat",
+            "chat_api",
+            "chat_api_stream_final",
+            "iter_chat_api_stream_events",
+            "iter_chat_api_stream_openai_parts",
+        }
+    )
+
     def _dispatch_host_call(self, target: str, method: str, args: list[Any], kwargs: dict[str, Any]) -> Any:
         if target == "settings":
             repo = self.host_context.get_settings_repository()
+            key = str(args[0] if args else "")
             if method == "get_app_setting":
-                return repo.get_app_setting(str(args[0] if args else ""))
+                return repo.get_app_setting(key)
             if method == "set_app_setting":
-                repo.set_app_setting(str(args[0] if args else ""), args[1] if len(args) > 1 else "")
+                # Writes are restricted to the extension-owned namespace to prevent
+                # a sandboxed extension from overwriting host application settings.
+                if not key.startswith("ext."):
+                    raise PermissionError(
+                        f"extension settings writes must use the 'ext.' namespace prefix; "
+                        f"got key: {key!r}"
+                    )
+                repo.set_app_setting(key, args[1] if len(args) > 1 else "")
                 return None
         if target == "chat_client":
             chat = getattr(self.host_context, "chat_client", None)
             if chat is None:
                 raise RuntimeError("chat_client is unavailable")
+            if method not in self._CHAT_CLIENT_ALLOWED_METHODS:
+                raise AttributeError(f"chat_client method not allowed: {method!r}")
             fn = getattr(chat, method, None)
             if not callable(fn):
-                raise AttributeError(f"chat_client method not allowed: {method}")
+                raise AttributeError(f"chat_client method not found: {method!r}")
             result = fn(*args, **kwargs)
             if method.startswith("iter_") or not isinstance(result, (dict, str, int, float, bool, type(None), list)):
                 try:

@@ -135,5 +135,7 @@ def test_extension_blocklist_remote_oversized_response_is_rejected(monkeypatch) 
 
     rules = policy.load()
 
-    assert rules == [], "oversized response must yield empty rules (fail-safe)"
-    assert policy.match(extension_id="any-ext").matched is False
+    assert rules == [], "oversized response must yield empty rules for diagnostics"
+    match = policy.match(extension_id="any-ext")
+    assert match.matched is True
+    assert "Blocklist unavailable" in match.reason

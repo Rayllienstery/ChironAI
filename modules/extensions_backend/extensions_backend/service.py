@@ -32,19 +32,31 @@ def _require_action_id(action_id: Any) -> str:
 
 
 def _sanitize_install_target(target: Any) -> dict[str, Any] | None:
-    """Validate and return a clean install target dict, or None."""
+    """Validate and return a clean install target dict, or None.
+
+    ``archive_url`` is intentionally excluded: the download URL is resolved
+    exclusively from the registry entry and GitHub metadata — client-supplied
+    archive URLs are never trusted, which prevents SSRF via install requests.
+    """
     if target is None:
         return None
     if not isinstance(target, dict):
         raise ValueError("install target must be a JSON object")
     out: dict[str, Any] = {}
-    for key in ("target_kind", "version", "ref", "commit_sha", "archive_url"):
+    for key in ("target_kind", "version", "ref", "commit_sha"):
         value = target.get(key)
         if value is not None:
             out[key] = str(value)
     for key in ("allow_capability_expansion", "capability_expansion_accepted"):
         if key in target:
             out[key] = bool(target[key])
+    # Wire accepted_capabilities through to the manager so the consent UI
+    # decision is honoured (contract: ExtensionInstallRequest.accepted_capabilities).
+    raw_caps = target.get("accepted_capabilities")
+    if raw_caps is not None:
+        if not isinstance(raw_caps, list):
+            raise ValueError("accepted_capabilities must be a list of strings")
+        out["accepted_capabilities"] = [str(cap) for cap in raw_caps if cap]
     return out or None
 
 
@@ -80,6 +92,12 @@ class ExtensionManagementService:
 
     def bootstrap_runtime(self) -> Any:
         return self._manager.bootstrap_runtime()
+
+    def invalidate_registry_cache(self) -> None:
+        """Discard the cached registry result so the next fetch re-reads from the source."""
+        invalidate = getattr(self._manager, "invalidate_registry_cache", None)
+        if callable(invalidate):
+            invalidate()
 
     def registry_entries(self) -> list[dict[str, Any]]:
         return self._manager.registry_entries()

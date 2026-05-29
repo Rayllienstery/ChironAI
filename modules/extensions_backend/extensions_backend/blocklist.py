@@ -61,11 +61,24 @@ class ExtensionBlocklistPolicy:
         self._ttl_sec = ttl_sec
         self._rules: list[dict[str, Any]] | None = None
         self._loaded_at: float = 0.0
+        # True only when every source (primary + fallback) failed on the first
+        # ever load attempt.  Callers can query this to fail closed.
+        self._initial_load_failed: bool = False
         self._lock = threading.Lock()
 
     @property
     def blocklist_url(self) -> str:
         return self._blocklist_url
+
+    @property
+    def initial_load_failed(self) -> bool:
+        """True when every source failed on the very first load attempt.
+
+        Callers that enforce fail-closed policy should treat this as a signal
+        to reject installs/enables until the blocklist can be loaded.
+        """
+        with self._lock:
+            return self._initial_load_failed
 
     def load(self) -> list[dict[str, Any]]:
         """Return the current list of blocklist rules, reloading if the TTL has expired."""
@@ -86,18 +99,21 @@ class ExtensionBlocklistPolicy:
                     self._loaded_at = now  # back off; retry after next TTL
                     return [dict(rule) for rule in self._rules]
                 _log.warning(
-                    "blocklist initial load failed — blocklist will be empty: %s: %s",
+                    "blocklist initial load failed — rules unavailable until next retry: %s: %s",
                     type(exc).__name__,
                     exc,
                 )
-                self._rules = []
-                self._loaded_at = now
+                # Keep _rules as None to signal "never successfully loaded" so
+                # callers can choose to fail closed rather than allow everything.
+                self._initial_load_failed = True
+                self._loaded_at = now  # back off; retry after TTL
                 return []
             payload = json.loads(raw) if raw.strip() else {}
             rules = payload.get("blocked") if isinstance(payload, dict) else []
             if not isinstance(rules, list):
                 rules = []
             self._rules = [dict(rule) for rule in rules if isinstance(rule, dict)]
+            self._initial_load_failed = False
             self._loaded_at = now
             return [dict(rule) for rule in self._rules]
 
@@ -111,13 +127,24 @@ class ExtensionBlocklistPolicy:
         repository_id: str = "",
         publisher: str = "",
     ) -> ExtensionBlocklistMatch:
+        rules = self.load()
+        # Fail closed: if the blocklist was never successfully loaded we must
+        # not silently allow everything — signal blocked so callers can decide.
+        with self._lock:
+            if self._rules is None:
+                return ExtensionBlocklistMatch(
+                    matched=True,
+                    reason="Blocklist unavailable — install blocked until policy can be loaded.",
+                    source=self._blocklist_url,
+                    matched_on="",
+                )
         ext_id = str(extension_id or "").strip()
         selected_version = str(version or "").strip()
         selected_ref = str(ref or "").strip()
         repo = str(repository or "").strip()
         repo_id = str(repository_id or "").strip()
         pub = str(publisher or "").strip()
-        for rule in self.load():
+        for rule in rules:
             match_rule = rule.get("match") if isinstance(rule.get("match"), dict) else rule
             source = str(rule.get("source") or self._blocklist_url)
             reason = str(rule.get("reason") or "Extension is blocked by emergency policy.")
@@ -161,10 +188,20 @@ class ExtensionBlocklistPolicy:
                         f"({_MAX_BLOCKLIST_RESPONSE_BYTES // 1024} KB)"
                     )
                 chunks.append(chunk)
-            return b"".join(chunks).decode("utf-8", errors="replace")
+            return b"".join(chunks).decode("utf-8")
         path = Path(parsed.path if parsed.scheme == "file" else url)
         if not path.is_absolute():
-            path = self._project_root / path
+            path = (self._project_root / path).resolve()
+        else:
+            path = path.resolve()
+        # Guard against path traversal: blocklist must remain within project root.
+        project_root_resolved = self._project_root.resolve()
+        try:
+            path.relative_to(project_root_resolved)
+        except ValueError:
+            raise ValueError(
+                f"blocklist path must be within project root, got: {path}"
+            )
         if not path.is_file():
             if not missing_ok:
                 raise FileNotFoundError(path)

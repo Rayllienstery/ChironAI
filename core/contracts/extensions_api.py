@@ -21,7 +21,6 @@ EXTENSIONS_API_VERSION: str = "1"
 EXTENSIONS_API_PREFIX: str = "/api/extensions"
 WEBUI_EXTENSIONS_PROXY_PREFIX: str = "/api/webui/extensions"
 EXTENSIONS_SERVICE_APP_KEY: str = "extensions_service"
-LEGACY_EXTENSIONS_SERVICE_APP_KEY: str = "llm_extensions_service"
 EXTENSIONS_RUNTIME_APP_KEY: str = "llm_interactor_runtime"
 EXTENSIONS_PROVIDER_REGISTRY_APP_KEY: str = "llm_provider_registry"
 
@@ -190,6 +189,9 @@ class ExtensionInstallTargetDTO(TypedDict, total=False):
     version: str
     ref: str
     commit_sha: str
+    # NOTE: archive_url is intentionally ignored by the install pipeline.
+    # Download URLs are resolved server-side from the registry and GitHub
+    # metadata only; client-supplied archive_url is never fetched (SSRF guard).
     archive_url: str
 
 
@@ -197,7 +199,6 @@ class ExtensionInstallRequest(TypedDict, total=False):
     extension_id: str
     target: ExtensionInstallTargetDTO
     accepted_capabilities: list[str]
-    allow_weak_provenance: bool
     allow_capability_expansion: bool
 
 
@@ -343,7 +344,6 @@ __all__ = [
     "EXTENSIONS_API_PREFIX",
     "WEBUI_EXTENSIONS_PROXY_PREFIX",
     "EXTENSIONS_SERVICE_APP_KEY",
-    "LEGACY_EXTENSIONS_SERVICE_APP_KEY",
     "EXTENSIONS_RUNTIME_APP_KEY",
     "EXTENSIONS_PROVIDER_REGISTRY_APP_KEY",
     "ExtensionType",

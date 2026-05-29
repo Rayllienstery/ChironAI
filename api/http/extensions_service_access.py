@@ -8,21 +8,17 @@ from core.contracts.extensions_api import (
     EXTENSIONS_PROVIDER_REGISTRY_APP_KEY,
     EXTENSIONS_RUNTIME_APP_KEY,
     EXTENSIONS_SERVICE_APP_KEY,
-    LEGACY_EXTENSIONS_SERVICE_APP_KEY,
 )
 
 
 def get_extensions_service(app_or_current_app: Any) -> Any | None:
     extensions = getattr(app_or_current_app, "extensions", {})
-    return extensions.get(EXTENSIONS_SERVICE_APP_KEY) or extensions.get(LEGACY_EXTENSIONS_SERVICE_APP_KEY)
+    return extensions.get(EXTENSIONS_SERVICE_APP_KEY)
 
 
 def set_extensions_service(app_or_current_app: Any, service: Any) -> None:
     extensions = app_or_current_app.extensions
     extensions[EXTENSIONS_SERVICE_APP_KEY] = service
-    # Temporary compatibility alias for tests and old call sites during the
-    # migration tail. New code should use EXTENSIONS_SERVICE_APP_KEY.
-    extensions[LEGACY_EXTENSIONS_SERVICE_APP_KEY] = service
 
 
 def get_extensions_runtime(app_or_current_app: Any, service: Any | None = None) -> Any | None:

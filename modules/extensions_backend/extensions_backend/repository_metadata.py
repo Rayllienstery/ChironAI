@@ -11,6 +11,9 @@ from urllib.parse import quote, urlparse
 import requests
 
 
+_SAFE_GITHUB_SLUG_PART_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,98}[A-Za-z0-9]$|^[A-Za-z0-9]$")
+
+
 @dataclass(frozen=True)
 class GitHubRepositoryRef:
     owner: str
@@ -148,7 +151,16 @@ class GitHubExtensionRepositoryClient:
             parts = [part for part in raw.strip("/").split("/") if part]
         if len(parts) != 2:
             raise ValueError("GitHub repository must be owner/name or https://github.com/owner/name")
-        return GitHubRepositoryRef(owner=parts[0], name=parts[1])
+        owner, name = parts[0], parts[1]
+        for label, value in (("owner", owner), ("name", name)):
+            if not _SAFE_GITHUB_SLUG_PART_RE.match(value):
+                raise ValueError(
+                    f"GitHub repository {label} {value!r} contains invalid characters; "
+                    "only letters, digits, hyphens, underscores, and dots are permitted"
+                )
+            if value in {".", ".."}:
+                raise ValueError(f"GitHub repository {label} must not be '.' or '..'")
+        return GitHubRepositoryRef(owner=owner, name=name)
 
 
 _UNSAFE_MD_LINK_RE = re.compile(r"(!?\[[^\]]*\]\()(?P<url>[^)]+)(\))", re.IGNORECASE)
@@ -158,12 +170,15 @@ def sanitize_readme_markdown(markdown: str) -> str:
     """Return escaped, display-safe HTML for README previews.
 
     Pipeline:
-    1. Strip raw HTML tags (prevent injected tags from surviving).
-    2. Replace unsafe markdown link/image URLs with a placeholder — safe URLs
+    1. Strip HTML comments (``<!-- ... -->``) with DOTALL so multi-line comments
+       are removed before tag stripping.
+    2. Strip raw HTML tags with DOTALL so multi-line tags like
+       ``<script\\ntype="text/javascript">`` are also removed.
+    3. Replace unsafe markdown link/image URLs with a placeholder — safe URLs
        (http/https/#) are kept as-is; everything else is removed.
-    3. HTML-escape the entire result once so the final ``<pre>`` block is safe.
+    4. HTML-escape the entire result once so the final ``<pre>`` block is safe.
 
-    The escaping in step 3 is the single escape point; ``_safe_link`` must NOT
+    The escaping in step 4 is the single escape point; ``_safe_link`` must NOT
     pre-escape its return value, otherwise characters like ``&`` would be
     double-escaped (``&`` → ``&amp;`` → ``&amp;amp;``).
     """
@@ -176,6 +191,11 @@ def sanitize_readme_markdown(markdown: str) -> str:
             return f"{prefix}{url}{suffix}"
         return f"{prefix}unsafe-link-removed{suffix}"
 
-    cleaned = re.sub(r"<[^>]+>", "", markdown or "")
+    raw = markdown or ""
+    # Step 1: remove HTML comments (<!--  -->), including multi-line.
+    cleaned = re.sub(r"<!--.*?-->", "", raw, flags=re.DOTALL)
+    # Step 2: remove HTML tags, including those that span lines.
+    cleaned = re.sub(r"<[^>]+>", "", cleaned, flags=re.DOTALL)
+    # Step 3: neutralise unsafe markdown links/images.
     cleaned = _UNSAFE_MD_LINK_RE.sub(_safe_link, cleaned)
     return "<pre>" + html.escape(cleaned, quote=False) + "</pre>"

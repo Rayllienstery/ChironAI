@@ -732,7 +732,7 @@ Phase 5 implementation notes:
 - Extension lifecycle actions now persist Notifications center entries for install, remove, enable, disable, sandbox restart, and sandbox kill; existing security/sandbox bridge aggregates blocked/crashing extension notifications.
 - Emergency blocklist enforcement blocks install/enable, disables installed extensions during bootstrap, marks registry/installed rows, and works from the local offline cache.
 - Phase 5 boundary tail closed for API routing: extension state now flows through the extension-management accessor/facade, and guardrails prevent direct API use of legacy Flask keys or bundled directory scans.
-- Remaining future hardening after `0.5.0`: richer download/update/processing progress notifications, frontend token-leak bundle scanning, and stricter weak-provenance policy.
+- Remaining future hardening after `0.5.1`: WebUI mutating-route authentication, richer download/update/processing progress notifications, frontend token-leak bundle scanning, and stricter weak-provenance policy.
 
 ### Phase 6: Cleanup
 
@@ -766,6 +766,21 @@ Phase 7 implementation notes:
 - Blocklist matches are persisted as `chironai_blocklist` security scans with critical findings, so the existing Notifications center bridge reports dangerous extensions.
 - Update-time high-risk capability expansion now requires an explicit install target consent flag before the new version can replace the installed one.
 - `ChironAI-Extensions-Registry` commit `f38ae37` added the public `blocklist.json` artifact and validator coverage.
+
+### Phase 8: Security Closure
+
+- [x] Reject extension zip archives that exceed compressed, uncompressed, file-count, or compression-ratio limits.
+- [x] Reject symlink entries in downloaded extension zip archives.
+- [x] Reject symlink-backed extension asset paths before serving files.
+- [x] Return sanitized public error codes/messages from extension HTTP routes while logging internal details server-side.
+- [x] Remove the legacy `llm_extensions_service` Flask key and guard against its return.
+- [ ] Add WebUI authentication and authorization for mutating extension routes.
+
+Phase 8 implementation notes:
+
+- Authentication is intentionally left out of this phase because it belongs to the shared WebUI/API security boundary, not to the Extensions module alone.
+- Extension install/download hardening is enforced inside `ExtensionManager` before archive extraction or activation.
+- Public extension route errors no longer echo raw exception strings, filesystem paths, tokens, or internal stack details to CoreUI clients.
 
 ## Definition Of Done
 
@@ -806,6 +821,12 @@ The migration is ready when all of the following are true:
 - [x] Extension operations and processing failures produce live or persisted Notifications center entries.
 - [x] Existing extension tests and security audit tests pass.
 - [x] Documentation explains how to publish a new extension version.
+- [x] Project version is bumped to `0.5.1` for post-migration security closure.
+- [x] Zip bombs and zip symlink entries are rejected before extraction.
+- [x] Extension assets cannot be served through symlink-backed paths.
+- [x] Extension route errors expose stable public codes/messages instead of raw exception strings.
+- [x] Legacy `llm_extensions_service` Flask app state is removed.
+- [ ] Mutating extension routes require WebUI authentication/authorization.
 
 ## Recommended First Pull Requests
 
@@ -838,6 +859,7 @@ The migration is ready when all of the following are true:
 - Should CoreUI expose registry source and update availability directly in the Extensions tab?
 - Should extension repositories declare their own notification event schema, or should the core extension host normalize all extension events into one app-level contract?
 - Which GitHub API mode should be used for README/version discovery: unauthenticated public API, configured token, or raw GitHub URLs with graceful rate-limit handling?
+- Which WebUI authentication/authorization model should protect extension install/remove/enable/disable/sandbox/action routes?
 - Should manual branch/ref installs be hidden behind an advanced toggle?
 - Should unsafe updates always disable the extension, or should the previous known-safe version remain active when available?
 - Should extension install/update actions require explicit user confirmation when new capabilities or permissions appear compared with the installed version?

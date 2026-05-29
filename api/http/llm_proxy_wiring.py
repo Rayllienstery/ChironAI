@@ -21,8 +21,6 @@ from llm_proxy.contracts import LlmProxyBaseContext, LlmProxyExternalDocsBundle,
 try:
     from config import (
         get_extensions_blocklist_url,
-        get_extensions_local_blocklist_fallback,
-        get_extensions_local_registry_fallback,
         get_extensions_registry_url,
         get_framework_collection_ttl_days,
         get_github_token,
@@ -34,9 +32,7 @@ except ImportError:
     get_qdrant_url = lambda: "http://localhost:6333"  # type: ignore[assignment,misc]
     get_framework_collection_ttl_days = lambda: 90  # type: ignore[assignment,misc]
     get_extensions_registry_url = lambda: ""  # type: ignore[assignment,misc]
-    get_extensions_local_registry_fallback = lambda: "extensions/registry/extensions.json"  # type: ignore[assignment,misc]
-    get_extensions_blocklist_url = lambda: "extensions/registry/blocklist.json"  # type: ignore[assignment,misc]
-    get_extensions_local_blocklist_fallback = lambda: "extensions/registry/blocklist.json"  # type: ignore[assignment,misc]
+    get_extensions_blocklist_url = lambda: ""  # type: ignore[assignment,misc]
     get_github_token = lambda: ""  # type: ignore[assignment,misc]
 
 from api.http.proxy_status import (
@@ -313,6 +309,8 @@ def _external_docs_bundle() -> LlmProxyExternalDocsBundle:
 
 
 def _extension_runtime_getter(extension_manager: Any | None, llm_runtime: Any | None) -> Any | None:
+    # llm_runtime is currently always None (ExtensionsHost not yet implemented).
+    # Kept as a parameter so the signature remains forward-compatible.
     if llm_runtime is not None:
         return llm_runtime
     if extension_manager is None:
@@ -463,12 +461,10 @@ def _build_extension_manager(
         registry_client=ExtensionRegistryClient(
             get_extensions_registry_url() or None,
             project_root=_workspace_root(),
-            fallback_url=get_extensions_local_registry_fallback(),
         ),
         blocklist_policy=ExtensionBlocklistPolicy(
             get_extensions_blocklist_url() or None,
             project_root=_workspace_root(),
-            fallback_url=get_extensions_local_blocklist_fallback(),
         ),
         repository_client=GitHubExtensionRepositoryClient(token=github_token),
         default_provider_id=DEFAULT_LLM_PROVIDER_ID,
@@ -482,6 +478,10 @@ def _build_extension_manager(
         provider_id=DEFAULT_LLM_PROVIDER_ID,
     )
     _RAG_LOG.info("Extension runtime bootstrap started in background")
+    # llm_runtime and provider_registry are intentionally None here.
+    # They will be populated by ExtensionsHost once that module is implemented
+    # (see docs/EXTENSIONS_PHASE1_CONTRACT.md).  The service facade exposes
+    # .runtime and .registry for callers that need them in the meantime.
     return service, None, None, runtime_chat_client, DEFAULT_LLM_PROVIDER_ID
 
 
