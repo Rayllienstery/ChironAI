@@ -4,6 +4,11 @@
 
 ChironAI uses YAML-based configuration files organized by domain. All configs support environment variable overrides for local experimentation without modifying files.
 
+For **precedence rules** (env vs YAML vs app settings vs LLM Proxy builds), see
+[`CONFIG_AUTHORITY.md`](CONFIG_AUTHORITY.md).
+
+For a flat **environment variable index**, see [`ENV_REFERENCE.md`](ENV_REFERENCE.md).
+
 ## Structure
 
 ```

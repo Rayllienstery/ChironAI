@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.7] - 2026-05-31
+### Removed
+- Removed Qdrant unnamed-vector collections, `QDRANT_LEGACY_DENSE_FALLBACK_ENABLED`, and direct `/api/tags` health fallback when the Ollama provider runtime is unavailable.
+
+### Added
+- Added a repo-wide quality audit roadmap for staged cleanup, documentation sync, and guardrail work.
+
+### Changed
+- Synced architecture docs (`docs/ARCHITECTURE.md`, `docs/legacy_map.md`, `Improvements2.md`, `Improvement.md`) with canonical `rag_service.*` ownership after root RAG shim removal.
+- Documented live `scripts/*` inventory in `DEPENDENCIES.md`.
+- Removed stale `test_compat_wrappers.py` entry from Ollama migration import guardrails.
+- Extracted WebUI model settings and Model Tester routes into `api/http/webui_model_tester_routes.py`.
+- Extracted WebUI RAG model settings, pipeline diagram, and Qdrant lifecycle routes into `api/http/webui_rag_routes.py`.
+- Extracted WebUI chat/model list routes into `api/http/webui_chat_routes.py`.
+- Extracted shared provider/runtime helpers into `api/http/webui_provider_helpers.py`; slimmed `webui_routes.py` to a composition root.
+- Extracted external-docs testing preview into `api/http/webui_testing_routes.py`; deduped `webui_llm_proxy_routes` / `webui_crawler_routes` imports.
+- Moved pure `/v1/chat/completions` request parsers into `llm_proxy/chat_completions_request_parsing.py` with dedicated tests.
+- Moved response/message-shaping helpers into `llm_proxy/chat_completions_response_helpers.py` with dedicated tests.
+- Moved handler-side pure helpers into `llm_proxy/chat_completions_handler_helpers.py` with dedicated tests.
+- Extracted OpenAI SSE streaming helpers into `llm_proxy/chat_completions_streaming.py` with dedicated tests.
+- Documented Qdrant vector modes; removed unnamed-vector collections and legacy dense search fallback (named `dense` + hybrid only).
+- Documented CoreUI `api.js` ↔ `webui_*_routes` alignment (`CoreModules/CoreUI/docs/WEBUI_API.md`); verified `knip` and production build.
+- Added `config/CONFIG_AUTHORITY.md` and `tests/config/test_config_precedence.py` documenting env-over-YAML precedence.
+- Added `config/ENV_REFERENCE.md` and `infrastructure/ollama/README.md`; synced Ollama import guardrail allowlist and `docs/legacy_map.md`.
+- Added `--help` to `scripts/audit_apple_ingest_filter.py` and CLI smoke tests under `tests/scripts/`.
+
+## [0.6.6] - 2026-05-31
+### Removed
+- Removed the obsolete one-off SQLite log inspection script from `scripts`.
+
 ## [0.6.5] - 2026-05-31
 ### Changed
 - Removed internal root RAG compatibility shims and moved callers to canonical `rag_service` imports.

@@ -1,14 +1,18 @@
 # ChironAI — Code-Level Improvements
 
+Roadmap for larger cleanup passes: [`QUALITY_AUDIT.md`](QUALITY_AUDIT.md).
+
 ## 1. Domain Layer Duplication (Shim / Re-export Anti-pattern)
 
-- [ ] **Remove the root `domain/` shim layer.** Files like `domain/services/chunking.py`, `domain/services/prompt_builder.py`, `domain/services/rag_trace.py`, `domain/services/rag_trigger.py`, `domain/services/rerank.py`, and `domain/services/retrieval.py` are thin wrappers that do nothing but `from rag_service.domain.services.xxx import *`. This adds indirection without value — a developer reading `domain/services/retrieval.py` has to open `CoreModules/RagService/rag_service/domain/services/retrieval.py` to find the real logic. Pick one canonical location and delete the shim.
+- [x] **Remove the root RAG `domain/services/*` shim layer.** Deleted wrappers (`chunking`, `prompt_builder`, `rag_trace`, `rag_trigger`, `rerank`, `retrieval`, `metadata_inference`). Runtime imports now use `rag_service.domain.services.*`. Root `domain/services/` keeps non-RAG helpers such as `markdown_meta`.
 
-- [ ] **Decide which `application/rag/use_cases.py` is canonical.** The root `application/rag/use_cases.py` and `CoreModules/RagService/rag_service/application/use_cases.py` overlap significantly. Both define `search_rag`, `build_rag_context`, `answer_question`, etc. Currently the root one appears more feature-complete (coverage reports, pipeline steps), but the `rag_service` one has its own copy. Consolidate into one, re-export from the other, or delete the stale copy.
+- [x] **Canonical RAG use cases live in `rag_service.application`.** Removed root `application/rag/use_cases.py` and `application/rag/params.py`. HTTP and proxy wiring import `rag_service.application.use_cases` and `rag_service.application.params`. Root `application/rag/` retains monolith-boundary helpers (`proxy_settings_contract`, `collection_freshness`, etc.).
 
-- [ ] **Remove `domain/entities/rag.py` import from `rag_service.domain.entities`.** The root `domain/entities/rag.py` does `from rag_service.domain.entities import QueryIntent, RagAnswerResponse, RagChunk, RagContext, RagQuestionRequest`. This means the root `domain` package depends on `CoreModules/RagService`, violating the hexagonal principle that `domain` should be the most independent layer. Entities should live in one place and be imported by outer layers, not the other way around.
+- [x] **Remove root `domain/entities/rag.py`.** RAG entities are owned by `rag_service.domain.entities`.
 
-- [ ] **Audit all `from rag_service.xxx import *` in root `domain/services/`.** Wildcard re-exports (`# noqa: F401,F403`) hide what symbols are actually available. Replace with explicit imports or delete the shim files entirely.
+- [x] **Remove root `application/container.py`.** Default RAG composition is in `rag_service.infrastructure.container`.
+
+- [ ] **Reclassify root `infrastructure/ollama/*` compatibility adapters.** They remain for public proxy helpers, standalone tests, and fallback paths. New code should prefer `LLMRuntime` / `rag_service.infrastructure.provider_runtime` (see `tests/application/test_ollama_migration_guardrails.py`).
 
 ---
 
@@ -32,10 +36,7 @@
 
 ## 3. Blurred Boundaries Between Root Modules and CoreModules
 
-- [ ] **Clarify ownership of `application/rag/` vs `CoreModules/RagService/application/`.** Both directories contain `use_cases.py`, `params.py`, and `pipeline_steps/`. A new contributor cannot tell which one is active. Options:
-  - Make `rag_service` a pure HTTP shell that imports from root `application.rag`
-  - Or move everything into `rag_service` and make root `application/rag` a thin re-export
-  Either is fine, but the current ambiguity is technical debt.
+- [x] **Clarify ownership of `application/rag/` vs `rag_service.application`.** Canonical RAG use cases and params are in `rag_service`. Root `application/rag/` holds WebUI/proxy contract helpers that still belong to the monolith HTTP boundary.
 
 - [ ] **Clarify ownership of `infrastructure/` vs `CoreModules/RagService/infrastructure/`.** Root `infrastructure/` has Qdrant, Ollama, crawl, database, metrics, logging. `rag_service/infrastructure/` has its own Qdrant repo, Ollama clients, CLI runner, container. Some are duplicates (qdrant_repository vs rag_repository_impl), some are unique (keyword_collections_sqlite only in rag_service). Document which infra lives where and why.
 
@@ -60,7 +61,7 @@
   - `config/__init__.py` (env overrides)
   - `CoreModules/RagService/rag_service/config.py` (its own loader with `_load_host_repo_overlay`)
   - WebUI settings DB (proxy_settings_contract)
-  - `application/rag/params.py` (RAGAnswerParams, RAGDependencies)
+  - `rag_service.application.params` (RAGAnswerParams, RAGDependencies)
   This makes it hard to trace where a parameter like `rag.top_k` actually resolves. Centralize config resolution in one place.
 
 - [ ] **Remove `_load_host_repo_overlay()` magic.** `rag_service/config.py` tries to guess the repo root and load YAML from it. This is fragile and surprising. Config paths should be explicit (env var or CLI arg).
@@ -88,7 +89,7 @@
 
 - [ ] **Add tests for `chat_completions_handler.py`.** At ~2400 lines with complex branching (streaming, RAG, tools, errors), this file has near-zero test coverage. Start with the pure functions (`_truthy_body_flag`, `_positive_int_env`, `_non_empty_str`, `_resolve_trace_chain_id`) and then add integration tests for the main flow.
 
-- [ ] **Add tests for the root `application/rag/use_cases.py`.** The `rag_service` equivalents have tests; the root copies do not.
+- [ ] **Expand `rag_service.application` test coverage where gaps remain.** Root shim copies were removed; keep behavior tests on canonical `rag_service` paths (`tests/application/test_rag_use_cases.py`, `tests/rag_service/`).
 
 - [ ] **Add tests for `CoreModules/WebInteraction`.** The module has ranking, caching, search, triggers — but no `tests/` directory inside it.
 
@@ -100,7 +101,7 @@
 
 - [ ] **Add `/api/embed` probe to health check.** Currently `GET /health` checks Ollama `/api/tags` and Qdrant `/collections`, but not the embed endpoint. A failing embed endpoint silently skips files during indexing (as noted in TODO.md).
 
-- [ ] **Add structured JSON logging to all RAG pipeline steps.** The proxy has tracing, but the root RAG pipeline (`application/rag/use_cases.py`) logs inconsistently. Each step (query prep, embed search, rerank, context assembly) should emit a structured log line with timing and result counts.
+- [ ] **Add structured JSON logging to all RAG pipeline steps.** The proxy has tracing, but `rag_service.application.use_cases` logs inconsistently. Each step (query prep, embed search, rerank, context assembly) should emit a structured log line with timing and result counts.
 
 - [ ] **Add retry with backoff for Ollama `/api/embed` failures.** Indexing a large docset should not fail on a single transient 500 from Ollama.
 
@@ -110,7 +111,7 @@
 
 - [x] **Reduce `api/http/webui_routes.py` size.** It is a large file handling many UI endpoints. Split by domain (sources, prompts, sessions, settings, docker, extensions) — the directory already has `webui_crawler_source_routes.py`, `webui_docker_routes.py`, `webui_prompt_routes.py`, `webui_extensions_routes.py`, so the pattern exists. Finish the migration.
 
-- [x] **Remove dead code paths.** Runtime code now imports `should_skip_rag_search` from `rag_trigger`, which owns the trigger heuristic. The `retrieval.py` export remains as a compatibility path, and root `domain/services/retrieval.py` stays as an intentional thin wrapper covered by compat tests rather than a stale implementation.
+- [x] **Remove dead RAG shim paths.** Runtime code imports `should_skip_rag_search` from `rag_service.domain.services.rag_trigger`. Root RAG service shims and compat wrapper tests were removed; `tests/application/test_rag_import_boundaries.py` guards against reintroducing removed import paths.
 
 - [x] **Standardize error handling patterns.** Some modules use custom exception classes (`RetrievalError`, `EmbeddingError`, `RerankError`), others return `None` or empty dicts on failure. Pick one convention per layer.
 

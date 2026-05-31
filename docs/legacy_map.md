@@ -1,19 +1,22 @@
 # Legacy Map
 
-Updated: 2026-04-19
+Updated: 2026-05-31
+
+Active cleanup roadmap: [`QUALITY_AUDIT.md`](../QUALITY_AUDIT.md).
 
 ## System Map
 
 ```text
 CoreUI (RAG Tests / Notifications / Builds)
-  -> api/http/webui_routes.py
+  -> api/http/webui_routes.py (+ webui_*_routes.py splits)
       -> application/rag_tests/*
-      -> application/rag/params.py
+      -> application/rag/proxy_settings_contract.py (monolith boundary helpers)
+      -> rag_service.application.params / rag_service.application.use_cases
       -> CoreModules/RagService/rag_service/*
       -> RagRuntime + DockerManager (Qdrant service control)
   -> CoreModules/LlmProxy/llm_proxy/*
       -> OpenAI/Anthropic compatibility surface
-      -> same RAG context build path
+      -> same RAG context build path (rag_service.application.use_cases)
 ```
 
 ## Legacy Clusters
@@ -24,22 +27,24 @@ CoreUI (RAG Tests / Notifications / Builds)
   - `proxy_settings` JSON blob,
   - dedicated `app_settings` fields,
   - yaml/env fallback.
+- Documented precedence: [`config/CONFIG_AUTHORITY.md`](../config/CONFIG_AUTHORITY.md),
+  env index: [`config/ENV_REFERENCE.md`](../config/ENV_REFERENCE.md).
 - Main files:
-  - `api/http/webui_routes.py`
-  - `CoreModules/LlmProxy/llm_proxy/chat_completions.py`
+  - `api/http/webui_settings_routes.py`, `webui_rag_routes.py`
+  - `CoreModules/LlmProxy/llm_proxy/chat_completions_handler.py`
   - `api/http/llm_proxy_wiring.py`
 
-Risk: hidden runtime divergence.
+Risk: hidden runtime divergence (mitigated by precedence tests in `tests/config/`).
 
-## B) WebUI routes monolith
+## B) WebUI routes composition
 
-- `api/http/webui_routes.py` still mixes:
-  - proxy/tester endpoints,
-  - RAG tests orchestration,
-  - service lifecycle control,
-  - crawler/indexer/web interaction helpers.
+- `api/http/webui_routes.py` is the composition root (~255 lines): blueprint bootstrap,
+  `register_*` calls, RAG trigger helpers, legacy Ollama model defaults.
+- Domain routes live in `webui_*_routes.py` (chat, rag, model tester, llm proxy,
+  crawler, docker, extensions, observability, prompts, sessions, settings, performance,
+  testing, provider helpers module).
 
-Risk: coupling, regression risk, hard ownership.
+Risk: low after Pass 4 split; regressions show up in `pytest tests/api tests/webui`.
 
 ## C) Protocol compatibility surface
 
@@ -63,10 +68,10 @@ runtime is still loading or unavailable.
 
 ## G) Ollama compatibility adapters
 
-- Root `infrastructure/ollama/*` and duplicate RagService
-  `rag_service.infrastructure.ollama_*` modules are retained as temporary
-  compatibility boundaries for public proxy helpers, standalone tests, and
-  fallback runtime paths.
+- Root `infrastructure/ollama/*` — classified in
+  [`infrastructure/ollama/README.md`](../infrastructure/ollama/README.md).
+  Duplicate RagService `rag_service.infrastructure.ollama_*` modules remain for
+  standalone operation and fallback tests.
 - New provider behavior belongs in the `chironai-extension-ollama-provider`
   repository first. `extensions/bundled/ollama-provider` is a trusted
   bootstrap/offline mirror only.
@@ -80,11 +85,12 @@ as a compatibility or test boundary.
 ## D) Retrieval mode compatibility
 
 - Dense-only + hybrid + named dense compatibility in Qdrant repositories.
+- Documented: [`CoreModules/RagService/docs/QDRANT_VECTOR_MODES.md`](../CoreModules/RagService/docs/QDRANT_VECTOR_MODES.md).
 - Main files:
   - `CoreModules/RagService/rag_service/infrastructure/qdrant_repository.py`
-  - `infrastructure/qdrant/rag_repository_impl.py`
+  - `infrastructure/qdrant/rag_repository_impl.py` (shim)
 
-Risk: subtle retrieval behavior differences.
+Risk: hybrid vs dense-only mismatch; guarded by `tests/rag_service/test_qdrant_vector_modes.py`.
 
 ## E) Service control split
 

@@ -7,6 +7,7 @@ Expects repo root as cwd (or set CHIRON_ROOT). Reads WebUI/rag_sources/apple_doc
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -61,7 +62,16 @@ def _resolve_pages(meta_path: Path) -> list[tuple[str, str]]:
     return found
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Offline audit: run prepare_markdown_for_indexing and chunk stats "
+            "on curated Apple Documentation pages."
+        ),
+        epilog="Expects repo root as cwd (or CHIRON_ROOT). Reads WebUI/rag_sources/apple_documentation/.",
+    )
+    parser.parse_args(argv)
+
     root = _repo_root()
     sys.path.insert(0, str(root))
     sys.path.insert(0, str(root / "CoreModules" / "MdIngestionService"))

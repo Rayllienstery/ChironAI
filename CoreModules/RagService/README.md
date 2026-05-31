@@ -66,6 +66,11 @@ operation and fallback tests until RagService can be run entirely with injected
 provider clients. New app-level code should not import those legacy modules
 directly.
 
+## Qdrant vector modes
+
+Collection search uses `rag_service.infrastructure.qdrant_repository` with
+`named_dense` / `hybrid` detection only. See [`docs/QDRANT_VECTOR_MODES.md`](docs/QDRANT_VECTOR_MODES.md).
+
 ## Tests
 
 Pipeline tests live under repository [`tests/rag_service/`](../../tests/rag_service/). Pytest `pythonpath` includes `CoreModules/RagService`.

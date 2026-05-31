@@ -56,22 +56,9 @@ def _provider_health_component() -> str | None:
     return "unhealthy"
 
 
-def _legacy_ollama_health_component(*, timeout_seconds: float) -> str:
-    from config import get_ollama_base_url
-
-    ollama_base = get_ollama_base_url().rstrip("/")
-    try:
-        resp = requests.get(f"{ollama_base}/api/tags", timeout=timeout_seconds)
-        return "healthy" if resp.ok else "unhealthy"
-    except Exception:
-        return "unhealthy"
-
-
 def check_stack_health(*, timeout_seconds: float = 3.0) -> StackHealthResult:
     """
-    Probe Ollama provider health and Qdrant (/collections).
-    If the extension runtime is not ready during startup, temporarily fall back
-    to the legacy Ollama /api/tags probe.
+    Probe Ollama provider health (extension runtime) and Qdrant (/collections).
     Returns 200-style payload with http_status 200 or 503.
     """
     from config import get_qdrant_url
@@ -81,9 +68,7 @@ def check_stack_health(*, timeout_seconds: float = 3.0) -> StackHealthResult:
 
     qdrant_url = get_qdrant_url().rstrip("/")
 
-    components["ollama"] = _provider_health_component() or _legacy_ollama_health_component(
-        timeout_seconds=timeout_seconds
-    )
+    components["ollama"] = _provider_health_component() or "unhealthy"
     if components["ollama"] != "healthy":
         overall = "unhealthy"
 

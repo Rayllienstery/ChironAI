@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 def test_tester_chat_resolves_model_via_proxy_model_setting(monkeypatch) -> None:
     import api.http.rag_routes as rag_routes
-    from api.http import webui_routes as wr
+    from api.http import webui_model_tester_routes as mt_routes
 
     captured: dict[str, str | None] = {}
 
@@ -49,8 +49,8 @@ def test_tester_chat_resolves_model_via_proxy_model_setting(monkeypatch) -> None
             ),
         )
 
-    monkeypatch.setattr(wr, "get_settings_repository", lambda: FakeSettings())
-    monkeypatch.setattr(wr, "get_rag_answer_params", fake_get_rag_answer_params)
+    monkeypatch.setattr(mt_routes, "get_settings_repository", lambda: FakeSettings())
+    monkeypatch.setattr(mt_routes, "get_rag_answer_params", fake_get_rag_answer_params)
 
     app = rag_routes.create_app()
     client = app.test_client()

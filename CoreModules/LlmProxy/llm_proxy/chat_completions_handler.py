@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
@@ -21,7 +20,6 @@ from api.http.proxy_trace import set_response_artifacts
 
 from infrastructure.metrics import increment, histogram, gauge
 from application.rag.proxy_settings_contract import (
-    load_proxy_settings,
     resolve_fetch_web_knowledge,
     resolve_rag_collection,
 )
@@ -38,7 +36,6 @@ from llm_proxy.ollama_compat import (
     openai_tool_choice_means_none,
 )
 from llm_proxy.contracts import LlmProxyWiring
-from llm_proxy.pipeline_steps import get_proxy_pipeline_step_meta
 from llm_proxy.pipeline_steps.merged_docs_step import run_merged_docs_step
 from llm_proxy.pipeline_steps.web_supplement_step import (
     run_web_supplement_step,
@@ -98,7 +95,44 @@ from llm_proxy.chat_completions_ollama_proxy import (
     _trace_ollama_api_metrics,
     _trace_ollama_messages_for_ui,
     effective_ollama_think_from_body,
-    gpt_oss_model_requires_reasoning_level,
+)
+from llm_proxy.chat_completions_request_parsing import (
+    resolve_trace_chain_id as _resolve_trace_chain_id,
+    truthy_body_flag as _truthy_body_flag,
+)
+from llm_proxy.chat_completions_response_helpers import (
+    final_or_compat_content as _final_or_compat_content,
+    proxy_settings_optional_int as _proxy_settings_optional_int,
+    record_reasoning_token_estimates as _record_reasoning_token_estimates,
+    text_parts_from_openai_assistant_message as _text_parts_from_openai_assistant_message,
+    tool_loop_limit_final_message as _tool_loop_limit_final_message,
+    with_initial_system_message as _with_initial_system_message,
+)
+from llm_proxy.chat_completions_handler_helpers import (
+    append_pipeline_step_trace as _append_pipeline_step_trace,
+    apply_selected_rerank_model as _apply_selected_rerank_model,
+    build_forced_think_value as _build_forced_think_value,
+    load_proxy_settings_and_model as _load_proxy_settings_and_model,
+    log_rag_error as _log_rag_error,
+    log_rag_error_private as _log_rag_error_private,
+    rag_request_completed_payload as _rag_request_completed_payload,
+)
+from llm_proxy.chat_completions_streaming import (
+    SSE_MIMETYPE as _SSE_MIMETYPE,
+    SSE_RESPONSE_HEADERS as _SSE_RESPONSE_HEADERS,
+    StreamContentAccumulator,
+    append_budget_error_chunks,
+    approx_token_count as _stream_approx_token_count,
+    iter_sse_finish_with_done,
+    iter_sse_from_ollama_stream_events,
+    iter_sse_plain_content_response,
+    iter_sse_single_shot_assistant,
+    iter_sse_tool_calls_response,
+    iter_sse_tool_limit_response,
+    reasoning_guard_limit_from_env,
+    sse_content_chunk as _sse_content_chunk,
+    sse_role_assistant_chunk as _sse_role_assistant_chunk,
+    stream_completion_id as _stream_completion_id,
 )
 from llm_proxy.chat_completions_run_phases import (
     _new_chat_trace_dict,
@@ -106,332 +140,6 @@ from llm_proxy.chat_completions_run_phases import (
 )
 
 _RAG_LOG = logging.getLogger("llm_proxy")
-
-_REASONING_ONLY_GUARD_DEFAULT_CHARS = 32_000
-
-
-def _truthy_body_flag(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "on"}
-    if isinstance(value, (int, float)):
-        return value != 0
-    return False
-
-
-def _positive_int_env(name: str, default: int) -> int:
-    raw = os.getenv(name)
-    try:
-        n = int(str(raw).strip()) if raw is not None else default
-    except (TypeError, ValueError):
-        n = default
-    return max(256, n)
-
-
-def _reasoning_sse_delta(kind: str, data: Any, *, include_reasoning_content: bool) -> dict[str, Any]:
-    if kind == "thinking_delta" and not include_reasoning_content:
-        return {"reasoning_content": data}
-    return {"content": data}
-
-
-def _stream_reasoning_guard_message(
-    *,
-    reasoning_text: str,
-    final_text: str,
-    tool_calls_count: int,
-    limit_chars: int,
-) -> str:
-    if tool_calls_count > 0 or final_text.strip():
-        return ""
-    if len(reasoning_text) <= limit_chars:
-        return ""
-    return (
-        "[Error: reasoning-only response guard triggered: model produced "
-        f"{len(reasoning_text)} reasoning chars without final content or tool calls. "
-        "Try disabling thinking or shortening the prompt.]"
-    )
-
-
-def _record_reasoning_token_estimates(response: dict[str, Any], reasoning: str, final: str) -> None:
-    response["reasoning_tokens_estimated"] = max(0, int(len(reasoning or "") / 4))
-    response["final_tokens_estimated"] = max(0, int(len(final or "") / 4))
-
-
-def _with_initial_system_message(messages: list[dict[str, Any]], content: str) -> list[dict[str, Any]]:
-    text = (content or "").strip()
-    if not text:
-        return messages
-    out = list(messages)
-    if out and isinstance(out[0], dict) and out[0].get("role") == "system":
-        first = dict(out[0])
-        existing = str(first.get("content") or "").strip()
-        first["content"] = f"{existing}\n\n{text}" if existing else text
-        out[0] = first
-        return out
-    return [{"role": "system", "content": text}, *out]
-
-
-def _final_or_compat_content(parts: dict[str, Any], *, include_reasoning_content: bool) -> str:
-    if include_reasoning_content:
-        return str(parts.get("visible_content") or "")
-    return str(parts.get("final_content") or "")
-
-
-def _text_parts_from_openai_assistant_message(message: dict[str, Any]) -> dict[str, str]:
-    reasoning = str(message.get("reasoning_content") or "").strip()
-    final = str(message.get("content") or "").strip()
-    visible = "\n\n".join(part for part in (reasoning, final) if part)
-    return {
-        "visible_content": visible,
-        "reasoning_content": reasoning,
-        "final_content": final,
-    }
-
-
-def _tool_loop_limit_final_message(trace: dict[str, Any]) -> str:
-    req = trace.get("request") if isinstance(trace.get("request"), dict) else {}
-    if req.get("tool_loop_limit_reached") is not True:
-        return ""
-    stats = req.get("tool_loop_stats") if isinstance(req.get("tool_loop_stats"), dict) else {}
-    rounds = stats.get("rounds")
-    dominant_tool = str(stats.get("dominant_tool") or "").strip()
-    detail = f" after {rounds} tool rounds" if rounds else ""
-    if dominant_tool:
-        detail += f" ({dominant_tool})"
-    return (
-        f"[Error: max_agent_steps limit reached{detail}. "
-        "The model requested another tool call after tools were disabled for this turn. "
-        "The answer may be incomplete and the task may not be finished. "
-        "Increase the build max_agent_steps limit, narrow the task, or continue in a new turn.]"
-    )
-
-
-def _build_forced_think_value(
-    *,
-    body: dict[str, Any],
-    active_build: dict[str, Any] | None,
-    model_name: str | None,
-) -> bool | str | None:
-    if not isinstance(active_build, dict) or "think" in body:
-        return None
-    if gpt_oss_model_requires_reasoning_level(model_name):
-        if active_build.get("chat_think"):
-            level = str(
-                body.get("reasoning_level")
-                or body.get("reasoning")
-                or active_build.get("reasoning_level")
-                or ""
-            ).strip().lower()
-            return level if level in {"low", "medium", "high"} else "medium"
-        return None
-    return True if active_build.get("chat_think") else False
-
-
-def _log_rag_error(stage: str, error: Exception) -> None:
-    _RAG_LOG.error("RAG stage=%s | %s: %s", stage, type(error).__name__, error)
-
-
-def _log_rag_error_private(stage: str, error: Exception, *, private_build: bool) -> None:
-    if private_build:
-        _RAG_LOG.error("RAG stage=%s | %s", stage, type(error).__name__)
-    else:
-        _log_rag_error(stage, error)
-
-
-def _append_pipeline_step_trace(
-    trace: dict[str, Any],
-    *,
-    step_id: str,
-    status: str,
-    reason: str | None = None,
-) -> None:
-    meta = get_proxy_pipeline_step_meta(step_id) or {
-        "id": step_id,
-        "icon": "",
-        "title": step_id,
-        "description": "",
-    }
-    trace.setdefault("pipeline_steps", [])
-    trace["pipeline_steps"].append(
-        {
-            "id": meta["id"],
-            "icon": meta["icon"],
-            "title": meta["title"],
-            "description": meta["description"],
-            "status": status,
-            "reason": reason,
-        }
-    )
-
-
-def _proxy_settings_optional_int(
-    ps: dict[str, Any], key: str, lo: int, hi: int
-) -> int | None:
-    if not isinstance(ps, dict):
-        return None
-    raw = ps.get(key)
-    if raw is None:
-        return None
-    if isinstance(raw, str) and not raw.strip():
-        return None
-    try:
-        n = int(raw)
-    except (TypeError, ValueError):
-        return None
-    if n < lo or n > hi:
-        return None
-    return n
-
-
-def _load_proxy_settings_and_model(get_settings_repository: Any) -> tuple[dict[str, object], str]:
-    """Load proxy_settings JSON + proxy_model with backward-compatible fallback to settings.model."""
-    proxy_settings: dict[str, object] = {}
-    proxy_model_setting = ""
-    try:
-        settings_repo = get_settings_repository()
-        proxy_model_setting = (settings_repo.get_app_setting("proxy_model") or "").strip()
-        proxy_settings = load_proxy_settings(settings_repo)
-    except Exception:
-        pass
-    if not proxy_model_setting and proxy_settings.get("model"):
-        proxy_model_setting = str(proxy_settings.get("model") or "").strip()
-    return proxy_settings, proxy_model_setting
-
-
-def _apply_selected_rerank_model(
-    rerank_client: Any,
-    proxy_settings: dict[str, object],
-    trace: dict[str, Any],
-) -> Any:
-    selected = str(proxy_settings.get("rerank_model") or "").strip()
-    if not selected or rerank_client is None:
-        return rerank_client
-
-    current = str(
-        getattr(rerank_client, "_model", None)
-        or getattr(rerank_client, "model", None)
-        or ""
-    ).strip()
-    if hasattr(rerank_client, "_model"):
-        setattr(rerank_client, "_model", selected)
-    elif hasattr(rerank_client, "model"):
-        setattr(rerank_client, "model", selected)
-    else:
-        return rerank_client
-
-    req_trace = trace.setdefault("request", {})
-    req_trace["rerank_model"] = selected
-    req_trace["rerank_model_source"] = "proxy_settings.rerank_model"
-    if selected != current:
-        req_trace["rerank_model_override"] = selected
-    return rerank_client
-
-
-def _web_supplement_used_from_trace(trace: dict[str, Any]) -> bool:
-    internet = trace.get("internet")
-    if not isinstance(internet, dict):
-        return False
-    if internet.get("used") is True:
-        return True
-    ws = internet.get("web_supplement")
-    if isinstance(ws, dict) and ws.get("used") is True:
-        return True
-    return False
-
-
-def _rag_request_completed_payload(
-    *,
-    user_query: str,
-    trace_id: str,
-    use_model: str,
-    requested_model: str,
-    latency_ms: int,
-    prompt_tokens: int,
-    completion_tokens: int,
-    rag_context_for_obs: Any,
-    rag_timings: dict[str, float] | None,
-    trace: dict[str, Any],
-    stream: bool,
-    is_autocomplete: bool,
-    native_tools: bool = False,
-) -> dict[str, Any]:
-    """Single structured log line per completed proxy request (Loki/ELK friendly)."""
-    query_hash = hashlib.sha256((user_query or "").encode()).hexdigest()[:16]
-    chunks_count = len(rag_context_for_obs.chunks_info) if rag_context_for_obs else 0
-    max_score = float(rag_context_for_obs.max_score) if rag_context_for_obs else 0.0
-    rag_quality = getattr(rag_context_for_obs, "rag_quality", None)
-    cov_rep = getattr(rag_context_for_obs, "coverage_report", None)
-    out: dict[str, Any] = {
-        "event": "rag_request_completed",
-        "query_hash": query_hash,
-        "trace_id": trace_id,
-        "model": use_model,
-        "requested_model": requested_model,
-        "latency_ms": latency_ms,
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-        "chunks_count": chunks_count,
-        "max_score": max_score,
-        "is_autocomplete": is_autocomplete,
-        "stream": stream,
-        "native_tools": native_tools,
-        "rag_steps": dict(rag_timings or {}),
-        "web_supplement_used": _web_supplement_used_from_trace(trace),
-    }
-    if isinstance(rag_quality, dict):
-        out["rag_quality"] = rag_quality
-    if isinstance(cov_rep, dict):
-        out["coverage_ratio"] = cov_rep.get("coverage_ratio")
-    return out
-
-
-def _non_empty_str(raw: object) -> str:
-    if isinstance(raw, str):
-        s = raw.strip()
-        if s:
-            return s
-        return ""
-    if raw is None:
-        return ""
-    s = str(raw).strip()
-    return s if s else ""
-
-
-def _resolve_trace_chain_id(
-    *,
-    client_request_id: object,
-    proxy_trace_meta: dict[str, Any] | None,
-) -> tuple[str, str]:
-    """
-    Resolve stable UI chain key for consecutive requests.
-
-    Priority:
-    1) explicit ``client_request_id`` from payload
-    2) inbound request id propagated via ``_proxy_trace_meta``
-    """
-    client_id = _non_empty_str(client_request_id)
-    if client_id:
-        return client_id, "client_request_id"
-
-    meta = proxy_trace_meta if isinstance(proxy_trace_meta, dict) else {}
-    for key in (
-        "trace_chain_id",
-        "chain_id",
-        "responses_chain_id",
-        "conversation_id",
-        "thread_id",
-        "session_id",
-        "incoming_request_id",
-        "x_trace_id",
-        "x_request_id",
-        "request_id",
-        "trace_id",
-    ):
-        value = _non_empty_str(meta.get(key))
-        if value:
-            return value, key
-    return "", ""
 
 
 def run_chat_completions(
@@ -1520,10 +1228,7 @@ def run_chat_completions(
                 rid = str(response_data["id"])
 
                 def generate_sse_tool_limit() -> Iterator[str]:
-                    yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
-                    yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': content}, 'finish_reason': None}]})}\n\n"
-                    yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
-                    yield "data: [DONE]\n\n"
+                    yield from iter_sse_tool_limit_response(rid, client_visible_model, content)
                     if not private_build:
                         persist_proxy_request_log(
                             message=f"Proxy request (tool limit): {user_query[:100]}...",
@@ -1544,8 +1249,8 @@ def run_chat_completions(
 
                 return Response(
                     generate_sse_tool_limit(),
-                    mimetype="text/event-stream",
-                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                    mimetype=_SSE_MIMETYPE,
+                    headers=_SSE_RESPONSE_HEADERS,
                 )
 
             if not private_build:
@@ -1647,22 +1352,17 @@ def run_chat_completions(
             trace["request"]["ollama_stream_timeout_disabled"] = True
 
             def generate_sse_native():
-                oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+                oid = _stream_completion_id()
                 stream_start_time = time.time()
-                visible_content_parts: list[str] = []
-                reasoning_content_parts: list[str] = []
-                final_content_parts: list[str] = []
-                tool_calls_raw: list[dict[str, Any]] = []
-                ollama_done_reason: str | None = None
-                ollama_done_payload: dict[str, Any] | None = None
-                reasoning_guard_triggered = False
-                reasoning_guard_limit_chars = _positive_int_env(
-                    "LLM_PROXY_REASONING_ONLY_GUARD_CHARS",
-                    _REASONING_ONLY_GUARD_DEFAULT_CHARS,
-                )
+                stream_acc = StreamContentAccumulator()
+                reasoning_guard_limit_chars = reasoning_guard_limit_from_env()
                 total_tokens_holder = [0]
 
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+                yield _sse_role_assistant_chunk(oid, client_visible_model)
+
+                def _on_reasoning_guard() -> None:
+                    _append_trace_warning(trace, "reasoning_only_guard_triggered")
+                    trace["request"]["reasoning_only_guard_chars"] = reasoning_guard_limit_chars
 
                 try:
                     _apply_provider_trace_fields(
@@ -1671,70 +1371,42 @@ def run_chat_completions(
                         model_id=use_model,
                         operation="chat_api_stream_events",
                     )
-                    for kind, data in _iter_proxy_ollama_chat_stream(
-                        chat_client, native_ollama_messages, use_model, ollama_think,
-                        options_overlay=ollama_options_overlay(),
-                        tools=oll_tools,
-                        tool_choice=tool_choice_effective,
-                    ):
-                        if kind in ("thinking_delta", "content_delta") and data:
-                            text_part = str(data)
-                            visible_content_parts.append(text_part)
-                            if kind == "thinking_delta":
-                                reasoning_content_parts.append(text_part)
-                            else:
-                                final_content_parts.append(text_part)
-                            delta = _reasoning_sse_delta(
-                                kind,
-                                data,
-                                include_reasoning_content=include_reasoning_content,
-                            )
-                            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': delta, 'finish_reason': None}]})}\n\n"
-                            guard_error = _stream_reasoning_guard_message(
-                                reasoning_text="".join(reasoning_content_parts),
-                                final_text="".join(final_content_parts),
-                                tool_calls_count=len(tool_calls_raw),
-                                limit_chars=reasoning_guard_limit_chars,
-                            )
-                            if guard_error:
-                                reasoning_guard_triggered = True
-                                _append_trace_warning(trace, "reasoning_only_guard_triggered")
-                                trace["request"]["reasoning_only_guard_chars"] = reasoning_guard_limit_chars
-                                visible_content_parts.append(guard_error)
-                                final_content_parts.append(guard_error)
-                                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': guard_error}, 'finish_reason': None}]})}\n\n"
-                                break
-                        elif kind == "tool_calls" and data:
-                            tool_calls_raw = data
-                        elif kind == "done" and isinstance(data, dict):
-                            ollama_done_payload = data
-                            ollama_done_reason = data.get("done_reason")
-                        elif kind == "error":
-                            err_text = f"[Error: {data}]"
-                            visible_content_parts.append(err_text)
-                            final_content_parts.append(err_text)
-                            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': err_text}, 'finish_reason': None}]})}\n\n"
-                            break
+                    yield from iter_sse_from_ollama_stream_events(
+                        _iter_proxy_ollama_chat_stream(
+                            chat_client, native_ollama_messages, use_model, ollama_think,
+                            options_overlay=ollama_options_overlay(),
+                            tools=oll_tools,
+                            tool_choice=tool_choice_effective,
+                        ),
+                        completion_id=oid,
+                        client_visible_model=client_visible_model,
+                        include_reasoning_content=include_reasoning_content,
+                        accumulator=stream_acc,
+                        reasoning_guard_limit_chars=reasoning_guard_limit_chars,
+                        on_reasoning_guard=_on_reasoning_guard,
+                    )
                 except Exception as exc:
                     if not private_build:
                         w.log_webui_error("rag_routes.chat_completions", exc, {"stage": "native_tools_stream"})
                     _log_rag_error_private("native_tools_stream", exc, private_build=private_build)
                     err_text = f"[Error: {exc}]"
-                    visible_content_parts.append(err_text)
-                    final_content_parts.append(err_text)
-                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': err_text}, 'finish_reason': None}]})}\n\n"
+                    stream_acc.visible_parts.append(err_text)
+                    stream_acc.final_parts.append(err_text)
+                    yield _sse_content_chunk(oid, client_visible_model, err_text)
 
-                full_content = "".join(visible_content_parts)
-                reasoning_content = "".join(reasoning_content_parts)
-                final_content = "".join(final_content_parts)
+                full_content = stream_acc.visible_content
+                reasoning_content = stream_acc.reasoning_content
+                final_content = stream_acc.final_content
+                tool_calls_raw = stream_acc.tool_calls_raw
+                ollama_done_payload = stream_acc.ollama_done_payload
+                ollama_done_reason = stream_acc.ollama_done_reason
+                reasoning_guard_triggered = stream_acc.reasoning_guard_triggered
                 stream_latency_ms = int((time.time() - stream_start_time) * 1000)
                 budget_error = _output_budget_exhaustion_error(trace, ollama_done_payload)
-                if budget_error and not tool_calls_raw:
-                    visible_content_parts.append(budget_error)
-                    final_content_parts.append(budget_error)
-                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': budget_error}, 'finish_reason': None}]})}\n\n"
-                    full_content = "".join(visible_content_parts)
-                    final_content = "".join(final_content_parts)
+                if append_budget_error_chunks(stream_acc, budget_error):
+                    yield _sse_content_chunk(oid, client_visible_model, budget_error)
+                    full_content = stream_acc.visible_content
+                    final_content = stream_acc.final_content
 
                 mapped_calls: list[Any] = []
                 tool_calls_recovered_from_text = False
@@ -1782,16 +1454,7 @@ def run_chat_completions(
                     if budget_error or reasoning_guard_triggered:
                         finish_reason = "length"
 
-                _finish_payload = f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}]})}\n\n"
-                try:
-                    yield _finish_payload
-                    yield "data: [DONE]\n\n"
-                except Exception:
-                    try:
-                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
-                        yield "data: [DONE]\n\n"
-                    except Exception:
-                        pass
+                yield from iter_sse_finish_with_done(oid, client_visible_model, finish_reason)
 
                 _pt = max(1, int(len(json.dumps(native_ollama_messages_for_upstream, ensure_ascii=False)) / 4))
                 _ct = max(1, int(len(full_content) / 4))
@@ -1881,8 +1544,8 @@ def run_chat_completions(
 
             return Response(
                 generate_sse_native(),
-                mimetype="text/event-stream",
-                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                mimetype=_SSE_MIMETYPE,
+                headers=_SSE_RESPONSE_HEADERS,
             )
 
         # ------------------------------------------------------------------ #
@@ -2170,17 +1833,17 @@ def run_chat_completions(
         trace["request"]["sse_single_chunk"] = True
 
         def generate_sse_native_single() -> Iterator[str]:
-            oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
-            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
-            if content_parts["reasoning_content"] and not include_reasoning_content:
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'reasoning_content': content_parts['reasoning_content']}, 'finish_reason': None}]})}\n\n"
-            if content_str:
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': content_str}, 'finish_reason': None}]})}\n\n"
-            if tool_calls_out:
-                payload_calls = _sse_tool_calls_payload(tool_calls_out)
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'tool_calls': payload_calls}, 'finish_reason': None}]})}\n\n"
-            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish}]})}\n\n"
-            yield "data: [DONE]\n\n"
+            oid = _stream_completion_id()
+            tool_payload = _sse_tool_calls_payload(tool_calls_out) if tool_calls_out else None
+            yield from iter_sse_single_shot_assistant(
+                oid,
+                client_visible_model,
+                content=content_str,
+                reasoning_content=str(content_parts.get("reasoning_content") or ""),
+                tool_calls_payload=tool_payload,
+                finish_reason=finish,
+                include_reasoning_content=include_reasoning_content,
+            )
 
             trace["ollama"]["chat_stream"] = False
             trace["steps"].append(
@@ -2216,8 +1879,8 @@ def run_chat_completions(
 
         return Response(
             generate_sse_native_single(),
-            mimetype="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            mimetype=_SSE_MIMETYPE,
+            headers=_SSE_RESPONSE_HEADERS,
         )
 
     if tools and tool_choice_effective != "none":
@@ -2391,16 +2054,27 @@ def run_chat_completions(
                     )
 
                 def generate_sse_tool_call():
-                    oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
-                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
-                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'tool_calls': [{'index': 0, 'id': tool_call['id'], 'type': 'function', 'function': {'name': selected_edit_tool_name, 'arguments': tool_call['function']['arguments']}}]}, 'finish_reason': None}]})}\n\n"
-                    yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls'}]})}\n\n"
-                    yield "data: [DONE]\n\n"
+                    oid = _stream_completion_id()
+                    yield from iter_sse_tool_calls_response(
+                        oid,
+                        client_visible_model,
+                        [
+                            {
+                                "index": 0,
+                                "id": tool_call["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": selected_edit_tool_name,
+                                    "arguments": tool_call["function"]["arguments"],
+                                },
+                            }
+                        ],
+                    )
 
                 return Response(
                     generate_sse_tool_call(),
-                    mimetype="text/event-stream",
-                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                    mimetype=_SSE_MIMETYPE,
+                    headers=_SSE_RESPONSE_HEADERS,
                 )
         if (not stream_tool_error) and (not edit_payload) and (not tool_plain_fallback):
             tool_plain_fallback = (
@@ -2481,37 +2155,32 @@ def run_chat_completions(
                 )
 
             def generate_sse_plain_text():
-                oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': tool_plain_fallback}, 'finish_reason': None}]})}\n\n"
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
-                yield "data: [DONE]\n\n"
+                oid = _stream_completion_id()
+                yield from iter_sse_plain_content_response(
+                    oid, client_visible_model, tool_plain_fallback,
+                )
 
             return Response(
                 generate_sse_plain_text(),
-                mimetype="text/event-stream",
-                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                mimetype=_SSE_MIMETYPE,
+                headers=_SSE_RESPONSE_HEADERS,
             )
 
     if stream and build_sse_streaming:
         w.set_proxy_status(w.status_response)
 
         def generate_sse():
-            oid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+            oid = _stream_completion_id()
             stream_start_time = time.time()
-            visible_content_parts: list[str] = []
-            reasoning_content_parts: list[str] = []
-            final_content_parts: list[str] = []
-            ollama_done_reason: str | None = None
-            ollama_done_payload: dict[str, Any] | None = None
-            reasoning_guard_triggered = False
-            reasoning_guard_limit_chars = _positive_int_env(
-                "LLM_PROXY_REASONING_ONLY_GUARD_CHARS",
-                _REASONING_ONLY_GUARD_DEFAULT_CHARS,
-            )
+            stream_acc = StreamContentAccumulator()
+            reasoning_guard_limit_chars = reasoning_guard_limit_from_env()
             total_tokens_holder = [0]
 
-            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+            yield _sse_role_assistant_chunk(oid, client_visible_model)
+
+            def _on_reasoning_guard() -> None:
+                _append_trace_warning(trace, "reasoning_only_guard_triggered")
+                trace["request"]["reasoning_only_guard_chars"] = reasoning_guard_limit_chars
 
             try:
                 _apply_provider_trace_fields(
@@ -2520,67 +2189,42 @@ def run_chat_completions(
                     model_id=use_model,
                     operation="chat_api_stream_events",
                 )
-                for kind, data in _iter_proxy_ollama_chat_stream(
-                    chat_client, ollama_messages, use_model, ollama_think,
-                    options_overlay=ollama_options_overlay(),
-                ):
-                    if kind in ("thinking_delta", "content_delta") and data:
-                        text_part = str(data)
-                        visible_content_parts.append(text_part)
-                        if kind == "thinking_delta":
-                            reasoning_content_parts.append(text_part)
-                        else:
-                            final_content_parts.append(text_part)
-                        delta = _reasoning_sse_delta(
-                            kind,
-                            data,
-                            include_reasoning_content=include_reasoning_content,
-                        )
-                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': delta, 'finish_reason': None}]})}\n\n"
-                        guard_error = _stream_reasoning_guard_message(
-                            reasoning_text="".join(reasoning_content_parts),
-                            final_text="".join(final_content_parts),
-                            tool_calls_count=0,
-                            limit_chars=reasoning_guard_limit_chars,
-                        )
-                        if guard_error:
-                            reasoning_guard_triggered = True
-                            _append_trace_warning(trace, "reasoning_only_guard_triggered")
-                            trace["request"]["reasoning_only_guard_chars"] = reasoning_guard_limit_chars
-                            visible_content_parts.append(guard_error)
-                            final_content_parts.append(guard_error)
-                            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': guard_error}, 'finish_reason': None}]})}\n\n"
-                            break
-                    elif kind == "done" and isinstance(data, dict):
-                        ollama_done_payload = data
-                        ollama_done_reason = data.get("done_reason")
-                    elif kind == "error":
-                        err_text = f"[Error: {data}]"
-                        visible_content_parts.append(err_text)
-                        final_content_parts.append(err_text)
-                        yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': err_text}, 'finish_reason': None}]})}\n\n"
-                        break
+                yield from iter_sse_from_ollama_stream_events(
+                    _iter_proxy_ollama_chat_stream(
+                        chat_client, ollama_messages, use_model, ollama_think,
+                        options_overlay=ollama_options_overlay(),
+                    ),
+                    completion_id=oid,
+                    client_visible_model=client_visible_model,
+                    include_reasoning_content=include_reasoning_content,
+                    accumulator=stream_acc,
+                    reasoning_guard_limit_chars=reasoning_guard_limit_chars,
+                    on_reasoning_guard=_on_reasoning_guard,
+                )
             except Exception as e:
                 if not private_build:
                     w.log_webui_error("rag_routes.chat_completions", e, {"stage": "stream_chat"})
                 _log_rag_error_private("stream_chat", e, private_build=private_build)
                 err_text = f"[Error: {e}]"
-                visible_content_parts.append(err_text)
-                final_content_parts.append(err_text)
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': err_text}, 'finish_reason': None}]})}\n\n"
+                stream_acc.visible_parts.append(err_text)
+                stream_acc.final_parts.append(err_text)
+                yield _sse_content_chunk(oid, client_visible_model, err_text)
 
-            full_response = "".join(visible_content_parts)
-            reasoning_content = "".join(reasoning_content_parts)
-            final_content = "".join(final_content_parts)
+            full_response = stream_acc.visible_content
+            reasoning_content = stream_acc.reasoning_content
+            final_content = stream_acc.final_content
+            ollama_done_payload = stream_acc.ollama_done_payload
+            ollama_done_reason = stream_acc.ollama_done_reason
+            reasoning_guard_triggered = stream_acc.reasoning_guard_triggered
             budget_error = _output_budget_exhaustion_error(trace, ollama_done_payload)
             if budget_error:
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': budget_error}, 'finish_reason': None}]})}\n\n"
+                yield _sse_content_chunk(oid, client_visible_model, budget_error)
                 full_response = f"{full_response}\n\n{budget_error}".strip() if full_response.strip() else budget_error
                 final_content = f"{final_content}\n\n{budget_error}".strip() if final_content.strip() else budget_error
 
             if not full_response.strip():
                 fallback = "Model returned an empty response. Please retry."
-                yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': fallback}, 'finish_reason': None}]})}\n\n"
+                yield _sse_content_chunk(oid, client_visible_model, fallback)
                 full_response = fallback
                 final_content = fallback
 
@@ -2589,23 +2233,17 @@ def run_chat_completions(
             )
             if budget_error or reasoning_guard_triggered:
                 finish_reason = "length"
-            yield f"data: {json.dumps({'id': oid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}]})}\n\n"
-            yield "data: [DONE]\n\n"
+            yield from iter_sse_finish_with_done(oid, client_visible_model, finish_reason)
 
             stream_latency_ms = int((time.time() - stream_start_time) * 1000)
-
-            def _approx_tokens(text: str) -> int:
-                if not text:
-                    return 0
-                return max(1, int(len(text) / 4))
 
             prompt_text = " ".join(
                 _ollama_message_content_str(m.get("content"))
                 for m in ollama_messages
                 if isinstance(m, dict)
             )
-            prompt_tokens_approx = _approx_tokens(prompt_text)
-            completion_tokens_approx = _approx_tokens(full_response)
+            prompt_tokens_approx = _stream_approx_token_count(prompt_text)
+            completion_tokens_approx = _stream_approx_token_count(full_response)
             total_tokens_approx = prompt_tokens_approx + completion_tokens_approx
             total_tokens_holder[0] = total_tokens_approx
 
@@ -2690,8 +2328,8 @@ def run_chat_completions(
 
         return Response(
             generate_sse(),
-            mimetype="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            mimetype=_SSE_MIMETYPE,
+            headers=_SSE_RESPONSE_HEADERS,
         )
     budget_error = ""
     try:
@@ -2940,16 +2578,16 @@ def run_chat_completions(
         rid = str(response_data.get("id") or f"chatcmpl-{uuid.uuid4().hex[:24]}")
 
         def generate_sse_plain_single() -> Iterator[str]:
-            yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
-            if content_parts["reasoning_content"] and not include_reasoning_content:
-                yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'reasoning_content': content_parts['reasoning_content']}, 'finish_reason': None}]})}\n\n"
-            if content:
-                yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'content': content}, 'finish_reason': None}]})}\n\n"
-            if tool_calls:
-                payload_tc = _sse_tool_calls_payload(tool_calls)
-                yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {'tool_calls': payload_tc}, 'finish_reason': None}]})}\n\n"
-            yield f"data: {json.dumps({'id': rid, 'object': 'chat.completion.chunk', 'model': client_visible_model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_sse}]})}\n\n"
-            yield "data: [DONE]\n\n"
+            tool_payload = _sse_tool_calls_payload(tool_calls) if tool_calls else None
+            yield from iter_sse_single_shot_assistant(
+                rid,
+                client_visible_model,
+                content=str(content or ""),
+                reasoning_content=str(content_parts.get("reasoning_content") or ""),
+                tool_calls_payload=tool_payload,
+                finish_reason=finish_sse,
+                include_reasoning_content=include_reasoning_content,
+            )
             if not private_build:
                 persist_proxy_request_log(
                     message=f"Proxy request (SSE single): {user_query[:100]}...",
@@ -2969,8 +2607,8 @@ def run_chat_completions(
 
         return Response(
             generate_sse_plain_single(),
-            mimetype="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            mimetype=_SSE_MIMETYPE,
+            headers=_SSE_RESPONSE_HEADERS,
         )
 
     # Persist trace for non-stream requests

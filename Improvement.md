@@ -6,7 +6,7 @@ Text in English; module names, env vars, endpoints, and paths — in English, as
 
 | Axis | Score | Comment |
 | :--- | :--- | :--- |
-| Architecture and Layers | **4** | Explicit hexagonal split (`domain` / `infrastructure` / `application`), contracts in `core/contracts`, separate installable CoreModules. Cost: duplication of RAG logic between root `domain` and `rag_service.domain`. |
+| Architecture and Layers | **4** | Explicit hexagonal split (`domain` / `infrastructure` / `application`), contracts in `core/contracts`, separate installable CoreModules. RAG canon now lives in `rag_service.*`; root `application/rag/` keeps monolith-boundary helpers only. |
 | Configurability | **4** | YAML in `config/` + wide env overrides ([`config/__init__.py`](config/__init__.py), [`config/README.md`](config/README.md)). Some parameters are still scattered across the code and WebUI settings. |
 | Observability | **2–3** | Logging exists; Prometheus metrics in proxy; `GET /health` checks Ollama+Qdrant via [`infrastructure/stack_health.py`](infrastructure/stack_health.py) on the main app, build proxy, and `rag_service`. Full JSON log on all chat branches and probe `/api/embed` in health — see checklist §6.1. |
 | Tests | **3–4** | Pytest covers domain, llm_proxy, rag_service, crawler, md ingestion, web_interaction, part of infrastructure. No single "golden set" of LLM answer regression in CI as a separate artifact (see TODO). |
@@ -14,14 +14,14 @@ Text in English; module names, env vars, endpoints, and paths — in English, as
 | Secret security | **3** | Keys by meaning via env; [`TODO.md`](TODO.md) explicitly notes strengthening `.gitignore` for DB, logs, `.env`. Periodic audit of commits is needed. |
 | Documentation | **3** | README of root and modules are good; no single CHANGELOG in root (noted in TODO). |
 
-**Summary (subjective, one paragraph):** the project is at the level of a **mature beta**: architectural decomposition is strong, RAG and proxy functionality is rich, test base is wider than average for such repositories. Main gaps are operational transparency (health/metrics/structured logs), simplifying launch without manual PYTHONPATH, and reducing duplication between `application.rag.use_cases` and `rag_service.application.use_cases`.
+**Summary (subjective, one paragraph):** the project is at the level of a **mature beta**: architectural decomposition is strong, RAG and proxy functionality is rich, test base is wider than average for such repositories. Main gaps are operational transparency (health/metrics/structured logs), simplifying launch without manual PYTHONPATH, and finishing second-order debt tracked in [`QUALITY_AUDIT.md`](QUALITY_AUDIT.md) (WebUI route thinning, LlmProxy handler split, config authority).
 
 ## 2. Strengths
 
-1. **Clear separation of ports and implementations** — [`domain/ports/__init__.py`](domain/ports/__init__.py), Qdrant/Ollama in `infrastructure/`, assembly in [`application/container.py`](application/container.py).
+1. **Clear separation of ports and implementations** — [`domain/ports/__init__.py`](domain/ports/__init__.py), Qdrant/Ollama compatibility adapters in root `infrastructure/`, RAG assembly in [`rag_service.infrastructure.container`](CoreModules/RagService/rag_service/infrastructure/container.py).
 2. **OpenAI- and Anthropic-compatible proxy** — [`CoreModules/LlmProxy`](CoreModules/LlmProxy), wiring in [`api/http/llm_proxy_wiring.py`](api/http/llm_proxy_wiring.py): RAG, tools, streaming, autocomplete model, build presets.
 3. **Versioned system prompts** — files in `prompts/`, switching via `rag.prompt` / `RAG_PROMPT` ([`config/rag_prompts.py`](config/rag_prompts.py)).
-4. **Advanced retrieval** — hybrid / sparse, query expansion, RRF, rerank, filters by `doc_type` and intent (see [`domain/services/retrieval.py`](domain/services/retrieval.py) and [`TODO.md`](TODO.md) for already closed items).
+4. **Advanced retrieval** — hybrid / sparse, query expansion, RRF, rerank, filters by `doc_type` and intent (see [`rag_service.domain.services.retrieval`](CoreModules/RagService/rag_service/domain/services/retrieval.py) and [`TODO.md`](TODO.md) for already closed items).
 5. **Web supplement without paid APIs** — [`CoreModules/WebInteraction`](CoreModules/WebInteraction), explicit rules "not to mix with RAG" in the fallback prompt text.
 6. **Contracts between services** — `core/contracts/*` and README `webui_backend` describe the target HTTP boundary.
 7. **RAG Tests as formalized regression** — markdown scenarios + CLI `python -m api.cli rag-tests run` ([`rag_tests/README.md`](rag_tests/README.md)).
@@ -35,18 +35,7 @@ Text in English; module names, env vars, endpoints, and paths — in English, as
 
 ### 3.2 Duplication and Divergence of Behavior
 
-**ADR (RAG canon):** the only implementation of use cases and retrieval — **`application.rag.use_cases`** and **`domain.services.retrieval`**. The **`rag_service`** package remains an HTTP layer and wiring; [`rag_service/application/use_cases.py`](CoreModules/RagService/rag_service/application/use_cases.py) **re-exports** the canon, [`rag_service/domain/services/retrieval.py`](CoreModules/RagService/rag_service/domain/services/retrieval.py) — shim on `domain.services.retrieval`. Launching `rag_service` still requires **repository root on `PYTHONPATH`**.
-
-**Matrix "before consolidation" (for history):**
-
-| Area | Canon (`application.rag` + `domain`) | Old duplicate `rag_service` |
-| :--- | :--- | :--- |
-| `build_rag_context` | `rag_required_keywords`, `trigger_threshold`, `force_rag`, `infer_query_intent`, filter merge, error logging | Simplified skip, `except` → empty context without log |
-| `search_rag` / retrieval | Full `domain.services.retrieval` (intent, RRF, doc_type priorities, etc.) | Shortened copy without some heuristics |
-| `answer_question` / `prepare_ollama_messages` | Optional `rag_context`, parsing `content` list by `type=="text"`, `native_tools`, extended parameters | Narrow signatures, different list content parsing |
-| HTTP [`rag_service/api/http.py`](CoreModules/RagService/rag_service/api/http.py) | After consolidation: same use cases; one RAG pass with passing `rag_context` to chat/stream | Previously possible double retrieval call (log + answer) |
-
-Duplication of **entities/prompts** in `rag_service/domain` remains (e.g., `entities.py`, `prompt_builder`), not critical for retrieval drift; if desired, later reduce to re-export from `domain`.
+**ADR (RAG canon, 2026-05):** use cases, params, entities, and retrieval services live under **`rag_service.application`** and **`rag_service.domain`**. Root `application/rag/` keeps monolith HTTP helpers (for example `proxy_settings_contract`). Removed root shims: `application/rag/use_cases.py`, `application/rag/params.py`, `application/container.py`, and RAG wrappers under `domain/services/`. Guardrail: [`tests/application/test_rag_import_boundaries.py`](tests/application/test_rag_import_boundaries.py). Cleanup roadmap: [`QUALITY_AUDIT.md`](QUALITY_AUDIT.md).
 
 ### 3.3 Launch Fragility
 
@@ -65,7 +54,7 @@ Duplication of **entities/prompts** in `rag_service/domain` remains (e.g., `enti
 
 | Topic | Details |
 | :--- | :--- |
-| Static typing | In [`TODO.md`](TODO.md): mypy/pyright on key modules. Currently many `type: ignore` and fallback lambda in [`application/container.py`](application/container.py) on `ImportError`. |
+| Static typing | In [`TODO.md`](TODO.md): mypy/pyright on key modules. Many `type: ignore` and optional-import fallbacks remain in HTTP wiring modules. |
 | Linting | Ruff limited to `E9` in [`pyproject.toml`](pyproject.toml); "real" pyflakes/F not enabled by default. |
 | Comment language | Mixture of Russian and English in code and TODO; for open-source and uniformity with prompts, English is preferred in new changes. |
 | Version documentation | In TODO: root CHANGELOG, extended README. |

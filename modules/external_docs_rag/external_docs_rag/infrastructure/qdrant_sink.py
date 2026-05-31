@@ -65,7 +65,11 @@ class QdrantChunkSink:
         return self._client
 
     def _ensure_collection(self, collection_name: str, vector_size: int, *, hybrid_sparse: bool) -> None:
-        from qdrant_client.http.models import Distance, SparseVectorParams, VectorParams  # noqa: PLC0415
+        from infrastructure.rag.qdrant_point_builder import (  # noqa: PLC0415
+            dense_vectors_config,
+            hybrid_vectors_config,
+        )
+
         client = self._get_client()
         try:
             info = client.get_collection(collection_name)
@@ -74,23 +78,22 @@ class QdrantChunkSink:
                 if size is not None and size != vector_size:
                     client.recreate_collection(
                         collection_name,
-                        vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
+                        vectors_config=dense_vectors_config(vector_size),
                     )
             return
         except Exception:
             pass
         if hybrid_sparse:
+            vectors_config, sparse_vectors_config = hybrid_vectors_config(vector_size)
             client.recreate_collection(
                 collection_name,
-                vectors_config={
-                    "dense": VectorParams(size=vector_size, distance=Distance.COSINE),
-                },
-                sparse_vectors_config={"sparse": SparseVectorParams()},
+                vectors_config=vectors_config,
+                sparse_vectors_config=sparse_vectors_config,
             )
         else:
             client.recreate_collection(
                 collection_name,
-                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
+                vectors_config=dense_vectors_config(vector_size),
             )
 
     def write_chunks(
@@ -124,13 +127,7 @@ class QdrantChunkSink:
         self._ensure_collection(collection_name, vector_size, hybrid_sparse=hybrid_cfg)
         client = self._get_client()
         effective_hybrid = hybrid_cfg and _collection_has_sparse(client, collection_name)
-        try:
-            from infrastructure.rag.qdrant_point_builder import build_named_vectors
-        except Exception:
-
-            def build_named_vectors(text: str, dense: list[float], *, hybrid_sparse: bool) -> Any:
-                return dense
-
+        from infrastructure.rag.qdrant_point_builder import build_named_vectors
         from qdrant_client.http.models import PointStruct  # noqa: PLC0415
         points: list[PointStruct] = []
         for payload, vec in zip(chunks, vectors):

@@ -34,7 +34,9 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import VectorParams, Distance, PointStruct
+from qdrant_client.http.models import PointStruct
+
+from infrastructure.rag.qdrant_point_builder import DENSE_VECTOR_NAME, dense_vectors_config
 
 from webui_backend.ingest_markdown_common import (
     chunks_for_local_ingest,
@@ -209,7 +211,7 @@ def main() -> None:
         if not created:
             qclient.recreate_collection(
                 collection,
-                vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
+                vectors_config=dense_vectors_config(dim),
             )
             created = True
             print(f"  Created collection '{collection}' (dim={dim})")
@@ -218,7 +220,7 @@ def main() -> None:
         points = [
             PointStruct(
                 id=point_id + j,
-                vector=vec,
+                vector={DENSE_VECTOR_NAME: vec},
                 payload=qdrant_payload_local(rel_path, pairs[j][0], pairs[j][1]),
             )
             for j, vec in enumerate(embeddings)

@@ -31,7 +31,11 @@ from rag_service.domain.services.metadata_inference import (
 from rag_service.application.params import get_rag_answer_params
 from infrastructure.database import get_settings_repository
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
-from infrastructure.rag.qdrant_point_builder import build_named_vectors
+from infrastructure.rag.qdrant_point_builder import (
+    build_named_vectors,
+    dense_vectors_config,
+    hybrid_vectors_config,
+)
 from md_ingestion_service.domain.services.indexing_prepare import prepare_markdown_for_indexing
 
 # qdrant_client is loaded lazily inside functions that use it to avoid the
@@ -59,12 +63,12 @@ def _import_qdrant() -> tuple[type, type, type, type, type, type]:
 
 from api.http.webui_crawler_helpers import is_safe_identifier
 from api.http.webui_crawler_source_routes import register_crawler_source_routes
-from api.http.webui_llm_proxy_routes import (
-    _default_llm_provider_id,
-    _get_qdrant_collection_names,
-    _invoke_runtime_chat,
-    _invoke_runtime_embed,
+from api.http.webui_provider_helpers import (
+    default_llm_provider_id as _default_llm_provider_id,
+    invoke_runtime_chat as _invoke_runtime_chat,
+    invoke_runtime_embed as _invoke_runtime_embed,
 )
+from api.http.webui_rag_routes import get_qdrant_collection_names as _get_qdrant_collection_names
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _WEBUI_BACKEND = os.path.join(_ROOT, "CoreModules", "WebUIBackend")
@@ -274,14 +278,11 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
         # Create collection (dense-only or dense+sparse hybrid)
         try:
             if hybrid_sparse:
+                vectors_config, sparse_vectors_config = hybrid_vectors_config(dim)
                 qclient.recreate_collection(
                     collection_name,
-                    vectors_config={
-                        "dense": VectorParams(size=dim, distance=Distance.COSINE),
-                    },
-                    sparse_vectors_config={
-                        "sparse": SparseVectorParams(),
-                    },
+                    vectors_config=vectors_config,
+                    sparse_vectors_config=sparse_vectors_config,
                 )
                 _WEBUI_LOG.info(
                     f"Created Qdrant collection '{collection_name}' (dim={dim}, hybrid sparse)"
@@ -289,9 +290,9 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
             else:
                 qclient.recreate_collection(
                     collection_name,
-                    vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
+                    vectors_config=dense_vectors_config(dim),
                 )
-                _WEBUI_LOG.info(f"Created Qdrant collection '{collection_name}' (dim={dim})")
+                _WEBUI_LOG.info(f"Created Qdrant collection '{collection_name}' (dim={dim}, named dense)")
             # Ensure payload indexes on new collection
             for field in ["language", "technology", "domain", "product", "doc_type", "doc_scope", "symbol", "framework", "section"]:
                 try:

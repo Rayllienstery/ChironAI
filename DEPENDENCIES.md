@@ -11,6 +11,9 @@
 | `pyproject.toml` | **Основной файл зависимостей**. Содержит зависимости для пакета `chironai` включая runtime и dev зависимости |
 | `requirements-dev.txt` | Полная dev-установка: `-e .[dev]` и перечисленные editable-пакеты (см. файл) |
 | `scripts/install_dependencies.bat` | **Windows:** запуск из `scripts\` — переход в корень репо и один вызов `pip install -r requirements-dev.txt` (перед установкой выставляется `PIP_ONLY_BINARY=lxml`) |
+| `scripts/build_app.bat` | Сборка CoreUI (`npm run build`); вызывается из `build_and_run.bat` |
+| `scripts/sync_bundled_extensions.py` | Сверка/синхронизация bundled extensions с локальными клонами репозиториев (см. `docs/EXTENSIONS_GITHUB_MIGRATION.md`) |
+| `scripts/audit_apple_ingest_filter.py` | **Ручной offline-аудит:** chunk/stats по curated Apple Documentation pages; cwd = корень репо, нужны `WebUI/rag_sources/apple_documentation/` |
 | `docker-compose.yml` | Зависимости инфраструктуры (Qdrant) |
 
 ### CoreModules
@@ -149,6 +152,18 @@ Modules/
 ├── crawler_service → requests, playwright, html2text, lxml, PyYAML
 └── webui_backend → flask, requests
 ```
+
+---
+
+## Конфигурация и compatibility-документация
+
+| Документ | Назначение |
+|----------|------------|
+| `config/README.md` | YAML-файлы и typed getters |
+| `config/CONFIG_AUTHORITY.md` | Приоритет env / settings / YAML / build |
+| `config/ENV_REFERENCE.md` | Индекс переменных окружения |
+| `infrastructure/ollama/README.md` | Граница root Ollama-адаптеров и allowlist импортов |
+| `QUALITY_AUDIT.md` | Roadmap cleanup (Passes 1–6) |
 
 ---
 

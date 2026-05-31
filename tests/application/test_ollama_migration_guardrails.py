@@ -7,14 +7,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 ALLOWED_INFRASTRUCTURE_OLLAMA_IMPORT_FILES = {
-    "api/http/webui_routes.py",
+    "api/http/webui_rag_routes.py",
     "CoreModules/LlmProxy/llm_proxy/ollama_compat.py",
     "infrastructure/ollama/__init__.py",
     "infrastructure/ollama/chat_client.py",
     "infrastructure/ollama/embed_client.py",
     "infrastructure/ollama/rerank_client.py",
     "tests/api/test_http_endpoints.py",
-    "tests/application/test_compat_wrappers.py",
     "tests/infrastructure/test_ollama_chat_client_stream_merge.py",
     "tests/infrastructure/test_ollama_cli_runner.py",
     "tests/llm_proxy/test_openai_ollama_tool_bridge.py",
@@ -30,6 +29,11 @@ def _python_files() -> list[Path]:
     for root in roots:
         out.extend((ROOT / root).rglob("*.py"))
     return out
+
+
+def test_allowlisted_infrastructure_ollama_import_files_exist() -> None:
+    missing = [rel for rel in ALLOWED_INFRASTRUCTURE_OLLAMA_IMPORT_FILES if not (ROOT / rel).is_file()]
+    assert missing == []
 
 
 def test_no_new_direct_infrastructure_ollama_imports_without_allowlist() -> None:

@@ -13,11 +13,10 @@ from rag_service.config import get_qdrant_url
 
 
 class QdrantRagRepository:
-    """RAG repository using Qdrant HTTP API."""
+    """RAG repository using Qdrant HTTP API (named ``dense`` and optional hybrid sparse)."""
 
     DENSE_NAME = "dense"
     SPARSE_NAME = "sparse"
-    LEGACY_DENSE_FALLBACK_ENV = "QDRANT_LEGACY_DENSE_FALLBACK_ENABLED"
 
     def __init__(
         self,
@@ -32,10 +31,6 @@ class QdrantRagRepository:
         self._explicit_collection = (explicit_collection or "").strip() or None
         self._mode_cache_coll: str | None = None
         self._mode_cache: str | None = None
-
-    def _legacy_dense_fallback_enabled(self) -> bool:
-        raw = (os.getenv(self.LEGACY_DENSE_FALLBACK_ENV) or "1").strip().lower()
-        return raw in ("1", "true", "yes", "on")
 
     def get_collection_name(self) -> str:
         if self._explicit_collection:
@@ -54,7 +49,6 @@ class QdrantRagRepository:
         coll = self.get_collection_name()
         if self._mode_cache_coll == coll and self._mode_cache is not None:
             return self._mode_cache
-        mode = "legacy"
         try:
             resp = httpx.get(f"{self._url}/collections/{coll}", timeout=10)
             resp.raise_for_status()
@@ -67,9 +61,14 @@ class QdrantRagRepository:
             elif isinstance(vectors, dict) and self.DENSE_NAME in vectors:
                 mode = "named_dense"
             else:
-                mode = "legacy"
-        except Exception:
-            mode = "legacy"
+                raise RetrievalError(
+                    f"Qdrant collection {coll!r} must use a named '{self.DENSE_NAME}' vector "
+                    f"or hybrid sparse vectors. Recreate the collection from WebUI/crawler."
+                )
+        except RetrievalError:
+            raise
+        except Exception as e:
+            raise RetrievalError(f"Failed to read Qdrant collection {coll!r}: {e}") from e
         self._mode_cache_coll = coll
         self._mode_cache = mode
         return mode
@@ -98,7 +97,7 @@ class QdrantRagRepository:
             return self._search_hybrid(
                 coll, vector, sparse_indices, sparse_values, top_k, filter_dict
             )
-        return self._search_dense_only(coll, vector, top_k, filter_dict, mode)
+        return self._search_dense_only(coll, vector, top_k, filter_dict)
 
     def _search_dense_only(
         self,
@@ -106,13 +105,12 @@ class QdrantRagRepository:
         vector: list[float],
         top_k: int,
         filter_dict: dict[str, Any] | None,
-        mode: str,
     ) -> list[dict[str, Any]]:
-        body: dict[str, Any] = {"limit": top_k, "with_payload": True}
-        if mode in ("hybrid", "named_dense"):
-            body["vector"] = {"name": self.DENSE_NAME, "vector": vector}
-        else:
-            body["vector"] = vector
+        body: dict[str, Any] = {
+            "limit": top_k,
+            "with_payload": True,
+            "vector": {"name": self.DENSE_NAME, "vector": vector},
+        }
         if filter_dict:
             body["filter"] = filter_dict
         try:
@@ -125,21 +123,6 @@ class QdrantRagRepository:
             data = resp.json()
             return data.get("result") or []
         except httpx.HTTPStatusError as e:
-            if mode in ("hybrid", "named_dense") and self._legacy_dense_fallback_enabled():
-                try:
-                    body2 = {"vector": vector, "limit": top_k, "with_payload": True}
-                    if filter_dict:
-                        body2["filter"] = filter_dict
-                    resp2 = httpx.post(
-                        f"{self._url}/collections/{coll}/points/search",
-                        json=body2,
-                        timeout=30,
-                    )
-                    resp2.raise_for_status()
-                    data2 = resp2.json()
-                    return data2.get("result") or []
-                except Exception:
-                    pass
             raise RetrievalError(
                 f"Qdrant search error (collection={coll}): {e.response.text}"
             ) from e
@@ -196,7 +179,7 @@ class QdrantRagRepository:
                 ]
             return []
         except httpx.HTTPStatusError:
-            return self._search_dense_only(coll, dense, top_k, filter_dict, "hybrid")
+            return self._search_dense_only(coll, dense, top_k, filter_dict)
         except httpx.RequestError as e:
             raise RetrievalError(f"Qdrant hybrid query error: {e}") from e
 

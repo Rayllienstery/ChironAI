@@ -30,7 +30,11 @@ class QdrantRagSearchAdapter:
         try:
             resp = httpx.post(
                 f"{self._url}/collections/{collection_name}/points/search",
-                json={"vector": vector, "limit": top_k, "with_payload": True},
+                json={
+                    "vector": {"name": "dense", "vector": vector},
+                    "limit": top_k,
+                    "with_payload": True,
+                },
                 timeout=30,
             )
             resp.raise_for_status()

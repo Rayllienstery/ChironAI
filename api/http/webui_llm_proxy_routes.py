@@ -14,6 +14,20 @@ from error_manager.exceptions import ValidationError as _ValidationError
 from error_manager.http import error_response as _error_response
 
 from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
+from api.http.webui_provider_helpers import (
+    default_llm_provider_id as _default_llm_provider_id,
+    default_provider_row as _default_provider_row,
+    default_provider_tab_payload as _default_provider_tab_payload,
+    invoke_runtime_chat as _invoke_runtime_chat,
+    invoke_runtime_embed as _invoke_runtime_embed,
+    provider_catalog_payload as _provider_catalog_payload,
+    provider_row as _provider_row,
+    run_default_provider_extension_action as _run_default_provider_extension_action,
+    run_provider_extension_action as _run_provider_extension_action,
+)
+from api.http.webui_rag_routes import (
+    get_cached_qdrant_collection_name_set_for_builds_diag as _get_cached_qdrant_collection_name_set_for_builds_diag,
+)
 from application.llm_proxy_builds import (
     LLM_PROXY_BUILDS_APP_KEY,
     diagnose_build,
@@ -112,181 +126,6 @@ def _qdrant_status_snapshot(timeout_sec: float) -> dict[str, Any]:
             _LAST_QDRANT_WARN_AT = now
             _WEBUI_LOG.warning("Failed to get Qdrant status: %s", e)
     return status
-
-
-def _get_qdrant_collection_names() -> list[str]:
-    """Return list of Qdrant collection names (empty if Qdrant unreachable or no collections)."""
-    return _get_qdrant_collection_names_with_timeout(timeout_sec=5.0)
-
-
-def _get_cached_qdrant_collection_name_set_for_builds_diag() -> set[str]:
-    cache_key = f"llm_proxy_builds_diag_qdrant_names:{get_qdrant_url().rstrip('/')}"
-    cached = _get_cached_status(
-        cache_key,
-        ttl_sec=3.0,
-        compute=lambda: {"names": _get_qdrant_collection_names_with_timeout(timeout_sec=0.8)},
-    )
-    return set(cached.get("names") or [])
-
-
-def _get_qdrant_collection_names_with_timeout(timeout_sec: float) -> list[str]:
-    """Return Qdrant collection names using an explicit timeout."""
-    url = get_qdrant_url().rstrip("/")
-    try:
-        resp = requests.get(f"{url}/collections", timeout=timeout_sec)
-        if not resp.ok:
-            return []
-        data = resp.json() or {}
-        raw = data.get("result", {}).get("collections", []) if isinstance(data, dict) else []
-        names: list[str] = []
-        for col in raw:
-            if isinstance(col, dict):
-                name = col.get("name")
-            else:
-                name = str(col)
-            if name:
-                names.append(name)
-        return names
-    except Exception:
-        return []
-
-
-def _default_llm_provider_id() -> str:
-    wiring = current_app.extensions.get("llm_proxy_wiring")
-    provider_id = getattr(wiring, "default_provider_id", None)
-    if isinstance(provider_id, str) and provider_id.strip():
-        return provider_id.strip()
-    svc = get_extensions_service(current_app)
-    runtime = get_extensions_runtime(current_app, svc)
-    try:
-        descriptors = runtime.registry.descriptors() if runtime is not None else []
-    except Exception:
-        descriptors = []
-    if descriptors:
-        first_id = str(descriptors[0].id or "").strip()
-        if first_id:
-            return first_id
-    return ""
-
-
-def _provider_catalog_payload(*, capability: str | None = None) -> dict[str, Any]:
-    svc = get_extensions_service(current_app)
-    runtime = get_extensions_runtime(current_app, svc)
-    if svc is None:
-        return {"providers": [], "models": []}
-    try:
-        return svc.provider_catalog(runtime=runtime, capability=capability)
-    except Exception:
-        return {"providers": [], "models": []}
-
-
-def _provider_row(provider_id: str | None = None) -> dict[str, Any] | None:
-    svc = get_extensions_service(current_app)
-    runtime = get_extensions_runtime(current_app, svc)
-    if svc is None:
-        return None
-    try:
-        rows = svc.provider_rows(runtime)
-    except Exception:
-        return None
-    resolved_provider_id = str(provider_id or _default_llm_provider_id()).strip()
-    if resolved_provider_id:
-        for row in rows:
-            if str(row.get("provider_id") or "").strip() == resolved_provider_id:
-                return row
-    return rows[0] if rows else None
-
-
-def _default_provider_row() -> dict[str, Any] | None:
-    return _provider_row()
-
-
-def _run_provider_extension_action(
-    provider_id: str | None,
-    action_id: str,
-    payload: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    svc = get_extensions_service(current_app)
-    runtime = get_extensions_runtime(current_app, svc)
-    row = _provider_row(provider_id)
-    if svc is None or runtime is None or row is None:
-        raise RuntimeError("No provider extension is available")
-    extension_id = str(row.get("extension_id") or "").strip()
-    if not extension_id:
-        raise RuntimeError("Provider extension is missing extension_id")
-    return svc.run_extension_action(
-        extension_id,
-        action_id,
-        payload=dict(payload or {}),
-        runtime=runtime,
-    )
-
-
-def _run_default_provider_extension_action(action_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-    return _run_provider_extension_action(_default_llm_provider_id(), action_id, payload)
-
-
-def _default_provider_tab_payload() -> dict[str, Any]:
-    svc = get_extensions_service(current_app)
-    runtime = get_extensions_runtime(current_app, svc)
-    row = _default_provider_row()
-    if svc is None or runtime is None or row is None:
-        raise RuntimeError("No default provider extension is available")
-    extension_id = str(row.get("extension_id") or "").strip()
-    if not extension_id:
-        raise RuntimeError("Default provider extension is missing extension_id")
-    return svc.extension_tab_payload(extension_id, runtime=runtime)
-
-
-def _invoke_runtime_chat(
-    *,
-    provider_id: str,
-    model: str,
-    messages: list[dict[str, Any]],
-    options: dict[str, Any] | None = None,
-) -> str:
-    svc = get_extensions_service(current_app)
-    runtime = get_extensions_runtime(current_app, svc)
-    if runtime is None:
-        raise RuntimeError("LLM runtime is unavailable")
-    from llm_interactor.contracts import LLMRequest
-
-    response = runtime.invoke(
-        LLMRequest(
-            provider_id=provider_id,
-            model=model,
-            operation="chat",
-            messages=[m for m in messages if isinstance(m, dict)],
-            stream=False,
-            options=(options or None),
-        )
-    )
-    return str(response.text or "")
-
-
-def _invoke_runtime_embed(
-    *,
-    provider_id: str,
-    model: str,
-    texts: list[str],
-) -> list[list[float]]:
-    svc = get_extensions_service(current_app)
-    runtime = get_extensions_runtime(current_app, svc)
-    if runtime is None:
-        raise RuntimeError("LLM runtime is unavailable")
-    from llm_interactor.contracts import LLMRequest
-
-    response = runtime.invoke(
-        LLMRequest(
-            provider_id=provider_id,
-            model=model,
-            operation="embed",
-            input_texts=[str(text) for text in texts],
-        )
-    )
-    if hasattr(response, "embeddings"):
-        return response.embeddings
-    return []
 
 
 def register_llm_proxy_routes(
