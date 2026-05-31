@@ -210,6 +210,7 @@ from api.http.webui_prompt_routes import register_prompt_routes
 from api.http.webui_session_routes import register_session_routes
 from api.http.webui_version_routes import register_version_routes
 from api.http.webui_settings_routes import register_settings_routes
+from api.http.webui_performance_routes import register_performance_routes
 from api.http.webui_prompts import is_readme_name
 from api.http.webui_session import log_to_database
 from api.http.proxy_status import (
@@ -326,6 +327,7 @@ register_crawler_routes(
     webui_bp,
     error_log=_ERROR_LOG,
 )
+register_performance_routes(webui_bp)
 
 
 _SERVICE_STATUS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}

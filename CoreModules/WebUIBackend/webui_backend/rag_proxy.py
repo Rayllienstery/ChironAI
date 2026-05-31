@@ -14,11 +14,14 @@ Uses api.http.rag_routes.create_app; prompt and model come from config via appli
 
 import logging
 import os
+import time as _time
 
 from flask import make_response, send_from_directory
+from flask_compress import Compress
 
 from config import get_log_level, get_server_port, record_active_server_port
 from api.http.rag_routes import create_app
+from api.http.startup_timing import process_start_offset_ms, record_phase
 from webui_backend.paths import coreui_dir, project_root, webui_data_dir
 
 logging.basicConfig(
@@ -41,15 +44,47 @@ PROJECT_ROOT = str(project_root())
 WEBUI_FRONTEND_DIR = str(coreui_dir())
 
 # create_app() registers webui_bp, so /api/webui/* (open-webui/status, start, stop, etc.) is available
+_t_create_app = _time.perf_counter()
 app = create_app(webui_dir=BASE_DIR)
+
+# Enable transparent brotli/gzip compression for all responses (JS, CSS, JSON, HTML).
+# Reduces the 283KB main JS bundle to ~88KB on the wire — ~3× faster first load.
+app.config["COMPRESS_REGISTER"] = True
+app.config["COMPRESS_LEVEL"] = 6           # gzip level 6 — good speed/ratio balance
+app.config["COMPRESS_MIN_SIZE"] = 512      # compress anything > 512 bytes
+app.config["COMPRESS_MIMETYPES"] = [
+    "text/html",
+    "text/css",
+    "text/javascript",
+    "application/javascript",
+    "application/json",
+    "application/x-javascript",
+    "image/svg+xml",
+]
+_compress = Compress()
+_compress.init_app(app)
+# flask_app_init phase is recorded inside create_app(); this outer measurement
+# captures total wall-time including the create_app call overhead itself.
+_create_app_ms = (_time.perf_counter() - _t_create_app) * 1000
 
 # Pre-warm SessionManager: runs DB schema init and migrations synchronously at startup so
 # the very first GET /api/webui/sessions request is fast (no lazy-init overhead on first hit).
+_t_session = _time.perf_counter()
+_session_status = "ok"
 try:
     from infrastructure.database import get_session_manager as _get_session_manager
     _get_session_manager()
 except Exception:
-    pass
+    _session_status = "failed"
+_session_ms = (_time.perf_counter() - _t_session) * 1000
+record_phase(
+    phase_id="session_manager",
+    label="Session Manager",
+    description="SQLite schema initialisation, migrations, and session table setup",
+    start_offset_ms=process_start_offset_ms(_t_session),
+    duration_ms=_session_ms,
+    status=_session_status,
+)
 
 # Serve static files from CoreModules/CoreUI
 # Check if React build exists, otherwise fall back to old HTML

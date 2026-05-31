@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-05-29
+### Added
+- Added **Performance tab** under Developer Tools — a new CoreUI module for runtime and startup diagnostics.
+- Added `Startup` subtab with `CoreUIPipelinePreview` showing every instrumented server startup phase (Flask App Init, LLM Proxy Wiring, Blueprint Registration, Session Manager, Extensions Runtime).
+- Clicking any pipeline phase opens a `CoreUIModal` with two subtabs: human-readable `Summary` (waterfall bars, sub-steps, metadata) and `Debug Log` (raw JSON + log lines for AI analysis).
+- Browser Navigation Timing is posted on tab mount and merged into the startup report as a `WebUI (Browser)` phase.
+- Added `api/http/startup_timing.py` — thread-safe in-memory phase registry modelled after `proxy_status.py`.
+- Added `api/http/webui_performance_routes.py` — `GET /api/webui/performance/startup` and `POST /api/webui/performance/browser-timing`.
+- Added `StartupStep`, `StartupPhase`, `StartupPerformanceResponse` TypedDicts to `core/contracts/webui_api.py`.
+- Added `getStartupPerformance()` and `postBrowserTiming()` to `CoreModules/CoreUI/src/services/api.js`.
+- Prevented purple FOUC on page load: theme is now saved to `localStorage` in `applyTheme()` and restored synchronously in `index.html` before React renders.
+- Added non-blocking Google Fonts load (`media="print"`) and `<link rel="preconnect">` hints to eliminate render-blocking external requests.
+- Added CSS loading spinner (`#root:empty::after`) shown while the JS bundle executes.
+
+### Changed
+- Instrumented `create_app()` in `rag_routes.py` with per-step startup timing (RAG params, LLM Proxy Wiring, blueprint registration).
+- Instrumented `rag_proxy.py` to record Session Manager pre-warm timing.
+- Instrumented `_bootstrap_runtime_body()` in `llm_interactor/manager.py` to record extension discovery and per-extension sandbox startup timing.
+
 ## [0.5.2] - 2026-05-29
 ### Changed
 - Registry extension cards now receive GitHub-backed icon URLs before install.

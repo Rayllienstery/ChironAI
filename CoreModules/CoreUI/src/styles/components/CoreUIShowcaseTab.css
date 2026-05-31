@@ -261,12 +261,24 @@
 .coreui-showcase-status-row,
 .coreui-showcase-control-row,
 .coreui-showcase-slider-row,
-.coreui-showcase-feedback-row {
+.coreui-showcase-feedback-row,
+.coreui-showcase-standby-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
   width: 100%;
+}
+
+.coreui-showcase-standby-row {
+  align-items: stretch;
+}
+
+.coreui-showcase-standby-row .standby-screen {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
 }
 
 .coreui-showcase-panel-grid,

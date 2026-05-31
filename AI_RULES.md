@@ -35,6 +35,10 @@ Ambiguous “WebUI” in conversation: clarify—**`WebUI/` data folder**, **Web
   3. Flask Web UI blueprint — `url_prefix` (today around `api/http/webui_routes.py` and related registration).
 - Any new endpoint: update the contract (types/DTOs in `webui_api.py` as needed), the client in `api.js`, and server routes. Otherwise you get **docs ↔ frontend ↔ backend** drift.
 
+### Removal cleanup
+
+- When removing UI or API surface, clean the entire tail in the same change: imports, exports, routes, route registration, service/client methods, constants, tests, styles, CoreUI Showcase entries, docs, and checklist references. Do not leave dead code, stale navigation, unused CSS, orphaned tests, or documented features that no longer exist.
+
 ### UI Ownership Rule
 
 **CoreUI is the single source of truth for all UI components** (screens, tabs, modals, buttons, inputs, etc.). No other module may introduce its own UI layer, CSS, or component files that would be rendered in the browser.
@@ -45,6 +49,14 @@ In practice:
 - Core code lives in `CoreModules/CoreUI/src/components/`, `styles/`, etc.
 - Extensions inject via `iframe_tab` or `ui_schema`; they cannot modify CoreUI internals.
 - If a feature needs UI and isn't an Extension, it must be added to CoreUI proper.
+
+### UI reuse rule
+
+- If a view, screen fragment, modal, control group, or visual pattern can be unified with an existing CoreUI implementation, it MUST be unified and reused. Do not hardcode a second implementation of the same view or pattern; duplicate UI implementations are not accepted.
+
+### CoreUI Showcase sync
+
+- When adding or removing reusable CoreUI components, visual patterns, screens, tabs, modals, or other browser-rendered UI, update `CoreModules/CoreUI/src/components/CoreUIShowcaseTab.jsx` in the same change: add the matching showcase view/example for new UI, or remove the obsolete showcase view/example for deleted UI.
 
 ### Code layout (as in the repo)
 
@@ -138,10 +150,11 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 ## 9. AI checklist before finishing a task
 
 - [ ] If the Web UI API changed: updated `webui_api.py`, `api.js` (and contract types/comments if needed), server routes.
+- [ ] If UI/API was removed: imports, routes/registration, client methods, constants, tests, styles, CoreUI Showcase, and docs cleaned up.
 - [ ] No import-boundary violations for `domain/`?
 - [ ] If `config/*.yaml` or env vars changed: are they documented for users/deploy?
 - [ ] Did you add a new long-lived monolith “tail”—worth a line in `docs/legacy_map.md`?
-- [ ] For CoreUI: styles via tokens/existing classes; new tabs via the lazy pattern in `App.jsx`.
+- [ ] For CoreUI: styles via tokens/existing classes; new tabs via the lazy pattern in `App.jsx`; reusable views unified instead of duplicated; CoreUI Showcase updated when UI was added or removed.
 - [ ] For Extensions:
     - [ ] Does it provide its own frame, tab title, tab icon, and assets?
     - [ ] Is `chironai-extension.json` present and valid?

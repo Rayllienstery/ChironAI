@@ -96,8 +96,18 @@ def create_app(
     webui_dir: directory containing last_collection.txt (e.g. WebUI).
     system_prefix/suffix: optional overrides for RAG system prompt; if None use config (same as rag_client).
     """
+    import time as _time
+    from api.http.startup_timing import process_start_offset_ms, record_phase
+
+    _t_app_start = _time.perf_counter()
+
     app = Flask(__name__)
+
+    _t_params_start = _time.perf_counter()
     params, deps = get_rag_answer_params(webui_dir=webui_dir)
+    _params_ms = (_time.perf_counter() - _t_params_start) * 1000
+
+    _t_wiring_start = _time.perf_counter()
     wiring = build_llm_proxy_wiring(
         params=params,
         deps=deps,
@@ -105,6 +115,8 @@ def create_app(
         system_prefix=system_prefix,
         system_suffix=system_suffix,
     )
+    _wiring_ms = (_time.perf_counter() - _t_wiring_start) * 1000
+
     app.extensions["llm_proxy_wiring"] = wiring
     if getattr(wiring, "llm_runtime", None) is not None:
         set_extensions_runtime(app, wiring.llm_runtime)
@@ -112,8 +124,52 @@ def create_app(
         set_extensions_provider_registry(app, wiring.provider_registry)
     if getattr(wiring, "extension_manager", None) is not None:
         set_extensions_service(app, wiring.extension_manager)
+
+    _t_bp_start = _time.perf_counter()
     app.register_blueprint(create_v1_blueprint(wiring))
+    from api.http.webui_routes import webui_bp
+    from api.http.rag_tests_routes import rag_tests_bp
+    app.register_blueprint(webui_bp)
+    app.register_blueprint(rag_tests_bp)
+    _bp_ms = (_time.perf_counter() - _t_bp_start) * 1000
+
     _sync_llm_extension_runtime(app)
+
+    _app_total_ms = (_time.perf_counter() - _t_app_start) * 1000
+    record_phase(
+        phase_id="flask_app_init",
+        label="Flask App Init",
+        description="Flask application creation, dependency wiring, and blueprint registration",
+        start_offset_ms=process_start_offset_ms(_t_app_start),
+        duration_ms=_app_total_ms,
+        status="ok",
+        steps=[
+            {
+                "id": "rag_params",
+                "label": "RAG Answer Params",
+                "description": "Load RAG answer parameters and dependencies",
+                "start_offset_ms": process_start_offset_ms(_t_params_start),
+                "duration_ms": round(_params_ms, 1),
+                "status": "ok",
+            },
+            {
+                "id": "llm_proxy_wiring",
+                "label": "LLM Proxy Wiring",
+                "description": "Build LlmProxyWiring: extension manager, provider registry, RAG deps",
+                "start_offset_ms": process_start_offset_ms(_t_wiring_start),
+                "duration_ms": round(_wiring_ms, 1),
+                "status": "ok",
+            },
+            {
+                "id": "blueprint_registration",
+                "label": "Blueprint Registration",
+                "description": "Register /v1/*, /api/webui/*, /rag-tests/* blueprints",
+                "start_offset_ms": process_start_offset_ms(_t_bp_start),
+                "duration_ms": round(_bp_ms, 1),
+                "status": "ok",
+            },
+        ],
+    )
 
     @app.before_request
     def _refresh_llm_extension_runtime() -> None:
@@ -137,12 +193,6 @@ def create_app(
         """Health check endpoint for Ollama and Qdrant availability."""
         result = check_stack_health()
         return jsonify(result.to_json_dict(service="rag_proxy")), result.http_status
-
-    from api.http.webui_routes import webui_bp
-    from api.http.rag_tests_routes import rag_tests_bp
-
-    app.register_blueprint(webui_bp)
-    app.register_blueprint(rag_tests_bp)
 
     return app
 

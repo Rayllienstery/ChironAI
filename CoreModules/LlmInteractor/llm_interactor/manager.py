@@ -403,23 +403,40 @@ class ExtensionManager:
             return self._bootstrap_runtime_body()
 
     def _bootstrap_runtime_body(self) -> RuntimeBootstrap:
+        import time as _time
+        _t_bootstrap_start = _time.perf_counter()
+
+        try:
+            from api.http.startup_timing import process_start_offset_ms, record_phase
+            _timing_available = True
+        except Exception:
+            _timing_available = False
+
         with self._lock:
             self._runtime_status = "loading"
             self._runtime_error = ""
+
+        _t_bundled = _time.perf_counter()
         self.ensure_bundled_installed()
         self._disable_blocklisted_records()
+        _bundled_ms = (_time.perf_counter() - _t_bundled) * 1000
+
         records = [r for r in self._repo.list_records() if r.installed and r.enabled]
         source_dirs = [
             self._installed_dir / record.id / record.version
             for record in records
             if (self._installed_dir / record.id / record.version).is_dir()
         ]
+
+        _t_discover = _time.perf_counter()
         report = discover_extensions(
             source_dirs,
             host_context=self._host_context,
             enabled_extension_ids={r.id for r in records},
             use_sandbox=self._use_sandbox,
         )
+        _discover_ms = (_time.perf_counter() - _t_discover) * 1000
+
         self._disable_security_blocked_extensions(report.failed)
         registry = ProviderRegistry()
         failed = list(report.failed)
@@ -468,6 +485,66 @@ class ExtensionManager:
             self._provider_rows_cache = []
             self._runtime_status = "ready"
             self._runtime_error = ""
+
+        _bootstrap_total_ms = (_time.perf_counter() - _t_bootstrap_start) * 1000
+
+        if _timing_available:
+            ext_steps = []
+            for loaded in report.loaded:
+                timing = getattr(loaded, "startup_timing", None) or {}
+                ext_steps.append({
+                    "id": f"ext_{loaded.manifest.id}",
+                    "label": loaded.manifest.title or loaded.manifest.id,
+                    "description": f"v{loaded.manifest.version} — sandbox worker started",
+                    "start_offset_ms": process_start_offset_ms(_t_discover),
+                    "duration_ms": round(float(timing.get("startup_ms", 0)), 1),
+                    "status": "ok",
+                })
+            for f in report.failed:
+                ext_steps.append({
+                    "id": f"ext_{f.extension_id}",
+                    "label": getattr(f.manifest, "title", None) or f.extension_id if f.manifest else f.extension_id,
+                    "description": f"Failed: {f.error[:120]}",
+                    "start_offset_ms": process_start_offset_ms(_t_discover),
+                    "duration_ms": 0.0,
+                    "status": "failed",
+                })
+            record_phase(
+                phase_id="extensions_runtime",
+                label="Extensions Runtime",
+                description=(
+                    f"Background bootstrap: {len(report.loaded)} loaded, "
+                    f"{len(report.failed)} failed"
+                ),
+                start_offset_ms=process_start_offset_ms(_t_bootstrap_start),
+                duration_ms=_bootstrap_total_ms,
+                status="ok" if not report.failed else "failed",
+                steps=[
+                    {
+                        "id": "bundled_install",
+                        "label": "Bundled Extensions Install",
+                        "description": "Copy bundled extensions to installed dir, apply blocklist",
+                        "start_offset_ms": process_start_offset_ms(_t_bundled),
+                        "duration_ms": round(_bundled_ms, 1),
+                        "status": "ok",
+                    },
+                    {
+                        "id": "discovery",
+                        "label": "Extension Discovery",
+                        "description": f"Discover and start {len(source_dirs)} extension sandbox worker(s) in parallel",
+                        "start_offset_ms": process_start_offset_ms(_t_discover),
+                        "duration_ms": round(_discover_ms, 1),
+                        "status": "ok",
+                    },
+                    *ext_steps,
+                ],
+                metadata={
+                    "loaded_count": len(report.loaded),
+                    "failed_count": len(report.failed),
+                    "extension_ids": [e.manifest.id for e in report.loaded],
+                },
+            )
+
         # Pre-warm provider rows in a background thread so the LLM Proxy /
         # providers catalog is fast on first open without blocking tab loading.
         threading.Thread(

@@ -200,6 +200,40 @@ class ProviderHealthDTO(TypedDict, total=False):
     details: dict[str, Any]
 
 
+class StartupStep(TypedDict, total=False):
+    """One sub-step within a StartupPhase."""
+
+    id: str
+    label: str
+    description: str
+    start_offset_ms: float
+    duration_ms: float
+    status: str  # "ok" | "failed" | "in_progress" | "skipped"
+
+
+class StartupPhase(TypedDict, total=False):
+    """One top-level startup phase (e.g. Flask App Init, Session Manager)."""
+
+    id: str
+    label: str
+    description: str
+    start_offset_ms: float
+    duration_ms: float
+    status: str
+    steps: list[StartupStep]
+    log_lines: list[str]
+    metadata: dict[str, Any]
+
+
+class StartupPerformanceResponse(TypedDict, total=False):
+    """GET /api/webui/performance/startup response."""
+
+    server_start_epoch_ms: float
+    total_duration_ms: float
+    phases: list[StartupPhase]
+    browser_timing: dict[str, Any]
+
+
 class ExtensionUiSchemaDTO(TypedDict, total=False):
     id: str
     title: str
@@ -239,5 +273,8 @@ __all__ = [
     "InstalledExtensionDTO",
     "ProviderHealthDTO",
     "ExtensionUiSchemaDTO",
+    "StartupStep",
+    "StartupPhase",
+    "StartupPerformanceResponse",
     "webui_abs_path",
 ]

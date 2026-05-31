@@ -5,6 +5,7 @@ import CoreUIPillTabs from "./CoreUIPillTabs";
 import CoreUISubtabs from "./CoreUISubtabs";
 import CoreUISlider from "./CoreUISlider";
 import EmptyState from "./EmptyState";
+import StandByScreen from "./StandByScreen";
 import "../styles/components/DockerTab.css";
 import "../styles/components/CoreUIShowcaseTab.css";
 import CoreUIPipelinePreview from "./CoreUIPipelinePreview";
@@ -646,6 +647,18 @@ return docker.ensure_container(spec)`}</pre>
               <span className="status-spinner" />
               checking
             </span>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="StandByScreen"
+          classes={[".standby-screen", ".standby-card", ".standby-icon-ring", ".standby-dots", ".standby-message", ".standby-submessage"]}
+          source={`${sourceRoot}/components/StandByScreen.jsx, ${sourceRoot}/styles/components/StandByScreen.css`}
+          description="Material Design 3 loading state with spinning icon, animated dot progression, and status text. Used during tab lazy-loading and session initialization."
+        >
+          <div className="coreui-showcase-standby-row">
+            <StandByScreen message="Stand by" submessage="Loading tab…" size="sm" />
+            <StandByScreen message="Stand by" submessage="Initializing session…" size="md" />
           </div>
         </ShowcaseItem>
       </ShowcaseSection>

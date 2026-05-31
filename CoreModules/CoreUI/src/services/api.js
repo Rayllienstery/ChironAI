@@ -1610,3 +1610,39 @@ export async function updateCrawlerSource(sourceId, sourceConfig) {
   }
   return response.json();
 }
+
+/**
+ * Fetch the startup timing report from the backend.
+ * Returns phases recorded by Python during process startup plus any
+ * browser timing that has been submitted via postBrowserTiming().
+ *
+ * @returns {Promise<import('../../../core/contracts/webui_api').StartupPerformanceResponse>}
+ */
+export async function getStartupPerformance() {
+  const response = await fetch(`${API_BASE}/performance/startup`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(extractApiError(error, 'Failed to fetch startup performance'));
+  }
+  return response.json();
+}
+
+/**
+ * Post browser Navigation Timing data so it can be merged into the startup report.
+ * Call once after the app is fully interactive.
+ *
+ * @param {object} payload  - Timing data (e.g. window.performance.timing + custom milestones)
+ * @returns {Promise<{ok: boolean}>}
+ */
+export async function postBrowserTiming(payload) {
+  const response = await fetch(`${API_BASE}/performance/browser-timing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(extractApiError(error, 'Failed to post browser timing'));
+  }
+  return response.json();
+}

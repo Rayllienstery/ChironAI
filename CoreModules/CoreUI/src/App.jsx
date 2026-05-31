@@ -82,6 +82,7 @@ const TemplateEditorTab = lazyWithRetry("TemplateEditorTab", () => import("./com
 const CoreUIShowcaseTab = lazyWithRetry("CoreUIShowcaseTab", () => import("./components/CoreUIShowcaseTab"));
 const ExtensionsTab = lazyWithRetry("ExtensionsTab", () => import("./components/ExtensionsTab"));
 const DevDocumentationTab = lazyWithRetry("DevDocumentationTab", () => import("./components/DevDocumentationTab"));
+const PerformanceTab = lazyWithRetry("PerformanceTab", () => import("./components/PerformanceTab"));
 const ExtensionRuntimeTab = lazyWithRetry("ExtensionRuntimeTab", () => import("./components/ExtensionRuntimeTab"));
 const DockerTab = lazyWithRetry("DockerTab", () => import("./components/DockerTab"));
 const TokensSecurityTab = lazyWithRetry("TokensSecurityTab", () => import("./components/TokensSecurityTab"));
@@ -98,6 +99,7 @@ import {
   runRagTests,
   getRagTestRunStatus,
   cancelRagTestRun,
+  postBrowserTiming,
 } from "./services/api";
 import Sparkline from "./components/Sparkline";
 import { NotificationCenterProvider } from "./components/NotificationCenterContext";
@@ -111,17 +113,24 @@ import ExtensionSecurityNotificationBridge from "./components/ExtensionSecurityN
 import "./styles/layout.css";
 import "./styles/default-card.css";
 import "./styles/sidebar.css";
+import StandByScreen from "./components/StandByScreen";
+import "./styles/components/StandByScreen.css";
 
 const METRICS_HISTORY_LEN = 30;
 
-function TabLoadingFallback() {
+function AppLoadingState({ submessage }) {
   return (
-    <div style={{ padding: 24 }}>
-      <Card className="loading" elevation="var(--md-sys-elevation-level1)">
-        Loading tab…
-      </Card>
-    </div>
+    <StandByScreen
+      message="Stand by"
+      submessage={submessage}
+      icon="progress_activity"
+      size="md"
+    />
   );
+}
+
+function TabLoadingFallback() {
+  return <AppLoadingState submessage="Loading tab…" />;
 }
 
 function clampServiceStatusPollSec(raw) {
@@ -191,6 +200,37 @@ function App() {
   }, []);
 
   useEffect(() => {
+    // Remove the stand-by loader now that React has rendered
+    try {
+      document.getElementById('app-loader')?.remove();
+    } catch {
+      // ignore
+    }
+
+    // Record actual React mount time (App root = earliest possible point)
+    try {
+      const nav = window?.performance?.timing;
+      if (nav && nav.navigationStart) {
+        const now = Date.now();
+        postBrowserTiming({
+          navigationStart: nav.navigationStart,
+          fetchStart: nav.fetchStart,
+          responseStart: nav.responseStart,
+          responseEnd: nav.responseEnd,
+          domInteractive: nav.domInteractive,
+          domContentLoadedEventStart: nav.domContentLoadedEventStart,
+          domContentLoadedEventEnd: nav.domContentLoadedEventEnd,
+          domComplete: nav.domComplete,
+          loadEventStart: nav.loadEventStart,
+          loadEventEnd: nav.loadEventEnd,
+          reactMountMs: now - nav.navigationStart,
+          reportedAt: now,
+        }).catch(() => {});
+      }
+    } catch {
+      // Non-critical
+    }
+
     // Initialize session
     initSession();
 
@@ -500,6 +540,8 @@ function App() {
     { id: "llm-proxy", label: "LLM Proxy", section: "Core Functionality" },
     { id: "rag-fusion-proxy", label: "RAG Fusion Proxy", section: "Core Functionality" },
     { id: "template-editor", label: "Template Editor", section: "Core Functionality" },
+    { id: "rag", label: "RAG / Qdrant", section: "RAG" },
+    { id: "crawler", label: "Crawler / Indexer", section: "RAG" },
     { id: "extensions", label: "Extensions", section: "Extensions" },
     ...extensionTabs.map((tab) => ({
       id: tab.id,
@@ -508,11 +550,10 @@ function App() {
       iconUrl: tab.icon_url || "",
       section: "Extensions",
     })),
-    { id: "rag", label: "RAG / Qdrant", section: "RAG" },
-    { id: "crawler", label: "Crawler / Indexer", section: "RAG" },
     { id: "testing", label: "Testing", section: "Developer Tools" },
     { id: "coreui-showcase", label: "CoreUI Showcase", section: "Developer Tools" },
     { id: "dev-documentation", label: "Dev Documentation", section: "Developer Tools" },
+    { id: "performance", label: "Performance", section: "Developer Tools" },
   ];
 
   const renderTabContent = () => {
@@ -552,6 +593,8 @@ function App() {
         );
       case "dev-documentation":
         return <DevDocumentationTab />;
+      case "performance":
+        return <PerformanceTab />;
       case "testing":
         return (
           <TestingTab
@@ -706,7 +749,7 @@ function App() {
               </button>
             </div>
           ) : (
-            <div className="loading">Initializing session...</div>
+            <AppLoadingState submessage="Initializing session…" />
           )}
         </main>
       </div>
