@@ -12,7 +12,7 @@ from typing import NamedTuple
 
 from rag_service.domain.ports import ChatLLMClient, EmbeddingProvider, RagRepository, RerankClient
 
-from rag_service.config import get_ollama_chat_model, get_rag_float, get_rag_int, get_rag_system_prompt
+from rag_service.config import get_default_chat_model, get_rag_float, get_rag_int, get_rag_system_prompt
 
 
 class RAGAnswerParams(NamedTuple):
@@ -69,7 +69,7 @@ def get_rag_answer_params(
     context_chunk_chars = get_rag_int("context_chunk_chars", 1000)
     context_total_chars = get_rag_int("context_total_chars", 7000)
     confidence_threshold = get_rag_float("confidence_threshold", 0.75)
-    model_name = get_ollama_chat_model()
+    model_name = get_default_chat_model()
     log_preview_chars = get_rag_int("log_preview_chars", 800)
     params = RAGAnswerParams(
         system_prefix=prefix,

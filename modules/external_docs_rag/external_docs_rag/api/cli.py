@@ -36,7 +36,7 @@ def cmd_ingest(source_id: str, config_path: str | None, qdrant_url: str | None) 
     from external_docs_rag.config_loader import load_external_sources
     from external_docs_rag.application.use_cases import ingest_source_to_collection
     from external_docs_rag.infrastructure import HttpFetchClient, QdrantChunkSink
-    from external_docs_rag.infrastructure.ollama_embed_adapter import OllamaEmbedAdapter
+    from external_docs_rag.infrastructure.provider_embed_adapter import ProviderEmbedAdapter
 
     sources = load_external_sources(config_path)
     source = next((s for s in sources if s.id == source_id), None)
@@ -45,7 +45,7 @@ def cmd_ingest(source_id: str, config_path: str | None, qdrant_url: str | None) 
         return 1
     fetch_client = HttpFetchClient()
     sink = QdrantChunkSink(base_url=qdrant_url or os.getenv("QDRANT_URL", "http://localhost:6333"))
-    embed = OllamaEmbedAdapter()
+    embed = ProviderEmbedAdapter()
     print(f"Ingesting {source.id} from {source.base_url} into collection '{source.collection_name}'...")
     result = ingest_source_to_collection(source, fetch_client, sink, embed)
     print(f"  Documents fetched: {result.documents_fetched}")

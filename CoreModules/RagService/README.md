@@ -57,14 +57,13 @@ rag-service start-deps --services ollama,qdrant
 
 Keyword collections DB defaults to `rag_service/data/rag_keywords.db` (created next to the `rag_service` package).
 
-## Ollama Provider Boundary
+## LLM provider boundary
 
-When the main app supplies an `LLMRuntime`, RagService clients should prefer the
-provider-backed adapters in `rag_service.infrastructure.provider_runtime`.
-The legacy `rag_service.infrastructure.ollama_*` modules remain for standalone
-operation and fallback tests until RagService can be run entirely with injected
-provider clients. New app-level code should not import those legacy modules
-directly.
+RagService embed/rerank/chat clients are built from
+`rag_service.infrastructure.provider_runtime` and require an extension-backed
+`LLMRuntime` (registered via `rag_service.infrastructure.runtime_hooks` when the
+main app starts). Ollama-specific HTTP/CLI clients are not part of this package;
+use the bundled `ollama-provider` extension or another provider extension.
 
 ## Qdrant vector modes
 

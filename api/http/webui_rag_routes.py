@@ -24,8 +24,6 @@ from api.http.service_control import (
     stop_qdrant as stop_qdrant_service,
 )
 from config import get_default_rag_top_k, get_framework_collection_ttl_days, get_qdrant_url
-from infrastructure.ollama.cli_runner import invoke_ping
-
 from api.http.proxy_trace import get_current_trace
 from application.rag.proxy_settings_contract import (
     load_proxy_settings,
@@ -241,8 +239,8 @@ def register_rag_pipeline_routes(
     error_log: Any,
     default_llm_provider_id: Callable[[], str],
     read_app_provider_model_ref: Callable[..., tuple[str, str]],
-    legacy_default_embed_model: Callable[[], str],
-    legacy_default_rerank_model: Callable[[], str],
+    config_default_embed_model: Callable[[], str],
+    config_default_rerank_model: Callable[[], str],
     get_effective_rag_trigger_threshold: Callable[[], int],
     get_rag_required_keywords_from_module: Callable[[], list[str] | None],
 ) -> None:
@@ -266,8 +264,8 @@ def register_rag_pipeline_routes(
 
             settings_repo = get_settings_repository()
             default_provider_id = default_llm_provider_id()
-            default_embed_model = legacy_default_embed_model()
-            default_rerank_model = legacy_default_rerank_model()
+            default_embed_model = config_default_embed_model()
+            default_rerank_model = config_default_rerank_model()
 
             rag_embed_provider_id, rag_embed_model = read_app_provider_model_ref(
                 settings_repo,
@@ -335,7 +333,7 @@ def register_rag_pipeline_routes(
             body = request.get_json(force=True, silent=True) or {}
             settings_repo = get_settings_repository()
             default_provider_id = default_llm_provider_id()
-            default_rerank_model = legacy_default_rerank_model()
+            default_rerank_model = config_default_rerank_model()
 
             rag_embed_provider_id = str(body.get("rag_embed_provider_id") or "").strip() or default_provider_id
             rag_embed_model = str(body.get("rag_embed_model") or "").strip()
@@ -371,7 +369,7 @@ def register_rag_pipeline_routes(
 
             settings_repo.set_app_setting("proxy_settings", json.dumps(proxy_settings))
 
-            default_embed_model = legacy_default_embed_model()
+            default_embed_model = config_default_embed_model()
             retrieval_advanced = {k: retrieval_bool_with_ui_override(k) for k in sorted(RETRIEVAL_UI_BOOL_KEYS)}
             retrieval_yaml_defaults = {k: _retrieval_yaml_raw_bool(k) for k in sorted(RETRIEVAL_UI_BOOL_KEYS)}
             return jsonify(
@@ -519,7 +517,6 @@ def register_rag_qdrant_routes(
     *,
     error_log: Any,
     default_provider_row: Callable[[], dict[str, Any] | None],
-    get_ollama_url: Callable[[], str],
 ) -> None:
     @bp.route("/rag/status", methods=["GET"])
     def rag_status() -> Any:
@@ -544,15 +541,9 @@ def register_rag_qdrant_routes(
         }
         provider_row = default_provider_row()
         provider_health = provider_row.get("health") if isinstance(provider_row, dict) else None
-        if isinstance(provider_health, dict):
-            payload["ollama"] = {"running": bool(provider_health.get("ok"))}
-        else:
-            url_o = get_ollama_url().rstrip("/")
-            try:
-                ping_o = invoke_ping(base_url=url_o, timeout=1.0)
-                payload["ollama"] = {"running": bool(ping_o.get("ok"))}
-            except Exception:
-                payload["ollama"] = {"running": False}
+        payload["ollama"] = {
+            "running": bool(provider_health.get("ok")) if isinstance(provider_health, dict) else False
+        }
         payload["gpu"] = _get_gpu_metrics()
         payload["proxy_status"] = get_proxy_status_label()
         payload["latest_request_seconds"] = get_latest_request_seconds()

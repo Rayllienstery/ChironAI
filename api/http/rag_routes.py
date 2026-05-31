@@ -11,6 +11,8 @@ from __future__ import annotations
 import os
 import sys
 
+from typing import Any
+
 from flask import Flask, Response, jsonify
 
 # Ensure project root on path when running from api or WebUI.
@@ -124,6 +126,33 @@ def create_app(
         set_extensions_provider_registry(app, wiring.provider_registry)
     if getattr(wiring, "extension_manager", None) is not None:
         set_extensions_service(app, wiring.extension_manager)
+
+    from api.http.llm_runtime_access import ensure_llm_runtime_for_app, resolve_llm_runtime
+    from rag_service.infrastructure.runtime_hooks import set_llm_runtime_getter
+
+    def _app_llm_runtime() -> Any | None:
+        svc = get_extensions_service(app)
+        wiring_manager = getattr(wiring, "extension_manager", None)
+        manager = svc if svc is not None else wiring_manager
+        return resolve_llm_runtime(
+            extension_manager=manager,
+            llm_runtime=get_extensions_runtime(app, svc),
+            sync_bootstrap=True,
+        )
+
+    set_llm_runtime_getter(_app_llm_runtime)
+
+    extension_manager = getattr(wiring, "extension_manager", None)
+    if extension_manager is not None:
+        try:
+            from api.http.llm_runtime_access import resolve_llm_runtime
+
+            resolve_llm_runtime(extension_manager=extension_manager, sync_bootstrap=True)
+            _sync_llm_extension_runtime(app)
+        except Exception as exc:
+            import logging
+
+            logging.getLogger("trag.rag").warning("Startup LLM runtime bootstrap failed: %s", exc)
 
     _t_bp_start = _time.perf_counter()
     app.register_blueprint(create_v1_blueprint(wiring))

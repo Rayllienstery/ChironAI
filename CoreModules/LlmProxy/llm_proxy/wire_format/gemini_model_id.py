@@ -19,4 +19,3 @@ def is_gemini_family_model_name(model_name: str | None) -> bool:
     if not tokens:
         return False
     return any(tok.startswith("gemini") for tok in tokens)
-

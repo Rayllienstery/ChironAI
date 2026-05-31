@@ -24,7 +24,7 @@ def register_chat_routes(
     error_log: Any,
     provider_catalog_payload: Callable[..., dict[str, Any]],
     default_llm_provider_id: Callable[[], str],
-    legacy_default_chat_model: Callable[[], str],
+    config_default_chat_model: Callable[[], str],
     run_unified_proxy_chat: Callable[[dict[str, Any]], Any],
     set_proxy_status: Callable[[str], None],
     set_latest_request_seconds: Callable[[float], None],
@@ -53,7 +53,7 @@ def register_chat_routes(
                     }
                 )
             if not models_list:
-                model_name = legacy_default_chat_model()
+                model_name = config_default_chat_model()
                 models_list.append(
                     {
                         "id": model_name,
@@ -96,7 +96,7 @@ def register_chat_routes(
                 "context_total_chars": get_rag_int("context_total_chars", 7000),
                 "top_k": get_rag_int("top_k", 4),
                 "confidence_threshold": get_rag_float("confidence_threshold", 0.75),
-                "model_name": legacy_default_chat_model(),
+                "model_name": config_default_chat_model(),
             })
         except Exception as e:
             error_log.error("webui_chat_routes.get_config", exc_info=True)

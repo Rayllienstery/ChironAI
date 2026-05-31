@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from infrastructure.ollama.openai_ollama_tool_bridge import (
+from rag_service.infrastructure.openai_ollama_tool_bridge import (
     arguments_to_ollama_object,
     arguments_to_openai_string,
     openai_finish_reason_from_ollama,

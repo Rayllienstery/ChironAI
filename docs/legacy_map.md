@@ -66,21 +66,20 @@ implementation delegates to `ollama-provider` through `LLMRuntime` operation
 `raw_ollama`; direct upstream HTTP remains as a fallback when the extension
 runtime is still loading or unavailable.
 
-## G) Ollama compatibility adapters
+## G) LLM provider boundary (formerly direct Ollama in core)
 
-- Root `infrastructure/ollama/*` — classified in
-  [`infrastructure/ollama/README.md`](../infrastructure/ollama/README.md).
-  Duplicate RagService `rag_service.infrastructure.ollama_*` modules remain for
-  standalone operation and fallback tests.
-- New provider behavior belongs in the `chironai-extension-ollama-provider`
-  repository first. `extensions/bundled/ollama-provider` is a trusted
-  bootstrap/offline mirror only.
-- New app call sites should use `LLMRuntime`, provider catalog/actions, or a
-  clearly documented compatibility adapter.
+- Root `infrastructure/ollama/*` and `rag_service.infrastructure.ollama_*` were
+  removed; provider behavior belongs in `chironai-extension-ollama-provider`
+  (`extensions/bundled/ollama-provider` is the trusted bootstrap mirror).
+- Core embed/rerank/chat use `rag_service.infrastructure.provider_runtime` over
+  `LLMRuntime` (`runtime_hooks` registers the runtime from the main app).
+- LlmProxy wire-format helpers live under `llm_proxy/wire_format/` and
+  `rag_service.infrastructure.openai_*` for public HTTP compatibility only.
+- Config keeps deprecated `get_ollama_*` env/yaml names; app code should prefer
+  `get_default_chat_model`, `get_default_embed_model`, `get_default_rerank_model`.
 
-Guardrail: `tests/application/test_ollama_migration_guardrails.py` rejects new
-direct `infrastructure.ollama` imports unless the file is explicitly allowlisted
-as a compatibility or test boundary.
+Guardrail: `tests/application/test_ollama_migration_guardrails.py` rejects any
+`from infrastructure.ollama` import in core trees.
 
 ## D) Retrieval mode compatibility
 

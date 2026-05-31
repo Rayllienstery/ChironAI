@@ -1,5 +1,5 @@
 import re
-from typing import Optional, Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 PRIMARY_BRAND_RULES: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"deepseek", re.IGNORECASE), "deepseek"),

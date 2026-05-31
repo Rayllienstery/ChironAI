@@ -31,7 +31,7 @@ def register_model_tester_routes(
     default_llm_provider_id: Callable[[], str],
     read_app_provider_model_ref: Callable[..., tuple[str, str]],
     get_qdrant_collection_names: Callable[[], list[str]],
-    legacy_default_chat_model: Callable[[], str],
+    config_default_chat_model: Callable[[], str],
 ) -> None:
     @bp.route("/model-settings", methods=["GET"])
     def get_model_settings() -> Any:
@@ -345,7 +345,7 @@ def register_model_tester_routes(
             except Exception:
                 confidence_threshold = 0.75
             try:
-                model_name = legacy_default_chat_model()
+                model_name = config_default_chat_model()
             except Exception:
                 model_name = ""
 

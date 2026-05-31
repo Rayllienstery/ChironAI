@@ -214,6 +214,21 @@ def get_ollama_embed_url() -> str:
     )
 
 
+def get_default_chat_model() -> str:
+    """Default chat model id from env/yaml (compat env: ``OLLAMA_CHAT_MODEL``)."""
+    return get_ollama_chat_model()
+
+
+def get_default_embed_model() -> str:
+    """Default embed model id from env/yaml (compat env: ``RAG_EMBED_MODEL``)."""
+    return get_ollama_embed_model()
+
+
+def get_default_rerank_model() -> str:
+    """Default rerank model id from env/yaml (compat env: ``OLLAMA_RERANK_MODEL``)."""
+    return get_ollama_rerank_model()
+
+
 def get_ollama_chat_model() -> str:
     """Return chat model name, allowing env override. Empty string means 'not configured'."""
     if _rsc is not None:

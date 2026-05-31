@@ -173,6 +173,15 @@ def run_chat_completions(
     w.set_current_trace(trace)
 
     try:
+        from api.http.llm_runtime_access import resolve_llm_runtime
+
+        extension_manager = getattr(w, "extension_manager", None)
+        if extension_manager is not None:
+            resolve_llm_runtime(extension_manager=extension_manager, sync_bootstrap=True)
+    except Exception as exc:
+        _RAG_LOG.warning("LLM runtime preflight before chat completions failed: %s", exc)
+
+    try:
         if body_override is not None:
             body = dict(body_override)
         else:
@@ -759,8 +768,9 @@ def run_chat_completions(
         effective_confidence_threshold = req_params.confidence_threshold
         effective_ollama_model = req_params.model_name
         effective_rag_repo = req_deps.rag_repo
-        effective_embed_provider = req_deps.embed_provider
-        effective_base_rerank_client = req_deps.rerank_client
+        # Keep wiring runtime-backed embed/rerank (collection override must not drop extension runtime).
+        effective_embed_provider = embed_provider
+        effective_base_rerank_client = rerank_client
         if dumb_build_pipeline and proxy_model_setting:
             effective_ollama_model = proxy_model_setting
         actual_model = (

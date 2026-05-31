@@ -6,19 +6,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-ALLOWED_INFRASTRUCTURE_OLLAMA_IMPORT_FILES = {
-    "api/http/webui_rag_routes.py",
-    "CoreModules/LlmProxy/llm_proxy/ollama_compat.py",
-    "infrastructure/ollama/__init__.py",
-    "infrastructure/ollama/chat_client.py",
-    "infrastructure/ollama/embed_client.py",
-    "infrastructure/ollama/rerank_client.py",
-    "tests/api/test_http_endpoints.py",
-    "tests/infrastructure/test_ollama_chat_client_stream_merge.py",
-    "tests/infrastructure/test_ollama_cli_runner.py",
-    "tests/llm_proxy/test_openai_ollama_tool_bridge.py",
-}
-
 IMPORT_RE = re.compile(r"^\s*(?:from\s+infrastructure\.ollama\b|import\s+infrastructure\.ollama\b)", re.MULTILINE)
 CHECKBOX_RE = re.compile(r"^\s*-\s\[[ x]\]\s+\S")
 
@@ -31,12 +18,7 @@ def _python_files() -> list[Path]:
     return out
 
 
-def test_allowlisted_infrastructure_ollama_import_files_exist() -> None:
-    missing = [rel for rel in ALLOWED_INFRASTRUCTURE_OLLAMA_IMPORT_FILES if not (ROOT / rel).is_file()]
-    assert missing == []
-
-
-def test_no_new_direct_infrastructure_ollama_imports_without_allowlist() -> None:
+def test_no_direct_infrastructure_ollama_imports() -> None:
     offenders: list[str] = []
     for path in _python_files():
         rel = path.relative_to(ROOT).as_posix()
@@ -44,7 +26,7 @@ def test_no_new_direct_infrastructure_ollama_imports_without_allowlist() -> None
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             text = path.read_text(encoding="utf-8-sig")
-        if IMPORT_RE.search(text) and rel not in ALLOWED_INFRASTRUCTURE_OLLAMA_IMPORT_FILES:
+        if IMPORT_RE.search(text):
             offenders.append(rel)
 
     assert offenders == []

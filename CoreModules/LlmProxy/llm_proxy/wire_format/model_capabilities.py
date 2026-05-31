@@ -1,4 +1,4 @@
-"""Discover Ollama model features via POST /api/show (capabilities array), with a short TTL cache."""
+"""Discover provider-native model capabilities via POST /api/show, with a short TTL cache."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def fetch_ollama_capabilities(*, model: str, chat_url: str, timeout: float = 8.0
         r.raise_for_status()
         data = r.json()
     except Exception as e:
-        _LOG.debug("ollama /api/show failed model=%s: %s", name, e)
+        _LOG.debug("provider /api/show failed model=%s: %s", name, e)
         return None
     if not isinstance(data, dict):
         return None
@@ -65,12 +65,10 @@ def caps_supports_tools(caps: frozenset[str]) -> bool:
 
 
 def caps_supports_thinking(caps: frozenset[str]) -> bool:
-    # Ollama uses "thinking" in docs/examples; keep "think" for forward/alternate builds.
     return "thinking" in caps or "think" in caps
 
 
 def ollama_native_think_troublesome_model(model_name: str | None) -> bool:
-    """Qwen3 + native think often yields placeholder-only output; match LlmProxy behavior."""
     return "qwen3" in (model_name or "").lower()
 
 

@@ -108,54 +108,21 @@ _RAG_LOG = logging.getLogger("trag.rag")
 DEFAULT_LLM_PROVIDER_ID = "ollama"
 
 
-class _RuntimeResolvingChatClient:
-    """Chat-client bridge that switches to the extension runtime once it is ready."""
+def _runtime_resolving_chat_client(
+    *,
+    extension_manager: Any | None,
+    llm_runtime: Any | None,
+    provider_id: str | None,
+    fallback: Any | None = None,
+) -> Any:
+    from rag_service.infrastructure.provider_runtime import RuntimeResolvingChatClient  # noqa: PLC0415
 
-    def __init__(
-        self,
-        *,
-        delegate: Any,
-        extension_manager: Any | None,
-        runtime: Any | None,
-        provider_id: str | None,
-    ) -> None:
-        self._delegate = delegate
-        self._extension_manager = extension_manager
-        self._runtime = runtime
-        self._provider_id = provider_id or DEFAULT_LLM_PROVIDER_ID
-        self._url = getattr(delegate, "_url", None)
-        self._default_options = dict(getattr(delegate, "_default_options", None) or {})
-
-    def _resolved_runtime(self) -> Any | None:
-        if self._runtime is not None:
-            return self._runtime
-        manager = self._extension_manager
-        if manager is None:
-            return None
-        return getattr(manager, "runtime", None)
-
-    def _client(self) -> Any:
-        runtime = self._resolved_runtime()
-        if runtime is None:
-            return self._delegate
-        from llm_interactor import RuntimeBackedChatClient  # noqa: PLC0415
-
-        return RuntimeBackedChatClient(
-            runtime,
-            provider_id=self._provider_id,
-            upstream_url=self._url,
-            default_options=self._default_options,
-            delegate=self._delegate,
-        )
-
-    def chat(self, *args: Any, **kwargs: Any) -> Any:
-        return self._client().chat(*args, **kwargs)
-
-    def stream_chat(self, *args: Any, **kwargs: Any) -> Any:
-        return self._client().stream_chat(*args, **kwargs)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._client(), name)
+    return RuntimeResolvingChatClient(
+        runtime_getter=lambda: _extension_runtime_getter(extension_manager, llm_runtime),
+        runtime=llm_runtime,
+        provider_id=provider_id or DEFAULT_LLM_PROVIDER_ID,
+        fallback=fallback,
+    )
 
 
 def _get_proxy_rerank_enabled_for_proxy() -> bool:
@@ -309,13 +276,13 @@ def _external_docs_bundle() -> LlmProxyExternalDocsBundle:
 
 
 def _extension_runtime_getter(extension_manager: Any | None, llm_runtime: Any | None) -> Any | None:
-    # llm_runtime is currently always None (ExtensionsHost not yet implemented).
-    # Kept as a parameter so the signature remains forward-compatible.
-    if llm_runtime is not None:
-        return llm_runtime
-    if extension_manager is None:
-        return None
-    return getattr(extension_manager, "runtime", None)
+    from api.http.llm_runtime_access import resolve_llm_runtime
+
+    return resolve_llm_runtime(
+        extension_manager=extension_manager,
+        llm_runtime=llm_runtime,
+        sync_bootstrap=True,
+    )
 
 
 def _runtime_backed_embed_provider(
@@ -325,14 +292,21 @@ def _runtime_backed_embed_provider(
     llm_runtime: Any | None,
     provider_id: str | None,
 ) -> Any:
-    if extension_manager is None and llm_runtime is None:
-        return delegate
     from rag_service.infrastructure.provider_runtime import RuntimeBackedEmbeddingProvider  # noqa: PLC0415
 
+    model = getattr(delegate, "_model", None) or getattr(delegate, "model", None)
+    if not model:
+        try:
+            from config import get_default_embed_model
+
+            model = get_default_embed_model()
+        except Exception:
+            model = None
     return RuntimeBackedEmbeddingProvider(
         runtime_getter=lambda: _extension_runtime_getter(extension_manager, llm_runtime),
+        runtime=llm_runtime,
         provider_id=provider_id or DEFAULT_LLM_PROVIDER_ID,
-        delegate=delegate,
+        model=model,
     )
 
 
@@ -343,14 +317,21 @@ def _runtime_backed_rerank_client(
     llm_runtime: Any | None,
     provider_id: str | None,
 ) -> Any:
-    if extension_manager is None and llm_runtime is None:
-        return delegate
     from rag_service.infrastructure.provider_runtime import RuntimeBackedRerankClient  # noqa: PLC0415
 
+    model = getattr(delegate, "_model", None) or getattr(delegate, "model", None)
+    if not model:
+        try:
+            from config import get_default_rerank_model
+
+            model = get_default_rerank_model()
+        except Exception:
+            model = None
     return RuntimeBackedRerankClient(
         runtime_getter=lambda: _extension_runtime_getter(extension_manager, llm_runtime),
+        runtime=llm_runtime,
         provider_id=provider_id or DEFAULT_LLM_PROVIDER_ID,
-        delegate=delegate,
+        model=model,
     )
 
 
@@ -431,14 +412,32 @@ def _build_extension_manager(
         _RAG_LOG.warning("DockerManager unavailable for LlmInteractor extensions: %s", e)
         docker_runtime = None
 
+    host_metadata: dict[str, Any] = {"source": "api.http.llm_proxy_wiring"}
+    try:
+        from config import (
+            get_default_embed_model,
+            get_default_rerank_model,
+            get_ollama_base_url,
+            get_ollama_chat_url,
+        )
+
+        host_metadata.update(
+            {
+                "base_url": get_ollama_base_url(),
+                "chat_url": get_ollama_chat_url(),
+                "embed_model": get_default_embed_model(),
+                "rerank_model": get_default_rerank_model(),
+            }
+        )
+    except Exception as meta_exc:
+        _RAG_LOG.warning("Ollama host metadata unavailable for extensions: %s", meta_exc)
+
     host_context = ProviderHostContext(
         project_root=_workspace_root(),
         get_settings_repository=get_settings_repository,
         chat_client=deps.chat_client,
         docker_runtime=docker_runtime,
-        metadata={
-            "source": "api.http.llm_proxy_wiring",
-        },
+        metadata=host_metadata,
     )
     github_token = get_github_token() or None
     manager = ExtensionManager(
@@ -457,19 +456,26 @@ def _build_extension_manager(
         default_provider_id=DEFAULT_LLM_PROVIDER_ID,
     )
     service = ExtensionManagementService(manager)
-    service.start_background_bootstrap()
-    runtime_chat_client = _RuntimeResolvingChatClient(
-        delegate=deps.chat_client,
+    llm_runtime = None
+    provider_registry = None
+    try:
+        service.bootstrap_runtime()
+        llm_runtime = service.runtime
+        provider_registry = service.registry
+        _RAG_LOG.info(
+            "Extension runtime bootstrap complete (status=%s)",
+            service.runtime_status,
+        )
+    except Exception as exc:
+        err = str(getattr(service, "runtime_error", "") or exc)
+        _RAG_LOG.warning("Extension runtime bootstrap failed at wiring: %s", err)
+    runtime_chat_client = _runtime_resolving_chat_client(
         extension_manager=service,
-        runtime=None,
+        llm_runtime=llm_runtime,
         provider_id=DEFAULT_LLM_PROVIDER_ID,
+        fallback=deps.chat_client,
     )
-    _RAG_LOG.info("Extension runtime bootstrap started in background")
-    # llm_runtime and provider_registry are intentionally None here.
-    # They will be populated by ExtensionsHost once that module is implemented
-    # (see docs/EXTENSIONS_PHASE1_CONTRACT.md).  The service facade exposes
-    # .runtime and .registry for callers that need them in the meantime.
-    return service, None, None, runtime_chat_client, DEFAULT_LLM_PROVIDER_ID
+    return service, llm_runtime, provider_registry, runtime_chat_client, DEFAULT_LLM_PROVIDER_ID
 
 
 def build_llm_proxy_wiring(

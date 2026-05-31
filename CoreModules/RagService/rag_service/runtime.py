@@ -1,7 +1,7 @@
 """Standalone runtime helpers for rag_service dependencies.
 
-Owns start/stop/status logic for Qdrant and Docker checks. Ollama is expected to be
-running already (ChironAI Ollama tab / Docker); this module no longer starts Ollama.
+Owns start/stop/status logic for Qdrant and Docker checks. LLM provider health is
+reported via the extension-backed runtime hook when the main app has registered it.
 """
 
 from __future__ import annotations
@@ -16,28 +16,13 @@ from urllib.parse import urlparse
 import requests
 
 from docker_manager import DockerContainerSpec, DockerManager
-from rag_service.config import get_ollama_chat_url, get_qdrant_url
+from rag_service.config import get_qdrant_url
 
-
-def _ollama_base_url_from_chat_url(chat_url: str) -> str:
-    chat = (chat_url or "").rstrip("/")
-    if chat.endswith("/api/chat"):
-        return chat[: -len("/api/chat")]
-    return chat
-
-
-def _ollama_listen_from_base(base_url: str, default_host: str) -> str:
-    base_url = (base_url or "").rstrip("/")
-    parsed = urlparse(base_url if "://" in base_url else f"http://{base_url}")
-    host = parsed.hostname or default_host
-    port = parsed.port or 11434
-    return f"{host}:{port}"
+DEFAULT_LLM_PROVIDER_ID = (os.getenv("DEFAULT_LLM_PROVIDER_ID") or "ollama").strip() or "ollama"
 
 
 @dataclass(frozen=True)
 class RagRuntimeConfig:
-    ollama_base_url: str
-    ollama_listen: str
     qdrant_http_url: str
     qdrant_container_name: str
     qdrant_image: str
@@ -50,19 +35,11 @@ class RagRuntimeConfig:
 
     @classmethod
     def from_env(cls) -> RagRuntimeConfig:
-        chat_url = get_ollama_chat_url()
-        ollama_base = _ollama_base_url_from_chat_url(chat_url)
-        parsed_ollama = urlparse(ollama_base if "://" in ollama_base else f"http://{ollama_base}")
-        default_host = parsed_ollama.hostname or os.getenv("OLLAMA_LISTEN_HOST", "127.0.0.1")
-        listen = os.getenv("OLLAMA_HOST_VALUE") or _ollama_listen_from_base(ollama_base, default_host)
-
         qdrant_url = get_qdrant_url().rstrip("/")
         parsed_qdrant = urlparse(qdrant_url if "://" in qdrant_url else f"http://{qdrant_url}")
         q_http_port = int(os.getenv("QDRANT_HOST_HTTP_PORT", str(parsed_qdrant.port or 6333)))
         q_grpc_port = int(os.getenv("QDRANT_HOST_GRPC_PORT", "6334"))
         return cls(
-            ollama_base_url=ollama_base.rstrip("/"),
-            ollama_listen=listen,
             qdrant_http_url=qdrant_url,
             qdrant_container_name=os.getenv("QDRANT_CONTAINER_NAME", "qdrant"),
             qdrant_image=os.getenv("QDRANT_IMAGE", "qdrant/qdrant:latest"),
@@ -78,23 +55,47 @@ class RagRuntimeConfig:
         )
 
 
-def ollama_ping(base_url: str, *, timeout: float = 5.0) -> dict[str, Any]:
-    base = base_url.rstrip("/")
-    url = f"{base}/api/tags"
-    result: dict[str, Any] = {"ok": False, "url": base}
+def llm_provider_health_snapshot(*, provider_id: str | None = None) -> dict[str, Any]:
+    """Report whether the extension-backed LLM runtime is available in this process."""
+    pid = (provider_id or DEFAULT_LLM_PROVIDER_ID).strip() or DEFAULT_LLM_PROVIDER_ID
     try:
-        r = requests.get(url, timeout=timeout)
-        result["status_code"] = r.status_code
-        result["ok"] = r.ok
-        return result
-    except requests.RequestException as e:
-        result["error"] = str(e)
-        return result
+        from rag_service.infrastructure.runtime_hooks import get_llm_runtime
+
+        runtime = get_llm_runtime()
+    except Exception as exc:
+        return {
+            "running": False,
+            "provider_id": pid,
+            "error": str(exc),
+        }
+    if runtime is None:
+        return {
+            "running": False,
+            "provider_id": pid,
+            "error": "LLM runtime unavailable (start ChironAI or bootstrap the provider extension)",
+        }
+    return {
+        "running": True,
+        "provider_id": pid,
+        "runtime_ready": True,
+    }
 
 
-def ollama_port_from_base_url(base_url: str, default_port: int = 11434) -> int:
-    parsed = urlparse(base_url if "://" in base_url else f"http://{base_url}")
-    return int(parsed.port or default_port)
+def ollama_ping(base_url: str, *, timeout: float = 5.0) -> dict[str, Any]:
+    """Deprecated: use ``llm_provider_health_snapshot`` (ignores ``base_url``)."""
+    del base_url, timeout
+    snap = llm_provider_health_snapshot()
+    return {
+        "ok": bool(snap.get("running")),
+        "url": None,
+        "status_code": 200 if snap.get("running") else None,
+        "error": snap.get("error"),
+    }
+
+
+def qdrant_port_from_url(url: str) -> int:
+    parsed = urlparse(url if "://" in url else f"http://{url}")
+    return int(parsed.port or 6333)
 
 
 def _docker_manager() -> DockerManager:
@@ -189,13 +190,8 @@ def wait_for_http_json(
     return False, last_err or "timeout"
 
 
-def qdrant_port_from_url(url: str) -> int:
-    parsed = urlparse(url if "://" in url else f"http://{url}")
-    return int(parsed.port or 6333)
-
-
 class RagRuntime:
-    """Owns start/stop/status for Qdrant and runtime health (including Ollama reachability)."""
+    """Owns start/stop/status for Qdrant and runtime health (LLM provider via extension runtime)."""
 
     def __init__(self, config: RagRuntimeConfig | None = None) -> None:
         self._cfg = config or RagRuntimeConfig.from_env()
@@ -206,7 +202,7 @@ class RagRuntime:
 
     def health(self) -> dict[str, Any]:
         cfg = self._cfg
-        ollama = ollama_ping(cfg.ollama_base_url, timeout=3.0)
+        llm = llm_provider_health_snapshot()
         docker_cli = False
         docker_engine = False
         docker_err: str | None = None
@@ -232,14 +228,14 @@ class RagRuntime:
         except Exception:
             pass
 
+        llm_component = {
+            "running": bool(llm.get("running")),
+            "provider_id": llm.get("provider_id"),
+            "error": llm.get("error"),
+        }
         return {
-            "ollama": {
-                "running": bool(ollama.get("ok")),
-                "port": ollama_port_from_base_url(cfg.ollama_base_url),
-                "url": cfg.ollama_base_url,
-                "http_status": ollama.get("status_code"),
-                "error": ollama.get("error"),
-            },
+            "llm_provider": llm_component,
+            "ollama": llm_component,
             "docker": {
                 "cli_available": docker_cli,
                 "engine_available": docker_engine,
@@ -274,14 +270,15 @@ class RagRuntime:
 
     def start_dependencies(self, services: list[str]) -> dict[str, Any]:
         results: dict[str, Any] = {}
-        _ollama_removed = (
+        _llm_removed = (
             False,
-            "Ollama Docker is started from the ChironAI app (Ollama tab); rag-service no longer starts it.",
+            "LLM provider is started from ChironAI (provider extension); rag-service no longer starts it.",
         )
         for name in services:
             n = name.strip().lower()
-            if n == "ollama":
-                results["ollama"] = _ollama_removed
+            if n in {"ollama", "llm", "llm_provider", "provider"}:
+                results["ollama"] = _llm_removed
+                results["llm_provider"] = _llm_removed
             elif n == "qdrant":
                 results["qdrant"] = self.start_qdrant()
             elif n == "docker":

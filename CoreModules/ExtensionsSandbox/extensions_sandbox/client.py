@@ -177,12 +177,15 @@ class ExtensionWorkerClient:
 
     def _chat_client_attrs(self) -> dict[str, Any]:
         chat = getattr(self.host_context, "chat_client", None)
-        if chat is None:
-            return {}
-        return {
-            "_url": str(getattr(chat, "_url", "") or ""),
-            "_model": str(getattr(chat, "_model", "") or ""),
-        }
+        url = str(getattr(chat, "_url", "") or "") if chat is not None else ""
+        model = str(getattr(chat, "_model", "") or "") if chat is not None else ""
+        metadata = getattr(self.host_context, "metadata", {}) or {}
+        if isinstance(metadata, dict):
+            if not url:
+                url = str(metadata.get("chat_url") or metadata.get("base_url") or "")
+            if not model:
+                model = str(metadata.get("default_chat_model") or metadata.get("chat_model") or "")
+        return {"_url": url, "_model": model}
 
     def _metadata_callables(self) -> list[str]:
         metadata = getattr(self.host_context, "metadata", {}) or {}

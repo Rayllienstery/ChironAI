@@ -96,13 +96,13 @@ except ImportError:
     save_pipeline = None  # type: ignore[assignment]
 
 
-def _legacy_default_embed_model() -> str:
+def _config_default_embed_model() -> str:
     try:
-        from config import get_ollama_embed_model
+        from config import get_default_embed_model
 
-        return str(get_ollama_embed_model() or "").strip()
+        return str(get_default_embed_model() or "").strip()
     except Exception:
-        return os.getenv("OLLAMA_EMBED_MODEL", "mxbai-embed-large:latest")
+        return os.getenv("RAG_EMBED_MODEL", "mxbai-embed-large:latest")
 
 
 def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
@@ -215,7 +215,7 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
             # Fallback order:
             # 1) app_settings.rag_embed_model (set from WebUI)
             # 2) legacy default embed model from config/env
-            embed_model = rag_embed_model or _legacy_default_embed_model()
+            embed_model = rag_embed_model or _config_default_embed_model()
     
         try:
             return _invoke_runtime_embed(

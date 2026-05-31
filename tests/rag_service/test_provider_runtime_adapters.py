@@ -66,7 +66,7 @@ def test_runtime_backed_embedding_provider_preserves_batch_count_errors() -> Non
         provider.embed_batch(["one", "two"])
 
 
-def test_runtime_backed_rerank_client_invokes_runtime_and_falls_back() -> None:
+def test_runtime_backed_rerank_client_skips_when_runtime_unavailable() -> None:
     runtime = _Runtime()
     client = RuntimeBackedRerankClient(runtime=runtime, model="rerank-model")
 
@@ -76,27 +76,15 @@ def test_runtime_backed_rerank_client_invokes_runtime_and_falls_back() -> None:
     assert request.rerank_query == "question"
     assert request.rerank_prompt == "prompt"
 
-    class Delegate:
-        def __init__(self) -> None:
-            self._model = "fallback-model"
-
-        def rerank(self, question: str, prompt_text: str) -> str:
-            return f"{self._model}:{question}:{prompt_text}"
-
-    fallback = RuntimeBackedRerankClient(runtime_getter=lambda: None, delegate=Delegate())
-    assert fallback.rerank("q", "p") == "fallback-model:q:p"
+    unavailable = RuntimeBackedRerankClient(runtime_getter=lambda: None, model="rerank-model")
+    assert unavailable.rerank("q", "p") is None
 
 
-def test_rag_container_can_supply_provider_backed_clients(monkeypatch: pytest.MonkeyPatch) -> None:
-    from llm_interactor import RuntimeBackedChatClient
+def test_rag_container_can_supply_provider_backed_clients() -> None:
     from rag_service.infrastructure import container
+    from rag_service.infrastructure.provider_runtime import RuntimeResolvingChatClient
 
     runtime = _Runtime()
-    monkeypatch.setattr(container, "get_ollama_embed_url", lambda: "http://example.test/api/embed")
-    monkeypatch.setattr(container, "get_ollama_generate_url", lambda: "http://example.test/api/generate")
-    monkeypatch.setattr(container, "get_ollama_chat_url", lambda: "http://example.test/api/chat")
-    monkeypatch.setattr(container, "get_ollama_chat_model", lambda: "chat-model")
-    monkeypatch.setattr(container, "get_ollama_rerank_model", lambda: "rerank-model")
 
     embed = container.default_embed_provider(runtime=runtime, model="embed-model")
     rerank = container.default_rerank_client(runtime=runtime, model="rerank-model")
@@ -104,4 +92,4 @@ def test_rag_container_can_supply_provider_backed_clients(monkeypatch: pytest.Mo
 
     assert isinstance(embed, RuntimeBackedEmbeddingProvider)
     assert isinstance(rerank, RuntimeBackedRerankClient)
-    assert isinstance(chat, RuntimeBackedChatClient)
+    assert isinstance(chat, RuntimeResolvingChatClient)

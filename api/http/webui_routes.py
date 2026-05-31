@@ -157,38 +157,29 @@ RAG_TRIGGER_HELP_ROWS = [
 ]
 
 
-def _get_ollama_url() -> str:
+def _config_default_chat_model() -> str:
     try:
-        from config import get_ollama_base_url
+        from config import get_default_chat_model
 
-        return get_ollama_base_url().rstrip("/")
-    except Exception:
-        return (os.getenv("OLLAMA_BASE_URL") or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
-
-
-def _legacy_default_chat_model() -> str:
-    try:
-        from config import get_ollama_chat_model
-
-        return str(get_ollama_chat_model() or "").strip()
+        return str(get_default_chat_model() or "").strip()
     except Exception:
         return ""
 
 
-def _legacy_default_embed_model() -> str:
+def _config_default_embed_model() -> str:
     try:
-        from config import get_ollama_embed_model
+        from config import get_default_embed_model
 
-        return str(get_ollama_embed_model() or "").strip()
+        return str(get_default_embed_model() or "").strip()
     except Exception:
         return ""
 
 
-def _legacy_default_rerank_model() -> str:
+def _config_default_rerank_model() -> str:
     try:
-        from config import get_ollama_rerank_model
+        from config import get_default_rerank_model
 
-        return str(get_ollama_rerank_model() or "").strip()
+        return str(get_default_rerank_model() or "").strip()
     except Exception:
         return ""
 
@@ -221,8 +212,8 @@ register_rag_pipeline_routes(
     error_log=_ERROR_LOG,
     default_llm_provider_id=_default_llm_provider_id,
     read_app_provider_model_ref=_read_app_provider_model_ref,
-    legacy_default_embed_model=_legacy_default_embed_model,
-    legacy_default_rerank_model=_legacy_default_rerank_model,
+    config_default_embed_model=_config_default_embed_model,
+    config_default_rerank_model=_config_default_rerank_model,
     get_effective_rag_trigger_threshold=_get_effective_rag_trigger_threshold,
     get_rag_required_keywords_from_module=_get_rag_required_keywords_from_module,
 )
@@ -230,14 +221,13 @@ register_rag_qdrant_routes(
     webui_bp,
     error_log=_ERROR_LOG,
     default_provider_row=_default_provider_row,
-    get_ollama_url=_get_ollama_url,
 )
 register_chat_routes(
     webui_bp,
     error_log=_ERROR_LOG,
     provider_catalog_payload=_provider_catalog_payload,
     default_llm_provider_id=_default_llm_provider_id,
-    legacy_default_chat_model=_legacy_default_chat_model,
+    config_default_chat_model=_config_default_chat_model,
     run_unified_proxy_chat=_run_unified_proxy_chat,
     set_proxy_status=set_proxy_status,
     set_latest_request_seconds=set_latest_request_seconds,
@@ -249,7 +239,7 @@ register_model_tester_routes(
     default_llm_provider_id=_default_llm_provider_id,
     read_app_provider_model_ref=_read_app_provider_model_ref,
     get_qdrant_collection_names=_get_qdrant_collection_names,
-    legacy_default_chat_model=_legacy_default_chat_model,
+    config_default_chat_model=_config_default_chat_model,
 )
 
 __all__ = ["webui_bp", "get_settings_repository", "LLM_PROXY_BUILDS_APP_KEY"]

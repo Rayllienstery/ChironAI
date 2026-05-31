@@ -19,10 +19,23 @@ def ollama_api_base_from_chat_url(chat_url: str) -> str:
 
 
 def get_configured_ollama_chat_url(wiring: Any) -> str:
-    chat_client = getattr(wiring.base, "chat_client", None)
-    url = getattr(chat_client, "_url", None) if chat_client is not None else None
-    if url:
-        return str(url)
+    chat_client = getattr(getattr(wiring, "base", None), "chat_client", None)
+    if chat_client is not None:
+        try:
+            from rag_service.infrastructure.provider_runtime import RuntimeResolvingChatClient
+
+            if isinstance(chat_client, RuntimeResolvingChatClient):
+                fb = chat_client._fallback
+                if fb is not None:
+                    url = getattr(fb, "_url", None)
+                    if url:
+                        return str(url)
+            else:
+                url = getattr(chat_client, "_url", None)
+                if url:
+                    return str(url)
+        except Exception:
+            pass
     try:
         from config import get_ollama_chat_url
 

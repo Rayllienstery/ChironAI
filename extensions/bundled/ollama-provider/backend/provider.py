@@ -111,6 +111,19 @@ def _as_int(raw: str | None, default: int) -> int:
         return default
 
 
+def _normalized_ollama_base_url(raw: str) -> str:
+    """Strip API path suffixes and ensure a scheme for Ollama HTTP base URLs."""
+    value = str(raw or "").strip().rstrip("/")
+    if not value:
+        return ""
+    for suffix in ("/api/chat", "/api/embed", "/api/generate"):
+        if value.endswith(suffix):
+            value = value[: -len(suffix)].rstrip("/")
+    if value and "://" not in value:
+        value = f"http://{value}"
+    return value.rstrip("/")
+
+
 class OllamaProvider:
     """Trusted provider and extension surface for Ollama-backed capabilities."""
 
@@ -180,24 +193,23 @@ class OllamaProvider:
             return self._invoke_embed(request)
         if request.operation == "rerank":
             return self._invoke_rerank(request)
-        if self._chat_client is None:
-            raise RuntimeError("chat_client is not available for Ollama provider")
         if request.operation == "chat":
-            kwargs: dict[str, Any] = {
+            payload: dict[str, Any] = {
+                "model": request.model,
+                "messages": list(request.messages or []),
                 "stream": bool(request.stream),
-                "options": request.options,
+                "options": dict(request.options or {}),
             }
             if request.think is not None:
-                kwargs["think"] = request.think
-            text = self._chat_client.chat(request.messages, request.model, **kwargs)
-            return LLMResponse(provider_id=self._provider_id, model=request.model, text=str(text or ""))
-        if request.operation == "chat_api":
-            payload = dict(request.body or {})
-            raw = self._chat_client.chat_api(payload)
+                payload["think"] = request.think
+            raw = self._invoke_chat_http(payload)
             message = raw.get("message") if isinstance(raw, dict) else {}
-            text = ""
-            if isinstance(message, dict):
-                text = str(message.get("content") or "")
+            text = str(message.get("content") or "") if isinstance(message, dict) else ""
+            return LLMResponse(provider_id=self._provider_id, model=request.model, text=text, raw=raw)
+        if request.operation == "chat_api":
+            raw = self._invoke_chat_http(dict(request.body or {}))
+            message = raw.get("message") if isinstance(raw, dict) else {}
+            text = str(message.get("content") or "") if isinstance(message, dict) else ""
             return LLMResponse(
                 provider_id=self._provider_id,
                 model=request.model,
@@ -210,76 +222,47 @@ class OllamaProvider:
         if request.operation == "raw_ollama":
             yield from self._stream_raw_ollama(request)
             return
-        if self._chat_client is None:
+        if not self._base_url():
             yield LLMStreamEvent(
                 provider_id=self._provider_id,
                 model=request.model,
                 type="error",
-                data="chat_client is not available for Ollama provider",
+                data="Ollama base URL is not configured",
             )
             return
-        if request.operation == "chat_api_stream_events":
-            stream_fn = getattr(self._chat_client, "iter_chat_api_stream_events", None)
-            if callable(stream_fn):
-                for kind, data in stream_fn(dict(request.body or {})):
+        if request.operation in {"chat_api_stream_events", "chat"}:
+            body = dict(request.body or {})
+            if request.operation == "chat":
+                body = {
+                    "model": request.model,
+                    "messages": list(request.messages or []),
+                    "stream": True,
+                    "options": dict(request.options or {}),
+                }
+                if request.think is not None:
+                    body["think"] = request.think
+            try:
+                for kind, data in self._iter_ollama_chat_http_events(body):
                     yield LLMStreamEvent(
                         provider_id=self._provider_id,
                         model=request.model,
                         type=str(kind),
                         data=data,
                     )
-                return
-            final_fn = getattr(self._chat_client, "chat_api_stream_final", None)
-            if callable(final_fn):
-                data = final_fn({**dict(request.body or {}), "stream": False})
-                yield from self._yield_chat_api_events(request.model, data)
-                return
-            chat_api_fn = getattr(self._chat_client, "chat_api", None)
-            if callable(chat_api_fn):
-                data = chat_api_fn({**dict(request.body or {}), "stream": False})
-                yield from self._yield_chat_api_events(request.model, data)
-                return
-        payload = dict(request.body or {})
-        payload.setdefault("messages", list(request.messages))
-        payload.setdefault("model", request.model)
-        payload.setdefault("stream", True)
-        stream_fn = getattr(self._chat_client, "iter_chat_api_stream_events", None)
-        if callable(stream_fn):
-            for kind, data in stream_fn(payload):
+            except Exception as e:
                 yield LLMStreamEvent(
                     provider_id=self._provider_id,
                     model=request.model,
-                    type=str(kind),
-                    data=data,
+                    type="error",
+                    data=str(e),
                 )
             return
-        try:
-            kwargs: dict[str, Any] = {
-                "stream": False,
-                "options": payload.get("options"),
-            }
-            if payload.get("think") is not None:
-                kwargs["think"] = payload.get("think")
-            text = self._chat_client.chat(
-                payload.get("messages") or [],
-                payload.get("model") or request.model,
-                **kwargs,
-            )
-            if text:
-                yield LLMStreamEvent(
-                    provider_id=self._provider_id,
-                    model=request.model,
-                    type="content_delta",
-                    data=str(text),
-                )
-            yield LLMStreamEvent(provider_id=self._provider_id, model=request.model, type="done", data={})
-        except Exception as e:
-            yield LLMStreamEvent(
-                provider_id=self._provider_id,
-                model=request.model,
-                type="error",
-                data=str(e),
-            )
+        yield LLMStreamEvent(
+            provider_id=self._provider_id,
+            model=request.model,
+            type="error",
+            data=f"Unsupported stream operation: {request.operation}",
+        )
 
     def get_tab_descriptor(self, *, runtime: Any | None = None) -> dict[str, Any]:
         frame = _tab_frame(self._manifest)
@@ -781,14 +764,37 @@ class OllamaProvider:
             "details": {},
         }
 
+    def _docker_container_name_candidates(self) -> list[str]:
+        import os
+
+        primary = self._docker_container_name()
+        names = [primary]
+        if not (os.getenv("OLLAMA_CONTAINER_NAME") or "").strip():
+            for alt in ("chironai-ollama", "ollama"):
+                if alt not in names:
+                    names.append(alt)
+        return names
+
+    def _inspect_docker_container(self, docker: Any, container_name: str) -> tuple[bool | None, bool | None]:
+        inspect = getattr(docker, "inspect_container", None)
+        if callable(inspect):
+            state = inspect(container_name)
+            exists = bool(getattr(state, "exists", False))
+            running = bool(getattr(state, "running", False)) if exists else False
+            return exists, running
+        exists_fn = getattr(docker, "container_exists", None)
+        running_fn = getattr(docker, "container_running", None)
+        exists = bool(exists_fn(container_name)) if callable(exists_fn) else None
+        running = bool(running_fn(container_name)) if callable(running_fn) and exists else False
+        return exists, running
+
     def _docker_state_snapshot(self) -> dict[str, Any]:
-        container_name = self._docker_container_name()
         image = self._docker_image()
         docker = self._docker_runtime()
         if docker is None:
             return {
                 "available": False,
-                "container_name": container_name,
+                "container_name": self._docker_container_name(),
                 "image": image,
                 "exists": None,
                 "running": None,
@@ -797,18 +803,15 @@ class OllamaProvider:
                 "action_hint": "refresh",
             }
 
+        container_name = self._docker_container_name()
+        exists: bool | None = None
+        running: bool | None = None
         try:
-            state = None
-            inspect = getattr(docker, "inspect_container", None)
-            if callable(inspect):
-                state = inspect(container_name)
-                exists = bool(getattr(state, "exists", False))
-                running = bool(getattr(state, "running", False)) if exists else False
-            else:
-                exists_fn = getattr(docker, "container_exists", None)
-                running_fn = getattr(docker, "container_running", None)
-                exists = bool(exists_fn(container_name)) if callable(exists_fn) else None
-                running = bool(running_fn(container_name)) if callable(running_fn) and exists else False
+            for candidate in self._docker_container_name_candidates():
+                exists, running = self._inspect_docker_container(docker, candidate)
+                if exists:
+                    container_name = candidate
+                    break
         except Exception as e:
             return {
                 "available": True,
@@ -954,6 +957,52 @@ class OllamaProvider:
         except Exception as e:
             return {"ok": False, "message": str(e), "error": str(e), "details": {}}
 
+    def _invoke_chat_http(self, body: dict[str, Any], *, timeout: float = 600.0) -> dict[str, Any]:
+        base = self._base_url()
+        if not base:
+            raise RuntimeError("Ollama base URL is not configured")
+        payload = dict(body or {})
+        payload.setdefault("stream", False)
+        return invoke_raw_json(
+            base_url=base,
+            api_segment="chat",
+            method="POST",
+            body=payload,
+            timeout=timeout,
+        )
+
+    def _iter_ollama_chat_http_events(self, body: dict[str, Any]) -> Iterator[tuple[str, Any]]:
+        import json
+
+        base = self._base_url()
+        if not base:
+            raise RuntimeError("Ollama base URL is not configured")
+        payload = {**dict(body or {}), "stream": True}
+        for line in iter_raw_lines(
+            base_url=base,
+            api_segment="chat",
+            body=payload,
+            read_timeout=900.0,
+        ):
+            try:
+                chunk = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(chunk, dict):
+                continue
+            message = chunk.get("message") if isinstance(chunk.get("message"), dict) else {}
+            thinking = message.get("thinking") if isinstance(message, dict) else None
+            if thinking:
+                yield ("thinking_delta", str(thinking))
+            content = message.get("content") if isinstance(message, dict) else None
+            if content:
+                yield ("content_delta", str(content))
+            tool_calls = message.get("tool_calls") if isinstance(message, dict) else None
+            if isinstance(tool_calls, list) and tool_calls:
+                yield ("tool_calls", tool_calls)
+            if chunk.get("done"):
+                yield ("done", chunk)
+
     def _yield_chat_api_events(self, model: str, data: Any) -> Iterator[LLMStreamEvent]:
         payload = data if isinstance(data, dict) else {}
         message = payload.get("message") if isinstance(payload.get("message"), dict) else {}
@@ -981,10 +1030,31 @@ class OllamaProvider:
         )
 
     def _base_url(self) -> str:
-        raw = str(getattr(self._chat_client, "_url", "") or "").rstrip("/")
-        if raw.endswith("/api/chat"):
-            return raw[: -len("/api/chat")]
-        return raw
+        host_meta = getattr(self._host, "metadata", None)
+        if isinstance(host_meta, dict):
+            for key in ("base_url", "ollama_base_url"):
+                from_host = _normalized_ollama_base_url(str(host_meta.get(key) or ""))
+                if from_host:
+                    return from_host
+            from_chat_url = _normalized_ollama_base_url(str(host_meta.get("chat_url") or ""))
+            if from_chat_url:
+                return from_chat_url
+        from_chat = _normalized_ollama_base_url(str(getattr(self._chat_client, "_url", "") or ""))
+        if from_chat:
+            return from_chat
+        import os
+
+        for key in ("OLLAMA_BASE_URL", "OLLAMA_CHAT_URL"):
+            from_env = _normalized_ollama_base_url(os.getenv(key) or "")
+            if from_env:
+                return from_env
+        host = (os.getenv("OLLAMA_HOST") or "").strip()
+        if host:
+            from_host = _normalized_ollama_base_url(host)
+            if from_host:
+                return from_host
+        port = _as_int(os.getenv("OLLAMA_PORT"), 11434)
+        return f"http://localhost:{port}"
 
     def _embed_url(self) -> str:
         base = self._base_url().rstrip("/")

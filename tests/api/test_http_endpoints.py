@@ -697,9 +697,24 @@ def test_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("infrastructure.stack_health.requests.get", fake_get)
 
+    class _HealthyProviderExtensions:
+        runtime = object()
+
+        def provider_rows(self, _runtime: Any) -> list[dict[str, Any]]:
+            return [
+                {
+                    "provider_id": "ollama",
+                    "extension_id": "ollama-provider",
+                    "title": "Ollama",
+                    "health": {"ok": True, "status": "ok", "message": "", "details": {}},
+                }
+            ]
+
     from api.http.rag_routes import create_app
 
-    client = create_app().test_client()
+    app = create_app()
+    _set_extensions_app_state(app, service=_HealthyProviderExtensions(), runtime=_HealthyProviderExtensions.runtime)
+    client = app.test_client()
     r = client.get("/health")
     assert r.status_code == 200
     data = r.get_json() or {}
@@ -1993,7 +2008,7 @@ def test_chat_completions_native_tools_passthrough_skips_argument_normalize(
         )
 
         def _prepare_native(request: Any, *_a: Any, **kw: Any) -> tuple[list[dict[str, Any]], str]:
-            from infrastructure.ollama.openai_ollama_tool_bridge import openai_messages_to_ollama
+            from rag_service.infrastructure.openai_ollama_tool_bridge import openai_messages_to_ollama
 
             if kw.get("native_tools"):
                 oll = openai_messages_to_ollama([m for m in request.messages if isinstance(m, dict)])
@@ -3632,7 +3647,7 @@ def test_trailing_noop_after_success_does_not_block_noop_counter(
     )
 
     def _prepare_trailing(request: Any, *_a: Any, **kw: Any) -> tuple[list[dict[str, Any]], str]:
-        from infrastructure.ollama.openai_ollama_tool_bridge import openai_messages_to_ollama
+        from rag_service.infrastructure.openai_ollama_tool_bridge import openai_messages_to_ollama
 
         if kw.get("native_tools"):
             oll = openai_messages_to_ollama([m for m in request.messages if isinstance(m, dict)])
@@ -5004,7 +5019,7 @@ def test_native_tools_stream_trace_includes_tokens_estimates_and_latency(
     )
 
     def _prepare_native(request: Any, *_a: Any, **kw: Any) -> tuple[list[dict[str, Any]], str]:
-        from infrastructure.ollama.openai_ollama_tool_bridge import openai_messages_to_ollama
+        from rag_service.infrastructure.openai_ollama_tool_bridge import openai_messages_to_ollama
 
         if kw.get("native_tools"):
             oll = openai_messages_to_ollama([m for m in request.messages if isinstance(m, dict)])
@@ -5084,7 +5099,7 @@ def test_native_tools_finalize_nudge_stays_in_initial_system_message(
     )
 
     def _prepare_native(request: Any, *_a: Any, **kw: Any) -> tuple[list[dict[str, Any]], str]:
-        from infrastructure.ollama.openai_ollama_tool_bridge import openai_messages_to_ollama
+        from rag_service.infrastructure.openai_ollama_tool_bridge import openai_messages_to_ollama
 
         if kw.get("native_tools"):
             oll = openai_messages_to_ollama([m for m in request.messages if isinstance(m, dict)])
