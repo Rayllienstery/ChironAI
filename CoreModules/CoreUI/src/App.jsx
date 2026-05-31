@@ -41,9 +41,11 @@ function isChunkLoadLikeError(error) {
 
 function lazyWithRetry(key, importer) {
   const storageKey = `coreui-lazy-retried:${String(key)}`;
-  return lazy(() =>
-    importer()
+  return lazy(() => {
+    const t0 = performance.now();
+    return importer()
       .then((mod) => {
+        recordModuleLoad(key, performance.now() - t0, "ok");
         try {
           window.sessionStorage.removeItem(storageKey);
         } catch {
@@ -52,6 +54,7 @@ function lazyWithRetry(key, importer) {
         return mod;
       })
       .catch((error) => {
+        recordModuleLoad(key, performance.now() - t0, "failed");
         if (isChunkLoadLikeError(error)) {
           try {
             const alreadyRetried = window.sessionStorage.getItem(storageKey) === "1";
@@ -66,8 +69,8 @@ function lazyWithRetry(key, importer) {
           }
         }
         throw error;
-      })
-  );
+      });
+  });
 }
 
 const DashboardTab = lazyWithRetry("DashboardTab", () => import("./components/DashboardTab"));
@@ -101,6 +104,7 @@ import {
   cancelRagTestRun,
   postBrowserTiming,
 } from "./services/api";
+import { recordModuleLoad } from "./services/moduleTimings";
 import Sparkline from "./components/Sparkline";
 import { NotificationCenterProvider } from "./components/NotificationCenterContext";
 import NotificationCenterShell from "./components/NotificationCenterShell";
@@ -118,19 +122,18 @@ import "./styles/components/StandByScreen.css";
 
 const METRICS_HISTORY_LEN = 30;
 
-function AppLoadingState({ submessage }) {
+function AppLoadingState({ moduleName }) {
   return (
     <StandByScreen
-      message="Stand by"
-      submessage={submessage}
+      moduleName={moduleName}
       icon="progress_activity"
       size="md"
     />
   );
 }
 
-function TabLoadingFallback() {
-  return <AppLoadingState submessage="Loading tab…" />;
+function TabLoadingFallback({ moduleName }) {
+  return <AppLoadingState moduleName={moduleName} />;
 }
 
 function clampServiceStatusPollSec(raw) {
@@ -555,6 +558,7 @@ function App() {
     { id: "dev-documentation", label: "Dev Documentation", section: "Developer Tools" },
     { id: "performance", label: "Performance", section: "Developer Tools" },
   ];
+  const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || activeTab;
 
   const renderTabContent = () => {
     const activeExtensionTab = extensionTabs.find((tab) => tab.id === activeTab);
@@ -737,7 +741,7 @@ function App() {
         <main className="app-main">
           {sessionId ? (
             <TabErrorBoundary>
-              <Suspense fallback={<TabLoadingFallback />}>
+              <Suspense fallback={<TabLoadingFallback moduleName={activeTabLabel} />}>
                 {renderTabContent()}
               </Suspense>
             </TabErrorBoundary>
@@ -749,7 +753,7 @@ function App() {
               </button>
             </div>
           ) : (
-            <AppLoadingState submessage="Initializing session…" />
+            <AppLoadingState moduleName="Session Manager" />
           )}
         </main>
       </div>

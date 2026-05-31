@@ -61,7 +61,7 @@ The repository root is an installable project **`chironai`** ([`pyproject.toml`]
 - **Editable install**: `pip install -e ".[dev]"` installs top-level packages (`application`, `api`, `config`, `core`, `domain`, `infrastructure`, `utils`) and console scripts `tmrag` / `chironai`.
 - **`modules/*`**: treated as separate subtrees (many already ship their own README / layout). They are on `sys.path` for tests via pytest `pythonpath`, not necessarily part of the `chironai` distribution—add them to setuptools `packages.find` only if you want a single wheel to include everything.
 - **`CoreModules/OllamaInteractor`**: separate distribution `ollama-interactor`; temporary compatibility adapters and the `ollama-provider` extension HTTP helper may invoke it for Ollama REST calls. The canonical extension source is its dedicated GitHub repository; `extensions/bundled/ollama-provider` is only a bootstrap/offline mirror.
-- **`CoreModules/ServiceStarter`**: separate distribution `service-starter`; Docker Desktop + host-level dependency helpers remain available as host capabilities. App-level Ollama start/stop/status UX belongs to the `ollama-provider` extension, which receives Docker access through `host_context.docker_runtime`.
+- **`CoreModules/DockerManager`**: separate distribution `docker-manager`; provides Docker host capabilities to service-owning extensions and runtime helpers. App-level Ollama start/stop/status UX belongs to the `ollama-provider` extension, which receives Docker access through `host_context.docker_runtime`.
 - **`CoreModules/LlmProxy`**: separate distribution `llm-proxy`; OpenAI-compatible `/v1` HTTP surface plus **Anthropic-compatible** `POST /v1/messages` and multiplexed `GET /v1/models` (via `anthropic-version` header), sharing the same RAG pipeline as `chat/completions`; also apply-edit and external-docs ingest. The host app supplies a `LlmProxyWiring` built in [`api/http/llm_proxy_wiring.py`](../api/http/llm_proxy_wiring.py); see [`CoreModules/LlmProxy/README.md`](../CoreModules/LlmProxy/README.md).
 - **`CoreModules/WebInteraction`**: separate distribution `web-interaction`; free web snippet helpers (DuckDuckGo search, trigger heuristics) used when building the proxy system prompt. Wired from [`api/http/llm_proxy_wiring.py`](../api/http/llm_proxy_wiring.py); see [`CoreModules/WebInteraction/README.md`](../CoreModules/WebInteraction/README.md).
 - **Import boundaries**: [import-linter](https://github.com/seddonym/import-linter) contract `domain_is_inner_layer` forbids `domain` → `application` | `api` | `infrastructure`. Run `lint-imports` after `pip install -r requirements-dev.txt`.
@@ -79,8 +79,10 @@ Service orchestration for WebUI endpoints is routed through
 `api/http/service_control.py`.
 
 - `api/http/webui_routes.py` stays focused on HTTP composition.
-- `api/http/service_control.py` owns ServiceStarter bootstrap and service
-  actions (Qdrant/Open WebUI/Ollama start, stop, status helpers).
+- `api/http/service_control.py` owns the WebUI bridge for Qdrant start/stop
+  and delegates container lifecycle to `rag_service.runtime.RagRuntime`.
+- Extension-owned service actions such as Ollama and Open WebUI use
+  DockerManager through `host_context.docker_runtime`.
 
 This keeps lifecycle logic out of large route modules and makes service
 behavior easier to test and evolve.

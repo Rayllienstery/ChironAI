@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "md-ingestion-service"
+version = "0.1.0"
+description = "Markdown ingestion, filtering, and indexing preparation for ChironAI"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["requests>=2.28"]
+
+[tool.setuptools]
+packages = ["md_ingestion_service"]

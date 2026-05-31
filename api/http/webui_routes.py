@@ -384,7 +384,7 @@ def _qdrant_status_snapshot(timeout_sec: float) -> dict[str, Any]:
 
 
 def _get_ollama_url() -> str:
-    """Ollama HTTP base for WebUI (model list, ping): same origin as RAG/chat (config), not ServiceStarter port 11343."""
+    """Ollama HTTP base for WebUI (model list, ping): same origin as RAG/chat config."""
     try:
         from config import get_ollama_base_url
 
@@ -1883,7 +1883,7 @@ def save_rag_collection_settings() -> Any:
 
 @webui_bp.route("/rag/start", methods=["POST"])
 def rag_start() -> Any:
-    """Try to start Qdrant Docker container (ServiceStarter: ensures Docker + pull/run/start)."""
+    """Try to start the Qdrant Docker container through RagRuntime."""
     try:
         ok, output, name = start_qdrant_service()
         status = 200 if ok else 500

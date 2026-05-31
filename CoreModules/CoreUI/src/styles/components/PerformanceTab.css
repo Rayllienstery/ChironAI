@@ -446,6 +446,43 @@
   opacity: 0.75;
 }
 
+/* Lazy Module Loads section */
+
+.perf-summary__modules {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.perf-summary__modules-count {
+  font: var(--md-sys-typescale-label-small-font);
+  font-weight: 400;
+  color: var(--md-sys-color-on-surface-variant);
+  margin-left: 8px;
+  opacity: 0.75;
+}
+
+.perf-summary__modules-hint {
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface-variant);
+  opacity: 0.75;
+  margin-bottom: 4px;
+}
+
+.perf-summary__mod-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--md-sys-color-surface-container-lowest);
+  transition: background 0.15s ease;
+}
+
+.perf-summary__mod-row:hover {
+  background: var(--md-sys-color-surface-container-low);
+}
+
 /* Metadata section */
 
 .perf-summary__meta {

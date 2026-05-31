@@ -193,8 +193,8 @@ export default function DevDocumentationTab() {
                       <p>Config-driven markdown preprocessing: filtering, chunking, noise removal. Feeds RAG via HTTP contract.</p>
                     </div>
                     <div className="module-card">
-                      <h5>ServiceStarter</h5>
-                      <p>Auto-install/start: Docker Desktop, Ollama, Qdrant (Windows). pip: <code>service-starter</code></p>
+                      <h5>DockerManager</h5>
+                      <p>Host Docker capability for extension service actions and Qdrant runtime operations. pip: <code>docker-manager</code></p>
                     </div>
                     <div className="module-card">
                       <h5>WebInteraction</h5>

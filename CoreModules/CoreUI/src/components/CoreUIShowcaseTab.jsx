@@ -652,13 +652,12 @@ return docker.ensure_container(spec)`}</pre>
 
         <ShowcaseItem
           name="StandByScreen"
-          classes={[".standby-screen", ".standby-card", ".standby-icon-ring", ".standby-dots", ".standby-message", ".standby-submessage"]}
+          classes={[".standby-screen", ".standby-card", ".standby-loading-indicator", ".standby-loading-shape", ".standby-progress", ".standby-progress-meta", ".standby-module-name"]}
           source={`${sourceRoot}/components/StandByScreen.jsx, ${sourceRoot}/styles/components/StandByScreen.css`}
-          description="Material Design 3 loading state with spinning icon, animated dot progression, and status text. Used during tab lazy-loading and session initialization."
+          description="Shared ChironAI stand-by loading view with a Material 3 tonal container, uncontained morphing loading indicator, indeterminate progress bar, and current module label."
         >
           <div className="coreui-showcase-standby-row">
-            <StandByScreen message="Stand by" submessage="Loading tab…" size="sm" />
-            <StandByScreen message="Stand by" submessage="Initializing session…" size="md" />
+            <StandByScreen moduleName="Session Manager" size="md" />
           </div>
         </ShowcaseItem>
       </ShowcaseSection>

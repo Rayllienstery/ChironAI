@@ -1,61 +1,46 @@
-import { useEffect, useState } from "react";
-
-const ICON_MAP = {
-  progress_activity: "progress_activity",
-  sync: "sync",
-  hourglass: "hourglass",
-  settings: "settings",
-  tab: "tab",
-  cloud_sync: "cloud_sync",
-  database: "database",
-  network_intelligence: "network_intelligence",
-  neurology: "neurology",
-  cognition: "cognition",
-  psychology: "psychology",
-  auto_awesome: "auto_awesome",
-};
-
 export default function StandByScreen({
-  message = "Stand by",
+  brand = "ChironAI",
+  message = "Stand by...",
   submessage,
-  icon = "progress_activity",
+  moduleName,
   size = "md",
 }) {
-  const [phase, setPhase] = useState(0);
-
-  useEffect(() => {
-    const t = setInterval(() => setPhase((p) => (p + 1) % 3), 1200);
-    return () => clearInterval(t);
-  }, []);
-
   const sizeClass = `standby--${size}`;
-  const iconName = ICON_MAP[icon] || "progress_activity";
+  const loadingLabel = moduleName ? `Loading ${moduleName}` : "Loading";
 
   return (
-    <div className={`standby-screen ${sizeClass}`}>
-      <div className="standby-card">
-        <div className="standby-icon-ring">
-          <span className="standby-icon material-symbols-outlined">
-            {iconName}
-          </span>
+    <div className={`standby-screen ${sizeClass}`} aria-live="polite">
+      <div className="standby-card" role="status" aria-label={loadingLabel}>
+        <div className="standby-loading-indicator" aria-hidden="true">
+          <span className="standby-loading-shape standby-loading-shape--one" />
+          <span className="standby-loading-shape standby-loading-shape--two" />
+          <span className="standby-loading-shape standby-loading-shape--three" />
         </div>
 
-        <div className="standby-dots">
-          <span
-            className="standby-dot"
-            data-active={phase === 0 || undefined}
-          />
-          <span
-            className="standby-dot"
-            data-active={phase === 1 || undefined}
-          />
-          <span
-            className="standby-dot"
-            data-active={phase === 2 || undefined}
-          />
+        <div className="standby-copy">
+          {brand && (
+            <span className="standby-brand">{brand}</span>
+          )}
+
+          <span className="standby-message">{message}</span>
         </div>
 
-        <span className="standby-message">{message}</span>
+        <div className="standby-progress-stack">
+          <div
+            className="standby-progress"
+            role="progressbar"
+            aria-label={loadingLabel}
+            aria-valuetext={moduleName ? loadingLabel : submessage || message}
+          >
+            <span className="standby-progress-fill standby-progress-fill--lead" />
+            <span className="standby-progress-fill standby-progress-fill--trail" />
+          </div>
+
+          <div className="standby-progress-meta">
+            <span className="standby-module-label">Loading module</span>
+            <span className="standby-module-name">{moduleName || "CoreUI"}</span>
+          </div>
+        </div>
 
         {submessage && (
           <span className="standby-submessage">{submessage}</span>

@@ -49,7 +49,7 @@
 
 - [ ] **Flesh out or remove `CoreModules/LlmInteractor`.** It has discovery, install_state, manifest, registry_client, runtime — a promising idea (model discovery + installation), but the implementation is thin. If it is not used, remove it; if it is, add tests and integration.
 
-- [ ] **Review `CoreModules/DockerManager`.** Single `manager.py` file. If it is just a helper for `ServiceStarter`, consider inlining it or merging.
+- [ ] **Review `CoreModules/DockerManager`.** Single `manager.py` file now serves as the host Docker capability for extensions and runtime service actions; consider whether it needs clearer submodules.
 
 ---
 
@@ -78,7 +78,6 @@
   - `python -m webui_backend.rag_proxy` (proxy server)
   - `python -m webui_backend.app start` (web UI)
   - `rag_service` standalone via `python -m rag_service`
-  - `ServiceStarter` via `python -m servicestarter`
   Consider a single `chironai` CLI with subcommands: `chironai serve`, `chironai rag`, `chironai crawl`, `chironai start`.
 
 - [ ] **Add a `CONTRIBUTING.md`** explaining the module layout, which packages are canonical, and how to add a new feature without duplicating logic.

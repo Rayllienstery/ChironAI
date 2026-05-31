@@ -4,6 +4,7 @@ import CoreUISubtabs from "./CoreUISubtabs";
 import CoreUIModal from "./CoreUIModal";
 import Card from "./Card";
 import { getStartupPerformance } from "../services/api";
+import { getModuleTimings } from "../services/moduleTimings";
 import "../styles/components/PerformanceTab.css";
 
 const SUBTABS = [{ id: "startup", label: "Startup" }];
@@ -121,6 +122,42 @@ function PhaseSummary({ phase, report }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {Array.isArray(phase.module_loads) && phase.module_loads.length > 0 && (
+        <div className="perf-summary__modules">
+          <div className="perf-summary__steps-title">
+            Lazy Module Loads
+            <span className="perf-summary__modules-count">
+              {phase.module_loads.length} chunk{phase.module_loads.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+          <div className="perf-summary__modules-hint">
+            Recorded as each React.lazy() chunk was first imported during this session.
+          </div>
+          {phase.module_loads.map((mod) => {
+            const maxMs = Math.max(...phase.module_loads.map((m) => m.duration_ms), 1);
+            return (
+              <div key={mod.id} className="perf-summary__mod-row">
+                <span
+                  className={`material-symbols-outlined perf-summary__step-icon perf-summary__step-icon--${mod.status}`}
+                  aria-hidden="true"
+                >
+                  {STATUS_ICON[mod.status] || "fiber_manual_record"}
+                </span>
+                <div className="perf-summary__step-info">
+                  <div className="perf-summary__step-label">{mod.label}</div>
+                  <WaterfallBar
+                    durationMs={mod.duration_ms}
+                    totalMs={maxMs}
+                    status={mod.status}
+                  />
+                </div>
+                <div className="perf-summary__step-ms">{formatMs(mod.duration_ms)}</div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -343,6 +380,7 @@ function StartupSubtab() {
       start_offset_ms: 0,
       status: "ok",
       steps: buildBrowserSteps(browser),
+      module_loads: getModuleTimings(),
       log_lines: [],
       metadata: browser,
     });

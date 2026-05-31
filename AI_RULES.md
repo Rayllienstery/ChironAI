@@ -19,7 +19,7 @@ For humans and AI assistants: terminology, module boundaries, what to keep in sy
 | **`WebUI/` folder** | Runtime/data directory (`rag_sources`, caches, logs, `last_collection.txt`). This is **not** the frontend and no longer contains Python entrypoints. |
 | **WebUIBackend** | Python backend entrypoints and legacy crawl/ingest helpers under `CoreModules/WebUIBackend/webui_backend/`. |
 | **Web UI (HTTP API)** | REST under the `/api/webui` prefix for dashboard, settings, logs, etc. **Today** the main route implementation is the monolith `api/http/webui_routes.py`. **Target** migration is the standalone service `modules/webui_backend/`. |
-| **Open WebUI** | A separate Docker product; status/start via `CoreModules/ServiceStarter`. Do not conflate with **CoreUI** (our React app) or call it “our WebUI” without qualification. |
+| **Open WebUI** | A separate Docker product; status/start is owned by the `open-webui` extension through DockerManager host capabilities. Do not conflate with **CoreUI** (our React app) or call it “our WebUI” without qualification. |
 
 Ambiguous “WebUI” in conversation: clarify—**`WebUI/` data folder**, **WebUIBackend**, **`/api/webui` HTTP API**, **CoreUI**, or **Open WebUI**.
 
@@ -96,7 +96,7 @@ Layers (top to bottom): **`api/`** → **`application/`** → **`domain/`** → 
 
 - **`domain/`** must not import `application`, `api`, or `infrastructure`. Enforcement: **import-linter** in `pyproject.toml` (contract `domain_is_inner_layer`). After changing layer boundaries, run `lint-imports` if your environment is set up for it.
 - Web UI responsibility split:
-  - **`api/http/service_control.py`** — lifecycle of external services (ServiceStarter, Qdrant, Open WebUI, Ollama, etc.);
+  - **`api/http/service_control.py`** — lifecycle bridge for WebUI service actions; Qdrant delegates to `RagRuntime`, while extension-owned services use DockerManager host capabilities.
   - **`api/http/webui_routes.py`** — HTTP composition for the UI.
   Do not merge them back without a strong reason—this split is intentional for tests and evolution.
 
@@ -133,7 +133,7 @@ Change carefully; if behavior shifts, document and align with team/repo norms.
 2. **Web UI API sync** — `core/contracts/webui_api.py` ↔ `CoreModules/CoreUI/src/services/api.js` ↔ Flask routes.
 3. **Settings overlap** — `proxy_settings`, app fields, YAML/env; risk of silent divergence. Key files: `api/http/webui_routes.py`, `api/http/llm_proxy_wiring.py`, `CoreModules/LlmProxy/llm_proxy/chat_completions.py` (see `docs/legacy_map.md`).
 4. **Qdrant / retrieval** — multiple modes (dense, hybrid, name compatibility); edits to `CoreModules/RagService/.../qdrant_repository.py` and mirrors under `infrastructure/qdrant/` must stay aligned.
-5. **Service control** — `CoreModules/ServiceStarter` and Web UI call paths; keep a single source of truth for ports/status.
+5. **Service control** — Qdrant Web UI call paths delegate to `CoreModules/RagService`; extension service actions must use DockerManager host capabilities.
 
 Risk and “tail” summary: `docs/legacy_map.md`.
 
@@ -177,7 +177,6 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 | `modules/README.md` | Module index |
 | `CoreModules/LlmProxy/README.md` | Proxy, endpoints, env |
 | `CoreModules/RagService/README.md` | RAG package |
-| `CoreModules/ServiceStarter/README.md` | Docker / Ollama / Open WebUI |
 
 ---
 

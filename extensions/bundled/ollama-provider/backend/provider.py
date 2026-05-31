@@ -916,25 +916,11 @@ class OllamaProvider:
             },
         )
 
-    def _stop_native_ollama(self) -> tuple[bool, str]:
-        """Best-effort: stop the native Ollama process via host-provided callable."""
-        stop_fn = (getattr(self._host, "metadata", None) or {}).get("stop_native_ollama")
-        if callable(stop_fn):
-            try:
-                return stop_fn()
-            except Exception as e:
-                return False, str(e)
-        return False, "stop_native_ollama not available in host context"
-
     def _start_service_with_docker(self) -> dict[str, Any]:
         docker = self._docker_runtime()
         if docker is None:
             return self._docker_unavailable()
         try:
-            # Stop native Ollama to free the port before launching the container.
-            # If the native app is already stopped this is a no-op.
-            self._stop_native_ollama()
-
             spec = self._docker_spec()
             ensured = docker.ensure_container(spec)
             if not bool(ensured.get("ok")):

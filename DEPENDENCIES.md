@@ -21,7 +21,6 @@
 | `CoreModules/OllamaInteractor/pyproject.toml` | Зависимости для Ollama CLI boundary (requests) |
 | `CoreModules/LlmProxy/pyproject.toml` | Зависимости для LLM Proxy (flask) |
 | `CoreModules/RagService/pyproject.toml` | Зависимости для RAG Service (flask, requests, httpx, pyyaml) |
-| `CoreModules/ServiceStarter/pyproject.toml` | Зависимости для Service Starter (requests) |
 | `CoreModules/WebInteraction/pyproject.toml` | Зависимости для Web Interaction (duckduckgo-search, requests, html2text) |
 | `CoreModules/MdIngestionService/requirements.txt` | Зависимости для MD Ingestion Service (requests) |
 
@@ -99,7 +98,7 @@ pip install -r requirements-dev.txt
 pip install -e .[dev]
 ```
 
-Для тестов, LLM Proxy, RAG Service, краулера и смежных путей в `PYTHONPATH` используйте **`requirements-dev.txt`** — он дополнительно ставит `OllamaInteractor`, `ServiceStarter`, `LlmProxy`, `RagService`, `html_md`, `crawler_service`.
+Для тестов, LLM Proxy, RAG Service, краулера и смежных путей в `PYTHONPATH` используйте **`requirements-dev.txt`** — он дополнительно ставит `OllamaInteractor`, `LlmProxy`, `RagService`, `html_md`, `crawler_service`.
 
 ### Windows
 
@@ -143,7 +142,6 @@ CoreModules/
 ├── OllamaInteractor → requests (requirements-dev.txt)
 ├── LlmProxy → flask (requirements-dev.txt)
 ├── RagService → flask, requests, httpx, pyyaml (requirements-dev.txt)
-├── ServiceStarter → requests (requirements-dev.txt)
 └── WebInteraction → duckduckgo-search, requests, html2text (не в requirements-dev.txt)
 
 Modules/

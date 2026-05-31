@@ -10,7 +10,7 @@ CoreUI (RAG Tests / Notifications / Builds)
       -> application/rag_tests/*
       -> application/rag/params.py
       -> CoreModules/RagService/rag_service/*
-      -> ServiceStarter (service control)
+      -> RagRuntime + DockerManager (Qdrant service control)
   -> CoreModules/LlmProxy/llm_proxy/*
       -> OpenAI/Anthropic compatibility surface
       -> same RAG context build path
@@ -88,12 +88,13 @@ Risk: subtle retrieval behavior differences.
 
 ## E) Service control split
 
-- ServiceStarter module + WebUI-level orchestration overlap.
+- WebUI-level Qdrant actions now delegate to RagRuntime; extension-owned
+  services use DockerManager host capabilities.
 - Main files:
-  - `CoreModules/ServiceStarter/*`
-  - `api/http/webui_routes.py`
+  - `api/http/service_control.py`
+  - `CoreModules/RagService/rag_service/runtime.py`
 
-Risk: operational ambiguity (status/ports/startup source of truth).
+Risk: keep Qdrant status/ports aligned between WebUI and RagRuntime.
 
 ## F) UI integration legacy tails (mostly reduced)
 

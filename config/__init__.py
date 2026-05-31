@@ -146,8 +146,8 @@ def get_ollama_base_url() -> str:
     2. Host and port from ``OLLAMA_CHAT_URL`` / ``models.yaml`` ``ollama.chat_url`` (same as RAG/chat).
     3. ``http://localhost:11434`` (standard ``ollama serve`` default).
 
-    Note: ServiceStarter defaults to port 11343 for its Docker stack; WebUI model listing must not
-    use that unless you set ``OLLAMA_BASE_URL`` / ``OLLAMA_CHAT_URL`` accordingly.
+    Docker-backed Ollama is owned by the ollama-provider extension; set
+    ``OLLAMA_BASE_URL`` / ``OLLAMA_CHAT_URL`` when using a non-default port.
     """
     api_suffixes = (
         "/api/chat",

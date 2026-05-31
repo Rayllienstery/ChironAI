@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.4] - 2026-05-31
+### Removed
+- Removed the legacy ServiceStarter module, CLI, dev install entry, and tests.
+
+### Changed
+- Routed WebUI Qdrant start/stop through RagRuntime and DockerManager.
+- Kept Docker service lifecycle ownership with service-specific extensions and DockerManager host capabilities.
+
+## [0.6.3] - 2026-05-31
+### Changed
+- Replaced the CoreUI stand-by screen icon mark with an uncontained Material-style morphing loading indicator and removed the decorative ellipse behind it.
+
+## [0.6.2] - 2026-05-31
+### Changed
+- Refined the CoreUI stand-by loading screen with a stronger Material 3 tonal layout, filled icon mark, thicker indeterminate progress indicator, and clearer module status row.
+
+## [0.6.1] - 2026-05-31
+### Changed
+- Updated the CoreUI stand-by loading screen to show an indeterminate progress bar with the currently loading module name underneath.
+
 ## [0.6.0] - 2026-05-29
 ### Added
 - Added **Performance tab** under Developer Tools — a new CoreUI module for runtime and startup diagnostics.

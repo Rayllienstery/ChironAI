@@ -37,12 +37,11 @@ The standalone module still exposes runtime dependency helpers for `ollama` and
 `qdrant`, but app-level Ollama UX is owned by the `ollama-provider` extension
 in the main ChironAI app. The canonical extension source is its dedicated
 repository; the bundled copy is only a trusted bootstrap/offline mirror.
-ServiceStarter and RagService helpers are host capabilities and compatibility
-fallbacks, not the primary WebUI Ollama control surface.
+Qdrant runtime start/stop goes through RagRuntime and DockerManager; extension
+services use DockerManager through host capabilities.
 
 ```bash
 python -m rag_service health
-python -m rag_service start-ollama
 python -m rag_service start-qdrant
 python -m rag_service start-deps --services ollama,qdrant
 ```

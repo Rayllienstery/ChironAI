@@ -131,7 +131,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                   </div>
                   <div className="feature-card">
                     <h4>Local-First Infrastructure</h4>
-                    <p>Ollama + Qdrant + Docker — all local, auto-install and start services (ServiceStarter)</p>
+                    <p>Ollama + Open WebUI run through service-owning extensions; Qdrant is managed by RagRuntime via DockerManager</p>
                   </div>
                   <div className="feature-card">
                     <h4>Streaming Synthesis</h4>
@@ -190,9 +190,9 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                     <div className="qs-number">2</div>
                     <div className="qs-content">
                       <h4>Start Infrastructure</h4>
-                      <p>Use ServiceStarter to auto-install and start services:</p>
-                      <code>python -m servicestarter start-all</code>
-                      <p className="qs-hint">Installs Docker Desktop, Ollama, and starts Qdrant container. Windows-only; manual setup on other OS.</p>
+                      <p>Start Qdrant through RagService and manage Ollama/Open WebUI from their extension tabs:</p>
+                      <code>python -m rag_service start-qdrant</code>
+                      <p className="qs-hint">Docker Desktop and Ollama setup are explicit user-managed prerequisites; Docker service actions go through DockerManager.</p>
                     </div>
                   </div>
 
@@ -311,9 +311,9 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                       <code>pip: llm-proxy</code>
                     </div>
                     <div className="credit-card">
-                      <h5>ServiceStarter</h5>
-                      <p>Auto-install/start: Docker Desktop, Ollama, Qdrant (Windows).</p>
-                      <code>pip: service-starter</code>
+                      <h5>DockerManager</h5>
+                      <p>Host Docker capability for service-owning extensions and Qdrant runtime operations.</p>
+                      <code>pip: docker-manager</code>
                     </div>
                     <div className="credit-card">
                       <h5>WebInteraction</h5>

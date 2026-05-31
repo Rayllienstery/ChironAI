@@ -6,11 +6,16 @@
 #   - optional [dev]: pytest, pytest-cov, import-linter, ruff
 #   - ollama-interactor (Ollama HTTP CLI boundary)
 #   - llm-proxy (OpenAI-compatible /v1 Flask blueprint)
+#   - llm-interactor, docker-manager, web-interaction, md-ingestion-service (runtime CoreModules)
+#   - RagService, html_md, crawler_service
 
 -e .[dev]
 -e CoreModules/OllamaInteractor
--e CoreModules/ServiceStarter
 -e CoreModules/LlmProxy
+-e CoreModules/LlmInteractor
+-e CoreModules/DockerManager
+-e CoreModules/WebInteraction
+-e CoreModules/MdIngestionService
 -e CoreModules/RagService
 -e modules/html_md
 -e modules/crawler_service

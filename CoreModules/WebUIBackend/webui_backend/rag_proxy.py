@@ -16,8 +16,7 @@ import logging
 import os
 import time as _time
 
-from flask import make_response, send_from_directory
-from flask_compress import Compress
+from flask import make_response, request, send_from_directory
 
 from config import get_log_level, get_server_port, record_active_server_port
 from api.http.rag_routes import create_app
@@ -47,22 +46,6 @@ WEBUI_FRONTEND_DIR = str(coreui_dir())
 _t_create_app = _time.perf_counter()
 app = create_app(webui_dir=BASE_DIR)
 
-# Enable transparent brotli/gzip compression for all responses (JS, CSS, JSON, HTML).
-# Reduces the 283KB main JS bundle to ~88KB on the wire — ~3× faster first load.
-app.config["COMPRESS_REGISTER"] = True
-app.config["COMPRESS_LEVEL"] = 6           # gzip level 6 — good speed/ratio balance
-app.config["COMPRESS_MIN_SIZE"] = 512      # compress anything > 512 bytes
-app.config["COMPRESS_MIMETYPES"] = [
-    "text/html",
-    "text/css",
-    "text/javascript",
-    "application/javascript",
-    "application/json",
-    "application/x-javascript",
-    "image/svg+xml",
-]
-_compress = Compress()
-_compress.init_app(app)
 # flask_app_init phase is recorded inside create_app(); this outer measurement
 # captures total wall-time including the create_app call overhead itself.
 _create_app_ms = (_time.perf_counter() - _t_create_app) * 1000
@@ -137,18 +120,69 @@ def webui_static(filename):
     return "File not found", 404
 
 
+_ASSET_MIME = {
+    ".js":   "application/javascript",
+    ".css":  "text/css",
+    ".svg":  "image/svg+xml",
+    ".json": "application/json",
+    ".html": "text/html",
+    ".woff2": "font/woff2",
+    ".woff":  "font/woff",
+    ".ttf":   "font/ttf",
+}
+
+
+def _asset_mime_type(filename: str) -> str:
+    ext = os.path.splitext(filename)[1].lower()
+    return _ASSET_MIME.get(ext, "application/octet-stream")
+
+
 @app.route("/assets/<path:filename>")
 def webui_assets(filename: str):
-    """Serve Vite build assets from /assets/*."""
-    asset_path = os.path.join(REACT_BUILD_DIR, "assets", filename)
-    if os.path.exists(asset_path) and os.path.isfile(asset_path):
-        # Vite assets are content-hashed; safe to cache aggressively.
-        return send_from_directory(os.path.join(REACT_BUILD_DIR, "assets"), filename, max_age=31536000)
-    return "File not found", 404
+    """Serve Vite build assets from /assets/*.
+
+    Checks for pre-compressed .br (brotli) and .gz (gzip) variants first.
+    No runtime compression — zero CPU overhead per request.
+    """
+    assets_dir = os.path.join(REACT_BUILD_DIR, "assets")
+    asset_path = os.path.join(assets_dir, filename)
+    if not os.path.isfile(asset_path):
+        return "File not found", 404
+
+    accept_enc = request.headers.get("Accept-Encoding", "")
+    mime = _asset_mime_type(filename)
+
+    for enc, ext in [("br", ".br"), ("gzip", ".gz")]:
+        if enc in accept_enc:
+            compressed = asset_path + ext
+            if os.path.isfile(compressed):
+                resp = send_from_directory(assets_dir, filename + ext, max_age=31536000)
+                resp.headers["Content-Encoding"] = enc
+                resp.headers["Content-Type"] = mime
+                resp.headers["Vary"] = "Accept-Encoding"
+                resp.headers.pop("Content-Length", None)
+                return resp
+
+    return send_from_directory(assets_dir, filename, max_age=31536000)
 
 
 if __name__ == "__main__":
     port = get_server_port()
     record_active_server_port(port)
-    # Allow GET /proxy-trace/current (and other polls) while a long POST /v1/chat/completions runs.
-    app.run(host="0.0.0.0", port=port, threaded=True)
+    try:
+        from waitress import serve as _waitress_serve
+        import logging as _logging
+        # Waitress is a production-grade WSGI server — much faster than Werkzeug on Windows.
+        # Uses I/O threads + task threads, no GIL contention for concurrent static file serving.
+        _logging.getLogger("waitress").setLevel(_logging.WARNING)
+        _waitress_serve(
+            app,
+            host="0.0.0.0",
+            port=port,
+            threads=8,           # handle up to 8 concurrent requests
+            channel_timeout=120, # generous timeout for long LLM completions
+            cleanup_interval=10,
+        )
+    except ImportError:
+        # Fallback to Werkzeug dev server if waitress is not installed
+        app.run(host="0.0.0.0", port=port, threaded=True)
