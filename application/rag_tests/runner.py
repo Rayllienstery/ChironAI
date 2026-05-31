@@ -12,14 +12,14 @@ from contextlib import contextmanager
 from collections.abc import Callable
 from typing import Any
 
-from application.rag.params import get_rag_answer_params
 from application.rag_tests.metrics import (
     CURRENT_RAG_TESTS_EVALUATION_METHOD_VERSION,
     CURRENT_RAG_TESTS_METRICS_VERSION,
 )
-from application.rag.use_cases import build_rag_context, prepare_ollama_messages
-from domain.entities.rag import RagQuestionRequest
+from rag_service.application.params import get_rag_answer_params
+from rag_service.application.use_cases import build_rag_context, prepare_ollama_messages
 from rag_service.config import override_retrieval_settings
+from rag_service.domain.entities import RagQuestionRequest
 
 from application.rag_tests.validator import validate_result
 

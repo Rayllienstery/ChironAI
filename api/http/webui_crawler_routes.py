@@ -20,15 +20,15 @@ from error_manager.http import error_response as _error_response
 from webui_backend.paths import webui_data_dir
 from config import get_qdrant_url
 from application.rag.hybrid_sparse import is_hybrid_sparse_enabled
-from application.rag.params import get_rag_answer_params
-from domain.services.chunking import chunk_quality_ok, split_markdown_into_chunks
-from domain.services.metadata_inference import (
+from rag_service.domain.services.chunking import chunk_quality_ok, split_markdown_into_chunks
+from rag_service.domain.services.metadata_inference import (
     build_embed_prefix,
     estimate_token_count,
     extract_versions,
     infer_chunk_display_meta,
     infer_metadata,
 )
+from rag_service.application.params import get_rag_answer_params
 from infrastructure.database import get_settings_repository
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
 from infrastructure.rag.qdrant_point_builder import build_named_vectors
@@ -41,11 +41,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from qdrant_client import QdrantClient
     from qdrant_client.http.models import (
-        Distance,
-        PayloadSchemaType,
         PointStruct,
-        SparseVectorParams,
-        VectorParams,
     )
 
 

@@ -1,7 +1,7 @@
 """
 Shared semantic chunking and Qdrant payload helpers for local markdown ingest scripts.
 
-Uses domain.services.chunking (heading/paragraph boundaries, code blocks) and
+Uses rag_service.domain.services.chunking (heading/paragraph boundaries, code blocks) and
 config indexing limits, aligned with api/http/webui_routes _create_collection_from_sources.
 
 Payload: text, source, path, section_path, section_path_joined (for Qdrant filters).
@@ -18,7 +18,7 @@ except ImportError:
     def get_indexing_int(key: str, default: int) -> int:
         return default
 
-from domain.services.chunking import chunk_quality_ok, split_markdown_into_chunks
+from rag_service.domain.services.chunking import chunk_quality_ok, split_markdown_into_chunks
 
 
 def get_chunk_sizes() -> tuple[int, int]:

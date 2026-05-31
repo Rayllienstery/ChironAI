@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from qdrant_client import QdrantClient
-    from qdrant_client.http.models import Distance, PointStruct, SparseVectorParams, VectorParams
+    from qdrant_client.http.models import PointStruct
 
 # qdrant_client is imported lazily inside methods to avoid the ~800ms startup
 # cost when the sink is not actually used.  _HAS_QDRANT is populated on first use.

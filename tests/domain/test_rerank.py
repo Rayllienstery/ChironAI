@@ -1,11 +1,11 @@
 """
-Unit tests for domain.services.rerank.
+Unit tests for rag_service.domain.services.rerank.
 """
 
 from __future__ import annotations
 
 
-from domain.services.rerank import (
+from rag_service.domain.services.rerank import (
     apply_rerank_scores_and_cut,
     build_rerank_prompt,
     extract_candidates_from_rerank_prompt,

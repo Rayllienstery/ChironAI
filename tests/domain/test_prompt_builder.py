@@ -1,10 +1,10 @@
 """
-Unit tests for domain.services.prompt_builder.
+Unit tests for rag_service.domain.services.prompt_builder.
 """
 
 from __future__ import annotations
 
-from domain.services.prompt_builder import (
+from rag_service.domain.services.prompt_builder import (
     build_context_block,
     build_system_content,
     determine_reasoning_level,

@@ -1,5 +1,5 @@
 """
-Unit tests for domain.services.rag_trigger.
+Unit tests for rag_service.domain.services.rag_trigger.
 
 Covers scoring heuristic: keyword, CamelCase, snake_case, code block, code keywords,
 API signature, file extension, technical phrases (strong/weak), greeting + short + no tech tokens.
@@ -8,7 +8,7 @@ API signature, file extension, technical phrases (strong/weak), greeting + short
 from __future__ import annotations
 
 
-from domain.services.rag_trigger import (
+from rag_service.domain.services.rag_trigger import (
     RAG_TRIGGER_THRESHOLD,
     compute_rag_trigger_score,
     should_skip_rag_search,

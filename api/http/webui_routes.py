@@ -7,18 +7,16 @@ Provides enhanced chat endpoint with RAG metadata and in-memory request buffer f
 
 from __future__ import annotations
 
-import difflib
 import json
 import logging
 import os
-import random
 import sys
 import threading
 import time
 import uuid
 from collections import deque
 from typing import Any, Callable
-from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
+from flask import Blueprint, current_app, jsonify, request
 
 from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
 from core.contracts.webui_api import WEBUI_URL_PREFIX
@@ -65,32 +63,15 @@ _WEBUI_BACKEND = os.path.join(_ROOT, "CoreModules", "WebUIBackend")
 if os.path.isdir(_WEBUI_BACKEND) and _WEBUI_BACKEND not in sys.path:
     sys.path.insert(0, _WEBUI_BACKEND)
 
-from error_manager.exceptions import ValidationError as _ValidationError
 from error_manager.http import error_response as _error_response
 from webui_backend.paths import webui_data_dir
 
-from application.llm_proxy_builds import (
-    LLM_PROXY_BUILDS_APP_KEY,
-    diagnose_build,
-    dump_builds_json,
-    extract_context_length_from_show,
-    find_build_by_id,
-    load_builds_json,
-    validate_builds_list,
-)
 from application.rag.proxy_settings_contract import (
     load_proxy_settings,
     resolve_hybrid_sparse_enabled,
     resolve_web_interaction_flags,
 )
-from application.rag.params import get_rag_answer_params
-from llm_proxy.api_key import (
-    delete_proxy_api_key_record,
-    generate_proxy_api_key_record,
-    proxy_api_key_status,
-    reveal_proxy_api_key,
-    store_proxy_api_key_record,
-)
+from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY as LLM_PROXY_BUILDS_APP_KEY
 
 try:
     from rag_service.infrastructure.keyword_collections_sqlite import get_keyword_collections_repository
@@ -137,11 +118,9 @@ from config import (
     get_rag_prompt_name,
     get_retrieval_bool,
     get_retrieval_int,
-    get_server_host,
 )
-from application.rag.hybrid_sparse import is_hybrid_sparse_enabled
-from infrastructure.rag.qdrant_point_builder import build_named_vectors
-from domain.services.rag_trigger import compute_rag_trigger_score
+from rag_service.application.params import get_rag_answer_params
+from rag_service.domain.services.rag_trigger import compute_rag_trigger_score
 from config.rag_prompts import (
     get_rag_system_prompt,
     rag_prompt_file_exists,
@@ -188,7 +167,7 @@ RAG_TRIGGER_HELP_ROWS = [
 ]
 
 
-from domain.services.prompt_builder import (
+from rag_service.domain.services.prompt_builder import (
     build_system_content,
 )
 from llm_proxy.config import AUTOCOMPLETE_MODEL_ID
@@ -197,7 +176,6 @@ from chironai_rag.bindings import ConsumerRagBindings
 from chironai_rag.consumers import RAG_COLLECTION_APP_SETTING, RagConsumer
 
 from infrastructure.database import (
-    get_session_manager,
     get_settings_repository,
 )
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
@@ -238,20 +216,6 @@ from infrastructure.ollama.cli_runner import (
 # qdrant_client is imported lazily inside the route handler that needs it
 # to avoid the ~800ms startup cost when Qdrant is not being actively used.
 
-# Import domain services for indexing
-from domain.services.chunking import (
-    chunk_quality_ok,
-    split_markdown_into_chunks,
-)
-from md_ingestion_service.domain.services.indexing_prepare import prepare_markdown_for_indexing
-from domain.services.metadata_inference import (
-    build_embed_prefix,
-    estimate_token_count,
-    extract_versions,
-    infer_chunk_display_meta,
-    infer_metadata,
-)
-
 # MD indexer pipeline (config-driven markdown cleanup for RAG)
 try:
     from modules.md_indexer import (
@@ -270,7 +234,6 @@ except ImportError:
     run_pipeline = None  # type: ignore[assignment]
     save_pipeline = None  # type: ignore[assignment]
 
-import hashlib
 import subprocess
 
 # In-memory buffer for dev console (last 50 requests)

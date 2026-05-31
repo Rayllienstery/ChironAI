@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from domain.services.retrieval import expand_query_variants, rrf_merge_hit_lists
+from rag_service.domain.services.retrieval import expand_query_variants, rrf_merge_hit_lists
 
 
 def test_rrf_merge_dedupes_by_id() -> None:
@@ -16,16 +16,16 @@ def test_rrf_merge_dedupes_by_id() -> None:
 
 
 def test_expand_query_variants_disabled_returns_single() -> None:
-    with patch("domain.services.retrieval.get_retrieval_bool", return_value=False):
+    with patch("rag_service.domain.services.retrieval.get_retrieval_bool", return_value=False):
         v = expand_query_variants("How does MVVM work in SwiftUI?")
         assert v == ["How does MVVM work in SwiftUI?"]
 
 
 def test_expand_query_variants_adds_phrase_when_enabled() -> None:
-    with patch("domain.services.retrieval.get_retrieval_bool", return_value=True):
-        with patch("domain.services.retrieval.get_retrieval_int", return_value=3):
+    with patch("rag_service.domain.services.retrieval.get_retrieval_bool", return_value=True):
+        with patch("rag_service.domain.services.retrieval.get_retrieval_int", return_value=3):
             with patch(
-                "domain.services.retrieval.get_retrieval_dict",
+                "rag_service.domain.services.retrieval.get_retrieval_dict",
                 return_value={"MVVM": "Model View ViewModel"},
             ):
                 v = expand_query_variants("How does MVVM work in SwiftUI?")

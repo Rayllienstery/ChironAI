@@ -1,10 +1,10 @@
 """
 Domain entities for ChironAI.
 
-Entities represent core business concepts such as RAG chunks, queries,
-retrieval results, crawl sources, indexed pages, and embedding requests.
+Entities represent root-domain business concepts such as crawl sources,
+indexed pages, and embedding requests.
 """
 
-from domain.entities import crawl, rag
+from domain.entities import crawl
 
-__all__ = ["crawl", "rag"]
+__all__ = ["crawl"]

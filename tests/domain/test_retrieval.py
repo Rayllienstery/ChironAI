@@ -1,11 +1,12 @@
 """
-Unit tests for domain.services.retrieval.
+Unit tests for rag_service.domain.services.retrieval.
 """
 
 from __future__ import annotations
 
 
-from domain.services.retrieval import (
+from rag_service.domain.entities import QueryIntent
+from rag_service.domain.services.retrieval import (
     build_qdrant_filter,
     extra_filter_framework_equals,
     extra_filter_section_path_joined_equals,
@@ -18,7 +19,6 @@ from domain.services.retrieval import (
     parse_versions_from_question,
     query_for_retrieval,
 )
-from domain.entities.rag import QueryIntent
 
 
 class TestParseVersionsFromQuestion:

@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from application.rag.params import RAGAnswerParams, RAGDependencies
 from application.rag.proxy_settings_contract import (
     load_proxy_settings,
     resolve_proxy_rerank_enabled,
@@ -17,6 +16,7 @@ from application.rag.proxy_settings_contract import (
 from infrastructure.database import get_settings_repository
 from llm_proxy.config import LlmProxyRuntimeConfig
 from llm_proxy.contracts import LlmProxyBaseContext, LlmProxyExternalDocsBundle, LlmProxyWiring
+from rag_service.application.params import RAGAnswerParams, RAGDependencies
 
 try:
     from config import (

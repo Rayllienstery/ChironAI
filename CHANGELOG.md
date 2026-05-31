@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.5] - 2026-05-31
+### Changed
+- Removed internal root RAG compatibility shims and moved callers to canonical `rag_service` imports.
+- Cleaned static-analysis dead code across Python tests, backend imports, and CoreUI service docs.
+
 ## [0.6.4] - 2026-05-31
 ### Removed
 - Removed the legacy ServiceStarter module, CLI, dev install entry, and tests.

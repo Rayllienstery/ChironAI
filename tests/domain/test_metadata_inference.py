@@ -1,11 +1,11 @@
 """
-Unit tests for domain.services.metadata_inference.
+Unit tests for rag_service.domain.services.metadata_inference.
 """
 
 from __future__ import annotations
 
 
-from domain.services.metadata_inference import extract_versions, infer_metadata
+from rag_service.domain.services.metadata_inference import extract_versions, infer_metadata
 
 
 class TestExtractVersions:

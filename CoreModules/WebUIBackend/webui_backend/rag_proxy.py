@@ -9,7 +9,7 @@ Usage:
   On PC: python rag_proxy.py  (after starting Ollama and Qdrant)
   On Mac Zed: OpenAI API Compatible -> API URL: http://<PC_IP>:<configured_port>
 
-Uses api.http.rag_routes.create_app; prompt and model come from config via application.rag.params.
+Uses api.http.rag_routes.create_app; prompt and model come from config via rag_service.application.params.
 """
 
 import logging

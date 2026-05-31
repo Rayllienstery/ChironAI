@@ -353,6 +353,7 @@ def test_ollama_provider_runtime_invocation_streaming_and_catalog(
             self.data[key] = value
 
     def _fake_run(cmd, input=None, capture_output=True, text=True, timeout=None, env=None):
+        _ = capture_output
         joined = " ".join(str(part) for part in cmd)
         if " ping " in f" {joined} ":
             return _FakeCompletedProcess('{"ok": true, "status_code": 200}')
@@ -712,6 +713,7 @@ def test_extension_zip_install_rejects_path_traversal_member(tmp_path: Path, mon
             return None
 
         def iter_content(self, chunk_size: int = 65536):
+            _ = chunk_size
             yield self._content
 
     buf = BytesIO()
@@ -751,6 +753,7 @@ def test_extension_zip_install_rejects_symlink_member(tmp_path: Path, monkeypatc
             return None
 
         def iter_content(self, chunk_size: int = 65536):
+            _ = chunk_size
             yield self._content
 
     buf = BytesIO()
@@ -796,6 +799,7 @@ def test_extension_zip_install_rejects_uncompressed_size_bomb(
             return None
 
         def iter_content(self, chunk_size: int = 65536):
+            _ = chunk_size
             yield self._content
 
     monkeypatch.setattr(manager_module, "_MAX_EXTENSION_ZIP_UNCOMPRESSED_BYTES", 1024)
@@ -914,6 +918,7 @@ def test_registry_client_loads_remote_registry_with_diagnostics(monkeypatch: pyt
             }
 
         def iter_content(self, chunk_size: int = 65536):
+            _ = chunk_size
             yield json.dumps(self.json()).encode("utf-8")
 
     monkeypatch.setattr("requests.get", lambda url, timeout=30, stream=False: _Response())
@@ -1110,6 +1115,7 @@ def test_extension_details_and_install_resolve_latest_github_release(tmp_path: P
             return None
 
         def iter_content(self, chunk_size: int = 65536):
+            _ = chunk_size
             yield self._content
 
     buf = BytesIO()
@@ -1175,6 +1181,7 @@ def test_extension_install_accepts_branch_refs_with_slashes(tmp_path: Path, monk
             return None
 
         def iter_content(self, chunk_size: int = 65536):
+            _ = chunk_size
             yield self._content
 
     buf = BytesIO()

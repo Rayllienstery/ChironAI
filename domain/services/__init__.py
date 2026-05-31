@@ -2,18 +2,11 @@
 Domain services implement pure business rules.
 
 Examples:
-- Retrieval query building and filtering
-- Rerank and scoring strategies
-- Chunking and metadata inference
-- Prompt construction for RAG-aware LLM calls
+- Markdown metadata parsing shared by ingestion modules.
+
+RAG services live under ``rag_service.domain.services``.
 """
 
-from domain.services import chunking, metadata_inference, prompt_builder, retrieval, rerank
+from domain.services import markdown_meta
 
-__all__ = [
-    "chunking",
-    "metadata_inference",
-    "prompt_builder",
-    "retrieval",
-    "rerank",
-]
+__all__ = ["markdown_meta"]

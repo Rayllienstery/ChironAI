@@ -1,19 +1,29 @@
 """
 Domain-level metadata inference for indexed chunks.
 
-Pure business logic: extract iOS/Swift versions, infer language/technology/domain/product/doc_type.
+Pure business logic for:
+- Extracting iOS and Swift version markers from chunk text.
+- Inferring high-level metadata (language, technology, domain, product, doc_type)
+  from source_id, filename, url, section_path.
+
+Stable keys (string values only). Heuristics are conservative; extend for new
+sources without changing callers.
 """
 
 from __future__ import annotations
 
 import re
 
+
 _IOS_VERSION_RE = re.compile(r"\biOS\s+(\d+(?:\.\d+)*)\+?", re.IGNORECASE)
 _SWIFT_VERSION_RE = re.compile(r"\bSwift\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
 
 
 def extract_versions(text: str) -> tuple[list[str], list[str]]:
-    """Extract iOS and Swift version markers from chunk text. Returns (ios_versions, swift_versions)."""
+    """
+    Extract iOS and Swift version markers from a chunk of text.
+    Returns (ios_versions, swift_versions) as sorted unique strings.
+    """
     ios = {m.group(1) for m in _IOS_VERSION_RE.finditer(text or "")}
     swift = {m.group(1) for m in _SWIFT_VERSION_RE.finditer(text or "")}
     return sorted(ios), sorted(swift)
@@ -27,13 +37,25 @@ def infer_metadata(
     text: str,
 ) -> dict[str, str]:
     """
-    Infer high-level metadata for a chunk. Stable keys: language, technology, domain, product, doc_type.
+    Infer high-level metadata for a chunk in a stable, extensible way.
+
+    Stable keys (string values only):
+    - language: swift / objc / rust / js / ts / shell / dockerfile / unknown
+    - technology: swiftui / uikit / foundation / concurrency / ... / unknown
+    - domain: framework_guide / api_ref / language_guide / app_store / tooling / ...
+    - product: ios / ipados / macos / tvos / watchos / visionos / server / tooling / unknown
+    - doc_type: documentation / howto / sample_code / policy / legal / marketing / help_center
+    - doc_scope: api_symbol / guide / tutorial / discussion (and future: articles, books, forums)
+
+    Heuristics are intentionally conservative.
     """
     language = "unknown"
     technology = "unknown"
     domain = "documentation"
     product = "unknown"
     doc_type = "documentation"
+    doc_scope = ""
+
     lower_name = (filename or "").lower()
     lower_url = (url or "").lower()
 
@@ -75,6 +97,11 @@ def infer_metadata(
             product = "tooling"
         else:
             technology = "foundation"
+    elif source_id == "swift_book":
+        language = "swift"
+        technology = "swift"
+        domain = "language_guide"
+        doc_scope = "guide"
     elif source_id == "swift_docs":
         language = "swift"
         domain = "language_guide"
@@ -97,24 +124,45 @@ def infer_metadata(
         product = "ios"
         doc_type = "release_notes"
     elif source_id in {
-        "apple_uikit", "swiftui_docs", "combine_docs", "swiftdata_docs",
-        "foundation_docs", "coredata_docs", "coreanimation_docs", "avfoundation_docs",
-        "mapkit_docs", "coregraphics_docs", "storekit_docs",
+        "apple_uikit",
+        "swiftui_docs",
+        "combine_docs",
+        "swiftdata_docs",
+        "foundation_docs",
+        "coredata_docs",
+        "coreanimation_docs",
+        "avfoundation_docs",
+        "mapkit_docs",
+        "coregraphics_docs",
+        "storekit_docs",
     }:
         language = "swift"
         domain = "framework_guide"
         product = "ios"
-        tech_map = {
-            "apple_uikit": "uikit", "swiftui_docs": "swiftui", "combine_docs": "combine",
-            "swiftdata_docs": "swiftdata", "foundation_docs": "foundation",
-            "coredata_docs": "coredata", "coreanimation_docs": "core_animation",
-            "avfoundation_docs": "avfoundation", "mapkit_docs": "mapkit",
-            "coregraphics_docs": "coregraphics", "storekit_docs": "storekit",
-        }
-        technology = tech_map.get(source_id, "foundation")
-        if source_id == "storekit_docs":
+        if source_id == "apple_uikit":
+            technology = "uikit"
+        elif source_id == "swiftui_docs":
+            technology = "swiftui"
+        elif source_id == "combine_docs":
+            technology = "combine"
+        elif source_id == "swiftdata_docs":
+            technology = "swiftdata"
+        elif source_id == "foundation_docs":
+            technology = "foundation"
+        elif source_id == "coredata_docs":
+            technology = "coredata"
+        elif source_id == "coreanimation_docs":
+            technology = "core_animation"
+        elif source_id == "avfoundation_docs":
+            technology = "avfoundation"
+        elif source_id == "mapkit_docs":
+            technology = "mapkit"
+        elif source_id == "coregraphics_docs":
+            technology = "coregraphics"
+        elif source_id == "storekit_docs":
+            technology = "storekit"
             domain = "app_store"
-    elif source_id == "wwdc_sessions_2024":
+    elif source_id.startswith("wwdc_sessions_"):
         language = "swift"
         technology = "wwdc_sessions"
         domain = "framework_guide"
@@ -126,9 +174,16 @@ def infer_metadata(
     elif source_id == "swift_org_docs":
         language = "swift"
         domain = "language_guide"
-    elif source_id in {"hws_swift", "swiftbysundell_articles", "kodeco_ios", "objc_io_issues", "nshipster_articles"}:
+    elif source_id in {
+        "hws_swift",
+        "swiftbysundell_articles",
+        "kodeco_ios",
+        "objc_io_issues",
+        "nshipster_articles",
+        "pointfree_collections",
+    }:
         language = "swift"
-        domain = "framework_guide"
+        domain = "community_guide"
         doc_type = "howto"
     elif source_id in {"firebase_ios", "stripe_ios"}:
         language = "swift"
@@ -138,23 +193,45 @@ def infer_metadata(
         language = "swift"
         domain = "framework_guide"
         product = "ios"
-        tech_map = {"pf_tca": "tca", "pf_dependencies": "dependencies", "pf_navigation": "navigation",
-                    "pf_sharing": "sharing", "pf_snapshot_testing": "snapshot_testing", "pf_identified_collections": "identified_collections", "pf_clocks": "clocks"}
-        technology = tech_map.get(source_id, "unknown")
-        if source_id == "pf_snapshot_testing":
+        if source_id == "pf_tca":
+            technology = "tca"
+        elif source_id == "pf_dependencies":
+            technology = "dependencies"
+        elif source_id == "pf_navigation":
+            technology = "navigation"
+        elif source_id == "pf_sharing":
+            technology = "sharing"
+        elif source_id == "pf_snapshot_testing":
+            technology = "snapshot_testing"
             domain = "tooling"
+        elif source_id == "pf_identified_collections":
+            technology = "identified_collections"
         elif source_id == "pf_clocks":
+            technology = "clocks"
             domain = "tooling"
     elif source_id.startswith("gh_"):
         language = "swift"
         domain = "framework_guide"
         product = "ios"
-        tech_map = {"gh_alamofire": "networking", "gh_moya": "networking", "gh_kingfisher": "image_loading",
-                    "gh_sdwebimage": "image_loading", "gh_snapkit": "layout", "gh_swiftlint": "linting",
-                    "gh_realm_swift": "persistence", "gh_rxswift": "reactive", "gh_combineext": "combine",
-                    "gh_quick": "testing", "gh_nimble": "testing"}
-        technology = tech_map.get(source_id, "unknown")
-        if source_id in ("gh_swiftlint", "gh_quick", "gh_nimble"):
+        if source_id == "gh_alamofire":
+            technology = "networking"
+        elif source_id == "gh_moya":
+            technology = "networking"
+        elif source_id in {"gh_kingfisher", "gh_sdwebimage"}:
+            technology = "image_loading"
+        elif source_id == "gh_snapkit":
+            technology = "layout"
+        elif source_id == "gh_swiftlint":
+            technology = "linting"
+            domain = "tooling"
+        elif source_id == "gh_realm_swift":
+            technology = "persistence"
+        elif source_id == "gh_rxswift":
+            technology = "reactive"
+        elif source_id == "gh_combineext":
+            technology = "combine"
+        elif source_id in {"gh_quick", "gh_nimble"}:
+            technology = "testing"
             domain = "tooling"
     elif source_id == "rust_docs":
         language = "rust"
@@ -217,6 +294,7 @@ def infer_metadata(
         doc_type = "policy"
     if any(k in lower_name for k in ("terms", "agreement", "license", "licence")):
         doc_type = "legal"
+
     if "/documentation/swift/" in lower_url:
         language = "swift"
         domain = "language_guide"
@@ -248,6 +326,7 @@ def infer_metadata(
         technology = "xcode"
         domain = "tooling"
         product = "tooling"
+
     if section_path:
         root = (section_path[0] or "").lower()
         if "swift playgrounds" in root:
@@ -261,13 +340,122 @@ def infer_metadata(
             domain = "app_store"
             if product == "unknown":
                 product = "ios"
+
+    # Infer doc_scope for retrieval (source type: api_symbol, guide, tutorial, discussion).
+    if not doc_scope:
+        if "/documentation/" in lower_url and section_path:
+            first = (section_path[0] or "").strip()
+            if first and ("(" in first or ")" in first or first in ("init", "deinit")):
+                doc_scope = "api_symbol"
+        if not doc_scope and any(k in lower_url for k in ("guide", "guides", "overview")):
+            doc_scope = "guide"
+        if not doc_scope and any(k in lower_url for k in ("tutorial", "tutorials", "getting-started", "getting_started")):
+            doc_scope = "tutorial"
+        if not doc_scope and any(k in lower_name for k in ("guide", "guides", "overview")):
+            doc_scope = doc_scope or "guide"
+        if not doc_scope and any(k in lower_name for k in ("tutorial", "tutorials", "getting-started")):
+            doc_scope = doc_scope or "tutorial"
+
     return {
         "language": language,
         "technology": technology,
         "domain": domain,
         "product": product,
         "doc_type": doc_type,
+        "doc_scope": doc_scope,
     }
 
 
-__all__ = ["extract_versions", "infer_metadata"]
+# Normalize Apple doc section headings to stable slugs for filtering (e.g. "Return Value" -> "return_value").
+_SECTION_NORMALIZE: dict[str, str] = {
+    "return value": "return_value",
+    "return values": "return_value",
+    "discussion": "discussion",
+    "parameters": "parameters",
+    "parameter": "parameters",
+    "overview": "overview",
+    "syntax": "syntax",
+    "example": "example",
+    "examples": "example",
+    "description": "description",
+    "declaration": "declaration",
+    "see also": "see_also",
+    "topics": "topics",
+}
+
+
+from rag_service.config import get_indexing_int
+
+# Optimal prefix length 40-80 chars to improve retrieval without noisy embedding.
+EMBED_PREFIX_MAX_CHARS: int = get_indexing_int("embed_prefix_max_chars", 80)
+
+
+def estimate_token_count(text: str) -> int:
+    """
+    Approximate token count for context assembly and chunk balancing.
+    Uses word count * 1.3 (typical for English); document as approximate.
+    """
+    if not text or not text.strip():
+        return 0
+    words = len((text or "").split())
+    return max(1, int(words * 1.3))
+
+
+def build_embed_prefix(page_meta: dict[str, str] | None, section_path: list[str]) -> str:
+    """
+    Build a short semantic prefix for embedding (40-80 chars) to improve retrieval.
+    Format: "Framework API / Function: symbol / Section: section". No long sentences.
+    Used only at embed time; payload stores original text.
+    """
+    if not page_meta:
+        page_meta = {}
+    parts: list[str] = []
+    framework = (page_meta.get("framework") or "").strip()
+    if framework:
+        # Short label only; avoid full framework description.
+        parts.append(f"{framework} API" if "API" not in framework else framework)
+    display = infer_chunk_display_meta(section_path)
+    symbol = display.get("symbol") or ""
+    section = display.get("section") or ""
+    if symbol:
+        parts.append(f"Function: {symbol}")
+    if section:
+        parts.append(f"Section: {section}")
+    prefix = " / ".join(parts)
+    max_chars = EMBED_PREFIX_MAX_CHARS
+    if len(prefix) > max_chars:
+        prefix = prefix[: max_chars - 3].rstrip()
+        # Cut at last space to avoid mid-word.
+        last_sp = prefix.rfind(" ")
+        if last_sp > max_chars // 2:
+            prefix = prefix[:last_sp]
+        prefix = prefix.rstrip(" /")
+    return (prefix + " ") if prefix else ""
+
+
+def infer_chunk_display_meta(section_path: list[str]) -> dict[str, str]:
+    """
+    Infer optional symbol and section for a chunk from its section_path.
+    Used for payload fields: symbol (e.g. "mapValues(_:)") and section (e.g. "parameters").
+    Returns dict with optional "symbol" and "section" keys (only set when applicable).
+    """
+    result: dict[str, str] = {}
+    if not section_path:
+        return result
+    first = (section_path[0] or "").strip()
+    if first and ("(" in first or ")" in first or first in ("init", "deinit")):
+        result["symbol"] = first
+    last = (section_path[-1] or "").strip() if section_path else ""
+    if last:
+        key = last.lower().strip()
+        result["section"] = _SECTION_NORMALIZE.get(key, key.replace(" ", "_"))
+    return result
+
+
+__all__ = [
+    "extract_versions",
+    "infer_metadata",
+    "infer_chunk_display_meta",
+    "build_embed_prefix",
+    "estimate_token_count",
+]

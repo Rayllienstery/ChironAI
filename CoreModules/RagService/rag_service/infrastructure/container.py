@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 
 from rag_service.infrastructure.ollama_chat import OllamaChatClient
 from rag_service.infrastructure.ollama_embedding import OllamaEmbeddingProvider
@@ -17,13 +18,16 @@ from rag_service.config import (
     get_qdrant_url,
 )
 
+if TYPE_CHECKING:
+    from rag_service.infrastructure.qdrant_repository import QdrantRagRepository
+
 
 def default_rag_repository(
     collection_file: str | None = None,
     qdrant_url: str | None = None,
     default_collection: str | None = None,
     collection_name: str | None = None,
-) -> "QdrantRagRepository":
+) -> QdrantRagRepository:
     # Deferred import: qdrant_client takes ~800ms to load and is only needed
     # when a RAG query is actually executed, not at server startup.
     from rag_service.infrastructure.qdrant_repository import QdrantRagRepository  # noqa: PLC0415

@@ -2,7 +2,7 @@
 Ingest local Markdown files (e.g. from Apple-Developer-Documentation-Offline-Archive)
 into Qdrant using Ollama embedding model.
 
-Uses domain.services.chunking (semantic sections/paragraphs, section_path) and config
+Uses rag_service.domain.services.chunking (semantic sections/paragraphs, section_path) and config
 indexing limits — same policy as WebUI "Create collection from sources".
 
 Embedding model and endpoint are shared with the main RAG pipeline:

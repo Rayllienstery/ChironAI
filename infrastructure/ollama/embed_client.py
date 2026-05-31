@@ -15,9 +15,8 @@ except ImportError:
     get_ollama_embed_model = lambda: ""  # type: ignore  # set RAG_EMBED_MODEL if config package missing
     get_ollama_embed_timeout_seconds = lambda: 180.0  # type: ignore
 
-from domain.services.retrieval import MAX_EMBED_TEXT_LENGTH
-
 from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_embed
+from rag_service.domain.services.retrieval import MAX_EMBED_TEXT_LENGTH
 
 
 class OllamaEmbeddingProvider:

@@ -127,6 +127,7 @@ def test_extension_blocklist_remote_oversized_response_is_rejected(monkeypatch) 
             pass
 
         def iter_content(self, chunk_size: int):
+            _ = chunk_size
             oversized = b"x" * (_MAX_BLOCKLIST_RESPONSE_BYTES + 1)
             yield oversized
 

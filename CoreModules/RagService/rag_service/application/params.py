@@ -62,9 +62,10 @@ def wire_rag_use_cases(
 def get_rag_answer_params(
     webui_dir: str | None = None,
     collection_name: str | None = None,
+    prompt_name: str | None = None,
 ) -> tuple[RAGAnswerParams, RAGDependencies]:
     """Return (params, deps) for RAG. Single source for prompt, config limits, and wired services."""
-    prefix, suffix = get_rag_system_prompt()
+    prefix, suffix = get_rag_system_prompt(prompt_name)
     context_chunk_chars = get_rag_int("context_chunk_chars", 1000)
     context_total_chars = get_rag_int("context_total_chars", 7000)
     confidence_threshold = get_rag_float("confidence_threshold", 0.75)

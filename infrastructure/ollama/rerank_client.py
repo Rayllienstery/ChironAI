@@ -15,9 +15,8 @@ except ImportError:
     get_ollama_generate_url = lambda: "http://localhost:11434/api/generate"  # type: ignore
     get_ollama_rerank_model = lambda: ""  # type: ignore  # no Ollama model id without project config
 
-from domain.services.rerank import extract_candidates_from_rerank_prompt, native_rerank_response_to_order
-
 from infrastructure.ollama.cli_runner import OllamaInteractorCliError, invoke_generate, invoke_rerank
+from rag_service.domain.services.rerank import extract_candidates_from_rerank_prompt, native_rerank_response_to_order
 
 _rerank_log = logging.getLogger("trag.rerank")
 _disabled_missing_models: set[str] = set()

@@ -83,7 +83,6 @@ from llm_proxy.chat_completions_ollama_proxy import (
     _append_trace_warning,
     _apply_response_diagnostics,
     _apply_trace_response_text_fields,
-    _assistant_text_parts_from_ollama_message,
     _build_rag_collection_issue,
     _degenerate_assistant_reply,
     _effective_max_agent_steps,

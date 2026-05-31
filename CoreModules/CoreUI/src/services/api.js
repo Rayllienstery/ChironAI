@@ -1616,7 +1616,7 @@ export async function updateCrawlerSource(sourceId, sourceConfig) {
  * Returns phases recorded by Python during process startup plus any
  * browser timing that has been submitted via postBrowserTiming().
  *
- * @returns {Promise<import('../../../core/contracts/webui_api').StartupPerformanceResponse>}
+ * @returns {Promise<object>}
  */
 export async function getStartupPerformance() {
   const response = await fetch(`${API_BASE}/performance/startup`);

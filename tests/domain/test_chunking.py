@@ -1,12 +1,12 @@
 """
-Unit tests for domain.services.chunking.
+Unit tests for rag_service.domain.services.chunking.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from domain.services.chunking import (
+from rag_service.domain.services.chunking import (
     chunk_quality_ok,
     split_markdown_into_chunks,
     _is_heading_only_chunk,
