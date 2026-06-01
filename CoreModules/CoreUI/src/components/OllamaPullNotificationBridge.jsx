@@ -46,6 +46,12 @@ function PullJobView({ job, onOpenOllama }) {
   );
 }
 
+/**
+ * Bridges the live Ollama model-pull job to the notification center as a
+ * live activity card and a persisted history row.
+ *
+ * @param {{ onOpenOllama?: () => void }} [props] - Optional callback to open the Ollama tab.
+ */
 export default function OllamaPullNotificationBridge({ onOpenOllama }) {
   const [job, setJob] = useState(null);
   const {

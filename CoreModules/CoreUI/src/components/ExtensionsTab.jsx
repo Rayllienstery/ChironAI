@@ -368,6 +368,14 @@ function SchemaRenderer({ schema, providerByExtensionId }) {
   );
 }
 
+/**
+ * Extensions management tab. Surfaces installed extensions, the GitHub
+ * registry, providers, and per-extension tab UI payloads. Calls into the
+ * extensions_backend service for install/update/remove.
+ *
+ * @param {{ onErrorStateChange?: (hasError: boolean) => void }} [props] -
+ *   Notified when this tab transitions into/out of an error state.
+ */
 export default function ExtensionsTab({ onErrorStateChange }) {
   const notificationCenter = useOptionalNotificationCenter();
   const [activeView, setActiveView] = useState("installed");

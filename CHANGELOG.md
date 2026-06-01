@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.12] - 2026-06-01
+### Changed
+- Removed fresh static-analysis dead-code tails from WebUI routes and focused tests, and removed the empty untracked `scripts/bin` directory.
+
+## [0.6.11] - 2026-06-01
+### Changed
+- Added JSDoc to all CoreUI components: Card, Badge, Slider, PillTabs, Subtabs, Modal, Button, EmptyState, Sparkline, StandByScreen, all tab roots, and all notification bridges.
+- Standardized Python docstrings in `domain/ports/` (embedding, rag_repository, chat_llm, markdown_store, crawl, rerank_client) and `infrastructure/database/*` repositories to Google Style with Args/Returns/Raises.
+- Cleaned up `# noqa` comments to specify the exact linting rule.
+
+## [0.6.10] - 2026-06-01
+### Changed
+- Standardized Python docstrings to Google Style across core packages.
+- Added JSDoc documentation to key CoreUI components.
+- Improved configuration documentation with explanatory comments in YAML files.
+- Added deprecation rationale and migration plans for legacy shims.
+- Cleaned up code comments and standardized `# noqa` rules.
+- Added module-level documentation to utility scripts.
+- Removed obsolete `prompts/.trash/` directory.
+
 ## [0.6.9] - 2026-06-01
 ### Changed
 - Added file-aware recent indexing issues and prepare character statistics to the create-collection progress UI.

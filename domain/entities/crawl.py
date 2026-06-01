@@ -45,7 +45,14 @@ class IndexedPage:
 
 
 def crawl_source_from_dict(d: Dict[str, Any]) -> CrawlSource:
-    """Build CrawlSource from a dict (e.g. config)."""
+    """Build CrawlSource from a dictionary.
+
+    Args:
+        d: A dictionary containing crawl source configuration (id, url, etc.).
+
+    Returns:
+        A CrawlSource entity populated from the dictionary.
+    """
     return CrawlSource(
         id=d.get("id", ""),
         url=d.get("url", ""),

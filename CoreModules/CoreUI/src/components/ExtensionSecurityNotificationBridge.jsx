@@ -49,6 +49,10 @@ function notificationMessage(item) {
   return `${title}: ${detail}${location}`;
 }
 
+/**
+ * Polls the extension security/permissions service and surfaces blocked events
+ * to the notification center.
+ */
 export default function ExtensionSecurityNotificationBridge() {
   const {
     sessionId,

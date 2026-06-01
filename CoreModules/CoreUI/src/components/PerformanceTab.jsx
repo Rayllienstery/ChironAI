@@ -502,6 +502,10 @@ function StartupSubtab() {
 // PerformanceTab root
 // ---------------------------------------------------------------------------
 
+/**
+ * Performance diagnostics tab: shows server startup timing and recent browser
+ * performance samples captured via the Performance API.
+ */
 export default function PerformanceTab() {
   const [subTab, setSubTab] = useState("startup");
 

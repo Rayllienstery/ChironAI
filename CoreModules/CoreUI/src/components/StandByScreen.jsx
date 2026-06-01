@@ -1,3 +1,14 @@
+/**
+ * Renders a centered, branded standby/loading screen with a pulsing
+ * animation and a label suitable for `aria-live` regions.
+ *
+ * @param {Object} props
+ * @param {string} [props.brand="ChironAI"] - Brand text shown above the message.
+ * @param {string} [props.message="Stand by..."] - Primary message.
+ * @param {string} [props.submessage] - Optional secondary line under the message.
+ * @param {string} [props.moduleName] - Module name used for the loading label and screen reader text.
+ * @param {'sm'|'md'|'lg'} [props.size="md"] - Visual size variant of the card.
+ */
 export default function StandByScreen({
   brand = "ChironAI",
   message = "Stand by...",

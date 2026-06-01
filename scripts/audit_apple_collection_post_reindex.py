@@ -1,4 +1,13 @@
-"""Post-reindex quality check: scroll stats + 12 hybrid probes for Apple_Collection."""
+"""Post-reindex quality check: scroll stats + 12 hybrid probes for Apple_Collection.
+
+This script performs a comprehensive audit of the 'Apple_Collection' in Qdrant
+after a reindexing operation. It calculates statistics about the collection
+(source distribution, fill percentages, duplicates) and runs a set of 12
+predefined hybrid search probes to verify retrieval quality.
+
+Usage:
+    python scripts/audit_apple_collection_post_reindex.py
+"""
 
 from __future__ import annotations
 

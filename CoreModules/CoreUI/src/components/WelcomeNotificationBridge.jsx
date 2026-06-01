@@ -4,6 +4,10 @@ import { getVersion } from '../services/api';
 
 const WELCOME_NOTIF_STORAGE_KEY = 'chironai_welcome_notif_version';
 
+/**
+ * Side-effect-only bridge: shows a one-time welcome notification in the
+ * notification center when the user opens the WebUI for a new version.
+ */
 export default function WelcomeNotificationBridge() {
   const { persistNotification } = useNotificationCenter();
   const hasCheckedRef = useRef(false);

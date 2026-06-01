@@ -61,6 +61,11 @@ function statusClass(status) {
   return '';
 }
 
+/**
+ * Tab for browsing, filtering, and running RAG tests defined in Markdown files.
+ * Loads test definitions via the backend, lets the user pick a collection and
+ * run selected tests in parallel, and shows run history.
+ */
 export default function RagTesterV2Tab() {
   const lastUsed = loadLastUsed();
   const [tests, setTests] = useState([]);

@@ -167,6 +167,10 @@ function buildJournalDisplayLogs(logRows) {
     .sort((a, b) => b.id - a.id);
 }
 
+/**
+ * Journal tab for browsing per-day proxy request logs.
+ * Supports day/week/month filters and opens a detail modal for any log entry.
+ */
 export default function ProxyJournalTab() {
   const [period, setPeriod] = useState('week');
   const [selectedDate, setSelectedDate] = useState(null);

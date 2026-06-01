@@ -15,7 +15,12 @@ _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 
 class SessionManager:
-    """Manages WebUI sessions in SQLite database."""
+    """Manages WebUI sessions, logs, settings, and RAG test runs in a single SQLite DB.
+
+    Args:
+        db_path: Path to the SQLite database file. The parent directory is
+            created if it does not exist.
+    """
 
     def __init__(self, db_path: str | Path):
         self.db_path = Path(db_path)
@@ -23,7 +28,7 @@ class SessionManager:
         self._init_db()
 
     def _init_db(self) -> None:
-        """Initialize database schema."""
+        """Initialize database schema by applying ``schema.sql`` and migrations."""
         with sqlite3.connect(self.db_path) as conn:
             schema = _SCHEMA_PATH.read_text(encoding="utf-8")
             conn.executescript(schema)

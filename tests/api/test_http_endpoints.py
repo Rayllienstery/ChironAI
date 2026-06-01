@@ -1160,6 +1160,7 @@ def test_ollama_api_passthrough_preserves_raw_request_shapes(monkeypatch: pytest
             return dict(self._payload)
 
         def iter_lines(self, decode_unicode: bool = False):
+            _ = decode_unicode
             yield from self._lines
 
         def close(self) -> None:

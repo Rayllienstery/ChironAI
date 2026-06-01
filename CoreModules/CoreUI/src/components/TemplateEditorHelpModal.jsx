@@ -1,3 +1,23 @@
+/**
+ * Modal that surfaces tips, an in-place prompt linter, and an auto-structure preview
+ * for the Prompt Template Editor.
+ *
+ * @param {Object} props
+ * @param {boolean} props.open - Whether the modal is visible.
+ * @param {Function} props.onClose - Close handler.
+ * @param {'tips'|'linter'|'structure'} props.helpModalTab - Active tab id.
+ * @param {Function} props.setHelpModalTab - Setter for the active tab.
+ * @param {Array} props.linterWarnings - Linter warnings for the current prompt.
+ * @param {Function} props.setLinterWarnings - Setter for linter warnings.
+ * @param {string[]} props.promptTips - Tips list.
+ * @param {'raw'|'structured'} props.editMode - Editor mode.
+ * @param {Object} props.editorFields - Editor raw/structured fields.
+ * @param {Function} props.assembleContent - Build the current content from editor fields.
+ * @param {Function} props.runPromptLinter - Run linter on the given content.
+ * @param {Function} props.structurePrompt - Generate structured prompt preview.
+ * @param {Function} props.handleLintPrompt - Re-run linter and apply results.
+ * @param {Function} props.handleStructurePrompt - Apply structured prompt.
+ */
 export default function TemplateEditorHelpModal({
   open,
   onClose,

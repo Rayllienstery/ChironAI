@@ -17,11 +17,7 @@ from api.http.extensions_service_access import get_extensions_runtime, get_exten
 from api.http.webui_provider_helpers import (
     default_llm_provider_id as _default_llm_provider_id,
     default_provider_row as _default_provider_row,
-    default_provider_tab_payload as _default_provider_tab_payload,
-    invoke_runtime_chat as _invoke_runtime_chat,
-    invoke_runtime_embed as _invoke_runtime_embed,
     provider_catalog_payload as _provider_catalog_payload,
-    provider_row as _provider_row,
     run_default_provider_extension_action as _run_default_provider_extension_action,
     run_provider_extension_action as _run_provider_extension_action,
 )
@@ -133,11 +129,20 @@ def register_llm_proxy_routes(
     *,
     error_log: Any,
 ) -> None:
-    """Register LLM Proxy routes on the given Blueprint."""
+    """Register LLM Proxy routes on the given Blueprint.
+
+    Args:
+        bp: The Flask Blueprint to register routes on.
+        error_log: The logger instance for error reporting.
+    """
 
     @bp.route("/llm-proxy/status", methods=["GET"])
     def llm_proxy_status() -> Any:
-        """Base URL for WebUI RAG Fusion Proxy Status card (per-build Ollama tags live on builds, not here)."""
+        """Return the base URL and health endpoint for the RAG Fusion Proxy.
+
+        Returns:
+            A JSON response containing 'enabled', 'base_url', and 'health'.
+        """
         try:
             bind_host = get_server_host()
             display_host = "127.0.0.1" if bind_host == "0.0.0.0" else bind_host
@@ -155,7 +160,11 @@ def register_llm_proxy_routes(
 
     @bp.route("/ollama/status", methods=["GET"])
     def ollama_provider_status() -> Any:
-        """Compatibility status endpoint backed by the default provider extension."""
+        """Return the status of the default Ollama provider extension.
+
+        Returns:
+            A JSON response with 'url', 'running', 'http_status', and 'error'.
+        """
         try:
             row = _default_provider_row()
             if row is None:
@@ -177,7 +186,11 @@ def register_llm_proxy_routes(
 
     @bp.route("/ollama/start", methods=["POST"])
     def ollama_provider_start() -> Any:
-        """Compatibility start endpoint backed by the default provider extension."""
+        """Start the default Ollama provider extension service.
+
+        Returns:
+            A JSON response with 'ok' and 'output'.
+        """
         try:
             payload = request.get_json(silent=True) or {}
             result = _run_default_provider_extension_action("start_service", payload if isinstance(payload, dict) else {})
@@ -189,7 +202,11 @@ def register_llm_proxy_routes(
 
     @bp.route("/ollama/stop", methods=["POST"])
     def ollama_provider_stop() -> Any:
-        """Compatibility stop endpoint backed by the default provider extension."""
+        """Stop the default Ollama provider extension service.
+
+        Returns:
+            A JSON response with 'ok' and 'output'.
+        """
         try:
             payload = request.get_json(silent=True) or {}
             result = _run_default_provider_extension_action("stop_service", payload if isinstance(payload, dict) else {})
@@ -201,7 +218,11 @@ def register_llm_proxy_routes(
 
     @bp.route("/llm-proxy/api-key", methods=["GET"])
     def llm_proxy_api_key_status() -> Any:
-        """Return public metadata for the WebUI-managed Chiron /v1 API key."""
+        """Return public metadata for the WebUI-managed Chiron /v1 API key.
+
+        Returns:
+            A JSON response containing API key metadata (status, created_at, etc.).
+        """
         try:
             return jsonify(proxy_api_key_status(_settings_repository()))
         except Exception as e:
@@ -210,7 +231,11 @@ def register_llm_proxy_routes(
 
     @bp.route("/llm-proxy/api-key/generate", methods=["POST"])
     def llm_proxy_generate_api_key() -> Any:
-        """Create or rotate the Chiron /v1 API key. Plaintext is returned only here."""
+        """Create or rotate the Chiron /v1 API key.
+
+        Returns:
+            A JSON response containing the new plaintext key and its metadata.
+        """
         try:
             settings_repo = _settings_repository()
             plaintext, record = generate_proxy_api_key_record(settings_repo)
@@ -226,7 +251,11 @@ def register_llm_proxy_routes(
 
     @bp.route("/llm-proxy/api-key/reveal", methods=["POST"])
     def llm_proxy_reveal_api_key() -> Any:
-        """Return the recoverable Chiron /v1 API key for WebUI admin reuse."""
+        """Return the recoverable Chiron /v1 API key for WebUI admin reuse.
+
+        Returns:
+            A JSON response containing the plaintext key and its metadata.
+        """
         try:
             settings_repo = _settings_repository()
             plaintext = reveal_proxy_api_key(settings_repo)
@@ -239,7 +268,11 @@ def register_llm_proxy_routes(
 
     @bp.route("/llm-proxy/api-key", methods=["DELETE"])
     def llm_proxy_delete_api_key() -> Any:
-        """Delete the Chiron /v1 API key and close protected routes until regenerated."""
+        """Delete the Chiron /v1 API key.
+
+        Returns:
+            A JSON response containing the updated API key status.
+        """
         try:
             settings_repo = _settings_repository()
             delete_proxy_api_key_record(settings_repo)

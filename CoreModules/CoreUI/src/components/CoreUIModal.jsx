@@ -1,5 +1,15 @@
 import { useEffect, useRef } from 'react';
 
+/**
+ * A reusable modal dialog component.
+ * 
+ * @param {Object} props
+ * @param {string} props.title - The title displayed in the modal header.
+ * @param {Function} props.onClose - Callback function invoked when the modal is closed.
+ * @param {React.ReactNode} props.children - The content to be rendered inside the modal body.
+ * @param {React.ReactNode} [props.footer] - Optional content to be rendered in the modal footer.
+ * @param {string} [props.className] - Additional CSS classes for the modal container.
+ */
 export default function CoreUIModal({ title, onClose, children, footer, className = '' }) {
   const panelRef = useRef(null);
 

@@ -10,6 +10,11 @@ const SUB_TABS = [
   { id: "architecture", label: "Architecture" },
 ];
 
+/**
+ * In-app developer documentation tab. Renders curated markdown surfaces
+ * (Overview, Architecture) so contributors can read project docs without
+ * leaving the WebUI.
+ */
 export default function DevDocumentationTab() {
   const [subTab, setSubTab] = useState("overview");
 

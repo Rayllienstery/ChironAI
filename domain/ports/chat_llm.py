@@ -17,14 +17,24 @@ class ChatLLMClient(Protocol):
         self,
         messages: list[dict[str, Any]],
         model: str,
-        stream: bool = False,  # noqa
+        stream: bool = False,  # noqa: ARG002
         options: dict[str, Any] | None = None,
-        think: bool | str | None = None,  # noqa
+        think: bool | str | None = None,  # noqa: ARG002
     ) -> str:
-        """
-        Send messages and return the assistant reply as a string.
-        options: generation options (num_predict, temperature, etc.).
-        Raises domain errors on failure.
+        """Send messages and return the assistant reply as a string.
+
+        Args:
+            messages: A list of message dictionaries (role, content).
+            model: The name of the LLM model to use.
+            stream: Whether to stream the response (not supported by this synchronous port).
+            options: Generation options (num_predict, temperature, etc.).
+            think: Optional reasoning/thinking configuration.
+
+        Returns:
+            The assistant's reply as a string.
+
+        Raises:
+            domain.errors.ChironError: On API or connection failure.
         """
         ...
 

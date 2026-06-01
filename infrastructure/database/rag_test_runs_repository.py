@@ -15,7 +15,12 @@ from application.rag_tests.metrics import normalize_rag_test_result, normalize_r
 
 
 class RagTestRunsRepository:
-    """Repository for storing and retrieving RAG test run history."""
+    """Repository for storing and retrieving RAG test run history.
+
+    Args:
+        db_path: Path to the SQLite database. Falls back to ``$WEBUI_DB_PATH``
+            or ``logs/webui.db`` when not provided.
+    """
 
     def __init__(self, db_path: str | Path | None = None):
         if db_path is None:

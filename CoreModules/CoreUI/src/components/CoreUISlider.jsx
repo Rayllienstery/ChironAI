@@ -5,6 +5,17 @@ function joinClasses(parts) {
   return parts.filter(Boolean).join(" ");
 }
 
+/**
+ * Slider field with a label and a displayed value.
+ * Wraps a native `<input type="range">` and forwards all standard range input attributes.
+ *
+ * @param {Object} props
+ * @param {string} [props.label] - Label text shown above the slider.
+ * @param {string} [props.valueText] - Value text to display next to the label.
+ * @param {string} [props.className] - Wrapper class.
+ * @param {string} [props.inputClassName] - Class for the input element.
+ * @param {string} [props.id] - Optional id; auto-generated if omitted.
+ */
 export default function CoreUISlider({
   label,
   valueText,

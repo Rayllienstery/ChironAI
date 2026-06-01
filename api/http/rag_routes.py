@@ -127,7 +127,7 @@ def create_app(
     if getattr(wiring, "extension_manager", None) is not None:
         set_extensions_service(app, wiring.extension_manager)
 
-    from api.http.llm_runtime_access import ensure_llm_runtime_for_app, resolve_llm_runtime
+    from api.http.llm_runtime_access import resolve_llm_runtime
     from rag_service.infrastructure.runtime_hooks import set_llm_runtime_getter
 
     def _app_llm_runtime() -> Any | None:

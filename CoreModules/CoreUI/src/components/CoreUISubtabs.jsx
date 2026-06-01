@@ -8,6 +8,20 @@ function defaultGetLabel(tab) {
   return tab.label;
 }
 
+/**
+ * Sub-navigation tab strip. Thinner visual style than CoreUIPillTabs.
+ *
+ * @param {Object} props
+ * @param {Array<{id,label}>} props.tabs - Tab definitions.
+ * @param {string} props.value - Currently selected tab id.
+ * @param {Function} [props.onChange] - `(key, tab) => void` callback when a tab is clicked.
+ * @param {string} [props.ariaLabel] - Aria label for the tablist.
+ * @param {string} [props.ariaLabelledBy] - Aria labelledby for the tablist.
+ * @param {string} [props.className] - Wrapper class.
+ * @param {Function} [props.getKey] - Custom key extractor: `(tab, index) => string`.
+ * @param {Function} [props.getLabel] - Custom label extractor: `(tab, index) => string`.
+ * @param {Function} [props.getButtonProps] - Extra props injector: `(tab, index) => object`.
+ */
 export default function CoreUISubtabs({
   tabs,
   value,

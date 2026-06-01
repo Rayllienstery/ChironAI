@@ -14,7 +14,11 @@ from infrastructure.database.session_manager import get_session_manager
 
 
 class NotificationsRepository:
-    """SQLite persistence for CoreUI notification center rows."""
+    """SQLite persistence for CoreUI notification-center rows.
+
+    Args:
+        db_path: Path to the SQLite database. Parent directory is created if missing.
+    """
 
     def __init__(self, db_path: str | Path):
         self.db_path = Path(db_path)

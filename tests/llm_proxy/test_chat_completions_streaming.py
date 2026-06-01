@@ -6,7 +6,6 @@ from typing import Any
 from llm_proxy.chat_completions_streaming import (
     StreamContentAccumulator,
     iter_sse_from_ollama_stream_events,
-    iter_sse_plain_content_response,
     iter_sse_single_shot_assistant,
     iter_sse_tool_limit_response,
     openai_chat_completion_chunk,

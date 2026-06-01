@@ -4,6 +4,17 @@ function joinClasses(parts) {
   return parts.filter(Boolean).join(" ");
 }
 
+/**
+ * A reusable button component supporting various styles and sizes.
+ * 
+ * @param {Object} props
+ * @param {React.ElementType} [props.as='button'] - The component or HTML element to render as.
+ * @param {'default'|'primary'|'danger'|'ghost'|'icon'} [props.variant='default'] - The visual style variant.
+ * @param {'sm'|'md'|'icon'} [props.size='md'] - The size of the button.
+ * @param {string} [props.className=''] - Additional CSS classes.
+ * @param {string} [props.type] - The HTML button type (e.g., 'submit').
+ * @param {React.ReactNode} props.children - The button content.
+ */
 export default function CoreUIButton({
   as: Component = "button",
   variant = "default",

@@ -14,9 +14,16 @@ class RerankClient(Protocol):
     """Port for calling the rerank LLM (returns raw response string for domain to parse)."""
 
     def rerank(self, question: str, prompt_text: str) -> str | None:
-        """
-        Send prompt to rerank LLM and return raw response (e.g. JSON array string).
-        Returns None on failure (caller keeps original order).
+        """Send a rerank prompt to the LLM and return the raw response.
+
+        Args:
+            question: The user question being answered.
+            prompt_text: The fully-rendered rerank prompt (question + candidate snippets).
+
+        Returns:
+            The raw model response (typically a JSON array string), or ``None``
+            on failure. Callers should keep the original order when ``None`` is
+            returned.
         """
         ...
 

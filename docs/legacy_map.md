@@ -1,6 +1,6 @@
 # Legacy Map
 
-Updated: 2026-05-31
+Updated: 2026-06-01
 
 Active cleanup roadmap: [`QUALITY_AUDIT.md`](../QUALITY_AUDIT.md).
 
@@ -68,13 +68,17 @@ runtime is still loading or unavailable.
 
 ## G) LLM provider boundary (formerly direct Ollama in core)
 
-- Root `infrastructure/ollama/*` and `rag_service.infrastructure.ollama_*` were
-  removed; provider behavior belongs in `chironai-extension-ollama-provider`
-  (`extensions/bundled/ollama-provider` is the trusted bootstrap mirror).
+- Root `infrastructure/ollama/*` adapter files have been removed; the directory
+  may still exist empty in local checkouts. Provider behavior belongs in
+  `chironai-extension-ollama-provider` (`extensions/bundled/ollama-provider` is
+  the trusted bootstrap mirror).
 - Core embed/rerank/chat use `rag_service.infrastructure.provider_runtime` over
   `LLMRuntime` (`runtime_hooks` registers the runtime from the main app).
 - LlmProxy wire-format helpers live under `llm_proxy/wire_format/` and
   `rag_service.infrastructure.openai_*` for public HTTP compatibility only.
+- LlmProxy also keeps `llm_proxy/ollama_upstream.py` and `llm_proxy/ollama_compat.py`
+  as explicit public compatibility boundaries for `/v1` and raw Ollama-shaped
+  routes.
 - Config keeps deprecated `get_ollama_*` env/yaml names; app code should prefer
   `get_default_chat_model`, `get_default_embed_model`, `get_default_rerank_model`.
 

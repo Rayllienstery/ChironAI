@@ -55,6 +55,10 @@ function formatJournalValue(value, suffix = '') {
   return `${value}${suffix}`;
 }
 
+/**
+ * Tab for browsing recent LLM proxy traces and opening the detail modal
+ * for any single request.
+ */
 export default function ProxyTracesTab() {
   const [status, setStatus] = useState(null);
   const [traces, setTraces] = useState([]);

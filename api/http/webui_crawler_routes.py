@@ -62,11 +62,7 @@ def _import_qdrant() -> tuple[type, type, type, type, type, type]:
     )
     return _QC, _Dist, _PST, _PS, _SVP, _VP
 
-from api.http.rag_sources_meta import (
-    clear_chunk_hashes_for_sources,
-    parse_source_ids_from_framework_id,
-    update_page_chunk_hashes,
-)
+from api.http.rag_sources_meta import update_page_chunk_hashes
 from api.http.webui_crawler_helpers import is_safe_identifier
 from api.http.webui_crawler_source_routes import register_crawler_source_routes
 from api.http.webui_provider_helpers import (

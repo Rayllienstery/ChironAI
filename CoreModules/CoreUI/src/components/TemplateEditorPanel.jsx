@@ -77,6 +77,18 @@ function EditModeToggle({ editMode, onStructured, onRaw }) {
   );
 }
 
+/**
+ * Editor panel for the active prompt template.
+ * Handles raw/structured editing, lint warnings, and prompt lifecycle (rename, trash, restore).
+ *
+ * @param {Object} props
+ * @param {string} props.mode - Current editor mode (raw|structured).
+ * @param {string} props.viewMode - View mode (edit|preview).
+ * @param {string} props.selectedTrashName - Name of selected trashed prompt.
+ * @param {Array} props.trashPrompts - List of trashed prompts.
+ * @param {string} props.selectedPromptName - Name of selected active prompt.
+ * @param {string} props.renamePromptName - Value of the rename input.
+ */
 export default function TemplateEditorPanel(props) {
   const {
     mode,

@@ -24,7 +24,7 @@ core/                — (Target) config, shared, contracts
 
 ## Data flow
 
-- **HTTP**: Client → `api/http/rag_routes.py` (Flask) → `rag_service.application.use_cases` → `rag_service.domain.services/*` + ports → `rag_service.infrastructure/*` (and root `infrastructure/*` where the monolith still wires Qdrant/Ollama compatibility adapters).
+- **HTTP**: Client -> `api/http/rag_routes.py` (Flask) -> `rag_service.application.use_cases` -> `rag_service.domain.services/*` + ports -> `rag_service.infrastructure/*` (plus root `infrastructure/*` where the monolith still wires Qdrant and other shared adapters).
 - **CLI**: `api/cli/crawl_cli.py` (or `python -m api.cli crawl`) -> delegates to crawler_service/webui_backend crawl/index workflows.
 - **RAG**: `query_for_retrieval` (domain) → embed (Ollama) → search (Qdrant) → rerank (Ollama) → `build_context_block` (domain) → chat (Ollama).
 
@@ -33,7 +33,7 @@ core/                — (Target) config, shared, contracts
 - **api/**: Flask app (`create_app` in `api/http/rag_routes.py`), CLI wrappers (`api/cli/crawl_cli.py`). No direct infrastructure imports; uses application use cases.
 - **application/**: Monolith-boundary helpers under `application/rag/` (for example `proxy_settings_contract`, `collection_freshness`). Canonical RAG use cases and composition live in **`rag_service.application`**; default RAG wiring is in **`rag_service.infrastructure.container`**.
 - **domain/**: Shared non-RAG services (for example `markdown_meta`), ports, and errors. RAG entities and services are owned by **`rag_service.domain`**.
-- **infrastructure/**: Ollama (embed, chat, rerank), Qdrant (RagRepository), FS (MarkdownStore), crawl (Playwright), logging (WebUI error logger).
+- **infrastructure/**: Qdrant compatibility shims, FS (MarkdownStore), crawl (Playwright), logging (WebUI error logger), metrics, and stack health. Ollama provider behavior is owned by the extension/runtime boundary; wire-format compatibility helpers live in `rag_service.infrastructure.openai_*` and LlmProxy modules.
 
 ## Running tests
 
@@ -69,7 +69,7 @@ The repository root is an installable project **`chironai`** ([`pyproject.toml`]
 ## Adding a new source or model
 
 - **New Ollama model**: configure in `config/models.yaml` or the WebUI settings that feed the provider catalog. The main app routes Ollama chat/embed/rerank/raw compatibility through `ollama-provider` via `LLMRuntime` when that runtime is available.
-- **Temporary compatibility adapters**: root `infrastructure/ollama/*` and duplicate RagService Ollama adapters still exist for public API compatibility, standalone tests, and fallback behavior. New app code should not import them directly without documenting the compatibility reason.
+- **Temporary compatibility adapters**: root `infrastructure/ollama/*` adapter files have been removed, though an empty directory may remain in local checkouts. Public API compatibility now lives in `llm_proxy/ollama_upstream.py`, `llm_proxy/ollama_compat.py`, `llm_proxy/wire_format/*`, and `rag_service.infrastructure.openai_*`. New app code should not add direct Ollama HTTP paths without documenting the compatibility reason.
 - **New crawl source**: add source configuration under the crawler config/source loader used by `crawler_service`; crawl CLI and index flow use it. For a new crawler implementation, implement `CrawlRunner` in `infrastructure/crawl/` and wire it in the application layer.
 - **New vector store**: implement `RagRepository` under `rag_service.infrastructure` and wire it in `rag_service.infrastructure.container` instead of `QdrantRagRepository`.
 

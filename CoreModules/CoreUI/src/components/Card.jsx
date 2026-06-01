@@ -1,4 +1,21 @@
 
+/**
+ * Themed card surface with optional hover/interactive states.
+ * Material 3 elevation tokens are used by default.
+ *
+ * @param {Object} props
+ * @param {React.ElementType} [props.as='div'] - Element to render as.
+ * @param {string} [props.className] - Additional CSS classes.
+ * @param {boolean} [props.elevateOnHover=false] - Whether to elevate the card on hover.
+ * @param {boolean} [props.interactive=false] - Whether the card is interactive (cursor pointer).
+ * @param {string} [props.elevation] - CSS box-shadow value for the resting state.
+ * @param {string} [props.elevationHover] - CSS box-shadow value for the hover state.
+ * @param {string} [props.hoverBackground] - Background color on hover.
+ * @param {string} [props.radius] - Border radius.
+ * @param {string} [props.background] - Background color at rest.
+ * @param {React.ReactNode} props.children - Card content.
+ * @param {Object} [props.style] - Inline style overrides.
+ */
 export default function Card({
   as: Component = "div",
   className = "",

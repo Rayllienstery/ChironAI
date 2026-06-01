@@ -41,10 +41,10 @@ should reach it through `LLMRuntime`.
 OpenAI-style user messages may use multipart `content`: an array of `{ "type": "text", "text": "..." }` and `{ "type": "image_url", "image_url": { "url": "..." } }`.
 
 - **Supported toward Ollama:** `image_url.url` values that are **`data:image/...;base64,...`** data URLs. The proxy validates and forwards them as Ollama’s native **`images`** array on the same user message (base64 payload after `base64,`), with adjacent text in **`content`**.
-- **Inline paste in text (user turns):** before sanitisation, the proxy **promotes** any valid `data:image/...;base64,...` substring inside user string `content` or inside user `type: "text"` parts into proper `image_url` parts so they survive the pipeline and populate Ollama `images` (see `promote_inline_data_image_urls_in_content` in [`infrastructure/ollama/openai_multipart_vision.py`](../../infrastructure/ollama/openai_multipart_vision.py)).
+- **Inline paste in text (user turns):** before sanitisation, the proxy **promotes** any valid `data:image/...;base64,...` substring inside user string `content` or inside user `type: "text"` parts into proper `image_url` parts so they survive the pipeline and populate Ollama `images` (see `promote_inline_data_image_urls_in_content` in [`rag_service.infrastructure.openai_multipart_vision`](../RagService/rag_service/infrastructure/openai_multipart_vision.py)).
 - **Not loaded by the proxy (default):** plain **`http://` / `https://`** image URLs are replaced with a short in-band note (no server-side fetch; avoids SSRF). Use a data URL, call upstream **`POST /api/chat`** directly, or host a client that inlines the image as base64.
   - **Optional (unsafe-by-default):** set `LLM_PROXY_VISION_FETCH_EXTERNAL_URLS=1` to enable **server-side fetching** of `http(s)` image URLs and conversion to `data:image/...;base64,...` (guarded with best-effort SSRF checks + size limits).
-- **Limits:** decoded size per image, max images per message, and a text length cap are defined in [`infrastructure/ollama/openai_multipart_vision.py`](../../infrastructure/ollama/openai_multipart_vision.py).
+- **Limits:** decoded size per image, max images per message, and a text length cap are defined in [`rag_service.infrastructure.openai_multipart_vision`](../RagService/rag_service/infrastructure/openai_multipart_vision.py).
 
 Proxy traces expose **`images_count`** per Ollama message when `images` is present; base64 blobs are not expanded into trace previews.
 

@@ -194,6 +194,11 @@ function DockerActionMenu({ id, container, imageName, busyKey, runAction, onChec
   );
 }
 
+/**
+ * Docker management tab backed by the DockerManager host capability.
+ * Lists containers and images, supports start/stop/restart, and shows
+ * the live state of extension-owned services.
+ */
 export default function DockerTab() {
   const [activeView, setActiveView] = useState("containers");
   const [status, setStatus] = useState(null);
