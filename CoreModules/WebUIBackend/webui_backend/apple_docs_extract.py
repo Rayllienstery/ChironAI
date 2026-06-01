@@ -2065,6 +2065,15 @@ def build_apple_doc_page(raw: AppleDocRaw) -> AppleDocPage:
     )
 
 
+def _doc_scope_for_doc_kind(doc_kind: str | None) -> str:
+    kind = (doc_kind or "").strip().lower()
+    if kind in {"api_ref", "api_ref_macro"}:
+        return "api_symbol"
+    if kind in {"conceptual", "conceptual_strategy", "overview"}:
+        return "guide"
+    return ""
+
+
 def render_apple_doc_to_markdown(page: AppleDocPage) -> str:
     """
     Render `AppleDocPage` into RAG-optimized markdown.
@@ -2088,6 +2097,9 @@ def render_apple_doc_to_markdown(page: AppleDocPage) -> str:
         lines.append(f"  framework: {page.framework}")
     if page.doc_kind:
         lines.append(f"  doc_kind: {page.doc_kind}")
+    doc_scope = _doc_scope_for_doc_kind(page.doc_kind)
+    if doc_scope:
+        lines.append(f"  doc_scope: {doc_scope}")
     if page.platforms:
         lines.append(f"  platforms: {', '.join(page.platforms)}")
     if page.availability:

@@ -32,6 +32,7 @@ from rag_service.domain.services.retrieval import (
     parse_versions_from_question,
     query_for_retrieval,
     rrf_merge_hit_lists,
+    source_authority_priority,
 )
 from rag_service.infrastructure.sparse_text import normalize_text_for_sparse, text_to_sparse_vector
 
@@ -114,7 +115,11 @@ def apply_metadata_rank(results: list[dict[str, Any]], intent: QueryIntent | Non
     ranked = list(results)
     if intent is not None:
         ranked.sort(
-            key=lambda h: combined_doc_priority(h) + intent_match_priority(h, intent),
+            key=lambda h: (
+                combined_doc_priority(h)
+                + intent_match_priority(h, intent)
+                + source_authority_priority(h, intent)
+            ),
             reverse=True,
         )
     else:

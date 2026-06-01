@@ -69,8 +69,11 @@ async def _fetch_apple_doc_raw_async(url: str) -> AppleDocRaw:
         try:
             page = await browser.new_page()
             await page.goto(url, wait_until="domcontentloaded", timeout=45000)
-            # Give Apple SPA some time to settle all XHR/fetch calls.
-            await page.wait_for_load_state("networkidle", timeout=15000)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=15000)
+            except Exception:
+                # Apple docs SPA may keep long-polling; domcontentloaded + short settle is enough.
+                await page.wait_for_timeout(2500)
 
             # 1) document.title
             try:

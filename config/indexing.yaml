@@ -61,6 +61,10 @@ indexing:
     - inherited by
     - inherits from
     - relationships
+    - mentioned in
+    - similar solutions
+    - about the swift knowledge base
+    - explore the archive
   
   # Batch processing
   batch_upsert_size: 200

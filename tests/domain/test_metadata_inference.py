@@ -46,6 +46,32 @@ class TestInferMetadata:
         )
         assert meta["technology"] == "uikit"
 
+    def test_doc_scope_from_discussion_section(self) -> None:
+        meta = infer_metadata(
+            "apple_documentation",
+            "view.md",
+            "https://developer.apple.com/documentation/swiftui/view",
+            ["View", "Discussion"],
+            "text",
+        )
+        assert meta["doc_scope"] == "api_symbol"
+
+    def test_doc_scope_from_overview_section(self) -> None:
+        meta = infer_metadata(
+            "apple_documentation",
+            "swiftui.md",
+            "https://developer.apple.com/documentation/swiftui",
+            ["SwiftUI", "Overview"],
+            "text",
+        )
+        assert meta["doc_scope"] == "guide"
+
+    def test_symbol_from_type_title(self) -> None:
+        from rag_service.domain.services.metadata_inference import infer_chunk_display_meta
+
+        display = infer_chunk_display_meta(["NavigationStack"])
+        assert display.get("symbol") == "NavigationStack"
+
     def test_unknown_source_defaults(self) -> None:
         meta = infer_metadata("unknown_src", "f.md", None, [], "text")
         assert meta["language"] == "unknown"

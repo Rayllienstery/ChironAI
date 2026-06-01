@@ -61,7 +61,24 @@
           "conforming types",
           "inherited by",
           "inherits from",
-          "relationships"
+          "relationships",
+          "mentioned in",
+          "similar solutions",
+          "about the swift knowledge base",
+          "explore the archive"
+        ]
+      }
+    },
+    {
+      "id": "delete-community-footer",
+      "type": "delete_lines_containing",
+      "params": {
+        "case_sensitive": false,
+        "substrings": [
+          "sponsor the site",
+          "twitter.com/twostraws",
+          "buy our books",
+          "click here to visit the hacking with swift store"
         ]
       }
     },

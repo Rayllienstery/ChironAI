@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.9] - 2026-06-01
+### Changed
+- Added file-aware recent indexing issues and prepare character statistics to the create-collection progress UI.
+
+## [0.6.8] - 2026-06-01
+### Changed
+- Refined the Crawler / Indexer live notification layout for collection indexing so progress details stay compact and readable inside the notification center.
+
 ## [0.6.7] - 2026-05-31
 ### Removed
 - Removed Qdrant unnamed-vector collections, `QDRANT_LEGACY_DENSE_FALLBACK_ENABLED`, and direct `/api/tags` health fallback when the Ollama provider runtime is unavailable.

@@ -22,12 +22,49 @@ CHUNK_OVERLAP: int = get_indexing_int("chunk_overlap", 0)
 MIN_CHUNK_WORDS: int = get_indexing_int("min_chunk_words", 5)
 MIN_CHUNK_ALPHA_RATIO: float = get_indexing_float("min_chunk_alpha_ratio", 0.2)
 
+_COMMUNITY_SOURCE_IDS = frozenset(
+    {
+        "hws_swift",
+        "objc_io_issues",
+        "pointfree_collections",
+        "swiftbysundell_articles",
+    }
+)
+_WWDC_HEADER_ONLY = re.compile(
+    r"^#\s+.+\n+(?:\d{4}\s*·\s*WWDC\d+\s*·\s*Session\s+\d+|#\s+\w+@WWDC\d+)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 
-def chunk_quality_ok(text: str) -> bool:
+
+def _source_chunk_acceptable(text: str, source_id: str) -> bool:
+    head = (text or "")[:240]
+    lower = head.lower()
+    if source_id in _COMMUNITY_SOURCE_IDS:
+        if head.lstrip().startswith("[ ](/)"):
+            return False
+        if "[ forums ]" in lower or "sponsor the site" in lower:
+            return False
+        if "buy our books" in lower:
+            return False
+    if source_id.startswith("wwdc_sessions_"):
+        stripped = (text or "").strip()
+        if len(stripped) < 220 and _WWDC_HEADER_ONLY.match(stripped):
+            return False
+        if re.match(r"^#\s+\w+@WWDC\d+\s*$", stripped, re.IGNORECASE):
+            return False
+    if "similar solutions" in lower and len((text or "").strip()) < 500:
+        return False
+    return True
+
+
+def chunk_quality_ok(text: str, *, source_id: str | None = None) -> bool:
     """
     Return False if the chunk is too short or mostly non-alphabetic (nav/footer noise).
+    Optional source_id applies community/WWDC-specific rejection heuristics.
     """
     if not text or not (text or "").strip():
+        return False
+    if source_id and not _source_chunk_acceptable(text, source_id):
         return False
     words = (text or "").split()
     if len(words) < MIN_CHUNK_WORDS:

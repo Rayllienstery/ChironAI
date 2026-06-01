@@ -59,6 +59,7 @@ class PrepareResult:
     page_meta: dict[str, Any]
     body_md: str
     skip_detail: str | None = None
+    prepare_stats: dict[str, int] | None = None
 
 
 def _collapse_whitespace(md: str) -> str:
@@ -66,6 +67,73 @@ def _collapse_whitespace(md: str) -> str:
         return ""
     md = re.sub(r"\n{3,}", "\n\n", md)
     return md.strip()
+
+
+def _has_substantial_prose(text: str) -> bool:
+    for para in text.split("\n\n"):
+        p = para.strip()
+        if len(p) < 120:
+            continue
+        alpha = sum(1 for c in p if c.isalpha())
+        if alpha / max(len(p), 1) < 0.5:
+            continue
+        if p.startswith("[") or p.startswith("http"):
+            continue
+        return True
+    return False
+
+
+def strip_leading_toc(md: str) -> str:
+    """Drop leading nav/breadcrumb junk before the first H1 when it is not real prose."""
+    if not md or not md.strip():
+        return md
+    lines = md.split("\n")
+    h1_idx: int | None = None
+    for i, line in enumerate(lines):
+        if re.match(r"^#\s+\S", line.strip()):
+            h1_idx = i
+            break
+    if h1_idx is None or h1_idx == 0:
+        return md
+    prefix = "\n".join(lines[:h1_idx])
+    if _has_substantial_prose(prefix):
+        return md
+    return "\n".join(lines[h1_idx:])
+
+
+_STORE_CTA_SUBSTRINGS = (
+    "sponsor the site",
+    "twitter.com/twostraws",
+    "buy our books",
+    "click here to visit the hacking with swift store",
+    "become a member",
+    "sign up for our newsletter",
+    "subscribe to our newsletter",
+)
+
+
+def strip_store_cta_lines(md: str) -> str:
+    """Remove community store/sponsor CTA lines."""
+    if not md:
+        return md
+    out: list[str] = []
+    for line in md.split("\n"):
+        lower = line.lower()
+        if any(sub in lower for sub in _STORE_CTA_SUBSTRINGS):
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def apply_source_prepare_options(body: str, source_extra: dict[str, Any] | None) -> str:
+    """Apply per-source flags from config/sources.yaml extra (strip_toc, strip_store_cta)."""
+    extra = source_extra or {}
+    md = body
+    if extra.get("strip_toc"):
+        md = strip_leading_toc(md)
+    if extra.get("strip_store_cta"):
+        md = strip_store_cta_lines(md)
+    return md
 
 
 def strip_noise_section_headings(md: str, noise_headings: list[str]) -> str:
@@ -127,6 +195,7 @@ def prepare_markdown_for_indexing(
     *,
     run_pipeline_fn: Callable[[str, str], tuple[dict[str, Any], str]] | None = None,
     active_pipeline_name_fn: Callable[[], str] | None = None,
+    source_extra: dict[str, Any] | None = None,
 ) -> PrepareResult:
     """
     Prepare markdown for RAG chunking. ``filename`` is the basename or path used for filename-based excludes.
@@ -141,6 +210,12 @@ def prepare_markdown_for_indexing(
             page_meta=empty_meta,
             body_md="",
             skip_detail="markdown_meta unavailable",
+            prepare_stats={
+                "raw_chars": len(raw_md or ""),
+                "body_original_chars": 0,
+                "body_prepared_chars": 0,
+                "removed_chars": 0,
+            },
         )
     if not raw_md:
         return PrepareResult(
@@ -149,9 +224,25 @@ def prepare_markdown_for_indexing(
             page_meta=empty_meta,
             body_md="",
             skip_detail="empty file",
+            prepare_stats={
+                "raw_chars": 0,
+                "body_original_chars": 0,
+                "body_prepared_chars": 0,
+                "removed_chars": 0,
+            },
         )
 
     page_meta, body = parse_and_strip_meta_block(raw_md)
+    original_body_chars = len(body or "")
+
+    def _prepare_stats(prepared_body: str) -> dict[str, int]:
+        prepared_chars = len(prepared_body or "")
+        return {
+            "raw_chars": len(raw_md or ""),
+            "body_original_chars": original_body_chars,
+            "body_prepared_chars": prepared_chars,
+            "removed_chars": max(0, original_body_chars - prepared_chars),
+        }
 
     fn_patterns = get_indexing_list("exclude_filename_substrings", [])
     if _filename_excluded(filename, fn_patterns):
@@ -161,6 +252,7 @@ def prepare_markdown_for_indexing(
             page_meta=page_meta,
             body_md="",
             skip_detail=filename,
+            prepare_stats=_prepare_stats(body),
         )
 
     head_n = get_indexing_int("exclude_content_head_chars", 2000)
@@ -172,6 +264,7 @@ def prepare_markdown_for_indexing(
             page_meta=page_meta,
             body_md="",
             skip_detail="exclude_content_substrings match in head",
+            prepare_stats=_prepare_stats(body),
         )
 
     rp = run_pipeline_fn or run_md_indexer_pipeline
@@ -188,6 +281,7 @@ def prepare_markdown_for_indexing(
 
     noise = get_indexing_list("noise_section_headings", [])
     body = strip_noise_section_headings(body, noise)
+    body = apply_source_prepare_options(body, source_extra)
     body = _collapse_whitespace(body)
 
     # Final gate fallback when md_indexer pipeline isn't available (or failed before applying).
@@ -202,6 +296,7 @@ def prepare_markdown_for_indexing(
             page_meta=page_meta,
             body_md="",
             skip_detail="no body after pipeline",
+            prepare_stats=_prepare_stats(body),
         )
 
     return PrepareResult(
@@ -209,11 +304,15 @@ def prepare_markdown_for_indexing(
         skip_reason=None,
         page_meta=page_meta,
         body_md=body,
+        prepare_stats=_prepare_stats(body),
     )
 
 
 __all__ = [
     "PrepareResult",
+    "apply_source_prepare_options",
     "prepare_markdown_for_indexing",
+    "strip_leading_toc",
     "strip_noise_section_headings",
+    "strip_store_cta_lines",
 ]

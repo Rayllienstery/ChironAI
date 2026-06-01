@@ -42,12 +42,24 @@ const SKIP_REASON_LABELS = {
   read_error: "Read error",
   too_short: "Too short / empty file",
   empty_after_prepare: "Empty after prepare (incl. reject_low_signal pipeline step)",
+  filename_excluded: "Filename excluded",
+  content_excluded: "Content excluded",
   chunk_failed: "Chunking failed",
   no_valid_chunks: "No quality chunks",
   embed_failed: "Embedding failed",
   dim_mismatch: "Vector dimension mismatch",
   other: "Other",
 };
+
+function formatIndexNumber(value) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? new Intl.NumberFormat().format(n) : "0";
+}
+
+function issuePath(issue) {
+  if (!issue || typeof issue !== "object") return "";
+  return `${issue.source_id || ""}/${issue.filename || ""}`.replace(/^\//, "");
+}
 
 function CreateCollectionIndexProgress({
   progress,
@@ -73,6 +85,16 @@ function CreateCollectionIndexProgress({
       /^\//,
       "",
     );
+  const extraStats = [
+    ["Removed chars", progress.prepare_removed_chars],
+    ["Prepared chars", progress.prepare_output_chars],
+    ["Empty-page removed chars", progress.empty_after_prepare_removed_chars],
+    ["Deduped chunks", progress.deduped_chunks],
+  ].filter(([, value]) => Number(value || 0) > 0);
+  const recentIssues =
+    Array.isArray(progress.recent_skips) && progress.recent_skips.length > 0
+      ? progress.recent_skips
+      : (progress.errors || []).map((err) => ({ detail: String(err) }));
 
   return (
     <div
@@ -137,6 +159,16 @@ function CreateCollectionIndexProgress({
         </div>
       </div>
 
+      {extraStats.length > 0 && (
+        <div className="create-collection-index-extra-stats">
+          {extraStats.map(([label, value]) => (
+            <span key={label}>
+              <strong>{formatIndexNumber(value)}</strong> {label}
+            </span>
+          ))}
+        </div>
+      )}
+
       {isRunning && (currentFile || phaseLabel) && (
         <div className="create-collection-index-current">
           {phaseLabel && phaseKey && (
@@ -192,12 +224,33 @@ function CreateCollectionIndexProgress({
         </div>
       )}
 
-      {progress.errors && progress.errors.length > 0 && (
+      {recentIssues.length > 0 && (
         <details className="create-collection-index-errors">
-          <summary>Recent errors ({progress.errors.length})</summary>
+          <summary>Recent issues ({recentIssues.length})</summary>
           <ul>
-            {progress.errors.map((err, i) => (
-              <li key={i}>{String(err)}</li>
+            {recentIssues.map((issue, i) => (
+              <li key={i}>
+                {issuePath(issue) && (
+                  <span className="create-collection-index-error-file">
+                    {issuePath(issue)}
+                  </span>
+                )}
+                {issue.reason && (
+                  <span className="create-collection-index-error-reason">
+                    {SKIP_REASON_LABELS[issue.reason] || issue.reason}
+                  </span>
+                )}
+                {issue.detail && (
+                  <span className="create-collection-index-error-detail">
+                    {issue.detail}
+                  </span>
+                )}
+                {Number(issue.removed_chars || 0) > 0 && (
+                  <span className="create-collection-index-error-meta">
+                    removed {formatIndexNumber(issue.removed_chars)} chars
+                  </span>
+                )}
+              </li>
             ))}
           </ul>
         </details>

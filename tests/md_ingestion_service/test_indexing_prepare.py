@@ -5,8 +5,11 @@ from __future__ import annotations
 import pytest
 
 from md_ingestion_service.domain.services.indexing_prepare import (
+    apply_source_prepare_options,
     prepare_markdown_for_indexing,
+    strip_leading_toc,
     strip_noise_section_headings,
+    strip_store_cta_lines,
 )
 
 
@@ -78,6 +81,47 @@ def test_prepare_reject_low_signal_too_short(monkeypatch: pytest.MonkeyPatch) ->
     r = prepare_markdown_for_indexing("x.md", raw, run_pipeline_fn=None, active_pipeline_name_fn=None)
     assert r.skipped is True
     assert r.skip_reason == "empty_after_prepare"
+
+
+def test_strip_leading_toc_removes_nav_before_h1() -> None:
+    md = """[Home](/)
+[Example code](/example-code)
+
+# NavigationStack
+
+Real content here with enough words to matter for the article body.
+"""
+    out = strip_leading_toc(md)
+    assert out.startswith("# NavigationStack")
+    assert "[Home]" not in out
+
+
+def test_strip_store_cta_removes_sponsor_lines() -> None:
+    md = """# Title
+
+Good paragraph with technical content about SwiftUI navigation patterns.
+
+Please sponsor the site today.
+
+More content.
+"""
+    out = strip_store_cta_lines(md)
+    assert "sponsor" not in out.lower()
+    assert "Good paragraph" in out
+
+
+def test_apply_source_prepare_options_hws() -> None:
+    md = """[Nav](/)
+
+# How to push a view
+
+Body text about NavigationStack push navigation in SwiftUI apps.
+"""
+    out = apply_source_prepare_options(
+        md,
+        {"strip_toc": True, "strip_store_cta": True},
+    )
+    assert out.startswith("# How to push")
 
 
 def test_prepare_happy_path_no_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:

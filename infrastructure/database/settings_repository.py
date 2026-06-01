@@ -188,6 +188,15 @@ class SettingsRepository:
             )
             conn.commit()
 
+    def delete_collection_meta(self, collection_name: str) -> None:
+        """Remove RAG collection metadata row."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "DELETE FROM rag_collection_meta WHERE collection_name = ?",
+                (collection_name,),
+            )
+            conn.commit()
+
     def list_collections_by_framework(self) -> list[dict[str, Any]]:
         """List all collection meta entries (for UI and freshness checks)."""
         with sqlite3.connect(self.db_path) as conn:

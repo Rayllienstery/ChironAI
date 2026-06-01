@@ -148,6 +148,8 @@ const SKIP_REASON_LABELS = {
   read_error: "Read error",
   too_short: "Too short / empty file",
   empty_after_prepare: "Empty after prepare (incl. reject_low_signal pipeline step)",
+  filename_excluded: "Filename excluded",
+  content_excluded: "Content excluded",
   chunk_failed: "Chunking failed",
   no_valid_chunks: "No quality chunks",
   embed_failed: "Embedding failed",
@@ -155,10 +157,21 @@ const SKIP_REASON_LABELS = {
   other: "Other",
 };
 
+function formatIndexNumber(value) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? new Intl.NumberFormat().format(n) : "0";
+}
+
+function issuePath(issue) {
+  if (!issue || typeof issue !== "object") return "";
+  return `${issue.source_id || ""}/${issue.filename || ""}`.replace(/^\//, "");
+}
+
 const SECTION_TABS = [
   { id: "crawler", label: "Crawler" },
   { id: "md-pipeline", label: "MD Pipeline" },
 ];
+const CREATE_COLLECTION_LIVE_ID = "crawler-create-collection";
 
 function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
   if (!progress) return null;
@@ -180,6 +193,16 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
       /^\//,
       "",
     );
+  const extraStats = [
+    ["Removed chars", progress.prepare_removed_chars],
+    ["Prepared chars", progress.prepare_output_chars],
+    ["Empty-page removed chars", progress.empty_after_prepare_removed_chars],
+    ["Deduped chunks", progress.deduped_chunks],
+  ].filter(([, value]) => Number(value || 0) > 0);
+  const recentIssues =
+    Array.isArray(progress.recent_skips) && progress.recent_skips.length > 0
+      ? progress.recent_skips
+      : (progress.errors || []).map((err) => ({ detail: String(err) }));
 
   if (variant === "toast") {
     const sourceCount = (progress.source_ids || []).length;
@@ -328,6 +351,16 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
         </div>
       </div>
 
+      {extraStats.length > 0 && (
+        <div className="create-collection-index-extra-stats">
+          {extraStats.map(([label, value]) => (
+            <span key={label}>
+              <strong>{formatIndexNumber(value)}</strong> {label}
+            </span>
+          ))}
+        </div>
+      )}
+
       {isRunning && (currentFile || phaseLabel) && (
         <div className="create-collection-index-current">
           {phaseLabel && phaseKey && (
@@ -377,14 +410,35 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
         </div>
       )}
 
-      {progress.errors && progress.errors.length > 0 && (
+      {recentIssues.length > 0 && (
         <details className="create-collection-index-errors">
           <summary>
-            Recent errors ({progress.errors.length})
+            Recent issues ({recentIssues.length})
           </summary>
           <ul>
-            {progress.errors.map((err, i) => (
-              <li key={i}>{String(err)}</li>
+            {recentIssues.map((issue, i) => (
+              <li key={i}>
+                {issuePath(issue) && (
+                  <span className="create-collection-index-error-file">
+                    {issuePath(issue)}
+                  </span>
+                )}
+                {issue.reason && (
+                  <span className="create-collection-index-error-reason">
+                    {SKIP_REASON_LABELS[issue.reason] || issue.reason}
+                  </span>
+                )}
+                {issue.detail && (
+                  <span className="create-collection-index-error-detail">
+                    {issue.detail}
+                  </span>
+                )}
+                {Number(issue.removed_chars || 0) > 0 && (
+                  <span className="create-collection-index-error-meta">
+                    removed {formatIndexNumber(issue.removed_chars)} chars
+                  </span>
+                )}
+              </li>
             ))}
           </ul>
         </details>
@@ -595,6 +649,14 @@ function CrawlerTab() {
           cancel_requested: job.cancel_requested ?? false,
           cancelled: job.cancelled ?? false,
           errors: job.errors ?? [],
+          recent_skips: job.recent_skips ?? [],
+          largest_prepare_removals: job.largest_prepare_removals ?? [],
+          deduped_chunks: job.deduped_chunks ?? 0,
+          prepare_original_chars: job.prepare_original_chars ?? 0,
+          prepare_output_chars: job.prepare_output_chars ?? 0,
+          prepare_removed_chars: job.prepare_removed_chars ?? 0,
+          empty_after_prepare_removed_chars:
+            job.empty_after_prepare_removed_chars ?? 0,
           error: job.error,
           statistics: job.statistics,
         });
@@ -1195,6 +1257,7 @@ function CrawlerTab() {
       const trimmedName = createForm.collection_name.trim();
       setCreateCollectionName(trimmedName);
       setShowCreateToast(true);
+      nc?.clearLiveSuppression?.(CREATE_COLLECTION_LIVE_ID);
       const result = await createCollection(createForm);
       if (result.job_id) {
         setCreateJobId(result.job_id);
@@ -1205,6 +1268,13 @@ function CrawlerTab() {
           total_pages: 0,
           indexed_pages: 0,
           total_chunks: 0,
+          skipped_pages: 0,
+          errors: [],
+          recent_skips: [],
+          prepare_removed_chars: 0,
+          prepare_output_chars: 0,
+          empty_after_prepare_removed_chars: 0,
+          deduped_chunks: 0,
         });
       } else {
         setShowCreateModal(false);
@@ -1250,83 +1320,68 @@ function CrawlerTab() {
     }
   };
 
-  const handleCloseCreateToast = useCallback(() => {
-    setShowCreateToast(false);
-    setCreateProgress(null);
-  }, []);
+  const createCollectionToastName =
+    createCollectionName || createForm.collection_name || "Collection";
+  const createCollectionToastTitle =
+    createProgress?.status === "success"
+      ? "Collection created"
+      : createProgress?.status === "failed"
+        ? "Collection failed"
+        : createProgress?.status === "cancelled"
+          ? "Collection cancelled"
+          : "Creating collection...";
+  const createCollectionLiveSuppressed =
+    nc?.liveSuppressedIds?.includes(CREATE_COLLECTION_LIVE_ID) || false;
 
   useEffect(() => {
     if (
       !nc ||
       activeSection !== "crawler" ||
       !createProgress ||
-      !showCreateToast
+      !showCreateToast ||
+      createCollectionLiveSuppressed
     ) {
-      nc?.clearLiveActivity?.("crawler-create-collection");
+      nc?.clearLiveActivity?.(CREATE_COLLECTION_LIVE_ID);
       return undefined;
     }
-    nc.clearLiveSuppression?.("crawler-create-collection");
     nc.setLiveActivity(
-      "crawler-create-collection",
+      CREATE_COLLECTION_LIVE_ID,
       "crawler",
       <div
-        className={`create-collection-toast create-collection-toast-${createProgress.status || "unknown"} create-collection-toast--embed`}
+        className={`create-collection-live create-collection-live--${createProgress.status || "unknown"}`}
         role="status"
         aria-live="polite"
       >
-        <div className="create-collection-toast-header">
-          <div className="create-collection-toast-title">
-            {createProgress.status === "success"
-              ? "Collection created"
-              : createProgress.status === "failed"
-                ? "Collection failed"
-                : createProgress.status === "cancelled"
-                  ? "Collection cancelled"
-                  : "Creating collection..."}
-          </div>
-          <button
-            type="button"
-            className="create-collection-toast-close"
-            onClick={handleCloseCreateToast}
-            aria-label="Dismiss collection progress"
-          >
-            ×
-          </button>
+        <div className="create-collection-live-heading">
+          <span className="create-collection-live-title">
+            {createCollectionToastTitle}
+          </span>
+          <span className="create-collection-live-name" title={createCollectionToastName}>
+            {createCollectionToastName}
+          </span>
         </div>
-        <div className="create-collection-toast-body">
-          <div className="create-collection-toast-name">
-            {createCollectionName ||
-              createForm.collection_name ||
-              "Collection"}
+        {createProgress.status === "failed" && (
+          <div className="create-collection-toast-text create-collection-index-error-banner">
+            {(createProgress.error && String(createProgress.error).slice(0, 400)) ||
+              "Collection creation failed."}
           </div>
-          {createProgress.status === "failed" && (
-            <div className="create-collection-toast-text create-collection-index-error-banner">
-              {(createProgress.error &&
-                String(createProgress.error).slice(0, 400)) ||
-                "Collection creation failed."}
-            </div>
-          )}
-          <CreateCollectionIndexProgress
-            progress={createProgress}
-            collectionName={
-              createCollectionName ||
-              createForm.collection_name ||
-              "Collection"
-            }
-            variant="toast"
-          />
-        </div>
+        )}
+        <CreateCollectionIndexProgress
+          progress={createProgress}
+          collectionName={createCollectionToastName}
+          variant="toast"
+        />
       </div>,
     );
-    return () => nc.clearLiveActivity("crawler-create-collection");
+    return () => nc.clearLiveActivity(CREATE_COLLECTION_LIVE_ID);
   }, [
     nc,
     activeSection,
     createProgress,
     showCreateToast,
-    createCollectionName,
-    createForm.collection_name,
-    handleCloseCreateToast,
+    createCollectionToastName,
+    createCollectionToastTitle,
+    createCollectionLiveSuppressed,
   ]);
 
   const toggleSourceSelected = (sourceId) => {

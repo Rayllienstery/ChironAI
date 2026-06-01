@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import random
+import re
 import subprocess
 import sys
 import threading
@@ -18,7 +19,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from error_manager.http import error_response as _error_response
 from webui_backend.paths import webui_data_dir
-from config import get_qdrant_url
+from config import get_indexing_int, get_qdrant_url
 from application.rag.hybrid_sparse import is_hybrid_sparse_enabled
 from rag_service.domain.services.chunking import chunk_quality_ok, split_markdown_into_chunks
 from rag_service.domain.services.metadata_inference import (
@@ -61,6 +62,11 @@ def _import_qdrant() -> tuple[type, type, type, type, type, type]:
     )
     return _QC, _Dist, _PST, _PS, _SVP, _VP
 
+from api.http.rag_sources_meta import (
+    clear_chunk_hashes_for_sources,
+    parse_source_ids_from_framework_id,
+    update_page_chunk_hashes,
+)
 from api.http.webui_crawler_helpers import is_safe_identifier
 from api.http.webui_crawler_source_routes import register_crawler_source_routes
 from api.http.webui_provider_helpers import (
@@ -102,7 +108,69 @@ def _config_default_embed_model() -> str:
 
         return str(get_default_embed_model() or "").strip()
     except Exception:
-        return os.getenv("RAG_EMBED_MODEL", "mxbai-embed-large:latest")
+        return os.getenv("RAG_EMBED_MODEL", "mxbai-embed-large")
+
+
+_EMBED_FALLBACK_LOGGED = False
+_OLLAMA_EMBED_BATCH_SIZE = 8
+_MAX_EMBED_CHARS = 32_000
+
+
+def _runtime_embed_available() -> bool:
+    """True when Flask app has extension runtime or llm_proxy wiring (not plain webui_backend.app)."""
+    try:
+        from flask import has_app_context, current_app
+
+        if not has_app_context():
+            return False
+        if current_app.extensions.get("llm_proxy_wiring") is not None:
+            return True
+        from api.http.extensions_service_access import get_extensions_runtime
+
+        return get_extensions_runtime(current_app) is not None
+    except Exception:
+        return False
+
+
+def _embed_texts_via_ollama(texts: list[str], model: str) -> list[list[float]]:
+    """Direct Ollama /api/embed when extension runtime is unavailable."""
+    import httpx
+
+    try:
+        from config import get_ollama_embed_url
+    except Exception:
+        get_ollama_embed_url = lambda: os.getenv(  # type: ignore[assignment,misc]
+            "OLLAMA_EMBED_URL", "http://localhost:11434/api/embed"
+        )
+
+    url = str(get_ollama_embed_url() or "http://localhost:11434/api/embed").strip()
+    embed_model = (model or _config_default_embed_model()).strip()
+    if not texts:
+        return []
+
+    def _one_batch(batch: list[str]) -> list[list[float]]:
+        clipped = [
+            (t or "")[:_MAX_EMBED_CHARS] if len(t or "") > _MAX_EMBED_CHARS else (t or "")
+            for t in batch
+        ]
+        resp = httpx.post(
+            url,
+            json={"model": embed_model, "input": clipped},
+            timeout=180.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        vectors = data.get("embeddings") or []
+        if len(vectors) != len(batch):
+            raise RuntimeError(
+                f"Ollama returned {len(vectors)} embeddings for {len(batch)} texts"
+            )
+        return [[float(v) for v in vec] for vec in vectors]
+
+    out: list[list[float]] = []
+    for i in range(0, len(texts), _OLLAMA_EMBED_BATCH_SIZE):
+        out.extend(_one_batch(texts[i : i + _OLLAMA_EMBED_BATCH_SIZE]))
+    return out
 
 
 def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
@@ -216,7 +284,10 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
             # 1) app_settings.rag_embed_model (set from WebUI)
             # 2) legacy default embed model from config/env
             embed_model = rag_embed_model or _config_default_embed_model()
-    
+
+        if not _runtime_embed_available():
+            return _embed_texts_via_ollama(texts, embed_model)
+
         try:
             return _invoke_runtime_embed(
                 provider_id=resolved_provider_id,
@@ -224,8 +295,18 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                 texts=texts,
             )
         except Exception as e:
-            _WEBUI_LOG.error(f"Failed to get embeddings: {e}")
-            raise
+            global _EMBED_FALLBACK_LOGGED
+            if not _EMBED_FALLBACK_LOGGED:
+                _WEBUI_LOG.warning(
+                    "Runtime embed unavailable (%s); using direct Ollama HTTP for indexing",
+                    e,
+                )
+                _EMBED_FALLBACK_LOGGED = True
+            try:
+                return _embed_texts_via_ollama(texts, embed_model)
+            except Exception as fallback_exc:
+                _WEBUI_LOG.error(f"Failed to get embeddings: {fallback_exc}")
+                raise
 
 
     def _qdrant_collection_has_sparse_vectors(qclient: QdrantClient, collection_name: str) -> bool:
@@ -318,10 +399,56 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
         snap = dict(st)
         snap["skip_reasons"] = dict(st.get("skip_reasons") or {})
         snap["errors"] = list(st.get("errors") or [])
+        snap["recent_skips"] = list(st.get("recent_skips") or [])
+        snap["largest_prepare_removals"] = list(st.get("largest_prepare_removals") or [])
         return snap
 
 
-    def _record_page_skip(st: dict[str, Any], reason: str, error_msg: str | None = None) -> None:
+    def _record_prepare_stats(st: dict[str, Any], prepare_stats: dict[str, Any] | None) -> None:
+        ps = prepare_stats or {}
+        original_chars = int(ps.get("body_original_chars") or 0)
+        prepared_chars = int(ps.get("body_prepared_chars") or 0)
+        removed_chars = int(ps.get("removed_chars") or 0)
+        st["prepare_original_chars"] = int(st.get("prepare_original_chars") or 0) + original_chars
+        st["prepare_output_chars"] = int(st.get("prepare_output_chars") or 0) + prepared_chars
+        st["prepare_removed_chars"] = int(st.get("prepare_removed_chars") or 0) + removed_chars
+
+
+    def _remember_prepare_removal(
+        st: dict[str, Any],
+        *,
+        source_id: str,
+        filename: str,
+        prepare_stats: dict[str, Any] | None,
+    ) -> None:
+        ps = prepare_stats or {}
+        removed_chars = int(ps.get("removed_chars") or 0)
+        if removed_chars <= 0:
+            return
+        rows = st.setdefault("largest_prepare_removals", [])
+        rows.append(
+            {
+                "source_id": source_id,
+                "filename": filename,
+                "removed_chars": removed_chars,
+                "original_chars": int(ps.get("body_original_chars") or 0),
+                "prepared_chars": int(ps.get("body_prepared_chars") or 0),
+            }
+        )
+        rows.sort(key=lambda item: int(item.get("removed_chars") or 0), reverse=True)
+        del rows[8:]
+
+
+    def _record_page_skip(
+        st: dict[str, Any],
+        reason: str,
+        error_msg: str | None = None,
+        *,
+        source_id: str = "",
+        filename: str = "",
+        detail: str | None = None,
+        prepare_stats: dict[str, Any] | None = None,
+    ) -> None:
         st["skipped_pages"] += 1
         sr = st.setdefault(
             "skip_reasons",
@@ -343,6 +470,21 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
         else:
             sr["other"] = sr.get("other", 0) + 1
         st["last_skip_reason"] = reason
+        recent = st.setdefault("recent_skips", [])
+        if source_id or filename or detail or error_msg:
+            ps = prepare_stats or {}
+            recent.append(
+                {
+                    "source_id": source_id,
+                    "filename": filename,
+                    "reason": reason,
+                    "detail": detail or error_msg or "",
+                    "removed_chars": int(ps.get("removed_chars") or 0),
+                    "original_chars": int(ps.get("body_original_chars") or 0),
+                    "prepared_chars": int(ps.get("body_prepared_chars") or 0),
+                }
+            )
+            del recent[:-12]
         if error_msg:
             errs = st.setdefault("errors", [])
             errs.append(error_msg)
@@ -392,6 +534,13 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
             "current_phase": "",
             "last_skip_reason": "",
             "cancelled": False,
+            "deduped_chunks": 0,
+            "prepare_original_chars": 0,
+            "prepare_output_chars": 0,
+            "prepare_removed_chars": 0,
+            "empty_after_prepare_removed_chars": 0,
+            "recent_skips": [],
+            "largest_prepare_removals": [],
         }
 
         hybrid_cfg = is_hybrid_sparse_enabled()
@@ -400,6 +549,14 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
         first_dim: int | None = None
         upsert_batch: list[PointStruct] = []
         BATCH_SIZE = 200
+        seen_chunk_keys: set[str] = set()
+        chunk_overlap = get_indexing_int("chunk_overlap", 150)
+
+        config_sources = {s.get("id"): s for s in _load_sources_config() if s.get("id")}
+        source_extras: dict[str, dict[str, Any]] = {
+            sid: (cfg.get("extra") or {}) if isinstance(cfg.get("extra"), dict) else {}
+            for sid, cfg in config_sources.items()
+        }
     
         # Collect all pages from specified sources
         candidates: list[tuple[str, str, dict, str, dict]] = []  # (source_id, filename, entry, pages_dir, source_meta)
@@ -454,39 +611,75 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                     stats,
                     "read_error",
                     f"Failed to read {source_id}/{filename}: {e}",
+                    source_id=source_id,
+                    filename=filename,
+                    detail=str(e),
                 )
                 processed += 1
                 if on_progress:
                     on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
                 continue
 
-            prep = prepare_markdown_for_indexing(filename, md)
+            prep = prepare_markdown_for_indexing(
+                filename,
+                md,
+                source_extra=source_extras.get(source_id),
+            )
+            _record_prepare_stats(stats, prep.prepare_stats)
+            _remember_prepare_removal(
+                stats,
+                source_id=source_id,
+                filename=filename,
+                prepare_stats=prep.prepare_stats,
+            )
             if prep.skipped:
+                if (prep.skip_reason or "") == "empty_after_prepare":
+                    stats["empty_after_prepare_removed_chars"] += int(
+                        (prep.prepare_stats or {}).get("removed_chars") or 0
+                    )
+                detail = prep.skip_detail or prep.skip_reason or "skipped"
                 _record_page_skip(
                     stats,
                     prep.skip_reason or "other",
-                    prep.skip_detail,
+                    f"{source_id}/{filename}: {detail}",
+                    source_id=source_id,
+                    filename=filename,
+                    detail=detail,
+                    prepare_stats=prep.prepare_stats,
                 )
                 processed += 1
                 if on_progress:
                     on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
                 continue
 
-            page_meta = prep.page_meta
+            page_meta = dict(prep.page_meta or {})
+            for key in ("framework", "doc_kind", "doc_scope", "url"):
+                val = entry.get(key) if isinstance(entry, dict) else None
+                if val and not page_meta.get(key):
+                    page_meta[key] = val
             md = prep.body_md
 
             # Split into chunks
             stats["current_phase"] = "chunking"
             try:
                 chunks_with_paths = split_markdown_into_chunks(
-                    md, max_chunk_size=chunk_max_size, min_chunk_size=chunk_min_size
+                    md,
+                    max_chunk_size=chunk_max_size,
+                    min_chunk_size=chunk_min_size,
+                    chunk_overlap=chunk_overlap,
                 )
-                chunks_with_paths = [(t, p) for t, p in chunks_with_paths if chunk_quality_ok(t)]
+                chunks_with_paths = [
+                    (t, p) for t, p in chunks_with_paths if chunk_quality_ok(t, source_id=source_id)
+                ]
             except Exception as e:
                 _record_page_skip(
                     stats,
                     "chunk_failed",
                     f"Failed to chunk {source_id}/{filename}: {e}",
+                    source_id=source_id,
+                    filename=filename,
+                    detail=str(e),
+                    prepare_stats=prep.prepare_stats,
                 )
                 processed += 1
                 if on_progress:
@@ -494,7 +687,15 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                 continue
 
             if not chunks_with_paths:
-                _record_page_skip(stats, "no_valid_chunks")
+                _record_page_skip(
+                    stats,
+                    "no_valid_chunks",
+                    f"{source_id}/{filename}: no quality chunks after filtering",
+                    source_id=source_id,
+                    filename=filename,
+                    detail="no quality chunks after filtering",
+                    prepare_stats=prep.prepare_stats,
+                )
                 processed += 1
                 if on_progress:
                     on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
@@ -520,6 +721,10 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                     stats,
                     "embed_failed",
                     f"Failed to get embeddings for {source_id}/{filename}: {e}",
+                    source_id=source_id,
+                    filename=filename,
+                    detail=str(e),
+                    prepare_stats=prep.prepare_stats,
                 )
                 processed += 1
                 if on_progress:
@@ -538,6 +743,10 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                     stats,
                     "embed_failed",
                     f"No embeddings returned for {source_id}/{filename}",
+                    source_id=source_id,
+                    filename=filename,
+                    detail="no embeddings returned",
+                    prepare_stats=prep.prepare_stats,
                 )
                 processed += 1
                 if on_progress:
@@ -559,6 +768,10 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                     stats,
                     "dim_mismatch",
                     f"Dimension mismatch for {source_id}/{filename}: {dim} != {first_dim}",
+                    source_id=source_id,
+                    filename=filename,
+                    detail=f"{dim} != {first_dim}",
+                    prepare_stats=prep.prepare_stats,
                 )
                 processed += 1
                 if on_progress:
@@ -578,9 +791,19 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
         
             # Create points
             url_for_meta = page_meta.get("url") or entry.get("url")
+            page_chunk_hashes: list[str] = []
             for (chunk_text, section_path), vec in zip(chunks_with_paths, embeddings):
+                norm_url = (url_for_meta or "").strip().rstrip("/")
+                norm_text = re.sub(r"\s+", " ", (chunk_text or "").strip())
+                dedup_key = _sha256(f"{norm_text}|{norm_url}")
+                if dedup_key in seen_chunk_keys:
+                    stats["deduped_chunks"] += 1
+                    continue
+                seen_chunk_keys.add(dedup_key)
+
                 section_path_str = ":".join(section_path) if section_path else ""
                 chunk_hash = _sha256(f"{source_id}:{filename}:{section_path_str}:{chunk_text}")
+                page_chunk_hashes.append(chunk_hash)
                 point_id = _point_id_from_hash(chunk_hash)
             
                 ios_versions, swift_versions = extract_versions(chunk_text)
@@ -645,6 +868,15 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                     stats["errors"].append(f"Failed to upsert batch: {e}")
         
             stats["indexed_pages"] += 1
+            try:
+                update_page_chunk_hashes(source_id, filename, page_chunk_hashes)
+            except Exception:
+                _WEBUI_LOG.warning(
+                    "Failed to persist chunk_hashes for %s/%s",
+                    source_id,
+                    filename,
+                    exc_info=True,
+                )
 
             processed += 1
             stats["current_phase"] = "idle"
@@ -1766,6 +1998,10 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                         _collection_jobs[job_id]["total_chunks"] = st.get("total_chunks", 0)
                         _collection_jobs[job_id]["skipped_pages"] = st.get("skipped_pages", 0)
                         _collection_jobs[job_id]["errors"] = list(st.get("errors", [])[-8:])
+                        _collection_jobs[job_id]["recent_skips"] = list(st.get("recent_skips", [])[-8:])
+                        _collection_jobs[job_id]["largest_prepare_removals"] = list(
+                            st.get("largest_prepare_removals", [])[:8]
+                        )
                         sr = st.get("skip_reasons") or {}
                         _collection_jobs[job_id]["skip_reasons"] = dict(sr)
                         _collection_jobs[job_id]["current_source_id"] = st.get("current_source_id", "")
@@ -1773,6 +2009,14 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                         _collection_jobs[job_id]["current_phase"] = st.get("current_phase", "")
                         _collection_jobs[job_id]["last_skip_reason"] = st.get("last_skip_reason", "")
                         _collection_jobs[job_id]["cancelled"] = bool(st.get("cancelled", False))
+                        _collection_jobs[job_id]["deduped_chunks"] = st.get("deduped_chunks", 0)
+                        _collection_jobs[job_id]["prepare_original_chars"] = st.get("prepare_original_chars", 0)
+                        _collection_jobs[job_id]["prepare_output_chars"] = st.get("prepare_output_chars", 0)
+                        _collection_jobs[job_id]["prepare_removed_chars"] = st.get("prepare_removed_chars", 0)
+                        _collection_jobs[job_id]["empty_after_prepare_removed_chars"] = st.get(
+                            "empty_after_prepare_removed_chars",
+                            0,
+                        )
 
             try:
                 stats = _create_collection_from_sources(
@@ -1785,9 +2029,10 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                     embed_model=embed_model,
                     should_cancel=should_cancel,
                 )
+                cancelled = bool(stats.get("cancelled"))
                 with _collection_jobs_lock:
                     if job_id in _collection_jobs:
-                        cancelled = bool(stats.get("cancelled")) or bool(_collection_jobs[job_id].get("cancel_requested"))
+                        cancelled = cancelled or bool(_collection_jobs[job_id].get("cancel_requested"))
                         _collection_jobs[job_id]["status"] = "cancelled" if cancelled else "success"
                         _collection_jobs[job_id]["statistics"] = stats
                         _collection_jobs[job_id]["processed_pages"] = (
@@ -1799,10 +2044,59 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                         _collection_jobs[job_id]["total_chunks"] = stats.get("total_chunks", 0)
                         _collection_jobs[job_id]["skipped_pages"] = stats.get("skipped_pages", 0)
                         _collection_jobs[job_id]["skip_reasons"] = dict(stats.get("skip_reasons") or {})
+                        _collection_jobs[job_id]["errors"] = list(stats.get("errors", [])[-8:])
+                        _collection_jobs[job_id]["recent_skips"] = list(stats.get("recent_skips", [])[-8:])
+                        _collection_jobs[job_id]["largest_prepare_removals"] = list(
+                            stats.get("largest_prepare_removals", [])[:8]
+                        )
                         _collection_jobs[job_id]["current_phase"] = "cancelled" if cancelled else "complete"
                         _collection_jobs[job_id]["current_source_id"] = ""
                         _collection_jobs[job_id]["current_filename"] = ""
                         _collection_jobs[job_id]["cancelled"] = cancelled
+                        _collection_jobs[job_id]["deduped_chunks"] = stats.get("deduped_chunks", 0)
+                        _collection_jobs[job_id]["prepare_original_chars"] = stats.get("prepare_original_chars", 0)
+                        _collection_jobs[job_id]["prepare_output_chars"] = stats.get("prepare_output_chars", 0)
+                        _collection_jobs[job_id]["prepare_removed_chars"] = stats.get("prepare_removed_chars", 0)
+                        _collection_jobs[job_id]["empty_after_prepare_removed_chars"] = stats.get(
+                            "empty_after_prepare_removed_chars",
+                            0,
+                        )
+                if not cancelled and not stats.get("cancelled"):
+                    try:
+                        from datetime import datetime, timezone
+
+                        settings_repo = get_settings_repository()
+                        embed_label = (embed_model or "").strip() or "default"
+                        indexed_at = (
+                            datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+                        )
+                        settings_repo.set_collection_meta(
+                            collection_name,
+                            framework_id=",".join(source_ids),
+                            version=embed_label,
+                            last_refreshed_at=indexed_at,
+                        )
+                        pipeline_name = (
+                            get_active_pipeline_name() if get_active_pipeline_name else "default"
+                        )
+                        index_meta = {
+                            "embed_model": embed_label,
+                            "indexed_at": indexed_at,
+                            "pipeline_version": pipeline_name,
+                            "source_ids": list(source_ids),
+                            "points_count": stats.get("total_chunks", 0),
+                            "deduped_chunks": stats.get("deduped_chunks", 0),
+                        }
+                        settings_repo.set_app_setting(
+                            f"rag_collection_index_meta:{collection_name}",
+                            json.dumps(index_meta, ensure_ascii=False),
+                        )
+                    except Exception:
+                        _ERROR_LOG.warning(
+                            "Failed to persist collection meta for %s",
+                            collection_name,
+                            exc_info=True,
+                        )
             except Exception as e:
                 _ERROR_LOG.error("webui_crawler_routes.create_collection job", exc_info=True)
                 with _collection_jobs_lock:
@@ -1836,6 +2130,13 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
             "cancel_requested": bool(job.get("cancel_requested", False)),
             "cancelled": bool(job.get("cancelled", False)),
             "errors": job.get("errors", []),
+            "recent_skips": job.get("recent_skips", []),
+            "largest_prepare_removals": job.get("largest_prepare_removals", []),
+            "deduped_chunks": job.get("deduped_chunks", 0),
+            "prepare_original_chars": job.get("prepare_original_chars", 0),
+            "prepare_output_chars": job.get("prepare_output_chars", 0),
+            "prepare_removed_chars": job.get("prepare_removed_chars", 0),
+            "empty_after_prepare_removed_chars": job.get("empty_after_prepare_removed_chars", 0),
             "statistics": job.get("statistics"),
             "error": job.get("error"),
         })
@@ -1928,6 +2229,8 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                     "total_chunks": 0,
                     "skipped_pages": 0,
                     "errors": [],
+                    "recent_skips": [],
+                    "largest_prepare_removals": [],
                     "skip_reasons": {
                         "read_error": 0,
                         "too_short": 0,
@@ -1946,6 +2249,11 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                     "last_skip_reason": "",
                     "cancel_requested": False,
                     "cancelled": False,
+                    "deduped_chunks": 0,
+                    "prepare_original_chars": 0,
+                    "prepare_output_chars": 0,
+                    "prepare_removed_chars": 0,
+                    "empty_after_prepare_removed_chars": 0,
                 }
 
             thread = threading.Thread(

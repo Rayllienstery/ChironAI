@@ -26,6 +26,15 @@ if _CRAWLER_ROOT not in sys.path:
 _HTML_MD_ROOT = os.path.join(_ROOT_DIR, "modules", "html_md")
 if _HTML_MD_ROOT not in sys.path:
     sys.path.insert(0, _HTML_MD_ROOT)
+for _extra in (
+    "CoreModules/ErrorManager",
+    "CoreModules/RagService",
+    "CoreModules/MdIngestionService",
+    "modules/extensions_backend",
+):
+    _p = os.path.join(_ROOT_DIR, _extra)
+    if os.path.isdir(_p) and _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from crawler_service.application.crawl_runner import (  # noqa: E402
     build_crawl_host,

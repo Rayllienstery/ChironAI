@@ -45,7 +45,7 @@ retrieval:
   final_context_k: 4
 
   # Prefer sets of chunks that cover distinct extracted concepts (API symbols + concept_aliases), then fill by rerank order
-  coverage_aware_selection: false
+  coverage_aware_selection: true
   coverage_extra_terms: []
 
   # Coverage gate: widen how many chunks are taken from the rerank pool when inferred concepts are under-covered
@@ -64,7 +64,7 @@ retrieval:
   structured_rag_context_enabled: false
 
   # Second retrieval pass: expand seeds via map, embed+search once, merge unique hits before rerank
-  concept_expansion_enabled: false
+  concept_expansion_enabled: true
   concept_expansion_seed_hits: 4
   concept_expansion_max_terms: 16
   concept_expansion_pass2_top_k: 8
@@ -202,7 +202,7 @@ retrieval:
   hybrid_sparse_enabled: true
 
   # Query expansion: extra paraphrases before embedding (deterministic; merged with RRF dedupe)
-  query_expansion_enabled: false
+  query_expansion_enabled: true
   query_expansion_max_variants: 3
   # Map triggers (substring match, case-insensitive) -> extra phrase appended as a variant
   query_expansion_abbreviations:

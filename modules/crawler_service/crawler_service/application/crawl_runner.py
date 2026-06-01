@@ -455,6 +455,16 @@ def crawl_source(host: CrawlHost, source: dict[str, Any], dry_run: bool = False)
             "hash": new_hash,
             "last_updated": _now_iso(),
         }
+        try:
+            from domain.services.markdown_meta import parse_and_strip_meta_block
+
+            page_meta, _ = parse_and_strip_meta_block(md)
+            for key in ("framework", "doc_kind", "doc_scope"):
+                val = (page_meta or {}).get(key)
+                if val:
+                    pages_meta[page_filename][key] = val
+        except Exception:
+            pass
 
         if not is_callback:
             if not host.is_cli:

@@ -347,6 +347,8 @@ def infer_metadata(
             first = (section_path[0] or "").strip()
             if first and ("(" in first or ")" in first or first in ("init", "deinit")):
                 doc_scope = "api_symbol"
+        if not doc_scope and section_path and source_id == "apple_documentation":
+            doc_scope = _doc_scope_from_section_path(section_path)
         if not doc_scope and any(k in lower_url for k in ("guide", "guides", "overview")):
             doc_scope = "guide"
         if not doc_scope and any(k in lower_url for k in ("tutorial", "tutorials", "getting-started", "getting_started")):
@@ -382,6 +384,47 @@ _SECTION_NORMALIZE: dict[str, str] = {
     "see also": "see_also",
     "topics": "topics",
 }
+
+_DOC_SCOPE_API_SECTIONS = frozenset(
+    {
+        "discussion",
+        "return_value",
+        "parameters",
+        "syntax",
+        "example",
+        "declaration",
+        "description",
+    }
+)
+_DOC_SCOPE_GUIDE_SECTIONS = frozenset({"overview", "see_also", "topics"})
+
+
+def _section_slug(raw: str) -> str:
+    key = (raw or "").lower().strip()
+    return _SECTION_NORMALIZE.get(key, key.replace(" ", "_"))
+
+
+def _doc_scope_from_section_path(section_path: list[str]) -> str:
+    """Map Apple doc section headings to doc_scope for retrieval weighting."""
+    if not section_path:
+        return ""
+    slugs = [_section_slug(part) for part in section_path if (part or "").strip()]
+    if not slugs:
+        return ""
+    if any(s in _DOC_SCOPE_API_SECTIONS for s in slugs):
+        return "api_symbol"
+    if any(s in _DOC_SCOPE_GUIDE_SECTIONS for s in slugs):
+        return "guide"
+    return ""
+
+
+def _apple_doc_scope_from_doc_kind(doc_kind: str | None) -> str:
+    kind = (doc_kind or "").strip().lower()
+    if kind in {"api_ref", "api_ref_macro"}:
+        return "api_symbol"
+    if kind in {"conceptual", "conceptual_strategy", "overview"}:
+        return "guide"
+    return ""
 
 
 from rag_service.config import get_indexing_int
@@ -444,6 +487,9 @@ def infer_chunk_display_meta(section_path: list[str]) -> dict[str, str]:
         return result
     first = (section_path[0] or "").strip()
     if first and ("(" in first or ")" in first or first in ("init", "deinit")):
+        result["symbol"] = first
+    elif first and " " not in first and first[0].isupper() and len(first) >= 3:
+        # Type/symbol page title (e.g. NavigationStack, UIApplication).
         result["symbol"] = first
     last = (section_path[-1] or "").strip() if section_path else ""
     if last:

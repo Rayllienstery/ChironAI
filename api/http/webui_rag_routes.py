@@ -33,6 +33,11 @@ from application.rag.proxy_settings_contract import (
 from chironai_rag.consumers import RAG_COLLECTION_APP_SETTING
 from config import get_retrieval_bool
 from error_manager.http import error_response as _error_response
+from api.http.rag_sources_meta import (
+    clear_chunk_hashes_for_sources,
+    parse_source_ids_from_framework_id,
+)
+from api.http.webui_crawler_helpers import is_safe_identifier
 from infrastructure.database import get_settings_repository
 from rag_service.domain.services.rag_trigger import compute_rag_trigger_score
 
@@ -55,6 +60,24 @@ def _get_cached_status(key: str, ttl_sec: float, compute: Callable[[], dict[str,
     with _SERVICE_STATUS_CACHE_LOCK:
         _SERVICE_STATUS_CACHE[key] = (now, payload)
     return payload
+
+
+def _collection_is_stale(last_refreshed_at: str | None, ttl_days: int) -> bool:
+    if not last_refreshed_at or ttl_days <= 0:
+        return False
+    try:
+        from datetime import datetime, timezone
+
+        raw = str(last_refreshed_at).strip()
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        refreshed = datetime.fromisoformat(raw)
+        if refreshed.tzinfo is None:
+            refreshed = refreshed.replace(tzinfo=timezone.utc)
+        age_days = (datetime.now(timezone.utc) - refreshed).total_seconds() / 86400.0
+        return age_days > float(ttl_days)
+    except Exception:
+        return False
 
 
 def _qdrant_status_snapshot(timeout_sec: float) -> dict[str, Any]:
@@ -653,6 +676,17 @@ def register_rag_qdrant_routes(
                             item["last_refreshed_at"] = meta.get("last_refreshed_at")
                             item["framework_id"] = meta.get("framework_id")
                             item["version"] = meta.get("version")
+                            item["is_stale"] = _collection_is_stale(
+                                meta.get("last_refreshed_at"), ttl_days
+                            )
+                        index_meta_raw = settings_repo.get_app_setting(
+                            f"rag_collection_index_meta:{name}"
+                        )
+                        if index_meta_raw:
+                            try:
+                                item["index_meta"] = json.loads(index_meta_raw)
+                            except json.JSONDecodeError:
+                                pass
                     except Exception:
                         pass
                     detailed.append(item)
@@ -673,6 +707,49 @@ def register_rag_qdrant_routes(
                 "ttl_days": ttl_days,
                 "default_rag_top_k": default_top_k,
             }), 500
+
+    @bp.route("/rag/collections/<collection_name>", methods=["DELETE"])
+    def delete_rag_collection(collection_name: str) -> Any:
+        """Delete a Qdrant collection and clear crawl index bookkeeping for its sources."""
+        name = (collection_name or "").strip()
+        if not name or not is_safe_identifier(name):
+            return _error_response("Invalid collection name", 400)
+        url = get_qdrant_url().rstrip("/")
+        source_ids: list[str] = []
+        settings_repo = get_settings_repository()
+        try:
+            meta = settings_repo.get_collection_meta(name)
+            if meta:
+                source_ids = parse_source_ids_from_framework_id(meta.get("framework_id"))
+        except Exception:
+            pass
+        try:
+            resp = requests.delete(f"{url}/collections/{name}", timeout=30)
+            if resp.status_code not in (200, 202, 404):
+                return jsonify({
+                    "error": f"Qdrant delete failed: HTTP {resp.status_code}",
+                    "detail": resp.text[:500],
+                }), resp.status_code
+        except requests.exceptions.RequestException as e:
+            return jsonify({"error": "qdrant_unreachable", "detail": str(e)}), 503
+        cleared_pages = 0
+        if source_ids:
+            try:
+                cleared_pages = clear_chunk_hashes_for_sources(source_ids)
+            except Exception as e:
+                _WEBUI_LOG.warning("Failed to clear chunk_hashes for %s: %s", name, e)
+        if settings_repo is not None:
+            try:
+                settings_repo.delete_collection_meta(name)
+                settings_repo.delete_app_setting(f"rag_collection_index_meta:{name}")
+            except Exception:
+                _WEBUI_LOG.warning("Failed to remove collection meta for %s", name, exc_info=True)
+        return jsonify({
+            "status": "ok",
+            "collection_name": name,
+            "cleared_chunk_hash_pages": cleared_pages,
+            "source_ids": source_ids,
+        })
 
     @bp.route("/rag/collection-settings", methods=["POST"])
     def save_rag_collection_settings() -> Any:

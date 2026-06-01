@@ -414,6 +414,31 @@ def combined_doc_priority(hit: dict[str, Any]) -> int:
     return doc_type_priority(hit) + doc_scope_priority(hit)
 
 
+def source_authority_priority(hit: dict[str, Any], intent: QueryIntent | None) -> int:
+    """
+    Prefer official Apple documentation over community/WWDC when ranking candidates.
+    Extra boost when query intent targets an API symbol.
+    """
+    payload = hit.get("payload") or {}
+    source = (payload.get("source") or "").strip()
+    score = 0
+    if source == "apple_documentation":
+        score += 2
+    elif source == "swift_book":
+        score += 1
+    elif source.startswith("wwdc_sessions_"):
+        score += 0
+    elif source in {"hws_swift", "objc_io_issues", "pointfree_collections", "swiftbysundell_articles"}:
+        score -= 1
+    if intent is not None and intent.symbol and source == "apple_documentation":
+        score += 3
+    if intent is not None and intent.framework:
+        fw = (payload.get("framework") or "").strip().lower()
+        if fw and fw == intent.framework.lower():
+            score += 1
+    return score
+
+
 def intent_match_priority(hit: dict[str, Any], intent: QueryIntent | None) -> int:
     """
     Additional priority from intent match (symbol/framework/section).
@@ -802,6 +827,7 @@ __all__ = [
     "doc_scope_priority",
     "combined_doc_priority",
     "intent_match_priority",
+    "source_authority_priority",
     "infer_query_intent",
     "expand_query_variants",
     "extract_symbols_from_pass1_hits",
