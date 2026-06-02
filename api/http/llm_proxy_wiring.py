@@ -417,20 +417,16 @@ def _build_extension_manager(
         from config import (
             get_default_embed_model,
             get_default_rerank_model,
-            get_ollama_base_url,
-            get_ollama_chat_url,
         )
 
         host_metadata.update(
             {
-                "base_url": get_ollama_base_url(),
-                "chat_url": get_ollama_chat_url(),
                 "embed_model": get_default_embed_model(),
                 "rerank_model": get_default_rerank_model(),
             }
         )
     except Exception as meta_exc:
-        _RAG_LOG.warning("Ollama host metadata unavailable for extensions: %s", meta_exc)
+        _RAG_LOG.warning("Provider host metadata unavailable for extensions: %s", meta_exc)
 
     host_context = ProviderHostContext(
         project_root=_workspace_root(),

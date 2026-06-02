@@ -167,6 +167,49 @@ function issuePath(issue) {
   return `${issue.source_id || ""}/${issue.filename || ""}`.replace(/^\//, "");
 }
 
+function createCollectionFinalLogMetadata(progress, jobId, collectionName) {
+  const stats =
+    progress?.statistics && typeof progress.statistics === "object"
+      ? progress.statistics
+      : {};
+  const skipLog = Array.isArray(stats.skip_log)
+    ? stats.skip_log
+    : Array.isArray(progress?.skip_log)
+      ? progress.skip_log
+      : Array.isArray(progress?.recent_skips)
+        ? progress.recent_skips
+        : [];
+  return {
+    job_id: jobId || "",
+    collection_name: collectionName || progress?.collection_name || "Collection",
+    status: progress?.status || "unknown",
+    source_ids: progress?.source_ids || stats.source_ids || [],
+    processed_pages: progress?.processed_pages ?? stats.processed_pages ?? 0,
+    total_pages: progress?.total_pages ?? stats.total_pages ?? 0,
+    indexed_pages: progress?.indexed_pages ?? stats.indexed_pages ?? 0,
+    skipped_pages: progress?.skipped_pages ?? stats.skipped_pages ?? 0,
+    total_chunks: progress?.total_chunks ?? stats.total_chunks ?? 0,
+    deduped_chunks: progress?.deduped_chunks ?? stats.deduped_chunks ?? 0,
+    skip_reasons: progress?.skip_reasons || stats.skip_reasons || {},
+    prepare_original_chars:
+      progress?.prepare_original_chars ?? stats.prepare_original_chars ?? 0,
+    prepare_output_chars:
+      progress?.prepare_output_chars ?? stats.prepare_output_chars ?? 0,
+    prepare_removed_chars:
+      progress?.prepare_removed_chars ?? stats.prepare_removed_chars ?? 0,
+    empty_after_prepare_removed_chars:
+      progress?.empty_after_prepare_removed_chars
+      ?? stats.empty_after_prepare_removed_chars
+      ?? 0,
+    recent_skips: progress?.recent_skips || stats.recent_skips || [],
+    skip_log: skipLog,
+    largest_prepare_removals:
+      progress?.largest_prepare_removals || stats.largest_prepare_removals || [],
+    errors: progress?.errors || stats.errors || [],
+    error: progress?.error || stats.error || "",
+  };
+}
+
 const SECTION_TABS = [
   { id: "crawler", label: "Crawler" },
   { id: "md-pipeline", label: "MD Pipeline" },
@@ -415,9 +458,9 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
           <summary>
             Recent issues ({recentIssues.length})
           </summary>
-          <ul>
+          <div className="create-collection-index-errors__list">
             {recentIssues.map((issue, i) => (
-              <li key={i}>
+              <div key={i} className="create-collection-index-error-item">
                 {issuePath(issue) && (
                   <span className="create-collection-index-error-file">
                     {issuePath(issue)}
@@ -438,9 +481,9 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
                     removed {formatIndexNumber(issue.removed_chars)} chars
                   </span>
                 )}
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         </details>
       )}
     </div>
@@ -633,8 +676,9 @@ function CrawlerTab() {
     const interval = setInterval(async () => {
       try {
         const job = await getCreateCollectionStatus(createJobId);
-        setCreateProgress({
+        const nextProgress = {
           status: job.status,
+          collection_name: job.collection_name ?? "",
           processed_pages: job.processed_pages ?? 0,
           total_pages: job.total_pages ?? 0,
           indexed_pages: job.indexed_pages ?? 0,
@@ -650,6 +694,7 @@ function CrawlerTab() {
           cancelled: job.cancelled ?? false,
           errors: job.errors ?? [],
           recent_skips: job.recent_skips ?? [],
+          skip_log: job.skip_log ?? [],
           largest_prepare_removals: job.largest_prepare_removals ?? [],
           deduped_chunks: job.deduped_chunks ?? 0,
           prepare_original_chars: job.prepare_original_chars ?? 0,
@@ -659,8 +704,21 @@ function CrawlerTab() {
             job.empty_after_prepare_removed_chars ?? 0,
           error: job.error,
           statistics: job.statistics,
-        });
+        };
+        setCreateProgress(nextProgress);
         if (job.status === "success") {
+          if (nc?.persistNotification && createPersistedJobRef.current !== createJobId) {
+            createPersistedJobRef.current = createJobId;
+            const name =
+              createCollectionName || job.collection_name || createForm.collection_name || "Collection";
+            nc.persistNotification({
+              kind: "event",
+              source: "crawler",
+              title: "Collection created",
+              message: `Indexed ${job.indexed_pages ?? 0} pages, ${job.total_chunks ?? 0} chunks (${name})`,
+              metadata: createCollectionFinalLogMetadata(nextProgress, createJobId, name),
+            });
+          }
           setCreateJobId(null);
           setCreating(false);
           setCreateCanceling(false);
@@ -682,6 +740,18 @@ function CrawlerTab() {
             `Collection created successfully! Indexed ${job.indexed_pages ?? 0} pages, ${job.total_chunks ?? 0} chunks.`,
           );
         } else if (job.status === "failed") {
+          if (nc?.persistNotification && createPersistedJobRef.current !== createJobId) {
+            createPersistedJobRef.current = createJobId;
+            const name =
+              createCollectionName || job.collection_name || createForm.collection_name || "Collection";
+            nc.persistNotification({
+              kind: "error",
+              source: "crawler",
+              title: "Collection failed",
+              message: String(job.error || "").slice(0, 400),
+              metadata: createCollectionFinalLogMetadata(nextProgress, createJobId, name),
+            });
+          }
           setCreateJobId(null);
           setCreating(false);
           setCreateCanceling(false);
@@ -756,6 +826,7 @@ function CrawlerTab() {
         st === "failed"
           ? String(createProgress.error || "").slice(0, 400)
           : `Indexed ${createProgress.indexed_pages ?? 0} pages, ${createProgress.total_chunks ?? 0} chunks (${name})`,
+      metadata: createCollectionFinalLogMetadata(createProgress, createJobId, name),
     });
   }, [
     nc,

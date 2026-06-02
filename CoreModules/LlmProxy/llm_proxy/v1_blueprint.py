@@ -32,9 +32,7 @@ from llm_proxy.anthropic_compat import (
 )
 from llm_proxy.api_key import verify_proxy_api_key
 from llm_proxy.chat_completions import run_chat_completions
-from llm_proxy.completions_generate import run_legacy_completions_via_ollama_generate
 from llm_proxy.external_ingest import run_external_docs_ingest
-from llm_proxy.ollama_upstream import forward_ollama_api
 from llm_proxy.workspace import set_workspace_root
 
 from config import get_v1_include_autocomplete_logical_model
@@ -901,12 +899,15 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
 
     @bp.route("/v1", methods=["GET", "POST"])
     def v1_root():
-        # Some clients use …/v1 as the completions base URL (POST body has ``prompt``, no ``messages``).
-        # Route that to Ollama /api/generate like ``POST /v1/completions``. Chat keeps ``messages``.
+        # Chat-shaped POSTs are accepted here for clients configured with a /v1 base URL.
         if request.method == "POST":
             _raw = request.get_json(force=True, silent=True) or {}
             if _post_body_is_openai_completions_shape(_raw):
-                return run_legacy_completions_via_ollama_generate(wiring)
+                return _openai_error_response(
+                    "Legacy OpenAI completions are no longer supported by the core proxy; use /v1/chat/completions or an extension-owned provider endpoint.",
+                    "unsupported_endpoint",
+                    404,
+                )
             return run_chat_completions(wiring)
         return jsonify({"object": "api", "version": "v1"})
 
@@ -1127,34 +1128,6 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
         if wants_stream:
             return _responses_sse_payload(out)
         return jsonify(out)
-
-    @bp.route("/v1/completions", methods=["POST"])
-    def legacy_completions():
-        """OpenAI legacy completions — native Ollama ``/api/generate`` (e.g. Zed edit prediction)."""
-        return run_legacy_completions_via_ollama_generate(wiring)
-
-    @bp.route("/api/tags", methods=["GET"])
-    def ollama_tags_proxy():
-        """Zed (Ollama provider) lists models via GET /api/tags — must hit upstream Ollama."""
-        return forward_ollama_api(wiring, "tags")
-
-    @bp.route("/api/show", methods=["POST"])
-    def ollama_show_proxy():
-        """Model details (e.g. supports_thinking); Zed calls POST /api/show."""
-        return forward_ollama_api(wiring, "show")
-
-    @bp.route("/api/generate", methods=["POST"])
-    def ollama_generate_proxy():
-        """Inline / legacy generate; some clients POST /api/generate."""
-        return forward_ollama_api(wiring, "generate")
-
-    @bp.route("/api/chat", methods=["POST"])
-    def ollama_chat_proxy():
-        """
-        Transparent proxy to upstream Ollama /api/chat (same JSON body, including `think`).
-        Use the proxy host as Zed's Ollama API URL together with /api/tags + /api/show above.
-        """
-        return forward_ollama_api(wiring, "chat")
 
     @bp.route("/v1/files/apply-edit", methods=["POST"])
     def apply_file_edit():

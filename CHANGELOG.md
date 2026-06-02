@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.18] - 2026-06-02
+### Changed
+- Made the create-collection recent issues panel expand into the remaining modal height.
+
+## [0.6.17] - 2026-06-02
+### Changed
+- Made the root build script install CoreUI npm dependencies before building when Vite is missing.
+- Removed the unused CoreUI icon package left after Ollama-specific UI cleanup.
+
+## [0.6.16] - 2026-06-02
+### Changed
+- Added full create-collection indexing issue details and counters to final structured logs and notification metadata.
+
+## [0.6.15] - 2026-06-02
+### Changed
+- Expanded the create-collection progress modal and made recent indexing issues easier to scan with separated log rows.
+
+## [0.6.14] - 2026-06-01
+### Changed
+- Added elapsed/duration timers to generic extension runtime actions and their CoreUI notifications.
+
+## [0.6.13] - 2026-06-01
+### Removed
+- Removed core raw Ollama-compatible routes, legacy `/v1/completions`, direct Ollama embed fallback paths, and CoreUI Ollama-specific pull/service UI ownership.
+
 ## [0.6.12] - 2026-06-01
 ### Changed
 - Removed fresh static-analysis dead-code tails from WebUI routes and focused tests, and removed the empty untracked `scripts/bin` directory.

@@ -24,9 +24,9 @@ LLM Proxy builds, see [`CONFIG_AUTHORITY.md`](CONFIG_AUTHORITY.md).
 
 | Variable | Affects | Default source |
 |----------|---------|----------------|
-| `OLLAMA_BASE_URL` | Host:port for `/api/tags`, etc. | Derived from chat URL |
-| `OLLAMA_CHAT_URL` | `/api/chat` URL | `models.yaml` → `ollama.chat_url` |
-| `OLLAMA_URL` | `/api/generate` URL | `models.yaml` → `ollama.generate_url` |
+| `OLLAMA_BASE_URL` | Provider-owned Ollama base URL for `ollama-provider` | Derived from chat URL |
+| `OLLAMA_CHAT_URL` | Provider-owned Ollama chat URL | `models.yaml` → `ollama.chat_url` |
+| `OLLAMA_URL` | Provider-owned Ollama generate URL | `models.yaml` → `ollama.generate_url` |
 | `OLLAMA_EMBED_URL` | `/api/embed` URL | `models.yaml` → `ollama.embed_url` |
 | `OLLAMA_CHAT_MODEL` | Default chat model tag | `models.yaml` → `ollama.chat_model` |
 | `OLLAMA_RERANK_MODEL` | Rerank model tag | `models.yaml` rerank keys |

@@ -233,6 +233,24 @@ def prepare_markdown_for_indexing(
         )
 
     page_meta, body = parse_and_strip_meta_block(raw_md)
+
+    # Guard against Apple Developer portal navigation pages being crawled under doc URLs.
+    # These pages are low-signal and pollute retrieval (e.g. /documentation/swiftui/observable returning site navigation).
+    try:
+        url = str((page_meta or {}).get("url") or "").strip().rstrip("/")
+        if url.endswith("/documentation/swiftui/observable"):
+            portal_markers = ("Stay Updated", "Explore Platforms", "Explore Technologies", "Explore Community")
+            hits = sum(1 for m in portal_markers if m in body)
+            if hits >= 2:
+                return PrepareResult(
+                    skipped=True,
+                    skip_reason="content_excluded",
+                    page_meta=page_meta,
+                    body_md="",
+                    skip_detail="apple_portal_navigation_page",
+                )
+    except Exception:
+        pass
     original_body_chars = len(body or "")
 
     def _prepare_stats(prepared_body: str) -> dict[str, int]:

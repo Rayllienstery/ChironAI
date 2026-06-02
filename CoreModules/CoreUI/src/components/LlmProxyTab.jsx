@@ -95,7 +95,7 @@ const PIPELINE_STEPS = [
   {
     id: 'llm',
     label: 'LLM call',
-    description: 'Send messages to Ollama (/api/chat). Non-streaming returns JSON; streaming yields SSE chunks in OpenAI shape.',
+    description: 'Send messages through the provider runtime. Non-streaming returns JSON; streaming yields SSE chunks in OpenAI shape.',
     icon: 'smart_toy',
     active: true,
     tone: 'success'

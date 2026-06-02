@@ -68,8 +68,8 @@ The repository root is an installable project **`chironai`** ([`pyproject.toml`]
 
 ## Adding a new source or model
 
-- **New Ollama model**: configure in `config/models.yaml` or the WebUI settings that feed the provider catalog. The main app routes Ollama chat/embed/rerank/raw compatibility through `ollama-provider` via `LLMRuntime` when that runtime is available.
-- **Temporary compatibility adapters**: root `infrastructure/ollama/*` adapter files have been removed, though an empty directory may remain in local checkouts. Public API compatibility now lives in `llm_proxy/ollama_upstream.py`, `llm_proxy/ollama_compat.py`, `llm_proxy/wire_format/*`, and `rag_service.infrastructure.openai_*`. New app code should not add direct Ollama HTTP paths without documenting the compatibility reason.
+- **New provider model**: configure provider settings through the provider catalog and extension-owned UI/actions. Ollama-specific service and raw API behavior belongs to `ollama-provider`.
+- **Temporary compatibility adapters**: root `infrastructure/ollama/*` adapter files and main-proxy raw Ollama routes have been removed. Public `/v1` compatibility now lives in `llm_proxy/ollama_compat.py`, `llm_proxy/wire_format/*`, and `rag_service.infrastructure.openai_*`. New app code should not add direct Ollama HTTP paths.
 - **New crawl source**: add source configuration under the crawler config/source loader used by `crawler_service`; crawl CLI and index flow use it. For a new crawler implementation, implement `CrawlRunner` in `infrastructure/crawl/` and wire it in the application layer.
 - **New vector store**: implement `RagRepository` under `rag_service.infrastructure` and wire it in `rag_service.infrastructure.container` instead of `QdrantRagRepository`.
 
@@ -89,9 +89,9 @@ behavior easier to test and evolve.
 
 ## OpenAI Compatibility Policy
 
-`CoreModules/LlmProxy` intentionally supports legacy OpenAI-style completion
-surface (`/v1/completions` and prompt-based compatibility flow) as an explicit
-compatibility contract.
+`CoreModules/LlmProxy` intentionally supports provider-backed OpenAI/Anthropic
+chat compatibility. Raw Ollama-compatible routes and legacy `/v1/completions`
+are not part of the core proxy surface.
 
 - The canonical path remains `/v1/chat/completions`.
-- Legacy compatibility is intentional and must stay documented + tested.
+- `/v1/messages` and `/v1/responses` normalize to the same provider-backed chat pipeline.

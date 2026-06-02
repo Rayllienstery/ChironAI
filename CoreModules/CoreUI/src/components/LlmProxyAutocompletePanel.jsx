@@ -94,7 +94,7 @@ function LlmProxyAutocompletePanel() {
           Logical id <code>{LOGICAL_AUTOCOMPLETE_ID}</code> in <code>GET /v1/models</code> maps to the provider/model pair you
           pick below. <strong>Assistant chat</strong> still uses the WebUI prompt template, RAG, and{' '}
           <code>POST /v1/chat/completions</code>. <strong>Zed edit prediction</strong> uses{' '}
-          <code>POST /v1/completions</code>; today this path is still best with providers that support native completion-style
+          <code>POST /v1/chat/completions</code>; provider-owned completion-style endpoints should live in extensions
           generation.
         </p>
         <div className="form-group">

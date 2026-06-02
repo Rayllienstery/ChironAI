@@ -41,6 +41,26 @@ if not exist package.json (
     exit /b 1
 )
 
+rem Install front-end dependencies on a clean checkout. npm exposes Vite through
+rem node_modules\.bin; without it, npm run build fails with "'vite' is not recognized".
+if not exist "node_modules\.bin\vite.cmd" (
+    echo Front-end dependencies are not installed; installing from package-lock.json...
+    echo.
+    if exist package-lock.json (
+        call npm.cmd ci
+    ) else (
+        call npm.cmd install
+    )
+    if errorlevel 1 (
+        echo.
+        echo Dependency installation failed. Check npm output above.
+        popd
+        pause
+        exit /b 1
+    )
+    echo.
+)
+
 call npm.cmd run build
 set "BUILD_ERR=%ERRORLEVEL%"
 popd

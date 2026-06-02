@@ -1,9 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getProxyTraceCurrent } from '../services/api';
-import {
-  getOllamaModelBrandKey,
-  OLLAMA_BRAND_ICON_URL,
-} from '../utils/ollamaModelBrandIcons';
 import { traceModelFields } from '../utils/proxyTraceModel';
 import { proxyTraceToolLimitWarning } from '../utils/proxyTraceWarnings';
 import CoreUIButton from './CoreUIButton';
@@ -112,22 +108,9 @@ function genTpsSourceTitle(source) {
 }
 
 function ModelValue({ model, brandKey }) {
-  const resolvedBrandKey = brandKey || getOllamaModelBrandKey(model);
-  const brandIconUrl = resolvedBrandKey ? OLLAMA_BRAND_ICON_URL[resolvedBrandKey] : null;
   return (
     <span className="proxy-live-notification-model-value">
-      {brandIconUrl ? (
-        <img
-          className="proxy-live-notification-model-icon"
-          src={brandIconUrl}
-          alt=""
-          width={16}
-          height={16}
-          loading="lazy"
-          decoding="async"
-          title={`Provider: ${resolvedBrandKey}`}
-        />
-      ) : null}
+      {brandKey ? <span className="proxy-live-notification-value">{brandKey}</span> : null}
       <span className="proxy-live-notification-value proxy-live-notification-mono">{model}</span>
     </span>
   );

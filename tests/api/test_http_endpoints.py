@@ -1071,7 +1071,6 @@ def test_webui_delete_proxy_api_key_closes_v1() -> None:
         ("post", "/v1/chat/completions", {"model": "fake", "messages": []}),
         ("post", "/v1/messages", {"model": "fake", "messages": []}),
         ("post", "/v1/responses", {"model": "fake", "input": "hi"}),
-        ("post", "/v1/completions", {"model": "fake", "prompt": "hi"}),
         ("post", "/v1/files/apply-edit", {}),
         ("post", "/v1/external-docs/ingest", {}),
     ],
@@ -1104,18 +1103,6 @@ def test_non_v1_routes_remain_reachable_without_proxy_api_key(monkeypatch: pytes
     if root not in sys.path:
         sys.path.insert(0, root)
 
-    class FakeOllamaResponse:
-        def raise_for_status(self) -> None:
-            pass
-
-        def json(self) -> dict[str, Any]:
-            return {"models": []}
-
-        def close(self) -> None:
-            pass
-
-    monkeypatch.setattr("llm_proxy.ollama_upstream.requests.get", lambda *_a, **_k: FakeOllamaResponse())
-
     import api.http.rag_routes as rag_routes
 
     monkeypatch.setattr(
@@ -1129,12 +1116,19 @@ def test_non_v1_routes_remain_reachable_without_proxy_api_key(monkeypatch: pytes
 
     client = rag_routes.create_app().test_client()
     assert client.get("/health").status_code == 200
-    api_tags = client.get("/api/tags")
-    assert api_tags.status_code == 200
-    assert (api_tags.get_json() or {}).get("models") == []
 
 
-def test_ollama_api_passthrough_preserves_raw_request_shapes(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("get", "/api/tags"),
+        ("post", "/api/show"),
+        ("post", "/api/generate"),
+        ("post", "/api/chat"),
+        ("post", "/v1/completions"),
+    ],
+)
+def test_ollama_compatibility_routes_are_removed(method: str, path: str) -> None:
     import os
     import sys
 
@@ -1142,248 +1136,12 @@ def test_ollama_api_passthrough_preserves_raw_request_shapes(monkeypatch: pytest
     if root not in sys.path:
         sys.path.insert(0, root)
 
-    import api.http.rag_routes as rag_routes
+    from api.http.rag_routes import create_app
 
-    captured: list[dict[str, Any]] = []
-
-    class FakeOllamaResponse:
-        headers = {"Content-Type": "application/x-ndjson"}
-
-        def __init__(self, payload: dict[str, Any] | None = None, lines: list[str] | None = None) -> None:
-            self._payload = payload or {"ok": True}
-            self._lines = lines or []
-
-        def raise_for_status(self) -> None:
-            pass
-
-        def json(self) -> dict[str, Any]:
-            return dict(self._payload)
-
-        def iter_lines(self, decode_unicode: bool = False):
-            _ = decode_unicode
-            yield from self._lines
-
-        def close(self) -> None:
-            pass
-
-    def fake_get(url, params=None, timeout=None, headers=None):
-        captured.append({"method": "GET", "url": url, "params": dict(params or {}), "headers": headers})
-        return FakeOllamaResponse({"models": [{"name": "tiny-model:latest"}]})
-
-    def fake_post(url, json=None, timeout=None, stream=False, headers=None):
-        captured.append(
-            {
-                "method": "POST",
-                "url": url,
-                "json": dict(json or {}),
-                "timeout": timeout,
-                "stream": stream,
-                "headers": headers,
-            }
-        )
-        if stream:
-            return FakeOllamaResponse(lines=[b'{"message":{"content":"hi"},"done":false}', b'{"done":true}'])
-        return FakeOllamaResponse({"echo": dict(json or {}), "done": True})
-
-    monkeypatch.setattr("llm_proxy.ollama_upstream.requests.get", fake_get)
-    monkeypatch.setattr("llm_proxy.ollama_upstream.requests.post", fake_post)
-
-    app = rag_routes.create_app()
-    client = app.test_client()
-
-    tags = client.get("/api/tags?keep=1")
-    show_body = {"name": "tiny-model:latest", "verbose": True}
-    generate_body = {
-        "model": "tiny-model:latest",
-        "prompt": "prefix",
-        "suffix": "suffix",
-        "raw": True,
-        "format": "json",
-        "keep_alive": "5m",
-        "options": {"num_predict": 7},
-        "stream": False,
-    }
-    chat_body = {
-        "model": "tiny-model:latest",
-        "messages": [{"role": "user", "content": "hello"}],
-        "think": "medium",
-        "tools": [{"type": "function", "function": {"name": "noop"}}],
-        "stream": True,
-    }
-    show = client.post("/api/show", json=show_body)
-    generate = client.post("/api/generate", json=generate_body)
-    chat = client.post("/api/chat", json=chat_body)
-
-    assert tags.status_code == 200
-    assert (tags.get_json() or {}).get("models")[0]["name"] == "tiny-model:latest"
-    assert show.status_code == 200
-    assert (show.get_json() or {}).get("echo") == show_body
-    assert generate.status_code == 200
-    assert (generate.get_json() or {}).get("echo") == generate_body
-    assert chat.status_code == 200
-    assert b'"done":true' in chat.data
-
-    assert captured[0]["url"].endswith("/api/tags")
-    assert captured[0]["params"] == {"keep": "1"}
-    assert captured[1]["url"].endswith("/api/show")
-    assert captured[1]["json"] == show_body
-    assert captured[2]["url"].endswith("/api/generate")
-    assert captured[2]["json"] == generate_body
-    assert captured[2]["stream"] is False
-    assert captured[3]["url"].endswith("/api/chat")
-    assert captured[3]["json"] == chat_body
-    assert captured[3]["stream"] is True
-    assert captured[3]["timeout"] is None
-
-
-def test_ollama_api_passthrough_uses_provider_runtime_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from flask import Flask
-    from llm_interactor.contracts import LLMResponse, LLMStreamEvent
-    from llm_proxy.v1_blueprint import create_v1_blueprint
-
-    monkeypatch.setattr("llm_proxy.ollama_upstream.requests.get", lambda *_a, **_k: pytest.fail("fallback GET used"))
-    monkeypatch.setattr("llm_proxy.ollama_upstream.requests.post", lambda *_a, **_k: pytest.fail("fallback POST used"))
-
-    calls: list[Any] = []
-
-    class Registry:
-        def get(self, provider_id: str):
-            return object() if provider_id == "ollama" else None
-
-    class Runtime:
-        registry = Registry()
-
-        def invoke(self, request):
-            calls.append(request)
-            segment = request.metadata.get("api_segment")
-            if segment == "tags":
-                return LLMResponse(provider_id="ollama", model=request.model, raw={"models": [{"name": "runtime-model"}]})
-            return LLMResponse(provider_id="ollama", model=request.model, raw={"echo": request.body, "segment": segment})
-
-        def stream_invoke(self, request):
-            calls.append(request)
-            yield LLMStreamEvent(provider_id="ollama", model=request.model, type="raw_line", data='{"done":false}')
-            yield LLMStreamEvent(provider_id="ollama", model=request.model, type="raw_line", data='{"done":true}')
-
-    wiring = SimpleNamespace(
-        llm_runtime=Runtime(),
-        base=SimpleNamespace(chat_client=SimpleNamespace(_url="http://ollama.test:11434/api/chat")),
-        workspace_root=lambda: root,
-        get_settings_repository=lambda: SimpleNamespace(get_app_setting=lambda _key: None),
-        runtime=SimpleNamespace(autocomplete_model_logical_id="ChironAI-Autocomplete"),
-    )
-    app = Flask(__name__)
-    app.register_blueprint(create_v1_blueprint(wiring))
-    client = app.test_client()
-
-    tags = client.get("/api/tags?keep=1")
-    show = client.post("/api/show", json={"name": "runtime-model", "verbose": True})
-    chat = client.post("/api/chat", json={"model": "runtime-model", "messages": [], "stream": True})
-
-    assert tags.status_code == 200
-    assert (tags.get_json() or {}).get("models") == [{"name": "runtime-model"}]
-    assert show.status_code == 200
-    assert (show.get_json() or {}).get("echo") == {"name": "runtime-model", "verbose": True}
-    assert chat.status_code == 200
-    assert b'"done":true' in chat.data
-    assert [call.operation for call in calls] == ["raw_ollama", "raw_ollama", "raw_ollama"]
-    assert [call.metadata.get("api_segment") for call in calls] == ["tags", "show", "chat"]
-    assert calls[0].metadata.get("params") == {"keep": "1"}
-    assert calls[2].stream is True
-
-
-def test_ollama_api_passthrough_falls_back_when_provider_runtime_unavailable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from flask import Flask
-    from llm_proxy.v1_blueprint import create_v1_blueprint
-
-    captured: list[dict[str, Any]] = []
-
-    class Resp:
-        def raise_for_status(self) -> None:
-            pass
-
-        def json(self):
-            return {"models": []}
-
-        def close(self) -> None:
-            pass
-
-    def fake_get(url, params=None, timeout=None, headers=None):
-        captured.append({"url": url, "params": dict(params or {})})
-        return Resp()
-
-    monkeypatch.setattr("llm_proxy.ollama_upstream.requests.get", fake_get)
-
-    wiring = SimpleNamespace(
-        llm_runtime=None,
-        base=SimpleNamespace(chat_client=SimpleNamespace(_url="http://ollama.test:11434/api/chat")),
-        workspace_root=lambda: root,
-        get_settings_repository=lambda: SimpleNamespace(get_app_setting=lambda _key: None),
-        runtime=SimpleNamespace(autocomplete_model_logical_id="ChironAI-Autocomplete"),
-    )
-    app = Flask(__name__)
-    app.register_blueprint(create_v1_blueprint(wiring))
-
-    r = app.test_client().get("/api/tags?keep=1")
-
-    assert r.status_code == 200
-    assert captured == [{"url": "http://ollama.test:11434/api/tags", "params": {"keep": "1"}}]
-
-
-def test_ollama_api_stream_runtime_setup_error_maps_to_502(monkeypatch: pytest.MonkeyPatch) -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from flask import Flask
-    from llm_interactor.contracts import LLMStreamEvent
-    from llm_proxy.v1_blueprint import create_v1_blueprint
-
-    monkeypatch.setattr("llm_proxy.ollama_upstream.requests.post", lambda *_a, **_k: pytest.fail("fallback POST used"))
-
-    class Registry:
-        def get(self, provider_id: str):
-            return object() if provider_id == "ollama" else None
-
-    class Runtime:
-        registry = Registry()
-
-        def stream_invoke(self, request):
-            yield LLMStreamEvent(provider_id="ollama", model=request.model, type="error", data="connection refused")
-
-    wiring = SimpleNamespace(
-        llm_runtime=Runtime(),
-        base=SimpleNamespace(chat_client=SimpleNamespace(_url="http://ollama.test:11434/api/chat")),
-        workspace_root=lambda: root,
-        get_settings_repository=lambda: SimpleNamespace(get_app_setting=lambda _key: None),
-        runtime=SimpleNamespace(autocomplete_model_logical_id="ChironAI-Autocomplete"),
-    )
-    app = Flask(__name__)
-    app.register_blueprint(create_v1_blueprint(wiring))
-
-    r = app.test_client().post("/api/chat", json={"model": "tiny-model", "messages": [], "stream": True})
-
-    assert r.status_code == 502
-    assert (r.get_json() or {}).get("error") == "connection refused"
+    client = create_app().test_client()
+    request_fn = getattr(client, method)
+    r = request_fn(path, json={"model": "tiny-model"})
+    assert r.status_code == 404
 
 
 def test_models_endpoint() -> None:
@@ -1511,31 +1269,6 @@ def test_chat_completions_chironai_autocomplete_uses_same_prompt_template_as_wor
         rerank_client=None,
         chat_client=_OllamaShimChatClient(fc),
     )
-    ollama_captured: dict = {}
-
-    def _fake_ollama_generate_post(url, json=None, timeout=None, stream=False, **kwargs):  # noqa
-        ollama_captured["url"] = url
-        ollama_captured["body"] = json
-
-        class _Resp:
-            def raise_for_status(self) -> None:
-                pass
-
-            def json(self):
-                return {
-                    "response": "generated",
-                    "done": True,
-                    "done_reason": "stop",
-                    "prompt_eval_count": 3,
-                    "eval_count": 2,
-                }
-
-            def close(self) -> None:
-                pass
-
-        return _Resp()
-
-    monkeypatch.setattr("llm_proxy.completions_generate.requests.post", _fake_ollama_generate_post)
     monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
     monkeypatch.setattr(
         rag_routes,
@@ -1573,273 +1306,8 @@ def test_chat_completions_chironai_autocomplete_uses_same_prompt_template_as_wor
         "/v1",
         json={"model": "ChironAI-Autocomplete", "prompt": "def foo():"},
     )
-    assert r_legacy.status_code == 200
-    leg = r_legacy.get_json() or {}
-    assert leg.get("object") == "text_completion"
-    assert leg.get("model") == "ChironAI-Autocomplete"
-    leg_choices = leg.get("choices") or []
-    assert len(leg_choices) >= 1
-    assert leg_choices[0].get("text") == "generated"
-    assert str(ollama_captured.get("url", "")).endswith("/api/generate")
-    lego = ollama_captured.get("body") or {}
-    assert lego.get("model") == "fast-ac-model"
-    assert lego.get("prompt") == "def foo():"
-
-    r_zed = client.post(
-        "/v1/completions",
-        json={"model": "ChironAI-Autocomplete", "prompt": "def foo():", "max_tokens": 64},
-    )
-    assert r_zed.status_code == 200
-    zj = r_zed.get_json() or {}
-    assert zj.get("object") == "text_completion"
-    zchoices = zj.get("choices") or []
-    assert len(zchoices) >= 1
-    assert "text" in zchoices[0]
-    assert zchoices[0].get("index") == 0
-    assert zchoices[0].get("text") == "generated"
-    assert zj.get("model") == "ChironAI-Autocomplete"
-    assert str(ollama_captured.get("url", "")).endswith("/api/generate")
-    ob = ollama_captured.get("body") or {}
-    assert ob.get("model") == "fast-ac-model"
-    assert ob.get("prompt") == "def foo():"
-    assert ob.get("raw") is True
-    assert ob.get("options", {}).get("num_predict") == 64
-
-
-def test_v1_completions_forwards_suffix_to_ollama_generate(monkeypatch: pytest.MonkeyPatch) -> None:
-    """OpenAI ``suffix`` is passed as native Ollama ``suffix`` (FIM), not merged into prompt."""
-    import json
-    from types import SimpleNamespace
-
-    import api.http.rag_routes as rag_routes
-
-    monkeypatch.setenv("LLM_PROXY_AUTOCOMPLETE_OLLAMA_MODEL", "fast-ac-model")
-
-    class Repo:
-        def get_app_setting(self, key: str):
-            if key == "proxy_settings":
-                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
-            if key == "proxy_model":
-                return "worker-ollama"
-            return _test_proxy_api_key_setting(key)
-
-    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
-
-    class FakeChatClient:
-        def chat(self, *_a, **_k):
-            return "x"
-
-        def stream_chat(self, *_a, **_k):
-            yield ""
-
-    fc = FakeChatClient()
-    fc._url = "http://ollama.test:11434/api/chat"
-    fake_params = SimpleNamespace(
-        system_prefix="",
-        system_suffix="",
-        context_chunk_chars=500,
-        context_total_chars=2000,
-        confidence_threshold=0.0,
-        model_name="worker-ollama",
-        log_preview_chars=200,
-    )
-    fake_deps = SimpleNamespace(
-        rag_repo=object(),
-        embed_provider=object(),
-        rerank_client=None,
-        chat_client=_OllamaShimChatClient(fc),
-    )
-    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
-    monkeypatch.setattr(
-        rag_routes,
-        "build_rag_context",
-        lambda *args, **kwargs: (
-            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
-            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
-        ),
-    )
-    monkeypatch.setattr(
-        rag_routes,
-        "prepare_ollama_messages",
-        lambda *args, **kwargs: ([{"role": "user", "content": "u"}], "worker-ollama"),
-    )
-    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
-
-    ollama_captured: dict = {}
-
-    def _fake_post(url, json=None, timeout=None, stream=False, **kwargs):  # noqa
-        ollama_captured["body"] = json
-
-        class _Resp:
-            def raise_for_status(self) -> None:
-                pass
-
-            def json(self):
-                return {"response": "mid", "done": True, "done_reason": "stop"}
-
-            def close(self) -> None:
-                pass
-
-        return _Resp()
-
-    monkeypatch.setattr("llm_proxy.completions_generate.requests.post", _fake_post)
-
-    app = rag_routes.create_app()
-    client = app.test_client()
-    r = client.post(
-        "/v1/completions",
-        json={
-            "model": "ChironAI-Autocomplete",
-            "prompt": "<|fim_prefix|>a",
-            "suffix": "<|fim_suffix|>b<|fim_middle|>",
-            "max_tokens": 32,
-        },
-    )
-    assert r.status_code == 200
-    ob = ollama_captured.get("body") or {}
-    assert ob.get("prompt") == "<|fim_prefix|>a"
-    assert ob.get("suffix") == "<|fim_suffix|>b<|fim_middle|>"
-    assert ob.get("options", {}).get("num_predict") == 32
-
-
-def test_v1_completions_uses_provider_runtime_generate_when_available(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from flask import Flask
-    from llm_interactor.contracts import LLMResponse
-    from llm_proxy.v1_blueprint import create_v1_blueprint
-
-    monkeypatch.setattr("llm_proxy.completions_generate.requests.post", lambda *_a, **_k: pytest.fail("fallback generate used"))
-
-    calls: list[Any] = []
-
-    class Registry:
-        def get(self, provider_id: str):
-            return object() if provider_id == "ollama" else None
-
-    class Runtime:
-        registry = Registry()
-
-        def invoke(self, request):
-            calls.append(request)
-            return LLMResponse(
-                provider_id="ollama",
-                model=request.model,
-                raw={
-                    "response": "generated by runtime",
-                    "done": True,
-                    "done_reason": "stop",
-                    "prompt_eval_count": 4,
-                    "eval_count": 3,
-                },
-            )
-
-    class Repo:
-        def get_app_setting(self, key: str):
-            return _test_proxy_api_key_setting(key)
-
-    wiring = SimpleNamespace(
-        llm_runtime=Runtime(),
-        base=SimpleNamespace(chat_client=SimpleNamespace(_url="http://ollama.test:11434/api/chat")),
-        workspace_root=lambda: root,
-        get_settings_repository=lambda: Repo(),
-        runtime=SimpleNamespace(autocomplete_model_logical_id="ChironAI-Autocomplete"),
-        get_autocomplete_ollama_model=lambda: "fast-ac-model",
-        log_webui_error=lambda *_a, **_k: None,
-    )
-    app = Flask(__name__)
-    app.register_blueprint(create_v1_blueprint(wiring))
-
-    r = app.test_client().post(
-        "/v1/completions",
-        json={
-            "model": "ChironAI-Autocomplete",
-            "prompt": "def foo():",
-            "suffix": " pass",
-            "max_tokens": 12,
-            "temperature": 0,
-        },
-    )
-
-    assert r.status_code == 200
-    body = r.get_json() or {}
-    assert body.get("object") == "text_completion"
-    assert (body.get("choices") or [{}])[0].get("text") == "generated by runtime"
-    assert len(calls) == 1
-    req = calls[0]
-    assert req.operation == "raw_ollama"
-    assert req.metadata.get("api_segment") == "generate"
-    assert req.body["model"] == "fast-ac-model"
-    assert req.body["prompt"] == "def foo():"
-    assert req.body["suffix"] == " pass"
-    assert req.body["raw"] is True
-    assert req.body["options"]["num_predict"] == 12
-    assert req.body["options"]["temperature"] == 0.0
-
-
-def test_v1_completions_falls_back_when_provider_runtime_unavailable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from flask import Flask
-    from llm_proxy.v1_blueprint import create_v1_blueprint
-
-    captured: dict[str, Any] = {}
-
-    def fake_post(url, json=None, timeout=None, stream=False, **kwargs):  # noqa: ARG001
-        captured["url"] = url
-        captured["body"] = dict(json or {})
-
-        class Resp:
-            def raise_for_status(self) -> None:
-                pass
-
-            def json(self):
-                return {"response": "fallback generated", "done": True, "done_reason": "stop"}
-
-            def close(self) -> None:
-                pass
-
-        return Resp()
-
-    monkeypatch.setattr("llm_proxy.completions_generate.requests.post", fake_post)
-
-    class Repo:
-        def get_app_setting(self, key: str):
-            return _test_proxy_api_key_setting(key)
-
-    wiring = SimpleNamespace(
-        llm_runtime=None,
-        base=SimpleNamespace(chat_client=SimpleNamespace(_url="http://ollama.test:11434/api/chat")),
-        workspace_root=lambda: root,
-        get_settings_repository=lambda: Repo(),
-        runtime=SimpleNamespace(autocomplete_model_logical_id="ChironAI-Autocomplete"),
-        get_autocomplete_ollama_model=lambda: "fast-ac-model",
-        log_webui_error=lambda *_a, **_k: None,
-    )
-    app = Flask(__name__)
-    app.register_blueprint(create_v1_blueprint(wiring))
-
-    r = app.test_client().post("/v1/completions", json={"model": "tiny-model", "prompt": "hello"})
-
-    assert r.status_code == 200
-    assert (r.get_json() or {}).get("choices", [{}])[0].get("text") == "fallback generated"
-    assert captured["url"] == "http://ollama.test:11434/api/generate"
-    assert captured["body"]["model"] == "tiny-model"
-    assert captured["body"]["prompt"] == "hello"
+    assert r_legacy.status_code == 404
+    assert ((r_legacy.get_json() or {}).get("error") or {}).get("type") == "unsupported_endpoint"
 
 
 def test_chat_completions_returns_tool_calls_when_edit_payload_detected(monkeypatch: pytest.MonkeyPatch) -> None:

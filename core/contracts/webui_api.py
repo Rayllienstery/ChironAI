@@ -41,7 +41,7 @@ class SessionResponse(TypedDict, total=False):
 
 # --- Models & prompts --------------------------------------------------------
 
-class OllamaModelEntry(TypedDict, total=False):
+class ProviderModelEntry(TypedDict, total=False):
     """One item inside GET /models ``models`` array."""
 
     id: str
@@ -54,7 +54,7 @@ class OllamaModelEntry(TypedDict, total=False):
 class ModelsListResponse(TypedDict):
     """GET /models — CoreUI uses ``data.models ?? []``."""
 
-    models: list[OllamaModelEntry]
+    models: list[ProviderModelEntry]
 
 
 class PromptListItem(TypedDict):
@@ -255,7 +255,7 @@ __all__ = [
     "WebUiErrorResponse",
     "WebUiValidationErrorResponse",
     "SessionResponse",
-    "OllamaModelEntry",
+    "ProviderModelEntry",
     "ModelsListResponse",
     "PromptListItem",
     "PromptsListResponse",

@@ -422,16 +422,31 @@ def source_authority_priority(hit: dict[str, Any], intent: QueryIntent | None) -
     payload = hit.get("payload") or {}
     source = (payload.get("source") or "").strip()
     score = 0
-    if source == "apple_documentation":
-        score += 2
-    elif source == "swift_book":
-        score += 1
-    elif source.startswith("wwdc_sessions_"):
-        score += 0
-    elif source in {"hws_swift", "objc_io_issues", "pointfree_collections", "swiftbysundell_articles"}:
-        score -= 1
+
+    # Prefer explicit authority_tier when present (new payload field).
+    try:
+        tier = int(payload.get("authority_tier")) if payload.get("authority_tier") is not None else None
+    except Exception:
+        tier = None
+    if tier is not None:
+        score += tier  # 0..3 baseline
+    else:
+        if source == "apple_documentation":
+            score += 2
+        elif source == "swift_book":
+            score += 1
+        elif source.startswith("wwdc_sessions_"):
+            score += 0
+        elif source in {"hws_swift", "objc_io_issues", "pointfree_collections", "swiftbysundell_articles"}:
+            score -= 1
+
+    # Hub pages are low specificity; never allow them to dominate API retrieval.
+    is_hub = bool(payload.get("is_hub")) or (str(payload.get("material_class") or "") == "hub")
+    if is_hub:
+        score -= 6
+
     if intent is not None and intent.symbol and source == "apple_documentation":
-        score += 3
+        score += 5
     if intent is not None and intent.framework:
         fw = (payload.get("framework") or "").strip().lower()
         if fw and fw == intent.framework.lower():

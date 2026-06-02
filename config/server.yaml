@@ -24,8 +24,7 @@ webui:
 ## Security: all Chiron OpenAI/Anthropic-compatible /v1* endpoints are protected by a WebUI-managed API key.
 ## Generate/rotate/delete it in WebUI -> RAG Fusion Proxy -> Overview -> Security.
 ## Clients must send Authorization: Bearer <key> or x-api-key: <key>; WebUI can reveal the current key for IDE setup.
-## The Ollama passthrough routes (/api/tags, /api/show, /api/generate, /api/chat) are intentionally not protected
-## by this key so OpenWebUI/Ollama-style backends can keep using OLLAMA_BASE_URL without extra headers.
+## Raw Ollama-compatible routes are extension-owned and are not registered by the core proxy.
 llm_proxy:
   v1_include_autocomplete_logical_model: true
 

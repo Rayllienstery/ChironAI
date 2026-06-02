@@ -10,7 +10,6 @@
     "knip": "knip"
   },
   "dependencies": {
-    "@lobehub/icons-static-svg": "^1.86.0",
     "dompurify": "^3.3.3",
     "highlight.js": "^11.11.1",
     "marked": "^11.1.1",

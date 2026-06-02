@@ -1,20 +1,20 @@
 # Apple_Collection — Quality Audit Report
 
-**Date:** 2026-05-31  
+**Date:** 2026-05-31 (updated post full re-index)  
 **Collection:** `Apple_Collection` (Qdrant `http://localhost:6333`)  
 **Default config:** `config/server.yaml` → `qdrant.collection_name: "Apple_Collection"`  
 **Audit type:** Live readonly inspection (full scroll + 12 retrieval probes)  
 **Audience:** Human operators and AI agents maintaining RAG quality  
-**Re-index status:** **Part 1 (code/config) largely complete** — you run **Part 2 (re-crawl + full re-index + verification)** when ready. See [Workflow: implementation first](#workflow-implementation-first-then-re-index).  
+**Re-index status:** **Completed** — full re-index executed; this report reflects **post re-index** measurements.  
 **Maintenance horizon:** See [Six-month decay forecast](#six-month-decay-forecast-what-breaks-without-action) — several subsystems degrade before 180 days even after a perfect re-index.
 
 ---
 
 ## Executive Summary
 
-**Overall weighted score: 71 / 100**
+**Overall weighted score (updated): ~70 / 100**
 
-`Apple_Collection` is a **technically healthy hybrid vector index** (57 918 points, dense+sparse, payload keyword indexes, Qdrant status `green`). It is **not yet optimized for authoritative Apple Developer Documentation retrieval**. Community guides (Hacking with Swift), WWDC transcripts, and objc.io articles compete on equal footing with `developer.apple.com` pages. Metadata fields that power intent-aware retrieval (`doc_scope`, `framework`, `symbol`) are sparsely populated. Exact-text duplicates consume ~14% of storage and pollute top-k pools.
+`Apple_Collection` is a **technically healthy hybrid vector index** (**50 901 points**, dense+sparse, payload keyword indexes, Qdrant status `green`). It is **still not optimized for authoritative Apple Developer Documentation retrieval**. WWDC transcripts and community guides (Hacking with Swift, objc.io, Point-Free) frequently win top-1 for API-oriented questions. Metadata fields that power intent-aware retrieval (`doc_scope`, `symbol`) improved but remain insufficiently populated to reliably prefer official docs.
 
 **Verdict in plain language:** The collection works as a broad Swift/iOS knowledge base, but when a user asks an API question ("What is `@Observable`?", "How does `NavigationStack` work?"), RAG often surfaces WWDC talk transcripts or unrelated API symbols instead of the official documentation page. Fixing this does not require replacing Qdrant — it requires metadata enrichment, source balancing, deduplication, and retrieval tuning.
 
@@ -29,14 +29,14 @@
 | 3 | Operational health | 5% | **95** | Excellent |
 | 4 | Coverage & volume | 5% | **78** | Good |
 | 5 | Source authority balance | 5% | **63** | Needs work |
-| 6 | Payload metadata completeness | 20% | **52** | Poor |
+| 6 | Payload metadata completeness | 20% | **56** | Improving (still poor) |
 | 7 | Chunking quality | 15% | **72** | Acceptable |
-| 8 | Deduplication | 10% | **62** | Needs work |
+| 8 | Deduplication | 10% | **78** | Improved |
 | 9 | Hybrid index utilization | 5% | **88** | Good |
-| 10 | Retrieval relevance (12 probes) | 25% | **48** | Poor |
+| 10 | Retrieval relevance (12 probes) | 25% | **~40** | Poor |
 | 11 | RAG pipeline config alignment | 5% | **55** | Underutilized |
 | 12 | Test harness readiness | 5% | **70** | Acceptable |
-| | **Weighted overall** | **100%** | **71** | |
+| | **Weighted overall** | **100%** | **~70** | |
 
 **Pass thresholds for re-audit:**
 
@@ -56,7 +56,7 @@
 |-------|-------|
 | Qdrant status | `green` |
 | Optimizer | `ok` |
-| Points count | **57 918** |
+| Points count | **50 901** |
 | Indexed vectors | **114 815** (~2× points → hybrid dense + sparse) |
 | Segments | 8 |
 | Write queue | 0 |
@@ -101,17 +101,17 @@ flowchart TB
   community --> Qdrant
 ```
 
-### Source distribution (full scroll, n = 57 918)
+### Source distribution (full scroll, n = 50 901)
 
 | Source ID | Points | Share |
 |-----------|--------|-------|
-| `apple_documentation` | 18 208 | 31.4% |
-| `wwdc_sessions_2019_plus` | 18 179 | 31.4% |
-| `hws_swift` | 11 653 | 20.1% |
-| `objc_io_issues` | 7 315 | 12.6% |
-| `swift_book` | 1 095 | 1.9% |
-| `pointfree_collections` | 1 124 | 1.9% |
-| `swiftbysundell_articles` | 344 | 0.6% |
+| `apple_documentation` | 18 202 | 35.8% |
+| `wwdc_sessions_2019_plus` | 17 555 | 34.5% |
+| `hws_swift` | 8 710 | 17.1% |
+| `objc_io_issues` | 3 897 | 7.7% |
+| `swift_book` | 1 095 | 2.2% |
+| `pointfree_collections` | 1 120 | 2.2% |
+| `swiftbysundell_articles` | 322 | 0.6% |
 
 **Interpretation:** Official Apple Developer Documentation is only **one third** of the index. WWDC transcripts match it in volume. Community tutorials (HWS + objc.io) are **one third** combined. For API-symbol questions, this balance causes non-authoritative sources to win vector similarity ties.
 
@@ -324,7 +324,7 @@ Configured sources: `config/sources.yaml` (7 active source IDs above).
 
 ---
 
-### 10. Retrieval relevance — 48/100
+### 10. Retrieval relevance — ~40/100
 
 **Method:** 12 hybrid RRF probes (embed via Ollama + Qdrant `points/query`), limit 5.  
 **Embed model:** `mxbai-embed-large` (1024 dim)  
@@ -333,7 +333,7 @@ Configured sources: `config/sources.yaml` (7 active source IDs above).
 - **PARTIAL** — expected source in ranks 2–5 but not rank 1
 - **FAIL** — expected source absent from top 5
 
-**Summary:** 3 PASS · 2 PARTIAL · 7 FAIL (25% / 17% / 58%)
+**Summary (post full re-index):** 1 PASS · 6 PARTIAL · 5 FAIL (8% / 50% / 42%)
 
 **Critical nuance:** Some PASS verdicts are **source-correct but semantically wrong** (rank 1 is `apple_documentation` but unrelated API). See P06 below.
 
@@ -1475,6 +1475,13 @@ pytest tests/domain/test_metadata_inference.py -q
 
 **Owner:** you (operator). Run only after Part 1 is deployed and the server restarted.
 
+#### Re-index notes for the “1000/1000” iteration
+
+These changes introduce new payload fields (`authority_tier`, `material_class`, `is_hub`) and stronger doc_scope inference for Apple docs. To benefit from them you **must**:
+
+- Re-crawl `apple_documentation` after the Playwright fetch changes (observable portal pages are now rejected; concurrency stubs are skipped).
+- Delete and recreate the collection (payload changes apply only to newly upserted points).
+
 #### Timeline (suggested)
 
 | Day | Work |
@@ -1644,32 +1651,54 @@ AI_ACTION:
 
 ## Post Re-Index Results (fill after execution)
 
-| Metric | Pre-index (2026-05-31) | Post-index (2026-05-31) |
-|--------|------------------------|-------------------------|
-| Overall score | 71 | **~76** (est.) |
-| Points count | 57 918 | **50 775** |
-| doc_scope populated | 10.1% | **13.8%** |
-| symbol populated | 9.2% | **27.9%** |
-| Duplicate share | 13.7% | **5.5%** |
+| Metric | Pre-index (2026-05-31) | Post-index (2026-05-31, latest run) |
+|--------|------------------------|-------------------------------------|
+| Overall score | 71 | **~72–74** (est.) |
+| Points count | 57 918 | **50 901** |
+| doc_scope populated | 10.1% | **13.9%** |
+| symbol populated | 9.2% | **27.8%** |
+| Duplicate share | 13.7% | **5.4%** |
 | Short chunks &lt;300 | 9.1% | **9.1%** |
-| Probes PASS / PARTIAL / FAIL | 3 / 2 / 7 | **5 / 3 / 4** |
+| Probes PASS / PARTIAL / FAIL | 3 / 2 / 7 | **1 / 6 / 5** |
 | Embed model used | mxbai-embed-large | mxbai-embed-large |
 
 ---
+
+## Material quality snapshot (post full re-index)
+
+This section evaluates **content quality inside the index**, not just retrieval tuning.
+
+### Apple docs (official)
+
+- **Observation page is good**: `https://developer.apple.com/documentation/observation` contains a usable overview + examples and is indexed as `doc_scope: guide`.
+- **SwiftUI Observable gap still unresolved**: the crawled file for `https://developer.apple.com/documentation/swiftui/observable` is currently **Apple Developer portal navigation** (not the expected doc page). This is low-signal material that should not influence retrieval.
+- **Swift Concurrency landing page is still a stub**: `https://developer.apple.com/documentation/swift/concurrency` is essentially `# Concurrency` only. This prevents official-doc wins for concurrency probes.
+
+**Doc_scope within Apple docs only:** ~**31.6% filled** (mostly `api_symbol`; conceptual guides are underrepresented), which explains why API-like hits exist but guide-style questions still drift to WWDC/community.
+
+### WWDC transcripts
+
+- Very strong semantic overlap on many queries, so they frequently win top-1 even when an official doc exists.
+- Some hits are useful as explanation context, but they are often **wrong as primary evidence** for API reference questions.
+
+### Community sources (HWS / objc.io / Point-Free)
+
+- HWS index/landing pages and generic “topic hubs” still win some top-1 slots (e.g. Navigation / SwiftUI hubs), which is a **material quality issue** (low specificity) as much as a ranking issue.
+- objc.io “GPU-accelerated machine vision” appears as a recurring false-positive chunk in multiple probes — indicates a duplicate/noise attractor in dense similarity.
 
 ## Document metadata
 
 ```yaml
 audit_document:
-  version: "2.3"
+  version: "2.5"
   collection: Apple_Collection
-  points_audited: 50775
+  points_audited: 50901
   post_reindex_audit:
     date: "2026-05-31"
-    probes_pass_partial_fail: "5/3/4"
-    doc_scope_filled_pct: 13.82
-    symbol_filled_pct: 27.88
-    dup_pct: 5.45
+    probes_pass_partial_fail: "1/6/5"
+    doc_scope_filled_pct: 13.87
+    symbol_filled_pct: 27.84
+    dup_pct: 5.44
   crawl_pages_on_disk:
     apple_documentation: 16393
     hws_swift: 1386

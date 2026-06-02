@@ -361,165 +361,70 @@
   gap: 10px;
 }
 
-.extensions-runtime-ollama-library-link {
-  text-decoration: none;
-  background: var(--md-sys-color-surface);
-  border-color: color-mix(in srgb, var(--md-sys-color-primary) 28%, var(--md-sys-color-outline-variant));
-  color: var(--md-sys-color-primary);
-}
-
-.extensions-runtime-ollama-library-link .material-symbols-outlined {
-  font-size: 18px;
-  line-height: 1;
-}
-
-.extensions-runtime-pull-progress {
-  width: min(760px, 100%);
-  display: grid;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 22%, var(--md-sys-color-outline-variant)) !important;
-  border-radius: 8px;
-  background: var(--md-sys-color-surface) !important;
-  box-shadow:
-    var(--md-sys-elevation-level1),
-    0 10px 24px -18px color-mix(in srgb, var(--md-sys-color-primary) 44%, transparent) !important;
-}
-
-.extensions-runtime-pull-progress--error {
-  border-color: color-mix(in srgb, var(--md-sys-color-error) 45%, var(--md-sys-color-outline-variant)) !important;
-}
-
-.extensions-runtime-pull-progress--cancelled {
-  border-color: color-mix(in srgb, var(--md-sys-color-on-surface-variant) 35%, var(--md-sys-color-outline-variant)) !important;
-}
-
-.extensions-runtime-pull-progress--cancelled .extensions-runtime-pull-progress__bar span {
-  background: var(--md-sys-color-on-surface-variant);
-}
-
-.extensions-runtime-pull-progress--exiting {
-  pointer-events: none;
-  animation: coreui-kf-dismiss-exit var(--coreui-motion-duration-dismiss-exit)
-    var(--coreui-motion-ease-dismiss-exit) forwards;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .extensions-runtime-pull-progress--exiting {
-    animation: coreui-kf-dismiss-exit-reduced var(--coreui-motion-duration-dismiss-exit-reduced) ease forwards;
-  }
-}
-
-.extensions-runtime-pull-progress__actions {
-  display: flex;
-  justify-content: flex-end;
+.extensions-runtime-action-with-timer {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-.extensions-runtime-pull-progress__actions .coreui-btn {
+.extensions-runtime-action-timer,
+.extensions-runtime-action-result-duration {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-}
-
-.extensions-runtime-pull-progress__actions .material-symbols-outlined {
-  font-size: 16px;
-  line-height: 1;
-}
-
-.extensions-runtime-pull-progress__header {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-}
-
-.extensions-runtime-pull-progress__header div {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.extensions-runtime-pull-progress__header strong,
-.extensions-runtime-pull-progress__header span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.extensions-runtime-pull-progress__header strong {
-  color: var(--md-sys-color-on-surface);
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-.extensions-runtime-pull-progress__header span {
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: 12px;
-}
-
-.extensions-runtime-pull-progress__header .extensions-runtime-pull-progress__rate {
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.extensions-runtime-pull-progress__header b {
-  color: var(--md-sys-color-primary);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.extensions-runtime-pull-progress__icon {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--md-sys-color-primary) 10%, var(--md-sys-color-surface));
-  color: var(--md-sys-color-primary);
-}
-
-.extensions-runtime-pull-progress__icon .material-symbols-outlined {
-  font-size: 19px;
-  line-height: 1;
-}
-
-.extensions-runtime-pull-progress__spinner {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
-  border-top-color: var(--md-sys-color-primary);
-  animation: coreui-kf-spin var(--coreui-motion-duration-spin) var(--coreui-motion-linear) infinite;
-}
-
-.extensions-runtime-pull-progress__bar {
-  height: 7px;
-  overflow: hidden;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 10px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--md-sys-color-primary) 10%, var(--md-sys-color-surface-container-high));
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 24%, transparent);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent);
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-label-small-font);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-.extensions-runtime-pull-progress__bar span {
-  display: block;
-  height: 100%;
-  min-width: 8px;
-  border-radius: inherit;
-  background: var(--md-sys-color-primary);
-  transition: width 0.2s ease;
+.extensions-runtime-action-timer .material-symbols-outlined {
+  font-size: 16px;
 }
 
-.extensions-runtime-pull-progress__digest {
-  display: block;
-  width: 100%;
+.extensions-runtime-action-result-duration {
+  margin-left: 10px;
+}
+
+.extensions-runtime-action-live {
+  display: grid;
+  gap: 6px;
   min-width: 0;
-  overflow-wrap: anywhere;
-  padding: 7px 9px;
-  border-radius: 6px;
-  background: var(--md-sys-color-surface-container-low);
+}
+
+.extensions-runtime-action-live__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  font: var(--md-sys-typescale-body-small-font);
+}
+
+.extensions-runtime-action-live__label {
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 11px;
+  font: var(--md-sys-typescale-label-small-font);
+  flex-shrink: 0;
+}
+
+.extensions-runtime-action-live__value {
+  color: var(--md-sys-color-on-surface);
+  overflow-wrap: anywhere;
+  text-align: right;
+  min-width: 0;
+}
+
+.extensions-runtime-action-live__timer {
+  color: var(--md-sys-color-primary);
+  font-family: var(--coreui-font-family-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
 }
 
 .extensions-runtime-label {

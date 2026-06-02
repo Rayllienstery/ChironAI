@@ -4,7 +4,7 @@ OpenAI-compatible HTTP surface implemented by **LlmProxy** (``/v1/*``).
 CoreUI and external clients must pick the endpoint that matches semantics:
 
 - **Chat** — RAG, tools, streaming, WebUI-derived settings (primary assistant use case).
-- **Completions** — legacy ``prompt``/``input`` → Ollama ``/api/generate``; **no RAG**, no WebUI prompt template.
+- **Responses/Messages** — compatibility adapters that normalize to provider-backed chat.
 
 See [CoreModules/LlmProxy/README.md](CoreModules/LlmProxy/README.md) for behaviour details.
 """
@@ -16,7 +16,8 @@ from typing import TypedDict
 # Paths relative to proxy base URL (served on the main server port).
 V1_MODELS_PATH: str = "/v1/models"
 V1_CHAT_COMPLETIONS_PATH: str = "/v1/chat/completions"
-V1_COMPLETIONS_PATH: str = "/v1/completions"
+V1_MESSAGES_PATH: str = "/v1/messages"
+V1_RESPONSES_PATH: str = "/v1/responses"
 
 
 class OpenAiProxyCapability(TypedDict):
@@ -38,18 +39,25 @@ OPENAI_PROXY_CAPABILITIES: tuple[OpenAiProxyCapability, ...] = (
         "notes": "Primary path; OpenAI chat messages format.",
     },
     {
-        "path": V1_COMPLETIONS_PATH,
-        "rag": False,
+        "path": V1_MESSAGES_PATH,
+        "rag": True,
         "streaming": True,
-        "tools": False,
-        "notes": "Legacy OpenAI completions; Ollama generate. Used e.g. by Zed edit prediction.",
+        "tools": True,
+        "notes": "Anthropic Messages compatibility adapter over provider-backed chat.",
+    },
+    {
+        "path": V1_RESPONSES_PATH,
+        "rag": True,
+        "streaming": True,
+        "tools": True,
+        "notes": "OpenAI Responses compatibility adapter over provider-backed chat.",
     },
     {
         "path": V1_MODELS_PATH,
         "rag": False,
         "streaming": False,
         "tools": False,
-        "notes": "Lists Ollama tags plus optional LLM Proxy builds.",
+        "notes": "Lists configured proxy builds and logical provider models.",
     },
 )
 
@@ -57,7 +65,8 @@ OPENAI_PROXY_CAPABILITIES: tuple[OpenAiProxyCapability, ...] = (
 __all__ = [
     "V1_MODELS_PATH",
     "V1_CHAT_COMPLETIONS_PATH",
-    "V1_COMPLETIONS_PATH",
+    "V1_MESSAGES_PATH",
+    "V1_RESPONSES_PATH",
     "OpenAiProxyCapability",
     "OPENAI_PROXY_CAPABILITIES",
 ]

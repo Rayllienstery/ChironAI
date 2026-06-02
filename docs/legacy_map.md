@@ -48,23 +48,21 @@ Risk: low after Pass 4 split; regressions show up in `pytest tests/api tests/web
 
 ## C) Protocol compatibility surface
 
-- Intentional legacy-compatible endpoints and request shapes:
-  - OpenAI legacy completions (`/v1/completions`)
-  - prompt/suffix normalization
-  - raw Ollama-compatible `/api/tags`, `/api/show`, `/api/generate`, and `/api/chat`
+- Intentional compatibility endpoints and request shapes:
+  - `/v1/chat/completions`
+  - `/v1/messages`
+  - `/v1/responses`
+  - OpenAI/provider message and tool normalization
 - Main files:
   - `CoreModules/LlmProxy/llm_proxy/v1_blueprint.py`
-  - `CoreModules/LlmProxy/llm_proxy/completions_generate.py`
-  - `CoreModules/LlmProxy/llm_proxy/ollama_upstream.py`
   - `extensions/bundled/ollama-provider/backend/provider.py`
 
 Risk: complexity if undocumented; low risk if treated as explicit contract.
 
-Current ownership: these public routes remain on the compatibility blueprint so
-existing clients keep their base URLs and status shapes. Their first-choice
-implementation delegates to `ollama-provider` through `LLMRuntime` operation
-`raw_ollama`; direct upstream HTTP remains as a fallback when the extension
-runtime is still loading or unavailable.
+Current ownership: the core proxy no longer registers raw Ollama-compatible
+routes or legacy `/v1/completions`. Ollama-native compatibility behavior belongs
+inside `ollama-provider`; core routes use provider/runtime contracts and fail
+clearly when the provider runtime is unavailable.
 
 ## G) LLM provider boundary (formerly direct Ollama in core)
 
@@ -76,9 +74,8 @@ runtime is still loading or unavailable.
   `LLMRuntime` (`runtime_hooks` registers the runtime from the main app).
 - LlmProxy wire-format helpers live under `llm_proxy/wire_format/` and
   `rag_service.infrastructure.openai_*` for public HTTP compatibility only.
-- LlmProxy also keeps `llm_proxy/ollama_upstream.py` and `llm_proxy/ollama_compat.py`
-  as explicit public compatibility boundaries for `/v1` and raw Ollama-shaped
-  routes.
+- LlmProxy keeps `llm_proxy/ollama_compat.py` and `llm_proxy/wire_format/*` as
+  explicit OpenAI/provider wire-format compatibility boundaries for `/v1`.
 - Config keeps deprecated `get_ollama_*` env/yaml names; app code should prefer
   `get_default_chat_model`, `get_default_embed_model`, `get_default_rerank_model`.
 
@@ -118,12 +115,12 @@ Risk: medium-low; manageable with explicit state contract.
 ## Keep vs Remove
 
 Keep (intentional compatibility):
-- `/v1/completions` if needed by existing clients (document + test).
-- prompt/suffix mapping for old clients, if still in active use.
-- raw Ollama-compatible `/api/*` passthrough routes for clients that use this
-  app as an Ollama base URL.
+- `/v1/chat/completions`, `/v1/messages`, and `/v1/responses`.
+- OpenAI/provider message, tool, and vision wire-format mapping used by `/v1`.
+- Provider runtime and extension action contracts.
 
 Remove (technical legacy):
+- core raw Ollama-compatible route ownership and direct `localhost:11434` fallbacks.
 - dead compatibility wrappers around stable internal contracts.
 - global UI shims and implicit state globals.
 - route-layer orchestration that belongs in application services.

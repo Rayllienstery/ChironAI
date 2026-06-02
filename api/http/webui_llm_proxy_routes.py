@@ -16,9 +16,7 @@ from error_manager.http import error_response as _error_response
 from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
 from api.http.webui_provider_helpers import (
     default_llm_provider_id as _default_llm_provider_id,
-    default_provider_row as _default_provider_row,
     provider_catalog_payload as _provider_catalog_payload,
-    run_default_provider_extension_action as _run_default_provider_extension_action,
     run_provider_extension_action as _run_provider_extension_action,
 )
 from api.http.webui_rag_routes import (
@@ -157,64 +155,6 @@ def register_llm_proxy_routes(
         except Exception as e:
             error_log.error("webui_llm_proxy_routes.llm_proxy_status", exc_info=True)
             return _error_response(e)
-
-    @bp.route("/ollama/status", methods=["GET"])
-    def ollama_provider_status() -> Any:
-        """Return the status of the default Ollama provider extension.
-
-        Returns:
-            A JSON response with 'url', 'running', 'http_status', and 'error'.
-        """
-        try:
-            row = _default_provider_row()
-            if row is None:
-                return jsonify({"running": False, "error": "No default provider extension loaded"}), 503
-            health = row.get("health") if isinstance(row.get("health"), dict) else {}
-            metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
-            details = health.get("details") if isinstance(health.get("details"), dict) else {}
-            return jsonify(
-                {
-                    "url": metadata.get("base_url") or metadata.get("chat_url") or None,
-                    "running": bool(health.get("ok")),
-                    "http_status": details.get("status_code"),
-                    "error": health.get("message") or "",
-                }
-            )
-        except Exception as e:
-            error_log.error("webui_llm_proxy_routes.ollama_provider_status", exc_info=True)
-            return _error_response(e)
-
-    @bp.route("/ollama/start", methods=["POST"])
-    def ollama_provider_start() -> Any:
-        """Start the default Ollama provider extension service.
-
-        Returns:
-            A JSON response with 'ok' and 'output'.
-        """
-        try:
-            payload = request.get_json(silent=True) or {}
-            result = _run_default_provider_extension_action("start_service", payload if isinstance(payload, dict) else {})
-            status = 200 if bool(result.get("ok")) else 500
-            return jsonify({"ok": bool(result.get("ok")), "output": result.get("message") or ""}), status
-        except Exception:
-            error_log.error("webui_llm_proxy_routes.ollama_provider_start", exc_info=True)
-            return jsonify({"ok": False, "output": "Provider extension start failed.", "code": "provider_start_failed"}), 500
-
-    @bp.route("/ollama/stop", methods=["POST"])
-    def ollama_provider_stop() -> Any:
-        """Stop the default Ollama provider extension service.
-
-        Returns:
-            A JSON response with 'ok' and 'output'.
-        """
-        try:
-            payload = request.get_json(silent=True) or {}
-            result = _run_default_provider_extension_action("stop_service", payload if isinstance(payload, dict) else {})
-            status = 200 if bool(result.get("ok")) else 500
-            return jsonify({"ok": bool(result.get("ok")), "output": result.get("message") or ""}), status
-        except Exception:
-            error_log.error("webui_llm_proxy_routes.ollama_provider_stop", exc_info=True)
-            return jsonify({"ok": False, "output": "Provider extension stop failed.", "code": "provider_stop_failed"}), 500
 
     @bp.route("/llm-proxy/api-key", methods=["GET"])
     def llm_proxy_api_key_status() -> Any:

@@ -1,15 +1,16 @@
 """
-OpenAI-compatible RAG proxy for Zed (and other clients).
-Accepts POST /v1/chat/completions, runs RAG (embed -> Qdrant), calls Ollama /api/chat,
-returns OpenAI-format response. Listen on the configured server port for remote access (e.g. Zed on Mac).
+OpenAI-compatible RAG proxy for IDE clients.
+Accepts POST /v1/chat/completions, runs RAG (embed -> Qdrant), calls the
+provider runtime, and returns an OpenAI-format response. Listen on the
+configured server port for remote access.
 
 Legacy second listener (build proxy) has been removed. Use the main server port only.
 
 Usage:
-  On PC: python rag_proxy.py  (after starting Ollama and Qdrant)
+  On PC: python rag_proxy.py  (after starting Qdrant and a provider extension)
   On Mac Zed: OpenAI API Compatible -> API URL: http://<PC_IP>:<configured_port>
 
-Uses api.http.rag_routes.create_app; prompt and model come from config via rag_service.application.params.
+Uses api.http.rag_routes.create_app; prompt and model come from provider/runtime settings via rag_service.application.params.
 """
 
 import logging

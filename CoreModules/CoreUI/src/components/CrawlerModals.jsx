@@ -227,9 +227,9 @@ function CreateCollectionIndexProgress({
       {recentIssues.length > 0 && (
         <details className="create-collection-index-errors">
           <summary>Recent issues ({recentIssues.length})</summary>
-          <ul>
+          <div className="create-collection-index-errors__list">
             {recentIssues.map((issue, i) => (
-              <li key={i}>
+              <div key={i} className="create-collection-index-error-item">
                 {issuePath(issue) && (
                   <span className="create-collection-index-error-file">
                     {issuePath(issue)}
@@ -250,9 +250,9 @@ function CreateCollectionIndexProgress({
                     removed {formatIndexNumber(issue.removed_chars)} chars
                   </span>
                 )}
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         </details>
       )}
     </div>
@@ -421,6 +421,7 @@ export function CreateCollectionModal({
       title="Create New Collection"
       onClose={onClose}
       closeDisabled={isRunning}
+      className={`create-collection-modal${isRunning ? " create-collection-modal--running" : ""}`}
       footer={
         isRunning ? (
           <button

@@ -246,7 +246,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                     <div className="prereq-item">
                       <div>
                         <strong>Ollama</strong>
-                        <p>Local LLM provider. Pull models: <code>ollama pull llama3.2</code></p>
+                        <p>Extension-backed LLM provider runtime for chat, embeddings, and reranking.</p>
                       </div>
                     </div>
                     <div className="prereq-item">

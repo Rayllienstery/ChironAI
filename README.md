@@ -1,6 +1,6 @@
 # ChironAI
 
-ChironAI is a modular RAG (Retrieval-Augmented Generation) platform for local LLMs. It uses Ollama for inference, Qdrant for vector storage, and an optional LLM-based reranker. Configured by default for Apple platforms (Swift, iOS, SwiftUI), but supports any domain through source and prompt configuration.
+ChironAI is a modular RAG (Retrieval-Augmented Generation) platform with a provider-runtime LLM proxy. Core code owns OpenAI/Anthropic-compatible proxy APIs and generic provider contracts; Ollama-specific service, model, and raw API behavior is owned by the bundled `ollama-provider` extension. Configured by default for Apple platforms (Swift, iOS, SwiftUI), but supports any domain through source and prompt configuration.
 
 ## What it does
 - Crawls and indexes documentation sources into a Qdrant collection.
@@ -9,7 +9,8 @@ ChironAI is a modular RAG (Retrieval-Augmented Generation) platform for local LL
 
 ## Core components
 - Qdrant: vector database for embeddings and chunk storage.
-- Ollama: local LLM provider (chat, embeddings, reranking).
+- LLM provider runtime: extension-backed chat, embeddings, and reranking.
+- `ollama-provider`: bundled extension for local Ollama ownership.
 - RAG prompts: versioned system prompts in prompts/.
 
 ## Configuration

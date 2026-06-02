@@ -110,7 +110,6 @@ import { NotificationCenterProvider } from "./components/NotificationCenterConte
 import NotificationCenterShell from "./components/NotificationCenterShell";
 import RagTestRunNotificationBridge from "./components/RagTestRunNotificationBridge";
 import ProxiesLiveNotificationBridge from "./components/ProxiesLiveNotificationBridge";
-import OllamaPullNotificationBridge from "./components/OllamaPullNotificationBridge";
 import InfrastructureAlertsBridge from "./components/InfrastructureAlertsBridge";
 import WelcomeNotificationBridge from "./components/WelcomeNotificationBridge";
 import ExtensionSecurityNotificationBridge from "./components/ExtensionSecurityNotificationBridge";
@@ -774,16 +773,6 @@ function App() {
       {sessionId && (
         <ProxiesLiveNotificationBridge
           onOpenLlmProxyTrace={handleOpenLlmProxyTrace}
-        />
-      )}
-      {sessionId && (
-        <OllamaPullNotificationBridge
-          onOpenOllama={() => {
-            const ollamaTab = extensionTabs.find(
-              (tab) => tab.id === "ollama" || tab.extension_id === "ollama-provider",
-            );
-            setActiveTab(ollamaTab?.id || "ollama");
-          }}
         />
       )}
       {sessionId && (

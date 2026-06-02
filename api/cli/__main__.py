@@ -4,7 +4,6 @@ Unified CLI for ChironAI (tmrag).
 Usage from project root:
   python -m api.cli start              # start WebUI (Flask)
   python -m api.cli crawl [--dry-run] [--source ID]
-  python -m api.cli ingest <markdown_dir> [--collection NAME]
   python -m api.cli proxy              # start RAG proxy (OpenAI-compatible)
   python -m api.cli test                # run pytest tests/
   python -m api.cli test-single [url]  # fetch and convert one Apple doc page
@@ -74,17 +73,6 @@ def cmd_crawl(ns: argparse.Namespace) -> int:
     for s in getattr(ns, "sources", None) or []:
         argv.extend(["--source", s])
     return subprocess.run(argv, cwd=root, env=env).returncode
-
-
-def cmd_ingest(ns: argparse.Namespace) -> int:
-    script = os.path.join(_webui_backend_root(), "webui_backend", "ingest_markdown_local.py")
-    if not os.path.isfile(script):
-        print("webui_backend.ingest_markdown_local not found.", file=sys.stderr)
-        return 1
-    argv = ["-m", "webui_backend.ingest_markdown_local", ns.markdown_dir]
-    if getattr(ns, "collection", None):
-        argv.extend(["--collection", ns.collection])
-    return _run(argv, env=_module_env())
 
 
 def cmd_proxy(_: argparse.Namespace) -> int:
@@ -276,7 +264,7 @@ def cmd_test_single(ns: argparse.Namespace) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="chironai",
-        description="ChironAI CLI: WebUI, crawl, ingest, proxy, tests.",
+        description="ChironAI CLI: WebUI, crawl, proxy, tests.",
     )
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
 
@@ -287,11 +275,6 @@ def main() -> None:
     p_crawl.add_argument("--dry-run", action="store_true", help="Do not write md/meta")
     p_crawl.add_argument("--source", action="append", dest="sources", metavar="ID", help="Limit to source id")
     p_crawl.set_defaults(_run=cmd_crawl)
-
-    p_ingest = sub.add_parser("ingest", help="Ingest local markdown folder into Qdrant")
-    p_ingest.add_argument("markdown_dir", help="Path to markdown folder")
-    p_ingest.add_argument("--collection", help="Qdrant collection name (default from folder name)")
-    p_ingest.set_defaults(_run=cmd_ingest)
 
     p_proxy = sub.add_parser("proxy", help="Start RAG proxy (OpenAI-compatible, for Zed etc.)")
     p_proxy.set_defaults(_run=cmd_proxy)

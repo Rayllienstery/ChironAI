@@ -18,7 +18,7 @@
 ## - embed_retry_sleep: sleep seconds between retries [min, max].
 ## - embed_truncate_chars: max chars when truncating failed embeddings.
 ## - embed_prefix_max_chars: max length of semantic prefix for embedding (40-80 chars).
-## - local_ingest: separate config for ingest_markdown_local.py script.
+## - local_ingest: legacy local-ingest settings retained for migration notes only.
 
 indexing:
   # Content filtering (minimum body length + “meaning” heuristics: use MD pipeline step reject_low_signal_body in config/md_pipelines/*.json)
@@ -80,7 +80,7 @@ indexing:
   # Semantic prefix for chunk embedding: max length 40-80 chars to improve retrieval without noise
   embed_prefix_max_chars: 80
   
-  # Local markdown ingestion (ingest_markdown_local.py)
+  # Legacy local markdown ingestion settings.
   local_ingest:
     embed_batch_size: 32
     chunk_size: 1200

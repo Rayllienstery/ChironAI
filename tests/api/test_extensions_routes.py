@@ -388,7 +388,7 @@ def test_ollama_extension_start_stop_actions_are_invoked_through_generic_route()
     ]
 
 
-def test_ollama_compat_start_stop_routes_delegate_to_extension_actions() -> None:
+def test_ollama_compat_start_stop_routes_are_removed() -> None:
     _ensure_root_on_path()
     from api.http.rag_routes import create_app
 
@@ -400,14 +400,12 @@ def test_ollama_compat_start_stop_routes_delegate_to_extension_actions() -> None
 
     start = client.post("/api/webui/ollama/start", json={})
     stop = client.post("/api/webui/ollama/stop", json={})
+    status = client.get("/api/webui/ollama/status")
 
-    assert start.status_code == 200
-    assert stop.status_code == 200
-    assert (start.get_json() or {}).get("output") == "start_service ok"
-    assert (stop.get_json() or {}).get("output") == "stop_service ok"
-    assert [call["action_id"] for call in svc.action_calls] == ["start_service", "stop_service"]
-    assert {call["extension_id"] for call in svc.action_calls} == {"ollama-provider"}
-    assert all(call["runtime"] is runtime for call in svc.action_calls)
+    assert start.status_code == 404
+    assert stop.status_code == 404
+    assert status.status_code == 404
+    assert svc.action_calls == []
 
 
 def test_extension_asset_route_serves_installed_assets_and_blocks_escape(tmp_path: Path) -> None:

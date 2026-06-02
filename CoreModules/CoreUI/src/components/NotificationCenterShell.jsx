@@ -3,6 +3,7 @@ import Card from './Card';
 import CoreUIButton from './CoreUIButton';
 import { notificationModuleLabel } from './notificationModuleLabels';
 import { useNotificationCenter } from './NotificationCenterContext';
+import { formatElapsedMs, parseTimeMs } from '../utils/elapsedTime';
 import '../styles/components/NotificationCenter.css';
 
 function notificationDisplayTitle(notification) {
@@ -23,6 +24,48 @@ function notificationDisplayTime(notification) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));
+}
+
+function notificationMetadata(notification) {
+  const meta = notification?.metadata;
+  return meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {};
+}
+
+function notificationNeedsLiveTimer(notification) {
+  const meta = notificationMetadata(notification);
+  const startedAt = parseTimeMs(meta.started_at || meta.action_started_at);
+  const hasDuration = Number.isFinite(Number(meta.duration_ms ?? meta.elapsed_ms));
+  const completedAt = parseTimeMs(meta.completed_at || meta.action_completed_at);
+  return startedAt != null && !hasDuration && completedAt == null && notification?.kind === 'loading';
+}
+
+function notificationTimerInfo(notification, nowMs) {
+  const meta = notificationMetadata(notification);
+  const durationMs = Number(meta.duration_ms ?? meta.elapsed_ms);
+  if (Number.isFinite(durationMs)) {
+    return { label: 'Duration', value: formatElapsedMs(durationMs) };
+  }
+  const startedAt = parseTimeMs(meta.started_at || meta.action_started_at);
+  if (startedAt == null) return null;
+  const completedAt = parseTimeMs(meta.completed_at || meta.action_completed_at);
+  const endMs = completedAt ?? nowMs;
+  if (endMs < startedAt) return null;
+  return {
+    label: completedAt == null ? 'Elapsed' : 'Duration',
+    value: formatElapsedMs(endMs - startedAt),
+  };
+}
+
+function NotificationTimer({ notification, nowMs }) {
+  const info = notificationTimerInfo(notification, nowMs);
+  if (!info) return null;
+  return (
+    <div className="notification-center-card-timer">
+      <span className="material-symbols-outlined" aria-hidden="true">timer</span>
+      <span>{info.label}</span>
+      <strong>{info.value}</strong>
+    </div>
+  );
 }
 
 function BellIcon() {
@@ -91,6 +134,7 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
     suppressLiveActivity,
   } = useNotificationCenter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [nowMs, setNowMs] = useState(Date.now());
   const rootRef = useRef(null);
 
   useEffect(() => {
@@ -103,6 +147,15 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [menuOpen]);
+
+  const hasRunningPersistedTimer = persisted.some(notificationNeedsLiveTimer);
+
+  useEffect(() => {
+    if (!hasRunningPersistedTimer) return undefined;
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [hasRunningPersistedTimer]);
 
   if (!sessionId) return null;
 
@@ -162,6 +215,7 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
                     {n.message ? (
                       <div className="notification-center-popover-row-msg"><FormattedMessage text={n.message} /></div>
                     ) : null}
+                    <NotificationTimer notification={n} nowMs={nowMs} />
                   </div>
                   <ModuleFooter source={n.source} notification={n} />
                 </div>
@@ -210,6 +264,7 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
                   </button>
                 </div>
               ) : null}
+              <NotificationTimer notification={n} nowMs={nowMs} />
             </div>
             <ModuleFooter source={n.source} notification={n} />
           </Card>

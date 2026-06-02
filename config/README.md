@@ -135,12 +135,12 @@ Controls content filtering and chunking:
 - `embed_request_timeout`: Embedding timeout seconds (default: 300)
 - `exclude_filename_substrings`: Filename patterns to skip
 - `exclude_content_substrings`: Content markers for low-value pages
-- `local_ingest`: Separate config for `ingest_markdown_local.py`
+- `local_ingest`: Legacy local-ingest settings retained for migration notes only.
 
 ### models.yaml
 Controls Ollama endpoints and models:
-- `chat_url`: `/api/chat` endpoint URL
-- `generate_url`: `/api/generate` endpoint URL
+- `chat_url`: provider-owned chat endpoint URL
+- `generate_url`: provider-owned generate endpoint URL
 - `embed_url`: `/api/embed` endpoint URL
 - `chat_model`: Model name for chat completion
 - `embed_model`: Model name for embeddings

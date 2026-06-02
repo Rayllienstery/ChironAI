@@ -2,17 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CoreUIButton from './CoreUIButton';
 import CoreUIModal from './CoreUIModal';
 import Card from './Card';
-import { getExtensionTab, runExtensionTabAction } from '../services/api';
 import { useOptionalNotificationCenter } from './NotificationCenterContext';
-import {
-  ollamaPullProgressText,
-  ollamaPullRateText,
-  startOllamaPullJob,
-  subscribeOllamaPullJob,
-  cancelOllamaPullJob,
-} from './ollamaPullJobStore';
+import { getExtensionTab, runExtensionTabAction } from '../services/api';
+import { formatElapsedMs } from '../utils/elapsedTime';
 import '../styles/components/ExtensionRuntimeTab.css';
-import { getOllamaModelBrandKey, OLLAMA_BRAND_ICON_URL } from '../utils/ollamaModelBrandIcons';
 
 function extractFieldDefaults(schema) {
   const next = {};
@@ -132,146 +125,46 @@ function isRuntimeStillLoadingMessage(message) {
   return String(message || '').toLowerCase().includes('extension runtime is still loading');
 }
 
-function OllamaServiceLiveActivity({ actionLabel, containerName, imageName }) {
+function serviceActionTimeoutMs(actionId) {
+  return actionId === 'start_service' || actionId === 'stop_service' ? 30 * 60 * 1000 : 30_000;
+}
+
+function actionLabel(action, actionId) {
+  return String(action?.label || action?.title || actionId || 'Action').trim();
+}
+
+function ExtensionActionLiveNotification({ action, nowMs }) {
+  if (!action) return null;
+  const elapsedMs = Math.max(0, nowMs - action.startedAt);
   return (
-    <div className="notification-ollama-service">
-      <div className="notification-ollama-service__header">
-        <span className="notification-ollama-service__spinner" aria-hidden="true" />
-        <span>{actionLabel || 'Working on Ollama'}</span>
+    <div className="extensions-runtime-action-live">
+      <div className="extensions-runtime-action-live__row">
+        <span className="extensions-runtime-action-live__label">Action</span>
+        <span className="extensions-runtime-action-live__value">{action.label}</span>
       </div>
-      <div className="notification-ollama-service__body">
-        <div className="notification-ollama-service__row">
-          <span>Container</span>
-          <strong>{containerName || 'chironai-ollama'}</strong>
-        </div>
-        <div className="notification-ollama-service__row">
-          <span>Image</span>
-          <strong>{imageName || 'ollama/ollama:latest'}</strong>
-        </div>
-      </div>
-      <div className="notification-ollama-service__hint">
-        Docker may take a while to pull the image. You can keep using the app.
+      <div className="extensions-runtime-action-live__row">
+        <span className="extensions-runtime-action-live__label">Elapsed</span>
+        <span className="extensions-runtime-action-live__timer">{formatElapsedMs(elapsedMs)}</span>
       </div>
     </div>
   );
 }
 
-const PULL_SUCCESS_DISMISS_MS = 5000;
-/** Must match `--coreui-motion-duration-dismiss-exit` in `styles/coreui-motion.css`. */
-const PULL_SUCCESS_EXIT_ANIM_MS = 400;
-
-function PullModelProgressView({ job, onCancelDownload }) {
-  const [dismissPhase, setDismissPhase] = useState('visible');
-  const dismissHideTimerRef = useRef(null);
-  const dismissExitTimerRef = useRef(null);
-
-  const progress = job?.progress;
-  const running = Boolean(job?.running);
-  const cancelled = Boolean(progress?.cancelled);
-  const failed = Boolean(progress?.error);
-  const successDone = Boolean(progress?.done && !cancelled && !failed);
-
-  useEffect(() => {
-    if (!running) return;
-    setDismissPhase('visible');
-    if (dismissHideTimerRef.current) {
-      window.clearTimeout(dismissHideTimerRef.current);
-      dismissHideTimerRef.current = null;
-    }
-    if (dismissExitTimerRef.current) {
-      window.clearTimeout(dismissExitTimerRef.current);
-      dismissExitTimerRef.current = null;
-    }
-  }, [running]);
-
-  useEffect(() => {
-    if (!progress || !successDone || running) {
-      if (dismissHideTimerRef.current) {
-        window.clearTimeout(dismissHideTimerRef.current);
-        dismissHideTimerRef.current = null;
-      }
-      return undefined;
-    }
-    if (dismissPhase !== 'visible') return undefined;
-    dismissHideTimerRef.current = window.setTimeout(() => {
-      dismissHideTimerRef.current = null;
-      setDismissPhase('exiting');
-    }, PULL_SUCCESS_DISMISS_MS);
-    return () => {
-      if (dismissHideTimerRef.current) {
-        window.clearTimeout(dismissHideTimerRef.current);
-        dismissHideTimerRef.current = null;
-      }
-    };
-  }, [progress, running, successDone, dismissPhase]);
-
-  useEffect(() => {
-    if (dismissPhase !== 'exiting') return undefined;
-    dismissExitTimerRef.current = window.setTimeout(() => {
-      dismissExitTimerRef.current = null;
-      setDismissPhase('gone');
-    }, PULL_SUCCESS_EXIT_ANIM_MS);
-    return () => {
-      if (dismissExitTimerRef.current) {
-        window.clearTimeout(dismissExitTimerRef.current);
-        dismissExitTimerRef.current = null;
-      }
-    };
-  }, [dismissPhase]);
-
-  if (!progress) return null;
-  if (dismissPhase === 'gone') return null;
-
-  const pct = progress.percent;
-  const progressText = ollamaPullProgressText(progress);
-  const rateText = running && !failed && !cancelled ? ollamaPullRateText(progress) : '';
-  const tone = progress.error ? 'error' : cancelled ? 'cancelled' : '';
-  const exiting = dismissPhase === 'exiting';
+function ActionElapsedChip({ action, nowMs }) {
+  if (!action) return null;
   return (
-    <Card
-      className={`extensions-runtime-pull-progress${tone ? ` extensions-runtime-pull-progress--${tone}` : ''}${exiting ? ' extensions-runtime-pull-progress--exiting' : ''}`}
-    >
-      <div className="extensions-runtime-pull-progress__header">
-        <div className="extensions-runtime-pull-progress__icon" aria-hidden="true">
-          {progress.done ? (
-            <span className="material-symbols-outlined">check</span>
-          ) : cancelled ? (
-            <span className="material-symbols-outlined">block</span>
-          ) : (
-            <span className="extensions-runtime-pull-progress__spinner" />
-          )}
-        </div>
-        <div>
-          <strong>{progress.model || 'Ollama model'}</strong>
-          <span>{progressText}</span>
-          {rateText ? <span className="extensions-runtime-pull-progress__rate">{rateText}</span> : null}
-        </div>
-        {pct != null ? <b>{pct}%</b> : null}
-      </div>
-      <div className="extensions-runtime-pull-progress__bar" aria-hidden="true">
-        <span style={{ width: pct != null ? `${pct}%` : '35%' }} />
-      </div>
-      {running ? (
-        <div className="extensions-runtime-pull-progress__actions">
-          <CoreUIButton
-            type="button"
-            variant="secondary"
-            onClick={onCancelDownload}
-          >
-            <span className="material-symbols-outlined" aria-hidden="true">close</span>
-            Cancel download
-          </CoreUIButton>
-        </div>
-      ) : null}
-    </Card>
+    <span className="extensions-runtime-action-timer" aria-label={`Elapsed ${formatElapsedMs(nowMs - action.startedAt)}`}>
+      <span className="material-symbols-outlined" aria-hidden="true">timer</span>
+      {formatElapsedMs(nowMs - action.startedAt)}
+    </span>
   );
 }
 
-function serviceActionTimeoutMs(actionId) {
-  return actionId === 'start_service' || actionId === 'stop_service' ? 30 * 60 * 1000 : 30_000;
-}
-
 function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
+  const notificationCenter = useOptionalNotificationCenter();
+  const setExtensionLiveActivity = notificationCenter?.setLiveActivity;
+  const clearExtensionLiveActivity = notificationCenter?.clearLiveActivity;
+  const persistExtensionNotification = notificationCenter?.persistNotification;
   const [payload, setPayload] = useState(null);
   const [fieldState, setFieldState] = useState({});
   const [loading, setLoading] = useState(true);
@@ -282,12 +175,11 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
   const [busyModelActionKey, setBusyModelActionKey] = useState('');
   const [actionResult, setActionResult] = useState(null);
   const [actionDetails, setActionDetails] = useState(null);
-  const [showDiagnosticsModal, setShowDiagnosticsModal] = useState(false);
+  const [activeAction, setActiveAction] = useState(null);
+  const [actionTimerNow, setActionTimerNow] = useState(Date.now());
   const [refreshKey, setRefreshKey] = useState(0);
-  const [pullJob, setPullJob] = useState(null);
   const [openModelMenuId, setOpenModelMenuId] = useState('');
   const [openModelMenuPos, setOpenModelMenuPos] = useState(null);
-  const notificationCenter = useOptionalNotificationCenter();
 
   const onErrorStateChangeRef = useRef(onErrorStateChange);
   useEffect(() => {
@@ -338,6 +230,32 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!activeAction) return undefined;
+    setActionTimerNow(Date.now());
+    const id = setInterval(() => setActionTimerNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [activeAction]);
+
+  const activeActionLiveId = activeAction
+    ? `extension-action:${extensionId}:${activeAction.startedAt}:${activeAction.id}`
+    : '';
+
+  useEffect(() => {
+    if (!clearExtensionLiveActivity || !activeActionLiveId) return undefined;
+    return () => clearExtensionLiveActivity(activeActionLiveId);
+  }, [activeActionLiveId, clearExtensionLiveActivity]);
+
+  useEffect(() => {
+    if (!setExtensionLiveActivity || !activeAction || !activeActionLiveId) return;
+    setExtensionLiveActivity(
+      activeActionLiveId,
+      'extensions',
+      <ExtensionActionLiveNotification action={activeAction} nowMs={actionTimerNow} />,
+      { headerLeading: <span className="notification-center-card-spinner" aria-hidden="true" /> },
+    );
+  }, [activeAction, activeActionLiveId, actionTimerNow, setExtensionLiveActivity]);
+
   // Auto-retry while runtime is still bootstrapping.
   useEffect(() => {
     if (!runtimeLoadingMessage) return undefined;
@@ -346,8 +264,6 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
     }, 2000);
     return () => clearInterval(id);
   }, [runtimeLoadingMessage, load]);
-
-  useEffect(() => subscribeOllamaPullJob(setPullJob), []);
 
   useEffect(() => {
     if (!openModelMenuId) return undefined;
@@ -387,68 +303,51 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
     };
   }, [payload?.schema]);
 
-  const diagnosticsInfo = useMemo(() => {
-    const schema = payload?.schema;
-    const comps = collectSchemaComponents(schema);
-    const diag = comps.find((c) => String(c?.type || '').toLowerCase() === 'diagnostics');
-    if (!diag) return null;
-    return {
-      value: diag.value ?? {},
-      label: diag.label || 'Diagnostics',
-      summary: diag.summary !== false,
+  const beginAction = useCallback((actionId, label) => {
+    const startedAt = Date.now();
+    const next = {
+      id: actionId,
+      label: label || actionId,
+      startedAt,
     };
-  }, [payload?.schema]);
-
-  const diagnosticsData = diagnosticsInfo?.value ?? null;
-  const showRuntimeDiagnosticsSummary = Boolean(diagnosticsData && diagnosticsInfo?.summary !== false);
-
-  const showOllamaServiceNotification = useCallback((actionId) => {
-    if (actionId !== 'start_service' && actionId !== 'stop_service') return null;
-    const liveId = `ollama-service-${actionId}`;
-    const docker = diagnosticsData?.docker && typeof diagnosticsData.docker === 'object'
-      ? diagnosticsData.docker
-      : {};
-    const actionLabel = actionId === 'start_service'
-      ? (String(docker?.action_hint || '') === 'download' ? 'Downloading Ollama image' : 'Starting Ollama')
-      : 'Stopping Ollama';
-    notificationCenter?.clearLiveSuppression?.(liveId);
-    notificationCenter?.setLiveActivity?.(
-      liveId,
-      'ollama',
-      <OllamaServiceLiveActivity
-        actionLabel={actionLabel}
-        containerName={docker?.container_name}
-        imageName={docker?.image}
-      />,
-    );
-    return { liveId, actionLabel };
-  }, [diagnosticsData?.docker, notificationCenter]);
-
-  const finishOllamaServiceNotification = useCallback((live, result, error) => {
-    if (!live?.liveId) return;
-    notificationCenter?.clearLiveActivity?.(live.liveId);
-    const failed = Boolean(error || result?.ok === false);
-    const message = error
-      ? String(error?.message || error)
-      : String(result?.message || (failed ? 'Ollama service action failed' : 'Ollama service action completed'));
-    notificationCenter?.persistNotification?.({
-      kind: failed ? 'error' : 'event',
-      source: 'ollama',
-      title: failed ? `${live.actionLabel} failed` : `${live.actionLabel} finished`,
-      message: message.slice(0, 400),
-      metadata: {
-        extension_id: extensionId,
-      },
-    });
-  }, [extensionId, notificationCenter]);
-
-  const runPullModelStream = useCallback(async (modelName) => {
-    try {
-      return await startOllamaPullJob(modelName);
-    } catch (e) {
-      throw e;
-    }
+    setBusyActionId(actionId);
+    setActiveAction(next);
+    setActionTimerNow(startedAt);
+    setActionResult(null);
+    return next;
   }, []);
+
+  const finishAction = useCallback(
+    (action, result, error = null) => {
+      const completedAt = Date.now();
+      const durationMs = Math.max(0, completedAt - action.startedAt);
+      const ok = error ? false : result?.ok !== false;
+      const message = error ? String(error?.message || error) : result?.message || 'Action completed';
+      setActionResult({
+        ...(result || {}),
+        ok,
+        message,
+        durationMs,
+        startedAt: action.startedAt,
+        completedAt,
+      });
+      void persistExtensionNotification?.({
+        kind: ok ? 'event' : 'error',
+        source: 'extensions',
+        title: `${action.label} ${ok ? 'completed' : 'failed'}`,
+        message,
+        metadata: {
+          extension_id: extensionId,
+          action_id: action.id,
+          started_at: new Date(action.startedAt).toISOString(),
+          completed_at: new Date(completedAt).toISOString(),
+          duration_ms: durationMs,
+        },
+        aggregation_key: `extension-action:${extensionId}:${action.id}:${completedAt}`,
+      });
+    },
+    [extensionId, persistExtensionNotification],
+  );
 
   const handleAction = useCallback(
     async (component) => {
@@ -463,31 +362,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           actionPayload[key] = fieldState[key] ?? '';
         }
       });
-      setBusyActionId(actionId);
-      setActionResult(null);
-      if (actionId === 'pull_model') {
-        const modelName = String(actionPayload.pull_model_name || '').trim();
-        if (!modelName) {
-          setActionResult({ ok: false, message: 'pull_model_name is required' });
-          setBusyActionId('');
-          return;
-        }
-        try {
-          const result = await runPullModelStream(modelName);
-          if (result?.cancelled) {
-            setActionResult({ ok: true, message: result.message || 'Download cancelled.' });
-          } else {
-            setActionResult(result);
-          }
-          await load(true);
-        } catch (e) {
-          setActionResult({ ok: false, message: String(e?.message || e) });
-        } finally {
-          setBusyActionId('');
-        }
-        return;
-      }
-      const live = showOllamaServiceNotification(actionId);
+      const action = beginAction(actionId, actionLabel(component, actionId));
       try {
         const result = await runExtensionTabAction(
           extensionId,
@@ -495,8 +370,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           actionPayload,
           { timeoutMs: serviceActionTimeoutMs(actionId) },
         );
-        finishOllamaServiceNotification(live, result, null);
-        setActionResult(result);
+        finishAction(action, result);
         if (typeof result?.backend_url === 'string') {
           setFieldState((prev) => ({ ...prev, backend_url: result.backend_url }));
         }
@@ -505,13 +379,13 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
         }
         await load(true);
       } catch (e) {
-        finishOllamaServiceNotification(live, null, e);
-        setActionResult({ ok: false, message: String(e?.message || e) });
+        finishAction(action, null, e);
       } finally {
         setBusyActionId('');
+        setActiveAction(null);
       }
     },
-    [extensionId, fieldState, finishOllamaServiceNotification, load, runPullModelStream, showOllamaServiceNotification],
+    [beginAction, extensionId, fieldState, finishAction, load],
   );
 
   const handleContentAction = useCallback(
@@ -527,9 +401,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           body[key] = fieldState[key] ?? '';
         }
       });
-      setBusyActionId(actionId);
-      setActionResult(null);
-      const live = showOllamaServiceNotification(actionId);
+      const actionRun = beginAction(actionId, actionLabel(action, actionId));
       try {
         const result = await runExtensionTabAction(
           extensionId,
@@ -537,8 +409,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           body,
           { timeoutMs: serviceActionTimeoutMs(actionId) },
         );
-        finishOllamaServiceNotification(live, result, null);
-        setActionResult(result);
+        finishAction(actionRun, result);
         if (typeof result?.backend_url === 'string') {
           setFieldState((prev) => ({ ...prev, backend_url: result.backend_url }));
         }
@@ -549,13 +420,13 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
         if (externalUrl) window.open(externalUrl, '_blank', 'noopener,noreferrer');
         await load(true);
       } catch (e) {
-        finishOllamaServiceNotification(live, null, e);
-        setActionResult({ ok: false, message: String(e?.message || e) });
+        finishAction(actionRun, null, e);
       } finally {
         setBusyActionId('');
+        setActiveAction(null);
       }
     },
-    [extensionId, fieldState, finishOllamaServiceNotification, load, payload?.content?.open_external_url, showOllamaServiceNotification],
+    [beginAction, extensionId, fieldState, finishAction, load, payload?.content?.open_external_url],
   );
 
   const runAutosave = useCallback(
@@ -776,7 +647,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
       return (
         <div
           key={key}
-          className={`extensions-runtime-item extensions-runtime-item--action${actionId === 'pull_model' ? ' extensions-runtime-item--pull-action' : ''}`}
+          className="extensions-runtime-item extensions-runtime-item--action"
         >
           <div className="extensions-runtime-action-row">
             <CoreUIButton
@@ -786,23 +657,10 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
             >
               {busyActionId === actionId ? 'Working...' : component.label || actionId}
             </CoreUIButton>
-            {actionId === 'pull_model' ? (
-            <CoreUIButton
-              as="a"
-              href="https://ollama.com/library"
-              target="_blank"
-              rel="noreferrer"
-              className="extensions-runtime-ollama-library-link"
-              aria-label="Open Ollama model library"
-            >
-              <span className="material-symbols-outlined" aria-hidden="true">open_in_new</span>
-              Ollama Web Collection
-            </CoreUIButton>
+            {busyActionId === actionId ? (
+              <ActionElapsedChip action={activeAction} nowMs={actionTimerNow} />
             ) : null}
           </div>
-          {actionId === 'pull_model' ? (
-            <PullModelProgressView job={pullJob} onCancelDownload={cancelOllamaPullJob} />
-          ) : null}
         </div>
       );
     }
@@ -980,22 +838,9 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
 
               <div className="extensions-runtime-model-card__provider">
                 <span className="extensions-runtime-model-meta-k">Provider:</span>
-                {(() => {
-                  const brandKey = getOllamaModelBrandKey(modelId);
-                  const iconUrl = brandKey ? OLLAMA_BRAND_ICON_URL[brandKey] : null;
-                  return (
-                    <div className="extensions-runtime-model-provider-val">
-                      {iconUrl && (
-                        <img
-                          src={iconUrl}
-                          alt=""
-                          className="extensions-runtime-model-provider-icon"
-                        />
-                      )}
-                      <span className="extensions-runtime-model-meta-v">{brandKey || 'unknown'}</span>
-                    </div>
-                  );
-                })()}
+                <span className="extensions-runtime-model-meta-v">
+                  {row?.provider_id || row?.provider || payload?.extension_id || extensionId || 'unknown'}
+                </span>
               </div>
 
               <div className="extensions-runtime-model-card__meta">
@@ -1129,16 +974,6 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
   const contentActions = Array.isArray(content?.actions) ? content.actions : [];
   const contentDetails = Array.isArray(content?.details) ? content.details : [];
   const contentStatus = payload?.status && typeof payload.status === 'object' ? payload.status : null;
-  const dockerDiagnostics = diagnosticsData?.docker && typeof diagnosticsData.docker === 'object'
-    ? diagnosticsData.docker
-    : null;
-  const dockerActionHint = String(dockerDiagnostics?.action_hint || '');
-  const actionableDockerMessage = dockerActionHint === 'download' || dockerActionHint === 'start'
-    ? dockerDiagnostics?.message
-    : '';
-  const dockerMessage = String(actionableDockerMessage || diagnosticsData?.health?.message || '').trim();
-  const startServiceLabel = dockerActionHint === 'download' ? 'Download Ollama' : 'Start Ollama';
-
   return (
     <div className="settings-tab settings-tab--fullwidth tab-view">
 
@@ -1148,6 +983,11 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           role={actionResult.ok === false ? 'alert' : 'status'}
         >
           {actionResult.message || 'Action completed'}
+          {actionResult.durationMs != null ? (
+            <span className="extensions-runtime-action-result-duration">
+              Duration {formatElapsedMs(actionResult.durationMs)}
+            </span>
+          ) : null}
         </div>
       )}
 
@@ -1171,14 +1011,18 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
               {contentActions.map((action) => {
                 const actionId = String(action?.id || action?.action_id || '');
                 return (
-                  <CoreUIButton
-                    key={actionId || action.label}
-                    variant={action.variant === 'danger' ? 'danger' : action.variant === 'primary' ? 'primary' : 'default'}
-                    onClick={() => void handleContentAction(action)}
-                    disabled={Boolean(action.disabled) || busyActionId === actionId}
-                  >
-                    {busyActionId === actionId ? 'Working...' : action.label || actionId}
-                  </CoreUIButton>
+                  <span key={actionId || action.label} className="extensions-runtime-action-with-timer">
+                    <CoreUIButton
+                      variant={action.variant === 'danger' ? 'danger' : action.variant === 'primary' ? 'primary' : 'default'}
+                      onClick={() => void handleContentAction(action)}
+                      disabled={Boolean(action.disabled) || busyActionId === actionId}
+                    >
+                      {busyActionId === actionId ? 'Working...' : action.label || actionId}
+                    </CoreUIButton>
+                    {busyActionId === actionId ? (
+                      <ActionElapsedChip action={activeAction} nowMs={actionTimerNow} />
+                    ) : null}
+                  </span>
                 );
               })}
             </div>
@@ -1279,15 +1123,19 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
                   const actionId = String(action?.id || action?.action_id || '');
                   const icon = serviceActionIcon(actionId);
                   return (
-                    <CoreUIButton
-                      key={actionId || action.label}
-                      variant={action.variant === 'danger' ? 'danger' : action.variant === 'primary' ? 'primary' : 'default'}
-                      onClick={() => void handleContentAction(action)}
-                      disabled={Boolean(action.disabled) || busyActionId === actionId}
-                    >
-                      {icon ? <span className="material-symbols-outlined" aria-hidden="true">{icon}</span> : null}
-                      {busyActionId === actionId ? 'Working...' : action.label || actionId}
-                    </CoreUIButton>
+                    <span key={actionId || action.label} className="extensions-runtime-action-with-timer">
+                      <CoreUIButton
+                        variant={action.variant === 'danger' ? 'danger' : action.variant === 'primary' ? 'primary' : 'default'}
+                        onClick={() => void handleContentAction(action)}
+                        disabled={Boolean(action.disabled) || busyActionId === actionId}
+                      >
+                        {icon ? <span className="material-symbols-outlined" aria-hidden="true">{icon}</span> : null}
+                        {busyActionId === actionId ? 'Working...' : action.label || actionId}
+                      </CoreUIButton>
+                      {busyActionId === actionId ? (
+                        <ActionElapsedChip action={activeAction} nowMs={actionTimerNow} />
+                      ) : null}
+                    </span>
                   );
                 })}
               </div>
@@ -1304,121 +1152,6 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           </div>
         </section>
       ) : null}
-
-      {showRuntimeDiagnosticsSummary ? (() => {
-        const h = diagnosticsData.health;
-        const healthOk = h?.ok === true;
-        const healthStatus = h?.status || 'unknown';
-        const serviceBusy = busyActionId === 'start_service' || busyActionId === 'stop_service';
-        return (
-          <section className="app-default-card llm-proxy-section-gap">
-            <div className="dashboard-card-header">
-              <h2>Runtime details</h2>
-            </div>
-            {dockerMessage ? (
-              <div
-                className={healthOk ? 'dashboard-card-muted llm-proxy-section-gap-sm' : 'dashboard-card-error llm-proxy-section-gap-sm'}
-                role={healthOk ? 'status' : 'alert'}
-              >
-                {dockerMessage}
-              </div>
-            ) : null}
-            <div className="extensions-runtime-diagnostics-cards">
-              <Card className="extensions-runtime-diag-card">
-                <div className="extensions-runtime-diag-card__label">Health</div>
-                <div className={`extensions-runtime-diag-card__value extensions-runtime-diag-card__value--${healthOk ? 'ok' : 'error'}`}>
-                  <span className="extensions-runtime-diag-card__dot" />
-                  {healthStatus}
-                </div>
-              </Card>
-              <Card className="extensions-runtime-diag-card">
-                <div className="extensions-runtime-diag-card__label">Models</div>
-                <div className="extensions-runtime-diag-card__value">
-                  {diagnosticsData.visible_models ?? '?'} / {diagnosticsData.total_models ?? '?'}
-                </div>
-              </Card>
-              <Card className="extensions-runtime-diag-card">
-                <div className="extensions-runtime-diag-card__label">Container</div>
-                <div className="extensions-runtime-diag-card__value">
-                  {dockerDiagnostics?.container_name || 'chironai-ollama'}
-                </div>
-              </Card>
-              <Card className="extensions-runtime-diag-card">
-                <div className="extensions-runtime-diag-card__label">Base URL</div>
-                <div className="extensions-runtime-diag-card__value extensions-runtime-diag-card__value--mono">
-                  {diagnosticsData.base_url || '—'}
-                </div>
-              </Card>
-              <Card className="extensions-runtime-diag-card">
-                <div className="extensions-runtime-diag-card__label">Chat URL</div>
-                <div className="extensions-runtime-diag-card__value extensions-runtime-diag-card__value--mono">
-                  {diagnosticsData.chat_url || '—'}
-                </div>
-              </Card>
-            </div>
-            <div className="extensions-runtime-diagnostics-actions">
-              <CoreUIButton
-                variant={healthOk ? 'danger' : 'primary'}
-                disabled={serviceBusy}
-                onClick={async () => {
-                  const actionId = healthOk ? 'stop_service' : 'start_service';
-                  if (actionId === 'stop_service' && !window.confirm('Stop the Ollama service?')) return;
-                  setBusyActionId(actionId);
-                  const live = showOllamaServiceNotification(actionId);
-                  try {
-                    const result = await runExtensionTabAction(
-                      extensionId,
-                      actionId,
-                      {},
-                      { timeoutMs: serviceActionTimeoutMs(actionId) },
-                    );
-                    finishOllamaServiceNotification(live, result, null);
-                    setActionResult(result);
-                    await load(true);
-                  } catch (e) {
-                    finishOllamaServiceNotification(live, null, e);
-                    setActionResult({ ok: false, message: String(e?.message || e) });
-                  } finally {
-                    setBusyActionId('');
-                  }
-                }}
-              >
-                <span className="material-symbols-outlined" aria-hidden="true">
-                  {healthOk ? 'stop' : 'play_arrow'}
-                </span>
-                {serviceBusy ? 'Working…' : healthOk ? 'Stop Ollama' : startServiceLabel}
-              </CoreUIButton>
-              <CoreUIButton
-                variant="secondary"
-                onClick={async () => {
-                  setBusyActionId('refresh');
-                  try {
-                    await runExtensionTabAction(extensionId, 'refresh', {});
-                    setRefreshKey((prev) => prev + 1);
-                    await load();
-                  } catch (e) {
-                    setActionResult({ ok: false, message: String(e?.message || e) });
-                  } finally {
-                    setBusyActionId('');
-                  }
-                }}
-                disabled={busyActionId === 'refresh'}
-              >
-                <span className="material-symbols-outlined" aria-hidden="true">refresh</span>
-                {busyActionId === 'refresh' ? 'Working…' : 'Refresh'}
-              </CoreUIButton>
-              <CoreUIButton
-                variant="secondary"
-                onClick={() => setShowDiagnosticsModal(true)}
-                className="extensions-runtime-diagnostics-actions__tail"
-              >
-                <span className="material-symbols-outlined" aria-hidden="true">analytics</span>
-                Diagnostics
-              </CoreUIButton>
-            </div>
-          </section>
-        );
-      })() : null}
 
       {!isServicePanelContent && pages.map((page) => (
         <div key={page.id || 'page'}>
@@ -1521,19 +1254,6 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           </CoreUIModal>
         );
       })()}
-
-      {showDiagnosticsModal && (
-        <CoreUIModal
-          title={diagnosticsInfo?.label || 'Diagnostics'}
-          onClose={() => setShowDiagnosticsModal(false)}
-        >
-          <div style={{ padding: '16px' }}>
-            <pre className="extensions-runtime-diagnostics">
-              {JSON.stringify(diagnosticsData ?? {}, null, 2)}
-            </pre>
-          </div>
-        </CoreUIModal>
-      )}
     </div>
   );
 }
