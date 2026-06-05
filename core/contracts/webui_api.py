@@ -234,6 +234,72 @@ class StartupPerformanceResponse(TypedDict, total=False):
     browser_timing: dict[str, Any]
 
 
+class DependencySourceDTO(TypedDict, total=False):
+    path: str
+    group: str
+    requested: str
+
+
+class DependencyDTO(TypedDict, total=False):
+    id: str
+    ecosystem: Literal["python", "npm", "docker"]
+    name: str
+    requested: str
+    installed_version: str | None
+    latest_version: str | None
+    status: Literal["installed", "missing", "declared"]
+    manager: str
+    sources: list[DependencySourceDTO]
+
+
+class DependencyCountsDTO(TypedDict, total=False):
+    total: int
+    installed: int
+    missing: int
+    declared: int
+    python: int
+    npm: int
+    docker: int
+
+
+class DependencyCapabilityDTO(TypedDict, total=False):
+    id: Literal["check", "update_all"]
+    label: str
+    commands: list[str]
+
+
+class DependenciesResponse(TypedDict, total=False):
+    dependencies: list[DependencyDTO]
+    counts: DependencyCountsDTO
+    files: list[str]
+    generated_at: str
+    update_capabilities: list[DependencyCapabilityDTO]
+
+
+class DependencyJobStepDTO(TypedDict, total=False):
+    command: str
+    cwd: str
+    returncode: int | None
+    ok: bool
+    duration_ms: float
+    output: str
+
+
+class DependencyJobDTO(TypedDict, total=False):
+    id: str
+    mode: Literal["check", "update_all"]
+    status: Literal["queued", "running", "succeeded", "failed"]
+    created_at: str
+    started_at: str | None
+    finished_at: str | None
+    steps: list[DependencyJobStepDTO]
+    result: dict[str, Any] | None
+
+
+class DependencyJobResponse(TypedDict):
+    job: DependencyJobDTO
+
+
 class ExtensionUiSchemaDTO(TypedDict, total=False):
     id: str
     title: str
@@ -276,5 +342,13 @@ __all__ = [
     "StartupStep",
     "StartupPhase",
     "StartupPerformanceResponse",
+    "DependencySourceDTO",
+    "DependencyDTO",
+    "DependencyCountsDTO",
+    "DependencyCapabilityDTO",
+    "DependenciesResponse",
+    "DependencyJobStepDTO",
+    "DependencyJobDTO",
+    "DependencyJobResponse",
     "webui_abs_path",
 ]

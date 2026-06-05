@@ -61,6 +61,28 @@ function issuePath(issue) {
   return `${issue.source_id || ""}/${issue.filename || ""}`.replace(/^\//, "");
 }
 
+function embeddingHistoryRows(progress, currentFile) {
+  const rows = Array.isArray(progress?.embedding_history)
+    ? progress.embedding_history
+    : [];
+  const normalized = rows
+    .map((row) => ({
+      path: row.path || `${row.source_id || ""}/${row.filename || ""}`.replace(/^\//, ""),
+      chars: Number(row.chars || row.prepared_chars || 0),
+      chunks: Number(row.chunks || row.chunk_count || 0),
+    }))
+    .filter((row) => row.path);
+  if (normalized.length > 0) return normalized.slice(0, 5);
+  if (!currentFile) return [];
+  return [
+    {
+      path: currentFile,
+      chars: Number(progress?.current_embedding_chars || 0),
+      chunks: Number(progress?.current_embedding_chunks || 0),
+    },
+  ];
+}
+
 function CreateCollectionIndexProgress({
   progress,
   collectionName,
@@ -85,6 +107,8 @@ function CreateCollectionIndexProgress({
       /^\//,
       "",
     );
+  const embeddingRows = embeddingHistoryRows(progress, currentFile);
+  const showEmbeddingHistory = isRunning && phaseKey === "embedding" && embeddingRows.length > 0;
   const extraStats = [
     ["Removed chars", progress.prepare_removed_chars],
     ["Prepared chars", progress.prepare_output_chars],
@@ -135,9 +159,9 @@ function CreateCollectionIndexProgress({
       <div className="create-collection-index-stats">
         <div className="create-collection-index-stat">
           <span className="create-collection-index-stat__value create-collection-index-stat__value--ok">
-            {progress.indexed_pages ?? 0}
+            {progress.indexed_pages ?? 0} / {total || "..."}
           </span>
-          <span className="create-collection-index-stat__label">indexed</span>
+          <span className="create-collection-index-stat__label">indexed / total</span>
         </div>
         <div className="create-collection-index-stat">
           <span className="create-collection-index-stat__value create-collection-index-stat__value--skip">
@@ -151,12 +175,6 @@ function CreateCollectionIndexProgress({
           </span>
           <span className="create-collection-index-stat__label">chunks</span>
         </div>
-        <div className="create-collection-index-stat">
-          <span className="create-collection-index-stat__value">
-            {processed} / {total || "..."}
-          </span>
-          <span className="create-collection-index-stat__label">pages done</span>
-        </div>
       </div>
 
       {extraStats.length > 0 && (
@@ -169,7 +187,35 @@ function CreateCollectionIndexProgress({
         </div>
       )}
 
-      {isRunning && (currentFile || phaseLabel) && (
+      {showEmbeddingHistory ? (
+        <div className="create-collection-index-current create-collection-index-current--embedding-history">
+          <div className="create-collection-index-current__phase">
+            <span className="create-collection-index-current__phase-dot" />
+            {phaseLabel}
+          </div>
+          <div className="create-collection-embedding-history" aria-label="Recent embedding vectors">
+            {embeddingRows.map((row, index) => (
+              <div
+                key={`${row.path}:${row.chars}:${row.chunks}`}
+                className="create-collection-embedding-history__row"
+                style={{
+                  "--embedding-history-opacity": Math.max(0.4, 1 - index * 0.15),
+                  "--embedding-history-font-size": `${13 - index * 0.5}px`,
+                  "--embedding-history-delay": `${index * 28}ms`,
+                }}
+                title={row.path}
+              >
+                <span className="create-collection-embedding-history__file">
+                  {row.path}
+                </span>
+                <span className="create-collection-embedding-history__metrics">
+                  {formatIndexNumber(row.chars)} chars / {formatIndexNumber(row.chunks)} chunks
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : isRunning && (currentFile || phaseLabel) && (
         <div className="create-collection-index-current">
           {phaseLabel && phaseKey && (
             <div className="create-collection-index-current__phase">

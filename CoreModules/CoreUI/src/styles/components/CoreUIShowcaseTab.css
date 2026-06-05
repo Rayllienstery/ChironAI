@@ -130,6 +130,24 @@
   width: 100%;
 }
 
+.coreui-showcase-dependencies-preview {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.coreui-showcase-dependencies-preview .dependencies-update-panel {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.coreui-showcase-dependencies-preview .dependencies-update-row {
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+}
+
 .coreui-showcase-token {
   display: grid;
   grid-template-columns: 28px minmax(64px, 1fr);

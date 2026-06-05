@@ -86,6 +86,7 @@ from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
 from api.http.proxy_status import set_latest_request_seconds, set_proxy_status
 from api.http.webui_chat_routes import register_chat_routes
 from api.http.webui_crawler_routes import register_crawler_routes
+from api.http.webui_dependencies_routes import register_dependencies_routes
 from api.http.webui_docker_routes import register_docker_routes
 from api.http.webui_extensions_routes import register_extension_routes
 from api.http.webui_llm_proxy_routes import register_llm_proxy_routes
@@ -189,6 +190,7 @@ register_docker_routes(webui_bp, error_log=_ERROR_LOG)
 register_session_routes(webui_bp, error_log=_ERROR_LOG)
 register_version_routes(webui_bp, error_log=_ERROR_LOG)
 register_observability_routes(webui_bp, error_log=_ERROR_LOG)
+register_dependencies_routes(webui_bp, error_log=_ERROR_LOG)
 register_settings_routes(
     webui_bp,
     error_log=_ERROR_LOG,

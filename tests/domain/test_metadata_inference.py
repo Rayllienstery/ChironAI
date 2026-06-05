@@ -72,6 +72,29 @@ class TestInferMetadata:
         display = infer_chunk_display_meta(["NavigationStack"])
         assert display.get("symbol") == "NavigationStack"
 
+    def test_community_source_defaults_to_ios_guide(self) -> None:
+        meta = infer_metadata(
+            "hws_swift",
+            "how-to-show-a-context-menu.md",
+            "https://www.hackingwithswift.com/quick-start/swiftui/how-to-show-a-context-menu",
+            ["How to show a context menu"],
+            "SwiftUI gives us the ContextMenu modifier.",
+        )
+        assert meta["technology"] == "swiftui"
+        assert meta["product"] == "ios"
+        assert meta["doc_scope"] == "guide"
+
+    def test_wwdc_infers_session_technology(self) -> None:
+        meta = infer_metadata(
+            "wwdc_sessions_2019_plus",
+            "wwdc2024-10161.md",
+            "https://developer.apple.com/videos/play/wwdc2024/10161/",
+            ["Deploy machine learning and AI models on-device with Core ML"],
+            "Core ML helps you optimize models for on-device machine learning.",
+        )
+        assert meta["technology"] == "core ml"
+        assert meta["doc_scope"] == "session"
+
     def test_unknown_source_defaults(self) -> None:
         meta = infer_metadata("unknown_src", "f.md", None, [], "text")
         assert meta["language"] == "unknown"

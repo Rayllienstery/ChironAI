@@ -17,6 +17,36 @@ import re
 
 _IOS_VERSION_RE = re.compile(r"\biOS\s+(\d+(?:\.\d+)*)\+?", re.IGNORECASE)
 _SWIFT_VERSION_RE = re.compile(r"\bSwift\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
+_TECHNOLOGY_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("swiftui", ("swiftui", "navigationstack", "@state", "@binding", "@observable", "observable")),
+    ("uikit", ("uikit", "uiview", "uiviewcontroller", "uitableview", "uicollectionview")),
+    ("appkit", ("appkit", "nsview", "nsviewcontroller", "nstableview")),
+    ("storekit", ("storekit", "in-app purchase", "subscription", "win-back offer")),
+    ("combine", ("combine", "publisher", "subscriber", "cancellable")),
+    ("concurrency", ("async/await", "async await", "actor isolation", "sendable", "taskgroup")),
+    ("swiftdata", ("swiftdata", "modelcontainer", "modelcontext")),
+    ("foundation", ("foundation", "urlsession", "dateformatter", "filemanager")),
+    ("xcode", ("xcode", "build setting", "xcode cloud", "instruments")),
+    ("cloudkit", ("cloudkit", "ckrecord", "ckdatabase")),
+    ("core data", ("core data", "nsmanagedobject", "persistent container")),
+    ("visionos", ("visionos", "spatial", "realitykit")),
+    ("vision", ("vision framework", "vnrequest", "image analysis")),
+    ("watchkit", ("watchkit", "watchos", "wkinterface")),
+    ("widgetkit", ("widgetkit", "widget", "live activity")),
+    ("network", ("network framework", "urlsession", "nwconnection")),
+    ("webkit js", ("webkit", "wkwebview", "javascript")),
+    ("xpc", ("xpc", "interprocess")),
+    ("core ml", ("core ml", "machine learning", "mlmodel")),
+    ("metal", ("metal", "shader", "gpu")),
+)
+_PRODUCT_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("visionos", ("visionos", "spatial computing")),
+    ("watchos", ("watchos", "watchkit", "apple watch")),
+    ("macos", ("macos", "appkit", "nsview", "mac app")),
+    ("tvos", ("tvos", "apple tv")),
+    ("ipados", ("ipados", "ipad")),
+    ("ios", ("ios", "iphone", "uikit", "swiftui", "storekit")),
+)
 
 
 def extract_versions(text: str) -> tuple[list[str], list[str]]:
@@ -27,6 +57,13 @@ def extract_versions(text: str) -> tuple[list[str], list[str]]:
     ios = {m.group(1) for m in _IOS_VERSION_RE.finditer(text or "")}
     swift = {m.group(1) for m in _SWIFT_VERSION_RE.finditer(text or "")}
     return sorted(ios), sorted(swift)
+
+
+def _keyword_match(haystack: str, mapping: tuple[tuple[str, tuple[str, ...]], ...]) -> str:
+    for value, keywords in mapping:
+        if any(keyword in haystack for keyword in keywords):
+            return value
+    return ""
 
 
 def infer_metadata(
@@ -166,6 +203,7 @@ def infer_metadata(
         language = "swift"
         technology = "wwdc_sessions"
         domain = "framework_guide"
+        doc_scope = "session"
     elif source_id == "xcode_docs":
         language = "swift"
         technology = "xcode"
@@ -184,7 +222,9 @@ def infer_metadata(
     }:
         language = "swift"
         domain = "community_guide"
+        product = "ios"
         doc_type = "howto"
+        doc_scope = "guide"
     elif source_id in {"firebase_ios", "stripe_ios"}:
         language = "swift"
         domain = "tooling"
@@ -340,6 +380,28 @@ def infer_metadata(
             domain = "app_store"
             if product == "unknown":
                 product = "ios"
+
+    haystack = " ".join(
+        [
+            lower_name,
+            lower_url,
+            " ".join(str(part).lower() for part in section_path or []),
+            (text or "")[:2500].lower(),
+        ]
+    )
+    inferred_technology = _keyword_match(haystack, _TECHNOLOGY_KEYWORDS)
+    if inferred_technology and technology in {"unknown", "wwdc_sessions"}:
+        technology = inferred_technology
+        if technology == "storekit":
+            domain = "app_store"
+        elif technology == "xcode":
+            domain = "tooling"
+            product = "tooling"
+        elif technology == "concurrency":
+            domain = "language_guide"
+    inferred_product = _keyword_match(haystack, _PRODUCT_KEYWORDS)
+    if inferred_product and product == "unknown":
+        product = inferred_product
 
     # Infer doc_scope for retrieval (source type: api_symbol, guide, tutorial, discussion).
     if not doc_scope:

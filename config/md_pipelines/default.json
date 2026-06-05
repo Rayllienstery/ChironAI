@@ -58,6 +58,7 @@
       "type": "strip_sections_by_heading",
       "params": {
         "headings": [
+          "conforms to",
           "conforming types",
           "inherited by",
           "inherits from",
@@ -65,7 +66,11 @@
           "mentioned in",
           "similar solutions",
           "about the swift knowledge base",
-          "explore the archive"
+          "explore the archive",
+          "mastodon",
+          "email",
+          "year 1",
+          "year 2"
         ]
       }
     },

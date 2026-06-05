@@ -7,6 +7,7 @@ import pytest
 from md_ingestion_service.domain.services.indexing_prepare import (
     apply_source_prepare_options,
     prepare_markdown_for_indexing,
+    strip_community_boilerplate,
     strip_leading_toc,
     strip_noise_section_headings,
     strip_store_cta_lines,
@@ -32,6 +33,24 @@ Tail
     assert "Foo bar" not in out
     assert "See Also" in out
     assert "Topics" in out
+
+
+def test_strip_noise_removes_fuzzy_section_heading() -> None:
+    md = """# Title
+
+Good technical body.
+
+## Similar solutions…
+
+Repeated navigation links.
+
+## Real Section
+
+Useful content remains.
+"""
+    out = strip_noise_section_headings(md, ["similar solutions"])
+    assert "Repeated navigation" not in out
+    assert "Real Section" in out
 
 
 def _meta_body(url: str, body: str) -> str:
@@ -110,6 +129,38 @@ More content.
     assert "Good paragraph" in out
 
 
+def test_strip_community_boilerplate_truncates_hws_footer() -> None:
+    md = """# How to push a view
+
+Useful SwiftUI NavigationStack content with enough technical detail.
+
+#### [__ Mastodon ](https://mastodon.social/@twostraws)
+
+#### [__ Email ](mailto:paul@hackingwithswift.com)
+
+[About](/about) [Glossary](/glossary)
+"""
+    out = strip_community_boilerplate(md, {"site": "hackingwithswift"})
+    assert "Useful SwiftUI" in out
+    assert "Mastodon" not in out
+    assert "Glossary" not in out
+
+
+def test_strip_community_boilerplate_drops_sponsored_paragraph() -> None:
+    md = """# Article
+
+Useful paragraph about SwiftUI state management.
+
+**SPONSORED** Learn more at https://revenuecat.com?utm_source=hackingWithSwift
+
+Another useful paragraph about observable models.
+"""
+    out = strip_community_boilerplate(md, {"site": "hackingwithswift"})
+    assert "SPONSORED" not in out
+    assert "Useful paragraph" in out
+    assert "Another useful" in out
+
+
 def test_apply_source_prepare_options_hws() -> None:
     md = """[Nav](/)
 
@@ -139,3 +190,24 @@ def test_prepare_happy_path_no_pipeline(monkeypatch: pytest.MonkeyPatch) -> None
     assert r.body_md
     assert "paragraph" in r.body_md
     assert r.page_meta.get("url") == "https://developer.apple.com/doc"
+
+
+def test_prepare_skips_hws_category_hub(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "md_ingestion_service.domain.services.indexing_prepare.get_indexing_list",
+        lambda k, d: [],
+    )
+    monkeypatch.setattr(
+        "md_ingestion_service.domain.services.indexing_prepare.get_indexing_int",
+        lambda k, d: d,
+    )
+    raw = _meta_body("https://www.hackingwithswift.com/example-code/uikit", "word " * 200)
+    r = prepare_markdown_for_indexing(
+        "uikit.md",
+        raw,
+        run_pipeline_fn=None,
+        active_pipeline_name_fn=None,
+        source_extra={"site": "hackingwithswift"},
+    )
+    assert r.skipped is True
+    assert r.skip_detail == "community_hub_page"

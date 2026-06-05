@@ -75,6 +75,7 @@ function lazyWithRetry(key, importer) {
 
 const DashboardTab = lazyWithRetry("DashboardTab", () => import("./components/DashboardTab"));
 const LogsTab = lazyWithRetry("LogsTab", () => import("./components/LogsTab"));
+const DependenciesTab = lazyWithRetry("DependenciesTab", () => import("./components/DependenciesTab"));
 const SettingsTab = lazyWithRetry("SettingsTab", () => import("./components/SettingsTab"));
 const LlmProxyTab = lazyWithRetry("LlmProxyTab", () => import("./components/LlmProxyTab"));
 const LlmProxyBuildsTab = lazyWithRetry("LlmProxyBuildsTab", () => import("./components/LlmProxyBuildsTab"));
@@ -539,6 +540,7 @@ function App() {
     { id: "docker", label: "Docker", section: "Main", iconUrl: DockerTabIcon },
     { id: "tokens-security", label: "Tokens and Security", section: "Main" },
     { id: "logs", label: "Logs", section: "Main" },
+    { id: "dependencies", label: "Dependencies", section: "Main" },
     { id: "llm-proxy", label: "LLM Proxy", section: "Core Functionality" },
     { id: "rag-fusion-proxy", label: "RAG Fusion Proxy", section: "Core Functionality" },
     { id: "template-editor", label: "Template Editor", section: "Core Functionality" },
@@ -586,12 +588,15 @@ function App() {
         );
       case "logs":
         return <LogsTab sessionId={sessionId} focusSubTab={logsFocusSubTab} onFocusSubTabConsumed={consumeLogsFocusSubTab} />;
+      case "dependencies":
+        return <DependenciesTab />;
       case "extensions":
         return (
           <ExtensionsTab
             onErrorStateChange={(hasError) =>
               setTabErrors((prev) => ({ ...prev, extensions: hasError }))
             }
+            onExtensionSurfaceChange={loadExtensionSurface}
           />
         );
       case "dev-documentation":

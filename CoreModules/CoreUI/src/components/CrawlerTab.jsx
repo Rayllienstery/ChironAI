@@ -167,6 +167,28 @@ function issuePath(issue) {
   return `${issue.source_id || ""}/${issue.filename || ""}`.replace(/^\//, "");
 }
 
+function embeddingHistoryRows(progress, currentFile) {
+  const rows = Array.isArray(progress?.embedding_history)
+    ? progress.embedding_history
+    : [];
+  const normalized = rows
+    .map((row) => ({
+      path: row.path || `${row.source_id || ""}/${row.filename || ""}`.replace(/^\//, ""),
+      chars: Number(row.chars || row.prepared_chars || 0),
+      chunks: Number(row.chunks || row.chunk_count || 0),
+    }))
+    .filter((row) => row.path);
+  if (normalized.length > 0) return normalized.slice(0, 5);
+  if (!currentFile) return [];
+  return [
+    {
+      path: currentFile,
+      chars: Number(progress?.current_embedding_chars || 0),
+      chunks: Number(progress?.current_embedding_chunks || 0),
+    },
+  ];
+}
+
 function createCollectionFinalLogMetadata(progress, jobId, collectionName) {
   const stats =
     progress?.statistics && typeof progress.statistics === "object"
@@ -201,6 +223,7 @@ function createCollectionFinalLogMetadata(progress, jobId, collectionName) {
       progress?.empty_after_prepare_removed_chars
       ?? stats.empty_after_prepare_removed_chars
       ?? 0,
+    embedding_history: progress?.embedding_history || stats.embedding_history || [],
     recent_skips: progress?.recent_skips || stats.recent_skips || [],
     skip_log: skipLog,
     largest_prepare_removals:
@@ -216,7 +239,12 @@ const SECTION_TABS = [
 ];
 const CREATE_COLLECTION_LIVE_ID = "crawler-create-collection";
 
-function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
+function CreateCollectionIndexProgress({
+  progress,
+  collectionName,
+  variant,
+  onOpenDetails = null,
+}) {
   if (!progress) return null;
   const isRunning = progress.status === "running";
   const isSuccess = progress.status === "success";
@@ -236,6 +264,8 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
       /^\//,
       "",
     );
+  const embeddingRows = embeddingHistoryRows(progress, currentFile);
+  const showEmbeddingHistory = isRunning && phaseKey === "embedding" && embeddingRows.length > 0;
   const extraStats = [
     ["Removed chars", progress.prepare_removed_chars],
     ["Prepared chars", progress.prepare_output_chars],
@@ -274,16 +304,13 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
 
         <div className="create-collection-toast-metrics" aria-label="Indexing progress">
           <span>
-            <strong>{progress.indexed_pages ?? 0}</strong> indexed
+            <strong>{progress.indexed_pages ?? 0}</strong>/{total || "..."} indexed
           </span>
           <span>
             <strong>{progress.skipped_pages ?? 0}</strong> skipped
           </span>
           <span>
             <strong>{progress.total_chunks ?? 0}</strong> chunks
-          </span>
-          <span>
-            <strong>{processed}</strong>/{total || "..."} pages
           </span>
         </div>
 
@@ -325,6 +352,18 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
         {errorsCount > 0 && (
           <div className="create-collection-toast-errors">
             Recent errors: {errorsCount}
+          </div>
+        )}
+
+        {onOpenDetails && (
+          <div className="create-collection-toast-actions">
+            <button
+              type="button"
+              className="notification-center-card-action-btn create-collection-toast-action"
+              onClick={onOpenDetails}
+            >
+              Open details
+            </button>
           </div>
         )}
       </div>
@@ -370,9 +409,9 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
       <div className="create-collection-index-stats">
         <div className="create-collection-index-stat">
           <span className="create-collection-index-stat__value create-collection-index-stat__value--ok">
-            {progress.indexed_pages ?? 0}
+            {progress.indexed_pages ?? 0} / {total || "…"}
           </span>
-          <span className="create-collection-index-stat__label">indexed</span>
+          <span className="create-collection-index-stat__label">indexed / total</span>
         </div>
         <div className="create-collection-index-stat">
           <span className="create-collection-index-stat__value create-collection-index-stat__value--skip">
@@ -386,12 +425,6 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
           </span>
           <span className="create-collection-index-stat__label">chunks</span>
         </div>
-        <div className="create-collection-index-stat">
-          <span className="create-collection-index-stat__value">
-            {processed} / {total || "…"}
-          </span>
-          <span className="create-collection-index-stat__label">pages done</span>
-        </div>
       </div>
 
       {extraStats.length > 0 && (
@@ -404,7 +437,35 @@ function CreateCollectionIndexProgress({ progress, collectionName, variant }) {
         </div>
       )}
 
-      {isRunning && (currentFile || phaseLabel) && (
+      {showEmbeddingHistory ? (
+        <div className="create-collection-index-current create-collection-index-current--embedding-history">
+          <div className="create-collection-index-current__phase">
+            <span className="create-collection-index-current__phase-dot" />
+            {phaseLabel}
+          </div>
+          <div className="create-collection-embedding-history" aria-label="Recent embedding vectors">
+            {embeddingRows.map((row, index) => (
+              <div
+                key={`${row.path}:${row.chars}:${row.chunks}`}
+                className="create-collection-embedding-history__row"
+                style={{
+                  "--embedding-history-opacity": Math.max(0.4, 1 - index * 0.15),
+                  "--embedding-history-font-size": `${13 - index * 0.5}px`,
+                  "--embedding-history-delay": `${index * 28}ms`,
+                }}
+                title={row.path}
+              >
+                <span className="create-collection-embedding-history__file">
+                  {row.path}
+                </span>
+                <span className="create-collection-embedding-history__metrics">
+                  {formatIndexNumber(row.chars)} chars / {formatIndexNumber(row.chunks)} chunks
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : isRunning && (currentFile || phaseLabel) && (
         <div className="create-collection-index-current">
           {phaseLabel && phaseKey && (
             <div className="create-collection-index-current__phase">
@@ -702,6 +763,9 @@ function CrawlerTab() {
           prepare_removed_chars: job.prepare_removed_chars ?? 0,
           empty_after_prepare_removed_chars:
             job.empty_after_prepare_removed_chars ?? 0,
+          current_embedding_chars: job.current_embedding_chars ?? 0,
+          current_embedding_chunks: job.current_embedding_chunks ?? 0,
+          embedding_history: job.embedding_history ?? [],
           error: job.error,
           statistics: job.statistics,
         };
@@ -1346,6 +1410,9 @@ function CrawlerTab() {
           prepare_output_chars: 0,
           empty_after_prepare_removed_chars: 0,
           deduped_chunks: 0,
+          current_embedding_chars: 0,
+          current_embedding_chunks: 0,
+          embedding_history: [],
         });
       } else {
         setShowCreateModal(false);
@@ -1391,6 +1458,12 @@ function CrawlerTab() {
     }
   };
 
+  const handleOpenCreateCollectionDetails = useCallback(() => {
+    nc?.clearLiveSuppression?.(CREATE_COLLECTION_LIVE_ID);
+    setShowCreateToast(true);
+    setShowCreateModal(true);
+  }, [nc]);
+
   const createCollectionToastName =
     createCollectionName || createForm.collection_name || "Collection";
   const createCollectionToastTitle =
@@ -1403,6 +1476,8 @@ function CrawlerTab() {
           : "Creating collection...";
   const createCollectionLiveSuppressed =
     nc?.liveSuppressedIds?.includes(CREATE_COLLECTION_LIVE_ID) || false;
+  const showCreateCollectionDetailsAction =
+    Boolean(createJobId && createProgress) && !showCreateModal;
 
   useEffect(() => {
     if (
@@ -1441,6 +1516,11 @@ function CrawlerTab() {
           progress={createProgress}
           collectionName={createCollectionToastName}
           variant="toast"
+          onOpenDetails={
+            showCreateCollectionDetailsAction
+              ? handleOpenCreateCollectionDetails
+              : null
+          }
         />
       </div>,
     );
@@ -1453,6 +1533,8 @@ function CrawlerTab() {
     createCollectionToastName,
     createCollectionToastTitle,
     createCollectionLiveSuppressed,
+    handleOpenCreateCollectionDetails,
+    showCreateCollectionDetailsAction,
   ]);
 
   const toggleSourceSelected = (sourceId) => {

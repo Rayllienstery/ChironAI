@@ -131,7 +131,7 @@ Controls content filtering and chunking:
 - `min_chunk_words`: Min word count per chunk (default: 25)
 - `min_chunk_alpha_ratio`: Min alphabetic ratio (default: 0.2)
 - `batch_upsert_size`: Qdrant upsert batch size (default: 200)
-- `embed_batch_size`: Embedding batch size (default: 6)
+- `embed_batch_size`: Embedding batch size (default: 32; oversized batches are split adaptively on provider context errors)
 - `embed_request_timeout`: Embedding timeout seconds (default: 300)
 - `exclude_filename_substrings`: Filename patterns to skip
 - `exclude_content_substrings`: Content markers for low-value pages

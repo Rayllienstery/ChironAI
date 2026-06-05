@@ -352,6 +352,56 @@ export async function getLogs(sessionId, options = {}) {
   return response.json();
 }
 
+export async function getDependencies() {
+  const response = await fetch(`${API_BASE}/dependencies`, {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(extractApiError(err, 'Failed to get dependencies'));
+  }
+  return response.json();
+}
+
+export async function checkDependencyUpdates() {
+  const response = await fetch(`${API_BASE}/dependencies/check-updates`, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(extractApiError(data, 'Failed to check dependency updates'));
+  }
+  return data;
+}
+
+export async function updateDependencies() {
+  const response = await fetch(`${API_BASE}/dependencies/update`, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(extractApiError(data, 'Failed to update dependencies'));
+  }
+  return data;
+}
+
+export async function getDependencyJob(jobId) {
+  const response = await fetch(`${API_BASE}/dependencies/jobs/${encodeURIComponent(jobId)}`, {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(extractApiError(data, 'Failed to get dependency job'));
+  }
+  return data;
+}
+
 export async function getCoreuiNotifications(sessionId, options = {}) {
   const params = new URLSearchParams({ session_id: sessionId });
   if (options.limit != null) params.set('limit', String(options.limit));

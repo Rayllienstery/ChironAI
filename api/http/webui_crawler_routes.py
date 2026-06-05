@@ -104,11 +104,13 @@ def _create_collection_log_metadata(
         "skipped_pages": stats.get("skipped_pages", 0),
         "total_chunks": stats.get("total_chunks", 0),
         "deduped_chunks": stats.get("deduped_chunks", 0),
+        "embed_dropped_chunks": stats.get("embed_dropped_chunks", 0),
         "skip_reasons": dict(stats.get("skip_reasons") or {}),
         "prepare_original_chars": stats.get("prepare_original_chars", 0),
         "prepare_output_chars": stats.get("prepare_output_chars", 0),
         "prepare_removed_chars": stats.get("prepare_removed_chars", 0),
         "empty_after_prepare_removed_chars": stats.get("empty_after_prepare_removed_chars", 0),
+        "embedding_history": list(stats.get("embedding_history") or []),
         "recent_skips": list(stats.get("recent_skips") or []),
         "skip_log": list(stats.get("skip_log") or stats.get("recent_skips") or []),
         "largest_prepare_removals": list(stats.get("largest_prepare_removals") or []),
@@ -180,7 +182,41 @@ def _config_default_embed_model() -> str:
         return os.getenv("RAG_EMBED_MODEL", "mxbai-embed-large")
 
 
-_MAX_EMBED_CHARS = 32_000
+_DEFAULT_MAX_EMBED_CHARS = 1_800
+
+
+def _max_embed_chars() -> int:
+    return max(256, get_indexing_int("embed_truncate_chars", _DEFAULT_MAX_EMBED_CHARS))
+
+
+def _clip_text_for_embedding(text: str, max_chars: int | None = None) -> str:
+    """Clip embed input at a readable boundary before provider context checks."""
+    value = text or ""
+    limit = max_chars if max_chars is not None else _max_embed_chars()
+    if len(value) <= limit:
+        return value
+    clipped = value[:limit].rstrip()
+    min_break = max(160, int(limit * 0.55))
+    breakpoints = (
+        (clipped.rfind("\n\n"), 0),
+        (clipped.rfind("\n"), 0),
+        (clipped.rfind(". "), 1),
+        (clipped.rfind(" "), 0),
+    )
+    for idx, keep_chars in breakpoints:
+        if idx >= min_break:
+            clipped = clipped[: idx + keep_chars].rstrip()
+            break
+    if clipped.count("```") % 2:
+        fence_idx = clipped.rfind("```")
+        if fence_idx > 0:
+            clipped = clipped[:fence_idx].rstrip()
+    return clipped or value[:limit].strip()
+
+
+def _is_embed_context_length_error(exc: BaseException) -> bool:
+    text = str(exc).casefold()
+    return "context length" in text or "input length exceeds" in text
 
 
 def _runtime_embed_available() -> bool:
@@ -311,7 +347,7 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
         *,
         embed_provider_id: str | None = None,
         embed_model_override: str | None = None,
-    ) -> list[list[float]]:
+    ) -> list[list[float] | None]:
         """Simple embedding function using the configured blind runtime provider.
 
         When ``embed_model_override`` is non-empty, it is used for this call only
@@ -346,10 +382,9 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
             # 2) legacy default embed model from config/env
             embed_model = rag_embed_model or _config_default_embed_model()
 
-        clipped_texts = [
-            (t or "")[:_MAX_EMBED_CHARS] if len(t or "") > _MAX_EMBED_CHARS else (t or "")
-            for t in texts
-        ]
+        max_embed_chars = _max_embed_chars()
+        clipped_texts = [_clip_text_for_embedding(t or "", max_embed_chars) for t in texts]
+        batch_size = max(1, get_indexing_int("embed_batch_size", 32))
 
         if not _runtime_embed_available():
             raise RuntimeError(
@@ -357,17 +392,68 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                 "such as ollama-provider before indexing."
             )
 
-        try:
-            return _invoke_runtime_embed(
+        def _embed_batch(batch: list[str]) -> list[list[float]]:
+            vectors = _invoke_runtime_embed(
                 provider_id=resolved_provider_id,
                 model=embed_model,
-                texts=clipped_texts,
+                texts=batch,
             )
-        except Exception as e:
-            _WEBUI_LOG.error("Embedding provider runtime failed for indexing: %s", e)
-            raise RuntimeError(
-                "Embedding provider runtime failed; no core direct Ollama HTTP fallback is available."
-            ) from e
+            if len(vectors) != len(batch):
+                raise RuntimeError(
+                    f"Embedding provider returned {len(vectors)} vectors for {len(batch)} texts."
+                )
+            return vectors
+
+        def _embed_one_with_context_retry(text: str) -> list[float] | None:
+            retry_limits = [min(len(text), n) for n in (1200, 900, 600, 360)]
+            for limit in retry_limits:
+                clipped = _clip_text_for_embedding(text, limit)
+                try:
+                    vectors = _embed_batch([clipped])
+                    return vectors[0] if vectors else None
+                except Exception as e:
+                    if not _is_embed_context_length_error(e):
+                        raise
+            _WEBUI_LOG.warning(
+                "Dropping one indexing chunk after repeated embedding context-length failures "
+                "(chars=%s, clipped_chars=%s, model=%s)",
+                len(text or ""),
+                len(_clip_text_for_embedding(text, retry_limits[-1] if retry_limits else 0)),
+                embed_model,
+            )
+            return None
+
+        def _embed_adaptive(batch: list[str]) -> list[list[float] | None]:
+            try:
+                return _embed_batch(batch)
+            except Exception as e:
+                if not _is_embed_context_length_error(e):
+                    raise
+                if len(batch) <= 1:
+                    return [_embed_one_with_context_retry(batch[0])]
+                mid = max(1, len(batch) // 2)
+                _WEBUI_LOG.warning(
+                    "Embedding batch exceeded provider context; splitting batch "
+                    "(batch_size=%s, left=%s, right=%s, model=%s): %s",
+                    len(batch),
+                    mid,
+                    len(batch) - mid,
+                    embed_model,
+                    e,
+                )
+                return _embed_adaptive(batch[:mid]) + _embed_adaptive(batch[mid:])
+
+        embeddings: list[list[float] | None] = []
+        for i in range(0, len(clipped_texts), batch_size):
+            batch = clipped_texts[i : i + batch_size]
+            try:
+                embeddings.extend(_embed_adaptive(batch))
+            except Exception as e:
+                _WEBUI_LOG.error("Embedding provider runtime failed for indexing: %s", e)
+                raise RuntimeError(
+                    "Embedding provider runtime failed; no core direct Ollama HTTP fallback is available."
+                ) from e
+        return embeddings
 
 
     def _qdrant_collection_has_sparse_vectors(qclient: QdrantClient, collection_name: str) -> bool:
@@ -462,6 +548,7 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
         snap["errors"] = list(st.get("errors") or [])
         snap["recent_skips"] = list(st.get("recent_skips") or [])
         snap["largest_prepare_removals"] = list(st.get("largest_prepare_removals") or [])
+        snap["embedding_history"] = list(st.get("embedding_history") or [])
         return snap
 
 
@@ -498,6 +585,32 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
         )
         rows.sort(key=lambda item: int(item.get("removed_chars") or 0), reverse=True)
         del rows[8:]
+
+
+    def _remember_embedding_history(
+        st: dict[str, Any],
+        *,
+        source_id: str,
+        filename: str,
+        prepared_chars: int,
+        chunk_count: int,
+    ) -> None:
+        path = f"{source_id}/{filename}".lstrip("/")
+        row = {
+            "source_id": source_id,
+            "filename": filename,
+            "path": path,
+            "chars": int(prepared_chars or 0),
+            "chunks": int(chunk_count or 0),
+        }
+        st["current_embedding_chars"] = row["chars"]
+        st["current_embedding_chunks"] = row["chunks"]
+        rows = st.setdefault("embedding_history", [])
+        if rows and rows[0].get("path") == path:
+            rows[0] = row
+        else:
+            rows.insert(0, row)
+        del rows[5:]
 
 
     def _record_page_skip(
@@ -596,10 +709,14 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
             "last_skip_reason": "",
             "cancelled": False,
             "deduped_chunks": 0,
+            "embed_dropped_chunks": 0,
             "prepare_original_chars": 0,
             "prepare_output_chars": 0,
             "prepare_removed_chars": 0,
             "empty_after_prepare_removed_chars": 0,
+            "current_embedding_chars": 0,
+            "current_embedding_chunks": 0,
+            "embedding_history": [],
             "recent_skips": [],
             "skip_log": [],
             "largest_prepare_removals": [],
@@ -770,6 +887,13 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
 
             # Get embeddings
             stats["current_phase"] = "embedding"
+            _remember_embedding_history(
+                stats,
+                source_id=source_id,
+                filename=filename,
+                prepared_chars=len(md or ""),
+                chunk_count=len(chunks_with_paths),
+            )
             if on_progress:
                 on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
             try:
@@ -815,6 +939,37 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                     on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
                 continue
 
+            embedded_pairs = [
+                ((chunk_text, section_path), vec)
+                for (chunk_text, section_path), vec in zip(chunks_with_paths, embeddings)
+                if vec is not None
+            ]
+            dropped_embedding_chunks = len(chunks_with_paths) - len(embedded_pairs)
+            if dropped_embedding_chunks:
+                stats["embed_dropped_chunks"] += dropped_embedding_chunks
+                _WEBUI_LOG.warning(
+                    "Dropped %s chunks after embedding context fallback for %s/%s",
+                    dropped_embedding_chunks,
+                    source_id,
+                    filename,
+                )
+            if not embedded_pairs:
+                _record_page_skip(
+                    stats,
+                    "embed_failed",
+                    f"No embeddable chunks remained for {source_id}/{filename}",
+                    source_id=source_id,
+                    filename=filename,
+                    detail="all chunks exceeded embedding context",
+                    prepare_stats=prep.prepare_stats,
+                )
+                processed += 1
+                if on_progress:
+                    on_progress(processed, total_pages, _snapshot_indexing_stats(stats))
+                continue
+            chunks_with_paths = [pair for pair, _vec in embedded_pairs]
+            embeddings = [vec for _pair, vec in embedded_pairs]
+
             dim = len(embeddings[0])
             if first_dim is None:
                 first_dim = dim
@@ -855,9 +1010,8 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
             url_for_meta = page_meta.get("url") or entry.get("url")
             page_chunk_hashes: list[str] = []
             for (chunk_text, section_path), vec in zip(chunks_with_paths, embeddings):
-                norm_url = (url_for_meta or "").strip().rstrip("/")
                 norm_text = re.sub(r"\s+", " ", (chunk_text or "").strip())
-                dedup_key = _sha256(f"{norm_text}|{norm_url}")
+                dedup_key = _sha256(norm_text.casefold())
                 if dedup_key in seen_chunk_keys:
                     stats["deduped_chunks"] += 1
                     continue
@@ -2080,6 +2234,7 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                         _collection_jobs[job_id]["last_skip_reason"] = st.get("last_skip_reason", "")
                         _collection_jobs[job_id]["cancelled"] = bool(st.get("cancelled", False))
                         _collection_jobs[job_id]["deduped_chunks"] = st.get("deduped_chunks", 0)
+                        _collection_jobs[job_id]["embed_dropped_chunks"] = st.get("embed_dropped_chunks", 0)
                         _collection_jobs[job_id]["prepare_original_chars"] = st.get("prepare_original_chars", 0)
                         _collection_jobs[job_id]["prepare_output_chars"] = st.get("prepare_output_chars", 0)
                         _collection_jobs[job_id]["prepare_removed_chars"] = st.get("prepare_removed_chars", 0)
@@ -2087,6 +2242,9 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                             "empty_after_prepare_removed_chars",
                             0,
                         )
+                        _collection_jobs[job_id]["current_embedding_chars"] = st.get("current_embedding_chars", 0)
+                        _collection_jobs[job_id]["current_embedding_chunks"] = st.get("current_embedding_chunks", 0)
+                        _collection_jobs[job_id]["embedding_history"] = list(st.get("embedding_history", [])[:5])
 
             try:
                 stats = _create_collection_from_sources(
@@ -2125,6 +2283,7 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                         _collection_jobs[job_id]["current_filename"] = ""
                         _collection_jobs[job_id]["cancelled"] = cancelled
                         _collection_jobs[job_id]["deduped_chunks"] = stats.get("deduped_chunks", 0)
+                        _collection_jobs[job_id]["embed_dropped_chunks"] = stats.get("embed_dropped_chunks", 0)
                         _collection_jobs[job_id]["prepare_original_chars"] = stats.get("prepare_original_chars", 0)
                         _collection_jobs[job_id]["prepare_output_chars"] = stats.get("prepare_output_chars", 0)
                         _collection_jobs[job_id]["prepare_removed_chars"] = stats.get("prepare_removed_chars", 0)
@@ -2132,6 +2291,9 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                             "empty_after_prepare_removed_chars",
                             0,
                         )
+                        _collection_jobs[job_id]["current_embedding_chars"] = stats.get("current_embedding_chars", 0)
+                        _collection_jobs[job_id]["current_embedding_chunks"] = stats.get("current_embedding_chunks", 0)
+                        _collection_jobs[job_id]["embedding_history"] = list(stats.get("embedding_history", [])[:5])
                 _write_create_collection_final_log(
                     job_id=job_id,
                     collection_name=collection_name,
@@ -2169,6 +2331,7 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                             "source_ids": list(source_ids),
                             "points_count": stats.get("total_chunks", 0),
                             "deduped_chunks": stats.get("deduped_chunks", 0),
+                            "embed_dropped_chunks": stats.get("embed_dropped_chunks", 0),
                         }
                         settings_repo.set_app_setting(
                             f"rag_collection_index_meta:{collection_name}",
@@ -2233,10 +2396,14 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
             "skip_log": full_skip_log,
             "largest_prepare_removals": job.get("largest_prepare_removals", []),
             "deduped_chunks": job.get("deduped_chunks", 0),
+            "embed_dropped_chunks": job.get("embed_dropped_chunks", 0),
             "prepare_original_chars": job.get("prepare_original_chars", 0),
             "prepare_output_chars": job.get("prepare_output_chars", 0),
             "prepare_removed_chars": job.get("prepare_removed_chars", 0),
             "empty_after_prepare_removed_chars": job.get("empty_after_prepare_removed_chars", 0),
+            "current_embedding_chars": job.get("current_embedding_chars", 0),
+            "current_embedding_chunks": job.get("current_embedding_chunks", 0),
+            "embedding_history": job.get("embedding_history", []),
             "statistics": job.get("statistics"),
             "error": job.get("error"),
         })
@@ -2351,10 +2518,14 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
                     "cancel_requested": False,
                     "cancelled": False,
                     "deduped_chunks": 0,
+                    "embed_dropped_chunks": 0,
                     "prepare_original_chars": 0,
                     "prepare_output_chars": 0,
                     "prepare_removed_chars": 0,
                     "empty_after_prepare_removed_chars": 0,
+                    "current_embedding_chars": 0,
+                    "current_embedding_chunks": 0,
+                    "embedding_history": [],
                 }
 
             thread = threading.Thread(

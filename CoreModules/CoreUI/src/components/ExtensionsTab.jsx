@@ -373,10 +373,11 @@ function SchemaRenderer({ schema, providerByExtensionId }) {
  * registry, providers, and per-extension tab UI payloads. Calls into the
  * extensions_backend service for install/update/remove.
  *
- * @param {{ onErrorStateChange?: (hasError: boolean) => void }} [props] -
- *   Notified when this tab transitions into/out of an error state.
+ * @param {{ onErrorStateChange?: (hasError: boolean) => void, onExtensionSurfaceChange?: () => void | Promise<void> }} [props] -
+ *   Notified when this tab transitions into/out of an error state and when
+ *   extension navigation/service surface should be refreshed.
  */
-export default function ExtensionsTab({ onErrorStateChange }) {
+export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceChange }) {
   const notificationCenter = useOptionalNotificationCenter();
   const [activeView, setActiveView] = useState("installed");
   const [registry, setRegistry] = useState([]);
@@ -512,6 +513,7 @@ export default function ExtensionsTab({ onErrorStateChange }) {
         const result = await fn(extensionId);
         notifyExtensionEvent(extensionId, operation, "success", `${operation} completed.`, result || {});
         await loadAll();
+        await onExtensionSurfaceChange?.();
         onErrorStateChange?.(false);
       } catch (e) {
         const msg = String(e?.message || e || "Action failed");
@@ -522,7 +524,7 @@ export default function ExtensionsTab({ onErrorStateChange }) {
         setBusyId("");
       }
     },
-    [loadAll, notifyExtensionEvent, onErrorStateChange]
+    [loadAll, notifyExtensionEvent, onErrorStateChange, onExtensionSurfaceChange]
   );
 
   const openDetails = useCallback(
@@ -584,6 +586,7 @@ export default function ExtensionsTab({ onErrorStateChange }) {
           result || {}
         );
         await loadAll();
+        await onExtensionSurfaceChange?.();
         onErrorStateChange?.(false);
       } catch (e) {
         if (loadingNotifId != null) notificationCenter?.dismissPersisted?.(loadingNotifId);
@@ -595,7 +598,7 @@ export default function ExtensionsTab({ onErrorStateChange }) {
         setBusyId("");
       }
     },
-    [details, loadAll, notificationCenter, notifyExtensionEvent, onErrorStateChange, persistExtensionNotification]
+    [details, loadAll, notificationCenter, notifyExtensionEvent, onErrorStateChange, onExtensionSurfaceChange, persistExtensionNotification]
   );
 
   return (
@@ -772,6 +775,32 @@ export default function ExtensionsTab({ onErrorStateChange }) {
               {item.error ? <pre className="extensions-card__error">{item.error}</pre> : null}
               <SandboxDiagnostics item={item} busyId={busyId} runAction={runAction} />
               <SecurityFindings findings={item.security_findings} />
+              <div className="extensions-card__actions">
+                <CoreUIButton
+                  variant="danger"
+                  disabled={busyId === item.id}
+                  onClick={() => runAction(item.id, (id) => removeExtension(id), "remove")}
+                >
+                  Remove
+                </CoreUIButton>
+                {item.enabled ? (
+                  <CoreUIButton
+                    variant="ghost"
+                    disabled={busyId === item.id}
+                    onClick={() => runAction(item.id, (id) => disableExtension(id), "disable")}
+                  >
+                    Disable
+                  </CoreUIButton>
+                ) : (
+                  <CoreUIButton
+                    variant="primary"
+                    disabled={busyId === item.id}
+                    onClick={() => runAction(item.id, (id) => enableExtension(id), "enable")}
+                  >
+                    Enable
+                  </CoreUIButton>
+                )}
+              </div>
             </article>
             ))}
             {!installed.length && !loading ? <div className="extensions-empty">No installed extensions.</div> : null}

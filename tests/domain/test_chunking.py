@@ -24,6 +24,33 @@ class TestChunkQualityOk:
         text = "This is a valid chunk with enough words and letters."
         assert chunk_quality_ok(text) is True
 
+    def test_rejects_hws_footer_chunk(self) -> None:
+        text = """#### [__ Mastodon ](https://mastodon.social/@twostraws)
+
+#### [__ Email ](mailto:paul@hackingwithswift.com)
+
+[About](/about) [Glossary](/glossary) [Privacy Policy](/privacy)
+
+Swift, SwiftUI, the Swift logo, Xcode, and Instruments are trademarks of Apple Inc.
+"""
+        assert chunk_quality_ok(text, source_id="hws_swift") is False
+
+    def test_rejects_low_value_apple_conforms_only_chunk(self) -> None:
+        text = """# AccessibilityLabeledPairRole
+
+```swift
+@frozen enum AccessibilityLabeledPairRole
+```
+
+### Conforms To
+
+- Equatable
+- Hashable
+- Sendable
+- SendableMetatype
+"""
+        assert chunk_quality_ok(text, source_id="apple_documentation") is False
+
 
 class TestSplitMarkdownIntoChunks:
     def test_empty_returns_empty(self) -> None:
@@ -52,6 +79,13 @@ class TestSplitMarkdownIntoChunks:
         assert "func foo()" in combined
         assert "After." in combined
 
+    def test_long_code_block_keeps_balanced_fences(self) -> None:
+        code = "\n".join(f"let value{i} = {i}" for i in range(80))
+        md = f"# API\n\n```swift\n{code}\n```\n\nAfter."
+        chunks = split_markdown_into_chunks(md, max_chunk_size=180, min_chunk_size=5)
+        for text, _path in chunks:
+            assert text.count("```") % 2 == 0
+
     def test_long_paragraph_splits_by_sentence(self) -> None:
         long_para = "First sentence here. Second sentence there. Third one. " * 50
         chunks = split_markdown_into_chunks(
@@ -75,6 +109,15 @@ class TestSplitMarkdownIntoChunks:
         for text, path in chunks_with_overlap:
             assert isinstance(text, str) and len(text) >= 1
             assert path == [] or path == ["A"]
+
+    def test_overlap_uses_sentence_tail(self) -> None:
+        md = "# A\n\n" + ("This is a complete sentence. " * 40)
+        chunks = split_markdown_into_chunks(
+            md, max_chunk_size=180, min_chunk_size=20, chunk_overlap=80
+        )
+        assert len(chunks) >= 2
+        second_text = chunks[1][0].lstrip()
+        assert second_text.startswith("This is a complete sentence.")
 
     def test_section_path_preserved_after_merge(self) -> None:
         md = "## Section One\n\nShort.\n\n## Section One\n\nAlso short."

@@ -7,6 +7,7 @@ import CoreUISlider from "./CoreUISlider";
 import EmptyState from "./EmptyState";
 import StandByScreen from "./StandByScreen";
 import "../styles/components/DockerTab.css";
+import "../styles/components/DependenciesTab.css";
 import "../styles/components/CoreUIShowcaseTab.css";
 import CoreUIPipelinePreview from "./CoreUIPipelinePreview";
 
@@ -770,6 +771,37 @@ return docker.ensure_container(spec)`}</pre>
               <span role="cell">proxy.trace</span>
               <span role="cell">2.4 s</span>
               <span role="cell"><CoreUIBadge tone="warning">slow</CoreUIBadge></span>
+            </div>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Dependency update panel"
+          classes={[".dependencies-update-panel", ".dependencies-job-orb", ".dependencies-update-row"]}
+          source={`${sourceRoot}/components/DependenciesTab.jsx, ${sourceRoot}/styles/components/DependenciesTab.css`}
+          description="Operational status surface for dependency inventory, update checks, and package-manager job output."
+        >
+          <div className="coreui-showcase-dependencies-preview">
+            <div className="dependencies-update-panel">
+              <div className="dependencies-update-main">
+                <div className="dependencies-job-orb dependencies-job-orb--running">
+                  <span className="material-symbols-outlined" aria-hidden="true">progress_activity</span>
+                </div>
+                <div>
+                  <h2>Checking updates</h2>
+                  <p>running - 1 step - Jun 3, 14:20</p>
+                </div>
+              </div>
+              <div className="dependencies-update-meta">
+                <CoreUIBadge tone="info">running</CoreUIBadge>
+              </div>
+            </div>
+            <div className="dependencies-update-row">
+              <span className="material-symbols-outlined" aria-hidden="true">deployed_code</span>
+              <strong>vite</strong>
+              <span>5.0.8</span>
+              <span className="material-symbols-outlined dependencies-update-arrow" aria-hidden="true">arrow_forward</span>
+              <span>5.4.0</span>
             </div>
           </div>
         </ShowcaseItem>

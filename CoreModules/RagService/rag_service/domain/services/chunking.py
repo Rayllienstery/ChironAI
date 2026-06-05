@@ -30,6 +30,33 @@ _COMMUNITY_SOURCE_IDS = frozenset(
         "swiftbysundell_articles",
     }
 )
+_HWS_FOOTER_MARKERS = (
+    "#### [__ mastodon",
+    "#### [__ email",
+    "[about](/about) [glossary](/glossary)",
+    "swift, swiftui, the swift logo",
+    "hacking with swift is",
+    "you are not logged in",
+    "link copied to your pasteboard",
+    "was this page useful?",
+    "average rating:",
+    "utm_source=hacking",
+)
+_COMMUNITY_LIST_MARKERS = (
+    " articles in the swift knowledge base",
+    "_articles_in_the_[swift_knowledge_base]",
+)
+_OBJC_ARCHIVE_MARKERS = (
+    "### year 1",
+    "### year 2",
+    "* [#1 lighter view controllers]",
+    "* [#13 architecture]",
+)
+_POINTFREE_FOOTER_MARKERS = (
+    "#### [point-free](/)",
+    "##### content",
+    "a hub for advanced swift programming",
+)
 _WWDC_HEADER_ONLY = re.compile(
     r"^#\s+.+\n+(?:\d{4}\s*·\s*WWDC\d+\s*·\s*Session\s+\d+|#\s+\w+@WWDC\d+)\s*$",
     re.IGNORECASE | re.MULTILINE,
@@ -37,8 +64,10 @@ _WWDC_HEADER_ONLY = re.compile(
 
 
 def _source_chunk_acceptable(text: str, source_id: str) -> bool:
-    head = (text or "")[:240]
+    full = text or ""
+    head = full[:240]
     lower = head.lower()
+    full_lower = full.lower()
     if source_id in _COMMUNITY_SOURCE_IDS:
         if head.lstrip().startswith("[ ](/)"):
             return False
@@ -46,15 +75,49 @@ def _source_chunk_acceptable(text: str, source_id: str) -> bool:
             return False
         if "buy our books" in lower:
             return False
+        if "sponsored" in full_lower and "utm_" in full_lower:
+            return False
+        if any(marker in full_lower for marker in _COMMUNITY_LIST_MARKERS):
+            return False
+    if source_id == "hws_swift":
+        if any(marker in full_lower for marker in _HWS_FOOTER_MARKERS):
+            return False
+    if source_id == "objc_io_issues":
+        if any(marker in full_lower for marker in _OBJC_ARCHIVE_MARKERS):
+            return False
+    if source_id == "pointfree_collections":
+        if any(marker in full_lower for marker in _POINTFREE_FOOTER_MARKERS):
+            return False
     if source_id.startswith("wwdc_sessions_"):
         stripped = (text or "").strip()
         if len(stripped) < 220 and _WWDC_HEADER_ONLY.match(stripped):
             return False
         if re.match(r"^#\s+\w+@WWDC\d+\s*$", stripped, re.IGNORECASE):
             return False
+    if source_id == "apple_documentation" and _is_low_value_conforms_chunk(full):
+        return False
     if "similar solutions" in lower and len((text or "").strip()) < 500:
         return False
     return True
+
+
+def _is_low_value_conforms_chunk(text: str) -> bool:
+    """Detect Apple API chunks that contain only a Conforms To protocol list."""
+    stripped = (text or "").strip()
+    if "### Conforms To" not in stripped:
+        return False
+    without_code = re.sub(r"```.*?```", "", stripped, flags=re.DOTALL)
+    lines = [ln.strip() for ln in without_code.splitlines() if ln.strip()]
+    if not any(ln == "### Conforms To" for ln in lines):
+        return False
+    bullet_lines = sum(1 for ln in lines if ln.startswith("-"))
+    prose_lines = [
+        ln
+        for ln in lines
+        if not ln.startswith("#") and not ln.startswith("-") and len(ln.split()) > 8
+    ]
+    prose_words = len(" ".join(prose_lines).split())
+    return bullet_lines >= 3 and prose_words < 16
 
 
 def chunk_quality_ok(text: str, *, source_id: str | None = None) -> bool:
@@ -169,6 +232,9 @@ def _split_long_paragraph(text: str, max_sz: int) -> list[str]:
     """Split a single paragraph longer than max_sz by sentence or line boundaries."""
     if len(text) <= max_sz:
         return [text]
+    stripped = text.strip()
+    if stripped.startswith("```") and stripped.endswith("```"):
+        return [text]
     parts: list[str] = []
     # Prefer splitting on sentence end (. ! ?) followed by space or newline.
     pattern = re.compile(r"(?<=[.!?])\s+(?=\S)|(?<=\n)(?=\S)")
@@ -198,6 +264,28 @@ def _split_long_paragraph(text: str, max_sz: int) -> list[str]:
         while start < len(text) and text[start] in " \t\n":
             start += 1
     return parts
+
+
+def _build_overlap_prefix(text: str, overlap: int) -> str:
+    """Return a small context tail without starting mid-word or inside code."""
+    if not overlap or len(text) < overlap:
+        return ""
+    stripped = text.strip()
+    if not stripped or stripped.endswith("```"):
+        return ""
+    tail_window = stripped[-min(len(stripped), overlap * 3) :]
+    if "```" in tail_window:
+        return ""
+    sentences = re.split(r"(?<=[.!?])\s+", tail_window)
+    for sentence in reversed(sentences):
+        candidate = sentence.strip()
+        if 20 <= len(candidate) <= overlap:
+            return candidate
+    tail = stripped[-overlap:].strip()
+    first_space = tail.find(" ")
+    if first_space > 0 and first_space < len(tail) - 1:
+        tail = tail[first_space + 1 :].strip()
+    return tail
 
 
 def split_markdown_into_chunks(
@@ -234,7 +322,7 @@ def split_markdown_into_chunks(
         chunks.append((text, list(section_path)))
         overlap_prefix[0] = ""
         if overlap and len(text) >= overlap:
-            overlap_prefix[0] = text[-overlap:].strip()
+            overlap_prefix[0] = _build_overlap_prefix(text, overlap)
         current.clear()
         current_len = 0
 

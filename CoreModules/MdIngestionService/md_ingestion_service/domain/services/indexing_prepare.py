@@ -109,7 +109,120 @@ _STORE_CTA_SUBSTRINGS = (
     "become a member",
     "sign up for our newsletter",
     "subscribe to our newsletter",
+    "state of subscription apps",
+    "utm_source=hackingwithswift",
+    "utm_source=hacking",
+    "revenuecat.com",
+    "winwinkit.com",
+    "everything-but-the-code",
+    "swift-ai-playbook",
 )
+
+_COMMUNITY_FOOTER_TAIL_MARKERS: dict[str, tuple[str, ...]] = {
+    "hackingwithswift": (
+        "#### [__ mastodon",
+        "#### [__ email",
+        "[about](/about) [glossary](/glossary)",
+        "swift, swiftui, the swift logo",
+        "hacking with swift is",
+        "you are not logged in",
+        "link copied to your pasteboard",
+        "was this page useful?",
+        "average rating:",
+    ),
+    "objc_io": (
+        "### year 1",
+        "### year 2",
+        "#### objc.io",
+    ),
+    "pointfree": (
+        "#### [point-free](/)",
+        "##### content",
+        "##### hosts",
+        "##### about",
+    ),
+}
+
+_COMMUNITY_PARAGRAPH_DROP_SUBSTRINGS = (
+    "sponsored",
+    "utm_source=hackingwithswift",
+    "utm_source=hacking",
+    "revenuecat.com",
+    "winwinkit.com",
+    "was this page useful?",
+    "average rating:",
+    "you are not logged in",
+    "link copied to your pasteboard",
+)
+
+
+def _normalize_heading_label(text: str) -> str:
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text or "")
+    text = re.sub(r"[_*`~]+", " ", text)
+    text = re.sub(r"[^\w\s]+", " ", text, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", text).strip().casefold()
+
+
+def _drop_paragraphs_containing(md: str, substrings: tuple[str, ...]) -> str:
+    if not md or not substrings:
+        return md
+    paragraphs = re.split(r"(\n\s*\n)", md)
+    out: list[str] = []
+    for part in paragraphs:
+        if not part.strip() or part.strip() == "":
+            out.append(part)
+            continue
+        lower = part.lower()
+        if any(sub in lower for sub in substrings):
+            continue
+        out.append(part)
+    return "".join(out)
+
+
+def _truncate_at_community_footer(md: str, site: str) -> str:
+    markers = _COMMUNITY_FOOTER_TAIL_MARKERS.get(site, ())
+    if not md or not markers:
+        return md
+    lines = md.split("\n")
+    for i, line in enumerate(lines):
+        lower = line.lower().strip()
+        if any(marker in lower for marker in markers):
+            prefix = "\n".join(lines[:i]).strip()
+            if prefix:
+                return prefix
+            return ""
+    return md
+
+
+def _is_community_hub_page(url: str, site: str) -> bool:
+    u = (url or "").strip().lower().rstrip("/")
+    if not u:
+        return False
+    if site == "hackingwithswift":
+        if u in {
+            "https://www.hackingwithswift.com/example-code",
+            "https://www.hackingwithswift.com/quick-start/swiftui",
+            "https://www.hackingwithswift.com/read",
+        }:
+            return True
+        return re.match(r"^https://www\.hackingwithswift\.com/example-code/[^/]+$", u) is not None
+    if site == "objc_io":
+        return u == "https://www.objc.io/issues"
+    if site == "pointfree":
+        return u == "https://www.pointfree.co/collections"
+    return False
+
+
+def strip_community_boilerplate(md: str, source_extra: dict[str, Any] | None) -> str:
+    """Remove repeated community nav/footer/ad blocks before chunking."""
+    if not md:
+        return md
+    site = str((source_extra or {}).get("site") or "").strip().lower()
+    if not site:
+        return md
+    cleaned = _drop_paragraphs_containing(md, _COMMUNITY_PARAGRAPH_DROP_SUBSTRINGS)
+    cleaned = _truncate_at_community_footer(cleaned, site)
+    return cleaned
 
 
 def strip_store_cta_lines(md: str) -> str:
@@ -133,6 +246,7 @@ def apply_source_prepare_options(body: str, source_extra: dict[str, Any] | None)
         md = strip_leading_toc(md)
     if extra.get("strip_store_cta"):
         md = strip_store_cta_lines(md)
+    md = strip_community_boilerplate(md, extra)
     return md
 
 
@@ -143,7 +257,7 @@ def strip_noise_section_headings(md: str, noise_headings: list[str]) -> str:
     """
     if not md or not noise_headings:
         return md
-    noise_norm = {h.strip().casefold() for h in noise_headings if h and str(h).strip()}
+    noise_norm = {_normalize_heading_label(str(h)) for h in noise_headings if h and str(h).strip()}
     if not noise_norm:
         return md
     lines = md.split("\n")
@@ -161,7 +275,8 @@ def strip_noise_section_headings(md: str, noise_headings: list[str]) -> str:
                 else:
                     break
             title = stripped[level:].strip()
-            if title.casefold() in noise_norm:
+            title_norm = _normalize_heading_label(title)
+            if title_norm in noise_norm:
                 skipping = True
                 noise_level = level
                 continue
@@ -234,6 +349,8 @@ def prepare_markdown_for_indexing(
 
     page_meta, body = parse_and_strip_meta_block(raw_md)
 
+    source_extra = source_extra or {}
+
     # Guard against Apple Developer portal navigation pages being crawled under doc URLs.
     # These pages are low-signal and pollute retrieval (e.g. /documentation/swiftui/observable returning site navigation).
     try:
@@ -251,6 +368,16 @@ def prepare_markdown_for_indexing(
                 )
     except Exception:
         pass
+
+    site = str(source_extra.get("site") or "").strip().lower()
+    if _is_community_hub_page(str((page_meta or {}).get("url") or ""), site):
+        return PrepareResult(
+            skipped=True,
+            skip_reason="content_excluded",
+            page_meta=page_meta,
+            body_md="",
+            skip_detail="community_hub_page",
+        )
     original_body_chars = len(body or "")
 
     def _prepare_stats(prepared_body: str) -> dict[str, int]:
@@ -331,6 +458,7 @@ __all__ = [
     "apply_source_prepare_options",
     "prepare_markdown_for_indexing",
     "strip_leading_toc",
+    "strip_community_boilerplate",
     "strip_noise_section_headings",
     "strip_store_cta_lines",
 ]

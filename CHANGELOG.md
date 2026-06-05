@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.26] - 2026-06-04
+### Changed
+- Restored faster create-collection embedding throughput with larger adaptive batches.
+
+## [0.6.25] - 2026-06-03
+### Changed
+- Combined create-collection indexed and total page progress into one leading metric card.
+
+## [0.6.24] - 2026-06-03
+### Changed
+- Added embedding-vector progress history with per-file chars/chunks and Material-style motion.
+
+## [0.6.23] - 2026-06-03
+### Changed
+- Added a CoreUI Dependencies tab with dependency inventory, update checks, update jobs, and Notification Center events.
+
+## [0.6.22] - 2026-06-03
+### Changed
+- Added installed-extension enable/disable/remove actions and immediate sidebar refresh after extension lifecycle changes.
+
+## [0.6.21] - 2026-06-03
+### Changed
+- Added a live create-collection notification action that reopens the indexing details modal.
+
+## [0.6.20] - 2026-06-03
+### Changed
+- Added safer batched embedding input clipping and context-length fallback during collection indexing.
+
+## [0.6.19] - 2026-06-02
+### Changed
+- Tightened Apple collection ingestion cleanup for community boilerplate, low-value conformity chunks, deduplication, chunk overlap, and source metadata.
+
 ## [0.6.18] - 2026-06-02
 ### Changed
 - Made the create-collection recent issues panel expand into the remaining modal height.
