@@ -31,5 +31,5 @@ The answer should align with SwiftUI documentation on environment values and env
 
 ## Notes
 
-Focuses on architectural SwiftUI patterns expected от Senior iOS Dev.
+Focuses on architectural SwiftUI patterns expected of a Senior iOS Dev.
 

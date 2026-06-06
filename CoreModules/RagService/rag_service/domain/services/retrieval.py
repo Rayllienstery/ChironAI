@@ -511,9 +511,9 @@ def infer_query_intent(question: str) -> QueryIntent:
         framework = "observation"
 
     section_hint: str | None = None
-    if "пример" in q_lower or "example" in q_lower or "sample" in q_lower:
+    if "example" in q_lower or "sample" in q_lower:
         section_hint = "example"
-    elif "как работает" in q_lower or "how does" in q_lower or "how it works" in q_lower:
+    elif "how does" in q_lower or "how it works" in q_lower:
         section_hint = "discussion"
     elif "overview" in q_lower:
         section_hint = "overview"

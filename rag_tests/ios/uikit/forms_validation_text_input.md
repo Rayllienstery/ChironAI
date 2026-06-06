@@ -32,5 +32,5 @@ The answer should align with UIKit documentation on text input and delegates.
 
 ## Notes
 
-Checks that the model умеет рассуждать о практических паттернах построения форм в UIKit.
+Checks that the model can reason about practical patterns for building forms in UIKit.
 

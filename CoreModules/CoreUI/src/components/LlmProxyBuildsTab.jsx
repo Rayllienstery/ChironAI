@@ -1476,7 +1476,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                   <p className="llm-proxy-param-card-description">
                     The <strong>total number of tokens</strong> the model can "see" at once — including the system prompt,
                     RAG context, conversation history, and the new question. A larger window means more context but
-                    uses more memory and is slower. The model's maximum is set by Ollama (shown when you click
+                    uses more memory and is slower. The model's maximum is set by the provider (shown when you click
                     "Check model"). Setting this lower than the max saves resources for short conversations.
                   </p>
                   <input

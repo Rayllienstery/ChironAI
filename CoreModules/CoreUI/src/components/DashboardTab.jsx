@@ -131,7 +131,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                   </div>
                   <div className="feature-card">
                     <h4>Local-First Infrastructure</h4>
-                    <p>Ollama + Open WebUI run through service-owning extensions; Qdrant is managed by RagRuntime via DockerManager</p>
+                    <p>LLM providers and Open WebUI run through service-owning extensions; Qdrant is managed by RagRuntime via DockerManager</p>
                   </div>
                   <div className="feature-card">
                     <h4>Streaming Synthesis</h4>
@@ -172,7 +172,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
               <div className="dashboard-section-inner">
                 <h3>Quick Start</h3>
                 <p className="quick-start-intro">
-                  Get ChironAI running in 5 steps. Requires Python 3.10+, Docker Desktop (Windows), and Ollama.
+                  Get ChironAI running in 5 steps. Requires Python 3.10+, Docker Desktop (Windows), and a configured LLM provider.
                 </p>
 
                 <div className="quick-start-grid">
@@ -190,9 +190,9 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                     <div className="qs-number">2</div>
                     <div className="qs-content">
                       <h4>Start Infrastructure</h4>
-                      <p>Start Qdrant through RagService and manage Ollama/Open WebUI from their extension tabs:</p>
+                      <p>Start Qdrant through RagService and manage LLM providers/Open WebUI from their extension tabs:</p>
                       <code>python -m rag_service start-qdrant</code>
-                      <p className="qs-hint">Docker Desktop and Ollama setup are explicit user-managed prerequisites; Docker service actions go through DockerManager.</p>
+                      <p className="qs-hint">Docker Desktop and provider setup are explicit user-managed prerequisites; Docker service actions go through DockerManager.</p>
                     </div>
                   </div>
 
@@ -213,7 +213,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                       <p>Crawl sources and build the RAG index:</p>
                       <code>python -m api.cli crawl</code>
                       <code>python -m api.cli ingest &lt;markdown_dir&gt;</code>
-                      <p className="qs-hint">Monitor progress in the WebUI Crawler/Indexer tabs. Embeddings use Ollama.</p>
+                      <p className="qs-hint">Monitor progress in the WebUI Crawler/Indexer tabs. Embeddings use the configured provider runtime.</p>
                     </div>
                   </div>
 
@@ -245,7 +245,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                     </div>
                     <div className="prereq-item">
                       <div>
-                        <strong>Ollama</strong>
+                        <strong>LLM Provider</strong>
                         <p>Extension-backed LLM provider runtime for chat, embeddings, and reranking.</p>
                       </div>
                     </div>
@@ -326,7 +326,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                 <div className="credits-section">
                   <h4>Infrastructure & Dependencies</h4>
                   <ul className="credits-list">
-                    <li><strong>Ollama</strong> — Local LLM provider for running models locally</li>
+                    <li><strong>LLM provider extensions</strong> — Provider runtimes for chat, embeddings, and reranking</li>
                     <li><strong>Qdrant</strong> — Vector database for RAG embeddings</li>
                     <li><strong>Docker Desktop</strong> — Containerization for infrastructure services</li>
                     <li><strong>Flask</strong> — Python web framework for API layer</li>
@@ -466,8 +466,8 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                   <h3>Note</h3>
                 </div>
                 <p>
-                  The protected surface is Chiron <code>/v1*</code>. Ollama-style compatibility routes remain open for
-                  unauthenticated local use.
+                  The protected surface is Chiron <code>/v1*</code>. Provider-native compatibility routes live in the
+                  owning extensions.
                 </p>
               </div>
             </div>
@@ -482,7 +482,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                 </div>
                 <p>
                   This RAG proxy speaks <strong>OpenAI</strong> (<code>POST /v1/chat/completions</code>) and{' '}
-                  <strong>Anthropic Messages</strong> (<code>POST /v1/messages</code>) over the same base URL, backed by Ollama
+                  <strong>Anthropic Messages</strong> (<code>POST /v1/messages</code>) over the same base URL, backed by the configured provider
                   and Qdrant.
                 </p>
               </div>
@@ -527,7 +527,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                 </div>
                 <p>
                   Set <code>model</code> to a <strong>build id</strong> from <strong>LLM Proxy</strong> (builds), or
-                  a concrete Ollama tag for passthrough. Optional inline completions use logical id{' '}
+                  a concrete provider model id for passthrough. Optional inline completions use logical id{' '}
                   <code>ChironAI-Autocomplete</code>.
                 </p>
               </div>

@@ -63,7 +63,7 @@ def build_search_queries(user_message: str, trigger: WebSupplementTrigger, *, ma
 
     if trigger == "keywords" and _VERSION_HINT_RE.search(cleaned):
         low = cleaned.lower()
-        if "release" not in low and "релиз" not in low:
+        if "release" not in low:
             alt = truncate_query(f"{cleaned} release", max_len=max_len + 20)
             if alt != cleaned and alt not in queries:
                 queries.append(alt)

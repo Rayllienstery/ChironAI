@@ -193,7 +193,7 @@
 .llm-proxy-tab .pipeline-details summary:hover {
   color: var(--md-sys-color-primary);
 }
-/* LLM Proxy Builds list - OllamaTab-inspired card design */
+/* LLM Proxy Builds list - extension runtime card design */
 .llm-proxy-builds-list {
   display: flex;
   flex-direction: column;

@@ -10,7 +10,7 @@ const LABELS = {
   'dumb-proxy': 'RAG Fusion Proxy',
   'llm-proxy': 'LLM Proxy',
   extensions: 'Extensions',
-  ollama: 'Ollama',
+  ollama: 'Provider',
   logs: 'Logs',
   testing: 'Testing',
   dashboard: 'Dashboard',

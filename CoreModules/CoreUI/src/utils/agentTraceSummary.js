@@ -30,8 +30,8 @@ export function summarizeAgentTraceMeta(meta) {
     step: s.step,
     promptEst: num(s.prompt_tokens_est, 0),
     completionEst: num(s.completion_tokens_est, 0),
-    ollamaPec: s.prompt_eval_count != null ? num(s.prompt_eval_count, 0) : (s.ollama_prompt_eval_count != null ? num(s.ollama_prompt_eval_count, 0) : null),
-    ollamaEc: s.eval_count != null ? num(s.eval_count, 0) : (s.ollama_eval_count != null ? num(s.ollama_eval_count, 0) : null),
+    providerPromptEval: s.prompt_eval_count != null ? num(s.prompt_eval_count, 0) : (s.ollama_prompt_eval_count != null ? num(s.ollama_prompt_eval_count, 0) : null),
+    providerEval: s.eval_count != null ? num(s.eval_count, 0) : (s.ollama_eval_count != null ? num(s.ollama_eval_count, 0) : null),
     ok: s.ok !== false,
   }));
 
@@ -110,20 +110,21 @@ export function summarizeAgentTraceMeta(meta) {
 
   let totalPromptTokensEst = num(meta.total_prompt_tokens_est, 0);
   let totalCompletionTokensEst = num(meta.total_completion_tokens_est, 0);
-  const ollTok =
-    meta.ollama && typeof meta.ollama === 'object' && meta.ollama.tokens_estimates
-      ? meta.ollama.tokens_estimates
+  const providerTrace = meta.provider || meta.ollama;
+  const providerTokens =
+    providerTrace && typeof providerTrace === 'object' && providerTrace.tokens_estimates
+      ? providerTrace.tokens_estimates
       : null;
-  if (totalPromptTokensEst === 0 && totalCompletionTokensEst === 0 && ollTok && typeof ollTok === 'object') {
-    totalPromptTokensEst = num(ollTok.prompt_tokens_estimated, 0);
-    totalCompletionTokensEst = num(ollTok.completion_tokens_estimated, 0);
+  if (totalPromptTokensEst === 0 && totalCompletionTokensEst === 0 && providerTokens && typeof providerTokens === 'object') {
+    totalPromptTokensEst = num(providerTokens.prompt_tokens_estimated, 0);
+    totalCompletionTokensEst = num(providerTokens.completion_tokens_estimated, 0);
   }
   if (totalPromptTokensEst === 0 && totalCompletionTokensEst === 0) {
-    const oc = steps.filter((s) => s && (s.name === 'ollama_chat' || s.name === 'provider_chat_stream' || s.name === 'provider_chat_native_tools'));
-    const lastOc = oc.length ? oc[oc.length - 1] : null;
-    if (lastOc && typeof lastOc === 'object') {
-      totalPromptTokensEst = num(lastOc.tokens_in_est, 0);
-      totalCompletionTokensEst = num(lastOc.tokens_out_est, 0);
+    const providerChatSteps = steps.filter((s) => s && (s.name === 'ollama_chat' || s.name === 'provider_chat_stream' || s.name === 'provider_chat_native_tools'));
+    const lastProviderChat = providerChatSteps.length ? providerChatSteps[providerChatSteps.length - 1] : null;
+    if (lastProviderChat && typeof lastProviderChat === 'object') {
+      totalPromptTokensEst = num(lastProviderChat.tokens_in_est, 0);
+      totalCompletionTokensEst = num(lastProviderChat.tokens_out_est, 0);
     }
   }
   let durationMsEff = durationMs;

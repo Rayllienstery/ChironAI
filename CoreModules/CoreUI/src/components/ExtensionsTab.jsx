@@ -78,7 +78,6 @@ function ExtensionIcon({ icon, iconUrl }) {
 }
 
 function HealthPill({ health }) {
-
   const status = String(health?.status || "unknown");
   const tone =
     status === "ok" || status === "loaded" || status === "installed"
@@ -89,11 +88,20 @@ function HealthPill({ health }) {
   return <CoreUIBadge tone={tone}>{status}</CoreUIBadge>;
 }
 
+function ExtensionCardCopy({ title, description, fallbackDescription = "No description." }) {
+  return (
+    <div className="extensions-card__copy">
+      <h4>{title}</h4>
+      <p>{description || fallbackDescription}</p>
+    </div>
+  );
+}
+
 function SecurityFindings({ findings }) {
   const rows = Array.isArray(findings) ? findings : [];
   if (!rows.length) return null;
   return (
-    <div className="extensions-security-findings">
+    <div className="extensions-card__details extensions-security-findings">
       <div className="extensions-schema-label">Security findings</div>
       <ul>
         {rows.slice(0, 5).map((finding, index) => (
@@ -225,7 +233,7 @@ function SandboxDiagnostics({ item, busyId, runAction }) {
   const lastError = item.sandbox_last_error || item.sandbox_error || "";
   const canRestart = item.sandbox_can_restart !== false || ["manual_stop", "blocked", "crashed", "timeout", "protocol_error"].includes(status);
   return (
-    <div className="extensions-sandbox-diagnostics">
+    <div className="extensions-card__details extensions-sandbox-diagnostics">
       <div className="extensions-sandbox-diagnostics__grid">
         <div>
           <span className="extensions-schema-label">Worker PID</span>
@@ -245,7 +253,7 @@ function SandboxDiagnostics({ item, busyId, runAction }) {
         </div>
       </div>
       {lastError ? <pre className="extensions-card__error">{lastError}</pre> : null}
-      <div className="extensions-card__actions">
+      <div className="extensions-sandbox-diagnostics__actions">
         <CoreUIButton
           variant="primary"
           disabled={busyId === item.id || !canRestart}
@@ -651,89 +659,90 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
               return (
                 <article
                   key={item.id}
-                  className={`coreui-card-shell coreui-p-md extensions-card ${!installedItem ? "extensions-card--clickable" : ""}`}
+                  className={`coreui-card-shell coreui-p-md extensions-card extensions-card--horizontal ${!installedItem ? "extensions-card--clickable" : ""}`}
                   onClick={() => openDetails(item)}
                 >
-                  <div className="extensions-card__head">
-                    <div className="extensions-card__title-row">
+                  <div className="extensions-card__main">
+                    <div className="extensions-card__identity">
                       <ExtensionIcon icon={item.icon} iconUrl={item.icon_url} />
-                      <div>
-                        <h4>{item.title || item.id}</h4>
-                        <p>{item.description || "No description."}</p>
+                      <ExtensionCardCopy title={item.title || item.id} description={item.description} />
+                    </div>
+                    <div className="extensions-card__meta-row" aria-label="Extension metadata">
+                      <CoreUIBadge tone="neutral">ID: {item.id}</CoreUIBadge>
+                      <CoreUIBadge tone="neutral">{item.visibility || "trusted"}</CoreUIBadge>
+                      {item.repository ? (
+                        <CoreUIBadge tone="neutral">{item.repository_id || item.repository}</CoreUIBadge>
+                      ) : null}
+                    </div>
+                    <div className="extensions-card__aside">
+                      <CoreUIBadge>{item.latest_version || item.default_ref || "GitHub"}</CoreUIBadge>
+                      <div className="extensions-card__actions">
+                        {!installedItem ? (
+                          <>
+                            <CoreUIButton
+                              variant="primary"
+                              disabled={isBusy || detailsLoading}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openDetails(item);
+                              }}
+                            >
+                              Details
+                            </CoreUIButton>
+                            {item.latest_version || item.default_ref ? (
+                              <CoreUIButton
+                                variant="ghost"
+                                disabled={isBusy}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  runAction(item.id, (id) => installExtension(id), "install");
+                                }}
+                              >
+                                Install
+                              </CoreUIButton>
+                            ) : null}
+                          </>
+                        ) : (
+                          <>
+                            <CoreUIButton
+                              variant="danger"
+                              disabled={isBusy}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                runAction(item.id, (id) => removeExtension(id), "remove");
+                              }}
+                            >
+                              Remove
+                            </CoreUIButton>
+                            {installedItem.enabled ? (
+                              <CoreUIButton
+                                variant="ghost"
+                                disabled={isBusy}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  runAction(item.id, (id) => disableExtension(id), "disable");
+                                }}
+                              >
+                                Disable
+                              </CoreUIButton>
+                            ) : (
+                              <CoreUIButton
+                                variant="primary"
+                                disabled={isBusy}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  runAction(item.id, (id) => enableExtension(id), "enable");
+                                }}
+                              >
+                                Enable
+                              </CoreUIButton>
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
-                    <CoreUIBadge>{item.latest_version || item.default_ref || "GitHub"}</CoreUIBadge>
-                  </div>
-                  <div className="extensions-card__meta">
-                    <span>ID: {item.id}</span>
-                    <span>Visibility: {item.visibility || "trusted"}</span>
-                    {item.repository ? <span>Repository: {item.repository_id || item.repository}</span> : null}
                   </div>
                   <CapabilityList capabilities={item.capabilities} />
-                  <div className="extensions-card__actions">
-                    {!installedItem ? (
-                      <>
-                        <CoreUIButton
-                          variant="primary"
-                          disabled={isBusy || detailsLoading}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openDetails(item);
-                          }}
-                        >
-                          Details
-                        </CoreUIButton>
-                        {item.latest_version || item.default_ref ? (
-                          <CoreUIButton
-                            variant="ghost"
-                            disabled={isBusy}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              runAction(item.id, (id) => installExtension(id), "install");
-                            }}
-                          >
-                            Install
-                          </CoreUIButton>
-                        ) : null}
-                      </>
-                    ) : (
-                      <>
-                        <CoreUIButton
-                          variant="danger"
-                          disabled={isBusy}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            runAction(item.id, (id) => removeExtension(id), "remove");
-                          }}
-                        >
-                          Remove
-                        </CoreUIButton>
-                        {installedItem.enabled ? (
-                          <CoreUIButton
-                            variant="ghost"
-                            disabled={isBusy}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              runAction(item.id, (id) => disableExtension(id), "disable");
-                            }}
-                          >
-                            Disable
-                          </CoreUIButton>
-                        ) : (
-                          <CoreUIButton
-                            variant="primary"
-                            disabled={isBusy}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              runAction(item.id, (id) => enableExtension(id), "enable");
-                            }}
-                          >
-                            Enable
-                          </CoreUIButton>
-                        )}
-                      </>
-                    )}
-                  </div>
                 </article>
               );
             })}
@@ -750,57 +759,62 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
           </div>
           <div className="extensions-cards">
             {installed.map((item) => (
-            <article key={item.id} className="coreui-card-shell coreui-p-md extensions-card installed-card">
-              <div className="extensions-card__head">
-                <div className="extensions-card__title-row">
+            <article key={item.id} className="coreui-card-shell coreui-p-md extensions-card extensions-card--horizontal installed-card">
+              <div className="extensions-card__main">
+                <div className="extensions-card__identity">
                   <ExtensionIcon icon={item.icon} iconUrl={item.icon_url} />
-                  <div>
-                    <h4>{item.title || item.id}</h4>
-                    <p>{item.description || "No description."}</p>
+                  <ExtensionCardCopy title={item.title || item.id} description={item.description} />
+                </div>
+                <div className="extensions-card__meta-row" aria-label="Installed extension metadata">
+                  <CoreUIBadge tone="neutral">v{item.version}</CoreUIBadge>
+                  {item.provenance?.selected_ref && item.provenance.selected_ref !== item.version ? (
+                    <CoreUIBadge tone="neutral">Ref: {item.provenance.selected_ref}</CoreUIBadge>
+                  ) : null}
+                  <CoreUIBadge tone={item.enabled ? "success" : "neutral"}>
+                    {item.enabled ? "Enabled" : "Disabled"}
+                  </CoreUIBadge>
+                  {item.sandboxed ? (
+                    <CoreUIBadge tone={item.sandbox_blocked ? "warning" : "info"}>
+                      Sandbox: {item.sandbox_status || "ready"}
+                    </CoreUIBadge>
+                  ) : null}
+                  {item.restart_required ? <CoreUIBadge tone="warning">Restart required</CoreUIBadge> : null}
+                  {item.security_blocked ? <CoreUIBadge tone="error">Security blocked</CoreUIBadge> : null}
+                  {item.sandbox_blocked ? <CoreUIBadge tone="warning">Manual restart required</CoreUIBadge> : null}
+                </div>
+                <div className="extensions-card__aside">
+                  <HealthPill health={{ status: item.status || "installed" }} />
+                  <div className="extensions-card__actions">
+                    <CoreUIButton
+                      variant="danger"
+                      disabled={busyId === item.id}
+                      onClick={() => runAction(item.id, (id) => removeExtension(id), "remove")}
+                    >
+                      Remove
+                    </CoreUIButton>
+                    {item.enabled ? (
+                      <CoreUIButton
+                        variant="ghost"
+                        disabled={busyId === item.id}
+                        onClick={() => runAction(item.id, (id) => disableExtension(id), "disable")}
+                      >
+                        Disable
+                      </CoreUIButton>
+                    ) : (
+                      <CoreUIButton
+                        variant="primary"
+                        disabled={busyId === item.id}
+                        onClick={() => runAction(item.id, (id) => enableExtension(id), "enable")}
+                      >
+                        Enable
+                      </CoreUIButton>
+                    )}
                   </div>
                 </div>
-                <HealthPill health={{ status: item.status || "installed" }} />
               </div>
-              <div className="extensions-card__meta">
-                <span>Version: {item.version}</span>
-                {item.provenance?.selected_ref && item.provenance.selected_ref !== item.version ? (
-                  <span>Ref: {item.provenance.selected_ref}</span>
-                ) : null}
-                <span>Enabled: {String(Boolean(item.enabled))}</span>
-                {item.restart_required ? <span>Restart required</span> : null}
-                {item.security_blocked ? <span>Security blocked</span> : null}
-                {item.sandboxed ? <span>Sandbox: {item.sandbox_status || "ready"}</span> : null}
-                {item.sandbox_blocked ? <span>Manual restart required</span> : null}
-              </div>
-              {item.error ? <pre className="extensions-card__error">{item.error}</pre> : null}
+              {item.error ? <pre className="extensions-card__error extensions-card__details">{item.error}</pre> : null}
               <SandboxDiagnostics item={item} busyId={busyId} runAction={runAction} />
               <SecurityFindings findings={item.security_findings} />
-              <div className="extensions-card__actions">
-                <CoreUIButton
-                  variant="danger"
-                  disabled={busyId === item.id}
-                  onClick={() => runAction(item.id, (id) => removeExtension(id), "remove")}
-                >
-                  Remove
-                </CoreUIButton>
-                {item.enabled ? (
-                  <CoreUIButton
-                    variant="ghost"
-                    disabled={busyId === item.id}
-                    onClick={() => runAction(item.id, (id) => disableExtension(id), "disable")}
-                  >
-                    Disable
-                  </CoreUIButton>
-                ) : (
-                  <CoreUIButton
-                    variant="primary"
-                    disabled={busyId === item.id}
-                    onClick={() => runAction(item.id, (id) => enableExtension(id), "enable")}
-                  >
-                    Enable
-                  </CoreUIButton>
-                )}
-              </div>
             </article>
             ))}
             {!installed.length && !loading ? <div className="extensions-empty">No installed extensions.</div> : null}
@@ -816,18 +830,22 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
           </div>
           <div className="extensions-cards">
             {providers.map((provider) => (
-            <article key={provider.provider_id} className="coreui-card-shell coreui-p-md extensions-card provider-card">
-              <div className="extensions-card__head">
-                <div>
-                  <h4>{provider.title}</h4>
-                  <p>{provider.description || "No description."}</p>
+            <article key={provider.provider_id} className="coreui-card-shell coreui-p-md extensions-card extensions-card--horizontal provider-card">
+              <div className="extensions-card__main">
+                <div className="extensions-card__identity">
+                  <span className="material-symbols-outlined extensions-card__icon" aria-hidden="true">
+                    hub
+                  </span>
+                  <ExtensionCardCopy title={provider.title} description={provider.description} />
                 </div>
-                <HealthPill health={provider.health} />
-              </div>
-              <div className="extensions-card__meta">
-                <span>Provider: {provider.provider_id}</span>
-                <span>Extension: {provider.extension_id}</span>
-                <span>Models: {(provider.models || []).length}</span>
+                <div className="extensions-card__meta-row" aria-label="Provider metadata">
+                  <CoreUIBadge tone="neutral">{provider.provider_id}</CoreUIBadge>
+                  <CoreUIBadge tone="neutral">{provider.extension_id}</CoreUIBadge>
+                  <CoreUIBadge tone="info">{(provider.models || []).length} models</CoreUIBadge>
+                </div>
+                <div className="extensions-card__aside">
+                  <HealthPill health={provider.health} />
+                </div>
               </div>
             </article>
             ))}

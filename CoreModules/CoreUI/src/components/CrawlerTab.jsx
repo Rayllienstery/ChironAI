@@ -135,6 +135,7 @@ const MD_STEP_TYPES_META = [
 
 const INDEXING_PHASE_LABELS = {
   reading: "Reading file",
+  prepare: "Preparing markdown",
   chunking: "Chunking markdown",
   embedding: "Embedding vectors",
   saving: "Writing to Qdrant",
@@ -162,6 +163,15 @@ function formatIndexNumber(value) {
   return Number.isFinite(n) ? new Intl.NumberFormat().format(n) : "0";
 }
 
+function formatDurationMs(value) {
+  const ms = Number(value || 0);
+  const totalSeconds = Number.isFinite(ms) && ms > 0 ? Math.floor(ms / 1000) : 0;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 function issuePath(issue) {
   if (!issue || typeof issue !== "object") return "";
   return `${issue.source_id || ""}/${issue.filename || ""}`.replace(/^\//, "");
@@ -176,17 +186,42 @@ function embeddingHistoryRows(progress, currentFile) {
       path: row.path || `${row.source_id || ""}/${row.filename || ""}`.replace(/^\//, ""),
       chars: Number(row.chars || row.prepared_chars || 0),
       chunks: Number(row.chunks || row.chunk_count || 0),
+      chunkMs: Number(row.chunk_ms || row.chunking_ms || 0),
+      status: row.status || "embedding",
+      reason: row.reason || "",
+      detail: row.detail || "",
     }))
     .filter((row) => row.path);
-  if (normalized.length > 0) return normalized.slice(0, 5);
+  if (normalized.length > 0) return normalized.slice(0, 8);
   if (!currentFile) return [];
   return [
     {
       path: currentFile,
       chars: Number(progress?.current_embedding_chars || 0),
       chunks: Number(progress?.current_embedding_chunks || 0),
+      chunkMs: Number(progress?.current_embedding_chunk_ms || 0),
+      status: "embedding",
+      reason: "",
+      detail: "",
     },
   ];
+}
+
+function activityStatusLabel(row) {
+  if (row.status === "error") return "Error";
+  if (row.status === "skipped") return "Skipped";
+  return "Embedding";
+}
+
+function activityMetrics(row) {
+  if (row.status === "skipped" || row.status === "error") {
+    const reason = SKIP_REASON_LABELS[row.reason] || row.reason || activityStatusLabel(row);
+    const chars = row.chars > 0 ? ` / ${formatIndexNumber(row.chars)} chars` : "";
+    return `${reason}${chars}`;
+  }
+  return `${formatIndexNumber(row.chars)} chars / ${formatIndexNumber(row.chunks)} chunks${
+    row.chunkMs > 0 ? ` / cut ${formatDurationMs(row.chunkMs)}` : ""
+  }`;
 }
 
 function createCollectionFinalLogMetadata(progress, jobId, collectionName) {
@@ -209,8 +244,10 @@ function createCollectionFinalLogMetadata(progress, jobId, collectionName) {
     processed_pages: progress?.processed_pages ?? stats.processed_pages ?? 0,
     total_pages: progress?.total_pages ?? stats.total_pages ?? 0,
     indexed_pages: progress?.indexed_pages ?? stats.indexed_pages ?? 0,
+    prepared_pages: progress?.prepared_pages ?? stats.prepared_pages ?? 0,
     skipped_pages: progress?.skipped_pages ?? stats.skipped_pages ?? 0,
     total_chunks: progress?.total_chunks ?? stats.total_chunks ?? 0,
+    prepared_chunks: progress?.prepared_chunks ?? stats.prepared_chunks ?? 0,
     deduped_chunks: progress?.deduped_chunks ?? stats.deduped_chunks ?? 0,
     skip_reasons: progress?.skip_reasons || stats.skip_reasons || {},
     prepare_original_chars:
@@ -223,9 +260,18 @@ function createCollectionFinalLogMetadata(progress, jobId, collectionName) {
       progress?.empty_after_prepare_removed_chars
       ?? stats.empty_after_prepare_removed_chars
       ?? 0,
+    elapsed_ms: progress?.elapsed_ms ?? stats.elapsed_ms ?? 0,
+    current_phase_elapsed_ms:
+      progress?.current_phase_elapsed_ms ?? stats.current_phase_elapsed_ms ?? 0,
+    phase_durations_ms:
+      progress?.phase_durations_ms || stats.phase_durations_ms || {},
+    parallel_embed_workers:
+      progress?.parallel_embed_workers ?? stats.parallel_embed_workers ?? 0,
     embedding_history: progress?.embedding_history || stats.embedding_history || [],
     recent_skips: progress?.recent_skips || stats.recent_skips || [],
     skip_log: skipLog,
+    skip_log_count:
+      progress?.skip_log_count ?? stats.skip_log_count ?? skipLog.length,
     largest_prepare_removals:
       progress?.largest_prepare_removals || stats.largest_prepare_removals || [],
     errors: progress?.errors || stats.errors || [],
@@ -238,6 +284,7 @@ const SECTION_TABS = [
   { id: "md-pipeline", label: "MD Pipeline" },
 ];
 const CREATE_COLLECTION_LIVE_ID = "crawler-create-collection";
+const CREATE_COLLECTION_POLL_INTERVAL_MS = 333;
 
 function CreateCollectionIndexProgress({
   progress,
@@ -253,8 +300,19 @@ function CreateCollectionIndexProgress({
   const skipEntries = Object.entries(sr).filter(([, n]) => n > 0);
   const phaseKey = progress.current_phase || "";
   const phaseLabel = INDEXING_PHASE_LABELS[phaseKey] || phaseKey;
+  const phaseElapsedMs = Number(progress.current_phase_elapsed_ms || 0);
   const total = progress.total_pages || 0;
   const processed = progress.processed_pages ?? 0;
+  const livePages = isRunning
+    ? Math.max(
+        Number(progress.indexed_pages || 0),
+        Number(progress.prepared_pages || 0),
+        Number(processed || 0),
+      )
+    : Number(progress.indexed_pages || 0);
+  const liveChunks = isRunning
+    ? Math.max(Number(progress.total_chunks || 0), Number(progress.prepared_chunks || 0))
+    : Number(progress.total_chunks || 0);
   const pct =
     total > 0 ? Math.min(100, Math.round((100 * processed) / total)) : 0;
   const sourcesLabel = (progress.source_ids || []).join(", ") || "—";
@@ -265,12 +323,21 @@ function CreateCollectionIndexProgress({
       "",
     );
   const embeddingRows = embeddingHistoryRows(progress, currentFile);
-  const showEmbeddingHistory = isRunning && phaseKey === "embedding" && embeddingRows.length > 0;
+  const showEmbeddingHistory = isRunning && embeddingRows.length > 0;
+  const phaseDurations = progress.phase_durations_ms || {};
+  const elapsedMs = Number(progress.elapsed_ms || 0);
   const extraStats = [
     ["Removed chars", progress.prepare_removed_chars],
     ["Prepared chars", progress.prepare_output_chars],
     ["Empty-page removed chars", progress.empty_after_prepare_removed_chars],
     ["Deduped chunks", progress.deduped_chunks],
+  ].filter(([, value]) => Number(value || 0) > 0);
+  const timeStats = [
+    ["elapsed", elapsedMs],
+    ["embedding", phaseDurations.embedding],
+    ["chunking", phaseDurations.chunking],
+    ["prepare", phaseDurations.prepare],
+    ["saving", phaseDurations.saving],
   ].filter(([, value]) => Number(value || 0) > 0);
   const recentIssues =
     Array.isArray(progress.recent_skips) && progress.recent_skips.length > 0
@@ -292,7 +359,10 @@ function CreateCollectionIndexProgress({
               title="Indexing in progress"
             />
             <div className="create-collection-toast-compact-status-text">
-              <span>{phaseLabel || "Indexing"}</span>
+              <span>
+                {phaseLabel || "Indexing"}
+                {phaseElapsedMs > 0 ? ` / ${formatDurationMs(phaseElapsedMs)}` : ""}
+              </span>
               {sourceCount > 0 && (
                 <span className="create-collection-toast-compact-muted">
                   {sourceCount} sources
@@ -304,14 +374,19 @@ function CreateCollectionIndexProgress({
 
         <div className="create-collection-toast-metrics" aria-label="Indexing progress">
           <span>
-            <strong>{progress.indexed_pages ?? 0}</strong>/{total || "..."} indexed
+            <strong>{livePages}</strong>/{total || "..."} processed
           </span>
           <span>
             <strong>{progress.skipped_pages ?? 0}</strong> skipped
           </span>
           <span>
-            <strong>{progress.total_chunks ?? 0}</strong> chunks
+            <strong>{liveChunks}</strong> chunks
           </span>
+          {elapsedMs > 0 && (
+            <span>
+              <strong>{formatDurationMs(elapsedMs)}</strong> elapsed
+            </span>
+          )}
         </div>
 
         {isRunning && currentFile && (
@@ -339,7 +414,8 @@ function CreateCollectionIndexProgress({
         {isSuccess && (
           <div className="create-collection-toast-text">
             Indexed {progress.indexed_pages ?? 0} pages,{" "}
-            {progress.total_chunks ?? 0} chunks.
+            {progress.total_chunks ?? 0} chunks
+            {elapsedMs > 0 ? ` in ${formatDurationMs(elapsedMs)}` : ""}.
           </div>
         )}
 
@@ -409,9 +485,11 @@ function CreateCollectionIndexProgress({
       <div className="create-collection-index-stats">
         <div className="create-collection-index-stat">
           <span className="create-collection-index-stat__value create-collection-index-stat__value--ok">
-            {progress.indexed_pages ?? 0} / {total || "…"}
+            {livePages} / {total || "…"}
           </span>
-          <span className="create-collection-index-stat__label">indexed / total</span>
+          <span className="create-collection-index-stat__label">
+            {isRunning ? "processed / total" : "indexed / total"}
+          </span>
         </div>
         <div className="create-collection-index-stat">
           <span className="create-collection-index-stat__value create-collection-index-stat__value--skip">
@@ -421,7 +499,7 @@ function CreateCollectionIndexProgress({
         </div>
         <div className="create-collection-index-stat">
           <span className="create-collection-index-stat__value">
-            {progress.total_chunks ?? 0}
+            {liveChunks}
           </span>
           <span className="create-collection-index-stat__label">chunks</span>
         </div>
@@ -437,29 +515,45 @@ function CreateCollectionIndexProgress({
         </div>
       )}
 
+      {timeStats.length > 0 && (
+        <div className="create-collection-index-extra-stats create-collection-index-extra-stats--timing">
+          {timeStats.map(([label, value]) => (
+            <span key={label}>
+              <strong>{formatDurationMs(value)}</strong> {label}
+            </span>
+          ))}
+        </div>
+      )}
+
       {showEmbeddingHistory ? (
         <div className="create-collection-index-current create-collection-index-current--embedding-history">
           <div className="create-collection-index-current__phase">
             <span className="create-collection-index-current__phase-dot" />
             {phaseLabel}
+            {phaseElapsedMs > 0 ? ` / ${formatDurationMs(phaseElapsedMs)}` : ""}
           </div>
-          <div className="create-collection-embedding-history" aria-label="Recent embedding vectors">
+          <div className="create-collection-embedding-history" aria-label="Recent indexing activity">
             {embeddingRows.map((row, index) => (
               <div
-                key={`${row.path}:${row.chars}:${row.chunks}`}
-                className="create-collection-embedding-history__row"
+                key={`${row.path}:${row.status}:${row.reason}:${row.chars}:${row.chunks}:${row.chunkMs}`}
+                className={`create-collection-embedding-history__row create-collection-embedding-history__row--${row.status}`}
                 style={{
                   "--embedding-history-opacity": Math.max(0.4, 1 - index * 0.15),
                   "--embedding-history-font-size": `${13 - index * 0.5}px`,
                   "--embedding-history-delay": `${index * 28}ms`,
                 }}
-                title={row.path}
+                title={row.detail ? `${row.path}: ${row.detail}` : row.path}
               >
-                <span className="create-collection-embedding-history__file">
-                  {row.path}
+                <span className="create-collection-embedding-history__file-wrap">
+                  <span className={`create-collection-embedding-history__status create-collection-embedding-history__status--${row.status}`}>
+                    {activityStatusLabel(row)}
+                  </span>
+                  <span className="create-collection-embedding-history__file">
+                    {row.path}
+                  </span>
                 </span>
                 <span className="create-collection-embedding-history__metrics">
-                  {formatIndexNumber(row.chars)} chars / {formatIndexNumber(row.chunks)} chunks
+                  {activityMetrics(row)}
                 </span>
               </div>
             ))}
@@ -471,6 +565,7 @@ function CreateCollectionIndexProgress({
             <div className="create-collection-index-current__phase">
               <span className="create-collection-index-current__phase-dot" />
               {phaseLabel}
+              {phaseElapsedMs > 0 ? ` / ${formatDurationMs(phaseElapsedMs)}` : ""}
             </div>
           )}
           {currentFile && (
@@ -510,7 +605,7 @@ function CreateCollectionIndexProgress({
         <div className="create-collection-index-done">
           Done: {progress.indexed_pages ?? 0} pages indexed into Qdrant,{" "}
           {progress.skipped_pages ?? 0} skipped, {progress.total_chunks ?? 0}{" "}
-          chunks total.
+          chunks total{elapsedMs > 0 ? ` in ${formatDurationMs(elapsedMs)}` : ""}.
         </div>
       )}
 
@@ -570,7 +665,7 @@ function CrawlerTab() {
     top_k: 4,
     rag_embed_provider_id: "",
     rag_embed_model: "",
-    parallel_embed_workers: 2,
+    parallel_embed_workers: 4,
   });
   const [createEmbedCatalog, setCreateEmbedCatalog] = useState({ providers: [], models: [] });
   const [createEmbedDefaults, setCreateEmbedDefaults] = useState({
@@ -734,7 +829,11 @@ function CrawlerTab() {
   // Poll create-collection job progress
   useEffect(() => {
     if (!createJobId) return;
-    const interval = setInterval(async () => {
+    let disposed = false;
+    let timeoutId = null;
+
+    const poll = async () => {
+      let shouldContinue = true;
       try {
         const job = await getCreateCollectionStatus(createJobId);
         const nextProgress = {
@@ -743,7 +842,9 @@ function CrawlerTab() {
           processed_pages: job.processed_pages ?? 0,
           total_pages: job.total_pages ?? 0,
           indexed_pages: job.indexed_pages ?? 0,
+          prepared_pages: job.prepared_pages ?? 0,
           total_chunks: job.total_chunks ?? 0,
+          prepared_chunks: job.prepared_chunks ?? 0,
           skipped_pages: job.skipped_pages ?? 0,
           skip_reasons: job.skip_reasons ?? {},
           source_ids: job.source_ids ?? [],
@@ -756,6 +857,7 @@ function CrawlerTab() {
           errors: job.errors ?? [],
           recent_skips: job.recent_skips ?? [],
           skip_log: job.skip_log ?? [],
+          skip_log_count: job.skip_log_count ?? 0,
           largest_prepare_removals: job.largest_prepare_removals ?? [],
           deduped_chunks: job.deduped_chunks ?? 0,
           prepare_original_chars: job.prepare_original_chars ?? 0,
@@ -765,12 +867,18 @@ function CrawlerTab() {
             job.empty_after_prepare_removed_chars ?? 0,
           current_embedding_chars: job.current_embedding_chars ?? 0,
           current_embedding_chunks: job.current_embedding_chunks ?? 0,
+          current_embedding_chunk_ms: job.current_embedding_chunk_ms ?? 0,
           embedding_history: job.embedding_history ?? [],
+          parallel_embed_workers: job.parallel_embed_workers ?? 0,
+          elapsed_ms: job.elapsed_ms ?? 0,
+          current_phase_elapsed_ms: job.current_phase_elapsed_ms ?? 0,
+          phase_durations_ms: job.phase_durations_ms ?? {},
           error: job.error,
           statistics: job.statistics,
         };
         setCreateProgress(nextProgress);
         if (job.status === "success") {
+          shouldContinue = false;
           if (nc?.persistNotification && createPersistedJobRef.current !== createJobId) {
             createPersistedJobRef.current = createJobId;
             const name =
@@ -779,7 +887,9 @@ function CrawlerTab() {
               kind: "event",
               source: "crawler",
               title: "Collection created",
-              message: `Indexed ${job.indexed_pages ?? 0} pages, ${job.total_chunks ?? 0} chunks (${name})`,
+              message: `Indexed ${job.indexed_pages ?? 0} pages, ${job.total_chunks ?? 0} chunks${
+                job.elapsed_ms ? ` in ${formatDurationMs(job.elapsed_ms)}` : ""
+              } (${name})`,
               metadata: createCollectionFinalLogMetadata(nextProgress, createJobId, name),
             });
           }
@@ -796,14 +906,17 @@ function CrawlerTab() {
             top_k: 4,
             rag_embed_provider_id: "",
             rag_embed_model: "",
-            parallel_embed_workers: 2,
+            parallel_embed_workers: 4,
           });
           setShowCreateToast(true);
           await loadCollections();
           alert(
-            `Collection created successfully! Indexed ${job.indexed_pages ?? 0} pages, ${job.total_chunks ?? 0} chunks.`,
+            `Collection created successfully! Indexed ${job.indexed_pages ?? 0} pages, ${job.total_chunks ?? 0} chunks${
+              job.elapsed_ms ? ` in ${formatDurationMs(job.elapsed_ms)}` : ""
+            }.`,
           );
         } else if (job.status === "failed") {
+          shouldContinue = false;
           if (nc?.persistNotification && createPersistedJobRef.current !== createJobId) {
             createPersistedJobRef.current = createJobId;
             const name =
@@ -821,6 +934,7 @@ function CrawlerTab() {
           setCreateCanceling(false);
           setError(job.error || "Collection creation failed");
         } else if (job.status === "cancelled") {
+          shouldContinue = false;
           setCreateJobId(null);
           setCreating(false);
           setCreateCanceling(false);
@@ -828,13 +942,23 @@ function CrawlerTab() {
           setShowCreateToast(true);
         }
       } catch (e) {
+        shouldContinue = false;
         setCreateJobId(null);
         setCreating(false);
         setCreateCanceling(false);
         setError(e.message);
       }
-    }, 1000);
-    return () => clearInterval(interval);
+      if (!disposed && shouldContinue) {
+        timeoutId = window.setTimeout(poll, CREATE_COLLECTION_POLL_INTERVAL_MS);
+      }
+    };
+
+    poll();
+
+    return () => {
+      disposed = true;
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
   }, [createJobId]);
 
   // Auto-hide create-collection toast after completion or failure
@@ -889,7 +1013,9 @@ function CrawlerTab() {
       message:
         st === "failed"
           ? String(createProgress.error || "").slice(0, 400)
-          : `Indexed ${createProgress.indexed_pages ?? 0} pages, ${createProgress.total_chunks ?? 0} chunks (${name})`,
+          : `Indexed ${createProgress.indexed_pages ?? 0} pages, ${createProgress.total_chunks ?? 0} chunks${
+              createProgress.elapsed_ms ? ` in ${formatDurationMs(createProgress.elapsed_ms)}` : ""
+            } (${name})`,
       metadata: createCollectionFinalLogMetadata(createProgress, createJobId, name),
     });
   }, [
@@ -1402,7 +1528,9 @@ function CrawlerTab() {
           processed_pages: 0,
           total_pages: 0,
           indexed_pages: 0,
+          prepared_pages: 0,
           total_chunks: 0,
+          prepared_chunks: 0,
           skipped_pages: 0,
           errors: [],
           recent_skips: [],
@@ -1412,7 +1540,12 @@ function CrawlerTab() {
           deduped_chunks: 0,
           current_embedding_chars: 0,
           current_embedding_chunks: 0,
+          current_embedding_chunk_ms: 0,
           embedding_history: [],
+          parallel_embed_workers: createForm.parallel_embed_workers ?? 4,
+          elapsed_ms: 0,
+          current_phase_elapsed_ms: 0,
+          phase_durations_ms: {},
         });
       } else {
         setShowCreateModal(false);
@@ -1425,7 +1558,7 @@ function CrawlerTab() {
           top_k: 4,
           rag_embed_provider_id: "",
           rag_embed_model: "",
-          parallel_embed_workers: 2,
+            parallel_embed_workers: 4,
         });
         await loadCollections();
         alert("Collection created successfully!");

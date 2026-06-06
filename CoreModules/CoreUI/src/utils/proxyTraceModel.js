@@ -3,14 +3,14 @@
  */
 export function traceModelFields(trace) {
   if (!trace) {
-    return { headerShort: 'N/A', ollama: null, requested: null, actual: null };
+    return { headerShort: 'N/A', provider: null, requested: null, actual: null };
   }
   const req = trace.request || {};
-  const oll = trace.ollama || {};
-  const ollama = oll.model != null && oll.model !== '' ? String(oll.model) : null;
+  const providerTrace = trace.provider || trace.ollama || {};
+  const provider = providerTrace.model != null && providerTrace.model !== '' ? String(providerTrace.model) : null;
   const requested =
     req.requested_model != null && req.requested_model !== '' ? String(req.requested_model) : null;
   const actual = req.actual_model != null && req.actual_model !== '' ? String(req.actual_model) : null;
-  const headerShort = ollama || actual || requested || 'N/A';
-  return { headerShort, ollama, requested, actual };
+  const headerShort = provider || actual || requested || 'N/A';
+  return { headerShort, provider, requested, actual };
 }

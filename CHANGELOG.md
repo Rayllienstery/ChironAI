@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.33] - 2026-06-06
+### Changed
+- Removed core create-collection direct Ollama embedding ownership and made CoreUI provider-facing text provider-neutral.
+
+## [0.6.32] - 2026-06-06
+### Changed
+- Reworked Extensions tab cards into a single-column horizontal layout with clearer metadata chips and action placement.
+
+## [0.6.31] - 2026-06-05
+### Changed
+- Enabled real parallel embedding workers for create-collection indexing and raised the default worker count to four.
+
+## [0.6.30] - 2026-06-05
+### Changed
+- Increased create-collection progress polling to three updates per second, switched durations to H:MM:SS, and reduced live status payload size.
+
+## [0.6.29] - 2026-06-05
+### Changed
+- Expanded create-collection recent activity to eight rows and included skipped/error files alongside embedding rows.
+
+## [0.6.28] - 2026-06-04
+### Fixed
+- Restored live create-collection page and chunk counts while embedding batches are queued.
+
+## [0.6.27] - 2026-06-04
+### Changed
+- Added create-collection timing telemetry to progress UI, notifications, and final reports.
+
 ## [0.6.26] - 2026-06-04
 ### Changed
 - Restored faster create-collection embedding throughput with larger adaptive batches.

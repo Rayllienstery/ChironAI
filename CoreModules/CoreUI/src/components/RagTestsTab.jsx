@@ -26,7 +26,7 @@ import { isLogicalRagModelId } from '../constants/llmProxyModels';
 import '../styles/components/CoreUIButtons.css';
 import '../styles/components/RagTestsTab.css';
 
-/** Cloud/metered Ollama tags (e.g. qwen3.5:cloud, ...:397b-cloud) may bill tokens. */
+/** Cloud/metered provider model ids (for example, ids with cloud suffixes) may bill tokens. */
 function modelTagLooksCloud(modelId) {
   const s = String(modelId || '').trim().toLowerCase();
   if (!s) return false;

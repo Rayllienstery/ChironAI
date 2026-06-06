@@ -157,7 +157,7 @@ export default function ProxyTracesTab() {
   }
 
   const intro =
-    'Recent proxy runs: resolved model, pipeline step timings (RAG sub-steps, ollama_chat), token estimates when present.';
+    'Recent proxy runs: resolved model, pipeline step timings (RAG sub-steps, provider chat), token estimates when present.';
 
   const selectedLog = useMemo(() => {
     if (!selectedTrace) return null;
@@ -277,4 +277,3 @@ export default function ProxyTracesTab() {
     </div>
   );
 }
-

@@ -924,6 +924,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+.create-collection-index-extra-stats--timing span {
+  background: var(--md-sys-color-surface-container-low);
+}
+
 .create-collection-index-current {
   display: flex;
   flex-direction: column;
@@ -1011,12 +1015,47 @@
   font-weight: 550;
 }
 
+.create-collection-embedding-history__file-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.create-collection-embedding-history__status {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-small-font, 600 0.65rem/1.2 sans-serif);
+}
+
+.create-collection-embedding-history__status--embedding {
+  color: var(--md-sys-color-primary);
+  border-color: var(--md-sys-color-primary);
+}
+
+.create-collection-embedding-history__status--skipped {
+  color: var(--md-sys-color-on-error-container);
+  background: var(--md-sys-color-error-container);
+  border-color: var(--md-sys-color-error);
+}
+
+.create-collection-embedding-history__status--error {
+  color: var(--md-sys-color-on-error);
+  background: var(--md-sys-color-error);
+  border-color: var(--md-sys-color-error);
+}
+
 .create-collection-embedding-history__metrics {
   color: var(--md-sys-color-on-surface-variant);
   font-family: var(--coreui-font-family-mono);
   font-size: 0.92em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  text-align: right;
 }
 
 @keyframes create-collection-embedding-history-enter {
@@ -1044,6 +1083,19 @@
 
 .create-collection-index-progress--toast .create-collection-embedding-history__metrics {
   font-size: 0.86em;
+  text-align: left;
+}
+
+@media (max-width: 720px) {
+  .create-collection-embedding-history__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .create-collection-embedding-history__metrics {
+    white-space: normal;
+    text-align: left;
+  }
 }
 
 .create-collection-index-skips__title {

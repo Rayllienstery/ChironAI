@@ -31,5 +31,5 @@ The answer should align with Apple accessibility documentation for SwiftUI.
 
 ## Notes
 
-Ensures the assistant can reason about accessibility, важный аспект Senior iOS Dev работы.
+Ensures the assistant can reason about accessibility, an important aspect of Senior iOS Dev work.
 

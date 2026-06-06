@@ -33,5 +33,5 @@ The answer should align with UIKit documentation on modal presentations and adap
 
 ## Notes
 
-Covers more subtle aspects of modal navigation that Senior iOS Dev должен знать.
+Covers more subtle aspects of modal navigation that a Senior iOS Dev should know.
 

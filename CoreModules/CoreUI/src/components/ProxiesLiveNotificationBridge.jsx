@@ -68,11 +68,11 @@ function computeGenTokensPerSecond(trace) {
   const response = trace && typeof trace === 'object' && trace.response && typeof trace.response === 'object'
     ? trace.response
     : {};
-  const ollama = trace && typeof trace === 'object' && trace.ollama && typeof trace.ollama === 'object'
-    ? trace.ollama
+  const providerTrace = trace && typeof trace === 'object' && (trace.provider || trace.ollama) && typeof (trace.provider || trace.ollama) === 'object'
+    ? (trace.provider || trace.ollama)
     : {};
-  const tokensEst = ollama.tokens_estimates && typeof ollama.tokens_estimates === 'object'
-    ? ollama.tokens_estimates
+  const tokensEst = providerTrace.tokens_estimates && typeof providerTrace.tokens_estimates === 'object'
+    ? providerTrace.tokens_estimates
     : {};
 
   const latencyMs = numOrNull(response.latency_ms);
@@ -101,7 +101,7 @@ function computeGenTokensPerSecond(trace) {
 }
 
 function genTpsSourceTitle(source) {
-  if (source === 'tokens_estimates') return 'Source: trace.ollama.tokens_estimates.completion_tokens_estimated';
+  if (source === 'tokens_estimates') return 'Source: provider token estimates';
   if (source === 'step_tokens_out_est') return 'Source: last provider_chat* step.tokens_out_est / step.duration_ms';
   if (source === 'eval_count') return 'Source: trace.response.eval_count';
   return 'Source: unknown';

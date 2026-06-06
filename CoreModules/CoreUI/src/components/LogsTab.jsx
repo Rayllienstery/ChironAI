@@ -474,7 +474,7 @@ function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
                 onChange={(e) => setSourceFilter(e.target.value)}
               >
                 <option value="">All Sources</option>
-                <option value="ollama">Ollama</option>
+                <option value="ollama">Provider</option>
                 <option value="rag_routes.chat_completions">rag_routes</option>
                 <option value="webui_routes">webui_routes</option>
               </select>

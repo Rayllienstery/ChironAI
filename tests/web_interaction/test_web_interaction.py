@@ -19,10 +19,6 @@ def test_wants_freshness_ios_version() -> None:
     assert wants_freshness_or_release("Does iOS 26 support X?") is True
 
 
-def test_wants_freshness_ru() -> None:
-    assert wants_freshness_or_release("Когда вышла последняя версия Xcode?") is True
-
-
 def test_framework_question() -> None:
     assert looks_like_framework_question("How do I use SwiftUI List?") is True
     assert looks_like_framework_question("Hello") is False

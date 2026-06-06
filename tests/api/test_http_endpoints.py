@@ -1364,7 +1364,7 @@ def test_chat_completions_returns_tool_calls_when_edit_payload_detected(monkeypa
         "/v1/chat/completions",
         json={
             "model": "fake-proxy-ollama-model",
-            "messages": [{"role": "user", "content": "[@App.jsx (283:293)] Внеси это изменение в файл"}],
+            "messages": [{"role": "user", "content": "[@App.jsx (283:293)] Apply this change to the file"}],
             "tools": [
                 {
                     "type": "function",
@@ -1723,7 +1723,7 @@ def test_chat_completions_respects_none_tool_choice_for_swift_file_edit_intent(
             "messages": [
                 {
                     "role": "user",
-                    "content": f"[@_tmp_test.swift]({file_uri}) Напиши простой пример UIViewController",
+                    "content": f"[@_tmp_test.swift]({file_uri}) Write a simple UIViewController example",
                 }
             ],
             "tools": [
@@ -1976,7 +1976,7 @@ def test_chat_completions_stream_returns_tool_calls_chunks(monkeypatch: pytest.M
         json={
             "model": "fake-proxy-ollama-model",
             "stream": True,
-            "messages": [{"role": "user", "content": "[@App.jsx (283:293)] Внеси это изменение в файл"}],
+            "messages": [{"role": "user", "content": "[@App.jsx (283:293)] Apply this change to the file"}],
             "tools": [
                 {
                     "type": "function",
@@ -2054,7 +2054,7 @@ def test_chat_completions_uses_client_tool_name_for_edit(monkeypatch: pytest.Mon
         "/v1/chat/completions",
         json={
             "model": "fake-proxy-ollama-model",
-            "messages": [{"role": "user", "content": "[@App.jsx (283:293)] Внеси это изменение в файл"}],
+            "messages": [{"role": "user", "content": "[@App.jsx (283:293)] Apply this change to the file"}],
             "tools": [
                 {
                     "type": "function",
@@ -2519,7 +2519,7 @@ def test_chat_completions_after_tool_success_still_emits_tool_call_for_new_file_
         {"role": "tool", "tool_call_id": "call_1", "content": "1 clean."},
         {
             "role": "user",
-            "content": "Напиши Hello World на Swift 5 [@test.swift](file:///C:/Users/Raylee/Desktop/test.swift)",
+            "content": "Write Hello World in Swift 5 [@test.swift](file:///C:/Users/Raylee/Desktop/test.swift)",
         },
     ]
     r = client.post(
@@ -2900,7 +2900,7 @@ def test_chat_completions_does_not_choose_save_file_without_content_schema(
             [
                 {
                     "role": "user",
-                    "content": "Напиши Hello World на Swift 5 [@test.swift](file:///C:/Users/Raylee/Desktop/test.swift)",
+                    "content": "Write Hello World in Swift 5 [@test.swift](file:///C:/Users/Raylee/Desktop/test.swift)",
                 }
             ],
             "fake-model",
@@ -2917,7 +2917,7 @@ def test_chat_completions_does_not_choose_save_file_without_content_schema(
             "messages": [
                 {
                     "role": "user",
-                    "content": "Напиши Hello World на Swift 5 [@test.swift](file:///C:/Users/Raylee/Desktop/test.swift)",
+                    "content": "Write Hello World in Swift 5 [@test.swift](file:///C:/Users/Raylee/Desktop/test.swift)",
                 }
             ],
             "tools": [
@@ -3025,7 +3025,7 @@ def test_chat_completions_sanitizes_display_description(monkeypatch: pytest.Monk
             "messages": [
                 {
                     "role": "user",
-                    "content": "[@test.swift (1:3)](file:///C:/Users/Raylee/AI/test.swift#L1:3) сожми массив до 3 <context>\nThe following items were attached by the user.\n<files>\n```swift C:/Users/Raylee/AI/test.swift\nlet array=[1,2,3]\n```\n</files>\n</context>",
+                    "content": "[@test.swift (1:3)](file:///C:/Users/Raylee/AI/test.swift#L1:3) shrink the array to 3 <context>\nThe following items were attached by the user.\n<files>\n```swift C:/Users/Raylee/AI/test.swift\nlet array=[1,2,3]\n```\n</files>\n</context>",
                 }
             ],
             "tools": [
@@ -3086,7 +3086,7 @@ def test_trailing_noop_after_success_does_not_block_noop_counter(
                 for m in msgs
                 if isinstance(m, dict)
             ):
-                return {"message": {"role": "assistant", "content": "Файл уже обновлён."}}
+                return {"message": {"role": "assistant", "content": "The file is already updated."}}
             return super().chat_api(body)
 
     fake_params = SimpleNamespace(
@@ -3130,7 +3130,7 @@ def test_trailing_noop_after_success_does_not_block_noop_counter(
     msgs = [
         {
             "role": "user",
-            "content": "[@test.swift (1:5)](file:///C:/Users/Raylee/AI/test.swift#L1:5) расширь массив",
+            "content": "[@test.swift (1:5)](file:///C:/Users/Raylee/AI/test.swift#L1:5) expand the array",
         },
         {
             "role": "assistant",
@@ -3152,7 +3152,7 @@ def test_trailing_noop_after_success_does_not_block_noop_counter(
         {"role": "tool", "tool_call_id": "c3", "content": "No edits were made."},
         {
             "role": "user",
-            "content": "[@test.swift (1:5)](file:///C:/Users/Raylee/AI/test.swift#L1:5) расширь массив",
+            "content": "[@test.swift (1:5)](file:///C:/Users/Raylee/AI/test.swift#L1:5) expand the array",
         },
     ]
 
@@ -3183,7 +3183,7 @@ def test_trailing_noop_after_success_does_not_block_noop_counter(
     assert "repeatedly" not in content.lower()
     assert "expand the selected range" not in content.lower()
     assert choice.get("finish_reason") == "stop"
-    assert "обновл" in content.lower() or "already" in content.lower()
+    assert "updated" in content.lower() or "already" in content.lower()
 
 
 def test_chat_completions_text_tool_path_single_chat_no_full_file_retry(

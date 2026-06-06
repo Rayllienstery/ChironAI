@@ -139,7 +139,7 @@ class TestSymbolAwareExtrasAndIntent:
         assert any(isinstance(c, dict) and c.get("key") == "framework" for c in must)
 
     def test_infer_query_intent_extracts_symbol_and_framework(self) -> None:
-        intent = infer_query_intent("Как работает handleEvents в Combine для iOS 18?")
+        intent = infer_query_intent("How does handleEvents work in Combine for iOS 18?")
         assert isinstance(intent, QueryIntent)
         assert intent.symbol == "handleEvents"
         assert intent.framework in ("combine", "observation")

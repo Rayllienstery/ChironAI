@@ -13,7 +13,8 @@ def test_ddg_region_explicit(monkeypatch) -> None:
 
 def test_ddg_region_cyrillic_default(monkeypatch) -> None:
     monkeypatch.delenv("WEB_INTERACTION_DDG_REGION", raising=False)
-    assert ddg_region_for_message("Когда вышла iOS 18?") == "ru-ru"
+    # Cyrillic character in message triggers ru-ru region
+    assert ddg_region_for_message("iOS 18 \u0430") == "ru-ru"
 
 
 def test_ddg_region_none_for_ascii(monkeypatch) -> None:

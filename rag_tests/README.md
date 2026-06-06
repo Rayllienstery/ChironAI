@@ -85,10 +85,10 @@ Tests are organized under `rag_tests/` by platform and framework, for example:
 - `rag_tests/ios/uikit/` – iOS UIKit tests  
 - `rag_tests/concurrency/` – Concurrency and advanced Swift tests  
 
-The file `rag_tests/README.md` itself is **documentation only** and не используется
-как тест: загрузчик (`application/rag_tests/loader.py`) специально пропускает
-`README.md`, чтобы пример с `concept one` / `concept two` не попадал в реальный
-набор Rag Tests и не влиял на метрики качества модели.
+The file `rag_tests/README.md` itself is **documentation only** and is not used
+as a test: the loader (`application/rag_tests/loader.py`) deliberately skips
+`README.md` so the `concept one` / `concept two` example does not enter the real
+Rag Tests set and affect model quality metrics.
 
 Filters in the WebUI and CLI are derived from the **Platform**, **Framework**, and **Difficulty** metadata in these files.
 

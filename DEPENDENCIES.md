@@ -1,58 +1,58 @@
-# Зависимости проекта ChironAI
+# ChironAI Project Dependencies
 
-Этот документ содержит список всех файлов, отвечающих за управление зависимостями в проекте.
+This document lists all files responsible for dependency management in the project.
 
-## Основные файлы зависимостей
+## Primary dependency files
 
-### Корневой уровень проекта
+### Root level
 
-| Файл | Описание |
-|------|----------|
-| `pyproject.toml` | **Основной файл зависимостей**. Содержит зависимости для пакета `chironai` включая runtime и dev зависимости |
-| `requirements-dev.txt` | Полная dev-установка: `-e .[dev]` и перечисленные editable-пакеты (см. файл) |
-| `scripts/install_dependencies.bat` | **Windows:** запуск из `scripts\` — переход в корень репо и один вызов `pip install -r requirements-dev.txt` (перед установкой выставляется `PIP_ONLY_BINARY=lxml`) |
-| `scripts/build_app.bat` | Сборка CoreUI (`npm run build`); вызывается из `build_and_run.bat` |
-| `scripts/sync_bundled_extensions.py` | Сверка/синхронизация bundled extensions с локальными клонами репозиториев (см. `docs/EXTENSIONS_GITHUB_MIGRATION.md`) |
-| `scripts/audit_apple_ingest_filter.py` | **Ручной offline-аудит:** chunk/stats по curated Apple Documentation pages; cwd = корень репо, нужны `WebUI/rag_sources/apple_documentation/` |
-| `docker-compose.yml` | Зависимости инфраструктуры (Qdrant) |
+| File | Description |
+|------|-------------|
+| `pyproject.toml` | **Primary dependency file**. Contains dependencies for the `chironai` package including runtime and dev dependencies |
+| `requirements-dev.txt` | Full dev install: `-e .[dev]` and listed editable packages (see file) |
+| `scripts/install_dependencies.bat` | **Windows:** run from `scripts\` — changes to repo root and calls `pip install -r requirements-dev.txt` once (`PIP_ONLY_BINARY=lxml` is set before install) |
+| `scripts/build_app.bat` | CoreUI build (`npm run build`); invoked from `build_and_run.bat` |
+| `scripts/sync_bundled_extensions.py` | Verify/sync bundled extensions with local repo clones (see `docs/EXTENSIONS_GITHUB_MIGRATION.md`) |
+| `scripts/audit_apple_ingest_filter.py` | **Manual offline audit:** chunk/stats for curated Apple Documentation pages; cwd = repo root, requires `WebUI/rag_sources/apple_documentation/` |
+| `docker-compose.yml` | Infrastructure dependencies (Qdrant) |
 
 ### CoreModules
 
-| Файл | Описание |
-|------|----------|
-| `CoreModules/ClawCode/pyproject.toml` | Зависимости для ClawCode agent (flask, requests) |
-| `CoreModules/OllamaInteractor/pyproject.toml` | Зависимости для Ollama CLI boundary (requests) |
-| `CoreModules/LlmProxy/pyproject.toml` | Зависимости для LLM Proxy (flask) |
-| `CoreModules/RagService/pyproject.toml` | Зависимости для RAG Service (flask, requests, httpx, pyyaml) |
-| `CoreModules/WebInteraction/pyproject.toml` | Зависимости для Web Interaction (duckduckgo-search, requests, html2text) |
-| `CoreModules/MdIngestionService/requirements.txt` | Зависимости для MD Ingestion Service (requests) |
+| File | Description |
+|------|-------------|
+| `CoreModules/ClawCode/pyproject.toml` | Dependencies for ClawCode agent (flask, requests) |
+| `CoreModules/OllamaInteractor/pyproject.toml` | Dependencies for Ollama CLI boundary (requests) |
+| `CoreModules/LlmProxy/pyproject.toml` | Dependencies for LLM Proxy (flask) |
+| `CoreModules/RagService/pyproject.toml` | Dependencies for RAG Service (flask, requests, httpx, pyyaml) |
+| `CoreModules/WebInteraction/pyproject.toml` | Dependencies for Web Interaction (duckduckgo-search, requests, html2text) |
+| `CoreModules/MdIngestionService/requirements.txt` | Dependencies for MD Ingestion Service (requests) |
 
 ### Modules
 
-| Файл | Описание |
-|------|----------|
-| `modules/html_md/pyproject.toml` | Зависимости для HTML→Markdown конвертера (lxml, html2text) |
-| `modules/crawler_service/pyproject.toml` | Зависимости для Crawler Service (requests, playwright, html2text, lxml, PyYAML) |
-| `modules/crawler_service/requirements.txt` | Legacy requirements для crawler service |
-| `modules/webui_backend/requirements.txt` | Зависимости для WebUI Backend (flask, requests) |
+| File | Description |
+|------|-------------|
+| `modules/html_md/pyproject.toml` | Dependencies for HTML→Markdown converter (lxml, html2text) |
+| `modules/crawler_service/pyproject.toml` | Dependencies for Crawler Service (requests, playwright, html2text, lxml, PyYAML) |
+| `modules/crawler_service/requirements.txt` | Legacy requirements for crawler service |
+| `modules/webui_backend/requirements.txt` | Dependencies for WebUI Backend (flask, requests) |
 
 ### WebUI
 
-| Файл | Описание |
-|------|----------|
-| `WebUI/requirements.txt` | Legacy зависимости для WebUI (ссылается на корневой pyproject.toml) |
+| File | Description |
+|------|-------------|
+| `WebUI/requirements.txt` | Legacy WebUI dependencies (references root pyproject.toml) |
 
 ### Vendor
 
-| Файл | Описание |
-|------|----------|
-| `vendor/claw-code/versions/.../setup.py` | Setup script для vendor ClawCode |
+| File | Description |
+|------|-------------|
+| `vendor/claw-code/versions/.../setup.py` | Setup script for vendor ClawCode |
 
 ---
 
-## Ключевые зависимости
+## Key dependencies
 
-### Runtime зависимости (из корневого pyproject.toml)
+### Runtime dependencies (from root pyproject.toml)
 
 ```toml
 dependencies = [
@@ -67,7 +67,7 @@ dependencies = [
 ]
 ```
 
-### Development зависимости
+### Development dependencies
 
 ```toml
 dev = [
@@ -79,47 +79,47 @@ dev = [
 ]
 ```
 
-### Инфраструктурные зависимости (Docker)
+### Infrastructure dependencies (Docker)
 
-- **Qdrant** (`qdrant/qdrant:latest`) - векторная база данных
+- **Qdrant** (`qdrant/qdrant:latest`) - vector database
 
 ---
 
-## Установка зависимостей
+## Installing dependencies
 
-### Полный стек для разработки (рекомендуется)
+### Full development stack (recommended)
 
-Один проход ставит корневой пакет с extras `[dev]` и все editable-модули из списка:
+One pass installs the root package with `[dev]` extras and all editable modules from the list:
 
 ```bash
 pip install -r requirements-dev.txt
 ```
 
-Только корневой пакет с dev-инструментами (без остальных `-e` из файла):
+Root package with dev tools only (without other `-e` entries from the file):
 
 ```bash
 pip install -e .[dev]
 ```
 
-Для тестов, LLM Proxy, RAG Service, краулера и смежных путей в `PYTHONPATH` используйте **`requirements-dev.txt`** — он дополнительно ставит `OllamaInteractor`, `LlmProxy`, `RagService`, `html_md`, `crawler_service`.
+For tests, LLM Proxy, RAG Service, crawler, and related `PYTHONPATH` entries use **`requirements-dev.txt`** — it additionally installs `OllamaInteractor`, `LlmProxy`, `RagService`, `html_md`, `crawler_service`.
 
 ### Windows
 
-Из каталога `scripts` выполните:
+From the `scripts` directory run:
 
 ```bat
 install_dependencies.bat
 ```
 
-Скрипт переходит в корень репозитория и вызывает `pip install -r requirements-dev.txt`. Для `lxml` задаётся `PIP_ONLY_BINARY=lxml` (колёса с PyPI, без сборки из исходников, если доступны).
+The script changes to the repository root and calls `pip install -r requirements-dev.txt`. `PIP_ONLY_BINARY=lxml` is set for `lxml` (wheels from PyPI, no source build when available).
 
-**Playwright:** пакет ставится через pip, браузеры — отдельно при необходимости:
+**Playwright:** the package is installed via pip; browsers are installed separately when needed:
 
 ```bash
 python -m playwright install
 ```
 
-### Запуск инфраструктуры
+### Starting infrastructure
 
 ```bash
 docker-compose up -d
@@ -127,7 +127,7 @@ docker-compose up -d
 
 ---
 
-## Структура зависимостей по модулям
+## Dependency structure by module
 
 ```
 chironai (root)
@@ -141,11 +141,11 @@ chironai (root)
 └── lxml>=6.0.0
 
 CoreModules/
-├── ClawCode → flask, requests (не в requirements-dev.txt)
+├── ClawCode → flask, requests (not in requirements-dev.txt)
 ├── OllamaInteractor → requests (requirements-dev.txt)
 ├── LlmProxy → flask (requirements-dev.txt)
 ├── RagService → flask, requests, httpx, pyyaml (requirements-dev.txt)
-└── WebInteraction → duckduckgo-search, requests, html2text (не в requirements-dev.txt)
+└── WebInteraction → duckduckgo-search, requests, html2text (not in requirements-dev.txt)
 
 Modules/
 ├── html_md → lxml, html2text
@@ -155,21 +155,21 @@ Modules/
 
 ---
 
-## Конфигурация и compatibility-документация
+## Configuration and compatibility documentation
 
-| Документ | Назначение |
-|----------|------------|
-| `config/README.md` | YAML-файлы и typed getters |
-| `config/CONFIG_AUTHORITY.md` | Приоритет env / settings / YAML / build |
-| `config/ENV_REFERENCE.md` | Индекс переменных окружения |
-| `infrastructure/ollama/README.md` | Граница root Ollama-адаптеров и allowlist импортов |
+| Document | Purpose |
+|----------|---------|
+| `config/README.md` | YAML files and typed getters |
+| `config/CONFIG_AUTHORITY.md` | Priority: env / settings / YAML / build |
+| `config/ENV_REFERENCE.md` | Environment variable index |
+| `infrastructure/ollama/README.md` | Root Ollama adapter boundary and import allowlist |
 | `QUALITY_AUDIT.md` | Roadmap cleanup (Passes 1–6) |
 
 ---
 
-## Примечания
+## Notes
 
-- **Основной источник истины**: `pyproject.toml` в корне проекта
-- **Editable installs**: Пакеты из `requirements-dev.txt` ставятся через `-e`; остальные CoreModules — по необходимости вручную (`pip install -e CoreModules/...`)
-- **Docker**: Qdrant запускается через docker-compose
-- **Python версия**: Требуется Python >=3.10
+- **Source of truth**: root `pyproject.toml`
+- **Editable installs**: packages from `requirements-dev.txt` are installed via `-e`; other CoreModules — manually as needed (`pip install -e CoreModules/...`)
+- **Docker**: Qdrant is started via docker-compose
+- **Python version**: requires Python >=3.10

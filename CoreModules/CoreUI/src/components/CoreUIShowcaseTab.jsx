@@ -243,7 +243,7 @@ function CoreUIShowcaseTab() {
           name="Action button groups"
           classes={["CoreUIButton", ".dashboard-primary-btn", ".dashboard-secondary-btn"]}
           source={`${sourceRoot}/components/CoreUIButton.jsx, ${sourceRoot}/styles/components/DashboardTab.css`}
-          description="Standard replacement for the older capsule action buttons used by Dashboard, extensions, Ollama, and proxy screens."
+          description="Standard replacement for the older capsule action buttons used by Dashboard, extensions, provider, and proxy screens."
         >
           <div className="coreui-showcase-action-button-stack">
             <div className="coreui-showcase-button-row">
@@ -316,10 +316,10 @@ function CoreUIShowcaseTab() {
         </ShowcaseItem>
 
         <ShowcaseItem
-          name="Model card (Ollama pattern)"
+          name="Model card (provider pattern)"
           classes={[".app-card", ".app-card--interactive", ".app-card--elevate-on-hover", ".extensions-runtime-model-card"]}
           source={`${sourceRoot}/components/Card.jsx, ${sourceRoot}/styles/components/ExtensionRuntimeTab.css`}
-          description="Model card used in the Ollama tab. It follows the CoreUI hoverable-card rule: neutral body, stronger accent-tinted hover shadow."
+          description="Model card used in provider runtime tabs. It follows the CoreUI hoverable-card rule: neutral body, stronger accent-tinted hover shadow."
         >
           <div className="coreui-showcase-model-card-grid">
             <Card interactive elevateOnHover className="extensions-runtime-model-card">
@@ -403,7 +403,7 @@ function CoreUIShowcaseTab() {
                   { id: '2', label: 'RAG gate', description: 'Compute trigger score and decide if vector search is needed.', icon: 'gate', active: true, tone: 'success' },
                   { id: '3', label: 'Retrieval', description: 'Search Qdrant with dense/sparse vectors and hybrid fusion.', icon: 'database', active: true, tone: 'success' },
                   { id: '4', label: 'Rank & Rerank', description: 'Sort by priority and optional LLM rerank on candidates.', icon: 'swap_vert', active: true, tone: 'info', badges: ['Rerank On'] },
-                  { id: '5', label: 'LLM call', description: 'Send assembled prompt to Ollama for final completion.', icon: 'smart_toy', active: true, tone: 'success' },
+                  { id: '5', label: 'LLM call', description: 'Send assembled prompt to the provider for final completion.', icon: 'smart_toy', active: true, tone: 'success' },
                 ]}
               />
             </div>
@@ -641,7 +641,7 @@ return docker.ensure_container(spec)`}</pre>
             </span>
             <span className="status-pill">
               <span className="status-dot stopped" />
-              <span className="status-label">Ollama</span>
+              <span className="status-label">Provider</span>
               <span className="status-text">stopped</span>
             </span>
             <span className="status-text-updating">

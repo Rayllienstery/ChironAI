@@ -12,16 +12,21 @@
 
 .extensions-tab__header h2,
 .extensions-view__header h3,
-.extensions-card__head h4,
+.extensions-card__copy h4,
 .extensions-schema-page h3,
 .extensions-schema-section-header h4 {
   margin: 0;
 }
 
 .extensions-tab__header p,
-.extensions-card__head p {
+.extensions-card__copy p {
   margin: 6px 0 0;
   color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-medium-font);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .extensions-view,
@@ -52,14 +57,19 @@
 .extensions-cards,
 .extensions-ui {
   display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
 }
 
 .extensions-card {
   display: grid;
   gap: 12px;
+  min-width: 0;
+}
+
+.extensions-card--horizontal {
+  gap: 10px;
 }
 
 .extensions-card--clickable {
@@ -69,6 +79,48 @@
 .extensions-card--clickable:focus-within,
 .extensions-card--clickable:hover {
   border-color: color-mix(in srgb, var(--md-sys-color-primary) 45%, var(--md-sys-color-outline));
+}
+
+.extensions-card__main {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(0, 1.4fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.extensions-card__identity {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.extensions-card__copy {
+  min-width: 0;
+}
+
+.extensions-card__copy h4 {
+  font: var(--md-sys-typescale-title-medium-font);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.extensions-card__meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.extensions-card__aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .extensions-card__head,
@@ -93,18 +145,21 @@
 }
 
 .extensions-card__icon {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 26px;
   color: var(--md-sys-color-on-surface-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-high) 70%, transparent);
 }
 
 .extensions-card__icon--image {
   object-fit: contain;
+  padding: 4px;
 }
 
 .extensions-card__icon--masked {
@@ -129,14 +184,20 @@
 
 .extensions-card__actions {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.extensions-card__details {
+  width: 100%;
 }
 
 .extensions-capabilities {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  padding-top: 2px;
 }
 
 .extensions-modal-backdrop {
@@ -291,7 +352,7 @@
 .extensions-sandbox-diagnostics__grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .extensions-sandbox-diagnostics__grid > div {
@@ -306,6 +367,12 @@
   overflow-wrap: anywhere;
 }
 
+.extensions-sandbox-diagnostics__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .extensions-failed-list {
   display: grid;
   gap: 10px;
@@ -317,7 +384,6 @@
 }
 
 .extensions-empty {
-  grid-column: 1 / -1;
   padding: var(--md-sys-spacing-md);
   border: 1px dashed var(--md-sys-color-outline-variant);
   border-radius: var(--coreui-radius-card);
@@ -337,27 +403,47 @@
   font-family: var(--md-sys-typescale-body-medium-font-family);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
+  .extensions-card__main {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
 
+  .extensions-card__meta-row {
+    grid-column: 1 / -1;
+  }
+
+  .extensions-sandbox-diagnostics__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
   .extensions-tab__header,
-  .extensions-card__head,
   .extensions-view__header {
-    grid-template-columns: 1fr;
-    align-items: flex-start;
-  }
-
-  .extensions-tab__header {
     flex-direction: column;
+    align-items: stretch;
   }
 
-  .extensions-cards,
-  .extensions-ui {
+  .extensions-card__main {
     grid-template-columns: 1fr;
+  }
+
+  .extensions-card__aside {
+    align-items: stretch;
+  }
+
+  .extensions-card__actions {
+    justify-content: flex-start;
   }
 
   .extensions-modal__header,
   .extensions-modal__toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .extensions-sandbox-diagnostics__grid {
+    grid-template-columns: 1fr;
   }
 }

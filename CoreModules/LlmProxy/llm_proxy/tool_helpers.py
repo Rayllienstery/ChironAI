@@ -175,12 +175,7 @@ def _workspace_doc_refactor_intent(user_text: str) -> bool:
     if not has_span:
         return False
     return bool(
-        "новый файл" in low
-        or "вынеси" in low
-        or "вынести" in low
-        or "перенеси" in low
-        or "отдельный файл" in low
-        or "new file" in low
+        "new file" in low
         or "extract to" in low
         or "move to" in low
         or "split into" in low
@@ -371,12 +366,6 @@ def _user_intent_copy_or_append_across_files(user_text: str) -> bool:
         "paste to",
         "add to the end",
         "into the end",
-        "в конец",
-        "скопируй",
-        "копируй",
-        "копировать",
-        "допиши",
-        "перенеси в",
     ):
         if needle in low:
             return True

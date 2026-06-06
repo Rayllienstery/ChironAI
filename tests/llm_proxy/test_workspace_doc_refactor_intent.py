@@ -7,7 +7,7 @@ from llm_proxy.tool_helpers import _workspace_doc_refactor_intent
 
 def test_workspace_doc_refactor_intent_matches_todo_post_mvp_scenario() -> None:
     msg = (
-        "[@TODO.md (173:182)](file:///C:/Users/Raylee/AI/TODO.md#L173:182)  Вынеси это в новый файл POST_MVP.md "
+        "[@TODO.md (173:182)](file:///C:/Users/Raylee/AI/TODO.md#L173:182)  Extract this to a new file POST_MVP.md "
         "<context><selections></selections></context>"
     )
     assert _workspace_doc_refactor_intent(msg) is True
@@ -19,5 +19,5 @@ def test_workspace_doc_refactor_intent_false_without_span() -> None:
 
 
 def test_workspace_doc_refactor_intent_false_without_file_ref() -> None:
-    msg = "Вынеси раздел в новый файл POST_MVP.md"
+    msg = "Move section to a new file POST_MVP.md"
     assert _workspace_doc_refactor_intent(msg) is False

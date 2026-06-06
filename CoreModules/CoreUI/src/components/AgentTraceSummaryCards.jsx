@@ -118,8 +118,8 @@ export default function AgentTraceSummaryCards({ summary }) {
                     <td>{r.step != null ? r.step : '—'}</td>
                     <td>{r.promptEst}</td>
                     <td>{r.completionEst}</td>
-                    <td>{r.ollamaPec != null ? r.ollamaPec : '—'}</td>
-                    <td>{r.ollamaEc != null ? r.ollamaEc : '—'}</td>
+                    <td>{r.providerPromptEval != null ? r.providerPromptEval : '—'}</td>
+                    <td>{r.providerEval != null ? r.providerEval : '—'}</td>
                   </tr>
                 ))}
               </tbody>

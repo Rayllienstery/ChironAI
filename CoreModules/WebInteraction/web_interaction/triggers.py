@@ -15,15 +15,6 @@ _FRESHNESS_PHRASES_EN = (
     "release date",
     "released",
 )
-_FRESHNESS_PHRASES_RU = (
-    "последняя версия",
-    "актуальн",
-    "когда вышла",
-    "когда вышел",
-    "дата выхода",
-    "релиз",
-)
-
 # iOS 9 … iOS 26+ (1–3 digits); matches "iOS 26", "iOS 18.2" prefix handled elsewhere
 _IOS_VERSION_RE = re.compile(r"\bios\s*\d{1,3}\b", re.IGNORECASE)
 
@@ -65,9 +56,6 @@ def wants_freshness_or_release(user_message: str) -> bool:
     if re.search(r"\bcurrent\b", user_message or "", re.IGNORECASE):
         return True
     for p in _FRESHNESS_PHRASES_EN:
-        if p in q:
-            return True
-    for p in _FRESHNESS_PHRASES_RU:
         if p in q:
             return True
     return False

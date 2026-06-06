@@ -177,7 +177,7 @@ export default function DevDocumentationTab() {
                     <div className="arch-layer-card arch-layer-infrastructure">
                       <div className="arch-layer-icon">🏗️</div>
                       <h5>Infrastructure</h5>
-                      <p>Adapters: Qdrant (RagRepository), Ollama (embed/chat/rerank), FS (MarkdownStore), Playwright (crawl), logging.</p>
+                      <p>Adapters: Qdrant (RagRepository), provider runtime (embed/chat/rerank), FS (MarkdownStore), Playwright (crawl), logging.</p>
                     </div>
                   </div>
                 </div>
@@ -244,7 +244,7 @@ export default function DevDocumentationTab() {
                     <li><strong>Module Isolation:</strong> CoreModules communicate via HTTP contracts or interfaces (Protocol/ABC), never direct imports.</li>
                     <li><strong>Domain Agnostic:</strong> Swap knowledge domains (Apple → any) by changing sources and prompts—no core code changes.</li>
                     <li><strong>Testability:</strong> Domain/application tests use mocks; API tests use Flask client with wired use cases.</li>
-                    <li><strong>Local-First:</strong> All services (Ollama, Qdrant) run locally via Docker. Optional cloud LLM fallback.</li>
+                    <li><strong>Local-First:</strong> Infrastructure services run locally via Docker where configured. Optional cloud LLM fallback.</li>
                   </ul>
                 </div>
               </div>

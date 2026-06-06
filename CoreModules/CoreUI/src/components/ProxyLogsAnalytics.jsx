@@ -399,7 +399,7 @@ function ProxyLogsAnalytics({
       <p className="proxy-logs-analytics-summary" aria-live="polite">
         {isAc ? (
           <>
-            Total autocomplete requests: {agg.totalRequests}. Bar chart shows resolved Ollama model tags (no RAG on this
+            Total autocomplete requests: {agg.totalRequests}. Bar chart shows resolved provider model ids (no RAG on this
             path).
           </>
         ) : (

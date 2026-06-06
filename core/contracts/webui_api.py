@@ -113,6 +113,54 @@ class AppSettingsResponse(TypedDict, total=False):
     server_port_restart_required: bool
 
 
+class CreateCollectionEmbeddingHistoryRow(TypedDict, total=False):
+    """One recent create-collection file activity row."""
+
+    source_id: str
+    filename: str
+    path: str
+    chars: int
+    chunks: int
+    chunk_ms: int
+    status: Literal["embedding", "skipped", "error"]
+    reason: str
+    detail: str
+
+
+class CreateCollectionStatusResponse(TypedDict, total=False):
+    """GET /crawler/create-collection-status/{job_id}."""
+
+    job_id: str
+    status: Literal["running", "success", "failed", "cancelled", "started"]
+    collection_name: str
+    source_ids: list[str]
+    processed_pages: int
+    total_pages: int
+    indexed_pages: int
+    prepared_pages: int
+    total_chunks: int
+    prepared_chunks: int
+    skipped_pages: int
+    skip_reasons: dict[str, int]
+    current_source_id: str
+    current_filename: str
+    current_phase: str
+    current_phase_elapsed_ms: int
+    elapsed_ms: int
+    phase_durations_ms: dict[str, int]
+    current_embedding_chars: int
+    current_embedding_chunks: int
+    current_embedding_chunk_ms: int
+    embedding_history: list[CreateCollectionEmbeddingHistoryRow]
+    parallel_embed_workers: int
+    errors: list[str]
+    recent_skips: list[dict[str, Any]]
+    skip_log: list[dict[str, Any]]
+    skip_log_count: int
+    statistics: dict[str, Any]
+    error: str | None
+
+
 class LlmProxyStatusResponse(TypedDict):
     """GET /llm-proxy/status — card “Fusion Proxy” in CoreUI."""
 

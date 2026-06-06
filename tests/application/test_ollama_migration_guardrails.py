@@ -61,7 +61,7 @@ def test_ollama_migration_todo_remains_decision_complete() -> None:
     text = path.read_text(encoding="utf-8")
 
     assert path.is_file()
-    assert not re.search(r"[А-Яа-яЁё]", text)
+    assert not re.search(r"[\u0400-\u04FF]", text)
     for line in text.splitlines():
         if "- [" in line:
             assert CHECKBOX_RE.match(line), line

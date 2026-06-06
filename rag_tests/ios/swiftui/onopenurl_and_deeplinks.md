@@ -30,5 +30,5 @@ The answer should align with SwiftUI and iOS documentation on deep linking and U
 
 ## Notes
 
-Checks that the assistant умеет рассуждать о deep links в современном SwiftUI-приложении.
+Checks that the assistant can reason about deep links in a modern SwiftUI application.
 
