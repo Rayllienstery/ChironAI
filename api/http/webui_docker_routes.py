@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 from docker_manager import DockerManager
 
@@ -58,6 +59,27 @@ def register_docker_routes(
         except Exception as e:
             error_log.error("webui_docker_routes.docker_images", exc_info=True)
             return jsonify(_error_payload("Failed to list Docker images", str(e))), 500
+
+    @bp.route("/docker/events", methods=["GET"])
+    def docker_events() -> Any:
+        docker = manager()
+
+        def _stream() -> Any:
+            yield "event: ready\ndata: {}\n\n"
+            try:
+                for event in docker.events(event_types=["container", "image"]):
+                    yield f"event: docker\ndata: {json.dumps(event, separators=(',', ':'))}\n\n"
+            except GeneratorExit:
+                raise
+            except Exception as e:
+                error_log.error("webui_docker_routes.docker_events", exc_info=True)
+                yield f"event: error\ndata: {json.dumps(_error_payload('Docker event stream failed', str(e)), separators=(',', ':'))}\n\n"
+
+        return Response(
+            stream_with_context(_stream()),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @bp.route("/docker/images/pull", methods=["POST"])
     def docker_pull_image() -> Any:

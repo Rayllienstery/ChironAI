@@ -46,6 +46,7 @@ def _disable_background_extension_bootstrap(monkeypatch: pytest.MonkeyPatch) -> 
 class _FakeExtensionsService:
     def __init__(self) -> None:
         self.action_calls: list[dict[str, Any]] = []
+        self.installed_calls: list[dict[str, Any]] = []
 
     def registry_entries(self) -> list[dict[str, Any]]:
         return [{"id": "ollama-provider", "title": "Ollama"}]
@@ -53,7 +54,8 @@ class _FakeExtensionsService:
     def registry_diagnostics(self) -> dict[str, Any]:
         return {"registry_url": "https://example.invalid/extensions.json", "diagnostics": [], "entries_count": 1}
 
-    def installed_extensions(self) -> list[dict[str, Any]]:
+    def installed_extensions(self, *, include_docker_versions: bool = True) -> list[dict[str, Any]]:
+        self.installed_calls.append({"include_docker_versions": include_docker_versions})
         return [
             {
                 "id": "ollama-provider",
@@ -193,12 +195,14 @@ def test_extensions_routes_expose_registry_and_ui() -> None:
     from api.http.rag_routes import create_app
 
     app = create_app()
-    _set_extensions_app_state(app, service=_FakeExtensionsService(), runtime=object())
+    service = _FakeExtensionsService()
+    _set_extensions_app_state(app, service=service, runtime=object())
     client = app.test_client()
 
     registry = client.get("/api/webui/extensions/registry")
     details = client.get("/api/webui/extensions/ollama-provider/details")
     installed = client.get("/api/webui/extensions/installed")
+    installed_fast = client.get("/api/webui/extensions/installed?docker_versions=0")
     providers = client.get("/api/webui/extensions/providers")
     catalog = client.get("/api/webui/providers/catalog")
     models = client.get("/api/webui/models")
@@ -208,6 +212,7 @@ def test_extensions_routes_expose_registry_and_ui() -> None:
     assert registry.status_code == 200
     assert details.status_code == 200
     assert installed.status_code == 200
+    assert installed_fast.status_code == 200
     assert providers.status_code == 200
     assert catalog.status_code == 200
     assert models.status_code == 200
@@ -216,6 +221,10 @@ def test_extensions_routes_expose_registry_and_ui() -> None:
     assert (registry.get_json() or {}).get("registry")[0]["id"] == "ollama-provider"
     assert (details.get_json() or {}).get("latest", {}).get("ref") == "v0.1.0"
     assert (registry.get_json() or {}).get("registry")[0]["title"] == "Ollama"
+    assert service.installed_calls[-2:] == [
+        {"include_docker_versions": True},
+        {"include_docker_versions": False},
+    ]
     installed_item = (installed.get_json() or {}).get("extensions")[0]
     assert installed_item["security_blocked"] is False
     assert installed_item["security_findings"] == []

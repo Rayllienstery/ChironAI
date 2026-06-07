@@ -206,8 +206,6 @@ def test_check_image_update_up_to_date_and_available() -> None:
             return _proc(args, out=local)
         if args[1:3] == ["manifest", "inspect"]:
             return _proc(args, out=remote_same)
-        if args[1:4] == ["buildx", "imagetools", "inspect"]:
-            return _proc(args, out=remote_meta)
         raise AssertionError(args)
 
     def fake_new(args: list[str], **_: object) -> CompletedProcess[str]:
@@ -230,6 +228,32 @@ def test_check_image_update_up_to_date_and_available() -> None:
     assert new["status"] == "update_available"
     assert new["current_version"] == "24.04"
     assert new["update_version"] == "24.05"
+
+
+def test_check_image_update_skips_remote_version_lookup_when_digest_matches() -> None:
+    local = json.dumps(
+        {
+            "Id": "sha256:local",
+            "RepoDigests": ["ollama/ollama@sha256:aaa"],
+            "Config": {"Labels": {"org.opencontainers.image.version": "24.04"}},
+        }
+    )
+    remote_same = json.dumps({"Descriptor": {"digest": "sha256:aaa"}})
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], **_: object) -> CompletedProcess[str]:
+        calls.append(args)
+        if args[1:3] == ["image", "inspect"]:
+            return _proc(args, out=local)
+        if args[1:3] == ["manifest", "inspect"]:
+            return _proc(args, out=remote_same)
+        raise AssertionError(args)
+
+    with patch("docker_manager.manager.subprocess.run", side_effect=fake_run):
+        result = DockerManager(docker_exe="docker").check_image_update("ollama/ollama:latest")
+
+    assert result["status"] == "up_to_date"
+    assert not any(args[1:4] == ["buildx", "imagetools", "inspect"] for args in calls)
 
 
 def test_check_image_update_unknown_and_not_local() -> None:
@@ -255,8 +279,6 @@ def test_check_image_update_unknown_and_not_local() -> None:
             return _proc(args, out=local)
         if args[1:3] == ["manifest", "inspect"]:
             return _proc(args, code=1, err="manifest unavailable")
-        if args[1:4] == ["buildx", "imagetools", "inspect"]:
-            return _proc(args, code=1, err="imagetools unavailable")
         raise AssertionError(args)
 
     def fake_not_local(args: list[str], **_: object) -> CompletedProcess[str]:
@@ -481,3 +503,33 @@ def test_logs_returns_tail_or_error() -> None:
     assert ok["ok"] is True
     assert ok["logs"] == "hello"
     assert bad["ok"] is False
+
+
+def test_events_stream_parses_json_and_terminates_process() -> None:
+    class _Popen:
+        stdout = [
+            '{"Type":"container","Action":"start","Actor":{"Attributes":{"name":"qdrant"}}}\n',
+            'not-json\n',
+        ]
+        stderr = []
+        terminated = False
+
+        def poll(self) -> None:
+            return None
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+    proc = _Popen()
+
+    with patch("docker_manager.manager.subprocess.Popen", return_value=proc) as popen:
+        events = list(DockerManager(docker_exe="docker").events(event_types=["container", "image"]))
+
+    args = popen.call_args.args[0]
+    assert args[:3] == ["docker", "events", "--format"]
+    assert "--filter" in args
+    assert events[0]["Type"] == "container"
+    assert events[0]["Action"] == "start"
+    assert events[0]["ok"] is True
+    assert events[1]["ok"] is False
+    assert proc.terminated is True

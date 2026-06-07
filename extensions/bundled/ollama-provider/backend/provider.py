@@ -418,27 +418,8 @@ class OllamaProvider:
                     "sections": [
                         {
                             "id": "docker",
-                            "title": "Docker image",
-                            "components": [
-                                {
-                                    "type": "text",
-                                    "key": "docker_image",
-                                    "label": "Image",
-                                    "value": str(docker_state.get("image") or self._docker_image()),
-                                },
-                                {
-                                    "type": "text",
-                                    "key": "docker_current_version",
-                                    "label": "Current version",
-                                    "value": self._docker_current_version_label(docker_state),
-                                },
-                                {
-                                    "type": "text",
-                                    "key": "docker_update_version",
-                                    "label": "Update version",
-                                    "value": self._docker_update_version_label(docker_state),
-                                },
-                            ],
+                            "title": "Docker container",
+                            "components": self._docker_schema_components(docker_state),
                         },
                         {
                             "id": "pull",
@@ -818,10 +799,71 @@ class OllamaProvider:
             "update_version": str(check.get("update_version") or "").strip(),
         }
 
+    def _docker_schema_components(self, state: dict[str, Any]) -> list[dict[str, Any]]:
+        image = str(state.get("image") or self._docker_image()).strip()
+        components = [
+            {
+                "type": "text",
+                "key": "docker_container",
+                "label": "Container",
+                "value": str(state.get("container_name") or self._docker_container_name()),
+            },
+            {
+                "type": "text",
+                "key": "docker_image",
+                "label": "Image",
+                "value": image,
+            },
+            {
+                "type": "text",
+                "key": "docker_status",
+                "label": "Status",
+                "value": self._docker_status_label(state),
+            },
+            {
+                "type": "text",
+                "key": "docker_image_version",
+                "label": "Image version",
+                "value": self._docker_image_version_label(state),
+            },
+        ]
+        if bool(state.get("update_available")):
+            components.append(
+                {
+                    "type": "text",
+                    "key": "docker_update_version",
+                    "label": "Available update",
+                    "value": self._docker_update_version_label(state),
+                }
+            )
+        return components
+
     @staticmethod
-    def _docker_current_version_label(state: dict[str, Any]) -> str:
+    def _docker_status_label(state: dict[str, Any]) -> str:
+        status = str(state.get("status") or "").strip()
+        labels = {
+            "container_running": "Running",
+            "container_stopped": "Stopped",
+            "container_missing": "Not created",
+            "docker_unavailable": "Docker unavailable",
+            "error": "Docker check failed",
+            "unknown": "Docker status unavailable",
+        }
+        return labels.get(status, status.replace("_", " ").strip().title() or "Docker status unavailable")
+
+    @staticmethod
+    def _docker_image_version_label(state: dict[str, Any]) -> str:
         current = str(state.get("current_version") or "").strip()
-        return current or "Unknown"
+        status = str(state.get("update_status") or "").strip()
+        if status == "up_to_date":
+            return f"Up to date ({current})" if current else "Up to date"
+        if status == "update_available":
+            return current or "Installed image version unavailable"
+        if status == "not_local":
+            return "Image is not pulled locally"
+        if status == "unknown":
+            return "Version check unavailable"
+        return current or "Version check unavailable"
 
     @staticmethod
     def _docker_update_version_label(state: dict[str, Any]) -> str:
@@ -831,7 +873,7 @@ class OllamaProvider:
         if status == "up_to_date":
             return current or "Up to date"
         if status == "update_available":
-            return update or "Unknown"
+            return update or "New image available"
         if status == "unknown":
             return "Could not check remote version"
         if status == "not_local":

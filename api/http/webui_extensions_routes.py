@@ -53,7 +53,17 @@ def register_extension_routes(
             svc = _get_extensions_service()
             if svc is None:
                 return jsonify({"available": False, "extensions": []}), 200
-            return jsonify({"available": True, "extensions": svc.installed_extensions()})
+            include_docker_versions = str(request.args.get("docker_versions") or "1").strip().lower() not in {
+                "0",
+                "false",
+                "no",
+            }
+            return jsonify(
+                {
+                    "available": True,
+                    "extensions": svc.installed_extensions(include_docker_versions=include_docker_versions),
+                }
+            )
         except Exception:
             error_log.error("webui_extensions_routes.get_installed_extensions", exc_info=True)
             return _extension_error("Installed extensions are unavailable.", "extensions_installed_unavailable", 500)

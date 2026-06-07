@@ -24,9 +24,6 @@
       />
     </noscript>
 
-    <link rel="stylesheet" href="/src/styles/tokens.css" />
-    <link rel="stylesheet" href="/src/styles/components/StandByScreen.css" />
-
     <!-- Apply saved theme BEFORE first paint to avoid purple flash.
          Reads from localStorage set by applyTheme() in App.jsx. -->
     <script>
@@ -81,6 +78,7 @@
       </div>
     </div>
     <div id="root"></div>
+    <script type="module" src="/src/preboot.js"></script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

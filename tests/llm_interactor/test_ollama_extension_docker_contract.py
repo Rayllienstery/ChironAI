@@ -143,6 +143,14 @@ def _diagnostics_from_tab_payload(payload: dict[str, Any]) -> dict[str, Any]:
     raise AssertionError("diagnostics not found in tab payload")
 
 
+def _section_from_tab_payload(payload: dict[str, Any], section_id: str) -> dict[str, Any]:
+    sections = payload["schema"]["pages"][0]["sections"]
+    for section in sections:
+        if section.get("id") == section_id:
+            return section
+    raise AssertionError(f"{section_id} section not found in tab payload")
+
+
 def _provider(docker_runtime: Any | None, *, repo: Any | None = None, module: Any | None = None):
     module = module or _load_ollama_provider_module()
     root = Path(__file__).resolve().parents[2]
@@ -311,6 +319,30 @@ def test_ollama_extension_tab_reports_missing_container(monkeypatch: Any) -> Non
     assert diagnostics["docker"]["exists"] is False
     assert diagnostics["docker"]["action_hint"] == "download"
     assert "does not exist" in diagnostics["health"]["message"]
+
+
+def test_ollama_extension_tab_docker_section_uses_actionable_labels(monkeypatch: Any) -> None:
+    module = _load_ollama_provider_module()
+    monkeypatch.setattr(module, "invoke_ping", lambda **_: {"ok": True})
+    monkeypatch.setattr(module, "invoke_tags", lambda **_: {"models": []})
+
+    docker = _DockerRuntime()
+    docker.exists = True
+    docker.running = True
+    provider = _provider(docker, repo=_Repo(), module=module)
+
+    payload = provider.get_tab_payload()
+    docker_section = _section_from_tab_payload(payload, "docker")
+    components = {item["label"]: item["value"] for item in docker_section["components"]}
+
+    assert docker_section["title"] == "Docker container"
+    assert components["Container"] == "chironai-ollama"
+    assert components["Image"] == "ollama/ollama:latest"
+    assert components["Status"] == "Running"
+    assert components["Image version"] == "Version check unavailable"
+    assert "Current version" not in components
+    assert "Update version" not in components
+    assert "Unknown" not in set(components.values())
 
 
 def test_ollama_extension_tab_reports_stopped_container(monkeypatch: Any) -> None:

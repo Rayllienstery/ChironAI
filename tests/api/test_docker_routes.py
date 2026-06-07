@@ -24,6 +24,9 @@ class _FakeDockerManager:
     def images(self) -> dict[str, Any]:
         return {"ok": True, "images": [{"image": "qdrant/qdrant:latest"}]}
 
+    def events(self, *, event_types: list[str] | None = None) -> Any:
+        yield {"ok": True, "Type": "container", "Action": "start", "event_types": event_types}
+
     def pull_image(self, image: str) -> dict[str, Any]:
         if not image:
             raise ValueError("image is required")
@@ -81,6 +84,25 @@ def test_docker_routes_list_and_status(monkeypatch: Any) -> None:
     assert (status.get_json() or {})["engine_ready"] is True
     assert (containers.get_json() or {})["containers"][0]["name"] == "qdrant"
     assert (images.get_json() or {})["images"][0]["image"] == "qdrant/qdrant:latest"
+
+
+def test_docker_events_route_streams_sse(monkeypatch: Any) -> None:
+    _ensure_root_on_path()
+    import api.http.webui_docker_routes as docker_routes
+    from api.http.rag_routes import create_app
+
+    monkeypatch.setattr(docker_routes, "DockerManager", _FakeDockerManager)
+    app = create_app()
+    client = app.test_client()
+
+    response = client.get("/api/webui/docker/events")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert response.mimetype == "text/event-stream"
+    assert "event: ready" in body
+    assert "event: docker" in body
+    assert '"Action":"start"' in body
 
 
 def test_docker_routes_validate_action_payloads(monkeypatch: Any) -> None:

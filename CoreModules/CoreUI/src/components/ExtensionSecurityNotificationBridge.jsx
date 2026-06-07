@@ -69,7 +69,7 @@ export default function ExtensionSecurityNotificationBridge() {
     let cancelled = false;
     const load = async () => {
       try {
-        const data = await getExtensionInstalled();
+        const data = await getExtensionInstalled({ dockerVersions: false });
         if (!cancelled) {
           const extensions = data?.extensions || [];
           setBlocked(blockedExtensions(extensions));

@@ -560,7 +560,7 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
     setError("");
     void loadRegistry({ forceRefresh, notifyOnError: forceRefresh });
     const results = await Promise.allSettled([
-        getExtensionInstalled(),
+        getExtensionInstalled({ dockerVersions: false }),
         getExtensionProviders(),
         getExtensionUiPayload(),
     ]);
@@ -568,7 +568,15 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
     const failures = [];
 
     if (installedResult.status === "fulfilled") {
-      setInstalled(installedResult.value.extensions || []);
+      const installedRows = installedResult.value.extensions || [];
+      setInstalled(installedRows);
+      if (installedRows.length) {
+        void getExtensionInstalled({ dockerVersions: true })
+          .then((data) => {
+            setInstalled(data.extensions || []);
+          })
+          .catch(() => {});
+      }
     } else {
       failures.push(installedResult.reason);
     }

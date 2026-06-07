@@ -138,15 +138,26 @@ def _persistent_volume_guard(extension_id: str, binding: dict[str, Any]) -> dict
     }
 
 
-def enrich_installed_with_docker(installed: list[dict[str, Any]], docker: Any | None) -> list[dict[str, Any]]:
-    if docker is None:
+def enrich_installed_with_docker(
+    installed: list[dict[str, Any]],
+    docker: Any | None,
+    *,
+    include_version_check: bool = True,
+) -> list[dict[str, Any]]:
+    if docker is None or not installed:
         return installed
     bindings = list_extension_docker_bindings(docker)
     out: list[dict[str, Any]] = []
     for item in installed:
         ext_id = str(item.get("id") or "")
         binding = bindings.get(ext_id)
-        docker_info = docker_status_for_extension(docker, binding) if binding else None
+        docker_info = (
+            docker_status_for_extension(docker, binding)
+            if binding and include_version_check
+            else {**binding, "update_status": "not_checked", "update_available": False}
+            if binding
+            else None
+        )
         out.append({**item, "docker": docker_info})
     return out
 

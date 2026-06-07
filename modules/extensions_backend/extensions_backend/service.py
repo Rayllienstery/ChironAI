@@ -117,9 +117,13 @@ class ExtensionManagementService:
         safe_ref = str(ref or "").strip() or None
         return self._manager.extension_details(ext_id, ref=safe_ref)
 
-    def installed_extensions(self) -> list[dict[str, Any]]:
+    def installed_extensions(self, *, include_docker_versions: bool = True) -> list[dict[str, Any]]:
         rows = self._manager.installed_extensions()
-        return enrich_installed_with_docker(rows, self._docker_manager)
+        return enrich_installed_with_docker(
+            rows,
+            self._docker_manager,
+            include_version_check=include_docker_versions,
+        )
 
     def update_extension_docker(
         self,

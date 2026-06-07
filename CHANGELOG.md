@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.40] - 2026-06-07
+### Changed
+- Added a Docker event stream and made CoreUI service status refresh react to container/image events with slower fallback polling.
+
+## [0.6.39] - 2026-06-07
+### Fixed
+- Optimized Docker image update checks to avoid extra remote metadata lookups when the local digest is already current.
+
+## [0.6.38] - 2026-06-07
+### Fixed
+- Made the installed Extensions list avoid blocking on Docker image version checks during initial load.
+
+## [0.6.37] - 2026-06-07
+### Fixed
+- Cleaned up the Ollama extension Docker section so it shows container status and avoids empty or unknown version fields.
+
 ## [0.6.36] - 2026-06-07
 ### Fixed
 - Removed crawled web-page markdown outputs from the repository and ignored the testing crawl output directory.

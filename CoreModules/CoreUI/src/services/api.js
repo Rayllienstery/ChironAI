@@ -1376,8 +1376,11 @@ export async function getExtensionRegistry({ forceRefresh = false } = {}) {
   return response.json();
 }
 
-export async function getExtensionInstalled() {
-  const response = await fetch(`${API_BASE}/extensions/installed`);
+export async function getExtensionInstalled({ dockerVersions = true } = {}) {
+  const params = new URLSearchParams();
+  if (dockerVersions === false) params.set('docker_versions', '0');
+  const qs = params.toString() ? `?${params}` : '';
+  const response = await fetch(`${API_BASE}/extensions/installed${qs}`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(extractApiError(error, 'Failed to load installed extensions'));
@@ -1504,6 +1507,22 @@ export async function getDockerImages() {
     throw new Error(extractApiError(data, 'Failed to load Docker images'));
   }
   return data;
+}
+
+export function subscribeDockerEvents(onEvent, onError) {
+  if (typeof EventSource === 'undefined') return null;
+  const source = new EventSource(`${API_BASE}/docker/events`);
+  source.addEventListener('docker', (event) => {
+    try {
+      onEvent?.(JSON.parse(event.data || '{}'));
+    } catch (e) {
+      onError?.(e);
+    }
+  });
+  source.onerror = (event) => {
+    onError?.(event);
+  };
+  return source;
 }
 
 async function dockerJsonAction(path, body = {}, method = 'POST') {

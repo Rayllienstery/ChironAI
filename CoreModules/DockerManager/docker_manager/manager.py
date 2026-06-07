@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Iterator
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -455,12 +455,51 @@ class DockerManager:
             return {"ok": False, "container": container, "error": "Failed to read container logs", "details": _compact_error(result.message)}
         return {"ok": True, "container": container, "logs": result.stdout}
 
+    def events(self, *, event_types: list[str] | None = None) -> Iterator[dict[str, Any]]:
+        """Yield Docker event objects from a single long-lived CLI process."""
+        args = ["events", "--format", "{{json .}}"]
+        for event_type in event_types or ["container"]:
+            value = str(event_type or "").strip()
+            if value:
+                args.extend(["--filter", f"type={value}"])
+
+        proc: subprocess.Popen[str] | None = None
+        try:
+            proc = subprocess.Popen(
+                [self._docker_exe, *args],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if proc.stdout is None:
+                yield {"ok": False, "error": "Docker events stdout is unavailable"}
+                return
+            for line in proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    yield {"ok": False, "error": "Invalid Docker event payload", "raw": line[:500]}
+                    continue
+                if isinstance(item, dict):
+                    item.setdefault("ok", True)
+                    yield item
+        except FileNotFoundError:
+            yield {"ok": False, "error": f"Docker CLI not found: {self._docker_exe}"}
+        except PermissionError as e:
+            yield {"ok": False, "error": f"Docker CLI permission denied: {self._docker_exe}: {e}"}
+        finally:
+            if proc is not None and proc.poll() is None:
+                proc.terminate()
+
     def check_image_update(self, image: str) -> dict[str, Any]:
         image = self._require_value(image, "image")
-        remote = self._remote_manifest_digest(image)
-        remote_version = self._remote_image_version(image, remote_digest=remote)
         local = self._image_inspect(image)
+        remote = self._remote_manifest_digest(image)
         if local is None:
+            remote_version = self._remote_image_version(image, remote_digest=remote) if remote else ""
             return {
                 "ok": True,
                 "image": image,
@@ -488,6 +527,7 @@ class DockerManager:
         if status == "up_to_date":
             update_version = current_version
         else:
+            remote_version = self._remote_image_version(image, remote_digest=remote)
             update_version = remote_version or self._short_digest(remote)
             if update_version and current_version and update_version == current_version:
                 update_version = self._short_digest(remote) or update_version

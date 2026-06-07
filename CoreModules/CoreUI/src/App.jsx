@@ -102,6 +102,7 @@ import {
   getRagTestRunStatus,
   cancelRagTestRun,
   postBrowserTiming,
+  subscribeDockerEvents,
 } from "./services/api";
 import { recordModuleLoad } from "./services/moduleTimings";
 import Sparkline from "./components/Sparkline";
@@ -295,6 +296,7 @@ function App() {
 
   useEffect(() => {
     const gen = ++serviceStatusPollGenRef.current;
+    let refreshTimer = null;
     const loadStatuses = async (isInitial) => {
       if (isInitial) setStatusLoading(true);
       try {
@@ -312,13 +314,25 @@ function App() {
         }
       }
     };
+    const scheduleRefresh = (event = {}) => {
+      if (event?.ok === false) return;
+      if (serviceStatusPollGenRef.current !== gen) return;
+      if (refreshTimer != null) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        loadStatuses(false);
+      }, 300);
+    };
     const firstTimer = window.setTimeout(() => {
       loadStatuses(true);
     }, shellRequestDelayMs);
-    const ms = serviceStatusPollIntervalSec * 1000;
-    const id = setInterval(() => loadStatuses(false), ms);
+    const fallbackMs = Math.max(60, Number(serviceStatusPollIntervalSec) || 60) * 1000;
+    const source = subscribeDockerEvents(scheduleRefresh, () => {});
+    const id = setInterval(() => loadStatuses(false), fallbackMs);
     return () => {
       window.clearTimeout(firstTimer);
+      if (refreshTimer != null) window.clearTimeout(refreshTimer);
+      source?.close?.();
       clearInterval(id);
     };
   }, [serviceStatusPollIntervalSec, loadExtensionSurface, shellRequestDelayMs]);
