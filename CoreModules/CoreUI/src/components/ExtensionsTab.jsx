@@ -524,32 +524,23 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
   const [dockerUpdateProgress, setDockerUpdateProgress] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [registryLoading, setRegistryLoading] = useState(false);
   const [details, setDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [selectedRef, setSelectedRef] = useState("");
   const [manualRef, setManualRef] = useState("");
   const persistExtensionNotification = notificationCenter?.persistNotification;
 
-  const loadAll = useCallback(async (forceRefresh = false) => {
-    setLoading(true);
-    setError("");
+  const loadRegistry = useCallback(async ({ forceRefresh = false, notifyOnError = false } = {}) => {
+    setRegistryLoading(true);
     try {
-      const [registryData, installedData, providersData, uiData] = await Promise.all([
-        getExtensionRegistry({ forceRefresh }),
-        getExtensionInstalled(),
-        getExtensionProviders(),
-        getExtensionUiPayload(),
-      ]);
-      setRegistry(registryData.registry || []);
-      setRegistryDiagnostics(registryData.diagnostics || []);
-      setInstalled(installedData.extensions || []);
-      setProviders(providersData.providers || []);
-      setUiPayload({ extensions: uiData.extensions || [], failed: uiData.failed || [] });
-      onErrorStateChange?.(false);
+      const data = await getExtensionRegistry({ forceRefresh });
+      setRegistry(data.registry || []);
+      setRegistryDiagnostics(data.diagnostics || []);
     } catch (e) {
-      const msg = String(e?.message || e || "Failed to load extensions");
-      setError(msg);
-      if (persistExtensionNotification) {
+      const msg = String(e?.message || e || "Failed to load extension registry");
+      setRegistryDiagnostics([{ severity: "error", code: "registry_load_failed", message: msg }]);
+      if (notifyOnError && persistExtensionNotification) {
         void persistExtensionNotification({
           kind: "error",
           source: "extensions",
@@ -559,11 +550,61 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
           aggregation_key: "extensions-registry:load:error",
         });
       }
-      onErrorStateChange?.(true);
     } finally {
-      setLoading(false);
+      setRegistryLoading(false);
     }
-  }, [onErrorStateChange, persistExtensionNotification]);
+  }, [persistExtensionNotification]);
+
+  const loadAll = useCallback(async (forceRefresh = false) => {
+    setLoading(true);
+    setError("");
+    void loadRegistry({ forceRefresh, notifyOnError: forceRefresh });
+    const results = await Promise.allSettled([
+        getExtensionInstalled(),
+        getExtensionProviders(),
+        getExtensionUiPayload(),
+    ]);
+    const [installedResult, providersResult, uiResult] = results;
+    const failures = [];
+
+    if (installedResult.status === "fulfilled") {
+      setInstalled(installedResult.value.extensions || []);
+    } else {
+      failures.push(installedResult.reason);
+    }
+    if (providersResult.status === "fulfilled") {
+      setProviders(providersResult.value.providers || []);
+    } else {
+      failures.push(providersResult.reason);
+    }
+    if (uiResult.status === "fulfilled") {
+      const uiData = uiResult.value;
+      setUiPayload({ extensions: uiData.extensions || [], failed: uiData.failed || [] });
+    } else {
+      failures.push(uiResult.reason);
+    }
+
+    if (failures.length) {
+      const msg = failures
+        .map((item) => String(item?.message || item || "Failed to load extensions"))
+        .join("; ");
+      setError(msg);
+      if (persistExtensionNotification) {
+        void persistExtensionNotification({
+          kind: "error",
+          source: "extensions",
+          title: "Extensions",
+          message: msg,
+          metadata: { operation: "extensions_load" },
+          aggregation_key: "extensions:load:error",
+        });
+      }
+      onErrorStateChange?.(true);
+    } else {
+      onErrorStateChange?.(false);
+    }
+    setLoading(false);
+  }, [loadRegistry, onErrorStateChange, persistExtensionNotification]);
 
   useEffect(() => {
     loadAll();
@@ -575,15 +616,10 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
   const prevActiveViewRef = useRef(null);
   useEffect(() => {
     if (activeView === "registry" && prevActiveViewRef.current !== "registry") {
-      getExtensionRegistry()
-        .then((data) => {
-          setRegistry(data.registry || []);
-          setRegistryDiagnostics(data.diagnostics || []);
-        })
-        .catch(() => {});
+      void loadRegistry();
     }
     prevActiveViewRef.current = activeView;
-  }, [activeView]);
+  }, [activeView, loadRegistry]);
 
   const installedById = useMemo(
     () => new Map(installed.map((item) => [item.id, item])),
@@ -948,7 +984,7 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
               Update containers ({dockerUpdatesAvailable.length})
             </CoreUIButton>
           ) : null}
-          <CoreUIButton variant="primary" onClick={() => loadAll(true)} disabled={loading || Boolean(busyId) || Boolean(dockerUpdateBusy)}>
+          <CoreUIButton variant="primary" onClick={() => loadAll(true)} disabled={loading || registryLoading || Boolean(busyId) || Boolean(dockerUpdateBusy)}>
             Refresh
           </CoreUIButton>
         </div>
@@ -1085,7 +1121,7 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
                 </article>
               );
             })}
-            {!registry.length && !loading ? <div className="extensions-empty">No registry entries.</div> : null}
+            {!registry.length && !registryLoading ? <div className="extensions-empty">No registry entries.</div> : null}
           </div>
         </section>
       ) : null}

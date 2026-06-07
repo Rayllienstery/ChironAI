@@ -30,6 +30,8 @@ node_modules/
 .npm/
 .pnpm-store/
 .pnpm-debug.log*
+CoreModules/CoreUI/dist/
+WebUI/dist/
 
 # Vite cache (custom cacheDir or tooling defaults)
 .vite/
@@ -79,14 +81,15 @@ config.local.yaml
 logs/
 *.log.*
 
-# Fetched markdown files and documentation sources
-WebUI/rag_sources/**/meta.json
-WebUI/rag_sources/**/pages/
+# Fetched/generated markdown files and documentation sources
+WebUI/rag_sources/
+WebUI/rag_sources_for_testing/
 Apple-Developer-Documentation-Offline-Archive-main/
 
 # Qdrant data
 qdrant_data/
 qdrant_storage/
+CoreModules/RagService/rag_service/data/*.db
 
 # Temporary files
 tmp/
@@ -114,6 +117,8 @@ Thumbs.db
 # Project-specific
 last_collection.txt
 WebUI/last_collection.txt
+tests/_tmp_*
+tests/*.tmp
 *.db
 *.sqlite
 *.sqlite3
@@ -151,7 +156,8 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
-.npm-cache
-.kilo
-prompts
-.tmp_openwebui_data
+.npm-cache/
+.kilo/
+prompts/*
+!prompts/.gitkeep
+.tmp_openwebui_data/

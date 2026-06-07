@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.36] - 2026-06-07
+### Fixed
+- Removed crawled web-page markdown outputs from the repository and ignored the testing crawl output directory.
+
+## [0.6.35] - 2026-06-07
+### Fixed
+- Made the Extensions tab stop blocking Installed and Providers on the remote registry load.
+
 ## [0.6.34] - 2026-06-07
 ### Changed
 - Made WebUI startup and the initial CoreUI render stop blocking on provider bootstrap, session creation, delayed shell requests, or startup-critical lazy chunks so Dashboard, Performance, and WebUI pages can open immediately.
