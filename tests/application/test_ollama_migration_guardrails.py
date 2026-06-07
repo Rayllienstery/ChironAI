@@ -42,7 +42,7 @@ def test_core_no_direct_ollama_http_ownership() -> None:
         "CoreModules/RagService/rag_service/config.py",
     )
     offenders: list[str] = []
-    for root in ["api", "application", "CoreModules/LlmProxy", "CoreModules/WebUIBackend", "domain", "infrastructure"]:
+    for root in ["api", "application", "CoreModules/LlmProxy", "modules/webui_backend", "domain", "infrastructure"]:
         for path in (ROOT / root).rglob("*"):
             if not path.is_file() or path.suffix.lower() not in {".py", ".md", ".yaml", ".yml"}:
                 continue

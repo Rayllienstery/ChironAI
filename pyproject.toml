@@ -48,7 +48,7 @@ tmrag = "api.cli.__main__:main"
 [project.urls]
 Homepage = "https://github.com"
 
-# --- Editable install: core Python packages at repository root (not WebUI/scripts, not modules/* subprojects)
+# --- Editable install: core Python packages at repository root plus canonical shared modules
 [tool.setuptools.packages.find]
 where = ["."]
 include = [
@@ -70,12 +70,13 @@ exclude = ["tests*", "tests"]
 chironai_security = "CoreModules/Security/chironai_security"
 extensions_sandbox = "CoreModules/ExtensionsSandbox/extensions_sandbox"
 extensions_backend = "modules/extensions_backend/extensions_backend"
-webui_backend = "CoreModules/WebUIBackend/webui_backend"
+webui_backend = "modules/webui_backend/webui_backend"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = [
     ".",
+    "modules/webui_backend",
     "modules/crawler_service",
     "modules/extensions_backend",
     "modules/html_md",
@@ -87,7 +88,6 @@ pythonpath = [
     "CoreModules/RagService",
     "CoreModules/WebInteraction",
     "CoreModules/MdIngestionService",
-    "CoreModules/WebUIBackend",
     "CoreModules/ErrorManager",
 ]
 python_files = ["test_*.py"]
@@ -116,7 +116,7 @@ src = [
   "CoreModules/RagService/rag_service",
   "CoreModules/WebInteraction/web_interaction",
   "CoreModules/MdIngestionService/md_ingestion_service",
-  "CoreModules/WebUIBackend/webui_backend",
+  "modules/webui_backend/webui_backend",
   "modules/crawler_service/crawler_service",
   "modules/extensions_backend/extensions_backend",
   "modules/html_md/html_md",
@@ -155,7 +155,7 @@ paths = [
   "infrastructure",
   "utils",
   "CoreModules",
-  "CoreModules/WebUIBackend/webui_backend",
+  "modules/webui_backend/webui_backend",
   "modules",
   "modules/html_md",
   "scripts",

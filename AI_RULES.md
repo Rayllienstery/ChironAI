@@ -17,8 +17,8 @@ For humans and AI assistants: terminology, module boundaries, what to keep in sy
 |------|------------|
 | **CoreUI** | React/Vite SPA under `CoreModules/CoreUI/`. Talks to the backend **only over HTTP**—no direct RAG, crawler, or ingestion calls. See `CoreModules/CoreUI/README.md`. |
 | **`WebUI/` folder** | Runtime/data directory (`rag_sources`, caches, logs, `last_collection.txt`). This is **not** the frontend and no longer contains Python entrypoints. |
-| **WebUIBackend** | Python backend entrypoints and legacy crawl/ingest helpers under `CoreModules/WebUIBackend/webui_backend/`. |
-| **Web UI (HTTP API)** | REST under the `/api/webui` prefix for dashboard, settings, logs, etc. **Today** the main route implementation is the monolith `api/http/webui_routes.py`. **Target** migration is the standalone service `modules/webui_backend/`. |
+| **WebUIBackend** | Canonical Python backend package under `modules/webui_backend/webui_backend/`; owns WebUI entrypoints plus legacy crawl/ingest helpers that have not yet been extracted further. |
+| **Web UI (HTTP API)** | REST under the `/api/webui` prefix for dashboard, settings, logs, etc. The canonical package is `modules/webui_backend/`; the remaining route-composition tail is still `api/http/webui_routes.py` and related `api/http/webui_*_routes.py` modules. |
 | **Open WebUI** | A separate Docker product; status/start is owned by the `open-webui` extension through DockerManager host capabilities. Do not conflate with **CoreUI** (our React app) or call it “our WebUI” without qualification. |
 
 Ambiguous “WebUI” in conversation: clarify—**`WebUI/` data folder**, **WebUIBackend**, **`/api/webui` HTTP API**, **CoreUI**, or **Open WebUI**.
@@ -173,11 +173,11 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 | `docs/legacy_map.md` | Current risks and legacy wiring |
 | `docs/RAG_BEHAVIOR.md` | RAG behavior (retrieval/prompt work) |
 | `CoreModules/CoreUI/README.md` | Running the frontend, `VITE_API_URL` |
-| `modules/webui_backend/README.md` | Target Web UI backend |
+| `modules/webui_backend/README.md` | Canonical Web UI backend |
 | `modules/README.md` | Module index |
 | `CoreModules/LlmProxy/README.md` | Proxy, endpoints, env |
 | `CoreModules/RagService/README.md` | RAG package |
 
 ---
 
-*File reflects repo state; after large migrations (e.g. extracting `webui_backend`), update sections 2 and 5.*
+*File reflects repo state; after large Web UI route extractions, update sections 2 and 5.*

@@ -24,11 +24,11 @@ def _root() -> str:
 
 
 def _app_py() -> str:
-    return os.path.join(_root(), "CoreModules", "WebUIBackend", "webui_backend", "app.py")
+    return os.path.join(_root(), "modules", "webui_backend", "webui_backend", "app.py")
 
 
 def _webui_backend_root() -> str:
-    return os.path.join(_root(), "CoreModules", "WebUIBackend")
+    return os.path.join(_root(), "modules", "webui_backend")
 
 
 def _module_env() -> dict[str, str]:
@@ -61,7 +61,7 @@ def cmd_crawl(ns: argparse.Namespace) -> int:
     _p = os.pathsep.join(
         [
             root,
-            os.path.join(root, "CoreModules", "WebUIBackend"),
+            os.path.join(root, "modules", "webui_backend"),
             os.path.join(root, "modules", "crawler_service"),
             os.path.join(root, "modules", "html_md"),
         ]

@@ -1,4 +1,4 @@
-"""Path helpers for the WebUI backend CoreModule."""
+"""Path helpers for the canonical WebUI backend module."""
 
 from __future__ import annotations
 

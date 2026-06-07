@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.41] - 2026-06-07
+### Changed
+- Made `modules/webui_backend` the canonical `webui_backend` package and removed the duplicate CoreModules package namespace.
+
 ## [0.6.40] - 2026-06-07
 ### Changed
 - Added a Docker event stream and made CoreUI service status refresh react to container/image events with slower fallback polling.

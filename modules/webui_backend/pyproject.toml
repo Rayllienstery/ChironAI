@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chironai-webui-backend"
+version = "0.1.0"
+description = "Canonical ChironAI WebUI backend package and runtime entrypoints."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+dependencies = [
+  "flask>=2.0",
+  "requests>=2.28",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["webui_backend*"]

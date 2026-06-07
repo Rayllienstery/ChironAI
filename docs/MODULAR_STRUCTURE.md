@@ -33,8 +33,8 @@ docker-compose.yml  — Services for each module (when migrated)
 | **md_ingestion_service** | Lives under **CoreModules/MdIngestionService**: pre-RAG prepare (`indexing.yaml` + md_indexer), filtering, chunking. Feeds RAG via contract. |
 | **crawler_service** | Crawl web/docs sources; push results to md_ingestion_service via contract. |
 | **extensions_backend** | Extension registry, repository metadata, install/update/remove, local install state, blocklist, runtime status, and marketplace governance. Calls extension host/runtime only through contracts. |
-| **webui_backend** | WebUI API: dashboard, settings, logs. Calls rag/md_ingestion/crawler via HTTP contracts only. |
-| **CoreUI** (under `CoreModules/CoreUI`) | React SPA; talks to the WebUI HTTP API (today: monolith `api/http/webui_routes`; target: `webui_backend` only). |
+| **webui_backend** | Canonical WebUI backend package under `modules/webui_backend`: entrypoints, dashboard/settings/logs target layers, and remaining legacy crawl/ingest helpers pending further extraction. |
+| **CoreUI** (under `CoreModules/CoreUI`) | React SPA; talks to the WebUI HTTP API through the canonical `webui_backend` entrypoints. |
 | **ExtensionsHost** (under `CoreModules/ExtensionsHost`, target) | Stable host/runtime contracts, provider bridge, host capabilities, and sandbox protocol surface. Does not own registry polling, repository metadata fetching, install state, or marketplace policy. |
 | **tools** | Optional scripts/CLI that call multiple modules. |
 
@@ -76,6 +76,6 @@ See the plan diagram (flowchart) for a visual summary.
 
 ## Migration from Current Layout
 
-The existing codebase (`api/`, `application/`, `domain/`, `infrastructure/`, `config/`) remains; the Web UI frontend lives under **`CoreModules/CoreUI`**. New modules coexist with legacy entrypoints; scripts and docs reference both. Gradual migration: point tmrag/start/proxy at webui_backend + rag_service when ready.
+The existing codebase (`api/`, `application/`, `domain/`, `infrastructure/`, `config/`) remains; the Web UI frontend lives under **`CoreModules/CoreUI`**. The canonical `webui_backend` package now lives under `modules/webui_backend`; the remaining WebUI route-composition tail lives under `api/http/webui_routes.py` and related `webui_*_routes.py` files.
 
 Extension migration: current direct wiring through `api/http/*`, `llm_proxy_wiring.py`, `CoreModules/LlmInteractor`, and local `extensions/bundled` scanning is migration tail. Target state moves registry/discovery/install/status ownership to `extensions_backend`; core modules keep only extension host/runtime contracts and sandbox/capability surfaces.
