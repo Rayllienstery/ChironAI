@@ -175,7 +175,6 @@ function SidebarNav({
       if (id === 'logs') import('./LogsTab');
       if (id === 'rag') import('./RagTab');
       if (id === 'crawler') import('./CrawlerTab');
-      if (id === 'dashboard') import('./DashboardTab');
       if (id === 'template-editor') import('./TemplateEditorTab');
       if (id === 'testing') import('./TestingTab');
       if (id === 'docker') import('./DockerTab');

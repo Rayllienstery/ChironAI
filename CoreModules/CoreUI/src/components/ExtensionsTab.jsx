@@ -5,6 +5,7 @@ import CoreUIButton from "./CoreUIButton";
 import CoreUIPillTabs from "./CoreUIPillTabs";
 import { useOptionalNotificationCenter } from "./NotificationCenterContext";
 import {
+  checkDockerImageUpdate,
   disableExtension,
   enableExtension,
   getExtensionInstalled,
@@ -17,6 +18,8 @@ import {
   killExtensionSandbox,
   removeExtension,
   restartExtensionSandbox,
+  updateDockerImage,
+  updateExtensionDocker,
 } from "../services/api";
 import "../styles/components/ExtensionsTab.css";
 
@@ -25,6 +28,103 @@ const EXTENSION_VIEWS = [
   { id: "providers", label: "Providers" },
   { id: "registry", label: "Registry" },
 ];
+
+const DOCKER_UPDATE_STEPS = [
+  { id: "check", label: "Check remote image digest" },
+  { id: "pull", label: "Pull Docker image", hint: "Large images can take several minutes." },
+  { id: "recreate", label: "Recreate container with preserved volumes" },
+  { id: "health", label: "Wait for service health check" },
+];
+
+function formatElapsedSeconds(totalSeconds) {
+  const seconds = Math.max(0, Number(totalSeconds) || 0);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${minutes}m ${remainder}s`;
+}
+
+function dockerUpdateStepIndex(stepId) {
+  return DOCKER_UPDATE_STEPS.findIndex((step) => step.id === stepId);
+}
+
+function ExtensionDockerUpdatePanel({ progress, compact = false }) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!progress) return undefined;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [progress]);
+
+  if (!progress) return null;
+
+  const activeIndex = dockerUpdateStepIndex(progress.step);
+  const elapsed = formatElapsedSeconds(Math.floor((nowMs - progress.startedAt) / 1000));
+  const bulkLabel =
+    progress.totalCount > 1
+      ? `Extension ${progress.currentIndex + 1} of ${progress.totalCount}`
+      : null;
+
+  return (
+    <section
+      className={`extensions-docker-update-panel${compact ? " extensions-docker-update-panel--compact" : ""}`}
+      aria-live="polite"
+      aria-busy="true"
+    >
+      {compact ? (
+        <div className="extensions-docker-update-panel__meta">
+          <span className="extensions-docker-update-panel__meta-image">{progress.image}</span>
+          {bulkLabel ? <CoreUIBadge tone="neutral">{bulkLabel}</CoreUIBadge> : null}
+          <CoreUIBadge tone="info">{elapsed}</CoreUIBadge>
+        </div>
+      ) : (
+        <div className="extensions-docker-update-panel__header">
+          <span className="extensions-docker-update-panel__spinner" aria-hidden="true" />
+          <div>
+            <strong>{progress.title}</strong>
+            <p>
+              {bulkLabel ? `${bulkLabel} · ` : ""}
+              {progress.image}
+            </p>
+          </div>
+          <CoreUIBadge tone="info">{elapsed}</CoreUIBadge>
+        </div>
+      )}
+
+      {progress.step === "pull" ? (
+        <div className="extensions-docker-update-panel__progress" aria-hidden="true">
+          <div className="extensions-docker-update-panel__progress-bar" />
+        </div>
+      ) : null}
+
+      <ol className="extensions-docker-update-steps">
+        {DOCKER_UPDATE_STEPS.map((step, index) => {
+          const done = activeIndex > index || progress.step === "done";
+          const active = progress.step === step.id;
+          const tone = done ? "success" : active ? "info" : "neutral";
+          return (
+            <li
+              key={step.id}
+              className={`extensions-docker-update-step${active ? " extensions-docker-update-step--active" : ""}${done ? " extensions-docker-update-step--done" : ""}`}
+            >
+              <span className="extensions-docker-update-step__icon material-symbols-outlined" aria-hidden="true">
+                {done ? "check_circle" : active ? "progress_activity" : "radio_button_unchecked"}
+              </span>
+              <div className="extensions-docker-update-step__copy">
+                <span>{step.label}</span>
+                {active && step.hint ? <small>{step.hint}</small> : null}
+                {active && progress.detail ? <small>{progress.detail}</small> : null}
+              </div>
+              {active ? <CoreUIBadge tone={tone}>Running</CoreUIBadge> : null}
+              {done ? <CoreUIBadge tone={tone}>Done</CoreUIBadge> : null}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
 
 function ExtensionIcon({ icon, iconUrl }) {
   const url = String(iconUrl || "").trim();
@@ -75,6 +175,32 @@ function ExtensionIcon({ icon, iconUrl }) {
       extension
     </span>
   );
+}
+
+function hasDockerContainer(item) {
+  return Boolean(item?.docker?.container_name || item?.docker?.image);
+}
+
+function dockerUpdateAvailable(item) {
+  return Boolean(item?.docker?.update_available);
+}
+
+function formatDockerVersionLabel(docker) {
+  if (!docker) return "";
+  const current = String(docker.current_version || "").trim();
+  const update = String(docker.update_version || "").trim();
+  const image = String(docker.image || "").trim();
+  if (docker.update_available && current && update && current !== update) {
+    return `${current} → ${update}`;
+  }
+  if (docker.update_available && update) {
+    return update === current ? `${current || image} (update available)` : `${current || image} → ${update}`;
+  }
+  if (docker.update_status === "up_to_date" && current) {
+    return `${current} (up to date)`;
+  }
+  if (current) return current;
+  return image;
 }
 
 function HealthPill({ health }) {
@@ -394,6 +520,8 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
   const [providers, setProviders] = useState([]);
   const [uiPayload, setUiPayload] = useState({ extensions: [], failed: [] });
   const [busyId, setBusyId] = useState("");
+  const [dockerUpdateBusy, setDockerUpdateBusy] = useState("");
+  const [dockerUpdateProgress, setDockerUpdateProgress] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [details, setDetails] = useState(null);
@@ -461,6 +589,14 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
     () => new Map(installed.map((item) => [item.id, item])),
     [installed]
   );
+  const dockerExtensions = useMemo(
+    () => installed.filter((item) => hasDockerContainer(item)),
+    [installed]
+  );
+  const dockerUpdatesAvailable = useMemo(
+    () => dockerExtensions.filter((item) => dockerUpdateAvailable(item)),
+    [dockerExtensions]
+  );
   const providerByExtensionId = useMemo(
     () => new Map(providers.map((item) => [item.extension_id, item])),
     [providers]
@@ -478,14 +614,16 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
     (extensionId, operation, kind, message, metadata = {}) => {
       if (!persistExtensionNotification || !extensionId) return;
       const title = extensionTitle(extensionId);
+      const persistedKind = kind === "error" ? "error" : "info";
       void persistExtensionNotification({
-        kind,
+        kind: persistedKind,
         source: "extensions",
         title: `${title}: ${operation}`,
         message,
         metadata: {
           extension_id: extensionId,
           operation,
+          outcome: kind,
           ...metadata,
         },
         aggregation_key: `extensions-lifecycle:${extensionId}:${operation}:${kind}`,
@@ -609,6 +747,190 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
     [details, loadAll, notificationCenter, notifyExtensionEvent, onErrorStateChange, onExtensionSurfaceChange, persistExtensionNotification]
   );
 
+  const runDockerUpdate = useCallback(
+    async (extensionIds) => {
+      const ids = (Array.isArray(extensionIds) ? extensionIds : [extensionIds]).filter(Boolean);
+      if (!ids.length) return;
+
+      const targets = ids
+        .map((id) => {
+          const item = installedById.get(id);
+          const image = String(item?.docker?.image || "").trim();
+          if (!image) return null;
+          return { id, title: extensionTitle(id), image, item };
+        })
+        .filter(Boolean);
+      if (!targets.length) {
+        setError("No Docker image is configured for the selected extension(s).");
+        return;
+      }
+
+      const busyKey = targets.length === 1 ? targets[0].id : "__bulk__";
+      const liveActivityId = `extensions-docker:${busyKey}`;
+      const startedAt = Date.now();
+      setDockerUpdateBusy(busyKey);
+      setError("");
+
+      const pushProgress = (patch) => {
+        setDockerUpdateProgress((prev) => {
+          const base = prev || {
+            busyKey,
+            startedAt,
+            totalCount: targets.length,
+            currentIndex: 0,
+            title: targets[0].title,
+            image: targets[0].image,
+            step: "check",
+          };
+          return { ...base, ...patch };
+        });
+      };
+
+      pushProgress({
+        busyKey,
+        startedAt,
+        totalCount: targets.length,
+        currentIndex: 0,
+        title: targets[0].title,
+        image: targets[0].image,
+        step: "check",
+        detail: "",
+      });
+
+      try {
+        const results = [];
+
+        for (let index = 0; index < targets.length; index += 1) {
+          const target = targets[index];
+          pushProgress({
+            currentIndex: index,
+            title: target.title,
+            image: target.image,
+            step: "check",
+            detail: "Comparing local and remote digests…",
+          });
+
+          const check = await checkDockerImageUpdate(target.image);
+          if (!check?.ok && check?.error) {
+            throw new Error(check.error || check.details || `Failed to check ${target.image}`);
+          }
+
+          pushProgress({
+            step: "pull",
+            detail: check?.status === "up_to_date"
+              ? "Image is up to date; refreshing local layers anyway…"
+              : "Downloading image layers from the registry…",
+          });
+          const pulled = await updateDockerImage(target.image);
+          if (!pulled?.ok) {
+            throw new Error(pulled?.error || pulled?.details || `Failed to pull ${target.image}`);
+          }
+
+          pushProgress({
+            step: "recreate",
+            detail: "Stopping the old container and starting a new one with the same volumes…",
+          });
+          const recreated = await updateExtensionDocker([target.id], { skipImagePull: true });
+          if (!recreated?.ok) {
+            throw new Error(recreated?.error || recreated?.message || `Failed to recreate ${target.title}`);
+          }
+
+          pushProgress({
+            step: "health",
+            detail: recreated?.message || "Verifying service health…",
+          });
+          results.push(recreated);
+        }
+
+        const successMsg =
+          results.length === 1
+            ? results[0]?.message || `Updated ${targets[0].title}.`
+            : `Updated ${results.length} extension containers.`;
+
+        pushProgress({ step: "done", detail: successMsg });
+        notifyExtensionEvent(
+          targets[0].id,
+          "docker update",
+          "success",
+          successMsg,
+          { extension_ids: ids, results }
+        );
+        await loadAll();
+        await onExtensionSurfaceChange?.();
+        onErrorStateChange?.(false);
+      } catch (e) {
+        const msg = String(e?.message || e || "Docker update failed");
+        setError(msg);
+        notifyExtensionEvent(targets[0].id, "docker update", "error", msg, { extension_ids: ids });
+        onErrorStateChange?.(true);
+      } finally {
+        notificationCenter?.clearLiveActivity?.(liveActivityId);
+        setDockerUpdateBusy("");
+        setDockerUpdateProgress(null);
+      }
+    },
+    [
+      extensionTitle,
+      installedById,
+      loadAll,
+      notificationCenter,
+      notifyExtensionEvent,
+      onErrorStateChange,
+      onExtensionSurfaceChange,
+      persistExtensionNotification,
+    ]
+  );
+
+  useEffect(() => {
+    if (!dockerUpdateProgress) return undefined;
+    const liveActivityId = `extensions-docker:${dockerUpdateProgress.busyKey}`;
+    notificationCenter?.setLiveActivity?.(
+      liveActivityId,
+      "extensions",
+      <ExtensionDockerUpdatePanel progress={dockerUpdateProgress} compact />,
+      {
+        headerLeading: (
+          <span className="extensions-docker-update-live-title">
+            <span
+              className="extensions-docker-update-panel__spinner extensions-docker-update-panel__spinner--inline"
+              aria-hidden="true"
+            />
+            <span>{dockerUpdateProgress.title}</span>
+          </span>
+        ),
+      }
+    );
+    return undefined;
+  }, [dockerUpdateProgress, notificationCenter]);
+
+  const renderDockerUpdateButton = (item, { stopPropagation = false } = {}) => {
+    if (!hasDockerContainer(item)) return null;
+    const isBusy = dockerUpdateBusy === item.id || dockerUpdateBusy === "__bulk__" || busyId === item.id;
+    const handler = stopPropagation
+      ? (event) => {
+          event.stopPropagation();
+          void runDockerUpdate(item.id);
+        }
+      : () => void runDockerUpdate(item.id);
+
+    return (
+      <CoreUIButton
+        variant={dockerUpdateAvailable(item) ? "primary" : "default"}
+        disabled={isBusy}
+        onClick={handler}
+        title={
+          item.docker?.data_persisted
+            ? `${item.docker?.update_message || "Pull the latest Docker image and restart the service."} Models and data stay on the mounted Docker volume(s).`
+            : item.docker?.update_message || "Pull the latest container image and restart the service"
+        }
+      >
+        {dockerUpdateBusy === item.id || (dockerUpdateBusy === "__bulk__" && dockerUpdateAvailable(item))
+          ? "Updating…"
+          : "Update"}
+      </CoreUIButton>
+    );
+  };
+
   return (
     <div className="extensions-tab tab-view">
       <div className="extensions-tab__header">
@@ -616,9 +938,20 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
           <h2>Extensions</h2>
           <p>Trusted registry, installed providers, and declarative CoreUI schemas.</p>
         </div>
-        <CoreUIButton variant="primary" onClick={() => loadAll(true)} disabled={loading || Boolean(busyId)}>
-          Refresh
-        </CoreUIButton>
+        <div className="extensions-tab__header-actions">
+          {dockerUpdatesAvailable.length > 0 ? (
+            <CoreUIButton
+              variant="ghost"
+              onClick={() => runDockerUpdate(dockerUpdatesAvailable.map((item) => item.id))}
+              disabled={loading || Boolean(busyId) || Boolean(dockerUpdateBusy)}
+            >
+              Update containers ({dockerUpdatesAvailable.length})
+            </CoreUIButton>
+          ) : null}
+          <CoreUIButton variant="primary" onClick={() => loadAll(true)} disabled={loading || Boolean(busyId) || Boolean(dockerUpdateBusy)}>
+            Refresh
+          </CoreUIButton>
+        </div>
       </div>
 
       <CoreUIPillTabs
@@ -635,6 +968,11 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
       />
 
       {error ? <div className="coreui-panel-note coreui-panel-note--error">{error}</div> : null}
+      {dockerUpdateProgress ? (
+        <section className="app-default-card extensions-docker-update-shell" aria-label="Extension container update progress">
+          <ExtensionDockerUpdatePanel progress={dockerUpdateProgress} />
+        </section>
+      ) : null}
 
       {activeView === "registry" ? (
         <section className="app-default-card extensions-view" aria-labelledby="extensions-registry-heading">
@@ -655,7 +993,7 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
           <div className="extensions-cards">
             {registry.map((item) => {
               const installedItem = installedById.get(item.id);
-              const isBusy = busyId === item.id;
+              const isBusy = busyId === item.id || dockerUpdateBusy === item.id || dockerUpdateBusy === "__bulk__";
               return (
                 <article
                   key={item.id}
@@ -704,6 +1042,7 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
                           </>
                         ) : (
                           <>
+                            {renderDockerUpdateButton(installedItem, { stopPropagation: true })}
                             <CoreUIButton
                               variant="danger"
                               disabled={isBusy}
@@ -755,7 +1094,15 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
         <section className="app-default-card extensions-view" aria-labelledby="extensions-installed-heading">
           <div className="extensions-view__header">
             <h3 id="extensions-installed-heading">Installed</h3>
-            <CoreUIBadge tone="info">{installed.length} installed</CoreUIBadge>
+            <div className="extensions-view__header-badges">
+              <CoreUIBadge tone="info">{installed.length} installed</CoreUIBadge>
+              {dockerExtensions.length > 0 ? (
+                <CoreUIBadge tone="neutral">{dockerExtensions.length} with Docker</CoreUIBadge>
+              ) : null}
+              {dockerUpdatesAvailable.length > 0 ? (
+                <CoreUIBadge tone="warning">{dockerUpdatesAvailable.length} update available</CoreUIBadge>
+              ) : null}
+            </div>
           </div>
           <div className="extensions-cards">
             {installed.map((item) => (
@@ -781,13 +1128,32 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
                   {item.restart_required ? <CoreUIBadge tone="warning">Restart required</CoreUIBadge> : null}
                   {item.security_blocked ? <CoreUIBadge tone="error">Security blocked</CoreUIBadge> : null}
                   {item.sandbox_blocked ? <CoreUIBadge tone="warning">Manual restart required</CoreUIBadge> : null}
+                  {dockerUpdateAvailable(item) ? <CoreUIBadge tone="warning">New version</CoreUIBadge> : null}
+                  {hasDockerContainer(item) && item.docker?.image ? (
+                    <CoreUIBadge
+                      tone={dockerUpdateAvailable(item) ? "warning" : "neutral"}
+                      title={[
+                        item.docker.image,
+                        item.docker.current_version ? `Current: ${item.docker.current_version}` : "",
+                        item.docker.update_version && dockerUpdateAvailable(item)
+                          ? `Update: ${item.docker.update_version}`
+                          : "",
+                        item.docker.update_message || "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    >
+                      {formatDockerVersionLabel(item.docker)}
+                    </CoreUIBadge>
+                  ) : null}
                 </div>
                 <div className="extensions-card__aside">
                   <HealthPill health={{ status: item.status || "installed" }} />
                   <div className="extensions-card__actions">
+                    {renderDockerUpdateButton(item)}
                     <CoreUIButton
                       variant="danger"
-                      disabled={busyId === item.id}
+                      disabled={busyId === item.id || dockerUpdateBusy === item.id || dockerUpdateBusy === "__bulk__"}
                       onClick={() => runAction(item.id, (id) => removeExtension(id), "remove")}
                     >
                       Remove
@@ -795,7 +1161,7 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
                     {item.enabled ? (
                       <CoreUIButton
                         variant="ghost"
-                        disabled={busyId === item.id}
+                        disabled={busyId === item.id || dockerUpdateBusy === item.id || dockerUpdateBusy === "__bulk__"}
                         onClick={() => runAction(item.id, (id) => disableExtension(id), "disable")}
                       >
                         Disable
@@ -803,7 +1169,7 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
                     ) : (
                       <CoreUIButton
                         variant="primary"
-                        disabled={busyId === item.id}
+                        disabled={busyId === item.id || dockerUpdateBusy === item.id || dockerUpdateBusy === "__bulk__"}
                         onClick={() => runAction(item.id, (id) => enableExtension(id), "enable")}
                       >
                         Enable
@@ -813,7 +1179,7 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
                 </div>
               </div>
               {item.error ? <pre className="extensions-card__error extensions-card__details">{item.error}</pre> : null}
-              <SandboxDiagnostics item={item} busyId={busyId} runAction={runAction} />
+              <SandboxDiagnostics item={item} busyId={busyId || dockerUpdateBusy} runAction={runAction} />
               <SecurityFindings findings={item.security_findings} />
             </article>
             ))}

@@ -6,6 +6,12 @@ import re
 from pathlib import Path
 from typing import Any
 
+from extensions_backend.docker_updates import (
+    enrich_installed_with_docker,
+    update_extension_docker_container,
+    update_extension_docker_containers,
+)
+
 _SAFE_EXTENSION_ID_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9_-]{0,62}[A-Za-z0-9])?$")
 _SAFE_ACTION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
@@ -68,8 +74,9 @@ class ExtensionManagementService:
     manager, ensuring that no unsanitized data reaches the installation pipeline.
     """
 
-    def __init__(self, manager: Any) -> None:
+    def __init__(self, manager: Any, *, docker_manager: Any | None = None) -> None:
         self._manager = manager
+        self._docker_manager = docker_manager
 
     @property
     def runtime(self) -> Any | None:
@@ -111,7 +118,36 @@ class ExtensionManagementService:
         return self._manager.extension_details(ext_id, ref=safe_ref)
 
     def installed_extensions(self) -> list[dict[str, Any]]:
-        return self._manager.installed_extensions()
+        rows = self._manager.installed_extensions()
+        return enrich_installed_with_docker(rows, self._docker_manager)
+
+    def update_extension_docker(
+        self,
+        extension_ids: list[str],
+        *,
+        runtime: Any | None = None,
+        skip_image_pull: bool = False,
+    ) -> dict[str, Any]:
+        if self._docker_manager is None:
+            return {"ok": False, "error": "Docker runtime is unavailable"}
+        ids = [str(item or "").strip() for item in extension_ids if str(item or "").strip()]
+        if not ids:
+            raise ValueError("extension_ids is required")
+        if len(ids) == 1:
+            return update_extension_docker_container(
+                ids[0],
+                docker=self._docker_manager,
+                manager=self._manager,
+                runtime=runtime,
+                skip_image_pull=skip_image_pull,
+            )
+        return update_extension_docker_containers(
+            ids,
+            docker=self._docker_manager,
+            manager=self._manager,
+            runtime=runtime,
+            skip_image_pull=skip_image_pull,
+        )
 
     def provider_rows(self, runtime: Any | None = None) -> list[dict[str, Any]]:
         return self._manager.provider_rows(runtime)

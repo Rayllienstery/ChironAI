@@ -182,15 +182,32 @@ def test_remove_container_blocks_running_without_force() -> None:
 
 
 def test_check_image_update_up_to_date_and_available() -> None:
-    local = json.dumps({"Id": "sha256:local", "RepoDigests": ["ollama/ollama@sha256:aaa"]})
+    local = json.dumps(
+        {
+            "Id": "sha256:local",
+            "RepoDigests": ["ollama/ollama@sha256:aaa"],
+            "Config": {"Labels": {"org.opencontainers.image.version": "24.04"}},
+        }
+    )
     remote_same = json.dumps({"Descriptor": {"digest": "sha256:aaa"}})
     remote_new = json.dumps({"Descriptor": {"digest": "sha256:bbb"}})
+    remote_meta = json.dumps(
+        {
+            "image": {
+                "linux/amd64": {
+                    "config": {"Labels": {"org.opencontainers.image.version": "24.05"}},
+                }
+            }
+        }
+    )
 
     def fake_same(args: list[str], **_: object) -> CompletedProcess[str]:
         if args[1:3] == ["image", "inspect"]:
             return _proc(args, out=local)
         if args[1:3] == ["manifest", "inspect"]:
             return _proc(args, out=remote_same)
+        if args[1:4] == ["buildx", "imagetools", "inspect"]:
+            return _proc(args, out=remote_meta)
         raise AssertionError(args)
 
     def fake_new(args: list[str], **_: object) -> CompletedProcess[str]:
@@ -198,6 +215,8 @@ def test_check_image_update_up_to_date_and_available() -> None:
             return _proc(args, out=local)
         if args[1:3] == ["manifest", "inspect"]:
             return _proc(args, out=remote_new)
+        if args[1:4] == ["buildx", "imagetools", "inspect"]:
+            return _proc(args, out=remote_meta)
         raise AssertionError(args)
 
     with patch("docker_manager.manager.subprocess.run", side_effect=fake_same):
@@ -206,22 +225,47 @@ def test_check_image_update_up_to_date_and_available() -> None:
         new = DockerManager(docker_exe="docker").check_image_update("ollama/ollama:latest")
 
     assert same["status"] == "up_to_date"
+    assert same["current_version"] == "24.04"
+    assert same["update_version"] == "24.04"
     assert new["status"] == "update_available"
+    assert new["current_version"] == "24.04"
+    assert new["update_version"] == "24.05"
 
 
 def test_check_image_update_unknown_and_not_local() -> None:
-    local = json.dumps({"Id": "sha256:local", "RepoDigests": []})
+    local = json.dumps(
+        {
+            "Id": "sha256:abcdef0123456789",
+            "RepoDigests": [],
+            "Config": {"Labels": {}},
+        }
+    )
+    remote_meta = json.dumps(
+        {
+            "image": {
+                "linux/amd64": {
+                    "config": {"Labels": {"org.opencontainers.image.version": "9.9"}},
+                }
+            }
+        }
+    )
 
     def fake_unknown(args: list[str], **_: object) -> CompletedProcess[str]:
         if args[1:3] == ["image", "inspect"]:
             return _proc(args, out=local)
         if args[1:3] == ["manifest", "inspect"]:
             return _proc(args, code=1, err="manifest unavailable")
+        if args[1:4] == ["buildx", "imagetools", "inspect"]:
+            return _proc(args, code=1, err="imagetools unavailable")
         raise AssertionError(args)
 
     def fake_not_local(args: list[str], **_: object) -> CompletedProcess[str]:
         if args[1:3] == ["image", "inspect"]:
             return _proc(args, code=1, err="missing")
+        if args[1:3] == ["manifest", "inspect"]:
+            return _proc(args, out=json.dumps({"Descriptor": {"digest": "sha256:remote"}}))
+        if args[1:4] == ["buildx", "imagetools", "inspect"]:
+            return _proc(args, out=remote_meta)
         raise AssertionError(args)
 
     with patch("docker_manager.manager.subprocess.run", side_effect=fake_unknown):
@@ -230,7 +274,10 @@ def test_check_image_update_unknown_and_not_local() -> None:
         not_local = DockerManager(docker_exe="docker").check_image_update("missing/image:latest")
 
     assert unknown["status"] == "unknown"
+    assert unknown["current_version"] == "abcdef012345"
+    assert unknown["update_version"] == ""
     assert not_local["status"] == "not_local"
+    assert not_local["update_version"] == "9.9"
 
 
 def _inspect_payload(spec: DockerContainerSpec, *, running: bool, spec_hash: str | None = None) -> str:

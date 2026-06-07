@@ -57,7 +57,7 @@ export async function getVersion() {
   return data;
 }
 
-export async function getSession({ maxRetries = 6, baseDelayMs = 500 } = {}) {
+export async function getSession({ maxRetries = 3, baseDelayMs = 500, timeoutMs = 1500 } = {}) {
   let url = `${API_BASE}/sessions`;
   try {
     const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(COREUI_SESSION_STORAGE_KEY) : null;
@@ -76,11 +76,13 @@ export async function getSession({ maxRetries = 6, baseDelayMs = 500 } = {}) {
       await new Promise(resolve => setTimeout(resolve, baseDelayMs * Math.pow(2, attempt - 1)));
     }
     try {
-      const response = await fetch(url, { method: 'GET' });
+      const { response, data: session } = await fetchJsonWithTimeout(url, {
+        timeoutMs,
+        fetchOptions: { method: 'GET' },
+      });
       if (!response.ok) {
         throw new Error(`Failed to get session: ${response.status}`);
       }
-      const session = await response.json();
       try {
         if (session && session.id && typeof localStorage !== 'undefined') {
           localStorage.setItem(COREUI_SESSION_STORAGE_KEY, String(session.id));
@@ -1442,6 +1444,22 @@ export async function enableExtension(extensionId) {
 
 export async function disableExtension(extensionId) {
   return postExtensionAction('/extensions/disable', { extension_id: extensionId });
+}
+
+export async function updateExtensionDocker(extensionIds, { timeoutMs = 600000, skipImagePull = false } = {}) {
+  const ids = Array.isArray(extensionIds) ? extensionIds : [extensionIds];
+  const { response, data } = await fetchJsonWithTimeout(`${API_BASE}/extensions/docker/update`, {
+    timeoutMs,
+    fetchOptions: {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ extension_ids: ids, skip_image_pull: Boolean(skipImagePull) }),
+    },
+  });
+  if (!response.ok) {
+    throw new Error(extractApiError(data, 'Failed to update extension container'));
+  }
+  return data;
 }
 
 export async function restartExtensionSandbox(extensionId) {

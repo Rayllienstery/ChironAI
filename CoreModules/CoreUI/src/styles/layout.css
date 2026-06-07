@@ -310,6 +310,20 @@ html, body {
   margin: 0;
 }
 
+.session-error--inline {
+  width: min(100%, var(--coreui-page-max-width));
+  min-height: 0;
+  height: auto;
+  margin: var(--md-sys-spacing-md, 16px) auto 0;
+  padding: var(--md-sys-spacing-sm, 12px) var(--md-sys-spacing-md, 16px);
+  flex-direction: row;
+  justify-content: space-between;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium, 12px);
+  background: var(--md-sys-color-surface-container);
+  box-sizing: border-box;
+}
+
 .session-retry-btn {
   padding: 8px 24px;
   border-radius: 20px;

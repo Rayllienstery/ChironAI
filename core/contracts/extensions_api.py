@@ -240,6 +240,20 @@ class ExtensionBlocklistMatchDTO(TypedDict, total=False):
     matched_on: Literal["extension_id", "version", "ref", "repository_id", "publisher"]
 
 
+class ExtensionDockerStatusDTO(TypedDict, total=False):
+    container_name: str
+    image: str
+    running: bool
+    volumes: list[str]
+    data_persisted: bool
+    update_status: str
+    update_available: bool
+    update_message: str
+    remote_digest: str
+    current_version: str
+    update_version: str
+
+
 class InstalledExtensionDTO(TypedDict, total=False):
     id: str
     version: str
@@ -256,6 +270,7 @@ class InstalledExtensionDTO(TypedDict, total=False):
     restart_required: bool
     restart_scope: RestartScope
     error: str
+    docker: ExtensionDockerStatusDTO
 
 
 class InstalledExtensionsResponse(TypedDict):

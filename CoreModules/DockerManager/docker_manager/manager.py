@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -456,12 +457,21 @@ class DockerManager:
 
     def check_image_update(self, image: str) -> dict[str, Any]:
         image = self._require_value(image, "image")
+        remote = self._remote_manifest_digest(image)
+        remote_version = self._remote_image_version(image, remote_digest=remote)
         local = self._image_inspect(image)
         if local is None:
-            return {"ok": True, "image": image, "status": "not_local", "message": "Image is not present locally"}
+            return {
+                "ok": True,
+                "image": image,
+                "status": "not_local",
+                "message": "Image is not present locally",
+                "current_version": "",
+                "update_version": remote_version or self._short_digest(remote),
+            }
 
+        current_version = self._image_version_from_inspect(local, image)
         local_digests = [str(x) for x in local.get("RepoDigests") or [] if str(x).strip()]
-        remote = self._remote_manifest_digest(image)
         if not remote:
             return {
                 "ok": True,
@@ -469,15 +479,26 @@ class DockerManager:
                 "status": "unknown",
                 "message": "Could not determine remote manifest digest",
                 "local_digests": local_digests,
+                "current_version": current_version,
+                "update_version": "",
             }
 
         digest_match = any(item.endswith(f"@{remote}") or item == remote for item in local_digests)
+        status = "up_to_date" if digest_match else "update_available"
+        if status == "up_to_date":
+            update_version = current_version
+        else:
+            update_version = remote_version or self._short_digest(remote)
+            if update_version and current_version and update_version == current_version:
+                update_version = self._short_digest(remote) or update_version
         return {
             "ok": True,
             "image": image,
-            "status": "up_to_date" if digest_match else "update_available",
+            "status": status,
             "remote_digest": remote,
             "local_digests": local_digests,
+            "current_version": current_version,
+            "update_version": update_version,
             "message": "Image is up to date" if digest_match else "Remote image digest differs from local image",
         }
 
@@ -580,7 +601,89 @@ class DockerManager:
         digest = str(descriptor.get("digest") or "").strip()
         if digest:
             return digest
+        manifests = data.get("manifests")
+        if isinstance(manifests, list):
+            platform = self._host_platform()
+            for item in manifests:
+                if not isinstance(item, dict):
+                    continue
+                item_platform = item.get("platform") if isinstance(item.get("platform"), dict) else {}
+                arch = str(item_platform.get("architecture") or "").strip()
+                os_name = str(item_platform.get("os") or "").strip()
+                if f"{os_name}/{arch}" == platform or (not platform and item.get("digest")):
+                    digest = str(item.get("digest") or "").strip()
+                    if digest:
+                        return digest
+            for item in manifests:
+                if isinstance(item, dict):
+                    digest = str(item.get("digest") or "").strip()
+                    if digest:
+                        return digest
         return ""
+
+    def _remote_image_version(self, image: str, *, remote_digest: str = "") -> str:
+        platform = self._host_platform()
+        result = self.run(
+            ["buildx", "imagetools", "inspect", image, "--format", "{{json .}}"],
+            timeout=60.0,
+        )
+        if result.ok:
+            data = _first_json(result.stdout)
+            image_data = data.get("image") if isinstance(data.get("image"), dict) else {}
+            plat_entry = image_data.get(platform) if isinstance(image_data, dict) else None
+            if not isinstance(plat_entry, dict) and isinstance(image_data, dict):
+                for entry in image_data.values():
+                    if isinstance(entry, dict):
+                        plat_entry = entry
+                        break
+            config = plat_entry.get("config") if isinstance(plat_entry, dict) else {}
+            labels = config.get("Labels") if isinstance(config, dict) else {}
+            version = str((labels or {}).get("org.opencontainers.image.version") or "").strip()
+            if version:
+                return version
+        return self._short_digest(remote_digest)
+
+    @staticmethod
+    def _image_version_from_inspect(data: dict[str, Any], image_ref: str) -> str:
+        config = data.get("Config") if isinstance(data.get("Config"), dict) else {}
+        labels = config.get("Labels") if isinstance(config, dict) else {}
+        version = str((labels or {}).get("org.opencontainers.image.version") or "").strip()
+        if version:
+            return version
+        ref = str(image_ref or "").strip()
+        if ref and "@" not in ref:
+            tag = ref.rsplit(":", 1)[-1].strip() if ":" in ref else ""
+            if tag and tag.lower() != "latest":
+                return tag
+        image_id = str(data.get("Id") or "").strip()
+        short = DockerManager._short_digest(image_id)
+        if short:
+            return short
+        for item in data.get("RepoDigests") or []:
+            short = DockerManager._short_digest(str(item).split("@", 1)[-1])
+            if short:
+                return short
+        return ""
+
+    @staticmethod
+    def _short_digest(value: str) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        if text.startswith("sha256:"):
+            text = text[7:]
+        return text[:12] if len(text) >= 12 else text
+
+    @staticmethod
+    def _host_platform() -> str:
+        machine = platform.machine().lower()
+        if machine in {"x86_64", "amd64"}:
+            arch = "amd64"
+        elif machine in {"aarch64", "arm64"}:
+            arch = "arm64"
+        else:
+            arch = machine or "amd64"
+        return f"linux/{arch}"
 
     @staticmethod
     def _require_value(value: str, field: str) -> str:

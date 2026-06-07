@@ -342,6 +342,20 @@
   background: transparent;
 }
 
+.notification-center-card-live-slot .extensions-docker-update-panel {
+  margin: 0;
+}
+
+.notification-center-card-header-title--with-leading .extensions-docker-update-live-title {
+  font-weight: 650;
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-center-card-header-title--with-leading .extensions-docker-update-live-title ~ .notification-center-card-header-title-text {
+  display: none;
+}
+
 .notification-center-card--live {
   border-left: 3px solid var(--md-sys-color-primary, var(--md-sys-color-secondary));
 }

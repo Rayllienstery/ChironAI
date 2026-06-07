@@ -451,20 +451,18 @@ def _build_extension_manager(
         repository_client=GitHubExtensionRepositoryClient(token=github_token),
         default_provider_id=DEFAULT_LLM_PROVIDER_ID,
     )
-    service = ExtensionManagementService(manager)
+    service = ExtensionManagementService(manager, docker_manager=docker_runtime)
     llm_runtime = None
     provider_registry = None
     try:
-        service.bootstrap_runtime()
-        llm_runtime = service.runtime
-        provider_registry = service.registry
+        service.start_background_bootstrap()
         _RAG_LOG.info(
-            "Extension runtime bootstrap complete (status=%s)",
+            "Extension runtime bootstrap started in background (status=%s)",
             service.runtime_status,
         )
     except Exception as exc:
         err = str(getattr(service, "runtime_error", "") or exc)
-        _RAG_LOG.warning("Extension runtime bootstrap failed at wiring: %s", err)
+        _RAG_LOG.warning("Extension runtime background bootstrap failed at wiring: %s", err)
     runtime_chat_client = _runtime_resolving_chat_client(
         extension_manager=service,
         llm_runtime=llm_runtime,

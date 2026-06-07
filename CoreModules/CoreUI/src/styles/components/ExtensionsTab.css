@@ -10,6 +10,180 @@
   gap: 16px;
 }
 
+.extensions-tab__header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.extensions-view__header-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.extensions-docker-update-shell {
+  padding: var(--md-sys-spacing-md);
+}
+
+.extensions-docker-update-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.extensions-docker-update-panel__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.extensions-docker-update-panel__header p {
+  margin: 4px 0 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small-font);
+  overflow-wrap: anywhere;
+}
+
+.extensions-docker-update-panel__header .coreui-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.extensions-docker-update-panel__spinner {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--md-sys-color-primary) 20%, transparent);
+  border-top-color: var(--md-sys-color-primary);
+  animation: extensions-docker-update-spin 0.8s linear infinite;
+}
+
+.extensions-docker-update-panel__spinner--inline {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+.extensions-docker-update-live-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.extensions-docker-update-panel--compact {
+  gap: 10px;
+}
+
+.extensions-docker-update-panel__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.extensions-docker-update-panel__meta-image {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small-font);
+}
+
+.extensions-docker-update-panel--compact .extensions-docker-update-step {
+  padding: 8px 10px;
+}
+
+.extensions-docker-update-panel--compact .extensions-docker-update-step__icon {
+  font-size: 18px;
+}
+
+@keyframes extensions-docker-update-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.extensions-docker-update-panel__progress {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+}
+
+.extensions-docker-update-panel__progress-bar {
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--md-sys-color-primary);
+  animation: extensions-docker-update-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes extensions-docker-update-indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.extensions-docker-update-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.extensions-docker-update-step {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-high) 55%, transparent);
+}
+
+.extensions-docker-update-step--active {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 10%, var(--md-sys-color-surface-container-high));
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 28%, transparent);
+}
+
+.extensions-docker-update-step--done {
+  opacity: 0.92;
+}
+
+.extensions-docker-update-step__icon {
+  font-size: 20px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.extensions-docker-update-step--active .extensions-docker-update-step__icon {
+  color: var(--md-sys-color-primary);
+  animation: extensions-docker-update-spin 1.2s linear infinite;
+}
+
+.extensions-docker-update-step--done .extensions-docker-update-step__icon {
+  color: var(--md-sys-color-primary);
+}
+
+.extensions-docker-update-step__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.extensions-docker-update-step__copy small {
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small-font);
+}
+
 .extensions-tab__header h2,
 .extensions-view__header h3,
 .extensions-card__copy h4,

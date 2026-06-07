@@ -225,6 +225,20 @@ class ExtensionDetailsDTO(TypedDict, total=False):
     warnings: list[str]
 
 
+class ExtensionDockerStatusDTO(TypedDict, total=False):
+    container_name: str
+    image: str
+    running: bool
+    volumes: list[str]
+    data_persisted: bool
+    update_status: str
+    update_available: bool
+    update_message: str
+    remote_digest: str
+    current_version: str
+    update_version: str
+
+
 class InstalledExtensionDTO(TypedDict, total=False):
     id: str
     version: str
@@ -239,6 +253,7 @@ class InstalledExtensionDTO(TypedDict, total=False):
     sandboxed: bool
     sandbox_status: str
     sandbox_error: str
+    docker: ExtensionDockerStatusDTO
 
 
 class ProviderHealthDTO(TypedDict, total=False):
@@ -384,6 +399,7 @@ __all__ = [
     "LlmProxyBuildsPutOkResponse",
     "ExtensionCardDTO",
     "ExtensionDetailsDTO",
+    "ExtensionDockerStatusDTO",
     "InstalledExtensionDTO",
     "ProviderHealthDTO",
     "ExtensionUiSchemaDTO",

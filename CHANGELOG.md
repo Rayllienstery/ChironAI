@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.34] - 2026-06-07
+### Changed
+- Made WebUI startup and the initial CoreUI render stop blocking on provider bootstrap, session creation, delayed shell requests, or startup-critical lazy chunks so Dashboard, Performance, and WebUI pages can open immediately.
+
 ## [0.6.33] - 2026-06-06
 ### Changed
 - Removed core create-collection direct Ollama embedding ownership and made CoreUI provider-facing text provider-neutral.

@@ -73,7 +73,6 @@ function lazyWithRetry(key, importer) {
   });
 }
 
-const DashboardTab = lazyWithRetry("DashboardTab", () => import("./components/DashboardTab"));
 const LogsTab = lazyWithRetry("LogsTab", () => import("./components/LogsTab"));
 const DependenciesTab = lazyWithRetry("DependenciesTab", () => import("./components/DependenciesTab"));
 const SettingsTab = lazyWithRetry("SettingsTab", () => import("./components/SettingsTab"));
@@ -86,7 +85,6 @@ const TemplateEditorTab = lazyWithRetry("TemplateEditorTab", () => import("./com
 const CoreUIShowcaseTab = lazyWithRetry("CoreUIShowcaseTab", () => import("./components/CoreUIShowcaseTab"));
 const ExtensionsTab = lazyWithRetry("ExtensionsTab", () => import("./components/ExtensionsTab"));
 const DevDocumentationTab = lazyWithRetry("DevDocumentationTab", () => import("./components/DevDocumentationTab"));
-const PerformanceTab = lazyWithRetry("PerformanceTab", () => import("./components/PerformanceTab"));
 const ExtensionRuntimeTab = lazyWithRetry("ExtensionRuntimeTab", () => import("./components/ExtensionRuntimeTab"));
 const DockerTab = lazyWithRetry("DockerTab", () => import("./components/DockerTab"));
 const TokensSecurityTab = lazyWithRetry("TokensSecurityTab", () => import("./components/TokensSecurityTab"));
@@ -114,6 +112,8 @@ import ProxiesLiveNotificationBridge from "./components/ProxiesLiveNotificationB
 import InfrastructureAlertsBridge from "./components/InfrastructureAlertsBridge";
 import WelcomeNotificationBridge from "./components/WelcomeNotificationBridge";
 import ExtensionSecurityNotificationBridge from "./components/ExtensionSecurityNotificationBridge";
+import DashboardTab from "./components/DashboardTab";
+import PerformanceTab from "./components/PerformanceTab";
 import "./styles/layout.css";
 import "./styles/default-card.css";
 import "./styles/sidebar.css";
@@ -121,6 +121,8 @@ import StandByScreen from "./components/StandByScreen";
 import "./styles/components/StandByScreen.css";
 
 const METRICS_HISTORY_LEN = 30;
+const SHELL_REQUEST_BOOT_DELAY_MS = 800;
+const PERFORMANCE_SHELL_REQUEST_DELAY_MS = 1500;
 
 function AppLoadingState({ moduleName }) {
   return (
@@ -189,6 +191,10 @@ function App() {
     gpu_mem_used: [],
     gpu_temp: [],
   });
+  const shellRequestDelayMs =
+    activeTab === "performance"
+      ? PERFORMANCE_SHELL_REQUEST_DELAY_MS
+      : SHELL_REQUEST_BOOT_DELAY_MS;
 
   const initSession = useCallback(() => {
     setSessionError(false);
@@ -210,35 +216,32 @@ function App() {
       // ignore
     }
 
-    // Record actual React mount time (App root = earliest possible point)
-    try {
-      const nav = window?.performance?.timing;
-      if (nav && nav.navigationStart) {
-        const now = Date.now();
-        postBrowserTiming({
-          navigationStart: nav.navigationStart,
-          fetchStart: nav.fetchStart,
-          responseStart: nav.responseStart,
-          responseEnd: nav.responseEnd,
-          domInteractive: nav.domInteractive,
-          domContentLoadedEventStart: nav.domContentLoadedEventStart,
-          domContentLoadedEventEnd: nav.domContentLoadedEventEnd,
-          domComplete: nav.domComplete,
-          loadEventStart: nav.loadEventStart,
-          loadEventEnd: nav.loadEventEnd,
-          reactMountMs: now - nav.navigationStart,
-          reportedAt: now,
-        }).catch(() => {});
+    const shellRequestTimer = window.setTimeout(() => {
+      try {
+        const nav = window?.performance?.timing;
+        if (nav && nav.navigationStart) {
+          const now = Date.now();
+          postBrowserTiming({
+            navigationStart: nav.navigationStart,
+            fetchStart: nav.fetchStart,
+            responseStart: nav.responseStart,
+            responseEnd: nav.responseEnd,
+            domInteractive: nav.domInteractive,
+            domContentLoadedEventStart: nav.domContentLoadedEventStart,
+            domContentLoadedEventEnd: nav.domContentLoadedEventEnd,
+            domComplete: nav.domComplete,
+            loadEventStart: nav.loadEventStart,
+            loadEventEnd: nav.loadEventEnd,
+            reactMountMs: now - nav.navigationStart,
+            reportedAt: now,
+          }).catch(() => {});
+        }
+      } catch {
+        // Non-critical
       }
-    } catch {
-      // Non-critical
-    }
-
-    // Initialize session
-    initSession();
-
-    // Load theme settings
-    loadThemeSettings();
+      initSession();
+      loadThemeSettings();
+    }, shellRequestDelayMs);
 
     // Listen for system theme changes
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -251,9 +254,10 @@ function App() {
     mediaQuery.addEventListener("change", handleSystemThemeChange);
 
     return () => {
+      window.clearTimeout(shellRequestTimer);
       mediaQuery.removeEventListener("change", handleSystemThemeChange);
     };
-  }, [themeMode, lightAccent, darkAccent]);
+  }, [themeMode, lightAccent, darkAccent, shellRequestDelayMs, initSession]);
 
   const loadExtensionSurface = useCallback(async () => {
     try {
@@ -283,8 +287,11 @@ function App() {
   }, []);
 
   useEffect(() => {
-    loadExtensionSurface();
-  }, [loadExtensionSurface]);
+    const timer = window.setTimeout(() => {
+      loadExtensionSurface();
+    }, shellRequestDelayMs);
+    return () => window.clearTimeout(timer);
+  }, [loadExtensionSurface, shellRequestDelayMs]);
 
   useEffect(() => {
     const gen = ++serviceStatusPollGenRef.current;
@@ -305,13 +312,16 @@ function App() {
         }
       }
     };
-    loadStatuses(true);
+    const firstTimer = window.setTimeout(() => {
+      loadStatuses(true);
+    }, shellRequestDelayMs);
     const ms = serviceStatusPollIntervalSec * 1000;
     const id = setInterval(() => loadStatuses(false), ms);
     return () => {
+      window.clearTimeout(firstTimer);
       clearInterval(id);
     };
-  }, [serviceStatusPollIntervalSec, loadExtensionSurface]);
+  }, [serviceStatusPollIntervalSec, loadExtensionSurface, shellRequestDelayMs]);
 
   useEffect(() => {
     const poll = async () => {
@@ -342,10 +352,13 @@ function App() {
         // ignore
       }
     };
-    poll();
+    const firstTimer = window.setTimeout(poll, shellRequestDelayMs);
     const id = setInterval(poll, 5000);
-    return () => clearInterval(id);
-  }, []);
+    return () => {
+      window.clearTimeout(firstTimer);
+      clearInterval(id);
+    };
+  }, [shellRequestDelayMs]);
 
   const openCompletedRagRunModal = useCallback((runId) => {
     const rid = String(runId || "").trim();
@@ -743,21 +756,18 @@ function App() {
         </header>
 
         <main className="app-main">
-          {sessionId ? (
-            <TabErrorBoundary>
-              <Suspense fallback={<TabLoadingFallback moduleName={activeTabLabel} />}>
-                {renderTabContent()}
-              </Suspense>
-            </TabErrorBoundary>
-          ) : sessionError ? (
-            <div className="session-error">
-              <p>Could not connect to the server.</p>
+          <TabErrorBoundary>
+            <Suspense fallback={<TabLoadingFallback moduleName={activeTabLabel} />}>
+              {renderTabContent()}
+            </Suspense>
+          </TabErrorBoundary>
+          {sessionError && !sessionId && (
+            <div className="session-error session-error--inline">
+              <p>Session is still unavailable. Session-backed panels will keep working when it reconnects.</p>
               <button className="session-retry-btn" onClick={initSession}>
                 Retry
               </button>
             </div>
-          ) : (
-            <AppLoadingState moduleName="Session Manager" />
           )}
         </main>
       </div>

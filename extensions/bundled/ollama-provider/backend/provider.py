@@ -417,6 +417,30 @@ class OllamaProvider:
                     "title": "Ollama",
                     "sections": [
                         {
+                            "id": "docker",
+                            "title": "Docker image",
+                            "components": [
+                                {
+                                    "type": "text",
+                                    "key": "docker_image",
+                                    "label": "Image",
+                                    "value": str(docker_state.get("image") or self._docker_image()),
+                                },
+                                {
+                                    "type": "text",
+                                    "key": "docker_current_version",
+                                    "label": "Current version",
+                                    "value": self._docker_current_version_label(docker_state),
+                                },
+                                {
+                                    "type": "text",
+                                    "key": "docker_update_version",
+                                    "label": "Update version",
+                                    "value": self._docker_update_version_label(docker_state),
+                                },
+                            ],
+                        },
+                        {
                             "id": "pull",
                             "title": "Pull model",
                             "components": [
@@ -775,6 +799,51 @@ class OllamaProvider:
                     names.append(alt)
         return names
 
+    def _docker_version_fields(self, docker: Any, image: str) -> dict[str, Any]:
+        check_fn = getattr(docker, "check_image_update", None)
+        if not callable(check_fn):
+            return {}
+        try:
+            check = check_fn(image)
+        except Exception:
+            return {}
+        if not isinstance(check, dict):
+            return {}
+        status = str(check.get("status") or "")
+        return {
+            "update_status": status,
+            "update_available": status == "update_available",
+            "update_message": str(check.get("message") or ""),
+            "current_version": str(check.get("current_version") or "").strip(),
+            "update_version": str(check.get("update_version") or "").strip(),
+        }
+
+    @staticmethod
+    def _docker_current_version_label(state: dict[str, Any]) -> str:
+        current = str(state.get("current_version") or "").strip()
+        return current or "Unknown"
+
+    @staticmethod
+    def _docker_update_version_label(state: dict[str, Any]) -> str:
+        current = str(state.get("current_version") or "").strip()
+        update = str(state.get("update_version") or "").strip()
+        status = str(state.get("update_status") or "")
+        if status == "up_to_date":
+            return current or "Up to date"
+        if status == "update_available":
+            return update or "Unknown"
+        if status == "unknown":
+            return "Could not check remote version"
+        if status == "not_local":
+            return update or "Image not pulled locally"
+        return update or "—"
+
+    def _finalize_docker_state(self, docker: Any | None, state: dict[str, Any]) -> dict[str, Any]:
+        image = str(state.get("image") or "").strip()
+        if docker is None or not image:
+            return state
+        return {**state, **self._docker_version_fields(docker, image)}
+
     def _inspect_docker_container(self, docker: Any, container_name: str) -> tuple[bool | None, bool | None]:
         inspect = getattr(docker, "inspect_container", None)
         if callable(inspect):
@@ -792,16 +861,19 @@ class OllamaProvider:
         image = self._docker_image()
         docker = self._docker_runtime()
         if docker is None:
-            return {
-                "available": False,
-                "container_name": self._docker_container_name(),
-                "image": image,
-                "exists": None,
-                "running": None,
-                "status": "docker_unavailable",
-                "message": "Docker runtime is unavailable.",
-                "action_hint": "refresh",
-            }
+            return self._finalize_docker_state(
+                docker,
+                {
+                    "available": False,
+                    "container_name": self._docker_container_name(),
+                    "image": image,
+                    "exists": None,
+                    "running": None,
+                    "status": "docker_unavailable",
+                    "message": "Docker runtime is unavailable.",
+                    "action_hint": "refresh",
+                },
+            )
 
         container_name = self._docker_container_name()
         exists: bool | None = None
@@ -813,60 +885,75 @@ class OllamaProvider:
                     container_name = candidate
                     break
         except Exception as e:
-            return {
-                "available": True,
-                "container_name": container_name,
-                "image": image,
-                "exists": None,
-                "running": None,
-                "status": "error",
-                "message": f"Could not inspect Ollama container {container_name}: {e}",
-                "action_hint": "refresh",
-            }
+            return self._finalize_docker_state(
+                docker,
+                {
+                    "available": True,
+                    "container_name": container_name,
+                    "image": image,
+                    "exists": None,
+                    "running": None,
+                    "status": "error",
+                    "message": f"Could not inspect Ollama container {container_name}: {e}",
+                    "action_hint": "refresh",
+                },
+            )
 
         if exists is None:
-            return {
-                "available": True,
-                "container_name": container_name,
-                "image": image,
-                "exists": None,
-                "running": None,
-                "status": "unknown",
-                "message": f"Docker runtime cannot inspect Ollama container {container_name}.",
-                "action_hint": "refresh",
-            }
+            return self._finalize_docker_state(
+                docker,
+                {
+                    "available": True,
+                    "container_name": container_name,
+                    "image": image,
+                    "exists": None,
+                    "running": None,
+                    "status": "unknown",
+                    "message": f"Docker runtime cannot inspect Ollama container {container_name}.",
+                    "action_hint": "refresh",
+                },
+            )
         if not exists:
-            return {
-                "available": True,
-                "container_name": container_name,
-                "image": image,
-                "exists": False,
-                "running": False,
-                "status": "container_missing",
-                "message": f"Ollama container {container_name} does not exist. Download and create it from {image}.",
-                "action_hint": "download",
-            }
+            return self._finalize_docker_state(
+                docker,
+                {
+                    "available": True,
+                    "container_name": container_name,
+                    "image": image,
+                    "exists": False,
+                    "running": False,
+                    "status": "container_missing",
+                    "message": f"Ollama container {container_name} does not exist. Download and create it from {image}.",
+                    "action_hint": "download",
+                },
+            )
         if not running:
-            return {
+            return self._finalize_docker_state(
+                docker,
+                {
+                    "available": True,
+                    "container_name": container_name,
+                    "image": image,
+                    "exists": True,
+                    "running": False,
+                    "status": "container_stopped",
+                    "message": f"Ollama container {container_name} exists but is stopped.",
+                    "action_hint": "start",
+                },
+            )
+        return self._finalize_docker_state(
+            docker,
+            {
                 "available": True,
                 "container_name": container_name,
                 "image": image,
                 "exists": True,
-                "running": False,
-                "status": "container_stopped",
-                "message": f"Ollama container {container_name} exists but is stopped.",
-                "action_hint": "start",
-            }
-        return {
-            "available": True,
-            "container_name": container_name,
-            "image": image,
-            "exists": True,
-            "running": True,
-            "status": "container_running",
-            "message": f"Ollama container {container_name} is running.",
-            "action_hint": "stop",
-        }
+                "running": True,
+                "status": "container_running",
+                "message": f"Ollama container {container_name} is running.",
+                "action_hint": "stop",
+            },
+        )
 
     def _docker_container_name(self) -> str:
         import os

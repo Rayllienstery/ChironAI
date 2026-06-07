@@ -277,3 +277,33 @@ def register_extension_routes(
         except Exception:
             error_log.error("webui_extensions_routes.disable_extension", exc_info=True)
             return _extension_error("Extension disable request was rejected.", "extension_disable_rejected", 400)
+
+    @bp.route("/extensions/docker/update", methods=["POST"])
+    def update_extension_docker() -> Any:
+        try:
+            svc = _get_extensions_service()
+            runtime = _get_extensions_runtime(svc)
+            if svc is None:
+                return jsonify({"error": "Extensions runtime is unavailable"}), 503
+            body = request.get_json(force=True, silent=True) or {}
+            raw_ids = body.get("extension_ids")
+            if raw_ids is None:
+                single = str(body.get("extension_id") or "").strip()
+                extension_ids = [single] if single else []
+            elif isinstance(raw_ids, list):
+                extension_ids = [str(item or "").strip() for item in raw_ids if str(item or "").strip()]
+            else:
+                extension_ids = [str(raw_ids).strip()] if str(raw_ids).strip() else []
+            result = svc.update_extension_docker(
+                extension_ids,
+                runtime=runtime,
+                skip_image_pull=bool(body.get("skip_image_pull")),
+            )
+            status = 200 if bool(result.get("ok")) else 400
+            return jsonify(result), status
+        except ValueError:
+            error_log.error("webui_extensions_routes.update_extension_docker", exc_info=True)
+            return _extension_error("Extension Docker update request was rejected.", "extension_docker_update_rejected", 400)
+        except Exception:
+            error_log.error("webui_extensions_routes.update_extension_docker", exc_info=True)
+            return _extension_error("Extension Docker update failed.", "extension_docker_update_failed", 500)

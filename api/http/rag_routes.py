@@ -144,15 +144,7 @@ def create_app(
 
     extension_manager = getattr(wiring, "extension_manager", None)
     if extension_manager is not None:
-        try:
-            from api.http.llm_runtime_access import resolve_llm_runtime
-
-            resolve_llm_runtime(extension_manager=extension_manager, sync_bootstrap=True)
-            _sync_llm_extension_runtime(app)
-        except Exception as exc:
-            import logging
-
-            logging.getLogger("trag.rag").warning("Startup LLM runtime bootstrap failed: %s", exc)
+        _sync_llm_extension_runtime(app)
 
     _t_bp_start = _time.perf_counter()
     app.register_blueprint(create_v1_blueprint(wiring))
