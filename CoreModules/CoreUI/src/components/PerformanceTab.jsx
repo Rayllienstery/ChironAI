@@ -4,7 +4,7 @@ import CoreUISubtabs from "./CoreUISubtabs";
 import CoreUIModal from "./CoreUIModal";
 import Card from "./Card";
 import { getStartupPerformance } from "../services/api";
-import { getModuleTimings } from "../services/moduleTimings";
+import { getModuleTimings, subscribeModuleTimings } from "../services/moduleTimings";
 import "../styles/components/PerformanceTab.css";
 
 const SUBTABS = [{ id: "startup", label: "Startup" }];
@@ -43,6 +43,28 @@ function formatEpoch(epochMs) {
   }
 }
 
+function formatSources(sources) {
+  if (!Array.isArray(sources) || sources.length === 0) return "navigation";
+  return sources.join(", ");
+}
+
+function useModuleTimingSnapshot() {
+  const [modules, setModules] = useState(() => getModuleTimings());
+
+  useEffect(() => {
+    const refresh = () => setModules(getModuleTimings());
+    const unsubscribe = subscribeModuleTimings(refresh);
+    const intervalId = window.setInterval(refresh, 500);
+    refresh();
+    return () => {
+      unsubscribe();
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  return modules;
+}
+
 // ---------------------------------------------------------------------------
 // Waterfall bar for the Summary subtab
 // ---------------------------------------------------------------------------
@@ -56,6 +78,66 @@ function WaterfallBar({ durationMs, totalMs, status }) {
         style={{ width: `${pct}%` }}
       />
     </div>
+  );
+}
+
+function ModuleLoadMonitor({ modules }) {
+  const active = modules.filter((mod) => mod.status === "in_progress");
+  const recent = [...modules]
+    .filter((mod) => mod.status !== "in_progress")
+    .sort((a, b) => (b.loaded_at || 0) - (a.loaded_at || 0))
+    .slice(0, 8);
+  const visible = active.length > 0 ? active : recent;
+
+  return (
+    <Card className="perf-startup__inner-card perf-module-monitor" elevation="var(--md-sys-elevation-level1)">
+      <div className="perf-module-monitor__header">
+        <div>
+          <h3 className="perf-startup__title">Lazy Module Loads</h3>
+          <p className="perf-startup__subtitle">
+            Live dynamic-import status for tabs and nested panels.
+          </p>
+        </div>
+        <div className="perf-module-monitor__count">
+          <span>{active.length}</span>
+          loading now
+        </div>
+      </div>
+
+      {visible.length === 0 && (
+        <div className="perf-module-monitor__empty">
+          No lazy module loads recorded in this browser session yet.
+        </div>
+      )}
+
+      {visible.length > 0 && (
+        <div className="perf-module-monitor__table" role="table" aria-label="Lazy module load status">
+          <div className="perf-module-monitor__row perf-module-monitor__row--head" role="row">
+            <span role="columnheader">Module</span>
+            <span role="columnheader">Status</span>
+            <span role="columnheader">Step</span>
+            <span role="columnheader">Source</span>
+            <span role="columnheader">Elapsed</span>
+          </div>
+          {visible.map((mod) => (
+            <div key={mod.id} className="perf-module-monitor__row" role="row">
+              <span role="cell" className="perf-module-monitor__module">{mod.label}</span>
+              <span role="cell" className={`perf-module-monitor__status perf-module-monitor__status--${mod.status}`}>
+                <span className="material-symbols-outlined" aria-hidden="true">
+                  {STATUS_ICON[mod.status] || "fiber_manual_record"}
+                </span>
+                {mod.status === "in_progress" ? "loading" : mod.status}
+              </span>
+              <span role="cell">{mod.step || "import()"}</span>
+              <span role="cell">{formatSources(mod.sources)}</span>
+              <span role="cell" className="perf-module-monitor__elapsed">
+                {formatMs(mod.elapsed_ms ?? mod.duration_ms)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -346,6 +428,7 @@ function StartupSubtab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedPhase, setSelectedPhase] = useState(null);
+  const moduleTimings = useModuleTimingSnapshot();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -380,7 +463,7 @@ function StartupSubtab() {
       start_offset_ms: 0,
       status: "ok",
       steps: buildBrowserSteps(browser),
-      module_loads: getModuleTimings(),
+      module_loads: moduleTimings,
       log_lines: [],
       metadata: browser,
     });
@@ -439,6 +522,8 @@ function StartupSubtab() {
           </button>
         </div>
       </Card>
+
+      <ModuleLoadMonitor modules={moduleTimings} />
 
       {/* Inner card 2: title + phase rows */}
       <Card className="perf-startup__inner-card perf-startup__inner-card--phases" elevation="var(--md-sys-elevation-level1)">

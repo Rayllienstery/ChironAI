@@ -4530,13 +4530,15 @@ def test_native_tools_stream_trace_includes_tokens_estimates_and_latency(
     assert int(resp.get("latency_ms") or 0) >= 0
 
 
-def test_streaming_vision_request_suppresses_native_tools(
+def test_streaming_vision_request_preserves_native_tools_when_model_supports_them(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import api.http.rag_routes as rag_routes
+    import llm_proxy.chat_completions_handler as handler
 
     class VisionStreamChatClient:
         def __init__(self) -> None:
+            self._url = "http://fake-ollama/api/chat"
             self.payloads: list[dict[str, Any]] = []
 
         def iter_chat_api_stream_events(self, payload: dict[str, Any]):
@@ -4579,6 +4581,11 @@ def test_streaming_vision_request_suppresses_native_tools(
 
     monkeypatch.setattr(rag_routes, "prepare_ollama_messages", _prepare_vision)
     monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+    monkeypatch.setattr(
+        handler,
+        "get_cached_ollama_capabilities",
+        lambda *_a, **_kw: frozenset({"completion", "tools", "vision"}),
+    )
 
     app = rag_routes.create_app()
     client = app.test_client()
@@ -4597,14 +4604,99 @@ def test_streaming_vision_request_suppresses_native_tools(
 
     assert chat_client.payloads
     sent = chat_client.payloads[0]
-    assert "tools" not in sent
+    assert sent.get("tools")
     assert sent["messages"][0]["images"] == ["base64-image"]
     trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
     request_trace = trace.get("request") or {}
     response_trace = trace.get("response") or {}
-    assert request_trace.get("native_tools_suppressed_for_vision") is True
-    assert request_trace.get("tools_count_effective") == 0
-    assert response_trace.get("native_tools") is not True
+    assert request_trace.get("native_tools_preserved_for_vision") is True
+    assert request_trace.get("native_tools_suppressed_for_vision") is not True
+    assert request_trace.get("tools_count_effective") == 1
+    assert response_trace.get("native_tools") is True
+
+
+def test_streaming_vision_request_preserves_native_tools_even_when_caps_omit_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+    import llm_proxy.chat_completions_handler as handler
+
+    class VisionStreamChatClient:
+        def __init__(self) -> None:
+            self._url = "http://fake-ollama/api/chat"
+            self.payloads: list[dict[str, Any]] = []
+
+        def iter_chat_api_stream_events(self, payload: dict[str, Any]):
+            self.payloads.append(payload)
+            yield ("content_delta", "vision ok")
+            yield ("done", {"done_reason": "stop", "eval_count": 6, "prompt_eval_count": 3})
+
+        def chat(self, *_a: Any, **_k: Any) -> str:
+            return ""
+
+    chat_client = VisionStreamChatClient()
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fake-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=chat_client,
+    )
+
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+
+    def _prepare_vision(request: Any, *_a: Any, **_kw: Any) -> tuple[list[dict[str, Any]], str]:
+        return ([{"role": "user", "content": "describe this", "images": ["base64-image"]}], "fake-model")
+
+    monkeypatch.setattr(rag_routes, "prepare_ollama_messages", _prepare_vision)
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+    monkeypatch.setattr(
+        handler,
+        "get_cached_ollama_capabilities",
+        lambda *_a, **_kw: frozenset({"completion", "vision"}),
+    )
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-proxy-ollama-model",
+            "stream": True,
+            "messages": [{"role": "user", "content": "describe this"}],
+            "tools": [{"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}}],
+            "tool_choice": "auto",
+        },
+    )
+    assert r.status_code == 200
+    assert "vision ok" in r.get_data(as_text=True)
+
+    assert chat_client.payloads
+    sent = chat_client.payloads[0]
+    assert sent.get("tools")
+    assert sent["messages"][0]["images"] == ["base64-image"]
+    trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
+    request_trace = trace.get("request") or {}
+    response_trace = trace.get("response") or {}
+    assert request_trace.get("native_tools_suppressed_for_vision") is not True
+    assert request_trace.get("tools_count_effective") == 1
+    assert response_trace.get("native_tools") is True
 
 
 def test_streaming_vision_request_uses_fallback_when_model_lacks_vision(
@@ -4697,13 +4789,17 @@ def test_streaming_vision_request_uses_fallback_when_model_lacks_vision(
             "model": "Giant",
             "stream": True,
             "messages": [{"role": "user", "content": "describe this"}],
+            "tools": [{"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}}],
+            "tool_choice": "auto",
         },
     )
     assert r.status_code == 200
     assert "fallback vision ok" in r.get_data(as_text=True)
 
     assert chat_client.payloads
-    assert chat_client.payloads[0]["model"] == "minimax-m3:cloud"
+    sent = chat_client.payloads[0]
+    assert sent["model"] == "minimax-m3:cloud"
+    assert sent.get("tools")
     trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
     request_trace = trace.get("request") or {}
     assert str(request_trace.get("ollama_capabilities_lookup_url") or "").endswith("/api/chat")
@@ -4713,6 +4809,8 @@ def test_streaming_vision_request_uses_fallback_when_model_lacks_vision(
         "to": "minimax-m3:cloud",
         "reason": "selected_ollama_model_lacks_vision",
     }
+    assert request_trace.get("native_tools_preserved_for_vision") is True
+    assert request_trace.get("tools_count_effective") == 1
     assert "vision_model_fallback" in (trace.get("warnings") or [])
 
 

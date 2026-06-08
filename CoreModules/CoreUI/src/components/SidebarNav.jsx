@@ -128,6 +128,7 @@ function CollapseIcon({ expanded }) {
  *   tabs: { id: string, label: string, icon?: string, iconUrl?: string, section?: string }[],
  *   activeTab: string,
  *   onTabChange: (id: string) => void,
+ *   onPrefetchTab?: (id: string) => void,
  *   tabErrors?: Record<string, boolean>,
  *   tabActivity?: Record<string, boolean>,
  *   onSettings?: () => void,
@@ -142,6 +143,7 @@ function SidebarNav({
   tabs,
   activeTab,
   onTabChange,
+  onPrefetchTab,
   tabErrors,
   tabActivity,
   onSettings,
@@ -168,6 +170,10 @@ function SidebarNav({
     if (!id) return;
     if (prefetchOnceRef.current.has(id)) return;
     prefetchOnceRef.current.add(id);
+    if (typeof onPrefetchTab === 'function') {
+      onPrefetchTab(id);
+      return;
+    }
     // Best-effort: prefetch chunks on intent (hover/focus).
     try {
       if (id === 'llm-proxy') import('./LlmProxyBuildsTab');
@@ -185,7 +191,7 @@ function SidebarNav({
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [onPrefetchTab]);
 
   const asideRef = useRef(null);
   const [collapsed, setCollapsed] = useState(readStoredCollapsed);

@@ -266,6 +266,122 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Lazy module monitor
+--------------------------------------------------------------------------- */
+
+.perf-module-monitor {
+  padding: 0;
+  overflow: hidden;
+}
+
+.perf-module-monitor__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: var(--md-sys-spacing-md, 16px) var(--md-sys-spacing-lg, 24px);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.perf-module-monitor__count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-small-font);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.perf-module-monitor__count span {
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-title-medium-font);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.perf-module-monitor__empty {
+  padding: 18px var(--md-sys-spacing-lg, 24px);
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.perf-module-monitor__table {
+  display: flex;
+  flex-direction: column;
+}
+
+.perf-module-monitor__row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.2fr) minmax(105px, 0.8fr) minmax(150px, 1fr) minmax(130px, 1fr) minmax(80px, auto);
+  gap: 12px;
+  align-items: center;
+  padding: 10px var(--md-sys-spacing-lg, 24px);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small-font);
+}
+
+.perf-module-monitor__row:last-child {
+  border-bottom: 0;
+}
+
+.perf-module-monitor__row--head {
+  background: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-small-font);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.perf-module-monitor__module {
+  color: var(--md-sys-color-on-surface);
+  font-weight: 600;
+}
+
+.perf-module-monitor__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.perf-module-monitor__status .material-symbols-outlined {
+  font-size: 17px;
+}
+
+.perf-module-monitor__status--ok { color: var(--md-sys-color-success, #4caf50); }
+.perf-module-monitor__status--failed { color: var(--md-sys-color-error, #b3261e); }
+.perf-module-monitor__status--in_progress { color: var(--md-sys-color-primary); }
+
+.perf-module-monitor__elapsed {
+  color: var(--md-sys-color-on-surface);
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .perf-module-monitor__row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .perf-module-monitor__row--head {
+    display: none;
+  }
+
+  .perf-module-monitor__elapsed {
+    text-align: left;
+  }
+}
+
+/* ---------------------------------------------------------------------------
    Waterfall bars
 --------------------------------------------------------------------------- */
 

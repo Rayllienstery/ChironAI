@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Card from './Card';
 import CoreUIButton from './CoreUIButton';
+import CoreUINotificationActionButton from './CoreUINotificationActionButton';
 import { notificationModuleLabel } from './notificationModuleLabels';
 import { useNotificationCenter } from './NotificationCenterContext';
 import { formatElapsedMs, parseTimeMs } from '../utils/elapsedTime';
@@ -68,21 +69,6 @@ function NotificationTimer({ notification, nowMs }) {
   );
 }
 
-function BellIcon() {
-  return (
-    <svg
-      className="notification-center-bell-svg"
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      fill="currentColor"
-    >
-      <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" />
-    </svg>
-  );
-}
-
 function ModuleFooter({ source, notification }) {
   return (
     <div className="notification-center-module-footer">
@@ -106,21 +92,6 @@ function FormattedMessage({ text }) {
       </div>
     );
   });
-}
-
-function BroomIcon() {
-  return (
-    <svg
-      className="notification-center-broom-svg"
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      fill="currentColor"
-    >
-      <path d="M18.68 3.32a1 1 0 0 0-1.41 0l-4.95 4.95a1 1 0 0 0 0 1.41l.35.35-7.78 7.78a3 3 0 0 0-.83 1.54l-.34 1.69a.75.75 0 0 0 .88.88l1.69-.34a3 3 0 0 0 1.54-.83l7.78-7.78.35.35a1 1 0 0 0 1.41 0l4.95-4.95a1 1 0 0 0 0-1.41zm-12.2 16.16a1.5 1.5 0 0 1-.77.42l-.74.15.15-.74a1.5 1.5 0 0 1 .42-.77l7.78-7.78 1.06 1.06z" />
-    </svg>
-  );
 }
 
 function NotificationCenterShell({ onOpenRagRunDetails = null }) {
@@ -305,32 +276,19 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
 
       <div className="notification-center-actions-row">
         {hasVisibleCards ? (
-          <Card
-            as="button"
-            type="button"
-            className="notification-center-clear-capsule"
-            elevation="var(--md-sys-elevation-level3)"
-            interactive
+          <CoreUINotificationActionButton
+            icon="cleaning_services"
+            label="Clear"
             onClick={handleClearVisible}
-            aria-label="Clear visible notifications"
-            title="Clear visible notifications"
-          >
-            <BroomIcon />
-          </Card>
+          />
         ) : null}
-        <Card
-          as="button"
-          type="button"
-          className="notification-center-bell-capsule"
-          elevation="var(--md-sys-elevation-level3)"
-          interactive
+        <CoreUINotificationActionButton
+          icon="notifications"
+          label="Notifications"
           onClick={() => setMenuOpen((o) => !o)}
-          aria-expanded={menuOpen}
-          aria-haspopup="dialog"
-        >
-          <BellIcon />
-          <span>Notifications</span>
-        </Card>
+          expanded={menuOpen}
+          hasPopup="dialog"
+        />
       </div>
     </div>
   );

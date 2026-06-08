@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.60] - 2026-06-08
+### Changed
+- Added a stale-prefetch guard for lazy CoreUI module timings so background imports cannot remain as active loading rows forever.
+- Added a module timing regression test that verifies stale prefetches do not break later tab navigation.
+
+## [0.6.59] - 2026-06-08
+### Fixed
+- Prevented idle-prefetch timeouts from surfacing as tab navigation errors for lazy CoreUI modules.
+
+## [0.6.58] - 2026-06-08
+### Changed
+- Added live lazy module loading diagnostics to the Performance tab, including active loads, elapsed time, current step, and source.
+- Prefetched tab and nested testing/logs chunks during browser idle time to reduce visible tab loading delays.
+
+## [0.6.57] - 2026-06-08
+### Changed
+- Extracted the floating notification center action buttons into a shared `CoreUINotificationActionButton` component, used by both the Bell toggle and the Clear action in `NotificationCenterShell`, and showcased in the CoreUI Showcase Buttons subtab (reused inside the Notifications subtab).
+
+## [0.6.56] - 2026-06-08
+### Changed
+- Replaced the SVG broom icon in the notification center Clear capsule with a Material Symbol (`cleaning_services`), added a "Clear" label, and aligned the capsule height with the Bell button.
+
+## [0.6.55] - 2026-06-08
+### Added
+- Added a `Notifications` subtab to the CoreUI Showcase with notification card variants, bell/clear buttons, history popover, and module label previews.
+
+## [0.6.54] - 2026-06-08
+### Changed
+- Reverted the standalone `Tab Selector` subtab and placed `CoreUIPillTabs` and `CoreUISubtabs` back inside `Layout & Navigation` as a dedicated `Tab Selector` section at the end.
+
+## [0.6.53] - 2026-06-08
+### Changed
+- Moved `CoreUIPillTabs` and `CoreUISubtabs` out of the Core Components subtab into a new dedicated `Tab Selector` subtab.
+
+## [0.6.52] - 2026-06-08
+### Added
+- Added a `Cards` subtab to the CoreUI Showcase with a labeled card anatomy (header, body, footer) and moved card, main card patterns, and model card variants into it.
+- Split the `Colors` subtab into internal sections (Fonts first, then Colors, then Layout foundations) for clearer navigation.
+
+## [0.6.51] - 2026-06-08
+### Fixed
+- Stopped suppressing client-provided native tools based on Ollama model capability metadata.
+
+## [0.6.50] - 2026-06-08
+### Fixed
+- Preserved native tool calls for vision requests when the final Ollama model supports both tools and image input.
+
 ## [0.6.49] - 2026-06-08
 ### Changed
 - Documented the CoreUI tab/subtab component rule for pill tabs outside cards and subtabs inside cards.

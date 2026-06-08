@@ -1,12 +1,23 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
 import '../styles/components/TestingTab.css';
 import CoreUIPillTabs from './CoreUIPillTabs';
+import { loadTrackedModule } from '../services/moduleTimings';
 
-const ModelTester = lazy(() => import('./ModelTester'));
-const RagTestsTab = lazy(() => import('./RagTestsTab'));
-const RagTesterV2Tab = lazy(() => import('./RagTesterV2Tab'));
-const IndexerTester = lazy(() => import('./IndexerTester'));
-const WebCallsTester = lazy(() => import('./WebCallsTester'));
+const ModelTester = lazy(() =>
+  loadTrackedModule('ModelTester', () => import('./ModelTester'), { source: 'testing tab' })
+);
+const RagTestsTab = lazy(() =>
+  loadTrackedModule('RagTestsTab', () => import('./RagTestsTab'), { source: 'testing tab' })
+);
+const RagTesterV2Tab = lazy(() =>
+  loadTrackedModule('RagTesterV2Tab', () => import('./RagTesterV2Tab'), { source: 'testing tab' })
+);
+const IndexerTester = lazy(() =>
+  loadTrackedModule('IndexerTester', () => import('./IndexerTester'), { source: 'testing tab' })
+);
+const WebCallsTester = lazy(() =>
+  loadTrackedModule('WebCallsTester', () => import('./WebCallsTester'), { source: 'testing tab' })
+);
 
 const SUB_TABS = [
   { id: 'model-tester', label: 'Model Tester' },

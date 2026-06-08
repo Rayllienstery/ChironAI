@@ -53,7 +53,7 @@
 
 .coreui-showcase-item {
   display: grid;
-  grid-template-columns: minmax(260px, 0.9fr) minmax(280px, 1.1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 1.1fr);
   gap: 18px;
   padding: 16px;
   border: 1px solid var(--md-sys-color-outline-variant);
@@ -516,6 +516,74 @@
   font-size: 22px;
 }
 
+.coreui-showcase-card-anatomy {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+.coreui-showcase-card-anatomy .app-card__header,
+.coreui-showcase-card-anatomy .app-card__body,
+.coreui-showcase-card-anatomy .app-card__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+}
+
+.coreui-showcase-card-anatomy .app-card__header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.coreui-showcase-card-anatomy .app-card__header h3 {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-title-medium-font);
+  font-weight: 600;
+}
+
+.coreui-showcase-card-anatomy .app-card__header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.coreui-showcase-card-anatomy .app-card__body {
+  gap: 12px;
+  background: var(--md-sys-color-surface);
+}
+
+.coreui-showcase-card-anatomy .app-card__body p {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.coreui-showcase-card-anatomy .app-card__footer {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.coreui-showcase-card-anatomy .coreui-showcase-kicker {
+  margin: 0;
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-label-small-font);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .coreui-showcase-card-variants {
   display: flex;
   flex-wrap: wrap;
@@ -537,12 +605,8 @@
 }
 
 .coreui-showcase-docker-status {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
-}
-
-.coreui-showcase-docker-panel {
-  max-width: 100%;
 }
 
 .coreui-showcase-docker-panel .docker-section__header h3 {
@@ -550,16 +614,21 @@
 }
 
 .coreui-showcase-docker-table {
-  min-width: 620px;
+  min-width: 0;
 }
 
 .coreui-showcase-docker-table th:last-child,
 .coreui-showcase-docker-table td:last-child {
-  width: 180px;
+  width: auto;
 }
 
 .coreui-showcase-docker-contract-grid {
   grid-template-columns: 1fr;
+}
+
+.coreui-showcase-docker-contract-grid pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 860px) {
@@ -573,6 +642,61 @@
   .coreui-showcase-preview {
     min-height: auto;
   }
+}
+
+/* Notifications subtab */
+
+.coreui-showcase-notification-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.coreui-showcase-notification-demo-card {
+  width: 100% !important;
+  max-width: none !important;
+  animation: none !important;
+}
+
+.coreui-showcase-notification-action-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.coreui-showcase-notification-popover-preview {
+  width: 100%;
+  max-width: 340px;
+}
+
+.coreui-showcase-notification-popover-static {
+  position: static !important;
+  animation: none !important;
+  max-height: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.coreui-showcase-notification-labels-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.coreui-showcase-notification-label-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.coreui-showcase-notification-label-row .material-symbols-outlined {
+  font-size: 16px;
+  color: var(--md-sys-color-outline);
 }
 
 @media (max-width: 560px) {

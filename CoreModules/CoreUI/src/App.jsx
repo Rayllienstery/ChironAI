@@ -35,17 +35,16 @@ function isChunkLoadLikeError(error) {
     msg.includes("failed to fetch dynamically imported module") ||
     msg.includes("importing a module script failed") ||
     msg.includes("chunkloaderror") ||
-    msg.includes("dynamically imported")
+    msg.includes("dynamically imported") ||
+    msg.includes("dynamically importing")
   );
 }
 
 function lazyWithRetry(key, importer) {
   const storageKey = `coreui-lazy-retried:${String(key)}`;
   return lazy(() => {
-    const t0 = performance.now();
-    return importer()
+    return loadTrackedModule(key, importer, { source: "navigation", timeoutMs: 20000 })
       .then((mod) => {
-        recordModuleLoad(key, performance.now() - t0, "ok");
         try {
           window.sessionStorage.removeItem(storageKey);
         } catch {
@@ -54,7 +53,6 @@ function lazyWithRetry(key, importer) {
         return mod;
       })
       .catch((error) => {
-        recordModuleLoad(key, performance.now() - t0, "failed");
         if (isChunkLoadLikeError(error)) {
           try {
             const alreadyRetried = window.sessionStorage.getItem(storageKey) === "1";
@@ -75,21 +73,82 @@ function lazyWithRetry(key, importer) {
   });
 }
 
-const LogsTab = lazyWithRetry("LogsTab", () => import("./components/LogsTab"));
-const DependenciesTab = lazyWithRetry("DependenciesTab", () => import("./components/DependenciesTab"));
-const SettingsTab = lazyWithRetry("SettingsTab", () => import("./components/SettingsTab"));
-const LlmProxyTab = lazyWithRetry("LlmProxyTab", () => import("./components/LlmProxyTab"));
-const LlmProxyBuildsTab = lazyWithRetry("LlmProxyBuildsTab", () => import("./components/LlmProxyBuildsTab"));
-const RagTab = lazyWithRetry("RagTab", () => import("./components/RagTab"));
-const CrawlerTab = lazyWithRetry("CrawlerTab", () => import("./components/CrawlerTab"));
-const TestingTab = lazyWithRetry("TestingTab", () => import("./components/TestingTab"));
-const TemplateEditorTab = lazyWithRetry("TemplateEditorTab", () => import("./components/TemplateEditorTab"));
-const CoreUIShowcaseTab = lazyWithRetry("CoreUIShowcaseTab", () => import("./components/CoreUIShowcaseTab"));
-const ExtensionsTab = lazyWithRetry("ExtensionsTab", () => import("./components/ExtensionsTab"));
-const DevDocumentationTab = lazyWithRetry("DevDocumentationTab", () => import("./components/DevDocumentationTab"));
-const ExtensionRuntimeTab = lazyWithRetry("ExtensionRuntimeTab", () => import("./components/ExtensionRuntimeTab"));
-const DockerTab = lazyWithRetry("DockerTab", () => import("./components/DockerTab"));
-const TokensSecurityTab = lazyWithRetry("TokensSecurityTab", () => import("./components/TokensSecurityTab"));
+const LAZY_MODULES = {
+  LogsTab: () => import("./components/LogsTab"),
+  DependenciesTab: () => import("./components/DependenciesTab"),
+  SettingsTab: () => import("./components/SettingsTab"),
+  LlmProxyTab: () => import("./components/LlmProxyTab"),
+  LlmProxyBuildsTab: () => import("./components/LlmProxyBuildsTab"),
+  RagTab: () => import("./components/RagTab"),
+  CrawlerTab: () => import("./components/CrawlerTab"),
+  TestingTab: () => import("./components/TestingTab"),
+  TemplateEditorTab: () => import("./components/TemplateEditorTab"),
+  CoreUIShowcaseTab: () => import("./components/CoreUIShowcaseTab"),
+  ExtensionsTab: () => import("./components/ExtensionsTab"),
+  DevDocumentationTab: () => import("./components/DevDocumentationTab"),
+  ExtensionRuntimeTab: () => import("./components/ExtensionRuntimeTab"),
+  DockerTab: () => import("./components/DockerTab"),
+  TokensSecurityTab: () => import("./components/TokensSecurityTab"),
+};
+
+const TAB_MODULE_KEYS = {
+  logs: "LogsTab",
+  dependencies: "DependenciesTab",
+  settings: "SettingsTab",
+  "rag-fusion-proxy": "LlmProxyTab",
+  "llm-proxy": "LlmProxyBuildsTab",
+  rag: "RagTab",
+  crawler: "CrawlerTab",
+  testing: "TestingTab",
+  "template-editor": "TemplateEditorTab",
+  "coreui-showcase": "CoreUIShowcaseTab",
+  extensions: "ExtensionsTab",
+  "dev-documentation": "DevDocumentationTab",
+  docker: "DockerTab",
+  "tokens-security": "TokensSecurityTab",
+};
+
+const IDLE_PREFETCH_TAB_IDS = [
+  "logs",
+  "llm-proxy",
+  "rag-fusion-proxy",
+  "rag",
+  "crawler",
+  "testing",
+  "docker",
+  "tokens-security",
+  "extensions",
+  "template-editor",
+  "dependencies",
+  "dev-documentation",
+  "coreui-showcase",
+  "settings",
+];
+
+const IDLE_PREFETCH_EXTRA_MODULES = [
+  { key: "ModelTester", importer: () => import("./components/ModelTester") },
+  { key: "ProxyLogsAnalytics", importer: () => import("./components/ProxyLogsAnalytics") },
+  { key: "RagTestsTab", importer: () => import("./components/RagTestsTab") },
+  { key: "IndexerTester", importer: () => import("./components/IndexerTester") },
+  { key: "RagTesterV2Tab", importer: () => import("./components/RagTesterV2Tab") },
+  { key: "WebCallsTester", importer: () => import("./components/WebCallsTester") },
+];
+
+const LogsTab = lazyWithRetry("LogsTab", LAZY_MODULES.LogsTab);
+const DependenciesTab = lazyWithRetry("DependenciesTab", LAZY_MODULES.DependenciesTab);
+const SettingsTab = lazyWithRetry("SettingsTab", LAZY_MODULES.SettingsTab);
+const LlmProxyTab = lazyWithRetry("LlmProxyTab", LAZY_MODULES.LlmProxyTab);
+const LlmProxyBuildsTab = lazyWithRetry("LlmProxyBuildsTab", LAZY_MODULES.LlmProxyBuildsTab);
+const RagTab = lazyWithRetry("RagTab", LAZY_MODULES.RagTab);
+const CrawlerTab = lazyWithRetry("CrawlerTab", LAZY_MODULES.CrawlerTab);
+const TestingTab = lazyWithRetry("TestingTab", LAZY_MODULES.TestingTab);
+const TemplateEditorTab = lazyWithRetry("TemplateEditorTab", LAZY_MODULES.TemplateEditorTab);
+const CoreUIShowcaseTab = lazyWithRetry("CoreUIShowcaseTab", LAZY_MODULES.CoreUIShowcaseTab);
+const ExtensionsTab = lazyWithRetry("ExtensionsTab", LAZY_MODULES.ExtensionsTab);
+const DevDocumentationTab = lazyWithRetry("DevDocumentationTab", LAZY_MODULES.DevDocumentationTab);
+const ExtensionRuntimeTab = lazyWithRetry("ExtensionRuntimeTab", LAZY_MODULES.ExtensionRuntimeTab);
+const DockerTab = lazyWithRetry("DockerTab", LAZY_MODULES.DockerTab);
+const TokensSecurityTab = lazyWithRetry("TokensSecurityTab", LAZY_MODULES.TokensSecurityTab);
 
 import DockerTabIcon from "./assets/docker-mark.svg?url";
 import Card from "./components/Card";
@@ -106,7 +165,7 @@ import {
   postBrowserTiming,
   subscribeDockerEvents,
 } from "./services/api";
-import { recordModuleLoad } from "./services/moduleTimings";
+import { loadTrackedModule } from "./services/moduleTimings";
 import Sparkline from "./components/Sparkline";
 import { NotificationCenterProvider } from "./components/NotificationCenterContext";
 import NotificationCenterShell from "./components/NotificationCenterShell";
@@ -126,6 +185,23 @@ import "./styles/components/StandByScreen.css";
 const METRICS_HISTORY_LEN = 30;
 const SHELL_REQUEST_BOOT_DELAY_MS = 800;
 const PERFORMANCE_SHELL_REQUEST_DELAY_MS = 1500;
+
+function scheduleIdleWork(callback, timeout = 3000) {
+  if (typeof window === "undefined") return null;
+  if (typeof window.requestIdleCallback === "function") {
+    return { type: "idle", id: window.requestIdleCallback(callback, { timeout }) };
+  }
+  return { type: "timeout", id: window.setTimeout(callback, 1) };
+}
+
+function cancelIdleWork(handle) {
+  if (!handle || typeof window === "undefined") return;
+  if (handle.type === "idle" && typeof window.cancelIdleCallback === "function") {
+    window.cancelIdleCallback(handle.id);
+    return;
+  }
+  window.clearTimeout(handle.id);
+}
 
 function AppLoadingState({ moduleName }) {
   return (
@@ -198,6 +274,17 @@ function App() {
     activeTab === "performance"
       ? PERFORMANCE_SHELL_REQUEST_DELAY_MS
       : SHELL_REQUEST_BOOT_DELAY_MS;
+
+  const prefetchTabModule = useCallback((tabId, source = "intent") => {
+    const key = TAB_MODULE_KEYS[String(tabId || "")];
+    const importer = key ? LAZY_MODULES[key] : null;
+    if (!key || typeof importer !== "function") return Promise.resolve(null);
+    return loadTrackedModule(key, importer, {
+      source,
+      timeoutMs: 0,
+      staleAfterMs: 12000,
+    }).catch(() => null);
+  }, []);
 
   const initSession = useCallback(() => {
     setSessionError(false);
@@ -307,7 +394,9 @@ function App() {
       setExtensionTabs(tabs);
       setExtensionServiceStatusByTabId(serviceStatusByTabId);
       if (tabs.length > 0) {
-        void import("./components/ExtensionRuntimeTab");
+        void loadTrackedModule("ExtensionRuntimeTab", LAZY_MODULES.ExtensionRuntimeTab, {
+          source: "extension surface",
+        }).catch(() => null);
       }
     } catch {
       setExtensionTabs([]);
@@ -321,6 +410,44 @@ function App() {
     }, shellRequestDelayMs);
     return () => window.clearTimeout(timer);
   }, [loadExtensionSurface, shellRequestDelayMs]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timerId = null;
+    let idleHandle = null;
+    let index = 0;
+    const queue = [
+      ...IDLE_PREFETCH_TAB_IDS.map((tabId) => ({ tabId })),
+      ...IDLE_PREFETCH_EXTRA_MODULES,
+    ];
+
+    const prefetchNext = () => {
+      if (cancelled || index >= queue.length) return;
+      const item = queue[index];
+      index += 1;
+      idleHandle = scheduleIdleWork(() => {
+        idleHandle = null;
+        const promise = item.tabId
+          ? prefetchTabModule(item.tabId, "idle prefetch")
+          : loadTrackedModule(item.key, item.importer, {
+              source: "idle prefetch",
+              timeoutMs: 0,
+              staleAfterMs: 12000,
+            }).catch(() => null);
+        promise.finally(() => {
+          if (!cancelled) prefetchNext();
+        });
+      }, 4000);
+    };
+
+    timerId = window.setTimeout(prefetchNext, shellRequestDelayMs + 700);
+
+    return () => {
+      cancelled = true;
+      if (timerId != null) window.clearTimeout(timerId);
+      cancelIdleWork(idleHandle);
+    };
+  }, [prefetchTabModule, shellRequestDelayMs]);
 
   useEffect(() => {
     const gen = ++serviceStatusPollGenRef.current;
@@ -747,6 +874,7 @@ function App() {
         tabs={tabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
+        onPrefetchTab={(tabId) => prefetchTabModule(tabId, "intent")}
         tabErrors={tabErrors}
         tabActivity={tabActivity}
         onSettings={() => setActiveTab("settings")}

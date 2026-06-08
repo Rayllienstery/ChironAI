@@ -8,8 +8,11 @@ import ProxyTracesTab from './ProxyTracesTab';
 import ProxyJournalTab from './ProxyJournalTab';
 import EmptyState from './EmptyState';
 import { useOptionalNotificationCenter } from './NotificationCenterContext';
+import { loadTrackedModule } from '../services/moduleTimings';
 
-const ProxyLogsAnalytics = lazy(() => import('./ProxyLogsAnalytics'));
+const ProxyLogsAnalytics = lazy(() =>
+  loadTrackedModule('ProxyLogsAnalytics', () => import('./ProxyLogsAnalytics'), { source: 'logs tab' })
+);
 
 const PROXY_LOGS_ANALYTICS_LIMIT = 5000;
 const VIEW_MODE_TABS = [

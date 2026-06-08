@@ -1639,12 +1639,14 @@ export async function updateCrawlerSource(sourceId, sourceConfig) {
  * @returns {Promise<object>}
  */
 export async function getStartupPerformance() {
-  const response = await fetch(`${API_BASE}/performance/startup`);
+  const { response, data } = await fetchJsonWithTimeout(`${API_BASE}/performance/startup`, {
+    timeoutMs: 8000,
+    fetchOptions: { method: 'GET' },
+  });
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(error, 'Failed to fetch startup performance'));
+    throw new Error(extractApiError(data, 'Failed to fetch startup performance'));
   }
-  return response.json();
+  return data;
 }
 
 /**

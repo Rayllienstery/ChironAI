@@ -1,6 +1,8 @@
+import { useState } from "react";
 import Card from "./Card";
 import CoreUIBadge from "./CoreUIBadge";
 import CoreUIButton from "./CoreUIButton";
+import CoreUINotificationActionButton from "./CoreUINotificationActionButton";
 import CoreUIPillTabs from "./CoreUIPillTabs";
 import CoreUISubtabs from "./CoreUISubtabs";
 import CoreUISlider from "./CoreUISlider";
@@ -78,7 +80,20 @@ function FontCard({ title, token, description, sampleClassName, sample }) {
   );
 }
 
+const SHOWCASE_SUBTABS = [
+  { id: "colors", label: "Colors and fonts" },
+  { id: "buttons", label: "Buttons" },
+  { id: "cards", label: "Cards" },
+  { id: "components", label: "Components" },
+  { id: "layout", label: "Layout & Navigation" },
+  { id: "data", label: "Data & Feedback" },
+  { id: "icons", label: "Icons" },
+  { id: "notifications", label: "Notifications" },
+];
+
 function CoreUIShowcaseTab() {
+  const [subtab, setSubtab] = useState("colors");
+
   return (
     <div className="coreui-showcase tab-view">
       <header className="coreui-showcase-hero">
@@ -91,40 +106,16 @@ function CoreUIShowcaseTab() {
         </p>
       </header>
 
-      <ShowcaseSection title="Foundations">
-        <ShowcaseItem
-          name="Theme tokens"
-          classes={[":root", ".theme-dark", "[data-accent-color]"]}
-          source={`${sourceRoot}/styles/tokens.css`}
-          description="Color, typography, spacing, elevation, radius, theme, and accent variables used across CoreUI."
-        >
-          <div className="coreui-showcase-token-grid">
-            <TokenSwatch label="Primary" token="--md-sys-color-primary" />
-            <TokenSwatch label="Surface" token="--md-sys-color-surface" />
-            <TokenSwatch label="Container" token="--md-sys-color-surface-container" />
-            <TokenSwatch label="Outline" token="--md-sys-color-outline-variant" />
-          </div>
-        </ShowcaseItem>
+      <CoreUIPillTabs
+        tabs={SHOWCASE_SUBTABS}
+        value={subtab}
+        onChange={(id) => setSubtab(id)}
+        ariaLabel="Showcase categories"
+      />
 
-        <ShowcaseItem
-          name="Semantic state tokens"
-          classes={[
-            "--coreui-color-success",
-            "--coreui-color-warning",
-            "--coreui-color-info",
-            "--coreui-color-scrim",
-          ]}
-          source={`${sourceRoot}/styles/tokens.css`}
-          description="Shared semantic tokens for success, warning, info, error-adjacent feedback, and overlay scrims."
-        >
-          <div className="coreui-showcase-token-grid">
-            <TokenSwatch label="Success" token="--coreui-color-success-container" />
-            <TokenSwatch label="Warning" token="--coreui-color-warning-container" />
-            <TokenSwatch label="Info" token="--coreui-color-info-container" />
-            <TokenSwatch label="Scrim" token="--coreui-color-scrim" className="coreui-showcase-token--scrim" />
-          </div>
-        </ShowcaseItem>
-
+      {subtab === "colors" && (
+      <>
+      <ShowcaseSection title="Fonts">
         <ShowcaseItem
           name="Font registry"
           classes={["--coreui-font-family-base", "--coreui-font-family-mono", "--coreui-font-family-icon"]}
@@ -175,7 +166,44 @@ function CoreUIShowcaseTab() {
             <span className="coreui-showcase-type-label">Label medium</span>
           </div>
         </ShowcaseItem>
+      </ShowcaseSection>
 
+      <ShowcaseSection title="Colors">
+        <ShowcaseItem
+          name="Theme tokens"
+          classes={[":root", ".theme-dark", "[data-accent-color]"]}
+          source={`${sourceRoot}/styles/tokens.css`}
+          description="Color, typography, spacing, elevation, radius, theme, and accent variables used across CoreUI."
+        >
+          <div className="coreui-showcase-token-grid">
+            <TokenSwatch label="Primary" token="--md-sys-color-primary" />
+            <TokenSwatch label="Surface" token="--md-sys-color-surface" />
+            <TokenSwatch label="Container" token="--md-sys-color-surface-container" />
+            <TokenSwatch label="Outline" token="--md-sys-color-outline-variant" />
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Semantic state tokens"
+          classes={[
+            "--coreui-color-success",
+            "--coreui-color-warning",
+            "--coreui-color-info",
+            "--coreui-color-scrim",
+          ]}
+          source={`${sourceRoot}/styles/tokens.css`}
+          description="Shared semantic tokens for success, warning, info, error-adjacent feedback, and overlay scrims."
+        >
+          <div className="coreui-showcase-token-grid">
+            <TokenSwatch label="Success" token="--coreui-color-success-container" />
+            <TokenSwatch label="Warning" token="--coreui-color-warning-container" />
+            <TokenSwatch label="Info" token="--coreui-color-info-container" />
+            <TokenSwatch label="Scrim" token="--coreui-color-scrim" className="coreui-showcase-token--scrim" />
+          </div>
+        </ShowcaseItem>
+      </ShowcaseSection>
+
+      <ShowcaseSection title="Layout foundations">
         <ShowcaseItem
           name="Page width"
           classes={[".tab-view", ".coreui-page-shell", "--coreui-page-max-width"]}
@@ -202,25 +230,11 @@ function CoreUIShowcaseTab() {
           </div>
         </ShowcaseItem>
       </ShowcaseSection>
+      </>
+      )}
 
-      <ShowcaseSection title="Core Components">
-        <ShowcaseItem
-          name="Card"
-          classes={[".app-card", ".app-card--interactive", ".app-card--elevate-on-hover"]}
-          source={`${sourceRoot}/components/Card.jsx, ${sourceRoot}/styles/layout.css, ${sourceRoot}/styles/tokens.css`}
-          description="Compact elevated surface. Hoverable cards keep a neutral surface and signal interaction with a denser accent-colored shadow."
-        >
-          <div className="coreui-showcase-card-variants">
-            <Card className="coreui-showcase-demo-card">Default card</Card>
-            <Card interactive className="coreui-showcase-demo-card">
-              Interactive (cursor)
-            </Card>
-            <Card interactive elevateOnHover className="coreui-showcase-demo-card">
-              Hover me ↑
-            </Card>
-          </div>
-        </ShowcaseItem>
-
+      {subtab === "buttons" && (
+      <ShowcaseSection title="Buttons">
         <ShowcaseItem
           name="CoreUIButton"
           classes={[".coreui-btn", ".coreui-btn-primary", ".coreui-btn-danger", ".coreui-btn-ghost", ".coreui-btn-small", ".coreui-btn-icon"]}
@@ -258,46 +272,77 @@ function CoreUIShowcaseTab() {
         </ShowcaseItem>
 
         <ShowcaseItem
-          name="CoreUIPillTabs"
-          classes={[".coreui-pill-tablist", ".coreui-pill-tab", ".coreui-pill-tab-active"]}
-          source={`${sourceRoot}/components/CoreUIPillTabs.jsx`}
-          description="Reusable horizontal segmented navigation for sub-tabs and mode switching."
+          name="CoreUINotificationActionButton"
+          classes={[".coreui-notification-action-btn", ".coreui-notification-action-btn-icon", ".coreui-notification-action-btn-label"]}
+          source={`${sourceRoot}/components/CoreUINotificationActionButton.jsx, ${sourceRoot}/styles/components/CoreUINotificationActionButton.css`}
+          description="Pill-shaped card-as-button used by the floating notification center. Renders a Material icon plus an optional label, with level-3 elevation. Use the same component for the Bell toggle, the Clear action, and any other fixed overlay action."
         >
-          <CoreUIPillTabs
-            tabs={[
-              { id: "overview", label: "Overview" },
-              { id: "traces", label: "Traces" },
-              { id: "settings", label: "Settings" },
-            ]}
-            value="traces"
-            ariaLabel="Showcase tabs preview"
-          />
+          <div className="coreui-showcase-button-row">
+            <CoreUINotificationActionButton icon="notifications" label="Notifications" />
+            <CoreUINotificationActionButton icon="cleaning_services" label="Clear" />
+            <CoreUINotificationActionButton icon="notifications" />
+          </div>
         </ShowcaseItem>
+      </ShowcaseSection>
+      )}
 
+      {subtab === "cards" && (
+      <>
+      <ShowcaseSection title="Card anatomy">
         <ShowcaseItem
-          name="CoreUISubtabs"
-          classes={[".coreui-subtabs", ".coreui-subtab", ".coreui-subtab-active"]}
-          source={`${sourceRoot}/components/CoreUISubtabs.jsx`}
-          description="Standardized sub-navigation with a bottom border and tinted active state. Used for informational sections and onboarding guides."
+          name="Card structure"
+          classes={[".app-card", ".app-card__header", ".app-card__body", ".app-card__footer", ".app-card-actions", "--md-sys-elevation-level1", "--md-sys-shape-corner-medium"]}
+          source={`${sourceRoot}/components/Card.jsx, ${sourceRoot}/styles/layout.css, ${sourceRoot}/styles/tokens.css`}
+          description="The default CoreUI card uses the surface color, a 16px medium corner radius, and Material 3 level-1 elevation. Use the slots below to place content: header (title + actions), body (the main payload), and footer (secondary actions or metadata)."
         >
-          <CoreUISubtabs
-            tabs={[
-              { id: "intro", label: "Intro" },
-              { id: "features", label: "Features" },
-              { id: "architecture", label: "Architecture" },
-            ]}
-            value="features"
-            ariaLabel="Showcase subtabs preview"
-          />
+          <Card className="coreui-showcase-card-anatomy">
+            <header className="app-card__header">
+              <div>
+                <span className="coreui-showcase-kicker">Card header</span>
+                <h3>Service status</h3>
+              </div>
+              <div className="app-card__header-actions">
+                <CoreUIButton size="sm" variant="ghost">Refresh</CoreUIButton>
+                <CoreUIButton size="sm" variant="primary">Restart</CoreUIButton>
+              </div>
+            </header>
+            <div className="app-card__body">
+              <span className="coreui-showcase-kicker">Card body</span>
+              <p>Drop the main content here. Use <CodePill>app-card__body</CodePill> for padding, gaps, and rhythm. Headings, lists, metric grids, tables, and forms all live inside this slot.</p>
+              <div className="coreui-meta-grid">
+                <span><strong>Latency:</strong> 128 ms</span>
+                <span><strong>Uptime:</strong> 14h 02m</span>
+                <span><strong>Requests:</strong> 9 412</span>
+              </div>
+            </div>
+            <footer className="app-card__footer">
+              <span className="coreui-showcase-kicker">Card footer</span>
+              <div className="coreui-card-actions">
+                <CoreUIButton size="sm" variant="ghost">View logs</CoreUIButton>
+                <CoreUIButton size="sm" variant="ghost">Open dashboard</CoreUIButton>
+              </div>
+              <span className="coreui-showcase-kicker">Updated 2 min ago</span>
+            </footer>
+          </Card>
         </ShowcaseItem>
+      </ShowcaseSection>
 
+      <ShowcaseSection title="Card variants">
         <ShowcaseItem
-          name="EmptyState"
-          classes={[".coreui-empty-state"]}
-          source={`${sourceRoot}/components/EmptyState.jsx`}
-          description="Dashed neutral panel for missing data, unavailable integrations, and empty results."
+          name="Card"
+          classes={[".app-card", ".app-card--interactive", ".app-card--elevate-on-hover"]}
+          source={`${sourceRoot}/components/Card.jsx, ${sourceRoot}/styles/layout.css, ${sourceRoot}/styles/tokens.css`}
+          description="Compact elevated surface. Hoverable cards keep a neutral surface and signal interaction with a denser accent-colored shadow."
         >
-          <EmptyState>No records available for this filter.</EmptyState>
+          <div className="coreui-showcase-card-variants">
+            <Card className="coreui-showcase-demo-card">Default card</Card>
+            <Card interactive className="coreui-showcase-demo-card">
+              Interactive (cursor)
+            </Card>
+            <Card interactive elevateOnHover className="coreui-showcase-demo-card">
+              Hover me ↑
+            </Card>
+          </div>
         </ShowcaseItem>
 
         <ShowcaseItem
@@ -370,6 +415,56 @@ function CoreUIShowcaseTab() {
             </Card>
           </div>
         </ShowcaseItem>
+      </ShowcaseSection>
+      </>
+      )}
+
+      {subtab === "components" && (
+      <ShowcaseSection title="Core Components">
+        <ShowcaseItem
+          name="CoreUIButton"
+          classes={[".coreui-btn", ".coreui-btn-primary", ".coreui-btn-danger", ".coreui-btn-ghost", ".coreui-btn-small", ".coreui-btn-icon"]}
+          source={`${sourceRoot}/components/CoreUIButton.jsx`}
+          description="Shared button primitive for toolbar, modal, and panel actions."
+        >
+          <div className="coreui-showcase-button-row">
+            <CoreUIButton variant="primary">Primary</CoreUIButton>
+            <CoreUIButton>Default</CoreUIButton>
+            <CoreUIButton variant="danger">Danger</CoreUIButton>
+            <CoreUIButton variant="ghost">Ghost</CoreUIButton>
+            <CoreUIButton size="sm">Small</CoreUIButton>
+            <CoreUIButton size="icon" aria-label="Icon button">
+              <span className="material-symbols-outlined" aria-hidden="true">more_horiz</span>
+            </CoreUIButton>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Action button groups"
+          classes={["CoreUIButton", ".dashboard-primary-btn", ".dashboard-secondary-btn"]}
+          source={`${sourceRoot}/components/CoreUIButton.jsx, ${sourceRoot}/styles/components/DashboardTab.css`}
+          description="Standard replacement for the older capsule action buttons used by Dashboard, extensions, provider, and proxy screens."
+        >
+          <div className="coreui-showcase-action-button-stack">
+            <div className="coreui-showcase-button-row">
+              <CoreUIButton>Refresh</CoreUIButton>
+              <CoreUIButton variant="primary">Stop service</CoreUIButton>
+            </div>
+            <div className="coreui-showcase-button-row">
+              <CoreUIButton>Use LLM Proxy default</CoreUIButton>
+              <CoreUIButton>Clear saved (env/default)</CoreUIButton>
+            </div>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="EmptyState"
+          classes={[".coreui-empty-state"]}
+          source={`${sourceRoot}/components/EmptyState.jsx`}
+          description="Dashed neutral panel for missing data, unavailable integrations, and empty results."
+        >
+          <EmptyState>No records available for this filter.</EmptyState>
+        </ShowcaseItem>
 
         <ShowcaseItem
           name="CoreUIPipelinePreview"
@@ -410,7 +505,237 @@ function CoreUIShowcaseTab() {
           </div>
         </ShowcaseItem>
       </ShowcaseSection>
+      )}
 
+      {subtab === "layout" && (
+      <>
+      <ShowcaseSection title="Navigation & Status">
+        <ShowcaseItem
+          name="Sidebar navigation row"
+          classes={[".coreui-sidebar__link", ".coreui-sidebar__link--active", ".coreui-sidebar__icon"]}
+          source={`${sourceRoot}/components/SidebarNav.jsx`}
+          description="Left navigation link pattern with Material Symbol icon, active state, and label."
+        >
+          <div className="coreui-showcase-nav-demo">
+            <button type="button" className="coreui-showcase-nav-row coreui-showcase-nav-row-active">
+              <span className="material-symbols-outlined" aria-hidden="true">widgets</span>
+              <span>CoreUI Showcase</span>
+            </button>
+            <button type="button" className="coreui-showcase-nav-row">
+              <span className="material-symbols-outlined" aria-hidden="true">article</span>
+              <span>Logs</span>
+            </button>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Service status"
+          classes={[".status-pill", ".status-dot", ".status-spinner", ".status-text"]}
+          source={`${sourceRoot}/styles/layout.css`}
+          description="Compact status indicators for reachable, stopped, and polling service states."
+        >
+          <div className="coreui-showcase-status-row">
+            <span className="status-pill">
+              <span className="status-dot running" />
+              <span className="status-label">RAG</span>
+              <span className="status-text">running</span>
+            </span>
+            <span className="status-pill">
+              <span className="status-dot stopped" />
+              <span className="status-label">Provider</span>
+              <span className="status-text">stopped</span>
+            </span>
+            <span className="status-text-updating">
+              <span className="status-spinner" />
+              checking
+            </span>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="StandByScreen"
+          classes={[".standby-screen", ".standby-card", ".standby-loading-indicator", ".standby-loading-shape", ".standby-progress", ".standby-progress-meta", ".standby-module-name"]}
+          source={`${sourceRoot}/components/StandByScreen.jsx, ${sourceRoot}/styles/components/StandByScreen.css`}
+          description="Shared ChironAI stand-by loading view with a Material 3 tonal container, uncontained morphing loading indicator, indeterminate progress bar, and current module label."
+        >
+          <div className="coreui-showcase-standby-row">
+            <StandByScreen moduleName="Session Manager" size="md" />
+          </div>
+        </ShowcaseItem>
+      </ShowcaseSection>
+
+      <ShowcaseSection title="Forms & Controls">
+        <ShowcaseItem
+          name="Text fields"
+          classes={[".coreui-form-field", ".coreui-input", ".coreui-textarea", ".coreui-field-hint"]}
+          source={`${sourceRoot}/styles/coreui-system.css`}
+          description="Approved form field contract for settings screens, editors, and setup wizards."
+        >
+          <div className="coreui-showcase-form-grid">
+            <label className="coreui-form-field">
+              <span>Model name</span>
+              <input className="coreui-input" value="qwen2.5-coder" readOnly />
+              <span className="coreui-field-hint">Saved as the API-visible model id.</span>
+            </label>
+            <label className="coreui-form-field">
+              <span>Prompt note</span>
+              <textarea className="coreui-textarea" value="Reusable form surface." readOnly />
+              <span className="coreui-field-hint">Uses the same contract in modal and page forms.</span>
+            </label>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Select and boolean controls"
+          classes={[".coreui-select", ".coreui-checkbox", ".coreui-switch"]}
+          source={`${sourceRoot}/styles/coreui-system.css`}
+          description="Unified select, checkbox, and switch patterns for settings and wizard-style screens."
+        >
+          <div className="coreui-showcase-control-row">
+            <label className="coreui-form-field coreui-showcase-select-field">
+              <span>Mode</span>
+              <select className="coreui-select" value="system" onChange={() => {}} aria-label="Mode preview">
+                <option value="system">System</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </label>
+            <label className="coreui-checkbox">
+              <input type="checkbox" checked readOnly />
+              <span>Enabled</span>
+            </label>
+            <label className="coreui-switch">
+              <input type="checkbox" checked readOnly />
+              <span aria-hidden="true" />
+              <strong>Live</strong>
+            </label>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="CoreUISlider"
+          classes={[".coreui-slider-field", ".coreui-slider-title", ".coreui-slider"]}
+          source={`${sourceRoot}/components/CoreUISlider.jsx`}
+          description="Shared range control with a compact title row and current value for model settings and numeric tuning."
+        >
+          <div className="coreui-showcase-slider-row">
+            <CoreUISlider
+              label="Temperature"
+              valueText="0.7"
+              min="0"
+              max="2"
+              step="0.1"
+              value="0.7"
+              onChange={() => {}}
+              aria-label="Showcase temperature"
+            />
+            <CoreUISlider
+              label="Top K"
+              valueText="12"
+              min="1"
+              max="30"
+              step="1"
+              value="12"
+              onChange={() => {}}
+              aria-label="Showcase top k"
+            />
+          </div>
+        </ShowcaseItem>
+      </ShowcaseSection>
+
+      <ShowcaseSection title="Layout Utilities">
+        <ShowcaseItem
+          name="Layout and utility patterns"
+          classes={[".coreui-card-actions", ".coreui-inline-cluster", ".coreui-stack-sm", ".coreui-meta-grid"]}
+          source={`${sourceRoot}/styles/coreui-system.css`}
+          description="Reusable layout helpers for action rows, compact stacks, metadata chips, and dense panel composition."
+        >
+          <div className="coreui-showcase-utility-stack">
+            <div className="coreui-card-actions">
+              <CoreUIButton>Refresh</CoreUIButton>
+              <CoreUIButton variant="primary">Save</CoreUIButton>
+            </div>
+            <div className="coreui-meta-grid">
+              <span><strong>Model:</strong> qwen2.5-coder</span>
+              <span><strong>Latency:</strong> 128 ms</span>
+              <span><strong>Tokens:</strong> 912</span>
+            </div>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Spacing and margins"
+          classes={[".coreui-gap-*", ".coreui-mt-*", ".coreui-mb-*", ".coreui-p-*", ".coreui-section-block"]}
+          source={`${sourceRoot}/styles/coreui-system.css`}
+          description="Approved spacing utilities for margins, internal padding, section rhythm, and compact layout composition."
+        >
+          <div className="coreui-showcase-spacing-demo">
+            <div className="coreui-card-shell coreui-p-md coreui-stack-sm">
+              <div className="coreui-showcase-spacing-row">
+                <CodePill>.coreui-p-md</CodePill>
+                <span>Use on cards and note panels for default inner padding.</span>
+              </div>
+              <div className="coreui-showcase-spacing-row coreui-mt-sm">
+                <CodePill>.coreui-mt-sm</CodePill>
+                <span>Use for a small top separation between related controls.</span>
+              </div>
+              <div className="coreui-showcase-spacing-row coreui-mb-md">
+                <CodePill>.coreui-mb-md</CodePill>
+                <span>Use under headings or alert blocks before the next section.</span>
+              </div>
+              <div className="coreui-inline-cluster coreui-gap-md">
+                <CodePill>.coreui-inline-cluster</CodePill>
+                <CodePill>.coreui-gap-md</CodePill>
+                <span>Use for action rows and metadata groups.</span>
+              </div>
+              <div className="coreui-section-block">
+                <CodePill>.coreui-section-block</CodePill>
+                <span>Use to separate stacked content blocks with default vertical rhythm.</span>
+              </div>
+            </div>
+          </div>
+        </ShowcaseItem>
+      </ShowcaseSection>
+      <ShowcaseSection title="Tab Selector">
+        <ShowcaseItem
+          name="CoreUIPillTabs"
+          classes={[".coreui-pill-tablist", ".coreui-pill-tab", ".coreui-pill-tab-active"]}
+          source={`${sourceRoot}/components/CoreUIPillTabs.jsx`}
+          description="Reusable horizontal segmented navigation for primary tabs, section tabs, and mode switchers that sit outside cards."
+        >
+          <CoreUIPillTabs
+            tabs={[
+              { id: "overview", label: "Overview" },
+              { id: "traces", label: "Traces" },
+              { id: "settings", label: "Settings" },
+            ]}
+            value="traces"
+            ariaLabel="Showcase tabs preview"
+          />
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="CoreUISubtabs"
+          classes={[".coreui-subtabs", ".coreui-subtab", ".coreui-subtab-active"]}
+          source={`${sourceRoot}/components/CoreUISubtabs.jsx`}
+          description="Secondary/subtab navigation with a bottom border and tinted active state. Use for in-card sections, panels, and compact informational guides."
+        >
+          <CoreUISubtabs
+            tabs={[
+              { id: "intro", label: "Intro" },
+              { id: "features", label: "Features" },
+              { id: "architecture", label: "Architecture" },
+            ]}
+            value="features"
+            ariaLabel="Showcase subtabs preview"
+          />
+        </ShowcaseItem>
+      </ShowcaseSection>
+      </>
+      )}
+
+      {subtab === "data" && (
+      <>
       <ShowcaseSection title="Docker Manager Views">
         <ShowcaseItem
           name="Docker status panel"
@@ -608,140 +933,6 @@ return docker.ensure_container(spec)`}</pre>
         </ShowcaseItem>
       </ShowcaseSection>
 
-      <ShowcaseSection title="Navigation & Status">
-        <ShowcaseItem
-          name="Sidebar navigation row"
-          classes={[".coreui-sidebar__link", ".coreui-sidebar__link--active", ".coreui-sidebar__icon"]}
-          source={`${sourceRoot}/components/SidebarNav.jsx`}
-          description="Left navigation link pattern with Material Symbol icon, active state, and label."
-        >
-          <div className="coreui-showcase-nav-demo">
-            <button type="button" className="coreui-showcase-nav-row coreui-showcase-nav-row-active">
-              <span className="material-symbols-outlined" aria-hidden="true">widgets</span>
-              <span>CoreUI Showcase</span>
-            </button>
-            <button type="button" className="coreui-showcase-nav-row">
-              <span className="material-symbols-outlined" aria-hidden="true">article</span>
-              <span>Logs</span>
-            </button>
-          </div>
-        </ShowcaseItem>
-
-        <ShowcaseItem
-          name="Service status"
-          classes={[".status-pill", ".status-dot", ".status-spinner", ".status-text"]}
-          source={`${sourceRoot}/styles/layout.css`}
-          description="Compact status indicators for reachable, stopped, and polling service states."
-        >
-          <div className="coreui-showcase-status-row">
-            <span className="status-pill">
-              <span className="status-dot running" />
-              <span className="status-label">RAG</span>
-              <span className="status-text">running</span>
-            </span>
-            <span className="status-pill">
-              <span className="status-dot stopped" />
-              <span className="status-label">Provider</span>
-              <span className="status-text">stopped</span>
-            </span>
-            <span className="status-text-updating">
-              <span className="status-spinner" />
-              checking
-            </span>
-          </div>
-        </ShowcaseItem>
-
-        <ShowcaseItem
-          name="StandByScreen"
-          classes={[".standby-screen", ".standby-card", ".standby-loading-indicator", ".standby-loading-shape", ".standby-progress", ".standby-progress-meta", ".standby-module-name"]}
-          source={`${sourceRoot}/components/StandByScreen.jsx, ${sourceRoot}/styles/components/StandByScreen.css`}
-          description="Shared ChironAI stand-by loading view with a Material 3 tonal container, uncontained morphing loading indicator, indeterminate progress bar, and current module label."
-        >
-          <div className="coreui-showcase-standby-row">
-            <StandByScreen moduleName="Session Manager" size="md" />
-          </div>
-        </ShowcaseItem>
-      </ShowcaseSection>
-
-      <ShowcaseSection title="Forms & Controls">
-        <ShowcaseItem
-          name="Text fields"
-          classes={[".coreui-form-field", ".coreui-input", ".coreui-textarea", ".coreui-field-hint"]}
-          source={`${sourceRoot}/styles/coreui-system.css`}
-          description="Approved form field contract for settings screens, editors, and setup wizards."
-        >
-          <div className="coreui-showcase-form-grid">
-            <label className="coreui-form-field">
-              <span>Model name</span>
-              <input className="coreui-input" value="qwen2.5-coder" readOnly />
-              <span className="coreui-field-hint">Saved as the API-visible model id.</span>
-            </label>
-            <label className="coreui-form-field">
-              <span>Prompt note</span>
-              <textarea className="coreui-textarea" value="Reusable form surface." readOnly />
-              <span className="coreui-field-hint">Uses the same contract in modal and page forms.</span>
-            </label>
-          </div>
-        </ShowcaseItem>
-
-        <ShowcaseItem
-          name="Select and boolean controls"
-          classes={[".coreui-select", ".coreui-checkbox", ".coreui-switch"]}
-          source={`${sourceRoot}/styles/coreui-system.css`}
-          description="Unified select, checkbox, and switch patterns for settings and wizard-style screens."
-        >
-          <div className="coreui-showcase-control-row">
-            <label className="coreui-form-field coreui-showcase-select-field">
-              <span>Mode</span>
-              <select className="coreui-select" value="system" onChange={() => {}} aria-label="Mode preview">
-                <option value="system">System</option>
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-              </select>
-            </label>
-            <label className="coreui-checkbox">
-              <input type="checkbox" checked readOnly />
-              <span>Enabled</span>
-            </label>
-            <label className="coreui-switch">
-              <input type="checkbox" checked readOnly />
-              <span aria-hidden="true" />
-              <strong>Live</strong>
-            </label>
-          </div>
-        </ShowcaseItem>
-
-        <ShowcaseItem
-          name="CoreUISlider"
-          classes={[".coreui-slider-field", ".coreui-slider-title", ".coreui-slider"]}
-          source={`${sourceRoot}/components/CoreUISlider.jsx`}
-          description="Shared range control with a compact title row and current value for model settings and numeric tuning."
-        >
-          <div className="coreui-showcase-slider-row">
-            <CoreUISlider
-              label="Temperature"
-              valueText="0.7"
-              min="0"
-              max="2"
-              step="0.1"
-              value="0.7"
-              onChange={() => {}}
-              aria-label="Showcase temperature"
-            />
-            <CoreUISlider
-              label="Top K"
-              valueText="12"
-              min="1"
-              max="30"
-              step="1"
-              value="12"
-              onChange={() => {}}
-              aria-label="Showcase top k"
-            />
-          </div>
-        </ShowcaseItem>
-      </ShowcaseSection>
-
       <ShowcaseSection title="Data & Feedback Patterns">
         <ShowcaseItem
           name="Metric card"
@@ -868,60 +1059,11 @@ return docker.ensure_container(spec)`}</pre>
             </div>
           </div>
         </ShowcaseItem>
-
-        <ShowcaseItem
-          name="Layout and utility patterns"
-          classes={[".coreui-card-actions", ".coreui-inline-cluster", ".coreui-stack-sm", ".coreui-meta-grid"]}
-          source={`${sourceRoot}/styles/coreui-system.css`}
-          description="Reusable layout helpers for action rows, compact stacks, metadata chips, and dense panel composition."
-        >
-          <div className="coreui-showcase-utility-stack">
-            <div className="coreui-card-actions">
-              <CoreUIButton>Refresh</CoreUIButton>
-              <CoreUIButton variant="primary">Save</CoreUIButton>
-            </div>
-            <div className="coreui-meta-grid">
-              <span><strong>Model:</strong> qwen2.5-coder</span>
-              <span><strong>Latency:</strong> 128 ms</span>
-              <span><strong>Tokens:</strong> 912</span>
-            </div>
-          </div>
-        </ShowcaseItem>
-
-        <ShowcaseItem
-          name="Spacing and margins"
-          classes={[".coreui-gap-*", ".coreui-mt-*", ".coreui-mb-*", ".coreui-p-*", ".coreui-section-block"]}
-          source={`${sourceRoot}/styles/coreui-system.css`}
-          description="Approved spacing utilities for margins, internal padding, section rhythm, and compact layout composition."
-        >
-          <div className="coreui-showcase-spacing-demo">
-            <div className="coreui-card-shell coreui-p-md coreui-stack-sm">
-              <div className="coreui-showcase-spacing-row">
-                <CodePill>.coreui-p-md</CodePill>
-                <span>Use on cards and note panels for default inner padding.</span>
-              </div>
-              <div className="coreui-showcase-spacing-row coreui-mt-sm">
-                <CodePill>.coreui-mt-sm</CodePill>
-                <span>Use for a small top separation between related controls.</span>
-              </div>
-              <div className="coreui-showcase-spacing-row coreui-mb-md">
-                <CodePill>.coreui-mb-md</CodePill>
-                <span>Use under headings or alert blocks before the next section.</span>
-              </div>
-              <div className="coreui-inline-cluster coreui-gap-md">
-                <CodePill>.coreui-inline-cluster</CodePill>
-                <CodePill>.coreui-gap-md</CodePill>
-                <span>Use for action rows and metadata groups.</span>
-              </div>
-              <div className="coreui-section-block">
-                <CodePill>.coreui-section-block</CodePill>
-                <span>Use to separate stacked content blocks with default vertical rhythm.</span>
-              </div>
-            </div>
-          </div>
-        </ShowcaseItem>
       </ShowcaseSection>
+      </>
+      )}
 
+      {subtab === "icons" && (
       <ShowcaseSection title="Icons">
         <ShowcaseItem
           name="Material Symbols"
@@ -939,6 +1081,181 @@ return docker.ensure_container(spec)`}</pre>
           </div>
         </ShowcaseItem>
       </ShowcaseSection>
+      )}
+
+      {subtab === "notifications" && (
+      <>
+      <ShowcaseSection title="Notification Cards">
+        <ShowcaseItem
+          name="Notification card variants"
+          classes={[".notification-center-card", ".notification-center-card--error", ".notification-center-card--loading", ".notification-center-card--live"]}
+          source={`${sourceRoot}/components/NotificationCenterShell.jsx, ${sourceRoot}/styles/components/NotificationCenter.css`}
+          description="Floating notification cards for errors, loading states, events, and live activity. Rendered in a fixed bottom-right stack."
+        >
+          <div className="coreui-showcase-notification-stack">
+            <Card className="notification-center-card notification-center-card--error coreui-showcase-notification-demo-card" elevation="var(--md-sys-elevation-level2)">
+              <div className="notification-center-card-header">
+                <span className="notification-center-card-header-title">Service unreachable</span>
+                <button type="button" className="notification-center-card-close" aria-label="Dismiss">×</button>
+              </div>
+              <div className="notification-center-card-main">
+                <div className="notification-center-card-message">Qdrant did not respond within the timeout window.</div>
+              </div>
+              <div className="notification-center-module-footer">
+                <span className="notification-center-module-footer-source">RAG / Qdrant</span>
+                <span className="notification-center-module-footer-time">14:22</span>
+              </div>
+            </Card>
+            <Card className="notification-center-card notification-center-card--loading coreui-showcase-notification-demo-card" elevation="var(--md-sys-elevation-level2)">
+              <div className="notification-center-card-header">
+                <span className="notification-center-card-spinner" aria-hidden="true" />
+                <span className="notification-center-card-header-title">Running RAG tests</span>
+                <button type="button" className="notification-center-card-close" aria-label="Dismiss">×</button>
+              </div>
+              <div className="notification-center-card-main">
+                <div className="notification-center-card-message">Test run in progress…</div>
+                <div className="notification-center-card-timer">
+                  <span className="material-symbols-outlined" aria-hidden="true">timer</span>
+                  <span>Elapsed</span>
+                  <strong>02:34</strong>
+                </div>
+              </div>
+              <div className="notification-center-module-footer">
+                <span className="notification-center-module-footer-source">RAG Tests</span>
+                <span className="notification-center-module-footer-time">14:20</span>
+              </div>
+            </Card>
+            <Card className="notification-center-card notification-center-card--live coreui-showcase-notification-demo-card" elevation="var(--md-sys-elevation-level2)">
+              <div className="notification-center-card-header">
+                <span className="notification-center-card-header-title">RAG Fusion Proxy</span>
+                <button type="button" className="notification-center-card-close" aria-label="Close">×</button>
+              </div>
+              <div className="notification-center-card-live-slot">
+                <div className="proxy-live-notification-row">
+                  <span className="proxy-live-notification-label">Model</span>
+                  <span className="proxy-live-notification-value">qwen2.5-coder:7b</span>
+                </div>
+              </div>
+              <div className="notification-center-module-footer">
+                <span className="notification-center-module-footer-source">RAG Fusion Proxy</span>
+                <span className="notification-center-module-footer-time">14:25</span>
+              </div>
+            </Card>
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Notification card anatomy"
+          classes={[".notification-center-card-header", ".notification-center-card-main", ".notification-center-card-message", ".notification-center-card-timer", ".notification-center-card-actions", ".notification-center-module-footer"]}
+          source={`${sourceRoot}/components/NotificationCenterShell.jsx, ${sourceRoot}/styles/components/NotificationCenter.css`}
+          description="Each card has a header (title + spinner + close), a body (message, timer, action buttons), and a footer (source module + time)."
+        >
+          <Card className="notification-center-card coreui-showcase-notification-demo-card" elevation="var(--md-sys-elevation-level2)">
+            <div className="notification-center-card-header">
+              <span className="notification-center-card-spinner" aria-hidden="true" />
+              <span className="notification-center-card-header-title">Installing extension</span>
+              <button type="button" className="notification-center-card-close" aria-label="Dismiss">×</button>
+            </div>
+            <div className="notification-center-card-main">
+              <div className="notification-center-card-message">Pulling Docker image and configuring runtime.</div>
+              <div className="notification-center-card-timer">
+                <span className="material-symbols-outlined" aria-hidden="true">timer</span>
+                <span>Elapsed</span>
+                <strong>01:12</strong>
+              </div>
+              <div className="notification-center-card-actions">
+                <button type="button" className="notification-center-card-action-btn">View details</button>
+              </div>
+            </div>
+            <div className="notification-center-module-footer">
+              <span className="notification-center-module-footer-source">Extensions</span>
+              <span className="notification-center-module-footer-time">14:18</span>
+            </div>
+          </Card>
+        </ShowcaseItem>
+      </ShowcaseSection>
+
+      <ShowcaseSection title="Action Buttons">
+        <ShowcaseItem
+          name="Action button (Bell and Clear)"
+          classes={[".coreui-notification-action-btn", ".coreui-notification-action-btn-icon", ".coreui-notification-action-btn-label"]}
+          source={`${sourceRoot}/components/CoreUINotificationActionButton.jsx, ${sourceRoot}/styles/components/CoreUINotificationActionButton.css`}
+          description="Pill-shaped action buttons used in the floating notification center. The same component drives the Bell toggle, the Clear action, and any other overlay button, so heights and styling stay in lockstep."
+        >
+          <div className="coreui-showcase-notification-action-row">
+            <CoreUINotificationActionButton icon="cleaning_services" label="Clear" />
+            <CoreUINotificationActionButton icon="notifications" label="Notifications" />
+          </div>
+        </ShowcaseItem>
+      </ShowcaseSection>
+
+      <ShowcaseSection title="History Popover">
+        <ShowcaseItem
+          name="Notification history dialog"
+          classes={[".notification-center-popover", ".notification-center-popover-header", ".notification-center-popover-row"]}
+          source={`${sourceRoot}/components/NotificationCenterShell.jsx, ${sourceRoot}/styles/components/NotificationCenter.css`}
+          description="Glass-morphism popover with backdrop blur. Lists all persisted notifications sorted by time, with a Clear button in the header."
+        >
+          <div className="coreui-showcase-notification-popover-preview">
+            <div className="notification-center-popover coreui-showcase-notification-popover-static">
+              <div className="notification-center-popover-header">
+                <span className="notification-center-popover-title">History</span>
+                <CoreUIButton size="sm" variant="ghost">Clear</CoreUIButton>
+              </div>
+              <div className="notification-center-popover-list">
+                <div className="notification-center-popover-row">
+                  <div className="notification-center-popover-row-main">
+                    <div className="notification-center-popover-row-title">Service unreachable</div>
+                    <div className="notification-center-popover-row-msg">Qdrant did not respond within the timeout window.</div>
+                  </div>
+                  <div className="notification-center-module-footer">
+                    <span className="notification-center-module-footer-source">RAG / Qdrant</span>
+                    <span className="notification-center-module-footer-time">14:22</span>
+                  </div>
+                </div>
+                <div className="notification-center-popover-row notification-center-popover-row--error">
+                  <div className="notification-center-popover-row-main">
+                    <div className="notification-center-popover-row-title">Security scan failed</div>
+                    <div className="notification-center-popover-row-msg">Extension manifest validation error.</div>
+                  </div>
+                  <div className="notification-center-module-footer">
+                    <span className="notification-center-module-footer-source">Extensions</span>
+                    <span className="notification-center-module-footer-time">13:58</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </ShowcaseItem>
+      </ShowcaseSection>
+
+      <ShowcaseSection title="Module Labels">
+        <ShowcaseItem
+          name="Source module labels"
+          classes={["notificationModuleLabels.js"]}
+          source={`${sourceRoot}/components/notificationModuleLabels.js`}
+          description="Maps internal source keys to human-readable display names shown in card footers and history rows."
+        >
+          <div className="coreui-showcase-notification-labels-grid">
+            {[
+              { key: "rag-tests", label: "RAG Tests" },
+              { key: "rag-fusion-proxy", label: "RAG Fusion Proxy" },
+              { key: "extensions", label: "Extensions" },
+              { key: "rag", label: "RAG / Qdrant" },
+              { key: "crawler", label: "Crawler / Indexer" },
+              { key: "system", label: "System" },
+            ].map(({ key, label }) => (
+              <div key={key} className="coreui-showcase-notification-label-row">
+                <CodePill>{key}</CodePill>
+                <span className="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+        </ShowcaseItem>
+      </ShowcaseSection>
+      </>
+      )}
     </div>
   );
 }

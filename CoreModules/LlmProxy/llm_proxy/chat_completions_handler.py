@@ -26,7 +26,6 @@ from application.rag.proxy_settings_contract import (
 
 from llm_proxy.ollama_compat import (
     caps_supports_thinking,
-    caps_supports_tools,
     caps_supports_vision,
     chat_error_suggests_no_think,
     chat_error_suggests_no_tools,
@@ -914,8 +913,6 @@ def run_chat_completions(
             _ollama_caps = get_cached_ollama_capabilities(
                 effective_ollama_model.strip(), ollama_chat_url
             )
-            if _ollama_caps is not None and use_native_tools and not caps_supports_tools(_ollama_caps):
-                use_native_tools = False
     except Exception:
         _ollama_caps = None
 
@@ -1224,21 +1221,15 @@ def run_chat_completions(
         trace["ollama"]["think"] = ollama_think
         trace["ollama"]["chat_stream"] = False
         ollama_messages_have_images = _ollama_messages_have_images(ollama_messages)
-        if use_native_tools and ollama_messages_have_images:
-            use_native_tools = False
-            tools = []
-            tool_choice_effective = "none"
-            trace["request"]["use_native_tools"] = False
-            trace["request"]["tool_choice_effective"] = "none"
-            trace["request"]["tools_count_effective"] = 0
-            trace["request"]["native_tools_suppressed_for_vision"] = True
-            _append_trace_warning(trace, "native_tools_suppressed_for_vision")
+        image_model_caps: frozenset[str] | None = _ollama_caps
         if ollama_messages_have_images and ollama_chat_url:
-            image_model_caps: frozenset[str] | None = None
             try:
                 image_model_caps = get_cached_ollama_capabilities(use_model, ollama_chat_url)
             except Exception:
                 image_model_caps = None
+            if image_model_caps is not None:
+                _ollama_caps = image_model_caps
+                trace["request"]["ollama_capabilities"] = sorted(image_model_caps)
             if image_model_caps is not None and not caps_supports_vision(image_model_caps):
                 fallback_model = find_cached_ollama_vision_model(
                     ollama_chat_url,
@@ -1250,6 +1241,7 @@ def run_chat_completions(
                     effective_ollama_model = fallback_model
                     fallback_caps = get_cached_ollama_capabilities(fallback_model, ollama_chat_url)
                     if fallback_caps is not None:
+                        image_model_caps = fallback_caps
                         _ollama_caps = fallback_caps
                         trace["request"]["ollama_capabilities"] = sorted(fallback_caps)
                         if ollama_think is not None and not caps_supports_thinking(fallback_caps):
@@ -1265,6 +1257,17 @@ def run_chat_completions(
                     trace["ollama"]["model"] = use_model
                     trace["ollama"]["think"] = ollama_think
                     _append_trace_warning(trace, "vision_model_fallback")
+        trace["request"]["use_native_tools"] = use_native_tools
+        trace["request"]["tool_choice_effective"] = (
+            tool_choice_effective
+            if isinstance(tool_choice_effective, (str, dict))
+            else str(tool_choice_effective)
+        )
+        trace["request"]["tools_count_effective"] = (
+            len(tools) if use_native_tools and tool_choice_effective != "none" else 0
+        )
+        if use_native_tools and ollama_messages_have_images:
+            trace["request"]["native_tools_preserved_for_vision"] = True
         client_visible_model = requested_model if dumb_build_pipeline else use_model
 
         if tool_loop_limit_reached:

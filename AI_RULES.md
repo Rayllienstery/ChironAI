@@ -179,6 +179,11 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 - **Source of Truth:** The canonical version is stored in `core/version.py`.
 - **CHANGELOG.md:** Must be updated for every version bump. Use a concise bulleted list to describe **what** was done, but **not how** it was done.
 
+### Runtime smoke check
+
+- After every task that changes any non-`.md` file, verify that the application starts via [`build_and_run.bat`](build_and_run.bat).
+- If `build_and_run.bat` cannot be run or fails, state that explicitly in the final response with the reason and any relevant error summary.
+
 ---
 
 ## 9. AI checklist before finishing a task
@@ -189,6 +194,7 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 - [ ] If `config/*.yaml` or env vars changed: are they documented for users/deploy?
 - [ ] Did you add a new long-lived monolith “tail”—worth a line in `docs/legacy_map.md`?
 - [ ] For CoreUI: styles via tokens/existing classes; new tabs via the lazy pattern in `App.jsx`; tab/subtab hierarchy uses `CoreUIPillTabs` outside cards and `CoreUISubtabs` inside cards; reusable views unified instead of duplicated; CoreUI Showcase updated when UI was added or removed.
+- [ ] If any non-`.md` file changed: application startup verified through [`build_and_run.bat`](build_and_run.bat), or the final response explains why it was not verified.
 - [ ] For Extensions:
     - [ ] Does it provide its own frame, tab title, tab icon, and assets?
     - [ ] Is `chironai-extension.json` present and valid?

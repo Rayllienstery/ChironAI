@@ -6,6 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:stats": "vite build && node -e \"console.log('Bundle report: dist/stats.html')\"",
+    "test:module-timings": "node scripts/test_module_timings.mjs",
     "preview": "vite preview",
     "knip": "knip"
   },

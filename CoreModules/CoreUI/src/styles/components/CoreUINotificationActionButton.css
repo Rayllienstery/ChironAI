@@ -1,0 +1,34 @@
+.coreui-notification-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 12px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 999px;
+  cursor: pointer;
+  font: var(--md-sys-typescale-label-medium-font);
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface);
+  --app-card-box-shadow: var(--md-sys-elevation-level3);
+  box-shadow: var(--md-sys-elevation-level3);
+}
+
+.coreui-notification-action-btn:hover {
+  filter: brightness(1.02);
+}
+
+.coreui-notification-action-btn:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.coreui-notification-action-btn-icon {
+  flex-shrink: 0;
+  font-size: 20px;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+.coreui-notification-action-btn-label {
+  flex-shrink: 0;
+}
