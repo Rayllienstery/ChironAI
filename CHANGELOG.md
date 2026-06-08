@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.47] - 2026-06-08
+### Fixed
+- Prevented prior proxy transport-error artifacts from being forwarded back into OpenCode conversation history.
+
+## [0.6.46] - 2026-06-08
+### Added
+- Introduced `CoreModules/LogsManager` for internal read-only access to RAG Fusion proxy journal logs in `logs/webui.db`.
+
+## [0.6.45] - 2026-06-08
+### Fixed
+- Made Ollama vision fallback use the configured chat URL when provider-runtime adapters do not expose an upstream `_url`.
+
+## [0.6.44] - 2026-06-08
+### Fixed
+- Added Ollama `/api/tags` capability detection and routed image requests to a vision-capable fallback when the selected build model is text-only.
+
+## [0.6.43] - 2026-06-08
+### Fixed
+- Avoided Ollama 400 errors for streamed vision requests from OpenCode by suppressing native tools when images are present.
+
+## [0.6.42] - 2026-06-08
+### Fixed
+- Marked LLM Proxy build models as image-capable for OpenCode-compatible clients and normalized AI SDK image file parts.
+
 ## [0.6.41] - 2026-06-07
 ### Changed
 - Made `modules/webui_backend` the canonical `webui_backend` package and removed the duplicate CoreModules package namespace.

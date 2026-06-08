@@ -26,8 +26,10 @@ from llm_proxy.wire_format.model_brand import resolve_brand_key
 from llm_proxy.wire_format.model_capabilities import (
     caps_supports_thinking,
     caps_supports_tools,
+    caps_supports_vision,
     chat_error_suggests_no_think,
     chat_error_suggests_no_tools,
+    find_cached_ollama_vision_model,
     get_cached_ollama_capabilities,
 )
 
@@ -35,8 +37,10 @@ __all__ = [
     "VISION_MAX_DECODED_BYTES",
     "caps_supports_thinking",
     "caps_supports_tools",
+    "caps_supports_vision",
     "chat_error_suggests_no_think",
     "chat_error_suggests_no_tools",
+    "find_cached_ollama_vision_model",
     "get_cached_ollama_capabilities",
     "is_gemini_family_model_name",
     "ollama_chat_tool_choice_payload_value",

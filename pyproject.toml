@@ -87,6 +87,7 @@ pythonpath = [
     "CoreModules/LlmProxy",
     "CoreModules/RagService",
     "CoreModules/WebInteraction",
+    "CoreModules/LogsManager",
     "CoreModules/MdIngestionService",
     "CoreModules/ErrorManager",
 ]
@@ -115,6 +116,7 @@ src = [
   "CoreModules/RagService/chironai_rag",
   "CoreModules/RagService/rag_service",
   "CoreModules/WebInteraction/web_interaction",
+  "CoreModules/LogsManager/logs_manager",
   "CoreModules/MdIngestionService/md_ingestion_service",
   "modules/webui_backend/webui_backend",
   "modules/crawler_service/crawler_service",

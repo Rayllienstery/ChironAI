@@ -231,8 +231,9 @@ def promote_inline_data_image_urls_in_content(content: Any) -> Any:
         if not isinstance(p, dict):
             continue
         typ = p.get("type")
-        if typ == "image_url":
-            out.append(dict(p))
+        image_url = _part_to_image_url(p)
+        if image_url:
+            out.append({"type": "image_url", "image_url": {"url": image_url}})
             continue
         if typ == "text" or (typ is None and isinstance(p.get("text"), str)):
             tx = str(p.get("text", ""))
@@ -273,15 +274,45 @@ def _image_url_string(part: dict[str, Any]) -> str:
     return ""
 
 
+def _media_type(part: dict[str, Any]) -> str:
+    return str(part.get("mediaType") or part.get("mimeType") or part.get("mime") or "").strip().lower()
+
+
+def _image_data_to_data_url(data: Any, media_type: str) -> str:
+    s = str(data or "").strip()
+    if not s:
+        return ""
+    if s.lower().startswith("data:image"):
+        return s
+    if s.lower().startswith("http://") or s.lower().startswith("https://"):
+        return s
+    if media_type.startswith("image/"):
+        return f"data:{media_type};base64,{s}"
+    return ""
+
+
+def _part_to_image_url(part: dict[str, Any]) -> str:
+    typ = part.get("type")
+    if typ == "image_url":
+        return _image_url_string(part)
+    if typ == "image":
+        media_type = _media_type(part)
+        return _image_data_to_data_url(part.get("image") or part.get("data") or part.get("url"), media_type)
+    if typ == "file":
+        media_type = _media_type(part)
+        if not media_type.startswith("image/"):
+            return ""
+        return _image_data_to_data_url(part.get("data") or part.get("url"), media_type)
+    return ""
+
+
 def collect_ollama_images_b64_from_parts(parts: list[Any]) -> list[str]:
     """Extract Ollama ``images`` entries from OpenAI-style parts (data URLs only)."""
     out: list[str] = []
     for p in parts:
         if not isinstance(p, dict):
             continue
-        if p.get("type") != "image_url":
-            continue
-        url = _image_url_string(p)
+        url = _part_to_image_url(p)
         b64, _err = data_url_to_ollama_image_b64(url)
         if b64 is not None and len(out) < VISION_MAX_IMAGES_PER_MESSAGE:
             out.append(b64)
@@ -307,8 +338,8 @@ def sanitize_proxy_content_parts(parts: list[Any]) -> str | list[dict[str, Any]]
             if st:
                 out.append({"type": "text", "text": st})
             continue
-        if typ == "image_url":
-            url = _image_url_string(p)
+        url = _part_to_image_url(p)
+        if url:
             if not url:
                 continue
             ul = url

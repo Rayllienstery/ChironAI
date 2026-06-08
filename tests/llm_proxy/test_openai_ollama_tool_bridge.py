@@ -202,6 +202,24 @@ def test_openai_messages_developer_maps_to_system() -> None:
     assert ollama[1]["role"] == "user"
 
 
+def test_openai_messages_maps_ai_sdk_image_file_part_to_ollama_images() -> None:
+    openai = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "describe this"},
+                {"type": "file", "mediaType": "image/png", "data": "aW1hZ2UtYnl0ZXM="},
+            ],
+        }
+    ]
+
+    ollama = openai_messages_to_ollama(openai)
+
+    assert ollama[0]["role"] == "user"
+    assert ollama[0]["content"] == "describe this"
+    assert ollama[0]["images"] == ["aW1hZ2UtYnl0ZXM="]
+
+
 def test_openai_unknown_role_preserved_as_user() -> None:
     openai = [{"role": "custom", "content": "payload"}]
     ollama = openai_messages_to_ollama(openai)

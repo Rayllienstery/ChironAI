@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "logs-manager"
+version = "0.1.0"
+description = "Read-only access to RAG Fusion proxy journal logs in logs/webui.db (internal LLM use)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.setuptools]
+packages = ["logs_manager"]

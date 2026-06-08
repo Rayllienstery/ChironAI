@@ -25,9 +25,12 @@ from application.rag.proxy_settings_contract import (
 )
 
 from llm_proxy.ollama_compat import (
+    caps_supports_thinking,
     caps_supports_tools,
+    caps_supports_vision,
     chat_error_suggests_no_think,
     chat_error_suggests_no_tools,
+    find_cached_ollama_vision_model,
     get_cached_ollama_capabilities,
     ollama_message_to_openai_assistant,
     ollama_tools_from_openai,
@@ -140,6 +143,59 @@ from llm_proxy.chat_completions_run_phases import (
 )
 
 _RAG_LOG = logging.getLogger("llm_proxy")
+
+
+def _ollama_messages_have_images(messages: list[dict[str, Any]]) -> bool:
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        images = msg.get("images")
+        if isinstance(images, list) and len(images) > 0:
+            return True
+    return False
+
+
+def _vision_fallback_preferences(active_build: dict[str, Any] | None) -> tuple[str, ...]:
+    raw: list[str] = []
+    if active_build is not None:
+        raw.append(str(active_build.get("vision_model") or "").strip())
+    raw.append(os.getenv("LLM_PROXY_VISION_FALLBACK_MODEL", "").strip())
+    raw.extend(
+        (
+            "minimax-m3:cloud",
+            "kimi-k2.6:cloud",
+            "gemini-3-flash-preview:cloud",
+        )
+    )
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if item and item not in seen:
+            seen.add(item)
+            out.append(item)
+    return tuple(out)
+
+
+def _resolved_ollama_chat_url(chat_client: Any) -> str | None:
+    provider_id = str(getattr(chat_client, "_provider_id", "") or "").strip().lower()
+    raw_url = getattr(chat_client, "_url", None)
+    if isinstance(raw_url, str) and raw_url.strip():
+        return raw_url.strip()
+    if provider_id and provider_id != "ollama":
+        return None
+    for import_path in ("config", "rag_service.config"):
+        try:
+            if import_path == "config":
+                from config import get_ollama_chat_url as _get_chat_url  # type: ignore[import-not-found]
+            else:
+                from rag_service.config import get_ollama_chat_url as _get_chat_url
+
+            chat_url = str(_get_chat_url() or "").strip()
+            if chat_url:
+                return chat_url
+        except Exception:
+            continue
+    return None
 
 
 def run_chat_completions(
@@ -850,10 +906,14 @@ def run_chat_completions(
         pass
 
     _ollama_caps: frozenset[str] | None = None
+    ollama_chat_url: str | None = None
     try:
-        _chat_u = getattr(chat_client, "_url", None)
-        if isinstance(_chat_u, str) and _chat_u.strip() and (effective_ollama_model or "").strip():
-            _ollama_caps = get_cached_ollama_capabilities(effective_ollama_model.strip(), _chat_u.strip())
+        ollama_chat_url = _resolved_ollama_chat_url(chat_client)
+        if ollama_chat_url and (effective_ollama_model or "").strip():
+            trace["request"]["ollama_capabilities_lookup_url"] = ollama_chat_url
+            _ollama_caps = get_cached_ollama_capabilities(
+                effective_ollama_model.strip(), ollama_chat_url
+            )
             if _ollama_caps is not None and use_native_tools and not caps_supports_tools(_ollama_caps):
                 use_native_tools = False
     except Exception:
@@ -1163,6 +1223,48 @@ def run_chat_completions(
         trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(ollama_messages)
         trace["ollama"]["think"] = ollama_think
         trace["ollama"]["chat_stream"] = False
+        ollama_messages_have_images = _ollama_messages_have_images(ollama_messages)
+        if use_native_tools and ollama_messages_have_images:
+            use_native_tools = False
+            tools = []
+            tool_choice_effective = "none"
+            trace["request"]["use_native_tools"] = False
+            trace["request"]["tool_choice_effective"] = "none"
+            trace["request"]["tools_count_effective"] = 0
+            trace["request"]["native_tools_suppressed_for_vision"] = True
+            _append_trace_warning(trace, "native_tools_suppressed_for_vision")
+        if ollama_messages_have_images and ollama_chat_url:
+            image_model_caps: frozenset[str] | None = None
+            try:
+                image_model_caps = get_cached_ollama_capabilities(use_model, ollama_chat_url)
+            except Exception:
+                image_model_caps = None
+            if image_model_caps is not None and not caps_supports_vision(image_model_caps):
+                fallback_model = find_cached_ollama_vision_model(
+                    ollama_chat_url,
+                    preferred_models=_vision_fallback_preferences(active_build),
+                )
+                if fallback_model and fallback_model != use_model:
+                    original_use_model = use_model
+                    use_model = fallback_model
+                    effective_ollama_model = fallback_model
+                    fallback_caps = get_cached_ollama_capabilities(fallback_model, ollama_chat_url)
+                    if fallback_caps is not None:
+                        _ollama_caps = fallback_caps
+                        trace["request"]["ollama_capabilities"] = sorted(fallback_caps)
+                        if ollama_think is not None and not caps_supports_thinking(fallback_caps):
+                            ollama_think = None
+                            trace["request"]["ollama_think"] = None
+                            trace["request"]["vision_fallback_stripped_think"] = True
+                    trace["request"]["actual_model"] = use_model
+                    trace["request"]["vision_model_fallback"] = {
+                        "from": original_use_model,
+                        "to": use_model,
+                        "reason": "selected_ollama_model_lacks_vision",
+                    }
+                    trace["ollama"]["model"] = use_model
+                    trace["ollama"]["think"] = ollama_think
+                    _append_trace_warning(trace, "vision_model_fallback")
         client_visible_model = requested_model if dumb_build_pipeline else use_model
 
         if tool_loop_limit_reached:

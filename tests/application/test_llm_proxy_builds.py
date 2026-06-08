@@ -53,6 +53,14 @@ def test_normalize_build_preserves_ide_mode() -> None:
     assert normalized["ide_mode"] is True
 
 
+def test_normalize_build_preserves_optional_vision_model() -> None:
+    normalized, errors = normalize_build({**_base_build(), "vision_model": "minimax-m3:cloud"})
+
+    assert errors == []
+    assert normalized is not None
+    assert normalized["vision_model"] == "minimax-m3:cloud"
+
+
 def test_normalize_build_rejects_invalid_num_predict() -> None:
     for raw in ("abc", "0", "262145"):
         normalized, errors = normalize_build({**_base_build(), "num_predict": raw})
@@ -75,3 +83,12 @@ def test_openai_model_objects_expose_build_context_length() -> None:
     assert rows[0]["num_ctx"] == 202752
     assert rows[0]["metadata"]["context_length"] == 202752
     assert rows[0]["metadata"]["num_ctx"] == 202752
+
+
+def test_openai_model_objects_expose_opencode_vision_capabilities() -> None:
+    rows = openai_model_objects_for_builds([_base_build()])
+
+    assert rows[0]["supports_vision"] is True
+    assert rows[0]["attachment"] is True
+    assert rows[0]["modalities"] == {"input": ["text", "image"], "output": ["text"]}
+    assert rows[0]["tool_call"] is True

@@ -15,6 +15,7 @@
 -e CoreModules/LlmInteractor
 -e CoreModules/DockerManager
 -e CoreModules/WebInteraction
+-e CoreModules/LogsManager
 -e CoreModules/MdIngestionService
 -e CoreModules/RagService
 -e modules/html_md

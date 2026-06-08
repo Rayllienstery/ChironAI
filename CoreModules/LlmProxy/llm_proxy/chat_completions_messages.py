@@ -33,6 +33,11 @@ _COPILOT_CANNOT_READ_IMAGE_RE = re.compile(
 _IMAGE_PATH_HINT_RE = re.compile(
     r"(?is)\b(file:///[^\s\"'<>]+\.(?:png|jpe?g|webp|gif)|[A-Za-z]:[\\/][^\s\"'<>]+\.(?:png|jpe?g|webp|gif)|\./[^\s\"'<>]+\.(?:png|jpe?g|webp|gif)|\b[^\s\"'<>]+\.(?:png|jpe?g|webp|gif))\b"
 )
+_DCP_MESSAGE_ID_RE = re.compile(r"(?is)<dcp-message-id>.*?</dcp-message-id>")
+_TRANSPORT_ERROR_ARTIFACT_RE = re.compile(
+    r"(?is)^\s*\[Error:\s*.*?(?:Client Error|Server Error|Bad Request|Internal Server Error).*?"
+    r"(?:localhost:\d+|/api/chat|/v1/chat/completions).*?\]\s*$"
+)
 
 
 def _mime_from_image_path(path: str) -> str | None:
@@ -222,6 +227,28 @@ def _sanitize_message_text(text: str, *, max_chars: int = 80_000) -> str:
     return sanitize_openai_text_part(text, max_chars=max_chars)
 
 
+def _message_content_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return openai_parts_to_flat_text(content)
+    if content is None:
+        return ""
+    try:
+        return json.dumps(content, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return str(content)
+
+
+def _is_prior_transport_error_artifact(msg: dict[str, Any]) -> bool:
+    if str(msg.get("role") or "").strip() != "assistant":
+        return False
+    text = _DCP_MESSAGE_ID_RE.sub("", _message_content_text(msg.get("content"))).strip()
+    if not text:
+        return False
+    return bool(_TRANSPORT_ERROR_ARTIFACT_RE.match(text))
+
+
 def _normalize_and_sanitize_messages(raw_messages: list[Any]) -> list[dict[str, Any]]:
     """
     Normalize OpenAI chat messages into a safe shape for the proxy pipeline.
@@ -236,6 +263,8 @@ def _normalize_and_sanitize_messages(raw_messages: list[Any]) -> list[dict[str, 
     out: list[dict[str, Any]] = []
     for m in raw_messages:
         if not isinstance(m, dict):
+            continue
+        if _is_prior_transport_error_artifact(m):
             continue
         nm: dict[str, Any] = dict(m)
         if str(m.get("role") or "").strip() == "user":

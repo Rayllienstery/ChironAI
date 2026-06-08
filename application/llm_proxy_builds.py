@@ -129,6 +129,7 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
         "backend": backend,
         "provider_id": provider_id,
         "model": model,
+        "vision_model": str(build.get("vision_model") or "").strip(),
         "prompt_name": prompt_name,
         "use_prompt_template": use_prompt_template,
         "rag_enabled": bool(build.get("rag_enabled", True)),
@@ -243,6 +244,19 @@ def find_build_by_id(builds: list[dict[str, Any]], model_id: str) -> dict[str, A
     return None
 
 
+def openai_client_capability_fields() -> dict[str, object]:
+    """Extra model fields consumed by OpenAI-compatible clients with models.dev-style gates."""
+    return {
+        # Chiron extension / legacy client field.
+        "supports_vision": True,
+        # OpenCode/models.dev fields. Without modalities.input including "image",
+        # OpenCode treats custom OpenAI-compatible models as text-only.
+        "attachment": True,
+        "modalities": {"input": ["text", "image"], "output": ["text"]},
+        "tool_call": True,
+    }
+
+
 def openai_model_objects_for_builds(builds: list[dict[str, Any]]) -> list[dict[str, object]]:
     """OpenAI GET /v1/models `data[]` entries (stable order: by id)."""
     sorted_b = sorted(builds, key=lambda x: str(x.get("id") or "").lower())
@@ -267,11 +281,8 @@ def openai_model_objects_for_builds(builds: list[dict[str, Any]]) -> list[dict[s
             "object": "model",
             "created": 0,
             "owned_by": "local",
-            # Chiron extension fields (OpenAI model objects do not define these).
-            # Always true so OpenAI-compatible clients (e.g. Kilo) do not block image attach;
-            # text-only upstream models may still reject or ignore images.
-            "supports_vision": True,
         }
+        row.update(openai_client_capability_fields())
         if context_length is not None:
             row["context_length"] = context_length
             row["num_ctx"] = context_length

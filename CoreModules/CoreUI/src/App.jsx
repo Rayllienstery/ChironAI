@@ -60,8 +60,10 @@ function lazyWithRetry(key, importer) {
             const alreadyRetried = window.sessionStorage.getItem(storageKey) === "1";
             if (!alreadyRetried) {
               window.sessionStorage.setItem(storageKey, "1");
-              window.location.reload();
-              return new Promise(() => {});
+              window.setTimeout(() => window.location.reload(), 50);
+              return new Promise((_, reject) => {
+                window.setTimeout(() => reject(error), 8000);
+              });
             }
             window.sessionStorage.removeItem(storageKey);
           } catch {
@@ -199,14 +201,38 @@ function App() {
 
   const initSession = useCallback(() => {
     setSessionError(false);
-    getSession()
-      .then((session) => {
-        setSessionId(session.id);
-      })
-      .catch((error) => {
-        console.error("Failed to initialize session after retries:", error);
-        setSessionError(true);
-      });
+    let cancelled = false;
+
+    (async () => {
+      const maxAttempts = 45;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        if (cancelled) return;
+        try {
+          const session = await getSession({
+            maxRetries: 1,
+            timeoutMs: 3000,
+            baseDelayMs: 0,
+          });
+          if (cancelled) return;
+          setSessionId(session.id);
+          setSessionError(false);
+          return;
+        } catch (error) {
+          if (cancelled) return;
+          if (attempt >= maxAttempts - 1) {
+            console.error("Failed to initialize session after retries:", error);
+            setSessionError(true);
+            return;
+          }
+          const delayMs = Math.min(3000, 400 + attempt * 150);
+          await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -217,6 +243,7 @@ function App() {
       // ignore
     }
 
+    let cancelSessionInit = null;
     const shellRequestTimer = window.setTimeout(() => {
       try {
         const nav = window?.performance?.timing;
@@ -240,7 +267,7 @@ function App() {
       } catch {
         // Non-critical
       }
-      initSession();
+      cancelSessionInit = initSession();
       loadThemeSettings();
     }, shellRequestDelayMs);
 
@@ -256,6 +283,7 @@ function App() {
 
     return () => {
       window.clearTimeout(shellRequestTimer);
+      cancelSessionInit?.();
       mediaQuery.removeEventListener("change", handleSystemThemeChange);
     };
   }, [themeMode, lightAccent, darkAccent, shellRequestDelayMs, initSession]);
@@ -777,7 +805,7 @@ function App() {
           </TabErrorBoundary>
           {sessionError && !sessionId && (
             <div className="session-error session-error--inline">
-              <p>Session is still unavailable. Session-backed panels will keep working when it reconnects.</p>
+              <p>Backend session is unavailable. Tabs will work once the server finishes starting — click Retry or wait a moment.</p>
               <button className="session-retry-btn" onClick={initSession}>
                 Retry
               </button>

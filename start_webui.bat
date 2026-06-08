@@ -28,11 +28,8 @@ python -m webui_backend.kill_listeners_on_config_port
 echo Listeners cleared.
 echo.
 
-REM Open browser in the background
-echo Opening browser at %WEBUI_URL%
-start "" "%WEBUI_URL%"
-
-echo Starting backend (first start can take 10-30s while modules load)...
+echo Browser will open automatically when the backend is ready.
+echo (First start can take 10-30s while Python modules load.)
 echo.
 
 REM Run Flask server (rag_proxy registers webui_bp so /api/webui/* is available)

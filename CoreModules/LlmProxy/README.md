@@ -5,7 +5,7 @@ Installable package **`llm-proxy`**: **OpenAI-** and **Anthropic Messages–** c
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/v1` | API metadata |
-| GET | `/v1/models` | **OpenAI clients:** `object`/`data` list of **build ids** plus optional **ChironAI-Autocomplete** when configured. Each OpenAI-shaped row includes Chiron extension **`supports_vision`: always `true`** so clients (e.g. Kilo) do not hide image attachment; purely text-only upstream models may still reject or ignore images. **Anthropic clients:** send header `anthropic-version` (any non-empty value, e.g. `2023-06-01`) for Anthropic-shaped `data` / `first_id` / `has_more`. |
+| GET | `/v1/models` | **OpenAI clients:** `object`/`data` list of **build ids** plus optional **ChironAI-Autocomplete** when configured. Each OpenAI-shaped row includes Chiron extension **`supports_vision`: always `true`** and OpenCode/models.dev-style **`attachment: true`** plus **`modalities.input: ["text", "image"]`** so clients do not hide or strip image attachment; if an Ollama-backed build resolves to a text-only upstream tag, image turns can be routed to a vision fallback. **Anthropic clients:** send header `anthropic-version` (any non-empty value, e.g. `2023-06-01`) for Anthropic-shaped `data` / `first_id` / `has_more`. |
 | POST | `/v1/messages` | **Anthropic Messages API** — translated to the same pipeline as `POST /v1/chat/completions` (RAG, tools, streaming). |
 | POST | `/v1/responses` | **OpenAI Responses API** — normalized to provider-backed chat. |
 | POST | `/v1/chat/completions` | Chat with optional RAG, tools, streaming |
@@ -30,7 +30,7 @@ Ollama-native behavior belongs in `chironai-extension-ollama-provider`
 
 ### Vision (multimodal images) on `POST /v1/chat/completions`
 
-OpenAI-style user messages may use multipart `content`: an array of `{ "type": "text", "text": "..." }` and `{ "type": "image_url", "image_url": { "url": "..." } }`.
+OpenAI-style user messages may use multipart `content`: an array of `{ "type": "text", "text": "..." }` and `{ "type": "image_url", "image_url": { "url": "..." } }`. AI SDK/OpenCode-style image parts such as `{ "type": "file", "mediaType": "image/png", "data": "..." }` and `{ "type": "image", "mediaType": "image/png", "image": "..." }` are normalized to the same image path.
 
 - **Supported toward Ollama:** `image_url.url` values that are **`data:image/...;base64,...`** data URLs. The proxy validates and forwards them as Ollama’s native **`images`** array on the same user message (base64 payload after `base64,`), with adjacent text in **`content`**.
 - **Inline paste in text (user turns):** before sanitisation, the proxy **promotes** any valid `data:image/...;base64,...` substring inside user string `content` or inside user `type: "text"` parts into proper `image_url` parts so they survive the pipeline and populate Ollama `images` (see `promote_inline_data_image_urls_in_content` in [`rag_service.infrastructure.openai_multipart_vision`](../RagService/rag_service/infrastructure/openai_multipart_vision.py)).
@@ -41,7 +41,8 @@ OpenAI-style user messages may use multipart `content`: an array of `{ "type": "
 Proxy traces expose **`images_count`** per Ollama message when `images` is present; base64 blobs are not expanded into trace previews.
 
 - **`tool_choice`:** OpenAI allows object values (e.g. `{"type":"auto"}`). Ollama’s native **`/api/chat`** expects a small string or the field omitted; the proxy maps unsupported shapes to **omit** the field (default auto) and maps string **`none`** / dict **`{"type":"none"}`** to disabling tools for routing.
-- **Tools + vision:** the proxy **forwards** Ollama `images` together with native `tools` unchanged. Some upstream models or adapters may still return **400** if they reject multimodal + tool calling in one request; in that case switch model or disable tools for that turn.
+- **Tools + vision:** when a request includes images, the proxy suppresses native tool forwarding for that turn before calling Ollama. This avoids adapter-level 400 responses from models that support tools and vision separately but not together.
+- **Text-only Ollama tags:** the proxy reads Ollama `/api/tags` capabilities. If the selected build model lacks `vision`, it routes the image turn to a vision-capable fallback, preferring the build's optional `vision_model`, then `LLM_PROXY_VISION_FALLBACK_MODEL`, then known local/cloud vision tags.
 
 #### Troubleshooting: `ERROR: Cannot read "image.png" (this model does not support image input)`
 
@@ -50,6 +51,7 @@ If you see that string inside the **user message** (as opposed to an HTTP error 
 #### Vision flags
 
 - `LLM_PROXY_VISION_FETCH_EXTERNAL_URLS` (default `0`): when enabled, the proxy may fetch `http(s)` `image_url.url` server-side and inline it as a `data:image/...;base64,...` URL. This is guarded with best-effort SSRF checks and strict size limits, but should be enabled only in trusted environments.
+- `LLM_PROXY_VISION_FALLBACK_MODEL` (default empty): preferred Ollama model tag for image turns when the selected build model is present in `/api/tags` but lacks `vision`.
 - `LLM_PROXY_VISION_READ_LOCAL_FILES` (default `0`): when enabled, the proxy attempts to detect image file path hints in **user** string `content` or the **first** user `type: "text"` part that contains a hint, and, if the file exists on the proxy host, inlines it as an OpenAI multipart `image_url` data URL. This is primarily a Copilot/Kilo workaround for prompts that include `ERROR: Cannot read "image.png" ...`.
 - `LLM_PROXY_VISION_ALLOW_ABS_PATHS` (default `0`): when `LLM_PROXY_VISION_READ_LOCAL_FILES=1`, controls whether absolute paths are allowed. Default is workspace-only.
 

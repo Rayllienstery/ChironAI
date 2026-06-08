@@ -168,8 +168,14 @@ def webui_assets(filename: str):
 
 
 if __name__ == "__main__":
+    from webui_backend.open_browser_when_ready import open_browser_when_ready
+
     port = get_server_port()
     record_active_server_port(port)
+    webui_url = f"http://127.0.0.1:{port}/webui"
+    print(f"Starting backend on port {port}...", flush=True)
+    print(f"WebUI: {webui_url}", flush=True)
+    open_browser_when_ready()
     try:
         from waitress import serve as _waitress_serve
         import logging as _logging

@@ -128,6 +128,14 @@ export default function ProxyTracesTab() {
     }
   };
 
+  const selectedLog = useMemo(() => {
+    if (!selectedTrace) return null;
+    return {
+      metadata: selectedTrace,
+      timestamp: selectedTrace.timestamp || new Date().toISOString(),
+    };
+  }, [selectedTrace]);
+
   const unavailableHeadingId = 'rag-fusion-traces-unavailable-heading';
   const mainHeadingId = 'rag-fusion-traces-heading';
   const liveHeadingId = 'rag-fusion-traces-live-heading';
@@ -158,14 +166,6 @@ export default function ProxyTracesTab() {
 
   const intro =
     'Recent proxy runs: resolved model, pipeline step timings (RAG sub-steps, provider chat), token estimates when present.';
-
-  const selectedLog = useMemo(() => {
-    if (!selectedTrace) return null;
-    return {
-      metadata: selectedTrace,
-      timestamp: selectedTrace.timestamp || new Date().toISOString(),
-    };
-  }, [selectedTrace]);
 
   return (
     <div className="dashboard-layout">

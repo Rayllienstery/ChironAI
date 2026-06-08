@@ -913,8 +913,8 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
 
     @bp.route("/v1/models", methods=["GET"])
     def list_models():
-        # Note: build rows are OpenAI-shaped model objects, with Chiron extension fields
-        # `supports_vision` (always true for clients that gate image UI) and `metadata`.
+        # Note: build rows are OpenAI-shaped model objects, with extra client capability
+        # fields such as `supports_vision`, `attachment`, `modalities`, and `metadata`.
         build_rows = _openai_build_model_rows(wiring)
         include_ac = get_v1_include_autocomplete_logical_model()
         if wants_anthropic_models_list(request.headers):
@@ -932,15 +932,16 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
         if include_ac:
             try:
                 if wiring.get_autocomplete_ollama_model():
-                    data.append(
-                        {
-                            "id": wiring.runtime.autocomplete_model_logical_id,
-                            "object": "model",
-                            "created": 0,
-                            "owned_by": "local",
-                            "supports_vision": True,
-                        }
-                    )
+                    from application.llm_proxy_builds import openai_client_capability_fields
+
+                    ac_row: dict[str, object] = {
+                        "id": wiring.runtime.autocomplete_model_logical_id,
+                        "object": "model",
+                        "created": 0,
+                        "owned_by": "local",
+                    }
+                    ac_row.update(openai_client_capability_fields())
+                    data.append(ac_row)
             except Exception:
                 pass
         data.extend(build_rows)

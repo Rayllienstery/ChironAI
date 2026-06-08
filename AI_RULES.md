@@ -100,6 +100,33 @@ Layers (top to bottom): **`api/`** → **`application/`** → **`domain/`** → 
   - **`api/http/webui_routes.py`** — HTTP composition for the UI.
   Do not merge them back without a strong reason—this split is intentional for tests and evolution.
 
+### 5.1 LogsManager (internal LLM only)
+
+- **Purpose:** debug RAG Fusion proxy requests from Cursor agents and internal repo scripts.
+- **Not a public API:** do not add `/api/webui` routes or CoreUI surfaces for LogsManager.
+- **Data scope:** persisted **RAG Fusion Journal** rows only (`session_id='proxy'`, `source='proxy'`, `level='INFO'` in `logs/webui.db`). Completed requests include full trace data in `metadata.trace`.
+- **Install:** `pip install -e CoreModules/LogsManager` (included in `requirements-dev.txt`).
+- **Usage:**
+
+```python
+from logs_manager import get_logs_manager
+
+mgr = get_logs_manager()
+
+latest = mgr.get_latest_log()
+by_id = mgr.get_log_by_id(18561)
+matched = mgr.find_latest_log_with_user_message("Найди")
+```
+
+- **When to use which method:**
+  - last proxy request → `get_latest_log()`
+  - known journal id → `get_log_by_id()`
+  - find a recent request by prompt fragment → `find_latest_log_with_user_message()` (Unicode case-insensitive substring match on user text)
+- **Fields to inspect:** `metadata.user_query`, `metadata.response_preview`, `metadata.trace`, `metadata.trace_id`, `metadata.rag_steps`, `metadata.rag_context`.
+- **Limitation:** `user_query` is truncated to 500 characters when persisted.
+- **Live traces:** in-memory snapshots from `api/http/proxy_trace.py` are out of scope; use `recent_proxy_traces()` for active requests. LogsManager reads the persisted journal only.
+- **Details:** `CoreModules/LogsManager/README.md`.
+
 ---
 
 ## 6. Modular target state
@@ -176,6 +203,7 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 | `modules/webui_backend/README.md` | Canonical Web UI backend |
 | `modules/README.md` | Module index |
 | `CoreModules/LlmProxy/README.md` | Proxy, endpoints, env |
+| `CoreModules/LogsManager/README.md` | Internal proxy journal reader for LLM agents |
 | `CoreModules/RagService/README.md` | RAG package |
 
 ---

@@ -1160,6 +1160,8 @@ def test_models_endpoint() -> None:
     assert isinstance(data["data"], list)
     for m in data["data"]:
         assert m.get("supports_vision") is True
+        assert m.get("attachment") is True
+        assert m.get("modalities") == {"input": ["text", "image"], "output": ["text"]}
 
 
 def test_models_endpoint_includes_chironai_autocomplete_when_backend_configured(
@@ -1183,6 +1185,8 @@ def test_models_endpoint_includes_chironai_autocomplete_when_backend_configured(
     assert "ChironAI-Autocomplete" in ids
     ac = next(m for m in (data.get("data") or []) if m.get("id") == "ChironAI-Autocomplete")
     assert ac.get("supports_vision") is True
+    assert ac.get("attachment") is True
+    assert ac.get("modalities") == {"input": ["text", "image"], "output": ["text"]}
 
 
 def test_models_endpoint_exposes_build_context_length(
@@ -1219,6 +1223,8 @@ def test_models_endpoint_exposes_build_context_length(
     data = r.get_json() or {}
     row = next(m for m in data.get("data") or [] if m.get("id") == "Agent-high")
     assert row.get("context_length") == 131072
+    assert row.get("attachment") is True
+    assert row.get("modalities") == {"input": ["text", "image"], "output": ["text"]}
     assert row.get("num_ctx") == 131072
     assert (row.get("metadata") or {}).get("context_length") == 131072
     assert (row.get("metadata") or {}).get("num_ctx") == 131072
@@ -4522,6 +4528,192 @@ def test_native_tools_stream_trace_includes_tokens_estimates_and_latency(
     assert int(oll_tok.get("completion_tokens_estimated") or 0) >= 1
     assert int(oll_tok.get("total_tokens_estimated") or 0) >= 1
     assert int(resp.get("latency_ms") or 0) >= 0
+
+
+def test_streaming_vision_request_suppresses_native_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.http.rag_routes as rag_routes
+
+    class VisionStreamChatClient:
+        def __init__(self) -> None:
+            self.payloads: list[dict[str, Any]] = []
+
+        def iter_chat_api_stream_events(self, payload: dict[str, Any]):
+            self.payloads.append(payload)
+            yield ("content_delta", "vision ok")
+            yield ("done", {"done_reason": "stop", "eval_count": 6, "prompt_eval_count": 3})
+
+        def chat(self, *_a: Any, **_k: Any) -> str:
+            return ""
+
+    chat_client = VisionStreamChatClient()
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fake-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=chat_client,
+    )
+
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+
+    def _prepare_vision(request: Any, *_a: Any, **_kw: Any) -> tuple[list[dict[str, Any]], str]:
+        return ([{"role": "user", "content": "describe this", "images": ["base64-image"]}], "fake-model")
+
+    monkeypatch.setattr(rag_routes, "prepare_ollama_messages", _prepare_vision)
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-proxy-ollama-model",
+            "stream": True,
+            "messages": [{"role": "user", "content": "describe this"}],
+            "tools": [{"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}}],
+            "tool_choice": "auto",
+        },
+    )
+    assert r.status_code == 200
+    assert "vision ok" in r.get_data(as_text=True)
+
+    assert chat_client.payloads
+    sent = chat_client.payloads[0]
+    assert "tools" not in sent
+    assert sent["messages"][0]["images"] == ["base64-image"]
+    trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
+    request_trace = trace.get("request") or {}
+    response_trace = trace.get("response") or {}
+    assert request_trace.get("native_tools_suppressed_for_vision") is True
+    assert request_trace.get("tools_count_effective") == 0
+    assert response_trace.get("native_tools") is not True
+
+
+def test_streaming_vision_request_uses_fallback_when_model_lacks_vision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    import api.http.rag_routes as rag_routes
+    import llm_proxy.chat_completions_handler as handler
+    from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == LLM_PROXY_BUILDS_APP_KEY:
+                return json.dumps(
+                    [
+                        {
+                            "id": "Giant",
+                            "backend": "dumb",
+                            "provider_id": "ollama",
+                            "model": "deepseek-v4-pro:cloud",
+                            "vision_model": "minimax-m3:cloud",
+                            "prompt_name": "system_senior_ios_assistant_v1",
+                        }
+                    ]
+                )
+            if key == "proxy_settings":
+                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
+            if key == "proxy_model":
+                return "fallback-model"
+            return _test_proxy_api_key_setting(key)
+
+    class VisionStreamChatClient:
+        def __init__(self) -> None:
+            self.payloads: list[dict[str, Any]] = []
+
+        def iter_chat_api_stream_events(self, payload: dict[str, Any]):
+            self.payloads.append(payload)
+            yield ("content_delta", "fallback vision ok")
+            yield ("done", {"done_reason": "stop", "eval_count": 6, "prompt_eval_count": 3})
+
+    chat_client = VisionStreamChatClient()
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fallback-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=chat_client,
+    )
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+
+    def _prepare_vision(_request: Any, *_a: Any, **_kw: Any) -> tuple[list[dict[str, Any]], str]:
+        return ([{"role": "user", "content": "describe this", "images": ["base64-image"]}], "deepseek-v4-pro:cloud")
+
+    def _caps(model: str, _chat_url: str) -> frozenset[str] | None:
+        if model == "deepseek-v4-pro:cloud":
+            return frozenset({"completion", "tools", "thinking"})
+        if model == "minimax-m3:cloud":
+            return frozenset({"completion", "tools", "vision"})
+        return None
+
+    monkeypatch.setattr(rag_routes, "prepare_ollama_messages", _prepare_vision)
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+    monkeypatch.setattr(handler, "get_cached_ollama_capabilities", _caps)
+    monkeypatch.setattr(handler, "find_cached_ollama_vision_model", lambda *_a, **_kw: "minimax-m3:cloud")
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "Giant",
+            "stream": True,
+            "messages": [{"role": "user", "content": "describe this"}],
+        },
+    )
+    assert r.status_code == 200
+    assert "fallback vision ok" in r.get_data(as_text=True)
+
+    assert chat_client.payloads
+    assert chat_client.payloads[0]["model"] == "minimax-m3:cloud"
+    trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
+    request_trace = trace.get("request") or {}
+    assert str(request_trace.get("ollama_capabilities_lookup_url") or "").endswith("/api/chat")
+    assert request_trace.get("actual_model") == "minimax-m3:cloud"
+    assert request_trace.get("vision_model_fallback") == {
+        "from": "deepseek-v4-pro:cloud",
+        "to": "minimax-m3:cloud",
+        "reason": "selected_ollama_model_lacks_vision",
+    }
+    assert "vision_model_fallback" in (trace.get("warnings") or [])
 
 
 def test_native_tools_finalize_nudge_stays_in_initial_system_message(
