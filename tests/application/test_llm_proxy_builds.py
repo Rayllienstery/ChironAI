@@ -3,7 +3,9 @@ from __future__ import annotations
 from application.llm_proxy_builds import (
     DEFAULT_NUM_PREDICT,
     build_ollama_options,
+    find_build_by_id,
     normalize_build,
+    openai_client_capability_fields,
     openai_model_objects_for_builds,
 )
 
@@ -61,6 +63,14 @@ def test_normalize_build_preserves_optional_vision_model() -> None:
     assert normalized["vision_model"] == "minimax-m3:cloud"
 
 
+def test_normalize_build_defaults_optional_vision_model_to_empty_string() -> None:
+    normalized, errors = normalize_build(_base_build())
+
+    assert errors == []
+    assert normalized is not None
+    assert normalized["vision_model"] == ""
+
+
 def test_normalize_build_rejects_invalid_num_predict() -> None:
     for raw in ("abc", "0", "262145"):
         normalized, errors = normalize_build({**_base_build(), "num_predict": raw})
@@ -92,3 +102,15 @@ def test_openai_model_objects_expose_opencode_vision_capabilities() -> None:
     assert rows[0]["attachment"] is True
     assert rows[0]["modalities"] == {"input": ["text", "image"], "output": ["text"]}
     assert rows[0]["tool_call"] is True
+
+
+def test_openai_client_capability_fields_returns_independent_payload() -> None:
+    fields = openai_client_capability_fields()
+    fields["modalities"]["input"].append("audio")  # type: ignore[index,union-attr]
+
+    assert openai_client_capability_fields()["modalities"] == {"input": ["text", "image"], "output": ["text"]}
+
+
+def test_find_build_by_id_trims_requested_model() -> None:
+    assert find_build_by_id([_base_build()], " Hard-worker ") is not None
+    assert find_build_by_id([_base_build()], "missing") is None

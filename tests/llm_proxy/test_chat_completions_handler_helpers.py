@@ -110,3 +110,48 @@ def test_rag_request_completed_payload_includes_web_supplement_flag() -> None:
     assert payload["chunks_count"] == 1
     assert payload["web_supplement_used"] is True
     assert payload["rag_steps"] == {"embed": 1.0}
+
+
+def test_resolved_ollama_chat_url_prefers_client_url() -> None:
+    from llm_proxy.chat_completions_handler import _resolved_ollama_chat_url
+
+    client = SimpleNamespace(_provider_id="ollama", _url="http://custom:11434/api/chat")
+
+    assert _resolved_ollama_chat_url(client) == "http://custom:11434/api/chat"
+
+
+def test_resolved_ollama_chat_url_uses_config_for_runtime_ollama_client(monkeypatch) -> None:
+    import config
+    from llm_proxy.chat_completions_handler import _resolved_ollama_chat_url
+
+    monkeypatch.setattr(config, "get_ollama_chat_url", lambda: "http://localhost:11434/api/chat")
+    client = SimpleNamespace(_provider_id="ollama", _url=None)
+
+    assert _resolved_ollama_chat_url(client) == "http://localhost:11434/api/chat"
+
+
+def test_resolved_ollama_chat_url_skips_non_ollama_without_url() -> None:
+    from llm_proxy.chat_completions_handler import _resolved_ollama_chat_url
+
+    client = SimpleNamespace(_provider_id="openai", _url=None)
+
+    assert _resolved_ollama_chat_url(client) is None
+
+
+def test_vision_fallback_preferences_order_and_dedupe(monkeypatch) -> None:
+    from llm_proxy.chat_completions_handler import _vision_fallback_preferences
+
+    monkeypatch.setenv("LLM_PROXY_VISION_FALLBACK_MODEL", "kimi-k2.6:cloud")
+
+    assert _vision_fallback_preferences({"vision_model": "minimax-m3:cloud"}) == (
+        "minimax-m3:cloud",
+        "kimi-k2.6:cloud",
+        "gemini-3-flash-preview:cloud",
+    )
+
+
+def test_ollama_messages_have_images() -> None:
+    from llm_proxy.chat_completions_handler import _ollama_messages_have_images
+
+    assert _ollama_messages_have_images([{"role": "user", "images": ["b64"]}]) is True
+    assert _ollama_messages_have_images([{"role": "user", "images": []}, "bad"]) is False

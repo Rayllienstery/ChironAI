@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.49] - 2026-06-08
+### Changed
+- Documented the CoreUI tab/subtab component rule for pill tabs outside cards and subtabs inside cards.
+
+## [0.6.48] - 2026-06-08
+### Changed
+- Expanded regression coverage for OpenCode vision routing, Ollama capability lookup, multipart image normalization, and prior error-artifact filtering.
+
 ## [0.6.47] - 2026-06-08
 ### Fixed
 - Prevented prior proxy transport-error artifacts from being forwarded back into OpenCode conversation history.

@@ -54,6 +54,13 @@ In practice:
 
 - If a view, screen fragment, modal, control group, or visual pattern can be unified with an existing CoreUI implementation, it MUST be unified and reused. Do not hardcode a second implementation of the same view or pattern; duplicate UI implementations are not accepted.
 
+### Tabs and subtabs
+
+- For tab + subtab hierarchies, use CoreUI's shared tab components instead of feature-local tab markup/styles.
+- Use `CoreUIPillTabs` for primary tabs, section tabs, and mode switchers that sit outside cards.
+- Use `CoreUISubtabs` for secondary/subtab navigation inside cards, panels, and compact in-card sections.
+- Do not put `CoreUIPillTabs` inside cards for subtabs; if the navigation is visually contained by a card, it should usually be `CoreUISubtabs`.
+
 ### CoreUI Showcase sync
 
 - When adding or removing reusable CoreUI components, visual patterns, screens, tabs, modals, or other browser-rendered UI, update `CoreModules/CoreUI/src/components/CoreUIShowcaseTab.jsx` in the same change: add the matching showcase view/example for new UI, or remove the obsolete showcase view/example for deleted UI.
@@ -181,7 +188,7 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 - [ ] No import-boundary violations for `domain/`?
 - [ ] If `config/*.yaml` or env vars changed: are they documented for users/deploy?
 - [ ] Did you add a new long-lived monolith “tail”—worth a line in `docs/legacy_map.md`?
-- [ ] For CoreUI: styles via tokens/existing classes; new tabs via the lazy pattern in `App.jsx`; reusable views unified instead of duplicated; CoreUI Showcase updated when UI was added or removed.
+- [ ] For CoreUI: styles via tokens/existing classes; new tabs via the lazy pattern in `App.jsx`; tab/subtab hierarchy uses `CoreUIPillTabs` outside cards and `CoreUISubtabs` inside cards; reusable views unified instead of duplicated; CoreUI Showcase updated when UI was added or removed.
 - [ ] For Extensions:
     - [ ] Does it provide its own frame, tab title, tab icon, and assets?
     - [ ] Is `chironai-extension.json` present and valid?

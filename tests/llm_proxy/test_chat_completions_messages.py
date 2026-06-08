@@ -53,3 +53,58 @@ def test_normalize_request_messages_keeps_non_artifact_assistant_error_discussio
 
     assert len(messages) == 1
     assert messages[0]["role"] == "assistant"
+
+
+def test_normalize_request_messages_drops_transport_error_from_multipart_assistant() -> None:
+    messages = _normalize_request_messages(
+        {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "[Error: 500 Server Error: Internal Server Error for url: "
+                                "http://localhost:8080/v1/chat/completions]"
+                            ),
+                        },
+                        {"type": "text", "text": "<dcp-message-id>m999</dcp-message-id>"},
+                    ],
+                },
+                {"role": "user", "content": "retry"},
+            ]
+        }
+    )
+
+    assert messages == [{"role": "user", "content": "retry"}]
+
+
+def test_normalize_request_messages_keeps_user_transport_error_text() -> None:
+    messages = _normalize_request_messages(
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "[Error: 400 Client Error: Bad Request for url: http://localhost:11434/api/chat]",
+                }
+            ]
+        }
+    )
+
+    assert len(messages) == 1
+    assert messages[0]["role"] == "user"
+    assert "Client Error" in messages[0]["content"]
+
+
+def test_normalize_request_messages_prompt_suffix_and_input_fallbacks() -> None:
+    assert _normalize_request_messages({"prompt": "hello", "suffix": "world"}) == [
+        {"role": "user", "content": "hello\nworld"}
+    ]
+    assert _normalize_request_messages({"prompt": ["he", "llo", 42]}) == [
+        {"role": "user", "content": "hello"}
+    ]
+    assert _normalize_request_messages({"input": "from responses"}) == [
+        {"role": "user", "content": "from responses"}
+    ]
+    assert _normalize_request_messages({"messages": [], "prompt": "", "input": ""}) == []
