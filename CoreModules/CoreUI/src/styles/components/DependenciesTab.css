@@ -112,6 +112,85 @@
   font: var(--md-sys-typescale-body-medium-font);
 }
 
+.dependencies-current-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px !important;
+  padding: 4px 8px;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--coreui-color-info-container);
+  color: var(--coreui-color-info) !important;
+  font: var(--md-sys-typescale-label-medium-font) !important;
+  font-weight: 500;
+}
+
+.dependencies-current-step .material-symbols-outlined {
+  font-size: 16px;
+}
+
+.dependencies-live-panel {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 4px 4px;
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.dependencies-live-panel-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dependencies-live-panel-label {
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium-font);
+  text-transform: uppercase;
+}
+
+.dependencies-live-panel-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--md-sys-color-on-surface);
+}
+
+.dependencies-live-panel-last {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--coreui-color-success-container);
+  color: var(--coreui-color-success);
+  font: var(--md-sys-typescale-label-medium-font);
+}
+
+.dependencies-live-panel-last .material-symbols-outlined {
+  font-size: 16px;
+}
+
+.dependencies-live-panel-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-large-font);
+}
+
+.dependencies-live-panel-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--md-sys-color-primary);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: dependencies-spin 0.9s linear infinite;
+}
+
 .dependencies-job-orb {
   display: inline-grid;
   flex: 0 0 auto;

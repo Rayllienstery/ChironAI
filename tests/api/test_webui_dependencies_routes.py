@@ -108,3 +108,51 @@ def test_dependencies_route_returns_inventory(monkeypatch, tmp_path):
     data = response.get_json()
     assert data["counts"]["total"] == 7
     assert any(item["name"] == "react" for item in data["dependencies"])
+
+
+def test_pip_line_classifier_detects_progress_events():
+    from api.http.webui_dependencies_routes import _classify_pip_line
+
+    assert _classify_pip_line("Downloading flask-3.0.0-py3-none-any.whl (120kB)") == (
+        "downloading",
+        "flask",
+    )
+    assert _classify_pip_line("Downloaded flask-3.0.0-py3-none-any.whl (120kB)") == (
+        "downloaded",
+        "flask",
+    )
+    assert _classify_pip_line("Installing collected packages: flask, requests") == (
+        "installing",
+        "",
+    )
+    assert _classify_pip_line("Successfully installed flask-3.0.0 requests-2.31.0") == (
+        "done",
+        "flask-3.0.0",
+    )
+    assert _classify_pip_line("random unrelated line") is None
+
+
+def test_npm_line_classifier_handles_json_and_text():
+    from api.http.webui_dependencies_routes import _classify_npm_line
+
+    json_event = '{"type":"reify","package":"react@18.2.0","version":"18.2.0"}'
+    assert _classify_npm_line(json_event) == ("reify", "react@18.2.0")
+    assert _classify_npm_line("+ react@18.2.0") == ("changed", "react@18.2.0")
+    assert _classify_npm_line("- left-pad@1.0.0") == ("changed", "left-pad@1.0.0")
+    assert _classify_npm_line("changed 3 packages") == ("changed", "")
+
+
+def test_run_job_records_streaming_progress(monkeypatch, tmp_path):
+    import api.http.webui_dependencies_routes as routes
+
+    routes._JOBS.clear()
+    started = routes._start_job("update_all")
+    job_id = started["id"]
+    routes._run_job(job_id, "update_all")
+
+    job = routes._JOBS[job_id]
+    assert job["status"] in {"succeeded", "failed"}
+    assert "current_phase" in job
+    assert isinstance(job.get("updated_packages"), list)
+    assert "result" in job
+    routes._JOBS.clear()

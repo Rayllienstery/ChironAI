@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.63] - 2026-06-09
+### Changed
+- Streaming dependency jobs now report the current step (ecosystem, phase, package) in real time through both the Dependencies tab and a live notification card, and surface the full updated package list (with old → new versions when known) in the completion notification.
+
 ## [0.6.62] - 2026-06-08
 ### Fixed
 - Make the notification center leave animation actually play. The data layer is now updated only after the CSS exit animation finishes, and dismissed/leaving cards stay in the DOM until their animation completes.

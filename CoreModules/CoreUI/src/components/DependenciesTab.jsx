@@ -26,6 +26,27 @@ const STATUS_TABS = [
   { id: 'declared', label: 'Declared' },
 ];
 
+const LIVE_ACTIVITY_ID = 'dependencies-update';
+
+const PHASE_LABELS = {
+  starting: 'Preparing',
+  preparing: 'Preparing',
+  downloading: 'Downloading',
+  downloaded: 'Verifying download',
+  installing: 'Installing',
+  verifying: 'Verifying',
+  uninstalling: 'Removing old version',
+  reify: 'Installing',
+  add: 'Adding package',
+  change: 'Updating package',
+  remove: 'Removing package',
+  idealTree: 'Resolving tree',
+  done: 'Completed',
+  timeout: 'Timed out',
+  'spawn-failed': 'Failed to start',
+  failed: 'Failed',
+};
+
 function formatDate(value) {
   if (!value) return 'Never';
   const date = new Date(value);
@@ -63,6 +84,12 @@ function getUpdates(job) {
   return Array.isArray(updates) ? updates : [];
 }
 
+function getUpdatedPackages(job) {
+  const items = job?.result?.updated_packages;
+  if (Array.isArray(items) && items.length > 0) return items;
+  return Array.isArray(job?.updated_packages) ? job.updated_packages : [];
+}
+
 function getFailedSteps(job) {
   return (job?.steps || []).filter((step) => !step.ok);
 }
@@ -75,9 +102,71 @@ function sourceText(dep) {
   return `${first.path}${first.group ? `:${first.group}` : ''}${suffix}`;
 }
 
+function phaseLabel(phase) {
+  if (!phase) return '';
+  return PHASE_LABELS[phase] || phase;
+}
+
+function formatUpdateList(packages) {
+  return packages
+    .map((entry) => {
+      const name = entry?.name || '';
+      if (!name) return '';
+      const current = entry?.current ? entry.current : null;
+      const nextVersion = entry?.next_version || entry?.latest || null;
+      if (current && nextVersion) return `${name} (${current} → ${nextVersion})`;
+      if (current) return `${name} (was ${current})`;
+      if (nextVersion) return `${name} (→ ${nextVersion})`;
+      return name;
+    })
+    .filter(Boolean);
+}
+
+function formatNotificationList(packages) {
+  return formatUpdateList(packages)
+    .map((line) => `● ${line}`)
+    .join('\n');
+}
+
+function DependencyLivePanel({ job, completed }) {
+  const phase = phaseLabel(job?.current_phase);
+  const pkg = job?.current_package || '';
+  const ecosystem = job?.current_ecosystem || '';
+  const last = completed.length > 0 ? completed[completed.length - 1] : null;
+  return (
+    <div className="dependencies-live-panel">
+      <div className="dependencies-live-panel-row">
+        <span className="dependencies-live-panel-label">Ecosystem</span>
+        <strong>{ecosystem || '—'}</strong>
+      </div>
+      <div className="dependencies-live-panel-row">
+        <span className="dependencies-live-panel-label">Phase</span>
+        <strong>{phase || 'Starting'}</strong>
+      </div>
+      <div className="dependencies-live-panel-row">
+        <span className="dependencies-live-panel-label">Package</span>
+        <strong>{pkg || '—'}</strong>
+      </div>
+      <div className="dependencies-live-panel-row">
+        <span className="dependencies-live-panel-label">Updated</span>
+        <strong>{completed.length}</strong>
+      </div>
+      {last?.name ? (
+        <div className="dependencies-live-panel-last">
+          <span className="material-symbols-outlined" aria-hidden="true">check_circle</span>
+          <span>{last.name}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function DependenciesTab() {
   const notificationCenter = useOptionalNotificationCenter();
   const persistNotification = notificationCenter?.persistNotification;
+  const setLiveActivity = notificationCenter?.setLiveActivity;
+  const clearLiveActivity = notificationCenter?.clearLiveActivity;
+  const clearLiveSuppression = notificationCenter?.clearLiveSuppression;
   const [inventory, setInventory] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -131,21 +220,41 @@ export default function DependenciesTab() {
 
     const failedSteps = getFailedSteps(job);
     const updates = getUpdates(job);
+    const updatedPackages = getUpdatedPackages(job);
     if (persistNotification) {
       const isCheck = job.mode === 'check';
       const ok = job.status === 'succeeded';
+      const lines = [];
+      let summary;
+      if (isCheck) {
+        summary =
+          updates.length === 0
+            ? 'No dependency updates reported.'
+            : `${updates.length} dependency update${updates.length === 1 ? '' : 's'} available.`;
+      } else {
+        const done = updatedPackages.filter((entry) => entry.status === 'done');
+        if (ok) {
+          if (done.length === 0) {
+            summary = 'Dependency update job finished.';
+          } else {
+            summary = `Updated ${done.length} package${done.length === 1 ? '' : 's'}:`;
+            lines.push(...formatNotificationList(done).split('\n'));
+          }
+        } else {
+          summary = `${failedSteps.length || 1} dependency step failed.`;
+        }
+      }
       void persistNotification({
         kind: ok ? 'info' : 'error',
         source: 'dependencies',
         title: isCheck ? 'Dependency update check' : 'Dependency update',
-        message: ok
-          ? isCheck
-            ? updates.length === 0
-              ? 'No dependency updates reported.'
-              : `${updates.length} dependency update${updates.length === 1 ? '' : 's'} available.`
-            : 'Dependency update job finished.'
-          : `${failedSteps.length || 1} dependency step failed.`,
-        metadata: { job_id: job.id, mode: job.mode, status: job.status },
+        message: lines.length > 0 ? `${summary}\n${lines.join('\n')}` : summary,
+        metadata: {
+          job_id: job.id,
+          mode: job.mode,
+          status: job.status,
+          updated_count: updatedPackages.filter((entry) => entry.status === 'done').length,
+        },
         aggregation_key: `dependencies|${job.mode}|${job.id}`,
       });
     }
@@ -153,6 +262,44 @@ export default function DependenciesTab() {
       void loadInventory();
     }
   }, [job, loadInventory, persistNotification]);
+
+  const running = job && ['queued', 'running'].includes(job.status);
+  const completedPackages = Array.isArray(job?.updated_packages) ? job.updated_packages : [];
+
+  useEffect(() => {
+    if (!setLiveActivity || !clearLiveActivity) return undefined;
+    if (!running || !job) {
+      clearLiveActivity(LIVE_ACTIVITY_ID);
+      return undefined;
+    }
+    clearLiveSuppression?.(LIVE_ACTIVITY_ID);
+    setLiveActivity(
+      LIVE_ACTIVITY_ID,
+      'dependencies',
+      <DependencyLivePanel job={job} completed={completedPackages} />,
+      {
+        headerLeading: (
+          <span className="dependencies-live-panel-header">
+            <span
+              className="dependencies-live-panel-spinner"
+              aria-hidden="true"
+            />
+            <span>{job.mode === 'check' ? 'Dependency check' : 'Dependency update'}</span>
+          </span>
+        ),
+      },
+    );
+    return undefined;
+  }, [
+    running,
+    job,
+    completedPackages,
+    setLiveActivity,
+    clearLiveActivity,
+    clearLiveSuppression,
+  ]);
+
+  useEffect(() => () => clearLiveActivity?.(LIVE_ACTIVITY_ID), [clearLiveActivity]);
 
   const dependencies = inventory?.dependencies || [];
   const counts = inventory?.counts || {};
@@ -177,7 +324,6 @@ export default function DependenciesTab() {
   }, [dependencies, ecosystem, query, status]);
 
   const updates = getUpdates(job);
-  const running = job && ['queued', 'running'].includes(job.status);
   const failedSteps = getFailedSteps(job);
 
   const startJob = useCallback(
@@ -283,6 +429,27 @@ export default function DependenciesTab() {
                 ? `${job.status} - ${job.steps?.length || 0} step${job.steps?.length === 1 ? '' : 's'} - ${formatDate(job.finished_at || job.started_at || job.created_at)}`
                 : `Snapshot generated ${formatDate(inventory?.generated_at)}`}
             </p>
+            {running && job ? (
+              <p className="dependencies-current-step">
+                <span className="material-symbols-outlined" aria-hidden="true">arrow_right_alt</span>
+                <span>
+                  {job.current_ecosystem
+                    ? `${job.current_ecosystem}: `
+                    : ''}
+                  {phaseLabel(job.current_phase) || 'preparing'}
+                  {job.current_package ? ` — ${job.current_package}` : ''}
+                </span>
+              </p>
+            ) : null}
+            {!running && job && completedPackages.length > 0 ? (
+              <p className="dependencies-current-step">
+                <span className="material-symbols-outlined" aria-hidden="true">check</span>
+                <span>
+                  Updated {completedPackages.length} package
+                  {completedPackages.length === 1 ? '' : 's'} in this run.
+                </span>
+              </p>
+            ) : null}
           </div>
         </div>
         <div className="dependencies-update-meta">

@@ -338,6 +338,14 @@ class DependenciesResponse(TypedDict, total=False):
     update_capabilities: list[DependencyCapabilityDTO]
 
 
+class DependencyProgressEntryDTO(TypedDict, total=False):
+    name: str
+    phase: str
+    current: str | None
+    next_version: str | None
+    status: Literal["started", "done", "failed"]
+
+
 class DependencyJobStepDTO(TypedDict, total=False):
     command: str
     cwd: str
@@ -345,6 +353,8 @@ class DependencyJobStepDTO(TypedDict, total=False):
     ok: bool
     duration_ms: float
     output: str
+    phase: str
+    completed_packages: list[str]
 
 
 class DependencyJobDTO(TypedDict, total=False):
@@ -356,6 +366,11 @@ class DependencyJobDTO(TypedDict, total=False):
     finished_at: str | None
     steps: list[DependencyJobStepDTO]
     result: dict[str, Any] | None
+    current_phase: str
+    current_package: str
+    current_ecosystem: str
+    current_detail: str
+    updated_packages: list[DependencyProgressEntryDTO]
 
 
 class DependencyJobResponse(TypedDict):
@@ -413,5 +428,6 @@ __all__ = [
     "DependencyJobStepDTO",
     "DependencyJobDTO",
     "DependencyJobResponse",
+    "DependencyProgressEntryDTO",
     "webui_abs_path",
 ]
