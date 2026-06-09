@@ -723,7 +723,7 @@ function App() {
     { id: "tokens-security", label: "Tokens and Security", section: "Main" },
     { id: "logs", label: "Logs", section: "Main" },
     { id: "dependencies", label: "Dependencies", section: "Main" },
-    { id: "llm-proxy", label: "LLM Proxy", section: "Core Functionality" },
+    { id: "llm-proxy", label: "LLM Proxy Builds", section: "Core Functionality" },
     { id: "rag-fusion-proxy", label: "RAG Fusion Proxy", section: "Core Functionality" },
     { id: "template-editor", label: "Template Editor", section: "Core Functionality" },
     { id: "rag", label: "RAG / Qdrant", section: "RAG" },

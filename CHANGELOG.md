@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.62] - 2026-06-08
+### Fixed
+- Make the notification center leave animation actually play. The data layer is now updated only after the CSS exit animation finishes, and dismissed/leaving cards stay in the DOM until their animation completes.
+
+## [0.6.61] - 2026-06-08
+### Changed
+- Added a reverse left-to-right exit animation to notification center cards and the Clear capsule, mirroring the right-to-left enter animation.
+
 ## [0.6.60] - 2026-06-08
 ### Changed
 - Added a stale-prefetch guard for lazy CoreUI module timings so background imports cannot remain as active loading rows forever.

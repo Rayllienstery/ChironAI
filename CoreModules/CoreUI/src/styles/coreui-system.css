@@ -371,6 +371,7 @@
   height: 22px;
   border-radius: var(--coreui-radius-pill);
   background: var(--md-sys-color-primary);
+  transition: background-color 160ms ease;
 }
 
 .coreui-switch span[aria-hidden="true"]::after {
@@ -382,6 +383,17 @@
   height: 16px;
   border-radius: var(--coreui-radius-pill);
   background: var(--md-sys-color-on-primary);
+  transition: right 160ms ease;
+}
+
+.coreui-switch input:not(:checked) + span[aria-hidden="true"] {
+  background: var(--md-sys-color-outline-variant, #c4c7d0);
+}
+
+.coreui-switch input:not(:checked) + span[aria-hidden="true"]::after {
+  right: auto;
+  left: 3px;
+  background: var(--md-sys-color-surface, #fff);
 }
 
 .coreui-modal-overlay {

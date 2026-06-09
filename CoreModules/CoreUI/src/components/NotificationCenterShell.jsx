@@ -106,6 +106,13 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
   } = useNotificationCenter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
+  const [leavingPersistedIds, setLeavingPersistedIds] = useState(() => new Set());
+  const [leavingLiveIds, setLeavingLiveIds] = useState(() => new Set());
+  const [leavingHistoryIds, setLeavingHistoryIds] = useState(() => new Set());
+  const [clearLeaving, setClearLeaving] = useState(false);
+  const [clearBatchIds, setClearBatchIds] = useState(() => []);
+  const [clearBatchLiveIds, setClearBatchLiveIds] = useState(() => []);
+  const [historyLeaving, setHistoryLeaving] = useState(false);
   const rootRef = useRef(null);
 
   useEffect(() => {
@@ -133,15 +140,169 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
   const activePersisted = persisted.filter(
     (n) => !n.dismissed_at && !n.metadata?.historyOnly,
   );
+  const visiblePersisted = persisted.filter(
+    (n) => (
+      !n.metadata?.historyOnly
+      && (!n.dismissed_at || leavingPersistedIds.has(n.id))
+    ),
+  );
   const history = [...persisted].sort((a, b) => notificationSortValue(b) - notificationSortValue(a));
 
   const liveEntries = [...liveActivities.entries()];
+  const visibleLiveEntries = liveEntries.concat(
+    [...leavingLiveIds]
+      .filter((id) => !liveActivities.has(id))
+      .map((id) => [id, liveActivities.get(id) || { source: 'system', node: null, headerLeading: null }]),
+  );
   const hasVisibleCards = activePersisted.length > 0 || liveEntries.length > 0;
 
-  const handleClearVisible = () => {
-    void dismissPersistedMany(activePersisted.map((n) => n.id));
-    liveEntries.forEach(([id]) => suppressLiveActivity(id));
+  const handleDismissPersisted = (id) => {
+    setLeavingPersistedIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
   };
+
+  const finalizePersistedDismiss = (id) => {
+    void dismissPersisted(id);
+  };
+
+  const handleClearVisible = () => {
+    const persistedIds = activePersisted.map((n) => n.id);
+    const liveIds = liveEntries.map(([id]) => id);
+    setLeavingPersistedIds((prev) => {
+      const next = new Set(prev);
+      persistedIds.forEach((id) => next.add(id));
+      return next;
+    });
+    setLeavingLiveIds((prev) => {
+      const next = new Set(prev);
+      liveIds.forEach((id) => next.add(id));
+      return next;
+    });
+    setClearLeaving(true);
+    setClearBatchIds(persistedIds);
+    setClearBatchLiveIds(liveIds);
+  };
+
+  const finalizeClearVisible = () => {
+    if (clearBatchIds.length > 0) {
+      void dismissPersistedMany(clearBatchIds);
+    }
+    clearBatchLiveIds.forEach((id) => suppressLiveActivity(id));
+    setClearBatchIds([]);
+    setClearBatchLiveIds([]);
+  };
+
+  const handleLiveClose = (id) => {
+    setLeavingLiveIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
+
+  const finalizeLiveClose = (id) => {
+    suppressLiveActivity(id);
+  };
+
+  const handlePersistedLeaveEnd = (id) => {
+    setLeavingPersistedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    if (clearBatchIds.length === 0 || !clearBatchIds.includes(id)) {
+      finalizePersistedDismiss(id);
+    }
+  };
+
+  const handleLiveLeaveEnd = (id) => {
+    setLeavingLiveIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    if (clearBatchLiveIds.length === 0 || !clearBatchLiveIds.includes(id)) {
+      finalizeLiveClose(id);
+    }
+  };
+
+  const handleClearLeaveEnd = () => {
+    setClearLeaving(false);
+    finalizeClearVisible();
+  };
+
+  const handleClearHistory = () => {
+    const ids = history.map((n) => n.id);
+    setLeavingHistoryIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
+    setHistoryLeaving(true);
+  };
+
+  const handleHistoryRowLeaveEnd = (id) => {
+    setLeavingHistoryIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const handleHistoryPopoverLeaveEnd = () => {
+    setHistoryLeaving(false);
+    void clearPersisted();
+  };
+
+  useEffect(() => {
+    if (leavingPersistedIds.size === 0) return undefined;
+    const timers = [];
+    leavingPersistedIds.forEach((id) => {
+      const timer = setTimeout(() => handlePersistedLeaveEnd(id), 600);
+      timers.push(timer);
+    });
+    return () => timers.forEach((t) => clearTimeout(t));
+  }, [leavingPersistedIds]);
+
+  useEffect(() => {
+    if (leavingLiveIds.size === 0) return undefined;
+    const timers = [];
+    leavingLiveIds.forEach((id) => {
+      const timer = setTimeout(() => handleLiveLeaveEnd(id), 600);
+      timers.push(timer);
+    });
+    return () => timers.forEach((t) => clearTimeout(t));
+  }, [leavingLiveIds]);
+
+  useEffect(() => {
+    if (!clearLeaving) return undefined;
+    const timer = setTimeout(() => handleClearLeaveEnd(), 600);
+    return () => clearTimeout(timer);
+  }, [clearLeaving]);
+
+  useEffect(() => {
+    if (!historyLeaving) return undefined;
+    const timer = setTimeout(() => handleHistoryPopoverLeaveEnd(), 500);
+    return () => clearTimeout(timer);
+  }, [historyLeaving]);
+
+  useEffect(() => {
+    if (leavingHistoryIds.size === 0) return undefined;
+    const timers = [];
+    leavingHistoryIds.forEach((id) => {
+      const timer = setTimeout(() => handleHistoryRowLeaveEnd(id), 600);
+      timers.push(timer);
+    });
+    return () => timers.forEach((t) => clearTimeout(t));
+  }, [leavingHistoryIds]);
 
   const extractRagRunId = (notification) => {
     const meta = notification?.metadata && typeof notification.metadata === 'object'
@@ -158,16 +319,20 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
 
   return (
     <div className="notification-center-root" ref={rootRef}>
-      {menuOpen && (
-        <div className="notification-center-popover" role="dialog" aria-label="Notification history">
+      {(menuOpen || historyLeaving) && (
+        <div
+          className={`notification-center-popover${historyLeaving ? ' notification-center-popover--leaving' : ''}`}
+          role="dialog"
+          aria-label="Notification history"
+          onAnimationEnd={historyLeaving ? handleHistoryPopoverLeaveEnd : undefined}
+        >
           <div className="notification-center-popover-header">
             <span className="notification-center-popover-title">History</span>
             <CoreUIButton
               size="sm"
               variant="ghost"
-              onClick={() => {
-                clearPersisted();
-              }}
+              onClick={handleClearHistory}
+              disabled={historyLeaving}
             >
               Clear
             </CoreUIButton>
@@ -176,12 +341,15 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
             {history.length === 0 ? (
               <p className="notification-center-popover-empty">No entries yet.</p>
             ) : (
-              history.map((n) => (
-                <div
-                  key={n.id}
-                  className={`notification-center-popover-row notification-center-popover-row--${n.kind || 'event'}`}
-                >
-                  <div className="notification-center-popover-row-main">
+              history.map((n) => {
+                const isRowLeaving = leavingHistoryIds.has(n.id);
+                return (
+                  <div
+                    key={n.id}
+                    className={`notification-center-popover-row notification-center-popover-row--${n.kind || 'event'}${isRowLeaving ? ' notification-center-popover-row--leaving' : ''}`}
+                    onAnimationEnd={isRowLeaving ? () => handleHistoryRowLeaveEnd(n.id) : undefined}
+                  >
+                    <div className="notification-center-popover-row-main">
                     <div className="notification-center-popover-row-title">{notificationDisplayTitle(n)}</div>
                     {n.message ? (
                       <div className="notification-center-popover-row-msg"><FormattedMessage text={n.message} /></div>
@@ -190,19 +358,23 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
                   </div>
                   <ModuleFooter source={n.source} notification={n} />
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
       )}
 
       <div className="notification-center-stack" aria-live="polite">
-        {activePersisted.map((n) => (
+        {visiblePersisted.map((n) => {
+          const isLeaving = leavingPersistedIds.has(n.id);
+          return (
           <Card
             key={`p-${n.id}`}
-            className={`notification-center-card notification-center-card--${n.kind || 'event'}`}
+            className={`notification-center-card notification-center-card--${n.kind || 'event'}${isLeaving ? ' notification-center-card--leaving' : ''}`}
             elevation="var(--md-sys-elevation-level2)"
             role="status"
+            onAnimationEnd={isLeaving ? () => handlePersistedLeaveEnd(n.id) : undefined}
           >
             <div className="notification-center-card-header">
               {n.kind === 'loading' && (
@@ -213,7 +385,7 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
                 type="button"
                 className="notification-center-card-close"
                 aria-label="Dismiss notification"
-                onClick={() => dismissPersisted(n.id)}
+                onClick={() => handleDismissPersisted(n.id)}
               >
                 ×
               </button>
@@ -239,14 +411,18 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
             </div>
             <ModuleFooter source={n.source} notification={n} />
           </Card>
-        ))}
+          );
+        })}
 
-        {liveEntries.map(([id, { source, node, headerLeading }]) => (
+        {visibleLiveEntries.map(([id, { source, node, headerLeading }]) => {
+          const isLiveLeaving = leavingLiveIds.has(id);
+          return (
           <Card
             key={`l-${id}`}
-            className="notification-center-card notification-center-card--live"
+            className={`notification-center-card notification-center-card--live${isLiveLeaving ? ' notification-center-card--leaving' : ''}`}
             elevation="var(--md-sys-elevation-level2)"
             role="status"
+            onAnimationEnd={isLiveLeaving ? () => handleLiveLeaveEnd(id) : undefined}
           >
             <div className="notification-center-card-header">
               <span
@@ -263,7 +439,15 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
                 type="button"
                 className="notification-center-card-close"
                 aria-label="Close notification"
-                onClick={() => suppressLiveActivity(id)}
+                onClick={() => {
+                  setLeavingLiveIds((prev) => {
+                    if (prev.has(id)) return prev;
+                    const next = new Set(prev);
+                    next.add(id);
+                    return next;
+                  });
+                  suppressLiveActivity(id);
+                }}
               >
                 ×
               </button>
@@ -271,7 +455,8 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
             <div className="notification-center-card-live-slot">{node}</div>
             <ModuleFooter source={source} />
           </Card>
-        ))}
+          );
+        })}
       </div>
 
       <div className="notification-center-actions-row">
@@ -280,6 +465,8 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
             icon="cleaning_services"
             label="Clear"
             onClick={handleClearVisible}
+            className={clearLeaving ? 'coreui-notification-action-btn--leaving' : undefined}
+            onAnimationEnd={clearLeaving ? handleClearLeaveEnd : undefined}
           />
         ) : null}
         <CoreUINotificationActionButton

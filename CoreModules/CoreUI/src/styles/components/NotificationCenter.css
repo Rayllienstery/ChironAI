@@ -9,6 +9,17 @@
   }
 }
 
+@keyframes notification-card-leave {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(40px, 0, 0);
+  }
+}
+
 @keyframes notification-popover-enter {
   from {
     opacity: 0;
@@ -66,9 +77,74 @@
   box-sizing: border-box;
 }
 
+.notification-center-root .notification-center-card.app-card.notification-center-card--leaving {
+  animation: notification-card-leave 0.32s cubic-bezier(0.55, 0, 0.78, 0.34) forwards;
+  pointer-events: none;
+}
+
+.notification-center-root .notification-center-card.app-card:not(.notification-center-card--leaving) {
+  /* Default enter animation re-asserted so the keyframe applies on first mount
+     and on every subsequent card mount. */
+  animation-name: notification-card-enter;
+}
+
+.notification-center-popover--leaving {
+  animation: notification-history-popover-leave 0.32s cubic-bezier(0.55, 0, 0.78, 0.34) forwards !important;
+  pointer-events: none;
+}
+
+.notification-center-popover-row--leaving {
+  animation: notification-history-row-leave 0.32s cubic-bezier(0.55, 0, 0.78, 0.34) forwards;
+  pointer-events: none;
+}
+
+@keyframes notification-clear-leave {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(40px, 0, 0) scale(0.92);
+  }
+}
+
+@keyframes notification-history-row-leave {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(40px, 0, 0);
+  }
+}
+
+@keyframes notification-history-popover-leave {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(40px, 0, 0) scale(0.96);
+  }
+}
+
+.coreui-notification-action-btn--leaving {
+  animation: notification-clear-leave 0.32s cubic-bezier(0.55, 0, 0.78, 0.34) forwards !important;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .notification-center-root .notification-center-card.app-card,
   .notification-center-popover {
+    animation: none;
+  }
+  .notification-center-root .notification-center-card.app-card.notification-center-card--leaving,
+  .coreui-notification-action-btn--leaving,
+  .notification-center-popover--leaving,
+  .notification-center-popover-row--leaving {
     animation: none;
   }
 }

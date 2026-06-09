@@ -65,6 +65,11 @@ In practice:
 
 - When adding or removing reusable CoreUI components, visual patterns, screens, tabs, modals, or other browser-rendered UI, update `CoreModules/CoreUI/src/components/CoreUIShowcaseTab.jsx` in the same change: add the matching showcase view/example for new UI, or remove the obsolete showcase view/example for deleted UI.
 
+### CoreUI JSX validation
+
+- After changing CoreUI `.jsx`, `.tsx`, `.js`, or `.ts` files that are rendered by Vite/React, run the CoreUI production build or an equivalent parser/lint check before finishing. This specifically guards against malformed JSX such as stray template literals, duplicated `className` fragments, or accidental text inserted between an opening tag and its children.
+- If the check cannot be run, the final response must say so explicitly and include the reason. Do not finish UI code changes without either a successful check or a clearly reported verification gap.
+
 ### Code layout (as in the repo)
 
 - `CoreModules/CoreUI/src/components/` — screens, tabs, modals.
@@ -194,6 +199,7 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 - [ ] If `config/*.yaml` or env vars changed: are they documented for users/deploy?
 - [ ] Did you add a new long-lived monolith “tail”—worth a line in `docs/legacy_map.md`?
 - [ ] For CoreUI: styles via tokens/existing classes; new tabs via the lazy pattern in `App.jsx`; tab/subtab hierarchy uses `CoreUIPillTabs` outside cards and `CoreUISubtabs` inside cards; reusable views unified instead of duplicated; CoreUI Showcase updated when UI was added or removed.
+- [ ] If CoreUI React/Vite source changed: production build or equivalent JSX/parser/lint check passed, or the final response explains why it was not run.
 - [ ] If any non-`.md` file changed: application startup verified through [`build_and_run.bat`](build_and_run.bat), or the final response explains why it was not verified.
 - [ ] For Extensions:
     - [ ] Does it provide its own frame, tab title, tab icon, and assets?
