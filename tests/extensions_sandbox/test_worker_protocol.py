@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,12 @@ class _Docker:
             "current_version": "latest",
             "update_version": "latest",
         }
+
+
+class _SlowInspectDocker:
+    def inspect_container(self, container: str):
+        time.sleep(1.0)
+        return {"exists": True, "running": True}
 
 
 def _write_extension(root: Path, *, provider_py: str) -> Path:
@@ -207,6 +214,22 @@ def create_provider(host_context, manifest):
     return Provider(host_context, manifest)
 """
 
+DOCKER_INSPECT_PROVIDER = """
+class Provider:
+    def __init__(self, host_context, manifest):
+        self._host = host_context
+
+    def get_tab_payload(self):
+        try:
+            self._host.docker_runtime.inspect_container("slow-container")
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True}
+
+def create_provider(host_context, manifest):
+    return Provider(host_context, manifest)
+"""
+
 
 def test_sandboxed_extension_provider_round_trips_runtime_calls(tmp_path: Path) -> None:
     repo = _Repo()
@@ -242,6 +265,26 @@ def test_sandboxed_extension_can_check_docker_image_updates(tmp_path: Path) -> N
         assert result["status"] == "up_to_date"
         assert result["current_version"] == "latest"
         assert docker.checked_image == "ollama/ollama:latest"
+    finally:
+        provider.close()
+
+
+def test_sandboxed_extension_docker_inspect_host_call_times_out(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import extensions_sandbox.client as client_module
+
+    monkeypatch.setitem(client_module._HOST_CALL_TIMEOUTS, ("docker_runtime", "inspect_container"), 0.05)
+    ext = _write_extension(tmp_path, provider_py=DOCKER_INSPECT_PROVIDER)
+    report = discover_extensions([ext], host_context=_host(tmp_path, docker_runtime=_SlowInspectDocker()))
+
+    assert report.failed == []
+    provider = report.loaded[0].provider
+    try:
+        payload = provider.get_tab_payload()
+        assert payload["ok"] is False
+        assert "host call docker_runtime.inspect_container timed out" in payload["error"]
     finally:
         provider.close()
 

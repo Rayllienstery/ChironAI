@@ -2,7 +2,7 @@
  * Browser-side store for lazy module (chunk) load timings.
  *
  * loadTrackedModule() wraps dynamic imports, records both active and completed
- * loads, and keeps the promise cached so prefetch and navigation share work.
+ * loads, and keeps in-flight promises cached so prefetch and navigation share work.
  * PerformanceTab reads getModuleTimings() and subscribes to live changes.
  */
 
@@ -200,6 +200,7 @@ export function loadTrackedModule(key, importer, options = {}) {
   const promise = importer()
     .then((mod) => {
       clearStaleTimer(id);
+      _promises.delete(id);
       recordModuleLoad(id, nowMs() - startPerfMs, 'ok', {
         source,
         step: 'resolved',

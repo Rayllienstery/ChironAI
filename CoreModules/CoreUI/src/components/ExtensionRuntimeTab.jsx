@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CoreUIButton from './CoreUIButton';
 import CoreUIDockerCard from './CoreUIDockerCard';
 import CoreUIModal from './CoreUIModal';
+import ExtensionRuntimeLoadingView, { buildExtensionRuntimeLoadingSteps } from './ExtensionRuntimeLoadingView';
 import Card from './Card';
 import { useOptionalNotificationCenter } from './NotificationCenterContext';
 import { getExtensionTab, runExtensionTabAction } from '../services/api';
@@ -171,24 +172,31 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [runtimeLoadingMessage, setRuntimeLoadingMessage] = useState('');
-  const [lastErrorState, setLastErrorState] = useState(false);
   const [busyActionId, setBusyActionId] = useState('');
   const [busyModelActionKey, setBusyModelActionKey] = useState('');
   const [actionResult, setActionResult] = useState(null);
   const [actionDetails, setActionDetails] = useState(null);
   const [activeAction, setActiveAction] = useState(null);
   const [actionTimerNow, setActionTimerNow] = useState(Date.now());
+  const [loadStartedAt, setLoadStartedAt] = useState(() => Date.now());
+  const [loadTimerNow, setLoadTimerNow] = useState(() => Date.now());
   const [refreshKey, setRefreshKey] = useState(0);
   const [openModelMenuId, setOpenModelMenuId] = useState('');
   const [openModelMenuPos, setOpenModelMenuPos] = useState(null);
 
   const onErrorStateChangeRef = useRef(onErrorStateChange);
+  const lastErrorStateRef = useRef(false);
   useEffect(() => {
     onErrorStateChangeRef.current = onErrorStateChange;
   }, [onErrorStateChange]);
 
   const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
+    if (!silent) {
+      const startedAt = Date.now();
+      setLoadStartedAt(startedAt);
+      setLoadTimerNow(startedAt);
+      setLoading(true);
+    }
     setError(null);
     setRuntimeLoadingMessage('');
     try {
@@ -206,8 +214,8 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
         if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
         return next;
       });
-      if (lastErrorState !== false) {
-        setLastErrorState(false);
+      if (lastErrorStateRef.current !== false) {
+        lastErrorStateRef.current = false;
         onErrorStateChangeRef.current?.(false);
       }
     } catch (e) {
@@ -218,18 +226,25 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
       } else {
         setError(msg);
       }
-      if (lastErrorState !== nextState) {
-        setLastErrorState(nextState);
+      if (lastErrorStateRef.current !== nextState) {
+        lastErrorStateRef.current = nextState;
         onErrorStateChangeRef.current?.(nextState);
       }
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [extensionId, lastErrorState]);
+  }, [extensionId]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!loading && !runtimeLoadingMessage) return undefined;
+    setLoadTimerNow(Date.now());
+    const id = setInterval(() => setLoadTimerNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [loading, runtimeLoadingMessage]);
 
   useEffect(() => {
     if (!activeAction) return undefined;
@@ -986,18 +1001,32 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
   };
 
   if (loading) {
-    return <div className="loading">Loading {title || extensionId}...</div>;
+    return (
+      <ExtensionRuntimeLoadingView
+        title={title}
+        extensionId={extensionId}
+        elapsedMs={Math.max(0, loadTimerNow - loadStartedAt)}
+        steps={buildExtensionRuntimeLoadingSteps({
+          endpoint: `/api/webui/extensions/${extensionId}/tab`,
+          mode: 'request',
+        })}
+      />
+    );
   }
 
   if (runtimeLoadingMessage) {
     return (
-      <div className="settings-tab settings-tab--fullwidth tab-view">
-        <section className="app-default-card llm-proxy-section-gap">
-          <div className="dashboard-card-muted" role="status">
-            {runtimeLoadingMessage}
-          </div>
-        </section>
-      </div>
+      <ExtensionRuntimeLoadingView
+        title={title}
+        extensionId={extensionId}
+        elapsedMs={Math.max(0, loadTimerNow - loadStartedAt)}
+        message={runtimeLoadingMessage}
+        steps={buildExtensionRuntimeLoadingSteps({
+          endpoint: `/api/webui/extensions/${extensionId}/tab`,
+          message: runtimeLoadingMessage,
+          mode: 'runtime',
+        })}
+      />
     );
   }
 

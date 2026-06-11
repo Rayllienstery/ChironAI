@@ -137,6 +137,22 @@
   min-width: 0;
 }
 
+.coreui-showcase-extension-loading-demo {
+  width: 100%;
+  min-width: 0;
+}
+
+.coreui-showcase-extension-loading-demo .extensions-runtime-loading-shell {
+  min-height: 0;
+  padding-top: 0;
+  place-items: stretch;
+}
+
+.coreui-showcase-extension-loading-demo .extensions-runtime-loading-card {
+  width: 100%;
+  box-shadow: none;
+}
+
 .coreui-showcase-dependencies-preview .dependencies-update-panel {
   align-items: flex-start;
   flex-direction: column;

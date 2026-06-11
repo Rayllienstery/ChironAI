@@ -262,6 +262,8 @@ function App() {
   const [statusLoading, setStatusLoading] = useState(true);
   const [serviceStatusPollIntervalSec, setServiceStatusPollIntervalSec] = useState(5);
   const serviceStatusPollGenRef = useRef(0);
+  const reactMountOffsetMsRef = useRef(null);
+  const browserTimingPostedRef = useRef(false);
   const [dashboardMetrics, setDashboardMetrics] = useState(null);
   const [extensionTabs, setExtensionTabs] = useState([]);
   const [extensionServiceStatusByTabId, setExtensionServiceStatusByTabId] = useState({});
@@ -323,6 +325,13 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (reactMountOffsetMsRef.current == null) {
+      reactMountOffsetMsRef.current =
+        typeof performance !== "undefined" && typeof performance.now === "function"
+          ? performance.now()
+          : null;
+    }
+
     // Remove the stand-by loader now that React has rendered
     try {
       document.getElementById('app-loader')?.remove();
@@ -334,8 +343,13 @@ function App() {
     const shellRequestTimer = window.setTimeout(() => {
       try {
         const nav = window?.performance?.timing;
-        if (nav && nav.navigationStart) {
+        if (!browserTimingPostedRef.current && nav && nav.navigationStart) {
           const now = Date.now();
+          const reactMountMs =
+            reactMountOffsetMsRef.current != null
+              ? Math.max(0, Math.round(reactMountOffsetMsRef.current))
+              : Math.max(0, now - nav.navigationStart);
+          browserTimingPostedRef.current = true;
           postBrowserTiming({
             navigationStart: nav.navigationStart,
             fetchStart: nav.fetchStart,
@@ -347,7 +361,7 @@ function App() {
             domComplete: nav.domComplete,
             loadEventStart: nav.loadEventStart,
             loadEventEnd: nav.loadEventEnd,
-            reactMountMs: now - nav.navigationStart,
+            reactMountMs,
             reportedAt: now,
           }).catch(() => {});
         }

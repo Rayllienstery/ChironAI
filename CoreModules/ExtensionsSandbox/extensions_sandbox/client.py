@@ -26,6 +26,11 @@ class ExtensionWorkerTimeout(TimeoutError):
     """Raised when a sandbox worker call times out."""
 
 
+_HOST_CALL_TIMEOUTS: dict[tuple[str, str], float] = {
+    ("docker_runtime", "inspect_container"): 1.5,
+}
+
+
 def _terminate_process(proc: subprocess.Popen[str]) -> None:
     try:
         if proc.poll() is None:
@@ -316,7 +321,7 @@ class ExtensionWorkerClient:
     def _handle_host_call(self, msg: dict[str, Any]) -> None:
         call_id = int(msg.get("id") or 0)
         try:
-            result = self._dispatch_host_call(
+            result = self._dispatch_host_call_bounded(
                 str(msg.get("target") or ""),
                 str(msg.get("method") or ""),
                 list(msg.get("args") or []),
@@ -325,6 +330,35 @@ class ExtensionWorkerClient:
             self._write({"type": "host_response", "id": call_id, "ok": True, "result": result})
         except Exception as e:
             self._write({"type": "host_response", "id": call_id, "ok": False, "error": f"{type(e).__name__}: {e}"})
+
+    def _dispatch_host_call_bounded(self, target: str, method: str, args: list[Any], kwargs: dict[str, Any]) -> Any:
+        timeout_sec = _HOST_CALL_TIMEOUTS.get((target, method))
+        if not timeout_sec or timeout_sec <= 0:
+            return self._dispatch_host_call(target, method, args, kwargs)
+
+        result_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
+
+        def _target() -> None:
+            try:
+                result_queue.put((True, self._dispatch_host_call(target, method, args, kwargs)))
+            except BaseException as exc:  # pragma: no cover - re-raised in caller thread
+                result_queue.put((False, exc))
+
+        thread = threading.Thread(
+            target=_target,
+            name=f"extension-host-call-{target}-{method}",
+            daemon=True,
+        )
+        thread.start()
+        try:
+            ok, value = result_queue.get(timeout=float(timeout_sec))
+        except queue.Empty as exc:
+            raise TimeoutError(
+                f"host call {target}.{method} timed out after {float(timeout_sec):.1f}s"
+            ) from exc
+        if ok:
+            return value
+        raise value
 
     # Explicit allowlist for chat_client methods callable from sandboxed extensions.
     # docker_runtime already has an allowlist; this mirrors that pattern for chat.

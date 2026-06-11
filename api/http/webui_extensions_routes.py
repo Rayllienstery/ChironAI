@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import queue
+import threading
 from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request, send_file
@@ -19,6 +21,25 @@ def _get_extensions_runtime(svc: Any) -> Any:
 
 def _extension_error(message: str, code: str, status: int) -> Any:
     return jsonify({"error": message, "code": code}), status
+
+
+def _call_with_timeout(label: str, fn: Any, timeout_sec: float) -> Any:
+    result_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
+
+    def _target() -> None:
+        try:
+            result_queue.put((True, fn()))
+        except BaseException as exc:  # pragma: no cover - re-raised in request thread
+            result_queue.put((False, exc))
+
+    threading.Thread(target=_target, name=f"webui-extension-route-{label}", daemon=True).start()
+    try:
+        ok, value = result_queue.get(timeout=timeout_sec)
+    except queue.Empty as exc:
+        raise TimeoutError(f"{label} timed out after {timeout_sec:.1f}s") from exc
+    if ok:
+        return value
+    raise value
 
 
 def register_extension_routes(
@@ -130,9 +151,16 @@ def register_extension_routes(
                 return jsonify({"error": "Extensions runtime is unavailable"}), 503
             if runtime is None:
                 return jsonify({"error": "Extension runtime is still loading"}), 503
-            payload = svc.extension_tab_payload(extension_id, runtime=runtime)
+            payload = _call_with_timeout(
+                f"Extension '{extension_id}' tab payload",
+                lambda: svc.extension_tab_payload(extension_id, runtime=runtime),
+                6.0,
+            )
             payload["available"] = True
             return jsonify(payload)
+        except TimeoutError as e:
+            error_log.warning("webui_extensions_routes.get_extension_tab timed out: %s", e)
+            return _extension_error(str(e), "extension_tab_timeout", 504)
         except ValueError:
             # Extension not found or not loaded — 404, not 400.
             error_log.error("webui_extensions_routes.get_extension_tab", exc_info=True)

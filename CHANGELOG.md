@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.70] - 2026-06-11
+### Added
+- Added a detailed CoreUI extension runtime loading view that shows loaded, active, pending, and blocked stages, with a CoreUI Showcase example.
+
+## [0.6.69] - 2026-06-11
+### Fixed
+- Prevented extension tab UI hooks from blocking WebUI requests indefinitely and stopped extension runtime errors from immediately restarting the loading state.
+
+## [0.6.68] - 2026-06-11
+### Fixed
+- Corrected WebUI startup diagnostics so React mount timing is captured once at first render and completed lazy module imports do not reappear as stuck in-progress loads.
+
 ## [0.6.67] - 2026-06-11
 ### Fixed
 - Wrapped upstream Ollama chat failures with a clearer proxy error message that includes status, URL, model, and over-budget context hints.

@@ -2,6 +2,258 @@
 @import "./LlmProxyTab.css";
 @import "./SettingsTab.css";
 
+.extensions-runtime-loading-shell {
+  display: grid;
+  place-items: start center;
+  min-height: min(680px, calc(100vh - 140px));
+  padding-top: clamp(24px, 7vh, 76px);
+}
+
+.extensions-runtime-loading-card {
+  width: min(760px, 100%);
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 18%, transparent);
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--md-sys-color-primary) 9%, var(--md-sys-color-surface-container-lowest)) 0%,
+      var(--md-sys-color-surface-container-low) 48%,
+      var(--md-sys-color-surface) 100%
+    );
+  box-shadow: var(--md-sys-elevation-level2);
+}
+
+.extensions-runtime-loading-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+.extensions-runtime-loading-mark {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 13%, var(--md-sys-color-surface));
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 24%, transparent);
+}
+
+.extensions-runtime-loading-mark .material-symbols-outlined {
+  font-size: 28px;
+}
+
+.extensions-runtime-loading-copy {
+  min-width: 0;
+}
+
+.extensions-runtime-loading-kicker {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--md-sys-color-primary);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.extensions-runtime-loading-copy h2 {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-title-large-font);
+}
+
+.extensions-runtime-loading-copy p {
+  margin: 5px 0 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-medium-font);
+  overflow-wrap: anywhere;
+}
+
+.extensions-runtime-loading-timer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container);
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 18%, transparent);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.extensions-runtime-loading-timer .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.extensions-runtime-loading-progress {
+  position: relative;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--md-sys-color-outline-variant) 45%, transparent);
+}
+
+.extensions-runtime-loading-progress span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 42%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--md-sys-color-primary),
+    color-mix(in srgb, var(--md-sys-color-primary) 55%, white)
+  );
+  animation: extensions-runtime-loading-scan 1.25s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.extensions-runtime-loading-steps {
+  display: grid;
+  gap: 8px;
+}
+
+.extensions-runtime-loading-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 16%, transparent);
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-lowest) 78%, transparent);
+}
+
+.extensions-runtime-loading-step-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  font-size: 20px;
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container);
+}
+
+.extensions-runtime-loading-step--done .extensions-runtime-loading-step-icon {
+  color: var(--coreui-color-success);
+  background: var(--coreui-color-success-container);
+}
+
+.extensions-runtime-loading-step--loading .extensions-runtime-loading-step-icon {
+  color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 13%, var(--md-sys-color-surface));
+  animation: extensions-runtime-loading-pulse 1.1s ease-in-out infinite;
+}
+
+.extensions-runtime-loading-step--error .extensions-runtime-loading-step-icon {
+  color: var(--md-sys-color-error);
+  background: color-mix(in srgb, var(--md-sys-color-error) 12%, var(--md-sys-color-surface));
+}
+
+.extensions-runtime-loading-step-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.extensions-runtime-loading-step-label {
+  color: var(--md-sys-color-on-surface);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.extensions-runtime-loading-step-detail {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.extensions-runtime-loading-step-chip {
+  min-width: 72px;
+  text-align: center;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container);
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 16%, transparent);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.extensions-runtime-loading-step-chip--done {
+  color: var(--coreui-color-success);
+  background: var(--coreui-color-success-container);
+}
+
+.extensions-runtime-loading-step-chip--loading {
+  color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, var(--md-sys-color-surface));
+}
+
+.extensions-runtime-loading-step-chip--error {
+  color: var(--md-sys-color-error);
+  background: color-mix(in srgb, var(--md-sys-color-error) 10%, var(--md-sys-color-surface));
+}
+
+@keyframes extensions-runtime-loading-scan {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+@keyframes extensions-runtime-loading-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@media (max-width: 720px) {
+  .extensions-runtime-loading-shell {
+    min-height: auto;
+    padding-top: 8px;
+  }
+
+  .extensions-runtime-loading-card {
+    padding: 16px;
+  }
+
+  .extensions-runtime-loading-hero {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .extensions-runtime-loading-timer {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .extensions-runtime-loading-step {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .extensions-runtime-loading-step-chip {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
 .extensions-runtime-section {
   display: grid;
   gap: 12px;

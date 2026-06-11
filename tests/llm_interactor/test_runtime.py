@@ -7,6 +7,7 @@ import stat
 import zipfile
 from io import BytesIO
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -540,6 +541,104 @@ def test_extension_manager_exposes_manifest_tabs_before_runtime_ready(tmp_path: 
     assert any(tab["id"] == "ollama" and tab["status"]["runtime"] == "not_started" for tab in tabs)
     assert any(tab["id"] == "open-webui" and tab.get("icon_url", "").endswith("/icons/open-webui-light.svg") for tab in tabs)
     assert any(tab["id"] == "codex" and tab.get("icon_url", "").endswith("/icons/codex-light.svg") for tab in tabs)
+
+
+def test_extension_tabs_timeout_slow_provider_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import llm_interactor.manager as manager_module
+
+    class _Repo:
+        def get_app_setting(self, key: str):
+            return None
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            pass
+
+    class _SlowProvider(_StubProvider):
+        def get_tab_descriptor(self, *, runtime=None):
+            time.sleep(1.0)
+            return {"id": "slow", "title": "Slow"}
+
+    monkeypatch.setattr(manager_module, "_EXTENSION_TAB_DESCRIPTOR_TIMEOUT_SEC", 0.05)
+
+    repo = _Repo()
+    root = Path(__file__).resolve().parents[2]
+    manifest = ExtensionManifest(
+        id="slow-ext",
+        version="1.0.0",
+        api_version=EXTENSION_API_VERSION,
+        type="llm_provider",
+        title="Slow",
+    )
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        registry_client=ExtensionRegistryClient(project_root=root),
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+    manager._loaded = [
+        LoadedExtension(manifest=manifest, source_dir=tmp_path / "slow-ext", provider=_SlowProvider())
+    ]
+
+    tabs = manager.extension_tabs(runtime=LLMRuntime(ProviderRegistry()))
+
+    assert tabs[0]["id"] == "slow-ext"
+    assert tabs[0]["status"]["tone"] == "error"
+    assert "tab descriptor timed out" in tabs[0]["status"]["message"]
+
+
+def test_extension_tab_payload_timeout_returns_fallback_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import llm_interactor.manager as manager_module
+
+    class _Repo:
+        def get_app_setting(self, key: str):
+            return None
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            pass
+
+    class _SlowProvider(_StubProvider):
+        def get_tab_payload(self, *, runtime=None):
+            time.sleep(1.0)
+            return {"schema": {}}
+
+    monkeypatch.setattr(manager_module, "_EXTENSION_TAB_PAYLOAD_TIMEOUT_SEC", 0.05)
+
+    repo = _Repo()
+    root = Path(__file__).resolve().parents[2]
+    manifest = ExtensionManifest(
+        id="slow-ext",
+        version="1.0.0",
+        api_version=EXTENSION_API_VERSION,
+        type="llm_provider",
+        title="Slow",
+    )
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        registry_client=ExtensionRegistryClient(project_root=root),
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+    manager._loaded = [
+        LoadedExtension(manifest=manifest, source_dir=tmp_path / "slow-ext", provider=_SlowProvider())
+    ]
+
+    payload = manager.extension_tab_payload("slow-ext", runtime=LLMRuntime(ProviderRegistry()))
+
+    assert payload["extension_id"] == "slow-ext"
+    assert payload["status"]["tone"] == "error"
+    component = payload["schema"]["pages"][0]["sections"][0]["components"][0]
+    assert component["type"] == "text"
+    assert "tab payload timed out" in component["value"]
 
 
 def test_bundled_extension_refreshes_existing_same_version_install(tmp_path: Path) -> None:

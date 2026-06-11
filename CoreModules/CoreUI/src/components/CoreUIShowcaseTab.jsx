@@ -8,6 +8,7 @@ import CoreUIPillTabs from "./CoreUIPillTabs";
 import CoreUISubtabs from "./CoreUISubtabs";
 import CoreUISlider from "./CoreUISlider";
 import EmptyState from "./EmptyState";
+import ExtensionRuntimeLoadingView, { buildExtensionRuntimeLoadingSteps } from "./ExtensionRuntimeLoadingView";
 import StandByScreen from "./StandByScreen";
 import "../styles/components/DockerTab.css";
 import "../styles/components/DependenciesTab.css";
@@ -628,6 +629,31 @@ function CoreUIShowcaseTab() {
         >
           <div className="coreui-showcase-standby-row">
             <StandByScreen moduleName="Session Manager" size="md" />
+          </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="ExtensionRuntimeLoadingView"
+          classes={[
+            ".extensions-runtime-loading-shell",
+            ".extensions-runtime-loading-card",
+            ".extensions-runtime-loading-step",
+            ".extensions-runtime-loading-step-chip",
+          ]}
+          source={`${sourceRoot}/components/ExtensionRuntimeLoadingView.jsx, ${sourceRoot}/styles/components/ExtensionRuntimeTab.css`}
+          description="Extension tab loading surface that shows the mounted CoreUI shell, active payload request, runtime wait state, pending render step, and elapsed time."
+        >
+          <div className="coreui-showcase-extension-loading-demo">
+            <ExtensionRuntimeLoadingView
+              title="Ollama"
+              extensionId="ollama-provider"
+              elapsedMs={7300}
+              steps={buildExtensionRuntimeLoadingSteps({
+                endpoint: "/api/webui/extensions/ollama-provider/tab",
+                message: "Inspecting Docker container and provider runtime.",
+                mode: "runtime",
+              })}
+            />
           </div>
         </ShowcaseItem>
       </ShowcaseSection>

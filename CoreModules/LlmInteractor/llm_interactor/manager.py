@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import queue
 import re
 import shutil
 import stat
@@ -51,6 +52,8 @@ _SEMVERISH_RE = re.compile(r"^v?\d+(?:\.\d+){1,3}(?:[-+][0-9A-Za-z.-]+)?$")
 # Keys in a tab payload that the extension must not override.  Authoritative
 # values come from the manifest; extension code cannot spoof its own identity.
 _PROTECTED_TAB_PAYLOAD_KEYS: frozenset[str] = frozenset({"extension_id", "title", "icon", "icon_url"})
+_EXTENSION_TAB_DESCRIPTOR_TIMEOUT_SEC = 2.0
+_EXTENSION_TAB_PAYLOAD_TIMEOUT_SEC = 5.0
 
 # Trusted hostnames for extension archive downloads.
 # Only these domains may serve .zip archives; all other URLs are rejected to
@@ -1098,6 +1101,32 @@ class ExtensionManager:
                 return item
         return None
 
+    def _call_extension_ui_method(self, item: LoadedExtension, label: str, fn: Any, timeout_sec: float) -> Any:
+        """Run extension UI hooks with a hard response budget."""
+        result_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
+
+        def _target() -> None:
+            try:
+                result_queue.put((True, fn()))
+            except BaseException as exc:  # pragma: no cover - re-raised in caller thread
+                result_queue.put((False, exc))
+
+        thread = threading.Thread(
+            target=_target,
+            name=f"chironai-extension-ui-{item.manifest.id}-{label}",
+            daemon=True,
+        )
+        thread.start()
+        try:
+            ok, value = result_queue.get(timeout=timeout_sec)
+        except queue.Empty as exc:
+            raise TimeoutError(
+                f"Extension '{item.manifest.id}' {label} timed out after {timeout_sec:.1f}s"
+            ) from exc
+        if ok:
+            return value
+        raise value
+
     def extension_tabs(self, *, runtime: LLMRuntime | None = None) -> list[dict[str, Any]]:
         if runtime is None:
             runtime = self.runtime
@@ -1111,10 +1140,20 @@ class ExtensionManager:
             if not callable(fn):
                 continue
             try:
-                raw = fn(runtime=runtime)
+                raw = self._call_extension_ui_method(
+                    item,
+                    "tab descriptor",
+                    lambda fn=fn: fn(runtime=runtime),
+                    _EXTENSION_TAB_DESCRIPTOR_TIMEOUT_SEC,
+                )
             except TypeError:
                 try:
-                    raw = fn()
+                    raw = self._call_extension_ui_method(
+                        item,
+                        "tab descriptor",
+                        lambda fn=fn: fn(),
+                        _EXTENSION_TAB_DESCRIPTOR_TIMEOUT_SEC,
+                    )
                 except Exception as e:
                     out.append(self._failed_tab_row(item, e))
                     continue
@@ -1162,6 +1201,42 @@ class ExtensionManager:
             },
         }
 
+    def _timeout_tab_payload(self, item: LoadedExtension, error: TimeoutError) -> dict[str, Any]:
+        message = str(error)
+        return {
+            "extension_id": item.manifest.id,
+            "title": item.manifest.title,
+            "icon": item.manifest.icon,
+            "icon_url": self._asset_url(item.manifest.id, item.manifest.icon),
+            "status": {
+                "running": False,
+                "tone": "error",
+                "message": message,
+            },
+            "schema": {
+                "pages": [
+                    {
+                        "id": "extension-timeout",
+                        "title": item.manifest.title,
+                        "sections": [
+                            {
+                                "id": "extension-timeout",
+                                "title": "Extension runtime unavailable",
+                                "components": [
+                                    {
+                                        "type": "text",
+                                        "key": "extension_timeout",
+                                        "label": "Timeout",
+                                        "value": message,
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            },
+        }
+
     def extension_tab_payload(self, extension_id: str, *, runtime: LLMRuntime | None = None) -> dict[str, Any]:
         item = self._find_loaded_extension(extension_id)
         if item is None:
@@ -1175,9 +1250,24 @@ class ExtensionManager:
                 "schema": dict(item.manifest.ui_schema or {}),
             }
         try:
-            payload = fn(runtime=runtime)
+            payload = self._call_extension_ui_method(
+                item,
+                "tab payload",
+                lambda fn=fn: fn(runtime=runtime),
+                _EXTENSION_TAB_PAYLOAD_TIMEOUT_SEC,
+            )
+        except TimeoutError as e:
+            return self._timeout_tab_payload(item, e)
         except TypeError:
-            payload = fn()
+            try:
+                payload = self._call_extension_ui_method(
+                    item,
+                    "tab payload",
+                    lambda fn=fn: fn(),
+                    _EXTENSION_TAB_PAYLOAD_TIMEOUT_SEC,
+                )
+            except TimeoutError as e:
+                return self._timeout_tab_payload(item, e)
         if not isinstance(payload, dict):
             raise ValueError(f"Extension '{extension_id}' returned invalid tab payload")
         # Strip keys that the extension must not override — extension_id, title,
