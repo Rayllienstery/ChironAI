@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import CoreUIBadge from "./CoreUIBadge";
 import CoreUIButton from "./CoreUIButton";
+import CoreUIDockerCard from "./CoreUIDockerCard";
 import CoreUIPillTabs from "./CoreUIPillTabs";
 import { useOptionalNotificationCenter } from "./NotificationCenterContext";
 import {
@@ -468,6 +469,33 @@ function SchemaRenderer({ schema, providerByExtensionId }) {
           <div className="extensions-schema-label">{component.label || "Diagnostics"}</div>
           <pre>{JSON.stringify(provider?.health?.details || {}, null, 2)}</pre>
         </div>
+      );
+    }
+    if (type === "docker_card") {
+      return (
+        <CoreUIDockerCard
+          key={key}
+          name={component.name || "Runtime"}
+          description={component.description}
+          icon={component.icon || "deployed_code"}
+          status={component.status}
+          httpStatus={component.httpStatus}
+          backendUrl={component.backendUrl}
+          backendUrlLabel={component.backendUrlLabel}
+          backendUrlPlaceholder={component.backendUrlPlaceholder}
+          meta={component.meta || []}
+          actions={(component.actions || []).map((action) => ({
+            label: action.label,
+            variant: action.variant,
+            icon: action.icon,
+            disabled: action.disabled,
+            onClick: () => {
+              if (action.id === "open_external" && component.backendUrl) {
+                window.open(component.backendUrl, "_blank", "noopener,noreferrer");
+              }
+            },
+          }))}
+        />
       );
     }
     return (

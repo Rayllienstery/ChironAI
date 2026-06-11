@@ -604,6 +604,16 @@
   padding: 14px;
 }
 
+.coreui-showcase-docker-card-wrap {
+  width: 100%;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.coreui-showcase-docker-card-wrap .coreui-docker-card {
+  max-width: 100%;
+}
+
 .coreui-showcase-docker-status {
   grid-template-columns: minmax(0, 1fr);
   gap: 12px;

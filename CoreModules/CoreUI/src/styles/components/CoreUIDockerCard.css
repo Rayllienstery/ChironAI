@@ -1,0 +1,252 @@
+.coreui-docker-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level1);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--coreui-font-family-base);
+  box-sizing: border-box;
+}
+
+:where(.theme-dark) .coreui-docker-card {
+  background: var(--md-sys-color-surface);
+}
+
+.coreui-docker-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-md);
+  padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.coreui-docker-card__title {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-md);
+  min-width: 0;
+}
+
+.coreui-docker-card__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.coreui-docker-card__icon-glyph {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.coreui-docker-card__title-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.coreui-docker-card__name {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-title-large-font);
+  font-weight: 600;
+}
+
+.coreui-docker-card__subtitle {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small-font);
+  overflow-wrap: anywhere;
+}
+
+.coreui-docker-card__status {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--md-sys-spacing-sm);
+  flex: 0 0 auto;
+}
+
+.coreui-docker-card__status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.coreui-docker-card__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+
+.coreui-docker-card__http-status {
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium-font);
+  font-weight: 600;
+}
+
+.coreui-docker-card__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(420px, 1fr);
+  gap: var(--md-sys-spacing-lg);
+  padding: var(--md-sys-spacing-lg);
+}
+
+.coreui-docker-card__primary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-md);
+  min-width: 0;
+}
+
+.coreui-docker-card__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-medium-font);
+}
+
+.coreui-docker-card__field-label {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.coreui-docker-card__input {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-medium-font);
+  font-family: var(--coreui-font-family-mono);
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+
+.coreui-docker-card__input:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 1px;
+}
+
+.coreui-docker-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.coreui-docker-card__actions .coreui-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.coreui-docker-card__actions .coreui-btn .coreui-docker-card__icon-glyph {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.coreui-docker-card__action-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.coreui-docker-card__action-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-small-font);
+  font-variant-numeric: tabular-nums;
+}
+
+.coreui-docker-card__action-timer .material-symbols-outlined {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.coreui-docker-card__meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--md-sys-spacing-sm);
+  align-content: start;
+  min-width: 0;
+}
+
+.coreui-docker-card__meta-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low);
+  box-sizing: border-box;
+}
+
+.coreui-docker-card__meta-label {
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-small-font);
+  font-weight: 600;
+}
+
+.coreui-docker-card__meta-value {
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-medium-font);
+  overflow-wrap: anywhere;
+}
+
+.coreui-docker-card__meta-value-empty {
+  color: var(--md-sys-color-outline);
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+@media (max-width: 900px) {
+  .coreui-docker-card__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .coreui-docker-card__status {
+    justify-content: flex-start;
+  }
+
+  .coreui-docker-card__body {
+    grid-template-columns: 1fr;
+  }
+
+  .coreui-docker-card__meta-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .coreui-docker-card__meta-grid {
+    grid-template-columns: 1fr;
+  }
+}

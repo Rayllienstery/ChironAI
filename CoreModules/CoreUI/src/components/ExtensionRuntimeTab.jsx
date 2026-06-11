@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CoreUIButton from './CoreUIButton';
+import CoreUIDockerCard from './CoreUIDockerCard';
 import CoreUIModal from './CoreUIModal';
 import Card from './Card';
 import { useOptionalNotificationCenter } from './NotificationCenterContext';
@@ -936,6 +937,49 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
     if (component?.type === 'diagnostics') {
       return null;
     }
+    if (component?.type === 'docker_card') {
+      return (
+        <CoreUIDockerCard
+          key={key}
+          name={component.name || payload?.title || title || extensionId}
+          description={component.description}
+          icon={component.icon || 'deployed_code'}
+          status={component.status}
+          httpStatus={component.httpStatus}
+          fieldKey={component.fieldKey || 'backend_url'}
+          busyActionId={busyActionId}
+          activeAction={activeAction}
+          actionTimerNow={actionTimerNow}
+          service={{
+            backendUrl: fieldState[component.fieldKey || 'backend_url'] ?? component.backendUrl ?? '',
+            backendUrlLabel: component.backendUrlLabel,
+            backendUrlPlaceholder: component.backendUrlPlaceholder,
+            status: component.status,
+            httpStatus: component.httpStatus,
+            actions: (component.actions || []).map((action) => ({
+              id: action.id,
+              label: action.label,
+              variant: action.variant,
+              icon: action.icon,
+              confirm: action.confirm,
+              disabled: action.disabled,
+              onAction: () => void handleContentAction(action),
+            })),
+            meta: component.meta || [],
+            onBackendUrlChange: (value) => {
+              const fk = component.fieldKey || 'backend_url';
+              setFieldState((prev) => ({ ...prev, [fk]: value }));
+            },
+            onBackendUrlBlur: (_value, key) => {
+              const fk = key || component.fieldKey || 'backend_url';
+              const autosaveActionId = component.autosaveActionId;
+              if (!autosaveActionId) return undefined;
+              return runAutosave(autosaveActionId, fk);
+            },
+          }}
+        />
+      );
+    }
     return null;
   };
 
@@ -1075,7 +1119,50 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
         </section>
       ) : null}
 
-      {isServicePanelContent ? (
+      {isServicePanelContent && content?.service ? (
+        <section className="llm-proxy-section-gap">
+          <CoreUIDockerCard
+            name={content.service.name || content.title || payload?.title || title || extensionId}
+            description={content.service.subtitle || content.subtitle}
+            icon={content.service.icon || 'deployed_code'}
+            status={content.service.status}
+            httpStatus={content.service.httpStatus}
+            fieldKey={content.service.fieldKey || 'backend_url'}
+            busyActionId={busyActionId}
+            activeAction={activeAction}
+            actionTimerNow={actionTimerNow}
+            service={{
+              backendUrl: fieldState[content.service.fieldKey || 'backend_url'] ?? content.service.backendUrl ?? '',
+              backendUrlLabel: content.service.backendUrlLabel,
+              backendUrlPlaceholder: content.service.backendUrlPlaceholder,
+              httpStatus: content.service.httpStatus,
+              status: content.service.status,
+              actions: (content.service.actions || []).map((action) => ({
+                id: action.id,
+                label: action.label,
+                variant: action.variant,
+                icon: action.icon,
+                confirm: action.confirm,
+                disabled: action.disabled,
+                onAction: () => void handleContentAction(action),
+              })),
+              meta: content.service.meta || [],
+              onBackendUrlChange: (value) => {
+                const fk = content.service.fieldKey || 'backend_url';
+                setFieldState((prev) => ({ ...prev, [fk]: value }));
+              },
+              onBackendUrlBlur: (_value, key) => {
+                const fk = key || content.service.fieldKey || 'backend_url';
+                const autosaveActionId = (contentFields.find((f) => String(f.key) === fk)?.autosave_action_id) || 'save_backend';
+                if (!autosaveActionId) return undefined;
+                return runAutosave(autosaveActionId, fk);
+              },
+            }}
+          />
+        </section>
+      ) : null}
+
+      {isServicePanelContent && !content?.service ? (
         <section className="app-default-card llm-proxy-section-gap extensions-runtime-service-shell">
           <div className="extensions-runtime-service-header">
             <div className="extensions-runtime-service-title-row">

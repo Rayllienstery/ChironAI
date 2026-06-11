@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.66] - 2026-06-10
+### Fixed
+- Sandboxed extensions can now call `docker_runtime.check_image_update`, fixing the Docker card `Check image version` action.
+
+## [0.6.65] - 2026-06-10
+### Changed
+- Open WebUI extension now renders its runtime card through the standardized `CoreUIDockerCard` component (read-only demo mode stays available for the showcase). The card supports editable backend URL with autosave, per-action busy state with elapsed timer chips, confirm dialogs, and tone-aware `Status` / `Image version` meta tiles.
+- `CoreUIDockerCard` upgraded with a live mode (new `service`, `busyActionId`, `activeAction`, `actionTimerNow`, `fieldKey` props) and a new `check_image_version` action on the open-webui provider that calls `docker_runtime.check_image_update` and caches the result on the provider.
+
+## [0.6.64] - 2026-06-10
+### Added
+- Standardized `CoreUIDockerCard` component (header with name, description, status badge, optional HTTP code; two-column body with backend URL field, action row, and metadata tiles). Registered in CoreUI Showcase → Cards → Runtime cards with the Open WebUI runtime data and a stopped-state variant.
+- Added `Status` and `Image version` metadata tiles to the Docker card with tone-aware badges (success/warning/error for running/up-to-date/stopped/update-available/etc.).
+
 ## [0.6.63] - 2026-06-09
 ### Changed
 - Streaming dependency jobs now report the current step (ecosystem, phase, package) in real time through both the Dependencies tab and a live notification card, and surface the full updated package list (with old → new versions when known) in the completion notification.

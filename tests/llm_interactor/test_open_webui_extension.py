@@ -40,6 +40,12 @@ class _Docker:
         self.volumes: list[str] = []
         self.ensure_spec: Any | None = None
         self.stopped = ""
+        self.image_check: dict[str, Any] = {
+            "status": "up_to_date",
+            "message": "Image is up to date",
+            "current_version": "main",
+            "update_version": "main",
+        }
 
     def inspect_container(self, name: str):
         return SimpleNamespace(
@@ -61,6 +67,9 @@ class _Docker:
         self.stopped = name
         self.running = False
         return {"ok": True, "container": name, "message": "stopped"}
+
+    def check_image_update(self, image: str) -> dict[str, Any]:
+        return dict(self.image_check)
 
 
 def _extension(repo: _Repo, docker: _Docker):
@@ -112,6 +121,28 @@ def test_open_webui_extension_descriptor_and_iframe_payload() -> None:
     components = payload["schema"]["pages"][0]["sections"][0]["components"]
     assert any(c.get("type") == "action" and c.get("action_id") == "apply_config" for c in components)
     assert any(c.get("type") == "action" and c.get("action_id") == "stop" for c in components)
+
+    service = payload["content"]["service"]
+    assert service["name"] == "Open WebUI"
+    assert service["icon"] == "deployed_code"
+    assert service["backendUrlLabel"] == "Chat backend URL"
+    assert service["fieldKey"] == "backend_url"
+    service_actions = {a["id"] for a in service["actions"]}
+    assert {"refresh", "check_image_version", "apply_config", "stop", "clear_backend", "open_external"} <= service_actions
+    service_meta_labels = [m["label"] for m in service["meta"]]
+    assert "Container" in service_meta_labels
+    assert "Image" in service_meta_labels
+    assert "Status" in service_meta_labels
+    assert "Image version" in service_meta_labels
+    assert "Host URL" in service_meta_labels
+    assert "Port" in service_meta_labels
+    assert "Backend source" in service_meta_labels
+    assert "Chiron OpenAI URL" in service_meta_labels
+    assert "Chiron API key" in service_meta_labels
+    image_version_tile = next(m for m in service["meta"] if m["label"] == "Image version")
+    assert image_version_tile["value"]["label"] == "not checked"
+    status_tile = next(m for m in service["meta"] if m["label"] == "Status")
+    assert status_tile["value"]["label"] in {"running", "stopped", "ready"}
 
 
 def test_open_webui_extension_actions_and_legacy_setting_migration() -> None:
@@ -191,6 +222,46 @@ def test_open_webui_extension_preserves_existing_container_data_volume_for_apply
 
     assert applied["ok"] is True
     assert docker.ensure_spec.volumes == ["existing_open_webui:/app/backend/data"]
+
+
+def test_open_webui_extension_check_image_version_action_and_caching() -> None:
+    repo = _Repo()
+    docker = _Docker()
+    ext, mod = _extension(repo, docker)
+
+    payload = ext.get_tab_payload()
+    image_version_tile = next(
+        m for m in payload["content"]["service"]["meta"] if m["label"] == "Image version"
+    )
+    assert image_version_tile["value"]["label"] == "not checked"
+
+    docker.image_check = {
+        "status": "up_to_date",
+        "message": "Image is up to date",
+        "current_version": "main",
+        "update_version": "main",
+    }
+    result = ext.run_action("check_image_version", {})
+    assert result["ok"] is True
+    assert result["image_version"]["label"] == "up_to_date"
+    assert result["image_version"]["tone"] == "success"
+
+    payload = ext.get_tab_payload()
+    image_version_tile = next(
+        m for m in payload["content"]["service"]["meta"] if m["label"] == "Image version"
+    )
+    assert image_version_tile["value"]["label"] == "up_to_date"
+    assert image_version_tile["value"]["tone"] == "success"
+
+    docker.image_check = {
+        "status": "update_available",
+        "message": "Update available",
+        "current_version": "main@sha1",
+        "update_version": "main@sha2",
+    }
+    result = ext.run_action("check_image_version", {})
+    assert result["image_version"]["label"] == "update_available"
+    assert result["image_version"]["tone"] == "warning"
 
 
 def test_open_webui_extension_reports_missing_docker_runtime() -> None:

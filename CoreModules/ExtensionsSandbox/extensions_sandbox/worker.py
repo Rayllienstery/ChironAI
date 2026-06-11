@@ -82,6 +82,9 @@ class _DockerProxy:
     def wait_http(self, url: str, **kwargs: Any) -> dict[str, Any]:
         return dict(_host_call("docker_runtime", "wait_http", url, **kwargs) or {})
 
+    def check_image_update(self, image: str) -> dict[str, Any]:
+        return dict(_host_call("docker_runtime", "check_image_update", image) or {})
+
 
 class _ChatClientProxy:
     def __init__(self, attrs: dict[str, Any]) -> None:

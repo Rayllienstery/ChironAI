@@ -333,16 +333,29 @@ def test_ollama_extension_tab_docker_section_uses_actionable_labels(monkeypatch:
 
     payload = provider.get_tab_payload()
     docker_section = _section_from_tab_payload(payload, "docker")
-    components = {item["label"]: item["value"] for item in docker_section["components"]}
+    card = docker_section["components"][0]
 
     assert docker_section["title"] == "Docker container"
-    assert components["Container"] == "chironai-ollama"
-    assert components["Image"] == "ollama/ollama:latest"
-    assert components["Status"] == "Running"
-    assert components["Image version"] == "Version check unavailable"
-    assert "Current version" not in components
-    assert "Update version" not in components
-    assert "Unknown" not in set(components.values())
+    assert card["type"] == "docker_card"
+    assert card["name"] == "Ollama"
+    assert card["description"] == "Docker-managed Ollama runtime"
+    assert card["icon"] == "memory"
+
+    meta_by_label = {m["label"]: m["value"] for m in card["meta"]}
+    assert meta_by_label["Container"] == "chironai-ollama"
+    assert meta_by_label["Image"] == "ollama/ollama:latest"
+    assert isinstance(meta_by_label["Status"], dict)
+    assert meta_by_label["Status"]["label"] == "Running"
+    assert meta_by_label["Status"]["tone"] == "success"
+    assert isinstance(meta_by_label["Image version"], dict)
+    assert meta_by_label["Image version"]["label"] == "not checked"
+    assert meta_by_label["Image version"]["tone"] == "neutral"
+
+    action_ids = {a["id"] for a in card["actions"]}
+    assert "refresh" in action_ids
+    assert "check_image_version" in action_ids
+    assert "stop_service" in action_ids
+    assert "open_external" in action_ids
 
 
 def test_ollama_extension_tab_reports_stopped_container(monkeypatch: Any) -> None:

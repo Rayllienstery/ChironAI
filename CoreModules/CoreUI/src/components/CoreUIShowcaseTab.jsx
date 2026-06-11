@@ -2,6 +2,7 @@ import { useState } from "react";
 import Card from "./Card";
 import CoreUIBadge from "./CoreUIBadge";
 import CoreUIButton from "./CoreUIButton";
+import CoreUIDockerCard from "./CoreUIDockerCard";
 import CoreUINotificationActionButton from "./CoreUINotificationActionButton";
 import CoreUIPillTabs from "./CoreUIPillTabs";
 import CoreUISubtabs from "./CoreUISubtabs";
@@ -414,6 +415,73 @@ function CoreUIShowcaseTab() {
               </div>
             </Card>
           </div>
+        </ShowcaseItem>
+      </ShowcaseSection>
+
+      <ShowcaseSection title="Runtime cards">
+        <ShowcaseItem
+          name="Docker card"
+          classes={[".coreui-docker-card", ".coreui-docker-card__header", ".coreui-docker-card__body", ".coreui-docker-card__primary", ".coreui-docker-card__meta-grid", ".coreui-docker-card__meta-cell", ".coreui-docker-card__actions", ".coreui-docker-card__field", "--md-sys-shape-corner-medium", "--md-sys-elevation-level1"]}
+          source={`${sourceRoot}/components/CoreUIDockerCard.jsx, ${sourceRoot}/styles/components/CoreUIDockerCard.css, ${sourceRoot}/styles/tokens.css`}
+          description="Standardized runtime card for Docker-managed services. Header shows the runtime name, description, and a status badge (with optional HTTP code). Body is a two-column layout: a primary column with the chat backend URL field and an action row (Refresh, Apply, Stop, Clear, Open external), and a secondary column with metadata tiles (Container, Image, Status, Image version, Host URL, Port, Backend source, Chiron OpenAI URL, Chiron API key). Built on Card, CoreUIBadge, and CoreUIButton primitives; uses Material 3 tokens for color, radius, and elevation."
+        >
+          <CoreUIDockerCard
+            name="Open WebUI"
+            description="Docker-managed Open WebUI runtime"
+            icon="deployed_code"
+            status={{ tone: "success", label: "running" }}
+            httpStatus="HTTP 200"
+            backendUrl="http://host.docker.internal:8080"
+            backendUrlLabel="Chat backend URL"
+            actions={[
+              { label: "Refresh", icon: "refresh" },
+              { label: "Apply configuration", variant: "primary" },
+              { label: "Stop service", variant: "danger", icon: "stop_circle" },
+              { label: "Clear saved backend", variant: "ghost" },
+              { label: "Open external", icon: "open_in_new" },
+            ]}
+            meta={[
+              { label: "Container", value: "open-webui" },
+              { label: "Image", value: "ghcr.io/open-webui/open-webui:main" },
+              { label: "Status", value: { tone: "success", label: "running" } },
+              { label: "Image version", value: { tone: "success", label: "up_to_date" } },
+              { label: "Host URL", value: "http://localhost:3000" },
+              { label: "Port", value: "3000:8080" },
+              { label: "Backend source", value: "saved" },
+              { label: "Chiron OpenAI URL", value: "http://host.docker.internal:8080/v1" },
+              { label: "Chiron API key", value: "recoverable" },
+            ]}
+          />
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Docker card — minimal state"
+          classes={[".coreui-docker-card", ".coreui-docker-card__meta-value-empty"]}
+          source={`${sourceRoot}/components/CoreUIDockerCard.jsx, ${sourceRoot}/styles/components/CoreUIDockerCard.css`}
+          description="Same layout rendered with a stopped status, an empty backend URL, and empty metadata tiles. The component degrades gracefully: missing values render an em-dash placeholder and a non-running status badge tone."
+        >
+          <CoreUIDockerCard
+            name="Open WebUI"
+            description="Docker-managed Open WebUI runtime"
+            icon="deployed_code"
+            status={{ tone: "error", label: "stopped" }}
+            backendUrl=""
+            actions={[
+              { label: "Refresh", icon: "refresh" },
+              { label: "Start service", variant: "primary", icon: "play_circle" },
+            ]}
+            meta={[
+              { label: "Container", value: "" },
+              { label: "Image", value: "" },
+              { label: "Status", value: { tone: "error", label: "stopped" } },
+              { label: "Image version", value: { tone: "warning", label: "not checked" } },
+              { label: "Host URL", value: "" },
+              { label: "Port", value: "" },
+              { label: "Backend source", value: "" },
+              { label: "Chiron OpenAI URL", value: "" },
+              { label: "Chiron API key", value: "" },
+            ]}
+          />
         </ShowcaseItem>
       </ShowcaseSection>
       </>

@@ -374,7 +374,7 @@ class ExtensionWorkerClient:
             docker = getattr(self.host_context, "docker_runtime", None)
             if docker is None:
                 raise RuntimeError("docker_runtime is unavailable")
-            allowed = {"ensure_container", "stop_container", "inspect_container", "wait_http"}
+            allowed = {"ensure_container", "stop_container", "inspect_container", "wait_http", "check_image_update"}
             if method not in allowed:
                 raise AttributeError(f"docker_runtime method not allowed: {method}")
             if method == "ensure_container" and args and isinstance(args[0], dict):

@@ -132,6 +132,7 @@ class OllamaProvider:
         self._manifest = manifest
         self._chat_client = host_context.chat_client
         self._provider_id = "ollama"
+        self._last_image_version: dict[str, Any] | None = None
         self._capabilities = ProviderCapabilities(
             chat=True,
             embed=True,
@@ -419,7 +420,7 @@ class OllamaProvider:
                         {
                             "id": "docker",
                             "title": "Docker container",
-                            "components": self._docker_schema_components(docker_state),
+                            "components": [self._docker_card_component(docker_state)],
                         },
                         {
                             "id": "pull",
@@ -643,6 +644,26 @@ class OllamaProvider:
                 if isinstance(item, dict):
                     last = item
             return {"ok": True, "message": f"Pull completed for {pull_name}", "details": last}
+        if action == "save_backend":
+            raw = str(payload.get("backend_url") or "").strip()
+            if not raw:
+                raise ValueError("backend_url is required")
+            norm = _normalized_ollama_base_url(raw)
+            self._host.get_settings_repository().set_app_setting("ollama_base_url", norm)
+            return {
+                "ok": True,
+                "message": "Saved. Restart Ollama to apply the backend URL.",
+                "backend_url": norm,
+            }
+        if action == "check_image_version":
+            state = self._docker_state_snapshot()
+            tile = self._run_image_version_check(state)
+            self._last_image_version = {"tone": tile["tone"], "label": tile["label"]}
+            return {
+                "ok": True,
+                "message": tile.get("message") or f"Image version: {tile.get('label')}",
+                "image_version": tile,
+            }
         raise ValueError(f"Unsupported action: {action}")
 
     def health_check(self, *, timeout_sec: float = 5.0, cache_ttl_sec: float = 0.0) -> ProviderHealth:
@@ -799,49 +820,20 @@ class OllamaProvider:
             "update_version": str(check.get("update_version") or "").strip(),
         }
 
-    def _docker_schema_components(self, state: dict[str, Any]) -> list[dict[str, Any]]:
-        image = str(state.get("image") or self._docker_image()).strip()
-        components = [
-            {
-                "type": "text",
-                "key": "docker_container",
-                "label": "Container",
-                "value": str(state.get("container_name") or self._docker_container_name()),
-            },
-            {
-                "type": "text",
-                "key": "docker_image",
-                "label": "Image",
-                "value": image,
-            },
-            {
-                "type": "text",
-                "key": "docker_status",
-                "label": "Status",
-                "value": self._docker_status_label(state),
-            },
-            {
-                "type": "text",
-                "key": "docker_image_version",
-                "label": "Image version",
-                "value": self._docker_image_version_label(state),
-            },
-        ]
-        if bool(state.get("update_available")):
-            components.append(
-                {
-                    "type": "text",
-                    "key": "docker_update_version",
-                    "label": "Available update",
-                    "value": self._docker_update_version_label(state),
-                }
-            )
-        return components
-
-    @staticmethod
-    def _docker_status_label(state: dict[str, Any]) -> str:
+    def _runtime_status_tile(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Map a docker state dict to the `{tone, label}` shape used by
+        `CoreUIDockerCard` meta tiles."""
         status = str(state.get("status") or "").strip()
-        labels = {
+        running = bool(state.get("running"))
+        tone_map = {
+            "container_running": "success",
+            "container_stopped": "neutral",
+            "container_missing": "warning",
+            "docker_unavailable": "error",
+            "error": "error",
+            "unknown": "neutral",
+        }
+        label_map = {
             "container_running": "Running",
             "container_stopped": "Stopped",
             "container_missing": "Not created",
@@ -849,36 +841,115 @@ class OllamaProvider:
             "error": "Docker check failed",
             "unknown": "Docker status unavailable",
         }
-        return labels.get(status, status.replace("_", " ").strip().title() or "Docker status unavailable")
+        tone = tone_map.get(status, "neutral")
+        label = label_map.get(status, status.replace("_", " ").strip().title() or "Docker status unavailable")
+        return {"tone": tone, "label": label}
 
-    @staticmethod
-    def _docker_image_version_label(state: dict[str, Any]) -> str:
-        current = str(state.get("current_version") or "").strip()
-        status = str(state.get("update_status") or "").strip()
-        if status == "up_to_date":
-            return f"Up to date ({current})" if current else "Up to date"
-        if status == "update_available":
-            return current or "Installed image version unavailable"
-        if status == "not_local":
-            return "Image is not pulled locally"
-        if status == "unknown":
-            return "Version check unavailable"
-        return current or "Version check unavailable"
+    def _image_version_status(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Return tone/label for the image-update check tile.
 
-    @staticmethod
-    def _docker_update_version_label(state: dict[str, Any]) -> str:
-        current = str(state.get("current_version") or "").strip()
-        update = str(state.get("update_version") or "").strip()
-        status = str(state.get("update_status") or "")
-        if status == "up_to_date":
-            return current or "Up to date"
-        if status == "update_available":
-            return update or "New image available"
-        if status == "unknown":
-            return "Could not check remote version"
-        if status == "not_local":
-            return update or "Image not pulled locally"
-        return update or "—"
+        Defaults to a neutral `not checked` state. The actual check is
+        performed on demand by the `check_image_version` action, and the
+        result is cached on the provider instance until the next check.
+        """
+        if self._last_image_version:
+            return self._last_image_version
+        return {"tone": "neutral", "label": "not checked", "status": "not_checked"}
+
+    def _run_image_version_check(self, state: dict[str, Any]) -> dict[str, Any]:
+        docker = self._docker_runtime()
+        if docker is None:
+            return {"tone": "error", "label": "unavailable", "status": "unavailable",
+                    "message": "Docker runtime is unavailable"}
+        image = str(state.get("image") or self._docker_image()).strip()
+        if not image:
+            return {"tone": "warning", "label": "unknown", "status": "unknown",
+                    "message": "Container image is unknown"}
+        try:
+            check = docker.check_image_update(image)
+        except Exception as exc:
+            return {"tone": "error", "label": "error", "status": "error",
+                    "message": str(exc) or "image check failed"}
+        status = str(check.get("status") or "unknown")
+        tone = "success" if status == "up_to_date" else "warning" if status in ("update_available", "unknown") else "error" if status in ("error", "not_local") else "neutral"
+        return {
+            "tone": tone,
+            "label": status,
+            "status": status,
+            "message": str(check.get("message") or ""),
+            "current_version": str(check.get("current_version") or ""),
+            "update_version": str(check.get("update_version") or ""),
+        }
+
+    def _docker_card_component(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Return a single `docker_card` schema component for the Docker section."""
+        image = str(state.get("image") or self._docker_image()).strip()
+        container_name = str(state.get("container_name") or self._docker_container_name())
+        running = bool(state.get("running"))
+        base_url = self._docker_base_url()
+        host_port = self._docker_host_port()
+        volume = self._docker_volume()
+
+        actions = [
+            {
+                "id": "refresh",
+                "label": "Refresh",
+                "variant": "secondary",
+                "icon": "refresh",
+            },
+            {
+                "id": "check_image_version",
+                "label": "Check image version",
+                "variant": "secondary",
+                "icon": "system_update",
+            },
+        ]
+        if running:
+            actions.append({
+                "id": "stop_service",
+                "label": "Stop service",
+                "variant": "danger",
+                "icon": "stop_circle",
+                "confirm": f"Stop Ollama container {container_name}?",
+            })
+        else:
+            actions.append({
+                "id": "start_service",
+                "label": "Start service",
+                "variant": "primary",
+                "icon": "play_circle",
+            })
+        actions.append({
+            "id": "open_external",
+            "label": "Open external",
+            "variant": "default",
+            "icon": "open_in_new",
+        })
+
+        return {
+            "type": "docker_card",
+            "key": "docker_card",
+            "name": "Ollama",
+            "description": "Docker-managed Ollama runtime",
+            "icon": "memory",
+            "status": self._runtime_status_tile(state),
+            "httpStatus": f"HTTP {host_port}" if running else "",
+            "backendUrl": base_url,
+            "backendUrlLabel": "Chat backend URL",
+            "backendUrlPlaceholder": "http://localhost:11434",
+            "fieldKey": "backend_url",
+            "autosaveActionId": "save_backend",
+            "actions": actions,
+            "meta": [
+                {"label": "Container", "value": container_name},
+                {"label": "Image", "value": image},
+                {"label": "Status", "value": self._runtime_status_tile(state)},
+                {"label": "Image version", "value": self._image_version_status(state)},
+                {"label": "Host URL", "value": base_url},
+                {"label": "Port", "value": f"{host_port}:11434"},
+                {"label": "Volume mounts", "value": volume},
+            ],
+        }
 
     def _finalize_docker_state(self, docker: Any | None, state: dict[str, Any]) -> dict[str, Any]:
         image = str(state.get("image") or "").strip()

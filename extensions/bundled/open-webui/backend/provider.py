@@ -84,6 +84,7 @@ class OpenWebUiExtension:
         self._host = host_context
         self._manifest = manifest
         self._docker_override = docker
+        self._last_image_version: dict[str, Any] | None = None
 
     def _settings_repo(self) -> Any:
         return self._host.get_settings_repository()
@@ -237,6 +238,52 @@ class OpenWebUiExtension:
             pass
         return cfg
 
+    def _image_version_status(self, cfg: "OpenWebUiConfig") -> dict[str, Any]:
+        """Return tone/label for the image-update check tile.
+
+        Defaults to a neutral `not checked` state. The actual check is
+        performed on demand by the `check_image_version` action, and the
+        result is cached on the provider instance until the next check.
+        """
+        if self._last_image_version:
+            return self._last_image_version
+        return {"tone": "neutral", "label": "not checked", "status": "not_checked"}
+
+    def _runtime_status_tile(self, running: bool, status: dict[str, Any]) -> dict[str, Any]:
+        """Map a runtime status dict to the `{tone, label}` shape used by
+        `CoreUIDockerCard` meta tiles."""
+        message = str(status.get("message") or "").strip()
+        tone = str(status.get("tone") or "neutral").strip().lower() or "neutral"
+        if tone not in {"neutral", "success", "warning", "error", "info"}:
+            tone = "neutral"
+        label = message or ("running" if running else "stopped")
+        return {"tone": tone, "label": label}
+
+    def _run_image_version_check(self, cfg: "OpenWebUiConfig") -> dict[str, Any]:
+        docker = self._docker_runtime()
+        if docker is None:
+            return {"tone": "error", "label": "unavailable", "status": "unavailable",
+                    "message": "Docker runtime is unavailable"}
+        image = str(cfg.image or "").strip()
+        if not image:
+            return {"tone": "warning", "label": "unknown", "status": "unknown",
+                    "message": "Container image is unknown"}
+        try:
+            check = docker.check_image_update(image)
+        except Exception as exc:  # pragma: no cover - defensive
+            return {"tone": "error", "label": "error", "status": "error",
+                    "message": str(exc) or "image check failed"}
+        status = str(check.get("status") or "unknown")
+        tone = "success" if status == "up_to_date" else "warning" if status in ("update_available", "unknown") else "error" if status in ("error", "not_local") else "neutral"
+        return {
+            "tone": tone,
+            "label": status,
+            "status": status,
+            "message": str(check.get("message") or ""),
+            "current_version": str(check.get("current_version") or ""),
+            "update_version": str(check.get("update_version") or ""),
+        }
+
     def _status(self, *, ping: bool = False) -> dict[str, Any]:
         cfg = self._config()
         docker = self._docker_runtime()
@@ -295,7 +342,20 @@ class OpenWebUiExtension:
         _chiron_api_key, chiron_key_state = self._chiron_openai_api_key(create_if_missing=False)
         running = bool(status.get("running"))
 
-        actions = [{"id": "refresh", "label": "Refresh", "variant": "secondary"}]
+        actions = [
+            {
+                "id": "refresh",
+                "label": "Refresh",
+                "variant": "secondary",
+                "icon": "refresh",
+            },
+            {
+                "id": "check_image_version",
+                "label": "Check image version",
+                "variant": "secondary",
+                "icon": "system_update",
+            },
+        ]
         if running:
             actions.append(
                 {
@@ -310,6 +370,7 @@ class OpenWebUiExtension:
                     "id": "stop",
                     "label": "Stop service",
                     "variant": "danger",
+                    "icon": "stop_circle",
                     "confirm": "Stop Open WebUI container?",
                 }
             )
@@ -319,6 +380,7 @@ class OpenWebUiExtension:
                     "id": "start",
                     "label": "Start service",
                     "variant": "primary",
+                    "icon": "play_circle",
                 }
             )
 
@@ -327,13 +389,15 @@ class OpenWebUiExtension:
                 {
                     "id": "clear_backend",
                     "label": "Clear saved backend",
-                    "variant": "secondary",
+                    "variant": "ghost",
+                    "icon": "backspace",
                     "confirm": "Clear the saved backend URL? Open WebUI will fall back to env/default.",
                 },
                 {
                     "id": "open_external",
                     "label": "Open external",
-                    "variant": "secondary",
+                    "variant": "default",
+                    "icon": "open_in_new",
                 },
             ]
         )
@@ -361,12 +425,37 @@ class OpenWebUiExtension:
                 "details": [
                     {"label": "Container", "value": cfg.container_name},
                     {"label": "Image", "value": cfg.image},
+                    {"label": "Status", "value": self._runtime_status_tile(running, status)},
+                    {"label": "Image version", "value": self._image_version_status(cfg)},
                     {"label": "Host URL", "value": cfg.host_url},
                     {"label": "Port", "value": f"{cfg.host_port}:{cfg.container_port}"},
                     {"label": "Backend source", "value": source},
                     {"label": "Chiron OpenAI URL", "value": cfg.openai_base_url_for_container},
                     {"label": "Chiron API key", "value": chiron_key_state},
                 ],
+                "service": {
+                    "name": _tab_title(self._manifest, "Open WebUI"),
+                    "subtitle": "Docker-managed Open WebUI runtime",
+                    "icon": "deployed_code",
+                    "httpStatus": f"HTTP {status.get('http_status')}" if status.get("http_status") else "",
+                    "status": self._runtime_status_tile(running, status),
+                    "backendUrl": cfg.ollama_url_for_container,
+                    "backendUrlLabel": "Chat backend URL",
+                    "backendUrlPlaceholder": llm_proxy_hint,
+                    "fieldKey": "backend_url",
+                    "actions": actions,
+                    "meta": [
+                        {"label": "Container", "value": cfg.container_name},
+                        {"label": "Image", "value": cfg.image},
+                        {"label": "Status", "value": self._runtime_status_tile(running, status)},
+                        {"label": "Image version", "value": self._image_version_status(cfg)},
+                        {"label": "Host URL", "value": cfg.host_url},
+                        {"label": "Port", "value": f"{cfg.host_port}:{cfg.container_port}"},
+                        {"label": "Backend source", "value": source},
+                        {"label": "Chiron OpenAI URL", "value": cfg.openai_base_url_for_container},
+                        {"label": "Chiron API key", "value": chiron_key_state},
+                    ],
+                },
             },
             "schema": {
                 "pages": [
@@ -485,6 +574,14 @@ class OpenWebUiExtension:
                 "ok": True,
                 "message": "Cleared saved backend URL.",
                 "backend_url": refreshed.ollama_url_for_container,
+            }
+        if action == "check_image_version":
+            tile = self._run_image_version_check(cfg)
+            self._last_image_version = {"tone": tile["tone"], "label": tile["label"]}
+            return {
+                "ok": True,
+                "message": tile.get("message") or f"Image version: {tile.get('label')}",
+                "image_version": tile,
             }
         raise ValueError(f"Unsupported action: {action}")
 

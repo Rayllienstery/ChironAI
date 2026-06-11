@@ -36,6 +36,20 @@ class _Chat:
         yield ("done", {"done": True})
 
 
+class _Docker:
+    def __init__(self) -> None:
+        self.checked_image = ""
+
+    def check_image_update(self, image: str) -> dict[str, str]:
+        self.checked_image = image
+        return {
+            "status": "up_to_date",
+            "message": "Image is up to date",
+            "current_version": "latest",
+            "update_version": "latest",
+        }
+
+
 def _write_extension(root: Path, *, provider_py: str) -> Path:
     ext = root / "sandbox-ext"
     backend = ext / "backend"
@@ -58,12 +72,12 @@ def _write_extension(root: Path, *, provider_py: str) -> Path:
     return ext
 
 
-def _host(root: Path, repo: _Repo | None = None) -> ProviderHostContext:
+def _host(root: Path, repo: _Repo | None = None, docker_runtime: object | None = None) -> ProviderHostContext:
     return ProviderHostContext(
         project_root=Path(__file__).resolve().parents[2],
         get_settings_repository=lambda: repo or _Repo(),
         chat_client=_Chat(),
-        docker_runtime=None,
+        docker_runtime=docker_runtime,
     )
 
 
@@ -100,7 +114,7 @@ class Provider:
 
     def invoke(self, request):
         repo = self._host.get_settings_repository()
-        repo.set_app_setting("last_model", request.model)
+        repo.set_app_setting("ext.last_model", request.model)
         text = self._host.chat_client.chat(request.messages, request.model)
         return LLMResponse(provider_id="sandbox", model=request.model, text=text)
 
@@ -112,7 +126,7 @@ class Provider:
         return {"id": "sandbox", "title": "Sandbox", "frame": {}}
 
     def get_tab_payload(self):
-        return {"state": {"last_model": self._host.get_settings_repository().get_app_setting("last_model") or ""}}
+        return {"state": {"last_model": self._host.get_settings_repository().get_app_setting("ext.last_model") or ""}}
 
     def run_action(self, action_id, payload):
         if action_id == "sleep":
@@ -162,6 +176,38 @@ def create_provider(host_context, manifest):
 """
 
 
+DOCKER_PROVIDER = """
+from llm_interactor.contracts import ProviderCapabilities, ProviderDescriptor, ProviderHealth
+
+class Provider:
+    def __init__(self, host_context, manifest):
+        self._host = host_context
+        self._manifest = manifest
+
+    def describe(self):
+        return ProviderDescriptor(
+            id="sandbox-docker",
+            extension_id=self._manifest.id,
+            title="Sandbox Docker",
+            capabilities=ProviderCapabilities(service_actions=True),
+        )
+
+    def list_models(self):
+        return []
+
+    def health_check(self):
+        return ProviderHealth(provider_id="sandbox-docker", ok=True, status="ok")
+
+    def run_action(self, action_id, payload):
+        if action_id == "check":
+            return self._host.docker_runtime.check_image_update(payload["image"])
+        return {"ok": True}
+
+def create_provider(host_context, manifest):
+    return Provider(host_context, manifest)
+"""
+
+
 def test_sandboxed_extension_provider_round_trips_runtime_calls(tmp_path: Path) -> None:
     repo = _Repo()
     ext = _write_extension(tmp_path, provider_py=PROVIDER)
@@ -176,12 +222,28 @@ def test_sandboxed_extension_provider_round_trips_runtime_calls(tmp_path: Path) 
     response = provider.invoke(LLMRequest(model="tiny", messages=[{"role": "user", "content": "hi"}]))
     events = list(provider.stream_invoke(LLMRequest(model="tiny")))
     assert response.text == "chat:tiny:hi"
-    assert repo.get_app_setting("last_model") == "tiny"
+    assert repo.get_app_setting("ext.last_model") == "tiny"
     assert events[-1].type == "done"
     assert provider.get_tab_descriptor()["id"] == "sandbox"
     assert provider.get_tab_payload()["state"]["last_model"] == "tiny"
     assert provider.run_action("echo", {"x": 1})["payload"] == {"x": 1}
     provider.close()
+
+
+def test_sandboxed_extension_can_check_docker_image_updates(tmp_path: Path) -> None:
+    docker = _Docker()
+    ext = _write_extension(tmp_path, provider_py=DOCKER_PROVIDER)
+    report = discover_extensions([ext], host_context=_host(tmp_path, docker_runtime=docker))
+
+    assert report.failed == []
+    provider = report.loaded[0].provider
+    try:
+        result = provider.run_action("check", {"image": "ollama/ollama:latest"})
+        assert result["status"] == "up_to_date"
+        assert result["current_version"] == "latest"
+        assert docker.checked_image == "ollama/ollama:latest"
+    finally:
+        provider.close()
 
 
 def test_worker_protocol_preserves_unicode_payloads(tmp_path: Path) -> None:
