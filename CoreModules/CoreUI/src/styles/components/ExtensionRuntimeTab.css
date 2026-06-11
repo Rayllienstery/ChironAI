@@ -164,6 +164,24 @@
   font-size: 24px;
 }
 
+.extensions-runtime-service-icon-image {
+  width: 24px;
+  height: 24px;
+  display: block;
+  color: var(--md-sys-color-primary);
+  object-fit: contain;
+}
+
+.extensions-runtime-service-icon-image--masked {
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
 .extensions-runtime-service-state {
   min-height: 34px;
   display: inline-flex;

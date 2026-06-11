@@ -52,6 +52,24 @@
   line-height: 1;
 }
 
+.coreui-docker-card__icon-image {
+  display: block;
+  width: 24px;
+  height: 24px;
+  color: inherit;
+  object-fit: contain;
+}
+
+.coreui-docker-card__icon-image--masked {
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
 .coreui-docker-card__title-text {
   display: flex;
   flex-direction: column;

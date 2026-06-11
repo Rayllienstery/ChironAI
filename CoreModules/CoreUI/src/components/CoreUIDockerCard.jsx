@@ -13,6 +13,41 @@ function icon(name) {
   return <span className="material-symbols-outlined coreui-docker-card__icon-glyph" aria-hidden="true">{name}</span>;
 }
 
+function MarkImage({ iconUrl }) {
+  const url = String(iconUrl || "").trim();
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [url]);
+
+  if (!url || imageFailed) return null;
+
+  const isSvg = /\.svg(\?|$)/i.test(url);
+  if (isSvg) {
+    return (
+      <span
+        className="coreui-docker-card__icon-image coreui-docker-card__icon-image--masked"
+        style={{
+          maskImage: `url(${url})`,
+          WebkitMaskImage: `url(${url})`,
+        }}
+        aria-hidden="true"
+      />
+    );
+  }
+  return (
+    <img
+      className="coreui-docker-card__icon-image"
+      src={url}
+      alt=""
+      aria-hidden="true"
+      loading="lazy"
+      onError={() => setImageFailed(true)}
+    />
+  );
+}
+
 function actionButtonVariant(variant) {
   if (variant === "primary") return "primary";
   if (variant === "danger") return "danger";
@@ -80,7 +115,8 @@ function ConfirmableAction({ action, idx, isLive, busy, activeAction, actionTime
  * @param {Object} props
  * @param {string} [props.name] - Runtime name shown in the header.
  * @param {string} [props.description] - Short subtitle beneath the name.
- * @param {string} [props.icon] - Material Symbols icon name for the runtime mark.
+ * @param {string} [props.icon] - Material Symbols icon name for the runtime mark (used as fallback).
+ * @param {string} [props.iconUrl] - Optional URL to an extension icon (SVG/PNG). When provided, takes precedence over `icon`.
  * @param {{ tone?: string, label: string }} [props.status] - Status badge in the header.
  * @param {string} [props.httpStatus] - HTTP status text rendered next to the status badge.
  * @param {string} [props.backendUrl] - (Demo mode) Current backend URL value.
@@ -94,8 +130,8 @@ function ConfirmableAction({ action, idx, isLive, busy, activeAction, actionTime
  * @param {Object} [props.style] - Inline style overrides.
  *
  * @param {Object} [props.service] - (Live mode) Backend payload descriptor:
- *   `{ backendUrl, backendUrlLabel?, backendUrlPlaceholder?, onBackendUrlChange,
- *      onBackendUrlBlur, actions: [...], meta: [...], httpStatus? }`.
+ *   `{ backendUrl, backendUrlLabel?, backendUrlPlaceholder?, iconUrl?,
+ *      onBackendUrlChange, onBackendUrlBlur, actions: [...], meta: [...], httpStatus? }`.
  *   When provided, takes precedence over the demo-mode props.
  * @param {string} [props.busyActionId] - (Live mode) Currently busy action id.
  * @param {Object} [props.activeAction] - (Live mode) `{ id, label, startedAt }`.
@@ -106,6 +142,7 @@ export default function CoreUIDockerCard({
   name = "Runtime",
   description,
   icon: iconName = "deployed_code",
+  iconUrl,
   status,
   httpStatus,
   backendUrl,
@@ -125,6 +162,7 @@ export default function CoreUIDockerCard({
 }) {
   const isLive = Boolean(service);
 
+  const liveIconUrl = isLive ? (service?.iconUrl || iconUrl || "") : (iconUrl || "");
   const liveBackendUrl = isLive ? (service?.backendUrl ?? "") : (backendUrl ?? "");
   const liveBackendUrlLabel = isLive
     ? (service?.backendUrlLabel || backendUrlLabel)
@@ -183,7 +221,7 @@ export default function CoreUIDockerCard({
       <header className="coreui-docker-card__header">
         <div className="coreui-docker-card__title">
           <div className="coreui-docker-card__mark" aria-hidden="true">
-            {icon(iconName)}
+            {liveIconUrl ? <MarkImage iconUrl={liveIconUrl} /> : icon(iconName)}
           </div>
           <div className="coreui-docker-card__title-text">
             <h3 className="coreui-docker-card__name">{name}</h3>

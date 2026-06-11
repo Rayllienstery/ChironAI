@@ -944,6 +944,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           name={component.name || payload?.title || title || extensionId}
           description={component.description}
           icon={component.icon || 'deployed_code'}
+          iconUrl={component.iconUrl || payload?.icon_url || ''}
           status={component.status}
           httpStatus={component.httpStatus}
           fieldKey={component.fieldKey || 'backend_url'}
@@ -951,6 +952,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           activeAction={activeAction}
           actionTimerNow={actionTimerNow}
           service={{
+            iconUrl: component.iconUrl || payload?.icon_url || '',
             backendUrl: fieldState[component.fieldKey || 'backend_url'] ?? component.backendUrl ?? '',
             backendUrlLabel: component.backendUrlLabel,
             backendUrlPlaceholder: component.backendUrlPlaceholder,
@@ -1125,6 +1127,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
             name={content.service.name || content.title || payload?.title || title || extensionId}
             description={content.service.subtitle || content.subtitle}
             icon={content.service.icon || 'deployed_code'}
+            iconUrl={content.service.iconUrl || payload?.icon_url || ''}
             status={content.service.status}
             httpStatus={content.service.httpStatus}
             fieldKey={content.service.fieldKey || 'backend_url'}
@@ -1132,6 +1135,7 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
             activeAction={activeAction}
             actionTimerNow={actionTimerNow}
             service={{
+              iconUrl: content.service.iconUrl || payload?.icon_url || '',
               backendUrl: fieldState[content.service.fieldKey || 'backend_url'] ?? content.service.backendUrl ?? '',
               backendUrlLabel: content.service.backendUrlLabel,
               backendUrlPlaceholder: content.service.backendUrlPlaceholder,
@@ -1167,7 +1171,23 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
           <div className="extensions-runtime-service-header">
             <div className="extensions-runtime-service-title-row">
               <div className="extensions-runtime-service-icon" aria-hidden="true">
-                <span className="material-symbols-outlined">deployed_code</span>
+                {payload?.icon_url ? (
+                  /\.svg(\?|$)/i.test(String(payload.icon_url)) ? (
+                    <span
+                      className="extensions-runtime-service-icon-image extensions-runtime-service-icon-image--masked"
+                      style={{ maskImage: `url(${payload.icon_url})`, WebkitMaskImage: `url(${payload.icon_url})` }}
+                    />
+                  ) : (
+                    <img
+                      className="extensions-runtime-service-icon-image"
+                      src={payload.icon_url}
+                      alt=""
+                      aria-hidden="true"
+                    />
+                  )
+                ) : (
+                  <span className="material-symbols-outlined">deployed_code</span>
+                )}
               </div>
               <div>
                 <h2>{content.title || payload?.title || title || extensionId}</h2>
