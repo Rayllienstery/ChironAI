@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.67] - 2026-06-11
+### Fixed
+- Wrapped upstream Ollama chat failures with a clearer proxy error message that includes status, URL, model, and over-budget context hints.
+
 ## [0.6.66] - 2026-06-10
 ### Fixed
 - Sandboxed extensions can now call `docker_runtime.check_image_update`, fixing the Docker card `Check image version` action.

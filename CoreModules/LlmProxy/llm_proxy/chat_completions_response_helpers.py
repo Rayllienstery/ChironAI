@@ -83,6 +83,43 @@ def tool_loop_limit_final_message(trace: dict[str, Any]) -> str:
     )
 
 
+def upstream_chat_error_message(exc: Exception, trace: dict[str, Any], *, model: str = "") -> str:
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    reason = str(getattr(response, "reason", "") or "").strip()
+    url = str(getattr(response, "url", "") or "").strip()
+
+    if status_code:
+        status = str(status_code)
+        if reason:
+            status = f"{status} {reason}"
+        parts = [f"upstream Ollama returned {status}"]
+        if url:
+            parts.append(f"for {url}")
+    else:
+        parts = [f"upstream Ollama request failed: {exc}"]
+
+    if model:
+        parts.append(f"while calling model {model}")
+
+    req = trace.get("request") if isinstance(trace.get("request"), dict) else {}
+    compaction = req.get("upstream_context_compaction") if isinstance(req.get("upstream_context_compaction"), dict) else {}
+    if compaction.get("still_over_budget_after_tool_trim") is True:
+        tokens = req.get("input_budget", {}).get("input_budget_tokens") if isinstance(req.get("input_budget"), dict) else None
+        tool_count = req.get("tools_count_effective") or req.get("tools_count")
+        detail = "The upstream request was still over budget after compaction"
+        if tokens or tool_count:
+            extras = []
+            if tokens:
+                extras.append(f"input budget {tokens} tokens")
+            if tool_count:
+                extras.append(f"{tool_count} tools")
+            detail = f"{detail} ({', '.join(extras)})"
+        parts.append(f"{detail}; retry in a fresh turn or reduce context/tools")
+
+    return f"[Error: {' '.join(parts)}.]"
+
+
 def proxy_settings_optional_int(ps: dict[str, Any], key: str, lo: int, hi: int) -> int | None:
     if not isinstance(ps, dict):
         return None

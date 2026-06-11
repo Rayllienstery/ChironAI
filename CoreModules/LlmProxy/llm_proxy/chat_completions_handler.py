@@ -108,6 +108,7 @@ from llm_proxy.chat_completions_response_helpers import (
     record_reasoning_token_estimates as _record_reasoning_token_estimates,
     text_parts_from_openai_assistant_message as _text_parts_from_openai_assistant_message,
     tool_loop_limit_final_message as _tool_loop_limit_final_message,
+    upstream_chat_error_message as _upstream_chat_error_message,
     with_initial_system_message as _with_initial_system_message,
 )
 from llm_proxy.chat_completions_handler_helpers import (
@@ -1504,7 +1505,7 @@ def run_chat_completions(
                     if not private_build:
                         w.log_webui_error("rag_routes.chat_completions", exc, {"stage": "native_tools_stream"})
                     _log_rag_error_private("native_tools_stream", exc, private_build=private_build)
-                    err_text = f"[Error: {exc}]"
+                    err_text = _upstream_chat_error_message(exc, trace, model=use_model)
                     stream_acc.visible_parts.append(err_text)
                     stream_acc.final_parts.append(err_text)
                     yield _sse_content_chunk(oid, client_visible_model, err_text)
@@ -2320,7 +2321,7 @@ def run_chat_completions(
                 if not private_build:
                     w.log_webui_error("rag_routes.chat_completions", e, {"stage": "stream_chat"})
                 _log_rag_error_private("stream_chat", e, private_build=private_build)
-                err_text = f"[Error: {e}]"
+                err_text = _upstream_chat_error_message(e, trace, model=use_model)
                 stream_acc.visible_parts.append(err_text)
                 stream_acc.final_parts.append(err_text)
                 yield _sse_content_chunk(oid, client_visible_model, err_text)

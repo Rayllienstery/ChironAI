@@ -7,8 +7,19 @@ from llm_proxy.chat_completions_response_helpers import (
     stream_reasoning_guard_message,
     text_parts_from_openai_assistant_message,
     tool_loop_limit_final_message,
+    upstream_chat_error_message,
     with_initial_system_message,
 )
+
+
+class _Response:
+    status_code = 503
+    reason = "Service Unavailable"
+    url = "http://localhost:11434/api/chat"
+
+
+class _HttpError(Exception):
+    response = _Response()
 
 
 def test_reasoning_sse_delta_maps_thinking_to_reasoning_content() -> None:
@@ -65,3 +76,29 @@ def test_tool_loop_limit_final_message() -> None:
     )
     assert "max_agent_steps limit reached" in msg
     assert "apply_edit" in msg
+
+
+def test_upstream_chat_error_message_wraps_http_status_and_budget_hint() -> None:
+    msg = upstream_chat_error_message(
+        _HttpError("503 Server Error"),
+        {
+            "request": {
+                "upstream_context_compaction": {"still_over_budget_after_tool_trim": True},
+                "input_budget": {"input_budget_tokens": 110592},
+                "tools_count_effective": 54,
+            }
+        },
+        model="minimax-m3:cloud",
+    )
+
+    assert msg.startswith("[Error: upstream Ollama returned 503 Service Unavailable")
+    assert "http://localhost:11434/api/chat" in msg
+    assert "model minimax-m3:cloud" in msg
+    assert "still over budget after compaction" in msg
+    assert "54 tools" in msg
+
+
+def test_upstream_chat_error_message_handles_plain_exception() -> None:
+    msg = upstream_chat_error_message(RuntimeError("boom"), {}, model="tiny")
+
+    assert msg == "[Error: upstream Ollama request failed: boom while calling model tiny.]"
