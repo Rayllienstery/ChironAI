@@ -393,6 +393,30 @@ def test_ollama_provider_runtime_invocation_streaming_and_catalog(
         },
     )
     monkeypatch.setattr(provider_module, "invoke_ping", lambda *, base_url, timeout: {"ok": True, "status_code": 200})
+    monkeypatch.setattr(
+        provider.__class__,
+        "_invoke_chat_http",
+        lambda self, body, timeout=600.0: {
+            "model": body.get("model"),
+            "message": {
+                "role": "assistant",
+                "content": f"reply:{body.get('model')}:{body.get('messages', [{}])[-1].get('content')}",
+            },
+            "done": True,
+            "eval_count": 3,
+        },
+    )
+    monkeypatch.setattr(
+        provider.__class__,
+        "_iter_ollama_chat_http_events",
+        lambda self, body: iter(
+            [
+                ("thinking_delta", "hmm"),
+                ("content_delta", f"stream:{body.get('model')}"),
+                ("done", {"done": True, "total_duration": 42}),
+            ]
+        ),
+    )
     manager._provider_rows_cache = []
 
     response = bootstrap.runtime.invoke(

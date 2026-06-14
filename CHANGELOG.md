@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.79] - 2026-06-14
+### Changed
+- Split crawler indexing/logging helpers and RAG test authoring helpers out of large backend route modules, with focused tests for the extracted behavior.
+
+## [0.6.78] - 2026-06-14
+### Changed
+- Added pytest test group markers for fast, slow, API, domain, service, extension, and integration workflows, and isolated the long-running dependency job test from the local fast gate.
+
+### Fixed
+- Updated RAG and Ollama provider tests to match the current retrieval scoring and HTTP-backed provider behavior.
+
+## [0.6.77] - 2026-06-14
+### Changed
+- Cleaned up tooling baseline checks by removing stale `utils` paths, enabling Ruff pyflakes checks, clearing the CoreUI module timing unused export, and fixing newly surfaced lint issues.
+
 ## [0.6.76] - 2026-06-14
 ### Fixed
 - Removed the divider line above the LLM Proxy build wizard footer buttons.

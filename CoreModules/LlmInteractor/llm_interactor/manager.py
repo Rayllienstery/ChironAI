@@ -1520,7 +1520,7 @@ class ExtensionManager:
                 _EXTENSION_TAB_PAYLOAD_TIMEOUT_SEC,
             )
         if not isinstance(payload, dict):
-            raise ValueError(f"Extension '{extension_id}' returned invalid tab payload")
+            raise ValueError(f"Extension '{item.manifest.id}' returned invalid tab payload")
         # Strip keys that the extension must not override — extension_id, title,
         # icon, and icon_url are authoritative from the manifest, not the payload.
         safe_payload = {k: v for k, v in payload.items() if k not in _PROTECTED_TAB_PAYLOAD_KEYS}

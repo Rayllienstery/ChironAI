@@ -118,7 +118,7 @@ function scheduleStaleMarker(id, staleAfterMs, source, startPerfMs) {
  * @param {string} status - "ok" | "failed"
  * @param {object} options - Optional source, step, and error metadata.
  */
-export function recordModuleLoad(key, durationMs, status = 'ok', options = {}) {
+function recordModuleLoad(key, durationMs, status = 'ok', options = {}) {
   const id = String(key);
   const existing = _records.get(id) || {
     id,

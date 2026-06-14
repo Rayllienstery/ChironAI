@@ -61,7 +61,6 @@ include = [
   "extensions_backend*",
   "domain*",
   "infrastructure*",
-  "utils*",
   "webui_backend*",
 ]
 exclude = ["tests*", "tests"]
@@ -95,6 +94,24 @@ python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short -p no:cacheprovider"
 filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+    "fast: tests included in the local fast gate",
+    "slow: tests excluded from the local fast gate because they are intentionally long-running",
+    "api: Flask/API route and contract tests",
+    "application: application-layer tests",
+    "config: configuration resolution tests",
+    "domain: pure domain logic tests",
+    "docker: Docker manager and Docker ownership tests",
+    "extensions: extension runtime, registry, sandbox, and provider tests",
+    "infrastructure: infrastructure adapter/repository tests",
+    "integration: tests that exercise multiple layers or subprocess-style boundaries",
+    "llm_proxy: OpenAI-compatible proxy tests",
+    "scripts: repository script smoke tests",
+    "security: security and audit tests",
+    "service: standalone service/package tests",
+    "web_interaction: web interaction query/ranking/cache tests",
+    "webui: Web UI backend/helper tests",
+]
 
 [tool.ruff]
 target-version = "py310"
@@ -106,7 +123,6 @@ src = [
   "core",
   "domain",
   "infrastructure",
-  "utils",
   "tests",
   "CoreModules/LlmInteractor/llm_interactor",
   "CoreModules/Security/chironai_security",
@@ -130,9 +146,8 @@ exclude = [
   "modules/open_webui",
 ]
 
-# Default: syntax / runtime parse errors only. Run `ruff check --extend-select F` for pyflakes when refactoring.
 [tool.ruff.lint]
-select = ["E9"]
+select = ["E9", "F"]
 ignore = []
 
 # Domain layer must not depend on outer layers (application / api / infrastructure).
@@ -155,7 +170,6 @@ paths = [
   "config",
   "domain",
   "infrastructure",
-  "utils",
   "CoreModules",
   "modules/webui_backend/webui_backend",
   "modules",

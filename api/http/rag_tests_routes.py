@@ -20,6 +20,10 @@ import requests
 from flask import Blueprint, Response, current_app, jsonify, request
 
 from application.rag.proxy_settings_contract import load_proxy_settings, resolve_rag_collection
+from application.rag_tests.authoring import (
+    build_rag_test_markdown as _rag_tests_build_md,
+    normalize_concepts as _normalize_concepts,
+)
 from application.rag_tests.metrics import (
     normalize_rag_test_result,
     normalize_rag_test_run,
@@ -441,101 +445,6 @@ def _rag_tests_find_by_id(get_root: Any, load_all: Any, test_id: str) -> dict[st
         if t.get("id") == test_id:
             return t
     return None
-
-
-def _normalize_concepts(raw_concepts: list[str]) -> list[str]:
-    """
-    Normalize Expected Concepts coming from the WebUI/CLI.
-
-    Rules:
-    - One atomic concept per entry (no combined lists like `weak / unowned`).
-    - Trim whitespace and drop empty entries.
-    - Split on common separators (`/`, `,`, `;`, ` and `) when they clearly
-      represent multiple concepts, for example:
-        - \"weak / unowned\" -> [\"weak\", \"unowned\"]
-        - \"weak and unowned\" -> [\"weak\", \"unowned\"]
-    - If the string still looks ambiguous after splitting (mixture of
-      separators, very long phrase), keep it as-is so the author can fix it.
-    """
-    normalized: list[str] = []
-    for item in raw_concepts:
-        text = (item or "").strip()
-        if not text:
-            continue
-
-        lowered = text.lower()
-        # Fast path: no obvious separators, treat as a single concept.
-        if all(sep not in lowered for sep in ("/", ",", ";", " and ")):
-            normalized.append(text)
-            continue
-
-        # Handle the most common simple patterns safely.
-        # Priority: explicit " and " between two short tokens, or slash/comma-separated tokens.
-        candidates: list[str] = []
-
-        def _split_and_extend(separator: str) -> None:
-            parts = [p.strip() for p in text.split(separator) if p.strip()]
-            if len(parts) >= 2:
-                candidates.extend(parts)
-
-        # Try word-level conjunction first.
-        if " and " in lowered:
-            _split_and_extend(" and ")
-        # Then symbol-based separators.
-        if "/" in text:
-            _split_and_extend("/")
-        if "," in text:
-            _split_and_extend(",")
-        if ";" in text:
-            _split_and_extend(";")
-
-        # Heuristic: if we obtained at least two reasonably short pieces and
-        # the combined length is similar to the original, treat them as
-        # separate atomic concepts. Otherwise, keep the original string so
-        # that the test author can adjust it explicitly.
-        if len(candidates) >= 2 and all(len(c) <= 40 for c in candidates):
-            for c in candidates:
-                if c and c not in normalized:
-                    normalized.append(c)
-            continue
-
-        normalized.append(text)
-
-    return normalized
-
-
-def _rag_tests_build_md(
-    name: str,
-    question: str,
-    concepts: list[str],
-    platform: str,
-    framework: str,
-    difficulty: str,
-    concept_mode: str,
-    rag_strict: bool,
-    min_os: str,
-    notes: str,
-) -> str:
-    """Build .md file content for create/update."""
-    lines = [
-        f"# {name}",
-        "",
-        f"Platform: {platform}",
-        f"Framework: {framework}",
-        f"Difficulty: {difficulty}",
-        f"Concept Mode: {concept_mode}",
-    ]
-    if rag_strict:
-        lines.append("RAG Strict: true")
-    if min_os:
-        lines.append(f"MinOS: {min_os}")
-    lines.extend(["", "## Question", "", question, "", "## Expected Concepts", ""])
-    for c in concepts:
-        lines.append(f"- {c}")
-    lines.extend(["", "## RAG Requirement", "", "The answer must reference retrieved documentation or RAG context.", ""])
-    if notes:
-        lines.extend(["## Notes", "", notes])
-    return "\n".join(lines)
 
 
 @rag_tests_bp.route("/rag-tests/<test_id>", methods=["GET"])

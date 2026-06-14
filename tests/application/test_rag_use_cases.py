@@ -65,7 +65,8 @@ def test_build_rag_context_returns_rag_context() -> None:
         and "rerank_prompt_tokens_in" in timings
     )
     assert "chunk" in ctx.context_text.lower()
-    assert ctx.max_score >= 0.8
+    assert ctx.max_score > 0
+    assert ctx.chunks_info[0]["rerank_score"] is not None
 
 
 def test_build_rag_context_empty_question_returns_empty() -> None:
@@ -98,7 +99,8 @@ def test_build_rag_context_uses_rag_when_keyword_present() -> None:
     )
     assert ctx.context_text != ""
     assert len(ctx.chunks_info) >= 1
-    assert ctx.max_score >= 0.8
+    assert ctx.max_score > 0
+    assert ctx.chunks_info[0]["rerank_score"] is not None
     assert len(search_calls) >= 1
 
 

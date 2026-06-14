@@ -16,6 +16,48 @@ _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+_PATH_MARKERS = {
+    "api": ("api", "integration"),
+    "application": ("application",),
+    "config": ("config",),
+    "crawler_service": ("service",),
+    "docker_manager": ("docker",),
+    "domain": ("domain",),
+    "extensions": ("extensions",),
+    "extensions_backend": ("extensions",),
+    "extensions_sandbox": ("extensions", "integration"),
+    "external_docs_rag": ("service", "integration"),
+    "infrastructure": ("infrastructure",),
+    "llm_interactor": ("extensions", "integration"),
+    "llm_proxy": ("llm_proxy",),
+    "md_indexer": ("service",),
+    "md_ingestion_service": ("service",),
+    "rag_service": ("service",),
+    "scripts": ("scripts",),
+    "security": ("security",),
+    "web_interaction": ("web_interaction",),
+    "webui": ("webui", "integration"),
+}
+
+_SLOW_TEST_NODEIDS = {
+    "tests/api/test_webui_dependencies_routes.py::test_run_job_records_streaming_progress",
+}
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Apply stable path-based markers so local and CI test groups stay in sync."""
+    del config
+    for item in items:
+        nodeid = item.nodeid.replace("\\", "/")
+        parts = nodeid.split("/")
+        group = parts[1] if len(parts) > 1 and parts[0] == "tests" else ""
+        for marker in _PATH_MARKERS.get(group, ()):
+            item.add_marker(getattr(pytest.mark, marker))
+        if nodeid in _SLOW_TEST_NODEIDS:
+            item.add_marker(pytest.mark.slow)
+        else:
+            item.add_marker(pytest.mark.fast)
+
 
 @pytest.fixture
 def tmp_path() -> Path:

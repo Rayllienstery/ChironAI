@@ -842,7 +842,6 @@ class OllamaProvider:
         """Map a docker state dict to the `{tone, label}` shape used by
         `CoreUIDockerCard` meta tiles."""
         status = str(state.get("status") or "").strip()
-        running = bool(state.get("running"))
         tone_map = {
             "container_running": "success",
             "container_stopped": "neutral",
