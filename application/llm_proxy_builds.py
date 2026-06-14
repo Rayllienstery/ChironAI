@@ -249,10 +249,19 @@ def openai_client_capability_fields() -> dict[str, object]:
     return {
         # Chiron extension / legacy client field.
         "supports_vision": True,
+        # Common Cline/Roo/Kilo-style aliases. Some clients gate image
+        # attachment before sending the request and only inspect one of these.
+        "supportsImages": True,
+        "supports_images": True,
         # OpenCode/models.dev fields. Without modalities.input including "image",
         # OpenCode treats custom OpenAI-compatible models as text-only.
         "attachment": True,
+        "input_modalities": ["text", "image"],
+        "output_modalities": ["text"],
         "modalities": {"input": ["text", "image"], "output": ["text"]},
+        "capabilities": ["completion", "tools", "vision"],
+        "supportsTools": True,
+        "supports_tools": True,
         "tool_call": True,
     }
 

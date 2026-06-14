@@ -584,14 +584,27 @@ def test_extension_tabs_timeout_slow_provider_descriptor(
         LoadedExtension(manifest=manifest, source_dir=tmp_path / "slow-ext", provider=_SlowProvider())
     ]
 
+    started = time.perf_counter()
     tabs = manager.extension_tabs(runtime=LLMRuntime(ProviderRegistry()))
+    elapsed = time.perf_counter() - started
 
+    assert elapsed < 0.2
     assert tabs[0]["id"] == "slow-ext"
+    assert tabs[0]["load_state"]["status"] == "missing"
+
+    deadline = time.time() + 1.0
+    while time.time() < deadline:
+        tabs = manager.extension_tabs(runtime=LLMRuntime(ProviderRegistry()))
+        if tabs[0]["load_state"]["status"] == "timeout":
+            break
+        time.sleep(0.02)
+
+    assert tabs[0]["load_state"]["status"] == "timeout"
     assert tabs[0]["status"]["tone"] == "error"
     assert "tab descriptor timed out" in tabs[0]["status"]["message"]
 
 
-def test_extension_tab_payload_timeout_returns_fallback_payload(
+def test_extension_tab_payload_timeout_keeps_loading_payload_retryable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -635,10 +648,84 @@ def test_extension_tab_payload_timeout_returns_fallback_payload(
     payload = manager.extension_tab_payload("slow-ext", runtime=LLMRuntime(ProviderRegistry()))
 
     assert payload["extension_id"] == "slow-ext"
-    assert payload["status"]["tone"] == "error"
-    component = payload["schema"]["pages"][0]["sections"][0]["components"][0]
-    assert component["type"] == "text"
-    assert "tab payload timed out" in component["value"]
+    assert payload["load_state"]["status"] == "refreshing"
+
+    deadline = time.time() + 1.0
+    while time.time() < deadline:
+        payload = manager.extension_tab_payload("slow-ext", runtime=LLMRuntime(ProviderRegistry()))
+        if payload["load_state"]["status"] == "timeout":
+            break
+        time.sleep(0.02)
+
+    assert payload["load_state"]["status"] == "timeout"
+    assert payload["load_state"]["error"]
+    assert payload["status"]["tone"] == "loading"
+    assert payload["schema"]["pages"] == []
+
+    retry = manager.refresh_extension_tab("slow-ext", runtime=LLMRuntime(ProviderRegistry()))
+    assert retry["load_state"]["status"] == "refreshing"
+    assert retry["job_id"]
+
+
+def test_extension_tab_refresh_dedupes_background_job(tmp_path: Path) -> None:
+    class _Repo:
+        def get_app_setting(self, key: str):
+            return None
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            pass
+
+    class _SlowPayloadProvider(_StubProvider):
+        def __init__(self) -> None:
+            super().__init__("slow")
+            self.calls = 0
+
+        def get_tab_descriptor(self, *, runtime=None):
+            return {"id": "slow-ext", "title": "Slow"}
+
+        def get_tab_payload(self, *, runtime=None):
+            self.calls += 1
+            time.sleep(0.1)
+            return {"schema": {"pages": [{"id": "main", "sections": []}]}}
+
+    repo = _Repo()
+    root = Path(__file__).resolve().parents[2]
+    manifest = ExtensionManifest(
+        id="slow-ext",
+        version="1.0.0",
+        api_version=EXTENSION_API_VERSION,
+        type="llm_provider",
+        title="Slow",
+    )
+    provider = _SlowPayloadProvider()
+    manager = ExtensionManager(
+        project_root=root,
+        host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
+        settings_repo=repo,
+        registry_client=ExtensionRegistryClient(project_root=root),
+        installed_dir=tmp_path / "installed",
+        bundled_dir=tmp_path / "bundled",
+    )
+    manager._loaded = [
+        LoadedExtension(manifest=manifest, source_dir=tmp_path / "slow-ext", provider=provider)
+    ]
+
+    first = manager.refresh_extension_tab("slow-ext", runtime=LLMRuntime(ProviderRegistry()))
+    second = manager.refresh_extension_tab("slow-ext", runtime=LLMRuntime(ProviderRegistry()))
+
+    assert first["job_id"] == second["job_id"]
+    assert first["load_state"]["status"] == "refreshing"
+
+    deadline = time.time() + 1.0
+    payload = {}
+    while time.time() < deadline:
+        payload = manager.extension_tab_payload("slow-ext", runtime=LLMRuntime(ProviderRegistry()))
+        if payload["load_state"]["status"] == "ready":
+            break
+        time.sleep(0.02)
+
+    assert provider.calls == 1
+    assert payload["load_state"]["status"] == "ready"
 
 
 def test_bundled_extension_refreshes_existing_same_version_install(tmp_path: Path) -> None:

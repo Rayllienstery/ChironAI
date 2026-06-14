@@ -890,13 +890,19 @@
 /* Wizard Navigation - fixed footer at bottom of modal (flex layout keeps it at bottom) */
 .llm-proxy-wizard-nav {
   z-index: 10;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
+  column-gap: 12px;
+  width: 100%;
+  min-width: 0;
   padding: 16px 20px;
   background: var(--md-sys-color-surface-container-highest);
-  border-top: 1px solid var(--md-sys-color-outline-variant);
   flex-shrink: 0;
+}
+
+.llm-proxy-build-modal .coreui-modal-footer {
+  border-top: none;
 }
 
 .llm-proxy-wizard-nav-left,
@@ -904,7 +910,7 @@
 .llm-proxy-wizard-nav-right {
   display: flex;
   align-items: center;
-  flex: 1;
+  min-width: 0;
 }
 
 .llm-proxy-wizard-nav-left {

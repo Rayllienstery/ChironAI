@@ -5,7 +5,7 @@ import CoreUIModal from './CoreUIModal';
 import ExtensionRuntimeLoadingView, { buildExtensionRuntimeLoadingSteps } from './ExtensionRuntimeLoadingView';
 import Card from './Card';
 import { useOptionalNotificationCenter } from './NotificationCenterContext';
-import { getExtensionTab, runExtensionTabAction } from '../services/api';
+import { getExtensionTab, refreshExtensionTab, runExtensionTabAction } from '../services/api';
 import { formatElapsedMs } from '../utils/elapsedTime';
 import '../styles/components/ExtensionRuntimeTab.css';
 
@@ -127,6 +127,24 @@ function isRuntimeStillLoadingMessage(message) {
   return String(message || '').toLowerCase().includes('extension runtime is still loading');
 }
 
+function extensionTabLoadStatus(payload) {
+  return String(payload?.load_state?.status || '').trim().toLowerCase();
+}
+
+function isExtensionTabWaiting(payload) {
+  return ['missing', 'refreshing', 'stale', 'timeout'].includes(extensionTabLoadStatus(payload));
+}
+
+function isExtensionTabTerminalError(payload) {
+  return ['failed'].includes(extensionTabLoadStatus(payload));
+}
+
+function hasRenderableExtensionPayload(payload) {
+  const contentType = String(payload?.content?.type || '').trim();
+  if (contentType) return true;
+  return Array.isArray(payload?.schema?.pages) && payload.schema.pages.length > 0;
+}
+
 function serviceActionTimeoutMs(actionId) {
   return actionId === 'start_service' || actionId === 'stop_service' ? 30 * 60 * 1000 : 30_000;
 }
@@ -186,9 +204,14 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
 
   const onErrorStateChangeRef = useRef(onErrorStateChange);
   const lastErrorStateRef = useRef(false);
+  const refreshRequestedRef = useRef('');
   useEffect(() => {
     onErrorStateChangeRef.current = onErrorStateChange;
   }, [onErrorStateChange]);
+
+  useEffect(() => {
+    refreshRequestedRef.current = '';
+  }, [extensionId]);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) {
@@ -214,9 +237,14 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
         if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
         return next;
       });
-      if (lastErrorStateRef.current !== false) {
-        lastErrorStateRef.current = false;
-        onErrorStateChangeRef.current?.(false);
+      const nextState = isExtensionTabWaiting(data) && !hasRenderableExtensionPayload(data)
+        ? 'loading'
+        : isExtensionTabTerminalError(data)
+          ? true
+          : false;
+      if (lastErrorStateRef.current !== nextState) {
+        lastErrorStateRef.current = nextState;
+        onErrorStateChangeRef.current?.(nextState);
       }
     } catch (e) {
       const msg = String(e?.message || e);
@@ -239,12 +267,17 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
     void load();
   }, [load]);
 
+  const loadState = payload?.load_state || null;
+  const loadStatus = extensionTabLoadStatus(payload);
+  const waitingForTabPayload = isExtensionTabWaiting(payload);
+  const hasRenderablePayload = hasRenderableExtensionPayload(payload);
+
   useEffect(() => {
-    if (!loading && !runtimeLoadingMessage) return undefined;
+    if (!loading && !runtimeLoadingMessage && !waitingForTabPayload) return undefined;
     setLoadTimerNow(Date.now());
     const id = setInterval(() => setLoadTimerNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [loading, runtimeLoadingMessage]);
+  }, [loading, runtimeLoadingMessage, waitingForTabPayload]);
 
   useEffect(() => {
     if (!activeAction) return undefined;
@@ -280,6 +313,23 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
     }, 2000);
     return () => clearInterval(id);
   }, [runtimeLoadingMessage, load]);
+
+  useEffect(() => {
+    if (!waitingForTabPayload) return undefined;
+    const refreshKey = loadStatus === 'refreshing'
+      ? `${extensionId}:refreshing:${loadState?.job_id || ''}`
+      : `${extensionId}:${loadStatus || 'missing'}:${loadState?.finished_at || loadState?.job_id || ''}`;
+    if (loadStatus !== 'refreshing' && refreshRequestedRef.current !== refreshKey) {
+      refreshRequestedRef.current = refreshKey;
+      void refreshExtensionTab(extensionId).catch((e) => {
+        setError(String(e?.message || e));
+      });
+    }
+    const id = setInterval(() => {
+      void load(true);
+    }, hasRenderablePayload ? 2500 : 1500);
+    return () => clearInterval(id);
+  }, [extensionId, hasRenderablePayload, load, loadState?.job_id, loadStatus, waitingForTabPayload]);
 
   useEffect(() => {
     if (!openModelMenuId) return undefined;
@@ -1008,23 +1058,25 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
         elapsedMs={Math.max(0, loadTimerNow - loadStartedAt)}
         steps={buildExtensionRuntimeLoadingSteps({
           endpoint: `/api/webui/extensions/${extensionId}/tab`,
+          loadState,
           mode: 'request',
         })}
       />
     );
   }
 
-  if (runtimeLoadingMessage) {
+  if (runtimeLoadingMessage || (waitingForTabPayload && !hasRenderablePayload)) {
     return (
       <ExtensionRuntimeLoadingView
         title={title}
         extensionId={extensionId}
         elapsedMs={Math.max(0, loadTimerNow - loadStartedAt)}
-        message={runtimeLoadingMessage}
+        message={runtimeLoadingMessage || loadState?.error || 'Extension tab payload is loading.'}
         steps={buildExtensionRuntimeLoadingSteps({
           endpoint: `/api/webui/extensions/${extensionId}/tab`,
-          message: runtimeLoadingMessage,
-          mode: 'runtime',
+          loadState,
+          message: runtimeLoadingMessage || loadState?.error,
+          mode: runtimeLoadingMessage ? 'runtime' : 'payload',
         })}
       />
     );
@@ -1051,6 +1103,17 @@ function ExtensionRuntimeTab({ extensionId, title, onErrorStateChange }) {
   const contentStatus = payload?.status && typeof payload.status === 'object' ? payload.status : null;
   return (
     <div className="settings-tab settings-tab--fullwidth tab-view">
+      {waitingForTabPayload && hasRenderablePayload ? (
+        <div className="dashboard-card-muted llm-proxy-section-gap-sm extensions-runtime-refreshing-banner" role="status">
+          <span className="notification-center-card-spinner" aria-hidden="true" />
+          Refreshing extension payload
+          {loadState?.cached_at ? (
+            <span className="extensions-runtime-refreshing-banner__time">
+              Last cached {formatIsoShort(loadState.cached_at)}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       {actionResult && (
         <div

@@ -80,6 +80,18 @@ def _cache_set(base_url: str, key: str, value: Any) -> None:
         bucket[key] = (time.monotonic(), value)
 
 
+def _cache_invalidate(base_url: str, key: str | None = None) -> None:
+    if not base_url:
+        return
+    with _CACHE_LOCK:
+        if key is None:
+            _CACHE.pop(base_url, None)
+            return
+        bucket = _CACHE.get(base_url)
+        if bucket:
+            bucket.pop(key, None)
+
+
 def _manifest_tab_ui(manifest: Any) -> dict[str, Any]:
     metadata = getattr(manifest, "metadata", {})
     if isinstance(metadata, dict) and isinstance(metadata.get("tab_ui"), dict):
@@ -300,7 +312,7 @@ class OllamaProvider:
             fut_models = pool.submit(
                 lambda: self._all_model_entries(
                     timeout_sec=0.9,
-                    cache_ttl_sec=30.0,
+                    cache_ttl_sec=0.0,
                     allow_stale=True,
                 )
             )
@@ -581,6 +593,7 @@ class OllamaProvider:
     ) -> dict[str, Any]:
         action = str(action_id or "").strip()
         if action == "refresh":
+            self._invalidate_model_cache()
             return {"ok": True, "message": "Refreshed", "details": {}}
         if action == "start_service":
             return self._start_service_with_docker()
@@ -613,6 +626,7 @@ class OllamaProvider:
             return {"ok": True, "message": f"Loaded details for {model_name}", "details": details}
         if action == "delete_model":
             invoke_delete(base_url=self._base_url(), name=model_name, timeout=60.0)
+            self._invalidate_model_cache()
             # Omit details: delete API payloads are not model records; the WebUI treats details as Model Details data.
             return {"ok": True, "message": f"Deleted {model_name}", "details": {}}
         if action == "hide_model":
@@ -643,13 +657,17 @@ class OllamaProvider:
             for item in iter_pull_objects(base_url=self._base_url(), name=pull_name, read_timeout=3600.0):
                 if isinstance(item, dict):
                     last = item
+            self._invalidate_model_cache()
             return {"ok": True, "message": f"Pull completed for {pull_name}", "details": last}
         if action == "save_backend":
+            previous_base_url = self._base_url()
             raw = str(payload.get("backend_url") or "").strip()
             if not raw:
                 raise ValueError("backend_url is required")
             norm = _normalized_ollama_base_url(raw)
             self._host.get_settings_repository().set_app_setting("ollama_base_url", norm)
+            self._invalidate_model_cache(previous_base_url)
+            self._invalidate_model_cache(norm)
             return {
                 "ok": True,
                 "message": "Saved. Restart Ollama to apply the backend URL.",
@@ -1263,6 +1281,10 @@ class OllamaProvider:
     def _generate_url(self) -> str:
         base = self._base_url().rstrip("/")
         return f"{base}/api/generate" if base else ""
+
+    def _invalidate_model_cache(self, base_url: str | None = None) -> None:
+        resolved = str(base_url or self._base_url() or "").strip()
+        _cache_invalidate(resolved, "tags")
 
     def _all_model_entries(
         self,

@@ -112,8 +112,20 @@ class _FakeExtensionsService:
                 "title": "Open WebUI",
                 "icon": "web_asset",
                 "status": {"running": True, "tone": "success", "message": "running"},
+                "load_state": {"status": "ready"},
             }
         ]
+
+    def extension_tab_payload(self, extension_id: str, *, runtime: Any | None = None) -> dict[str, Any]:
+        return {
+            "extension_id": extension_id,
+            "title": "Open WebUI",
+            "schema": {"pages": []},
+            "load_state": {"status": "refreshing", "job_id": "job-1"},
+        }
+
+    def refresh_extension_tab(self, extension_id: str, *, runtime: Any | None = None) -> dict[str, Any]:
+        return {"job_id": "job-1", "load_state": {"status": "refreshing", "job_id": "job-1"}}
 
     def ui_payload(self) -> dict[str, Any]:
         return {"extensions": [{"id": "ollama-provider", "title": "Ollama", "ui_schema": {}}], "failed": []}
@@ -207,6 +219,8 @@ def test_extensions_routes_expose_registry_and_ui() -> None:
     catalog = client.get("/api/webui/providers/catalog")
     models = client.get("/api/webui/models")
     tabs = client.get("/api/webui/extensions/tabs")
+    tab_payload = client.get("/api/webui/extensions/open-webui/tab")
+    tab_refresh = client.post("/api/webui/extensions/open-webui/tab/refresh")
     ui = client.get("/api/webui/extensions/ui")
 
     assert registry.status_code == 200
@@ -217,6 +231,8 @@ def test_extensions_routes_expose_registry_and_ui() -> None:
     assert catalog.status_code == 200
     assert models.status_code == 200
     assert tabs.status_code == 200
+    assert tab_payload.status_code == 200
+    assert tab_refresh.status_code == 202
     assert ui.status_code == 200
     assert (registry.get_json() or {}).get("registry")[0]["id"] == "ollama-provider"
     assert (details.get_json() or {}).get("latest", {}).get("ref") == "v0.1.0"
@@ -238,6 +254,9 @@ def test_extensions_routes_expose_registry_and_ui() -> None:
     assert (catalog.get_json() or {}).get("models")[0]["provider_title"] == "Ollama"
     assert any(model.get("provider_title") == "Ollama" for model in (models.get_json() or {}).get("models") or [])
     assert (tabs.get_json() or {}).get("tabs")[0]["status"]["running"] is True
+    assert (tabs.get_json() or {}).get("tabs")[0]["load_state"]["status"] == "ready"
+    assert (tab_payload.get_json() or {}).get("load_state", {}).get("status") == "refreshing"
+    assert (tab_refresh.get_json() or {}).get("job_id") == "job-1"
     assert (ui.get_json() or {}).get("extensions")[0]["id"] == "ollama-provider"
     assert (ui.get_json() or {}).get("extensions")[0]["title"] == "Ollama"
 

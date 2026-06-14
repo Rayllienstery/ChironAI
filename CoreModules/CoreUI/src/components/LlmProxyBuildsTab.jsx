@@ -892,6 +892,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
         <CoreUIModal
           title={editingId ? `Edit build: ${editingId}` : 'Create new build'}
           onClose={closeForm}
+          className="llm-proxy-build-modal"
           footer={
             <div className="llm-proxy-wizard-nav">
               <div className="llm-proxy-wizard-nav-left">
@@ -906,34 +907,23 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
                 )}
               </div>
               <div className="llm-proxy-wizard-nav-center">
-                {wizardStep < WIZARD_STEPS.length - 1 && (
-                  <CoreUIButton
-                    variant="primary"
-                    disabled={saving}
-                    onClick={saveForm}
-                  >
-                    <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">save</span>
-                    {saving ? 'Saving...' : 'Save build'}
-                  </CoreUIButton>
-                )}
+                <CoreUIButton
+                  variant="primary"
+                  disabled={saving}
+                  onClick={saveForm}
+                >
+                  <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">save</span>
+                  {saving ? 'Saving...' : 'Save build'}
+                </CoreUIButton>
               </div>
               <div className="llm-proxy-wizard-nav-right">
-                {wizardStep < WIZARD_STEPS.length - 1 ? (
+                {wizardStep < WIZARD_STEPS.length - 1 && (
                   <CoreUIButton
                     variant="primary"
                     onClick={() => { setWizardStep(wizardStep + 1); setWizardDirection('forward'); }}
                   >
                     Next
                     <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">arrow_forward</span>
-                  </CoreUIButton>
-                ) : (
-                  <CoreUIButton
-                    variant="primary"
-                    disabled={saving}
-                    onClick={saveForm}
-                  >
-                    <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">save</span>
-                    {saving ? 'Saving...' : 'Save build'}
                   </CoreUIButton>
                 )}
               </div>

@@ -252,6 +252,33 @@ def test_ollama_extension_model_actions_have_stable_response_shapes(monkeypatch:
     assert deleted[0]["name"] == "tiny-model:latest"
 
 
+def test_ollama_extension_pull_invalidates_model_list_cache(monkeypatch: Any) -> None:
+    module = _load_ollama_provider_module()
+    module._CACHE.clear()
+    repo = _Repo()
+    models = [{"name": "old-model:latest"}]
+
+    monkeypatch.setattr(module, "invoke_ping", lambda **_: {"ok": True})
+    monkeypatch.setattr(module, "invoke_tags", lambda **_: {"models": list(models)})
+    monkeypatch.setattr(module, "invoke_show", lambda **_: {"model_info": {}, "capabilities": []})
+    monkeypatch.setattr(
+        module,
+        "iter_pull_objects",
+        lambda **_: iter([{"status": "success", "completed": 1}]),
+    )
+
+    provider = _provider(_DockerRuntime(), repo=repo, module=module)
+
+    assert [item["name"] for item in provider._all_model_entries(cache_ttl_sec=30.0)] == ["old-model:latest"]
+    models[:] = [{"name": "new-model:latest"}]
+
+    provider.run_action("pull_model", {"pull_model_name": "new-model:latest"})
+    payload = provider.get_tab_payload()
+    rows = _section_from_tab_payload(payload, "models")["components"][-1]["rows"]
+
+    assert [row["id"] for row in rows] == ["new-model:latest"]
+
+
 def test_ollama_extension_raw_ollama_operations_delegate_to_provider_http(monkeypatch: Any) -> None:
     module = _load_ollama_provider_module()
     raw_calls: list[dict[str, Any]] = []

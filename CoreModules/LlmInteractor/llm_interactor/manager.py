@@ -9,8 +9,10 @@ import shutil
 import stat
 import threading
 import tempfile
+import time
+import uuid
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -53,7 +55,7 @@ _SEMVERISH_RE = re.compile(r"^v?\d+(?:\.\d+){1,3}(?:[-+][0-9A-Za-z.-]+)?$")
 # values come from the manifest; extension code cannot spoof its own identity.
 _PROTECTED_TAB_PAYLOAD_KEYS: frozenset[str] = frozenset({"extension_id", "title", "icon", "icon_url"})
 _EXTENSION_TAB_DESCRIPTOR_TIMEOUT_SEC = 2.0
-_EXTENSION_TAB_PAYLOAD_TIMEOUT_SEC = 5.0
+_EXTENSION_TAB_PAYLOAD_TIMEOUT_SEC = 12.0
 
 # Trusted hostnames for extension archive downloads.
 # Only these domains may serve .zip archives; all other URLs are rejected to
@@ -91,6 +93,21 @@ class RuntimeBootstrap:
     registry: ProviderRegistry
     loaded: list[LoadedExtension]
     failed: list[FailedExtension]
+
+
+@dataclass
+class ExtensionTabCacheEntry:
+    status: str = "missing"
+    descriptor: dict[str, Any] | None = None
+    payload: dict[str, Any] | None = None
+    error: str = ""
+    started_at: str = ""
+    finished_at: str = ""
+    duration_ms: float | None = None
+    cached_at: str = ""
+    job_id: str = ""
+    generation: int = 0
+    phases: dict[str, str] = field(default_factory=dict)
 
 
 def _utc_now() -> str:
@@ -240,6 +257,8 @@ class ExtensionManager:
         self._runtime_error = ""
         self._bootstrap_thread: threading.Thread | None = None
         self._provider_rows_cache: list[dict[str, Any]] = []
+        self._tab_cache: dict[str, ExtensionTabCacheEntry] = {}
+        self._tab_cache_generation = 0
         self._lock = threading.RLock()
         # Serializes concurrent bootstrap_runtime() calls (background + sync).
         # Prevents double-starting sandboxes and state corruption when install/
@@ -323,6 +342,65 @@ class ExtensionManager:
                     self._provider_rows_cache = rows
         except Exception:
             pass
+
+    def _tab_load_state(self, extension_id: str, entry: ExtensionTabCacheEntry | None = None) -> dict[str, Any]:
+        if entry is None:
+            with self._lock:
+                entry = self._tab_cache.get(extension_id)
+        if entry is None:
+            return {
+                "status": "missing",
+                "phases": {},
+                "job_id": "",
+                "started_at": "",
+                "finished_at": "",
+                "duration_ms": None,
+                "cached_at": "",
+                "error": "",
+            }
+        return {
+            "status": entry.status,
+            "phases": dict(entry.phases or {}),
+            "job_id": entry.job_id,
+            "started_at": entry.started_at,
+            "finished_at": entry.finished_at,
+            "duration_ms": entry.duration_ms,
+            "cached_at": entry.cached_at,
+            "error": entry.error,
+        }
+
+    def _mark_tab_cache_stale(self) -> None:
+        with self._lock:
+            self._tab_cache_generation += 1
+            for entry in self._tab_cache.values():
+                if entry.status == "ready":
+                    entry.status = "stale"
+                    entry.error = ""
+
+    def invalidate_extension_tab_cache(self, extension_id: str | None = None) -> None:
+        with self._lock:
+            self._tab_cache_generation += 1
+            if extension_id:
+                entry = self._tab_cache.get(extension_id)
+                if entry is None:
+                    return
+                if entry.payload or entry.descriptor:
+                    entry.status = "stale"
+                    entry.error = ""
+                else:
+                    self._tab_cache.pop(extension_id, None)
+                return
+            for entry in self._tab_cache.values():
+                if entry.payload or entry.descriptor:
+                    entry.status = "stale"
+                    entry.error = ""
+            stale_ids = [
+                ext_id
+                for ext_id, entry in self._tab_cache.items()
+                if not entry.payload and not entry.descriptor and entry.status != "refreshing"
+            ]
+            for ext_id in stale_ids:
+                self._tab_cache.pop(ext_id, None)
 
     def _bootstrap_runtime_worker(self) -> None:
         try:
@@ -486,6 +564,7 @@ class ExtensionManager:
             # list_models RPC calls) for up to ~18s per extension before _runtime
             # becomes ready, making extension tabs unresponsive.
             self._provider_rows_cache = []
+            self._mark_tab_cache_stale()
             self._runtime_status = "ready"
             self._runtime_error = ""
 
@@ -556,6 +635,9 @@ class ExtensionManager:
             name="chironai-provider-rows-prewarm",
             daemon=True,
         ).start()
+        for loaded in bootstrap.loaded:
+            if loaded.manifest.type == EXTENSION_TYPE_LLM_PROVIDER:
+                self.refresh_extension_tab(loaded.manifest.id, runtime=runtime)
         return bootstrap
 
     def _disable_security_blocked_extensions(self, failed: list[FailedExtension]) -> None:
@@ -1127,59 +1209,184 @@ class ExtensionManager:
             return value
         raise value
 
-    def extension_tabs(self, *, runtime: LLMRuntime | None = None) -> list[dict[str, Any]]:
+    def _extension_descriptor_row(
+        self,
+        item: LoadedExtension,
+        raw: dict[str, Any],
+    ) -> dict[str, Any]:
+        tab_id = str(raw.get("id") or "").strip() or item.manifest.id
+        title = str(raw.get("title") or item.manifest.title).strip() or item.manifest.title
+        icon = str(raw.get("icon") or item.manifest.icon or "")
+        return {
+            "id": tab_id,
+            "extension_id": item.manifest.id,
+            "title": title,
+            "icon": icon,
+            "icon_url": str(raw.get("icon_url") or "") or self._asset_url(item.manifest.id, icon),
+            "description": str(raw.get("description") or item.manifest.description or ""),
+            "frame": dict(raw.get("frame") or {}) if isinstance(raw.get("frame"), dict) else {},
+            "order": int(raw.get("order") or 0),
+            "status": dict(raw.get("status") or {}) if isinstance(raw.get("status"), dict) else None,
+        }
+
+    def _build_extension_descriptor(self, item: LoadedExtension, runtime: LLMRuntime | None) -> dict[str, Any] | None:
+        fn = getattr(item.provider, "get_tab_descriptor", None)
+        if not callable(fn):
+            return None
+        try:
+            raw = self._call_extension_ui_method(
+                item,
+                "tab descriptor",
+                lambda fn=fn: fn(runtime=runtime),
+                _EXTENSION_TAB_DESCRIPTOR_TIMEOUT_SEC,
+            )
+        except TypeError:
+            raw = self._call_extension_ui_method(
+                item,
+                "tab descriptor",
+                lambda fn=fn: fn(),
+                _EXTENSION_TAB_DESCRIPTOR_TIMEOUT_SEC,
+            )
+        if not isinstance(raw, dict):
+            return None
+        return self._extension_descriptor_row(item, raw)
+
+    def _manifest_for_extension(self, extension_id: str) -> tuple[InstalledExtensionRecord, Any] | None:
+        ext_id = str(extension_id or "").strip()
+        if not ext_id:
+            return None
+        for record, _source_dir, manifest in self._installed_manifest_rows(enabled_only=True):
+            if str(getattr(manifest, "id", record.id)) == ext_id or record.id == ext_id:
+                return record, manifest
+        return None
+
+    def _minimal_tab_payload(self, extension_id: str, *, entry: ExtensionTabCacheEntry | None = None) -> dict[str, Any]:
+        item = self._find_loaded_extension(extension_id)
+        manifest = item.manifest if item is not None else None
+        record_manifest = None if manifest is not None else self._manifest_for_extension(extension_id)
+        if manifest is None and record_manifest is not None:
+            _record, manifest = record_manifest
+        if manifest is None:
+            raise ValueError(f"Extension '{extension_id}' is not loaded")
+        icon = str(getattr(manifest, "icon", "") or "")
+        return {
+            "extension_id": str(getattr(manifest, "id", extension_id)),
+            "title": str(getattr(manifest, "title", extension_id) or extension_id),
+            "icon": icon,
+            "icon_url": self._asset_url(str(getattr(manifest, "id", extension_id)), icon),
+            "status": {
+                "running": False,
+                "tone": "loading",
+                "message": "Extension tab payload is loading",
+            },
+            "schema": {"pages": []},
+            "load_state": self._tab_load_state(extension_id, entry),
+        }
+
+    def refresh_extension_tab(
+        self,
+        extension_id: str,
+        *,
+        runtime: LLMRuntime | None = None,
+    ) -> dict[str, Any]:
+        ext_id = str(extension_id or "").strip()
+        if not ext_id:
+            raise ValueError("extension_id is required")
         if runtime is None:
             runtime = self.runtime
-        if runtime is None:
-            return self._manifest_tabs()
-        out: list[dict[str, Any]] = []
         with self._lock:
-            loaded_snapshot = list(self._loaded)
-        for item in loaded_snapshot:
-            fn = getattr(item.provider, "get_tab_descriptor", None)
-            if not callable(fn):
-                continue
+            entry = self._tab_cache.get(ext_id)
+            if entry is not None and entry.status == "refreshing":
+                return {"job_id": entry.job_id, "load_state": self._tab_load_state(ext_id, entry)}
+            if entry is None:
+                entry = ExtensionTabCacheEntry()
+                self._tab_cache[ext_id] = entry
+            if runtime is None:
+                entry.status = "missing"
+                entry.error = "Extension runtime is still loading"
+                return {"job_id": "", "load_state": self._tab_load_state(ext_id, entry)}
+            self._tab_cache_generation += 1
+            generation = self._tab_cache_generation
+            job_id = uuid.uuid4().hex[:12]
+            started_at = _utc_now()
+            entry.status = "refreshing"
+            entry.error = ""
+            entry.started_at = started_at
+            entry.finished_at = ""
+            entry.duration_ms = None
+            entry.job_id = job_id
+            entry.generation = generation
+            entry.phases = {"descriptor": "pending", "payload": "pending"}
+        threading.Thread(
+            target=self._refresh_extension_tab_worker,
+            args=(ext_id, runtime, job_id, generation),
+            name=f"chironai-extension-tab-refresh-{ext_id}",
+            daemon=True,
+        ).start()
+        return {"job_id": job_id, "load_state": self._tab_load_state(ext_id)}
+
+    def _refresh_extension_tab_worker(
+        self,
+        extension_id: str,
+        runtime: LLMRuntime,
+        job_id: str,
+        generation: int,
+    ) -> None:
+        started = time.perf_counter()
+        descriptor: dict[str, Any] | None = None
+        payload: dict[str, Any] | None = None
+        status = "ready"
+        error = ""
+        phases = {"descriptor": "pending", "payload": "pending"}
+        try:
+            item = self._find_loaded_extension(extension_id)
+            if item is None:
+                raise ValueError(f"Extension '{extension_id}' is not loaded")
             try:
-                raw = self._call_extension_ui_method(
-                    item,
-                    "tab descriptor",
-                    lambda fn=fn: fn(runtime=runtime),
-                    _EXTENSION_TAB_DESCRIPTOR_TIMEOUT_SEC,
-                )
-            except TypeError:
-                try:
-                    raw = self._call_extension_ui_method(
-                        item,
-                        "tab descriptor",
-                        lambda fn=fn: fn(),
-                        _EXTENSION_TAB_DESCRIPTOR_TIMEOUT_SEC,
-                    )
-                except Exception as e:
-                    out.append(self._failed_tab_row(item, e))
-                    continue
-            except Exception as e:
-                out.append(self._failed_tab_row(item, e))
-                continue
-            if not isinstance(raw, dict):
-                continue
-            tab_id = str(raw.get("id") or "").strip() or item.manifest.id
-            title = str(raw.get("title") or item.manifest.title).strip() or item.manifest.title
-            out.append(
-                {
-                    "id": tab_id,
-                    "extension_id": item.manifest.id,
-                    "title": title,
-                    "icon": str(raw.get("icon") or item.manifest.icon or ""),
-                    "icon_url": str(raw.get("icon_url") or "")
-                    or self._asset_url(item.manifest.id, str(raw.get("icon") or item.manifest.icon or "")),
-                    "description": str(raw.get("description") or item.manifest.description or ""),
-                    "frame": dict(raw.get("frame") or {}) if isinstance(raw.get("frame"), dict) else {},
-                    "order": int(raw.get("order") or 0),
-                    "status": dict(raw.get("status") or {}) if isinstance(raw.get("status"), dict) else None,
-                }
-            )
-        out.sort(key=lambda row: (int(row.get("order") or 0), str(row.get("title") or "").lower()))
-        return out
+                phases["descriptor"] = "refreshing"
+                descriptor = self._build_extension_descriptor(item, runtime)
+                phases["descriptor"] = "ready" if descriptor is not None else "skipped"
+            except TimeoutError as exc:
+                phases["descriptor"] = "timeout"
+                status = "timeout"
+                error = str(exc)
+                descriptor = self._failed_tab_row(item, exc)
+            except Exception as exc:
+                phases["descriptor"] = "failed"
+                status = "failed"
+                error = f"{type(exc).__name__}: {exc}"
+                descriptor = self._failed_tab_row(item, exc)
+            phases["payload"] = "refreshing"
+            payload = self._build_extension_tab_payload(item, runtime)
+            phases["payload"] = "ready"
+            if status not in {"failed", "timeout"}:
+                status = "ready"
+                error = ""
+        except TimeoutError as exc:
+            status = "timeout"
+            error = str(exc)
+            phases["payload"] = "timeout"
+            payload = None
+        except Exception as exc:
+            status = "failed"
+            error = f"{type(exc).__name__}: {exc}"
+            phases["payload"] = "failed"
+            item = self._find_loaded_extension(extension_id)
+            payload = self._failed_tab_payload(item, exc) if item is not None else None
+        finished_at = _utc_now()
+        duration_ms = round((time.perf_counter() - started) * 1000, 1)
+        with self._lock:
+            entry = self._tab_cache.get(extension_id)
+            if entry is None or entry.job_id != job_id or entry.generation != generation:
+                return
+            entry.status = status
+            entry.descriptor = descriptor or entry.descriptor
+            entry.payload = payload or entry.payload
+            entry.error = error
+            entry.finished_at = finished_at
+            entry.duration_ms = duration_ms
+            entry.cached_at = finished_at if payload or descriptor else entry.cached_at
+            entry.phases = phases
 
     def _failed_tab_row(self, item: LoadedExtension, error: Exception) -> dict[str, Any]:
         sandbox_status = str(getattr(item.provider, "sandbox_status", "") or "failed")
@@ -1198,6 +1405,58 @@ class ExtensionManager:
                 "tone": "warning" if sandbox_status == "manual_stop" else "error",
                 "message": sandbox_error,
                 "running": False,
+            },
+        }
+
+    def _loaded_tab_status_overlay(self, item: LoadedExtension) -> dict[str, Any] | None:
+        sandbox_status = str(getattr(item.provider, "sandbox_status", "") or "").strip()
+        if not sandbox_status or sandbox_status == "ready":
+            return None
+        sandbox_error = str(getattr(item.provider, "sandbox_error", "") or "").strip()
+        if not sandbox_error and sandbox_status == "manual_stop":
+            sandbox_error = "Extension worker is stopped until manual restart"
+        return {
+            "runtime": sandbox_status,
+            "tone": "warning" if sandbox_status == "manual_stop" else "error",
+            "message": sandbox_error or sandbox_status,
+            "running": False,
+        }
+
+    def _failed_tab_payload(self, item: LoadedExtension | None, error: Exception) -> dict[str, Any] | None:
+        if item is None:
+            return None
+        message = f"{type(error).__name__}: {error}"
+        return {
+            "extension_id": item.manifest.id,
+            "title": item.manifest.title,
+            "icon": item.manifest.icon,
+            "icon_url": self._asset_url(item.manifest.id, item.manifest.icon),
+            "status": {
+                "running": False,
+                "tone": "error",
+                "message": message,
+            },
+            "schema": {
+                "pages": [
+                    {
+                        "id": "extension-error",
+                        "title": item.manifest.title,
+                        "sections": [
+                            {
+                                "id": "extension-error",
+                                "title": "Extension runtime unavailable",
+                                "components": [
+                                    {
+                                        "type": "text",
+                                        "key": "extension_error",
+                                        "label": "Error",
+                                        "value": message,
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ]
             },
         }
 
@@ -1237,10 +1496,7 @@ class ExtensionManager:
             },
         }
 
-    def extension_tab_payload(self, extension_id: str, *, runtime: LLMRuntime | None = None) -> dict[str, Any]:
-        item = self._find_loaded_extension(extension_id)
-        if item is None:
-            raise ValueError(f"Extension '{extension_id}' is not loaded")
+    def _build_extension_tab_payload(self, item: LoadedExtension, runtime: LLMRuntime | None = None) -> dict[str, Any]:
         fn = getattr(item.provider, "get_tab_payload", None)
         if not callable(fn):
             return {
@@ -1256,18 +1512,13 @@ class ExtensionManager:
                 lambda fn=fn: fn(runtime=runtime),
                 _EXTENSION_TAB_PAYLOAD_TIMEOUT_SEC,
             )
-        except TimeoutError as e:
-            return self._timeout_tab_payload(item, e)
         except TypeError:
-            try:
-                payload = self._call_extension_ui_method(
-                    item,
-                    "tab payload",
-                    lambda fn=fn: fn(),
-                    _EXTENSION_TAB_PAYLOAD_TIMEOUT_SEC,
-                )
-            except TimeoutError as e:
-                return self._timeout_tab_payload(item, e)
+            payload = self._call_extension_ui_method(
+                item,
+                "tab payload",
+                lambda fn=fn: fn(),
+                _EXTENSION_TAB_PAYLOAD_TIMEOUT_SEC,
+            )
         if not isinstance(payload, dict):
             raise ValueError(f"Extension '{extension_id}' returned invalid tab payload")
         # Strip keys that the extension must not override — extension_id, title,
@@ -1280,6 +1531,69 @@ class ExtensionManager:
             "icon_url": self._asset_url(item.manifest.id, item.manifest.icon),
             **safe_payload,
         }
+
+    def extension_tabs(self, *, runtime: LLMRuntime | None = None) -> list[dict[str, Any]]:
+        if runtime is None:
+            runtime = self.runtime
+        out = self._manifest_tabs()
+        by_extension_id = {str(row.get("extension_id") or row.get("id") or ""): dict(row) for row in out}
+        with self._lock:
+            loaded_snapshot = list(self._loaded)
+            cache_snapshot = {k: v for k, v in self._tab_cache.items()}
+        for item in loaded_snapshot:
+            ext_id = item.manifest.id
+            entry = cache_snapshot.get(ext_id)
+            row = by_extension_id.get(ext_id)
+            if row is None and callable(getattr(item.provider, "get_tab_descriptor", None)):
+                row = {
+                    "id": ext_id,
+                    "extension_id": ext_id,
+                    "title": item.manifest.title,
+                    "icon": item.manifest.icon,
+                    "icon_url": self._asset_url(ext_id, item.manifest.icon),
+                    "description": item.manifest.description,
+                    "frame": {},
+                    "order": 0,
+                    "status": {
+                        "runtime": self.runtime_status,
+                        "tone": "loading",
+                        "message": "Extension descriptor is loading",
+                        "running": False,
+                    },
+                }
+            if row is None:
+                continue
+            status_overlay = self._loaded_tab_status_overlay(item)
+            if status_overlay is not None:
+                row["status"] = status_overlay
+            if entry is not None and entry.descriptor:
+                merged = {**row, **entry.descriptor}
+                row = merged
+            row["load_state"] = self._tab_load_state(ext_id, entry)
+            by_extension_id[ext_id] = row
+            if runtime is not None and (entry is None or entry.status in {"missing", "stale", "failed", "timeout"}):
+                self.refresh_extension_tab(ext_id, runtime=runtime)
+        out = list(by_extension_id.values())
+        out.sort(key=lambda row: (int(row.get("order") or 0), str(row.get("title") or "").lower()))
+        return out
+
+    def extension_tab_payload(self, extension_id: str, *, runtime: LLMRuntime | None = None) -> dict[str, Any]:
+        ext_id = str(extension_id or "").strip()
+        if not ext_id:
+            raise ValueError("extension_id is required")
+        if runtime is None:
+            runtime = self.runtime
+        with self._lock:
+            entry = self._tab_cache.get(ext_id)
+        if entry is not None and entry.payload is not None:
+            payload = dict(entry.payload)
+            payload["load_state"] = self._tab_load_state(ext_id, entry)
+            return payload
+        if runtime is not None and (entry is None or entry.status == "missing"):
+            self.refresh_extension_tab(ext_id, runtime=runtime)
+            with self._lock:
+                entry = self._tab_cache.get(ext_id)
+        return self._minimal_tab_payload(ext_id, entry=entry)
 
     def run_extension_action(
         self,
@@ -1299,6 +1613,7 @@ class ExtensionManager:
             result = fn(str(action_id or "").strip(), dict(payload or {}), runtime=runtime)
         except TypeError:
             result = fn(str(action_id or "").strip(), dict(payload or {}))
+        self.invalidate_extension_tab_cache(extension_id)
         if isinstance(result, dict):
             return result
         return {"ok": True, "result": result}
@@ -1326,6 +1641,7 @@ class ExtensionManager:
         with self._lock:
             self._provider_rows_cache = []
             sandbox = self._sandbox_diagnostics(item)
+        self.invalidate_extension_tab_cache(ext_id)
         return {"id": ext_id, "ok": True, "action": "restart", **sandbox}
 
     def kill_extension_sandbox(self, extension_id: str) -> dict[str, Any]:
@@ -1341,7 +1657,8 @@ class ExtensionManager:
                 raise ValueError(f"Extension '{ext_id}' is not sandboxed")
             kill()
             sandbox = self._sandbox_diagnostics(item)
-            return {"id": ext_id, "ok": True, "action": "kill", **sandbox}
+        self.invalidate_extension_tab_cache(ext_id)
+        return {"id": ext_id, "ok": True, "action": "kill", **sandbox}
 
     def _restart_failed_extension_sandbox(self, extension_id: str) -> dict[str, Any]:
         # Phase 1: read failed-extension state under lock.

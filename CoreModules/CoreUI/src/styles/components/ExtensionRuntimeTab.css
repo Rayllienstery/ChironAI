@@ -206,6 +206,18 @@
   background: color-mix(in srgb, var(--md-sys-color-error) 10%, var(--md-sys-color-surface));
 }
 
+.extensions-runtime-refreshing-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.extensions-runtime-refreshing-banner__time {
+  margin-left: auto;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+}
+
 @keyframes extensions-runtime-loading-scan {
   0% {
     transform: translateX(-110%);

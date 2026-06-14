@@ -71,6 +71,37 @@ def _openai_build_model_rows(wiring: LlmProxyWiring) -> list[dict[str, object]]:
         return []
 
 
+def _openai_client_capability_model_row(model_id: str) -> dict[str, object]:
+    from application.llm_proxy_builds import openai_client_capability_fields
+
+    row: dict[str, object] = {
+        "id": model_id,
+        "object": "model",
+        "created": 0,
+        "owned_by": "local",
+    }
+    row.update(openai_client_capability_fields())
+    return row
+
+
+def _openai_autocomplete_model_row(wiring: LlmProxyWiring) -> dict[str, object]:
+    row = _openai_client_capability_model_row(str(wiring.runtime.autocomplete_model_logical_id))
+    row["metadata"] = {"ollama_model": str(wiring.get_autocomplete_ollama_model() or "")}
+    return row
+
+
+def _openai_model_rows(wiring: LlmProxyWiring) -> list[dict[str, object]]:
+    data: list[dict[str, object]] = []
+    if get_v1_include_autocomplete_logical_model():
+        try:
+            if wiring.get_autocomplete_ollama_model():
+                data.append(_openai_autocomplete_model_row(wiring))
+        except Exception:
+            pass
+    data.extend(_openai_build_model_rows(wiring))
+    return data
+
+
 def _post_body_is_openai_completions_shape(body: object) -> bool:
     """
     True when the client sent a legacy completions request (``prompt``/``input``)
@@ -915,37 +946,34 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
     def list_models():
         # Note: build rows are OpenAI-shaped model objects, with extra client capability
         # fields such as `supports_vision`, `attachment`, `modalities`, and `metadata`.
-        build_rows = _openai_build_model_rows(wiring)
-        include_ac = get_v1_include_autocomplete_logical_model()
         if wants_anthropic_models_list(request.headers):
             ids: list[str] = []
-            if include_ac:
+            if get_v1_include_autocomplete_logical_model():
                 try:
                     if wiring.get_autocomplete_ollama_model():
                         ids.append(str(wiring.runtime.autocomplete_model_logical_id))
                 except Exception:
                     pass
+            build_rows = _openai_build_model_rows(wiring)
             ids.extend(str(r["id"]) for r in build_rows if r.get("id"))
             return jsonify(anthropic_models_list_payload(ids))
 
-        data: list[dict[str, object]] = []
-        if include_ac:
-            try:
-                if wiring.get_autocomplete_ollama_model():
-                    from application.llm_proxy_builds import openai_client_capability_fields
+        return jsonify({"object": "list", "data": _openai_model_rows(wiring)})
 
-                    ac_row: dict[str, object] = {
-                        "id": wiring.runtime.autocomplete_model_logical_id,
-                        "object": "model",
-                        "created": 0,
-                        "owned_by": "local",
-                    }
-                    ac_row.update(openai_client_capability_fields())
-                    data.append(ac_row)
-            except Exception:
-                pass
-        data.extend(build_rows)
-        return jsonify({"object": "list", "data": data})
+    @bp.route("/v1/models/<path:model_id>", methods=["GET"])
+    def retrieve_model(model_id: str):
+        requested = str(model_id or "").strip()
+        if not requested:
+            return _openai_error_response("model is required", "invalid_request_error", 400)
+        for row in _openai_model_rows(wiring):
+            if str(row.get("id") or "").strip() == requested:
+                return jsonify(row)
+        # Some IDE clients probe the manually configured concrete upstream tag
+        # instead of a build id. Return the same vision-capable compatibility
+        # surface so they do not strip image attachments before proxy routing.
+        row = _openai_client_capability_model_row(requested)
+        row["metadata"] = {"ollama_model": requested, "synthetic": True}
+        return jsonify(row)
 
     def _sse_lines_from_openai_response(resp: Response):
         buf = b""

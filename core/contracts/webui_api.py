@@ -386,6 +386,54 @@ class ExtensionUiSchemaDTO(TypedDict, total=False):
     ui_schema: dict[str, Any]
 
 
+class ExtensionTabLoadStateDTO(TypedDict, total=False):
+    status: Literal["missing", "refreshing", "ready", "stale", "failed", "timeout"]
+    phases: dict[str, str]
+    job_id: str
+    started_at: str
+    finished_at: str
+    duration_ms: float | None
+    cached_at: str
+    error: str
+
+
+class ExtensionTabDTO(TypedDict, total=False):
+    id: str
+    extension_id: str
+    title: str
+    icon: str
+    icon_url: str
+    description: str
+    frame: dict[str, Any]
+    order: int
+    status: dict[str, Any] | None
+    load_state: ExtensionTabLoadStateDTO
+
+
+class ExtensionTabsResponse(TypedDict, total=False):
+    available: bool
+    runtime_status: str
+    tabs: list[ExtensionTabDTO]
+
+
+class ExtensionTabPayloadResponse(TypedDict, total=False):
+    available: bool
+    extension_id: str
+    title: str
+    icon: str
+    icon_url: str
+    status: dict[str, Any]
+    schema: dict[str, Any]
+    content: dict[str, Any]
+    load_state: ExtensionTabLoadStateDTO
+
+
+class ExtensionTabRefreshResponse(TypedDict, total=False):
+    available: bool
+    job_id: str
+    load_state: ExtensionTabLoadStateDTO
+
+
 def webui_abs_path(suffix: str) -> str:
     """``suffix`` starts with ``/`` (e.g. ``/models``)."""
     if not suffix.startswith("/"):
@@ -417,6 +465,11 @@ __all__ = [
     "InstalledExtensionDTO",
     "ProviderHealthDTO",
     "ExtensionUiSchemaDTO",
+    "ExtensionTabLoadStateDTO",
+    "ExtensionTabDTO",
+    "ExtensionTabsResponse",
+    "ExtensionTabPayloadResponse",
+    "ExtensionTabRefreshResponse",
     "StartupStep",
     "StartupPhase",
     "StartupPerformanceResponse",

@@ -14,39 +14,73 @@ function statusMeta(status) {
 
 export function buildExtensionRuntimeLoadingSteps({
   endpoint,
+  loadState,
   message,
   mode = 'request',
 } = {}) {
   const runtimeMessage = message || 'Waiting for the extension runtime and provider sandbox.';
-  const requestStatus = mode === 'request' ? 'loading' : mode === 'error' ? 'error' : 'done';
-  const runtimeStatus = mode === 'runtime' ? 'loading' : mode === 'error' ? 'error' : 'pending';
+  const status = String(loadState?.status || '').toLowerCase();
+  const phases = loadState?.phases || {};
+  const isError = mode === 'error' || status === 'failed' || status === 'timeout';
+  const isReady = status === 'ready';
+  const isStale = status === 'stale';
+  const isRefreshing = status === 'refreshing';
+  const runtimeStatus = mode === 'runtime' ? 'loading' : isError ? 'error' : 'done';
+  const descriptorStatus = isError && phases.descriptor !== 'ready'
+    ? phases.descriptor === 'timeout' ? 'error' : 'error'
+    : phases.descriptor === 'ready' || phases.descriptor === 'skipped' || isReady || isStale
+      ? 'done'
+      : isRefreshing && phases.descriptor === 'refreshing'
+        ? 'loading'
+        : isRefreshing || status === 'missing'
+          ? 'pending'
+          : 'pending';
+  const payloadStatus = isError
+    ? 'error'
+    : phases.payload === 'ready' || isReady || isStale
+      ? 'done'
+      : isRefreshing && phases.payload === 'refreshing'
+        ? 'loading'
+        : mode === 'payload' || isRefreshing || status === 'missing'
+          ? 'loading'
+          : 'pending';
 
   return [
     {
-      id: 'coreui-shell',
-      label: 'CoreUI runtime shell',
-      detail: 'ExtensionRuntimeTab chunk is mounted and ready.',
+      id: 'manifest',
+      label: 'Manifest tab registered',
+      detail: 'CoreUI has mounted the extension shell from manifest metadata.',
       status: 'done',
     },
     {
-      id: 'tab-payload',
-      label: 'Tab payload request',
-      detail: endpoint || '/api/webui/extensions/:id/tab',
-      status: requestStatus,
-    },
-    {
-      id: 'extension-runtime',
+      id: 'runtime',
       label: 'Extension runtime',
       detail: runtimeMessage,
       status: runtimeStatus,
     },
     {
+      id: 'descriptor',
+      label: 'Provider descriptor',
+      detail: loadState?.job_id ? `Background job ${loadState.job_id}` : 'Waiting for descriptor cache.',
+      status: descriptorStatus,
+    },
+    {
+      id: 'payload',
+      label: 'Tab payload',
+      detail: endpoint || '/api/webui/extensions/:id/tab',
+      status: payloadStatus,
+    },
+    {
       id: 'render-surface',
       label: 'Render extension surface',
       detail: 'Schema pages, service cards, iframe content, and diagnostics.',
-      status: 'pending',
+      status: isReady || isStale ? 'done' : isError ? 'error' : 'pending',
     },
-  ];
+  ].map((step) => (
+    step.id === 'runtime' && mode === 'request'
+      ? { ...step, status: 'pending' }
+      : step
+  ));
 }
 
 /**

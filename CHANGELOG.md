@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.76] - 2026-06-14
+### Fixed
+- Removed the divider line above the LLM Proxy build wizard footer buttons.
+
+## [0.6.75] - 2026-06-14
+### Fixed
+- Corrected the LLM Proxy build wizard footer so Back stays left, Save build stays centered, and Next stays right.
+
+## [0.6.74] - 2026-06-14
+### Fixed
+- Expanded `/v1/models` vision/tool capability aliases and added single-model retrieval so Kilo/Roo/Cline-style clients keep image attachments enabled for proxy models.
+
+## [0.6.73] - 2026-06-13
+### Fixed
+- Refreshed Ollama extension model lists after pull/delete/refresh actions and made the runtime tab fetch a fresh model list when opened.
+
+## [0.6.72] - 2026-06-13
+### Fixed
+- Prevented extension tab payload timeouts from rendering as a final unavailable page; timed-out payload refreshes now stay retryable and keep the loading diagnostics active.
+
+## [0.6.71] - 2026-06-11
+### Changed
+- Optimized Extensions tab loading with manifest-first tab rendering, background tab payload refresh, cached/stale payload states, and CoreUI loading diagnostics for descriptor and payload phases.
+
 ## [0.6.70] - 2026-06-11
 ### Added
 - Added a detailed CoreUI extension runtime loading view that shows loaded, active, pending, and blocked stages, with a CoreUI Showcase example.

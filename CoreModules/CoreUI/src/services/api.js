@@ -124,10 +124,24 @@ export async function getExtensionTabs() {
 export async function getExtensionTab(extensionId) {
   const { response, data } = await fetchJsonWithTimeout(
     `${API_BASE}/extensions/${encodeURIComponent(extensionId)}/tab`,
-    { timeoutMs: 10_000 },
+    { timeoutMs: 5_000 },
   );
   if (!response.ok) {
     throw new Error(extractApiError(data, 'Failed to load extension tab'));
+  }
+  return data;
+}
+
+export async function refreshExtensionTab(extensionId) {
+  const { response, data } = await fetchJsonWithTimeout(
+    `${API_BASE}/extensions/${encodeURIComponent(extensionId)}/tab/refresh`,
+    {
+      timeoutMs: 5_000,
+      fetchOptions: { method: 'POST' },
+    },
+  );
+  if (!response.ok) {
+    throw new Error(extractApiError(data, 'Failed to refresh extension tab'));
   }
   return data;
 }

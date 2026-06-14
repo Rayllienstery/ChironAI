@@ -641,7 +641,7 @@ function CoreUIShowcaseTab() {
             ".extensions-runtime-loading-step-chip",
           ]}
           source={`${sourceRoot}/components/ExtensionRuntimeLoadingView.jsx, ${sourceRoot}/styles/components/ExtensionRuntimeTab.css`}
-          description="Extension tab loading surface that shows the mounted CoreUI shell, active payload request, runtime wait state, pending render step, and elapsed time."
+          description="Extension tab loading surface for the two-phase manifest/cache loader, including active refresh, stale cache, and timeout states."
         >
           <div className="coreui-showcase-extension-loading-demo">
             <ExtensionRuntimeLoadingView
@@ -650,8 +650,42 @@ function CoreUIShowcaseTab() {
               elapsedMs={7300}
               steps={buildExtensionRuntimeLoadingSteps({
                 endpoint: "/api/webui/extensions/ollama-provider/tab",
+                loadState: {
+                  status: "refreshing",
+                  job_id: "tab-a13f7c92",
+                  phases: { descriptor: "ready", payload: "refreshing" },
+                },
                 message: "Inspecting Docker container and provider runtime.",
-                mode: "runtime",
+                mode: "payload",
+              })}
+            />
+            <ExtensionRuntimeLoadingView
+              title="Open WebUI"
+              extensionId="open-webui"
+              elapsedMs={12400}
+              steps={buildExtensionRuntimeLoadingSteps({
+                endpoint: "/api/webui/extensions/open-webui/tab",
+                loadState: {
+                  status: "stale",
+                  job_id: "tab-stale",
+                  phases: { descriptor: "ready", payload: "ready" },
+                },
+                message: "Showing cached payload while refreshing provider status.",
+              })}
+            />
+            <ExtensionRuntimeLoadingView
+              title="Codex"
+              extensionId="codex-launcher"
+              elapsedMs={6100}
+              steps={buildExtensionRuntimeLoadingSteps({
+                endpoint: "/api/webui/extensions/codex-launcher/tab",
+                loadState: {
+                  status: "timeout",
+                  job_id: "tab-timeout",
+                  error: "Provider payload timed out after 5.0s",
+                  phases: { descriptor: "ready", payload: "timeout" },
+                },
+                message: "Provider payload timed out after 5.0s",
               })}
             />
           </div>

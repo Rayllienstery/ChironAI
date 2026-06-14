@@ -1160,8 +1160,12 @@ def test_models_endpoint() -> None:
     assert isinstance(data["data"], list)
     for m in data["data"]:
         assert m.get("supports_vision") is True
+        assert m.get("supportsImages") is True
+        assert m.get("supports_images") is True
         assert m.get("attachment") is True
+        assert m.get("input_modalities") == ["text", "image"]
         assert m.get("modalities") == {"input": ["text", "image"], "output": ["text"]}
+        assert "vision" in (m.get("capabilities") or [])
 
 
 def test_models_endpoint_includes_chironai_autocomplete_when_backend_configured(
@@ -1185,8 +1189,55 @@ def test_models_endpoint_includes_chironai_autocomplete_when_backend_configured(
     assert "ChironAI-Autocomplete" in ids
     ac = next(m for m in (data.get("data") or []) if m.get("id") == "ChironAI-Autocomplete")
     assert ac.get("supports_vision") is True
+    assert ac.get("supportsImages") is True
     assert ac.get("attachment") is True
+    assert ac.get("input_modalities") == ["text", "image"]
     assert ac.get("modalities") == {"input": ["text", "image"], "output": ["text"]}
+
+
+def test_v1_retrieve_model_exposes_vision_aliases_for_build_and_upstream_tag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    import api.http.rag_routes as rag_routes
+    from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == LLM_PROXY_BUILDS_APP_KEY:
+                return json.dumps(
+                    [
+                        {
+                            "id": "Agent-high",
+                            "backend": "dumb",
+                            "provider_id": "ollama",
+                            "model": "kimi-k2.7-code:cloud",
+                            "prompt_name": "system_senior_ios_assistant_v1",
+                        }
+                    ]
+                )
+            return _test_proxy_api_key_setting(key)
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+
+    client = rag_routes.create_app().test_client()
+
+    build_response = client.get("/v1/models/Agent-high")
+    assert build_response.status_code == 200
+    build_row = build_response.get_json() or {}
+    assert build_row.get("id") == "Agent-high"
+    assert build_row.get("supportsImages") is True
+    assert build_row.get("input_modalities") == ["text", "image"]
+    assert "vision" in (build_row.get("capabilities") or [])
+
+    upstream_response = client.get("/v1/models/kimi-k2.7-code:cloud")
+    assert upstream_response.status_code == 200
+    upstream_row = upstream_response.get_json() or {}
+    assert upstream_row.get("id") == "kimi-k2.7-code:cloud"
+    assert upstream_row.get("supportsImages") is True
+    assert upstream_row.get("modalities") == {"input": ["text", "image"], "output": ["text"]}
+    assert (upstream_row.get("metadata") or {}).get("synthetic") is True
 
 
 def test_models_endpoint_exposes_build_context_length(

@@ -99,16 +99,26 @@ def test_openai_model_objects_expose_opencode_vision_capabilities() -> None:
     rows = openai_model_objects_for_builds([_base_build()])
 
     assert rows[0]["supports_vision"] is True
+    assert rows[0]["supportsImages"] is True
+    assert rows[0]["supports_images"] is True
     assert rows[0]["attachment"] is True
+    assert rows[0]["input_modalities"] == ["text", "image"]
     assert rows[0]["modalities"] == {"input": ["text", "image"], "output": ["text"]}
+    assert rows[0]["capabilities"] == ["completion", "tools", "vision"]
+    assert rows[0]["supportsTools"] is True
+    assert rows[0]["supports_tools"] is True
     assert rows[0]["tool_call"] is True
 
 
 def test_openai_client_capability_fields_returns_independent_payload() -> None:
     fields = openai_client_capability_fields()
     fields["modalities"]["input"].append("audio")  # type: ignore[index,union-attr]
+    fields["input_modalities"].append("audio")  # type: ignore[attr-defined,union-attr]
+    fields["capabilities"].append("audio")  # type: ignore[attr-defined,union-attr]
 
     assert openai_client_capability_fields()["modalities"] == {"input": ["text", "image"], "output": ["text"]}
+    assert openai_client_capability_fields()["input_modalities"] == ["text", "image"]
+    assert openai_client_capability_fields()["capabilities"] == ["completion", "tools", "vision"]
 
 
 def test_find_build_by_id_trims_requested_model() -> None:
