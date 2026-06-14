@@ -142,8 +142,48 @@ def test_npm_line_classifier_handles_json_and_text():
     assert _classify_npm_line("changed 3 packages") == ("changed", "")
 
 
+def test_command_ecosystem_detects_python_module_invocations():
+    from api.http.webui_dependencies_routes import _command_ecosystem
+
+    assert _command_ecosystem([sys.executable, "-m", "pip", "install"]) == "python"
+    assert _command_ecosystem(["pip", "list"]) == "python"
+    assert _command_ecosystem(["npm.cmd", "update"]) == "npm"
+
+
 def test_run_job_records_streaming_progress(monkeypatch, tmp_path):
     import api.http.webui_dependencies_routes as routes
+
+    _write_dependency_fixture(tmp_path)
+    monkeypatch.setattr(routes, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(routes, "COREUI_ROOT", tmp_path / "CoreModules" / "CoreUI")
+    monkeypatch.setattr(routes, "_python_installed_version", lambda name: None)
+
+    def fake_stream_pip_updates(args, *, cwd, timeout, job_id, completed):
+        del args, cwd, timeout, job_id
+        completed.append({"ecosystem": "python", "name": "flask", "version": "3.0.0"})
+        return {
+            "command": "pip install",
+            "ok": True,
+            "returncode": 0,
+            "phase": "done",
+            "completed_packages": ["flask"],
+            "updated": [{"name": "flask", "latest": "3.0.0"}],
+        }
+
+    def fake_stream_npm_updates(args, *, cwd, timeout, job_id, completed):
+        del args, cwd, timeout, job_id
+        completed.append({"ecosystem": "npm", "name": "react", "version": "18.2.0"})
+        return {
+            "command": "npm update",
+            "ok": True,
+            "returncode": 0,
+            "phase": "done",
+            "completed_packages": ["react"],
+            "updated": [{"name": "react", "latest": "18.2.0"}],
+        }
+
+    monkeypatch.setattr(routes, "_stream_pip_updates", fake_stream_pip_updates)
+    monkeypatch.setattr(routes, "_stream_npm_updates", fake_stream_npm_updates)
 
     routes._JOBS.clear()
     started = routes._start_job("update_all")

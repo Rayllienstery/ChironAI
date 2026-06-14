@@ -29,3 +29,9 @@ def test_audit_apple_ingest_filter_help() -> None:
     result = _run_script_help("audit_apple_ingest_filter.py")
     assert result.returncode == 0, result.stderr
     assert "apple" in result.stdout.lower()
+
+
+def test_quality_gate_help() -> None:
+    result = _run_script_help("quality_gate.py")
+    assert result.returncode == 0, result.stderr
+    assert "quality gates" in result.stdout.lower()

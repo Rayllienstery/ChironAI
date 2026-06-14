@@ -20,7 +20,7 @@ React requires Node.js and npm.
 
 5. After installation, run the build in the `webui_frontend` folder:
    ```powershell
-   npm install
+   npm ci
    npm run build
    ```
 
@@ -41,4 +41,3 @@ If Node.js is already installed but not available in `PATH`:
 
 If you cannot install Node.js, you can use a simplified version without React.
 Ask the developer to provide a plain JavaScript version.
-

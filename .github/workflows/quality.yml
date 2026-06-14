@@ -1,0 +1,36 @@
+name: Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  minimal:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: CoreModules/CoreUI/package-lock.json
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Install CoreUI dependencies
+        working-directory: CoreModules/CoreUI
+        run: npm ci
+
+      - name: Run minimal quality gate
+        run: python scripts/quality_gate.py --profile minimal

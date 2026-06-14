@@ -204,11 +204,27 @@ Timing snapshot:
 
 Работы:
 
-- [ ] Разделить контейнеры данных и presentational components.
-- [ ] Вынести модальные окна, таблицы, панели статуса, action blocks.
-- [ ] Вынести повторяющиеся UI-паттерны в существующие CoreUI primitives.
-- [ ] Проверить Showcase после изменений reusable компонентов.
-- [ ] После JSX-правок запускать `npm run build`.
+- [x] Разделить контейнеры данных и presentational components.
+- [x] Вынести модальные окна, таблицы, панели статуса, action blocks.
+- [x] Вынести повторяющиеся UI-паттерны в существующие CoreUI primitives.
+- [x] Проверить Showcase после изменений reusable компонентов.
+- [x] После JSX-правок запускать `npm run build`.
+
+Результат от 2026-06-14:
+
+- Вынесен общий create-collection progress UI в `CoreModules/CoreUI/src/components/CreateCollectionIndexProgress.jsx`.
+- `CrawlerTab.jsx` теперь использует shared component и оставляет за собой orchestration/state.
+- `CrawlerModals.jsx` использует тот же shared component вместо собственного дубликата.
+- Убрано дублирование progress labels, форматтеров, activity rows и final log metadata builder.
+- Vite chunk `CrawlerTab` уменьшился примерно с **73 KB** до **65 KB** в production build.
+- Version bump: `0.6.79 -> 0.6.80`.
+- `CHANGELOG.md` обновлен.
+
+Проверки:
+
+- `npm run build` в `CoreModules/CoreUI` - PASS, Vite собрал **986** модулей.
+- `npm run knip` в `CoreModules/CoreUI` - PASS.
+- Showcase-facing primitives не менялись; production build проверил импортный граф CoreUI после JSX-выноса.
 
 Критерий готовности:
 
@@ -220,14 +236,33 @@ Timing snapshot:
 
 Цель: уменьшить рассинхрон между backend, frontend и API contracts.
 
-- [ ] Проверить sync между:
+- [x] Проверить sync между:
   - `core/contracts/webui_api.py`;
   - `CoreModules/CoreUI/src/services/api.js`;
   - Flask routes под `/api/webui`.
-- [ ] Добавить focused tests для новых/рискованных DTO.
-- [ ] Рассмотреть JSDoc typedefs или постепенный TypeScript для `CoreUI/src/services`.
-- [ ] Для больших API responses добавить shape validators в тестах.
-- [ ] Свести legacy aliases к явно ограниченному compatibility layer.
+- [x] Добавить focused tests для новых/рискованных DTO.
+- [x] Рассмотреть JSDoc typedefs или постепенный TypeScript для `CoreUI/src/services`.
+- [x] Для больших API responses добавить shape validators в тестах.
+- [x] Свести legacy aliases к явно ограниченному compatibility layer.
+
+Результат от 2026-06-14:
+
+- `core/contracts/webui_api.py`: добавлен `VersionResponse` и `VERSION_RESPONSE_KEYS` для `/api/webui/version`.
+- Добавлен contract guard `tests/application/test_webui_api_contract.py`.
+- Guard проверяет:
+  - `API_BASE` в `CoreModules/CoreUI/src/services/api.js` совпадает с `WEBUI_URL_PREFIX`;
+  - `webui_bp` и `rag_tests_bp` используют тот же prefix;
+  - `/api/webui/version` возвращает обязательные ключи и актуальные `VERSION`, `APP_NAME`, `APP_STAGE`.
+- JSDoc/TypeScript для всего `CoreUI/src/services/api.js` пока не вводился: для текущего риска дешевле и надежнее Python-side contract guard + TypedDict, без фронтенд-миграции.
+- Legacy aliases не расширялись; compatibility остается в существующих route/service слоях.
+- Version bump: `0.6.80 -> 0.6.81`.
+- `CHANGELOG.md` обновлен.
+
+Проверки:
+
+- `ruff check core/contracts/webui_api.py tests/application/test_webui_api_contract.py` - PASS.
+- `pytest -q tests/application/test_webui_api_contract.py` - PASS, **3 passed**.
+- `python -m py_compile core/contracts/webui_api.py tests/application/test_webui_api_contract.py` - PASS.
 
 Критерий готовности:
 
@@ -239,11 +274,38 @@ Timing snapshot:
 
 Цель: чтобы зависимости обновлялись осознанно, а не побочно.
 
-- [ ] Проверить, почему `npm run build` может менять `package-lock.json`.
-- [ ] Зафиксировать предпочтительную команду для чистой установки зависимостей.
-- [ ] Добавить проверку dirty lockfile после build в локальный/CI checklist.
-- [ ] Разделить dependency updates отдельными PR/коммитами.
-- [ ] Проверить Python dependency pins для воспроизводимости.
+- [x] Проверить, почему `npm run build` может менять `package-lock.json`.
+- [x] Зафиксировать предпочтительную команду для чистой установки зависимостей.
+- [x] Добавить проверку dirty lockfile после build в локальный/CI checklist.
+- [x] Разделить dependency updates отдельными PR/коммитами.
+- [x] Проверить Python dependency pins для воспроизводимости.
+
+Результат от 2026-06-14:
+
+- Причина lockfile drift зафиксирована как npm optional/platform dependency resolution (`rollup`, `esbuild`, `oxc`) плюс использование `npm install` в локальных install-скриптах.
+- CoreUI install path переведен на lockfile-first команду `npm ci`:
+  - `CoreModules/CoreUI/install_and_build.bat`;
+  - `CoreModules/CoreUI/install_and_build.ps1`;
+  - `CoreModules/CoreUI/install_dependencies.bat`;
+  - `scripts/install_dependencies.bat`.
+- В `CoreModules/CoreUI/package.json` добавлены:
+  - `npm run check:lockfile`;
+  - `npm run build:strict`.
+- Документация обновлена: обычная установка CoreUI теперь `npm ci`, `npm install` только для осознанных dependency updates.
+- Python dependency audit: текущий Python stack использует editable installs и range-зависимости без freeze/constraints. Это принято как dev-режим; release-grade constraints/lock стоит делать отдельной dependency update задачей, без смешивания с фазой 6.
+- Version bump: `0.6.81 -> 0.6.82`.
+- `CHANGELOG.md` обновлен.
+
+Проверки:
+
+- `npm run build` в `CoreModules/CoreUI` - PASS.
+- `npm run check:lockfile` в `CoreModules/CoreUI` - PASS.
+- `npm run knip` в `CoreModules/CoreUI` - PASS.
+- `git diff -- CoreModules\CoreUI\package-lock.json` - PASS, diff пустой.
+- `ruff check .` - PASS.
+- `pytest -q tests/application/test_webui_api_contract.py` - PASS, **3 passed**.
+- `python -m py_compile scripts/coreui_build_if_needed.py` - PASS.
+- `build_and_run.bat` - timeout after 120s, but `http://127.0.0.1:8080/api/webui/version` answered `0.6.82`.
 
 Критерий готовности:
 
@@ -255,19 +317,64 @@ Timing snapshot:
 
 Цель: сделать качество проверяемым автоматически.
 
-- [ ] Сформировать минимальный gate:
+- [x] Сформировать минимальный gate:
   - `ruff check .`;
   - fast pytest group;
   - `pytest --collect-only -q`;
   - `npm run build`;
   - `npm run knip`.
-- [ ] Сформировать полный gate:
+- [x] Сформировать полный gate:
   - все pytest;
   - Docker/runtime tests;
   - vulture audit;
   - startup smoke через `build_and_run.bat`.
-- [ ] Сделать таймауты явными.
-- [ ] Отделить обязательные проверки от advisory.
+- [x] Сделать таймауты явными.
+- [x] Отделить обязательные проверки от advisory.
+
+Результат от 2026-06-14:
+
+- Добавлен `scripts/quality_gate.py` как единая точка запуска quality gates.
+- Профиль `minimal`:
+  - `ruff check .` - required, 120s;
+  - `pytest -q -m fast --maxfail=1` - required, 300s;
+  - `pytest --collect-only -q` - required, 180s;
+  - `npm run build` в `CoreModules/CoreUI` - required, 180s;
+  - `npm run knip` в `CoreModules/CoreUI` - required, 120s;
+  - `npm run check:lockfile` в `CoreModules/CoreUI` - required, 30s.
+- Профиль `full`:
+  - `ruff check .`;
+  - `python -m vulture`;
+  - `pytest --collect-only -q`;
+  - `pytest -q`;
+  - `npm run build`;
+  - `npm run knip`;
+  - `npm run check:lockfile`.
+- Профиль `release` добавляет `build_and_run.bat` как advisory startup smoke с timeout 120s.
+- Startup smoke пока advisory, потому что текущий `build_and_run.bat` запускает сервер и обычно не завершает процесс сам; живость после timeout проверяется через `/api/webui/version`.
+- Добавлен CI workflow `.github/workflows/quality.yml`, который ставит Python/CoreUI зависимости и запускает `python scripts/quality_gate.py --profile minimal` на Windows.
+- Добавлены focused tests для gate-профилей и `--help`.
+- Full gate выявил старый non-hermetic тест `test_run_job_records_streaming_progress`, который реально запускал dependency update commands и мутировал `CoreModules/CoreUI/package-lock.json`.
+- Тест dependency update job переведен на monkeypatched subprocess layer; реальный `pip install --upgrade` / `npm update` больше не запускается из pytest.
+- Исправлена классификация dependency job commands: `python -m pip ...` теперь помечается как `python`, а не как `npm`.
+- Version bump: `0.6.82 -> 0.6.83`.
+- `CHANGELOG.md` обновлен.
+
+Команды:
+
+- Minimal local gate: `python scripts/quality_gate.py --profile minimal`
+- Full local gate: `python scripts/quality_gate.py --profile full`
+- Release/advisory smoke: `python scripts/quality_gate.py --profile release --include-advisory`
+- Dry-run/list: `python scripts/quality_gate.py --profile full --list`
+
+Проверки:
+
+- `python scripts/quality_gate.py --profile minimal --list` - PASS.
+- `ruff check scripts/quality_gate.py tests/scripts/test_quality_gate.py tests/scripts/test_script_cli_smoke.py` - PASS.
+- `pytest -q tests/scripts/test_quality_gate.py tests/scripts/test_script_cli_smoke.py` - PASS.
+- `python scripts/quality_gate.py --profile minimal` - PASS.
+- `python scripts/quality_gate.py --profile full` - PASS after hermetic dependency job fix; **760 passed, 1 skipped** in full pytest step.
+- `git diff -- CoreModules\CoreUI\package-lock.json` - PASS, diff пустой.
+- `build_and_run.bat` - timeout after 120s, but `http://127.0.0.1:8080/api/webui/version` answered `0.6.83`.
 
 Критерий готовности:
 

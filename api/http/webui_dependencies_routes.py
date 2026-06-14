@@ -702,6 +702,15 @@ def _stream_npm_updates(
     }
 
 
+def _command_ecosystem(args: list[str]) -> str:
+    if "-m" in args and "pip" in args:
+        return "python"
+    executable = Path(args[0]).name.lower() if args else ""
+    if executable.startswith("pip") or executable.startswith("python"):
+        return "python"
+    return "npm"
+
+
 def _run_job(job_id: str, mode: str) -> None:
     _set_job(
         job_id,
@@ -728,7 +737,7 @@ def _run_job(job_id: str, mode: str) -> None:
 
     ok = True
     for args, cwd, timeout, ok_codes in commands:
-        ecosystem = "python" if args and args[0].endswith("pip") else "npm"
+        ecosystem = _command_ecosystem(args)
         if mode == "check":
             step = _run_subprocess(args, cwd=cwd, timeout=timeout, ok_codes=ok_codes)
         elif ecosystem == "python":

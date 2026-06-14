@@ -30,6 +30,7 @@ This installs `chironai` from [`pyproject.toml`](pyproject.toml) (packages: `app
 - Tests: `pytest` (config in `pyproject.toml`).
 - Architecture guard: `lint-imports` — ensures `domain` does not import `application`, `api`, or `infrastructure`.
 - Lint (optional): `ruff check` — default rules are minimal (`E9`); use `ruff check --extend-select F` for stricter checks when refactoring.
+- Local quality gate: `python scripts/quality_gate.py --profile minimal`. Use `--profile full` before release work; `--profile release --include-advisory` also attempts the long-running startup smoke.
 
 The hexagonal **`rag_service`** package ships with **`chironai_rag`** in **`CoreModules/RagService`** (pip `chironai-rag-service`; see `requirements-dev.txt`). Other subprojects under `modules/` stay on `pythonpath` for pytest as needed.
 

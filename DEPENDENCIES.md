@@ -10,7 +10,7 @@ This document lists all files responsible for dependency management in the proje
 |------|-------------|
 | `pyproject.toml` | **Primary dependency file**. Contains dependencies for the `chironai` package including runtime and dev dependencies |
 | `requirements-dev.txt` | Full dev install: `-e .[dev]` and listed editable packages (see file) |
-| `scripts/install_dependencies.bat` | **Windows:** run from `scripts\` — changes to repo root and calls `pip install -r requirements-dev.txt` once (`PIP_ONLY_BINARY=lxml` is set before install) |
+| `scripts/install_dependencies.bat` | **Windows:** run from `scripts\` - changes to repo root and calls `pip install -r requirements-dev.txt` once (`PIP_ONLY_BINARY=lxml` is set before install) |
 | `scripts/build_app.bat` | CoreUI build (`npm run build`); invoked from `build_and_run.bat` |
 | `scripts/sync_bundled_extensions.py` | Verify/sync bundled extensions with local repo clones (see `docs/EXTENSIONS_GITHUB_MIGRATION.md`) |
 | `scripts/audit_apple_ingest_filter.py` | **Manual offline audit:** chunk/stats for curated Apple Documentation pages; cwd = repo root, requires `WebUI/rag_sources/apple_documentation/` |
@@ -40,7 +40,8 @@ This document lists all files responsible for dependency management in the proje
 
 | File | Description |
 |------|-------------|
-| `WebUI/requirements.txt` | Legacy WebUI dependencies (references root pyproject.toml) |
+| `CoreModules/CoreUI/package.json` | CoreUI npm commands and dependency ranges |
+| `CoreModules/CoreUI/package-lock.json` | CoreUI reproducible npm install lockfile; use `npm ci` for normal installs |
 
 ### Vendor
 
@@ -86,6 +87,19 @@ dev = [
 ---
 
 ## Installing dependencies
+
+### CoreUI frontend
+
+Use the lockfile-first path for regular setup and CI-style checks:
+
+```bash
+cd CoreModules/CoreUI
+npm ci
+npm run build
+npm run check:lockfile
+```
+
+`npm install` is reserved for intentional dependency updates. Commit `package.json` and `package-lock.json` together when dependency ranges or resolved versions change.
 
 ### Full development stack (recommended)
 
@@ -170,6 +184,8 @@ Modules/
 ## Notes
 
 - **Source of truth**: root `pyproject.toml`
-- **Editable installs**: packages from `requirements-dev.txt` are installed via `-e`; other CoreModules — manually as needed (`pip install -e CoreModules/...`)
+- **Python reproducibility**: the current Python stack uses editable installs and dependency ranges, not a fully frozen constraints file. For release-grade reproducibility, add a generated constraints/lock artifact in a dedicated dependency update.
+- **CoreUI reproducibility**: `package-lock.json` is the source of truth; normal installs should use `npm ci`.
+- **Editable installs**: packages from `requirements-dev.txt` are installed via `-e`; other CoreModules - manually as needed (`pip install -e CoreModules/...`)
 - **Docker**: Qdrant is started via docker-compose
 - **Python version**: requires Python >=3.10

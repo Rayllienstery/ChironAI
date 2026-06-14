@@ -2,7 +2,7 @@
 echo Installing npm dependencies...
 echo.
 
-call npm.cmd install
+call npm.cmd ci
 
 if %errorlevel% neq 0 (
     echo.

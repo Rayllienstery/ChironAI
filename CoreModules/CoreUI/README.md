@@ -6,9 +6,10 @@ React/Vite SPA for the ChironAI Web UI (served from `CoreModules/CoreUI`). Commu
 
 ## Initialization
 
-- **Dependencies**: `npm install` (or `pnpm`/`yarn`) in this directory.
+- **Dependencies**: `npm ci` in this directory. Use `npm install` only when intentionally updating `package-lock.json`.
 - **Environment**: For standalone dev, set `VITE_API_PROXY_TARGET` to the running backend origin when it is not on `http://localhost:8080`. Default relative `/api/webui` assumes same-origin with backend.
 - **Run**: From this directory: `npm run dev` for development; `npm run build` for production.
+- **Lockfile check**: After dependency-neutral builds, run `npm run check:lockfile` or use `npm run build:strict` to build and fail on accidental `package-lock.json` drift.
 
 ## API
 

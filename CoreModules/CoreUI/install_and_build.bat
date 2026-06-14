@@ -1,6 +1,6 @@
 @echo off
 echo Installing npm dependencies...
-call npm install
+call npm ci
 if %errorlevel% neq 0 (
     echo Failed to install dependencies. Please make sure Node.js and npm are installed.
     pause

@@ -29,6 +29,20 @@ class WebUiValidationErrorResponse(TypedDict, total=False):
     details: list[str]
 
 
+class VersionResponse(TypedDict, total=False):
+    """GET /version response used by CoreUI startup and smoke checks."""
+
+    version: str
+    app_name: str
+    stage: str
+    changelog: str
+    display_name: str
+    error: str
+
+
+VERSION_RESPONSE_KEYS = frozenset({"version", "app_name", "stage", "changelog", "display_name"})
+
+
 # --- Session -----------------------------------------------------------------
 
 class SessionResponse(TypedDict, total=False):
@@ -445,6 +459,8 @@ __all__ = [
     "WEBUI_URL_PREFIX",
     "WebUiErrorResponse",
     "WebUiValidationErrorResponse",
+    "VersionResponse",
+    "VERSION_RESPONSE_KEYS",
     "SessionResponse",
     "ProviderModelEntry",
     "ModelsListResponse",

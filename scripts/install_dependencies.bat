@@ -52,9 +52,9 @@ if errorlevel 1 (
   if not exist "%FRONTEND%\package.json" (
     echo WARNING: CoreUI package.json not found at %FRONTEND%
   ) else (
-    echo Installing CoreUI npm dependencies...
+    echo Installing CoreUI npm dependencies from package-lock.json...
     pushd "%FRONTEND%"
-    call npm.cmd install
+    call npm.cmd ci
     if errorlevel 1 (
       echo npm install failed in CoreModules\CoreUI
       popd

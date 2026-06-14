@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:strict": "npm run build && npm run check:lockfile",
     "build:stats": "vite build && node -e \"console.log('Bundle report: dist/stats.html')\"",
+    "check:lockfile": "git diff --exit-code HEAD -- package-lock.json",
     "test:module-timings": "node scripts/test_module_timings.mjs",
     "preview": "vite preview",
     "knip": "knip"

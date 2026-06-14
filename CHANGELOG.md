@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.83] - 2026-06-14
+### Changed
+- Added a reusable quality gate runner with explicit minimal, full, and release profiles, plus a CI workflow that runs the minimal gate.
+- Made the dependency update job test hermetic so full quality gates no longer mutate CoreUI lockfiles.
+
+## [0.6.82] - 2026-06-14
+### Changed
+- Tightened CoreUI dependency hygiene by switching local install scripts to lockfile-first npm installs and adding a lockfile drift check for frontend builds.
+
+## [0.6.81] - 2026-06-14
+### Changed
+- Added WebUI API contract guards that keep the CoreUI API base, Flask WebUI blueprints, and `/version` response shape synchronized with `core.contracts.webui_api`.
+
+## [0.6.80] - 2026-06-14
+### Changed
+- Extracted the crawler create-collection progress UI into a shared CoreUI component used by both the Crawler tab and crawler modals, removing duplicated progress rendering logic.
+
 ## [0.6.79] - 2026-06-14
 ### Changed
 - Split crawler indexing/logging helpers and RAG test authoring helpers out of large backend route modules, with focused tests for the extracted behavior.

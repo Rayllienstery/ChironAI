@@ -14,7 +14,7 @@ Run in PowerShell or CMD:
 In PowerShell:
 
 ```powershell
-npm.cmd install
+npm.cmd ci
 npm.cmd run build
 ```
 
@@ -22,7 +22,7 @@ npm.cmd run build
 
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
-npm install
+npm ci
 npm run build
 ```
 
@@ -32,7 +32,7 @@ Open `cmd.exe` and run:
 
 ```cmd
 cd C:\Users\Raylee\AI\webui_frontend
-npm install
+npm ci
 npm run build
 ```
 
