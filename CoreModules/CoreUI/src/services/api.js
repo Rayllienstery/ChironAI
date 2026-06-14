@@ -1569,11 +1569,11 @@ export async function stopDockerContainer(container) {
 }
 
 export async function removeDockerContainer(container, force = false) {
-  return dockerJsonAction('/docker/containers', { container, force }, 'DELETE');
+  return dockerJsonAction('/docker/containers', { container, force, confirm: container }, 'DELETE');
 }
 
 export async function removeDockerImage(image, force = false) {
-  return dockerJsonAction('/docker/images', { image, force }, 'DELETE');
+  return dockerJsonAction('/docker/images', { image, force, confirm: image }, 'DELETE');
 }
 
 export async function cancelCreateCollection(jobId) {

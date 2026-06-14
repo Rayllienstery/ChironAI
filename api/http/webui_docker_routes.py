@@ -10,8 +10,11 @@ from flask import Blueprint, Response, jsonify, request, stream_with_context
 from docker_manager import DockerManager
 
 
-def _error_payload(error: str, details: str = "") -> dict[str, Any]:
-    return {"ok": False, "error": str(error or "Docker action failed"), "details": str(details or "")}
+def _error_payload(error: str, details: str = "", *, code: str = "") -> dict[str, Any]:
+    payload = {"ok": False, "error": str(error or "Docker action failed"), "details": str(details or "")}
+    if code:
+        payload["code"] = code
+    return payload
 
 
 def _status_for_result(result: dict[str, Any]) -> int:
@@ -21,6 +24,20 @@ def _status_for_result(result: dict[str, Any]) -> int:
 def _body() -> dict[str, Any]:
     data = request.get_json(force=True, silent=True) or {}
     return data if isinstance(data, dict) else {}
+
+
+def _destructive_confirmation_error(data: dict[str, Any], field: str) -> dict[str, Any] | None:
+    target = str(data.get(field) or "").strip()
+    if not target:
+        return _error_payload(f"{field} is required", code="missing_target")
+    confirmation = str(data.get("confirm") or data.get("confirmation") or "").strip()
+    if confirmation != target:
+        return _error_payload(
+            "Confirmation required",
+            f"Set confirm to the exact {field} name to delete it.",
+            code="confirmation_required",
+        )
+    return None
 
 
 def register_docker_routes(
@@ -135,6 +152,9 @@ def register_docker_routes(
     def docker_remove_container() -> Any:
         try:
             data = _body()
+            confirmation_error = _destructive_confirmation_error(data, "container")
+            if confirmation_error is not None:
+                return jsonify(confirmation_error), 400
             container = str(data.get("container") or "").strip()
             force = bool(data.get("force"))
             result = manager().remove_container(container, force=force)
@@ -147,6 +167,9 @@ def register_docker_routes(
     def docker_remove_image() -> Any:
         try:
             data = _body()
+            confirmation_error = _destructive_confirmation_error(data, "image")
+            if confirmation_error is not None:
+                return jsonify(confirmation_error), 400
             image = str(data.get("image") or "").strip()
             force = bool(data.get("force"))
             result = manager().remove_image(image, force=force)

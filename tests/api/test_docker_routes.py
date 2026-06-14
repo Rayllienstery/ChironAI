@@ -135,10 +135,22 @@ def test_docker_routes_destructive_delete_force(monkeypatch: Any) -> None:
     app = create_app()
     client = app.test_client()
 
-    blocked = client.delete("/api/webui/docker/containers", json={"container": "running"})
-    forced = client.delete("/api/webui/docker/containers", json={"container": "running", "force": True})
-    image = client.delete("/api/webui/docker/images", json={"image": "qdrant/qdrant:latest"})
+    missing_confirm = client.delete("/api/webui/docker/containers", json={"container": "qdrant"})
+    wrong_confirm = client.delete("/api/webui/docker/images", json={"image": "qdrant/qdrant:latest", "confirm": "qdrant"})
+    blocked = client.delete("/api/webui/docker/containers", json={"container": "running", "confirm": "running"})
+    forced = client.delete(
+        "/api/webui/docker/containers",
+        json={"container": "running", "force": True, "confirm": "running"},
+    )
+    image = client.delete(
+        "/api/webui/docker/images",
+        json={"image": "qdrant/qdrant:latest", "confirm": "qdrant/qdrant:latest"},
+    )
 
+    assert missing_confirm.status_code == 400
+    assert wrong_confirm.status_code == 400
+    assert (missing_confirm.get_json() or {})["code"] == "confirmation_required"
+    assert (wrong_confirm.get_json() or {})["code"] == "confirmation_required"
     assert blocked.status_code == 400
     assert (blocked.get_json() or {})["error"] == "Container is running"
     assert forced.status_code == 200

@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.84] - 2026-06-14
+### Changed
+- Added product hardening smoke coverage for critical WebUI flows and required exact backend confirmation for destructive Docker delete actions.
+
 ## [0.6.83] - 2026-06-14
 ### Changed
 - Added a reusable quality gate runner with explicit minimal, full, and release profiles, plus a CI workflow that runs the minimal gate.

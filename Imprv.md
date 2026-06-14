@@ -386,7 +386,7 @@ Timing snapshot:
 
 Цель: довести beta-проект до более спокойного пользовательского состояния.
 
-- [ ] Пройти критические user flows:
+- [x] Пройти критические user flows:
   - старт приложения;
   - CoreUI dashboard;
   - RAG status/search;
@@ -395,10 +395,41 @@ Timing snapshot:
   - Ollama provider actions;
   - Docker status/actions;
   - logs/proxy traces.
-- [ ] Для каждого flow добавить smoke или contract test, если его нет.
-- [ ] Проверить error messages: пользовательские ошибки отдельно от internal details.
-- [ ] Проверить, что destructive actions требуют явного подтверждения.
-- [ ] Проверить, что extension sandbox/security failures не валят host.
+- [x] Для каждого flow добавить smoke или contract test, если его нет.
+- [x] Проверить error messages: пользовательские ошибки отдельно от internal details.
+- [x] Проверить, что destructive actions требуют явного подтверждения.
+- [x] Проверить, что extension sandbox/security failures не валят host.
+
+Результат от 2026-06-14:
+
+- Добавлена product hardening smoke matrix `tests/api/test_product_hardening_smoke.py`.
+- Матрица явно покрывает:
+  - старт приложения: `/api/webui/performance/startup`;
+  - CoreUI dashboard: `/`;
+  - RAG status: `/api/webui/rag/status`;
+  - LLM proxy `/v1/chat/completions`: existing focused proxy tests;
+  - extension install/enable/disable/remove: existing extension route tests;
+  - Ollama provider actions: generic extension action route tests;
+  - Docker status/actions: Docker route tests + new destructive confirmation guard;
+  - logs/proxy traces: `/api/webui/logs`, `/api/webui/proxy-trace/current`, `/api/webui/proxy-traces`.
+- Docker destructive DELETE routes now require exact backend confirmation:
+  - `DELETE /api/webui/docker/containers` requires `confirm` equal to `container`;
+  - `DELETE /api/webui/docker/images` requires `confirm` equal to `image`.
+- CoreUI Docker client now sends the confirmed target name after the existing `window.confirm` prompt.
+- Error payloads for missing destructive confirmation return user-facing `code="confirmation_required"` and do not include internal details.
+- Extension failure hardening remains covered by existing sanitized error and sandbox diagnostic tests; phase 8 smoke matrix records that coverage explicitly.
+- Version bump: `0.6.83 -> 0.6.84`.
+- `CHANGELOG.md` обновлен.
+
+Проверки:
+
+- `ruff check api/http/webui_docker_routes.py tests/api/test_docker_routes.py tests/api/test_product_hardening_smoke.py` - PASS.
+- `pytest -q tests/api/test_docker_routes.py tests/api/test_product_hardening_smoke.py tests/api/test_extensions_routes.py::test_extension_routes_return_sanitized_errors tests/api/test_extensions_routes.py::test_extension_sandbox_control_routes_return_diagnostics` - PASS.
+- `npm run build` в `CoreModules/CoreUI` - PASS.
+- `python scripts/quality_gate.py --profile minimal` - PASS.
+- `python scripts/quality_gate.py --profile full` - PASS; **763 passed, 1 skipped** in full pytest step.
+- `git diff -- CoreModules\CoreUI\package-lock.json` - PASS, diff пустой.
+- `build_and_run.bat` - timeout after 120s, but `http://127.0.0.1:8080/api/webui/version` answered `0.6.84`.
 
 Критерий готовности:
 
