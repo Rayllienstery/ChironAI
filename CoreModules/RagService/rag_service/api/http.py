@@ -7,6 +7,7 @@ import logging
 import uuid
 
 from flask import Flask, Response, jsonify, request
+from core.openapi import register_openapi_routes
 
 from rag_service.application.params import get_rag_answer_params
 from rag_service.application.use_cases import (
@@ -171,6 +172,8 @@ def create_app(
                 _rm["rag_quality"] = _rq
             response_data["rag_metadata"] = _rm
         return jsonify(response_data)
+
+    register_openapi_routes(app)
 
     return app
 

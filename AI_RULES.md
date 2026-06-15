@@ -29,11 +29,12 @@ Ambiguous “WebUI” in conversation: clarify—**`WebUI/` data folder**, **Web
 
 ### API and contract
 
-- The **`/api/webui`** prefix must match in three places:
+- The **`/api/webui`** prefix must match in four places:
   1. `core/contracts/webui_api.py` — constant `WEBUI_URL_PREFIX`;
   2. `CoreModules/CoreUI/src/services/api.js` — `API_BASE`;
   3. Flask Web UI blueprint — `url_prefix` (today around `api/http/webui_routes.py` and related registration).
-- Any new endpoint: update the contract (types/DTOs in `webui_api.py` as needed), the client in `api.js`, and server routes. Otherwise you get **docs ↔ frontend ↔ backend** drift.
+  4. RESTX/OpenAPI documentation — the generated spec and Swagger UI exposed through `/api/webui/openapi.json` and `/api/webui/swagger/`.
+- Any new endpoint: update the contract (types/DTOs in `webui_api.py` as needed), the client in `api.js`, server routes, and RESTX/OpenAPI descriptions/models/tests. Otherwise you get **docs ↔ frontend ↔ backend** drift.
 
 ### Removal cleanup
 
@@ -194,6 +195,7 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 ## 9. AI checklist before finishing a task
 
 - [ ] If the Web UI API changed: updated `webui_api.py`, `api.js` (and contract types/comments if needed), server routes.
+- [ ] If any HTTP endpoint was added, changed, or removed: updated RESTX/OpenAPI documentation/models and spec coverage tests.
 - [ ] If UI/API was removed: imports, routes/registration, client methods, constants, tests, styles, CoreUI Showcase, and docs cleaned up.
 - [ ] No import-boundary violations for `domain/`?
 - [ ] If `config/*.yaml` or env vars changed: are they documented for users/deploy?

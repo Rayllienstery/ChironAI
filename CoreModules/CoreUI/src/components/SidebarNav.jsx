@@ -190,6 +190,7 @@ function SidebarNav({
       if (id === 'tokens-security') import('./TokensSecurityTab');
       if (id === 'extensions') import('./ExtensionsTab');
       if (id === 'dev-documentation') import('./DevDocumentationTab');
+      if (id === 'swagger') import('./SwaggerTab');
       if (id === 'coreui-showcase') import('./CoreUIShowcaseTab');
     } catch {
       /* ignore */

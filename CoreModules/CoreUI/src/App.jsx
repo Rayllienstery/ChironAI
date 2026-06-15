@@ -86,6 +86,7 @@ const LAZY_MODULES = {
   CoreUIShowcaseTab: () => import("./components/CoreUIShowcaseTab"),
   ExtensionsTab: () => import("./components/ExtensionsTab"),
   DevDocumentationTab: () => import("./components/DevDocumentationTab"),
+  SwaggerTab: () => import("./components/SwaggerTab"),
   ExtensionRuntimeTab: () => import("./components/ExtensionRuntimeTab"),
   DockerTab: () => import("./components/DockerTab"),
   TokensSecurityTab: () => import("./components/TokensSecurityTab"),
@@ -104,6 +105,7 @@ const TAB_MODULE_KEYS = {
   "coreui-showcase": "CoreUIShowcaseTab",
   extensions: "ExtensionsTab",
   "dev-documentation": "DevDocumentationTab",
+  swagger: "SwaggerTab",
   docker: "DockerTab",
   "tokens-security": "TokensSecurityTab",
 };
@@ -121,6 +123,7 @@ const IDLE_PREFETCH_TAB_IDS = [
   "template-editor",
   "dependencies",
   "dev-documentation",
+  "swagger",
   "coreui-showcase",
   "settings",
 ];
@@ -146,6 +149,7 @@ const TemplateEditorTab = lazyWithRetry("TemplateEditorTab", LAZY_MODULES.Templa
 const CoreUIShowcaseTab = lazyWithRetry("CoreUIShowcaseTab", LAZY_MODULES.CoreUIShowcaseTab);
 const ExtensionsTab = lazyWithRetry("ExtensionsTab", LAZY_MODULES.ExtensionsTab);
 const DevDocumentationTab = lazyWithRetry("DevDocumentationTab", LAZY_MODULES.DevDocumentationTab);
+const SwaggerTab = lazyWithRetry("SwaggerTab", LAZY_MODULES.SwaggerTab);
 const ExtensionRuntimeTab = lazyWithRetry("ExtensionRuntimeTab", LAZY_MODULES.ExtensionRuntimeTab);
 const DockerTab = lazyWithRetry("DockerTab", LAZY_MODULES.DockerTab);
 const TokensSecurityTab = lazyWithRetry("TokensSecurityTab", LAZY_MODULES.TokensSecurityTab);
@@ -753,6 +757,7 @@ function App() {
     { id: "testing", label: "Testing", section: "Developer Tools" },
     { id: "coreui-showcase", label: "CoreUI Showcase", section: "Developer Tools" },
     { id: "dev-documentation", label: "Dev Documentation", section: "Developer Tools" },
+    { id: "swagger", label: "Swagger", section: "Developer Tools" },
     { id: "performance", label: "Performance", section: "Developer Tools" },
   ];
   const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || activeTab;
@@ -799,6 +804,8 @@ function App() {
         return <DevDocumentationTab />;
       case "performance":
         return <PerformanceTab />;
+      case "swagger":
+        return <SwaggerTab />;
       case "testing":
         return (
           <TestingTab

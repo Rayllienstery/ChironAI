@@ -1,5 +1,5 @@
 """ChironAI version information."""
 
-VERSION = "0.6.84"
+VERSION = "0.7.0"
 APP_NAME = "Chiron AI"
 APP_STAGE = "BETA"

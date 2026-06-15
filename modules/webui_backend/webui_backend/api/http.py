@@ -10,6 +10,7 @@ from __future__ import annotations
 from flask import Flask, jsonify
 
 from core.contracts.webui_api import WEBUI_URL_PREFIX
+from core.openapi import register_openapi_routes
 
 from webui_backend.application.use_cases import get_dashboard_stats
 from webui_backend.infrastructure.http_crawler_client import HttpCrawlerClient
@@ -32,6 +33,8 @@ def create_app() -> Flask:
             "rag_status": stats.rag_status,
             "crawler_status": stats.crawler_status,
         })
+
+    register_openapi_routes(app)
 
     return app
 

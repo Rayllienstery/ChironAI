@@ -73,3 +73,13 @@ def tmp_path() -> Path:
         yield path
     finally:
         shutil.rmtree(path, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def _disable_extension_background_bootstrap_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep tests from leaking long-lived extension bootstrap threads."""
+    try:
+        from llm_interactor import ExtensionManager
+    except Exception:
+        return
+    monkeypatch.setattr(ExtensionManager, "start_background_bootstrap", lambda self: None)

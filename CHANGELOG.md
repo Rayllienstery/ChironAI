@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-06-14
+### Changed
+- Promoted the application version to 0.7.0.
+
+## [0.6.87] - 2026-06-14
+### Changed
+- Improved Swagger/OpenAPI operation descriptions and structured schemas for key WebUI developer endpoints.
+
+## [0.6.86] - 2026-06-14
+### Added
+- Added OpenAPI and Swagger UI endpoints with a CoreUI Developer Tools Swagger tab.
+- Required API documentation updates in the project rules for endpoint changes.
+
+## [0.6.85] - 2026-06-14
+### Changed
+- Made pytest disable extension background bootstrap by default so quality gates do not hang after successful test summaries.
+
 ## [0.6.84] - 2026-06-14
 ### Changed
 - Added product hardening smoke coverage for critical WebUI flows and required exact backend confirmation for destructive Docker delete actions.

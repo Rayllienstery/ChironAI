@@ -47,8 +47,10 @@ from crawler_service.sources_io import load_sources, save_sources  # noqa: E402
 app = Flask(__name__)
 
 from api.http.webui_routes import webui_bp  # noqa: E402
+from core.openapi import register_openapi_routes  # noqa: E402
 
 app.register_blueprint(webui_bp)
+register_openapi_routes(app)
 
 log_queue: list[str] = []
 stop_flag = False

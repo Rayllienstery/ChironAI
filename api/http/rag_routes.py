@@ -150,8 +150,10 @@ def create_app(
     app.register_blueprint(create_v1_blueprint(wiring))
     from api.http.webui_routes import webui_bp
     from api.http.rag_tests_routes import rag_tests_bp
+    from core.openapi import register_openapi_routes
     app.register_blueprint(webui_bp)
     app.register_blueprint(rag_tests_bp)
+    register_openapi_routes(app)
     _bp_ms = (_time.perf_counter() - _t_bp_start) * 1000
 
     _sync_llm_extension_runtime(app)
