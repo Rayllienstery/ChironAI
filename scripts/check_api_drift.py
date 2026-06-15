@@ -19,6 +19,19 @@ API_JS_FETCH_RE = re.compile(
 API_JS_TEMPLATE_RE = re.compile(
     r"""fetch\(\s*`\$\{API_BASE\}([^`]+)`""",
 )
+# Collapse `${encodeURIComponent(x)}` and other template interpolations to a route param token.
+_TEMPLATE_EXPR_RE = re.compile(r"\$\{[^}]+\}")
+
+
+def _normalize_frontend_subpath(sub: str) -> str:
+    """Turn a fetch template fragment into a comparable static route path."""
+    sub = sub.split("?")[0].rstrip("/")
+    sub = _TEMPLATE_EXPR_RE.sub("{param}", sub)
+    # Truncate glued template tails (e.g. ``${query ? `?${query}` : ''}``).
+    if "$" in sub:
+        sub = sub.split("$", 1)[0]
+    sub = sub.strip("`'\"").rstrip("/")
+    return sub
 
 
 def _read_text(path: Path) -> str:
@@ -72,7 +85,7 @@ def collect_frontend_paths(services_dir: Path) -> set[str]:
         text = _read_text(js_file)
         for pattern in (API_JS_FETCH_RE, API_JS_TEMPLATE_RE):
             for match in pattern.finditer(text):
-                sub = match.group(1).split("?")[0].rstrip("/")
+                sub = _normalize_frontend_subpath(match.group(1))
                 if sub:
                     paths.add(f"{WEBUI_PREFIX}{sub}")
     return paths

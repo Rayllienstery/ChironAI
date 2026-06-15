@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import json
+import logging
+import os
 import re
 from typing import Any
+
+from webui_backend.paths import webui_data_dir
+
+_WEBUI_LOG = logging.getLogger("webui")
 
 _SAFE_IDENTIFIER_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
@@ -61,4 +68,52 @@ def compute_source_stats(meta: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-__all__ = ["build_source_meta", "compute_source_stats", "is_safe_identifier", "normalize_seed_urls"]
+def get_crawler_sources_dir() -> str:
+    """Path to WebUI/rag_sources directory."""
+    return str(webui_data_dir() / "rag_sources")
+
+
+def load_source_meta(source_id: str) -> dict[str, Any] | None:
+    """Load meta.json for a source. Returns None if not found."""
+    sources_dir = get_crawler_sources_dir()
+    meta_path = os.path.join(sources_dir, source_id, "meta.json")
+    if not os.path.isfile(meta_path):
+        return None
+    try:
+        with open(meta_path, encoding="utf-8") as f:
+            data = json.load(f)
+        data.setdefault("source_id", source_id)
+        data.setdefault("source_url", "")
+        data.setdefault("last_crawled", None)
+        data.setdefault("hash_algo", "sha256")
+        data.setdefault("pages", {})
+        return data
+    except Exception as e:
+        _WEBUI_LOG.warning("Failed to load meta.json for %s: %s", source_id, e)
+        return None
+
+
+def discover_crawler_sources() -> list[str]:
+    """Scan WebUI/rag_sources directory to find all source IDs."""
+    sources_dir = get_crawler_sources_dir()
+    if not os.path.isdir(sources_dir):
+        return []
+    source_ids: list[str] = []
+    for item in os.listdir(sources_dir):
+        item_path = os.path.join(sources_dir, item)
+        if os.path.isdir(item_path):
+            meta_path = os.path.join(item_path, "meta.json")
+            if os.path.isfile(meta_path):
+                source_ids.append(item)
+    return sorted(source_ids)
+
+
+__all__ = [
+    "build_source_meta",
+    "compute_source_stats",
+    "discover_crawler_sources",
+    "get_crawler_sources_dir",
+    "is_safe_identifier",
+    "load_source_meta",
+    "normalize_seed_urls",
+]

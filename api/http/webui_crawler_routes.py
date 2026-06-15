@@ -52,7 +52,13 @@ if TYPE_CHECKING:
     )
 
 from api.http.rag_sources_meta import update_page_chunk_hashes
-from api.http.webui_crawler_helpers import compute_source_stats, is_safe_identifier
+from api.http.webui_crawler_helpers import (
+    compute_source_stats,
+    discover_crawler_sources,
+    get_crawler_sources_dir,
+    is_safe_identifier,
+    load_source_meta,
+)
 from api.http.webui_crawler_indexing_helpers import (
     clip_text_for_embedding as _clip_text_for_embedding,
 )
@@ -124,48 +130,17 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
     # ============================================================================
 
     def _get_crawler_sources_dir() -> str:
-        """Get path to WebUI/rag_sources directory."""
-        return str(webui_data_dir() / "rag_sources")
-
+        return get_crawler_sources_dir()
 
     def _load_source_meta(source_id: str) -> dict | None:
-        """Load meta.json for a source. Returns None if not found."""
-        sources_dir = _get_crawler_sources_dir()
-        meta_path = os.path.join(sources_dir, source_id, "meta.json")
-        if not os.path.isfile(meta_path):
-            return None
-        try:
-            with open(meta_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            data.setdefault("source_id", source_id)
-            data.setdefault("source_url", "")
-            data.setdefault("last_crawled", None)
-            data.setdefault("hash_algo", "sha256")
-            data.setdefault("pages", {})
-            return data
-        except Exception as e:
-            _WEBUI_LOG.warning(f"Failed to load meta.json for {source_id}: {e}")
-            return None
-
+        return load_source_meta(source_id)
 
     def _get_source_stats(meta: dict) -> dict[str, Any]:
         """Calculate statistics from meta.json."""
         return compute_source_stats(meta)
 
-
     def _discover_sources() -> list[str]:
-        """Scan WebUI/rag_sources directory to find all source IDs."""
-        sources_dir = _get_crawler_sources_dir()
-        if not os.path.isdir(sources_dir):
-            return []
-        source_ids = []
-        for item in os.listdir(sources_dir):
-            item_path = os.path.join(sources_dir, item)
-            if os.path.isdir(item_path):
-                meta_path = os.path.join(item_path, "meta.json")
-                if os.path.isfile(meta_path):
-                    source_ids.append(item)
-        return sorted(source_ids)
+        return discover_crawler_sources()
 
 
     def _sha256(text: str) -> str:

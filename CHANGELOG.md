@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.3] - 2026-06-15
+### Added
+- HTTP test splits: `test_http_chat_completions.py`, `test_http_v1_models.py`, `test_http_extensions.py`.
+- CoreUI service modules `extensions.js` and `rag.js` (re-exported from `api.js`).
+- Crawler source filesystem helpers in `webui_crawler_helpers.py` (`load_source_meta`, `discover_crawler_sources`).
+
+### Changed
+- `test_http_endpoints.py` monolith reduced to rag-trigger smoke; chat/v1 models moved to domain suites.
+- `test_extensions_routes.py` is a thin re-export of `test_http_extensions.py`.
+- API drift-check normalizes `${...}` template segments in frontend paths to `{param}`.
+- `api.js` further split (~1143 → ~610 lines).
+
 ## [0.7.2] - 2026-06-15
 ### Added
 - HTTP test splits: `test_http_observability.py`, `test_http_llm_proxy_builds.py`.
