@@ -7,50 +7,13 @@ Registers the WebUI blueprint and composes domain-specific route modules.
 from __future__ import annotations
 
 import logging
-import os
-import sys
 
 from flask import Blueprint
 
+from core.bootstrap.import_paths import ensure_webui_composition_paths
 from core.contracts.webui_api import WEBUI_URL_PREFIX
 
-# Ensure project root on path when running from api or WebUI.
-_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
-_MODULES_EXT_RAG = os.path.join(_ROOT, "modules", "external_docs_rag")
-if _MODULES_EXT_RAG not in sys.path:
-    sys.path.insert(0, _MODULES_EXT_RAG)
-_WEBINTERACTION = os.path.join(_ROOT, "CoreModules", "WebInteraction")
-if _WEBINTERACTION not in sys.path:
-    sys.path.insert(0, _WEBINTERACTION)
-_MD_INGESTION = os.path.join(_ROOT, "CoreModules", "MdIngestionService")
-if _MD_INGESTION not in sys.path:
-    sys.path.insert(0, _MD_INGESTION)
-_RAG_SVC = os.path.join(_ROOT, "CoreModules", "RagService")
-if os.path.isdir(_RAG_SVC) and _RAG_SVC not in sys.path:
-    sys.path.insert(0, _RAG_SVC)
-_LLM_PROXY = os.path.join(_ROOT, "CoreModules", "LlmProxy")
-if os.path.isdir(_LLM_PROXY) and _LLM_PROXY not in sys.path:
-    sys.path.insert(0, _LLM_PROXY)
-_LLM_INTERACTOR = os.path.join(_ROOT, "CoreModules", "LlmInteractor")
-if os.path.isdir(_LLM_INTERACTOR) and _LLM_INTERACTOR not in sys.path:
-    sys.path.insert(0, _LLM_INTERACTOR)
-_SECURITY = os.path.join(_ROOT, "CoreModules", "Security")
-if os.path.isdir(_SECURITY) and _SECURITY not in sys.path:
-    sys.path.insert(0, _SECURITY)
-_EXTENSIONS_SANDBOX = os.path.join(_ROOT, "CoreModules", "ExtensionsSandbox")
-if os.path.isdir(_EXTENSIONS_SANDBOX) and _EXTENSIONS_SANDBOX not in sys.path:
-    sys.path.insert(0, _EXTENSIONS_SANDBOX)
-_DOCKER_MANAGER = os.path.join(_ROOT, "CoreModules", "DockerManager")
-if os.path.isdir(_DOCKER_MANAGER) and _DOCKER_MANAGER not in sys.path:
-    sys.path.insert(0, _DOCKER_MANAGER)
-_ERROR_MANAGER = os.path.join(_ROOT, "CoreModules", "ErrorManager")
-if os.path.isdir(_ERROR_MANAGER) and _ERROR_MANAGER not in sys.path:
-    sys.path.insert(0, _ERROR_MANAGER)
-_WEBUI_BACKEND = os.path.join(_ROOT, "CoreModules", "WebUIBackend")
-if os.path.isdir(_WEBUI_BACKEND) and _WEBUI_BACKEND not in sys.path:
-    sys.path.insert(0, _WEBUI_BACKEND)
+ensure_webui_composition_paths()
 
 from config import get_retrieval_int
 from config.rag_prompts import PROMPTS_DIR

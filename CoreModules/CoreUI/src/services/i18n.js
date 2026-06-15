@@ -4,10 +4,12 @@
  */
 
 import enCommon from '../../../Localization/localization/catalog/en/common.json';
+import enXaCommon from '../../../Localization/localization/catalog/en-XA/common.json';
 
 const DEFAULT_LOCALE = 'en';
 const catalogs = {
   en: enCommon,
+  'en-XA': enXaCommon,
 };
 
 let activeLocale = DEFAULT_LOCALE;

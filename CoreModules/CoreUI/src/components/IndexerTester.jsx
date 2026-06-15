@@ -120,7 +120,9 @@ function IndexerTester() {
       const out = typeof next === 'function' ? next(prev) : next;
       try {
         localStorage.setItem(EVAL_LIMITS_STORAGE_KEY, JSON.stringify(out));
-      } catch (_) {}
+      } catch {
+        // safe: localStorage may be unavailable
+      }
       return out;
     });
   };

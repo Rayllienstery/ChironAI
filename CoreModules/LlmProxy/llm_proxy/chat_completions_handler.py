@@ -933,9 +933,9 @@ def run_chat_completions(
         target_embed_model = selected_embed_model or current_embed_model or str(effective_ollama_model or "").strip()
         if target_embed_model:
             if hasattr(effective_embed_provider, "_model"):
-                setattr(effective_embed_provider, "_model", target_embed_model)
+                effective_embed_provider._model = target_embed_model
             elif hasattr(effective_embed_provider, "model"):
-                setattr(effective_embed_provider, "model", target_embed_model)
+                effective_embed_provider.model = target_embed_model
             if target_embed_model != current_embed_model:
                 trace["request"]["embed_model_override"] = target_embed_model
     except Exception:

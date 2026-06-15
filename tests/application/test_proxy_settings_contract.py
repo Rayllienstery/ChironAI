@@ -117,3 +117,23 @@ def test_resolve_web_interaction_flags_prefers_proxy_keys() -> None:
     assert flags["web_interaction_ddg_news"]["source"] == "proxy_settings.web_interaction_ddg_news"
     assert flags["web_interaction_fetch_page"]["value"] is True
     assert flags["web_interaction_fetch_page"]["source"] == "env.fetch_page"
+
+
+def test_resolve_retrieval_ui_bool_source_labels() -> None:
+    from application.rag.proxy_settings_contract import resolve_retrieval_ui_bool
+
+    value, source = resolve_retrieval_ui_bool(
+        "structured_rag_context_enabled",
+        proxy_settings={"structured_rag_context_enabled": True},
+        yaml_fallback=False,
+    )
+    assert value is True
+    assert source == "proxy_settings.structured_rag_context_enabled"
+
+    value2, source2 = resolve_retrieval_ui_bool(
+        "structured_rag_context_enabled",
+        proxy_settings={},
+        yaml_fallback=False,
+    )
+    assert value2 is False
+    assert source2 == "retrieval_yaml.structured_rag_context_enabled"

@@ -152,11 +152,25 @@ def resolve_web_interaction_flags(
     return out
 
 
+def resolve_retrieval_ui_bool(
+    key: str,
+    *,
+    proxy_settings: dict[str, Any],
+    yaml_fallback: bool = False,
+) -> tuple[bool, str]:
+    """Resolve retrieval UI bool keys with explicit source label."""
+    base = get_retrieval_bool(key, yaml_fallback)
+    if isinstance(proxy_settings, dict) and key in proxy_settings:
+        return bool(proxy_settings.get(key)), f"proxy_settings.{key}"
+    return bool(base), f"retrieval_yaml.{key}"
+
+
 __all__ = [
     "load_proxy_settings",
     "resolve_fetch_web_knowledge",
     "resolve_hybrid_sparse_enabled",
     "resolve_proxy_rerank_enabled",
     "resolve_rag_collection",
+    "resolve_retrieval_ui_bool",
     "resolve_web_interaction_flags",
 ]

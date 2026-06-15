@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Any
+
+from core.bootstrap.import_paths import ensure_webui_composition_paths
+
+_ROOT = ensure_webui_composition_paths()
 
 from llm_proxy.config import LlmProxyRuntimeConfig
 from llm_proxy.contracts import LlmProxyBaseContext, LlmProxyExternalDocsBundle, LlmProxyWiring
@@ -47,32 +50,6 @@ from api.http.proxy_status import (
     set_proxy_status,
 )
 from api.http.proxy_trace import set_current_trace
-
-_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
-_RAG_SVC = os.path.join(_ROOT, "CoreModules", "RagService")
-if os.path.isdir(_RAG_SVC) and _RAG_SVC not in sys.path:
-    sys.path.insert(0, _RAG_SVC)
-_MODULES_EXT_RAG = os.path.join(_ROOT, "modules", "external_docs_rag")
-if _MODULES_EXT_RAG not in sys.path:
-    sys.path.insert(0, _MODULES_EXT_RAG)
-
-_WEBINTERACTION = os.path.join(_ROOT, "CoreModules", "WebInteraction")
-if _WEBINTERACTION not in sys.path:
-    sys.path.insert(0, _WEBINTERACTION)
-_LLM_INTERACTOR = os.path.join(_ROOT, "CoreModules", "LlmInteractor")
-if os.path.isdir(_LLM_INTERACTOR) and _LLM_INTERACTOR not in sys.path:
-    sys.path.insert(0, _LLM_INTERACTOR)
-_SECURITY = os.path.join(_ROOT, "CoreModules", "Security")
-if os.path.isdir(_SECURITY) and _SECURITY not in sys.path:
-    sys.path.insert(0, _SECURITY)
-_EXTENSIONS_SANDBOX = os.path.join(_ROOT, "CoreModules", "ExtensionsSandbox")
-if os.path.isdir(_EXTENSIONS_SANDBOX) and _EXTENSIONS_SANDBOX not in sys.path:
-    sys.path.insert(0, _EXTENSIONS_SANDBOX)
-_DOCKER_MANAGER = os.path.join(_ROOT, "CoreModules", "DockerManager")
-if os.path.isdir(_DOCKER_MANAGER) and _DOCKER_MANAGER not in sys.path:
-    sys.path.insert(0, _DOCKER_MANAGER)
 
 try:
     from external_docs_rag.application.use_cases import (

@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.2] - 2026-06-15
+### Added
+- HTTP test splits: `test_http_observability.py`, `test_http_llm_proxy_builds.py`.
+- CoreUI service modules `proxy.js` and `crawler.js` (re-exported from `api.js`).
+- Pseudo-locale `en-XA` in Localization catalog; nav labels wired via `t()` in App.
+- Linux CI job (`linux-fast`: ruff + `pytest -m fast`).
+- RagTab RTL smoke test.
+
+### Changed
+- `hybrid_sparse.py` and `retrieval_ui_overrides.py` use `settings_resolver` / `proxy_settings_contract`.
+- API drift-check and CoreUI `npm run test` are **required** in `full` quality gate.
+- `webui_routes.py` and `llm_proxy_wiring.py` use `ensure_webui_composition_paths` instead of raw `sys.path.insert`.
+- Ruff extended with `B` (bugbear) rules; targeted ignores for legacy patterns.
+- ESLint errors fixed in legacy tabs (conditional hooks, empty catch blocks).
+
 ## [0.7.1] - 2026-06-15
 ### Added
 - Way to 1000 Phase 0–6 foundations: quality gates, settings resolver, CoreUI lint/test harness, test splits, Docker scaffold, and shared Localization catalog.

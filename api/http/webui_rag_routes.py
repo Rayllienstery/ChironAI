@@ -647,7 +647,7 @@ def register_rag_qdrant_routes(
                                 if hasattr(vec_params, "size") and hasattr(vec_params, "distance"):
                                     vectors_config = {
                                         "name": vector_name,
-                                        "size": getattr(vec_params, "size"),
+                                        "size": vec_params.size,
                                         "distance": str(getattr(vec_params, "distance", "")).split(".")[-1]
                                         if hasattr(vec_params, "distance")
                                         else None,
@@ -655,7 +655,7 @@ def register_rag_qdrant_routes(
                         elif hasattr(vectors_info, "size") and hasattr(vectors_info, "distance"):
                             vectors_config = {
                                 "name": "Default",
-                                "size": getattr(vectors_info, "size"),
+                                "size": vectors_info.size,
                                 "distance": str(getattr(vectors_info, "distance", "")).split(".")[-1]
                                 if hasattr(vectors_info, "distance")
                                 else None,

@@ -170,6 +170,7 @@ import {
   subscribeDockerEvents,
 } from "./services/api";
 import { loadTrackedModule } from "./services/moduleTimings";
+import { t } from "./services/i18n";
 import Sparkline from "./components/Sparkline";
 import { NotificationCenterProvider } from "./components/NotificationCenterContext";
 import NotificationCenterShell from "./components/NotificationCenterShell";
@@ -725,7 +726,9 @@ function App() {
         "chironai_theme",
         JSON.stringify({ mode, lightAccent: lightAccentColor, darkAccent: darkAccentColor }),
       );
-    } catch (_) {}
+    } catch {
+      // safe: localStorage may be unavailable (private mode / quota)
+    }
   };
 
   const handleThemeChange = (mode, lightAccentColor, darkAccentColor) => {
@@ -736,17 +739,17 @@ function App() {
   };
 
   const tabs = [
-    { id: "dashboard", label: "Dashboard", section: "Main" },
-    { id: "docker", label: "Docker", section: "Main", iconUrl: DockerTabIcon },
-    { id: "tokens-security", label: "Tokens and Security", section: "Main" },
-    { id: "logs", label: "Logs", section: "Main" },
-    { id: "dependencies", label: "Dependencies", section: "Main" },
-    { id: "llm-proxy", label: "LLM Proxy Builds", section: "Core Functionality" },
-    { id: "rag-fusion-proxy", label: "RAG Fusion Proxy", section: "Core Functionality" },
-    { id: "template-editor", label: "Template Editor", section: "Core Functionality" },
-    { id: "rag", label: "RAG / Qdrant", section: "RAG" },
-    { id: "crawler", label: "Crawler / Indexer", section: "RAG" },
-    { id: "extensions", label: "Extensions", section: "Extensions" },
+    { id: "dashboard", label: t("nav.dashboard"), section: "Main" },
+    { id: "docker", label: t("nav.docker"), section: "Main", iconUrl: DockerTabIcon },
+    { id: "tokens-security", label: t("nav.tokens_security"), section: "Main" },
+    { id: "logs", label: t("nav.logs"), section: "Main" },
+    { id: "dependencies", label: t("nav.dependencies"), section: "Main" },
+    { id: "llm-proxy", label: t("nav.llm_proxy"), section: "Core Functionality" },
+    { id: "rag-fusion-proxy", label: t("nav.rag_fusion_proxy"), section: "Core Functionality" },
+    { id: "template-editor", label: t("nav.template_editor"), section: "Core Functionality" },
+    { id: "rag", label: t("nav.rag"), section: "RAG" },
+    { id: "crawler", label: t("nav.crawler"), section: "RAG" },
+    { id: "extensions", label: t("nav.extensions"), section: "Extensions" },
     ...extensionTabs.map((tab) => ({
       id: tab.id,
       label: tab.title || tab.id,
@@ -754,11 +757,11 @@ function App() {
       iconUrl: tab.icon_url || "",
       section: "Extensions",
     })),
-    { id: "testing", label: "Testing", section: "Developer Tools" },
-    { id: "coreui-showcase", label: "CoreUI Showcase", section: "Developer Tools" },
-    { id: "dev-documentation", label: "Dev Documentation", section: "Developer Tools" },
-    { id: "swagger", label: "Swagger", section: "Developer Tools" },
-    { id: "performance", label: "Performance", section: "Developer Tools" },
+    { id: "testing", label: t("nav.testing"), section: "Developer Tools" },
+    { id: "coreui-showcase", label: t("nav.coreui_showcase"), section: "Developer Tools" },
+    { id: "dev-documentation", label: t("nav.dev_documentation"), section: "Developer Tools" },
+    { id: "swagger", label: t("nav.swagger"), section: "Developer Tools" },
+    { id: "performance", label: t("nav.performance"), section: "Developer Tools" },
   ];
   const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || activeTab;
 

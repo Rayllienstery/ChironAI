@@ -5,6 +5,50 @@ import {
   fetchJsonWithTimeout,
 } from './http.js';
 
+export {
+  getLlmProxyStatus,
+  getLlmProxyApiKeyStatus,
+  generateLlmProxyApiKey,
+  revealLlmProxyApiKey,
+  deleteLlmProxyApiKey,
+  getLlmProxyBuilds,
+  putLlmProxyBuilds,
+  previewLlmProxyBuildModel,
+  clearProxyLogs,
+  getProxyLogs,
+  getProxyTraceCurrent,
+  getProxyTraces,
+  clearProxyTraces,
+  getProxyJournal,
+  clearProxyJournal,
+} from './proxy.js';
+
+export {
+  getIndexerTesterSources,
+  getIndexerTesterFiles,
+  getIndexerTesterFileDetail,
+  evaluateIndexerWithLlm,
+  startIndexerTesterEvaluateBatch,
+  getIndexerTesterEvaluateBatchStatus,
+  detectBatchEvalPatterns,
+  getMdPipelines,
+  getMdPipeline,
+  saveMdPipeline,
+  deleteMdPipeline,
+  previewMdPipeline,
+  getCrawlerSources,
+  getCrawlerSourcePages,
+  createCollection,
+  getCreateCollectionStatus,
+  cancelCreateCollection,
+  crawlSource,
+  getCrawlStatus,
+  addCrawlerSource,
+  getCrawlerSource,
+  updateCrawlerSource,
+} from './crawler.js';
+
+
 export async function getVersion() {
   const response = await fetch(`${API_BASE}/version`);
   const data = await response.json().catch(() => ({}));
@@ -139,106 +183,6 @@ export async function getModelSettings() {
   return response.json();
 }
 
-export async function getLlmProxyStatus() {
-  const response = await fetch(`${API_BASE}/llm-proxy/status`);
-  if (!response.ok) {
-    throw new Error('Failed to get LLM Proxy status');
-  }
-  return response.json();
-}
-
-export async function getLlmProxyApiKeyStatus() {
-  const response = await fetch(`${API_BASE}/llm-proxy/api-key`, {
-    cache: 'no-store',
-    headers: { 'Cache-Control': 'no-cache' },
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(extractApiError(data, 'Failed to get LLM Proxy API key status'));
-  }
-  return data;
-}
-
-export async function generateLlmProxyApiKey() {
-  const response = await fetch(`${API_BASE}/llm-proxy/api-key/generate`, {
-    method: 'POST',
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(extractApiError(data, 'Failed to generate LLM Proxy API key'));
-  }
-  return data;
-}
-
-export async function revealLlmProxyApiKey() {
-  const response = await fetch(`${API_BASE}/llm-proxy/api-key/reveal`, {
-    method: 'POST',
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(extractApiError(data, 'Failed to reveal LLM Proxy API key'));
-  }
-  return data;
-}
-
-export async function deleteLlmProxyApiKey() {
-  const response = await fetch(`${API_BASE}/llm-proxy/api-key`, {
-    method: 'DELETE',
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(extractApiError(data, 'Failed to delete LLM Proxy API key'));
-  }
-  return data;
-}
-
-export async function getLlmProxyBuilds(options = {}) {
-  const params = new URLSearchParams();
-  if (options.diagnostics === false) {
-    params.set('diagnostics', '0');
-  }
-  const qs = params.toString() ? `?${params}` : '';
-  const response = await fetch(`${API_BASE}/llm-proxy/builds${qs}`, {
-    cache: 'no-store',
-    headers: { 'Cache-Control': 'no-cache' },
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(extractApiError(data, 'Failed to load LLM Proxy builds'));
-  }
-  return data;
-}
-
-export async function putLlmProxyBuilds(builds) {
-  const response = await fetch(`${API_BASE}/llm-proxy/builds`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ builds }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detailMsg =
-      Array.isArray(data.details) && data.details.length ? data.details.join('; ') : null;
-    throw new Error(detailMsg || extractApiError(data, 'Failed to save builds'));
-  }
-  return data;
-}
-
-export async function previewLlmProxyBuildModel(model, providerId = null) {
-  const response = await fetch(`${API_BASE}/llm-proxy/builds/preview-model`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      ...(providerId ? { provider_id: providerId } : {}),
-    }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(extractApiError(data, 'Model preview failed'));
-  }
-  return data;
-}
 
 export async function updateModelSettings(settings) {
   const response = await fetch(`${API_BASE}/model-settings`, {
@@ -454,93 +398,6 @@ export async function clearLogs(sessionId, options = {}) {
   return response.json();
 }
 
-export async function clearProxyLogs(options = {}) {
-  const params = new URLSearchParams();
-  if (options.autocompleteOnly) {
-    params.set('autocomplete_only', '1');
-  }
-  const response = await fetch(
-    `${API_BASE}/proxy-logs${params.toString() ? `?${params}` : ''}`,
-    {
-      method: 'DELETE',
-      cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache' },
-    },
-  );
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(err, 'Failed to clear proxy logs'));
-  }
-  return response.json();
-}
-
-export async function getProxyLogs(options = {}) {
-  const params = new URLSearchParams();
-  const { limit, since_id, from, to, autocompleteOnly } = options;
-  if (limit != null) params.set('limit', String(limit));
-  if (since_id != null) params.set('since_id', String(since_id));
-  if (from != null && from !== '') params.set('from', from);
-  if (to != null && to !== '') params.set('to', to);
-  if (autocompleteOnly) params.set('autocomplete_only', '1');
-  const response = await fetch(`${API_BASE}/proxy-logs?${params}`, {
-    cache: 'no-store',
-    headers: { 'Cache-Control': 'no-cache' },
-  });
-  if (!response.ok) {
-    throw new Error('Failed to get proxy logs');
-  }
-  return response.json();
-}
-
-export async function getProxyTraceCurrent() {
-  const response = await fetch(`${API_BASE}/proxy-trace/current`, {
-    method: 'GET',
-  });
-  if (!response.ok) {
-    throw new Error('Failed to get proxy trace');
-  }
-  return response.json();
-}
-
-export async function getProxyTraces(limit = 40) {
-  const response = await fetch(`${API_BASE}/proxy-traces?limit=${encodeURIComponent(limit)}`);
-  if (!response.ok) {
-    throw new Error('Failed to get proxy traces');
-  }
-  return response.json();
-}
-
-export async function clearProxyTraces() {
-  const response = await fetch(`${API_BASE}/proxy-traces/clear`, { method: 'POST' });
-  if (!response.ok) {
-    throw new Error('Failed to clear proxy traces');
-  }
-  return response.json();
-}
-
-export async function getProxyJournal(options = {}) {
-  const params = new URLSearchParams();
-  const { limit, since_id, from, to } = options;
-  if (limit != null) params.set('limit', String(limit));
-  if (since_id != null) params.set('since_id', String(since_id));
-  if (from != null && from !== '') params.set('from', from);
-  if (to != null && to !== '') params.set('to', to);
-  const response = await fetch(`${API_BASE}/proxy-journal?${params}`);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.ok) {
-    throw new Error(extractApiError(data, 'Failed to load proxy journal'));
-  }
-  return data;
-}
-
-export async function clearProxyJournal() {
-  const response = await fetch(`${API_BASE}/proxy-journal`, { method: 'DELETE' });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.ok) {
-    throw new Error(extractApiError(data, 'Failed to clear proxy journal'));
-  }
-  return data;
-}
 
 export async function getSettings() {
   const response = await fetch(`${API_BASE}/settings`);
@@ -668,210 +525,6 @@ export async function updateRagModelSettings(settings) {
   return response.json();
 }
 
-export async function getIndexerTesterSources() {
-  const response = await fetch(`${API_BASE}/crawler/indexer-tester/sources`);
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(data, 'Failed to get Indexer Tester sources'));
-  }
-  return response.json();
-}
-
-export async function getIndexerTesterFiles(sourceId, options = {}) {
-  const params = new URLSearchParams();
-  if (options.sortBy) params.set('sort', options.sortBy);
-  if (options.order) params.set('order', options.order);
-  const query = params.toString();
-  const response = await fetch(
-    `${API_BASE}/crawler/indexer-tester/sources/${encodeURIComponent(sourceId)}/files${query ? `?${query}` : ''}`,
-  );
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(data, 'Failed to get Indexer Tester files'));
-  }
-  return response.json();
-}
-
-export async function getIndexerTesterFileDetail(sourceId, filename) {
-  const response = await fetch(
-    `${API_BASE}/crawler/indexer-tester/sources/${encodeURIComponent(sourceId)}/files/${encodeURIComponent(
-      filename,
-    )}`,
-  );
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(data, 'Failed to get Indexer Tester file detail'));
-  }
-  return response.json();
-}
-
-export async function evaluateIndexerWithLlm(
-  sourceMd,
-  processedMd,
-  providerId,
-  model,
-  pageMeta = null,
-  limits = null,
-) {
-  const body = {
-    source_md: sourceMd,
-    processed_md: processedMd,
-    provider_id: providerId || undefined,
-    model: model || undefined,
-  };
-  if (pageMeta != null && typeof pageMeta === 'object') {
-    body.page_meta = pageMeta;
-  }
-  if (limits != null && typeof limits === 'object') {
-    if (typeof limits.original_max_chars === 'number') body.original_max_chars = limits.original_max_chars;
-    if (typeof limits.processed_max_chars === 'number') body.processed_max_chars = limits.processed_max_chars;
-    if (typeof limits.removed_max_chars === 'number') body.removed_max_chars = limits.removed_max_chars;
-  }
-  const response = await fetch(`${API_BASE}/crawler/indexer-tester/evaluate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    let data = {};
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { error: text ? text.slice(0, 300) : response.statusText };
-    }
-    throw new Error(extractApiError(data, 'Evaluate failed'));
-  }
-  return response.json();
-}
-
-export async function startIndexerTesterEvaluateBatch({
-  sourceId,
-  providerId,
-  model,
-  count,
-  original_max_chars,
-  processed_max_chars,
-  removed_max_chars,
-}) {
-  const body = {
-    source_id: sourceId,
-    provider_id: providerId || undefined,
-    model: model || undefined,
-    count: Number(count) || 0,
-  };
-  if (typeof original_max_chars === 'number') body.original_max_chars = original_max_chars;
-  if (typeof processed_max_chars === 'number') body.processed_max_chars = processed_max_chars;
-  if (typeof removed_max_chars === 'number') body.removed_max_chars = removed_max_chars;
-  const response = await fetch(`${API_BASE}/crawler/indexer-tester/evaluate-batch`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(data, 'Failed to start batch evaluation'));
-  }
-  return response.json();
-}
-
-export async function getIndexerTesterEvaluateBatchStatus(jobId) {
-  const response = await fetch(
-    `${API_BASE}/crawler/indexer-tester/evaluate-batch/status/${encodeURIComponent(jobId)}`,
-  );
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(data, 'Failed to get batch status'));
-  }
-  return response.json();
-}
-
-export async function detectBatchEvalPatterns(results, providerId, model) {
-  const response = await fetch(
-    `${API_BASE}/crawler/indexer-tester/evaluate-batch/detect-patterns`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        results: results || [],
-        provider_id: providerId || undefined,
-        model: model || undefined,
-      }),
-    },
-  );
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(data, 'Failed to detect patterns'));
-  }
-  return response.json();
-}
-
-// MD Pipelines (config-driven markdown cleanup for RAG)
-export async function getMdPipelines() {
-  const response = await fetch(`${API_BASE}/crawler/md-pipelines`);
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(data, 'Failed to list MD pipelines'));
-  }
-  return response.json();
-}
-
-export async function getMdPipeline(name) {
-  const response = await fetch(
-    `${API_BASE}/crawler/md-pipelines/${encodeURIComponent(name)}`,
-  );
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(data, `Failed to get pipeline ${name}`));
-  }
-  return response.json();
-}
-
-export async function saveMdPipeline(name, pipeline) {
-  const response = await fetch(
-    `${API_BASE}/crawler/md-pipelines/${encodeURIComponent(name)}`,
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(pipeline),
-    },
-  );
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(data, 'Failed to save pipeline'));
-  }
-  return response.json();
-}
-
-export async function deleteMdPipeline(name) {
-  const response = await fetch(
-    `${API_BASE}/crawler/md-pipelines/${encodeURIComponent(name)}`,
-    { method: 'DELETE' },
-  );
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(data, 'Failed to delete pipeline'));
-  }
-  return response.json();
-}
-
-export async function previewMdPipeline(pipelineName, sourceId, filename, pipeline) {
-  const response = await fetch(`${API_BASE}/crawler/md-pipelines/preview`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      pipeline_name: pipelineName || undefined,
-      pipeline: pipeline || undefined,
-      source_id: sourceId,
-      filename,
-    }),
-  });
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(data, 'Failed to preview pipeline'));
-  }
-  return response.json();
-}
 
 export async function previewExternalDocs({ library, pipelineName, maxFiles, maxCharsPerFile } = {}) {
   const response = await fetch(`${API_BASE}/testing/external-docs/preview`, {
@@ -1294,46 +947,6 @@ export async function clearTrash() {
   return response.json();
 }
 
-// Crawler / Indexer API
-export async function getCrawlerSources() {
-  const response = await fetch(`${API_BASE}/crawler/sources`);
-  if (!response.ok) {
-    throw new Error('Failed to get crawler sources');
-  }
-  return response.json();
-}
-
-export async function getCrawlerSourcePages(sourceId) {
-  const response = await fetch(`${API_BASE}/crawler/sources/${encodeURIComponent(sourceId)}/pages`);
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(error, 'Failed to get source pages'));
-  }
-  return response.json();
-}
-
-export async function createCollection(config) {
-  const response = await fetch(`${API_BASE}/crawler/create-collection`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(error, 'Failed to create collection'));
-  }
-  const data = await response.json();
-  return { ...data, job_id: data.job_id, statusCode: response.status };
-}
-
-export async function getCreateCollectionStatus(jobId) {
-  const response = await fetch(`${API_BASE}/crawler/create-collection-status/${encodeURIComponent(jobId)}`);
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(err, 'Failed to get job status'));
-  }
-  return response.json();
-}
 
 export async function getExtensionRegistry({ forceRefresh = false } = {}) {
   const url = forceRefresh
@@ -1533,74 +1146,6 @@ export async function removeDockerImage(image, force = false) {
   return dockerJsonAction('/docker/images', { image, force, confirm: image }, 'DELETE');
 }
 
-export async function cancelCreateCollection(jobId) {
-  const response = await fetch(`${API_BASE}/crawler/create-collection-cancel/${encodeURIComponent(jobId)}`, {
-    method: 'POST',
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(err, 'Failed to cancel collection creation'));
-  }
-  return response.json();
-}
-
-export async function crawlSource(sourceId) {
-  const response = await fetch(`${API_BASE}/crawler/sources/${encodeURIComponent(sourceId)}/crawl`, {
-    method: 'POST',
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(error, `Failed to start crawl for source ${sourceId}`));
-  }
-  return response.json();
-}
-
-export async function getCrawlStatus(sourceId) {
-  const response = await fetch(`${API_BASE}/crawler/sources/${encodeURIComponent(sourceId)}/crawl/status`);
-  if (!response.ok) {
-    throw new Error(`Failed to get crawl status for source ${sourceId}`);
-  }
-  return response.json();
-}
-
-export async function addCrawlerSource(sourceConfig) {
-  const response = await fetch(`${API_BASE}/crawler/sources`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(sourceConfig),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(error, 'Failed to add source'));
-  }
-  return response.json();
-}
-
-export async function getCrawlerSource(sourceId) {
-  const response = await fetch(`${API_BASE}/crawler/sources/${encodeURIComponent(sourceId)}`);
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(error, `Failed to get source ${sourceId}`));
-  }
-  return response.json();
-}
-
-export async function updateCrawlerSource(sourceId, sourceConfig) {
-  const response = await fetch(`${API_BASE}/crawler/sources/${encodeURIComponent(sourceId)}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(sourceConfig),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractApiError(error, `Failed to update source ${sourceId}`));
-  }
-  return response.json();
-}
 
 /**
  * Fetch the startup timing report from the backend.

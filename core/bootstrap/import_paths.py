@@ -48,4 +48,34 @@ def ensure_webui_runtime_paths(project_root: str | Path) -> None:
         ensure_import_path(module_name, path)
 
 
-__all__ = ["ensure_import_path", "ensure_repo_root_on_path", "ensure_webui_runtime_paths"]
+def ensure_webui_composition_paths(project_root: str | Path | None = None) -> str:
+    """
+    Bootstrap paths for WebUI route composition modules (``webui_routes``, ``llm_proxy_wiring``).
+
+    Uses conditional insertion so editable installs skip redundant ``sys.path`` entries.
+    """
+    root = ensure_repo_root_on_path(project_root)
+    pairs = (
+        ("external_docs_rag", os.path.join(root, "modules", "external_docs_rag")),
+        ("webinteraction", os.path.join(root, "CoreModules", "WebInteraction")),
+        ("md_ingestion_service", os.path.join(root, "CoreModules", "MdIngestionService")),
+        ("rag_service", os.path.join(root, "CoreModules", "RagService")),
+        ("llm_proxy", os.path.join(root, "CoreModules", "LlmProxy")),
+        ("llm_interactor", os.path.join(root, "CoreModules", "LlmInteractor")),
+        ("chironai_security", os.path.join(root, "CoreModules", "Security")),
+        ("extensions_sandbox", os.path.join(root, "CoreModules", "ExtensionsSandbox")),
+        ("docker_manager", os.path.join(root, "CoreModules", "DockerManager")),
+        ("error_manager", os.path.join(root, "CoreModules", "ErrorManager")),
+        ("webui_backend", os.path.join(root, "CoreModules", "WebUIBackend")),
+    )
+    for module_name, path in pairs:
+        ensure_import_path(module_name, path)
+    return root
+
+
+__all__ = [
+    "ensure_import_path",
+    "ensure_repo_root_on_path",
+    "ensure_webui_composition_paths",
+    "ensure_webui_runtime_paths",
+]

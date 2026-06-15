@@ -66,10 +66,9 @@ FULL_GATE_EXTRA: tuple[GateStep, ...] = (
         _python_command("scripts/check_api_drift.py"),
         REPO_ROOT,
         60,
-        required=False,
     ),
     GateStep("coreui-lint", _npm_command("run", "lint"), COREUI_ROOT, 120, required=False),
-    GateStep("coreui-test", _npm_command("run", "test", "--", "--run"), COREUI_ROOT, 180, required=False),
+    GateStep("coreui-test", _npm_command("run", "test", "--", "--run"), COREUI_ROOT, 180),
     GateStep("coreui-typecheck", _npm_command("run", "typecheck"), COREUI_ROOT, 120, required=False),
 )
 

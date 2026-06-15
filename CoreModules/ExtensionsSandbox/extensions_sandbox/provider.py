@@ -134,7 +134,7 @@ def start_sandboxed_extension_provider(
         source_dir=source_dir,
         entrypoint=entrypoint,
         manifest=manifest,
-        project_root=getattr(host_context, "project_root"),
+        project_root=host_context.project_root,
         host_context=host_context,
     )
     return SandboxedExtensionProvider(client, extension_id=str(getattr(manifest, "id", source_dir.name)))

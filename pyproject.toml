@@ -149,8 +149,8 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E9", "F", "I"]
-ignore = []
+select = ["E9", "F", "I", "B"]
+ignore = ["B008", "B011", "B017", "B023", "B904", "B905", "B007"]
 
 [tool.ruff.lint.isort]
 known-first-party = [

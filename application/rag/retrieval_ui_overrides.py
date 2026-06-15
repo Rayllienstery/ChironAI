@@ -7,13 +7,12 @@ Same pattern as ``hybrid_sparse_enabled``: if the key is present in persisted
 
 from __future__ import annotations
 
-import json
-from typing import Any
-
 try:
     from config import get_retrieval_bool
 except ImportError:
     get_retrieval_bool = lambda k, d=False: d  # type: ignore
+
+from application.rag.proxy_settings_contract import load_proxy_settings, resolve_retrieval_ui_bool
 
 # Keys mirrored in CoreUI RAG tab and POST /rag-model-settings.
 RETRIEVAL_UI_BOOL_KEYS: frozenset[str] = frozenset(
@@ -33,20 +32,19 @@ def retrieval_bool_with_ui_override(key: str, *, yaml_fallback: bool = False) ->
 
     ``yaml_fallback`` is passed to ``get_retrieval_bool`` when the key is absent from YAML.
     """
-    base = get_retrieval_bool(key, yaml_fallback)
     try:
         from infrastructure.database import get_settings_repository
 
         repo = get_settings_repository()
-        raw = repo.get_app_setting("proxy_settings")
-        if not raw or not str(raw).strip():
-            return base
-        ps: dict[str, Any] = json.loads(raw) if isinstance(raw, str) else {}
-        if not isinstance(ps, dict) or key not in ps:
-            return base
-        return bool(ps[key])
+        proxy_settings = load_proxy_settings(repo)
+        value, _source = resolve_retrieval_ui_bool(
+            key,
+            proxy_settings=proxy_settings,
+            yaml_fallback=yaml_fallback,
+        )
+        return value
     except Exception:
-        return base
+        return get_retrieval_bool(key, yaml_fallback)
 
 
 __all__ = ["RETRIEVAL_UI_BOOL_KEYS", "retrieval_bool_with_ui_override"]

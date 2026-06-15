@@ -135,11 +135,9 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
     return () => clearInterval(id);
   }, [hasRunningPersistedTimer]);
 
-  if (!sessionId) return null;
-
-  const activePersisted = persisted.filter(
-    (n) => !n.dismissed_at && !n.metadata?.historyOnly,
-  );
+  const activePersisted = sessionId
+    ? persisted.filter((n) => !n.dismissed_at && !n.metadata?.historyOnly)
+    : [];
   const visiblePersisted = persisted.filter(
     (n) => (
       !n.metadata?.historyOnly
@@ -316,6 +314,8 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
     if (!runId) return;
     if (typeof onOpenRagRunDetails === 'function') onOpenRagRunDetails(runId);
   };
+
+  if (!sessionId) return null;
 
   return (
     <div className="notification-center-root" ref={rootRef}>

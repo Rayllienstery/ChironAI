@@ -60,14 +60,21 @@ def collect_openapi_paths(openapi_py: Path) -> set[str]:
     return paths
 
 
-def collect_frontend_paths(api_js: Path) -> set[str]:
-    text = _read_text(api_js)
+def collect_frontend_paths(services_dir: Path) -> set[str]:
     paths: set[str] = set()
-    for pattern in (API_JS_FETCH_RE, API_JS_TEMPLATE_RE):
-        for match in pattern.finditer(text):
-            sub = match.group(1).split("?")[0].rstrip("/")
-            if sub:
-                paths.add(f"{WEBUI_PREFIX}{sub}")
+    js_files = [services_dir / "api.js"]
+    js_files.extend(sorted(services_dir.glob("*.js")))
+    seen: set[Path] = set()
+    for js_file in js_files:
+        if js_file in seen or not js_file.is_file():
+            continue
+        seen.add(js_file)
+        text = _read_text(js_file)
+        for pattern in (API_JS_FETCH_RE, API_JS_TEMPLATE_RE):
+            for match in pattern.finditer(text):
+                sub = match.group(1).split("?")[0].rstrip("/")
+                if sub:
+                    paths.add(f"{WEBUI_PREFIX}{sub}")
     return paths
 
 
@@ -76,11 +83,12 @@ def run_drift_check() -> tuple[list[str], list[str], list[str]]:
     rag_routes = REPO_ROOT / "api" / "http" / "rag_routes.py"
     openapi_py = REPO_ROOT / "core" / "openapi.py"
     api_js = REPO_ROOT / "CoreModules" / "CoreUI" / "src" / "services" / "api.js"
+    services_dir = api_js.parent
 
     flask_paths = collect_flask_webui_routes(webui_dir)
     v1_paths = collect_v1_routes(rag_routes)
     openapi_paths = collect_openapi_paths(openapi_py)
-    frontend_paths = collect_frontend_paths(api_js)
+    frontend_paths = collect_frontend_paths(services_dir)
 
     def norm(p: str) -> str:
         return re.sub(r"<[^>]+>", "{param}", p).rstrip("/")

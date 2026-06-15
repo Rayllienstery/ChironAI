@@ -101,9 +101,9 @@ def apply_selected_rerank_model(
         or ""
     ).strip()
     if hasattr(rerank_client, "_model"):
-        setattr(rerank_client, "_model", selected)
+        rerank_client._model = selected
     elif hasattr(rerank_client, "model"):
-        setattr(rerank_client, "model", selected)
+        rerank_client.model = selected
     else:
         return rerank_client
 
