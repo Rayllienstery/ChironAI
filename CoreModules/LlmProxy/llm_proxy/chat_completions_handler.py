@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 import uuid
@@ -20,17 +19,11 @@ from application.rag.proxy_settings_contract import (
     resolve_fetch_web_knowledge,
     resolve_rag_collection,
 )
-from infrastructure.metrics import gauge, histogram, increment
 from llm_proxy.chat_completions_gemini_native import (
     _interpolate_native_tools_for_gemini,
-    _persist_gemini_tool_calls_state,
     _preflight_native_tool_messages,
     _preflight_native_tools_payload,
     _resolve_proxy_db_path_from_wiring,
-    _sanitize_outgoing_shell_tool_calls,
-)
-from llm_proxy.chat_completions_handler_helpers import (
-    append_pipeline_step_trace as _append_pipeline_step_trace,
 )
 from llm_proxy.chat_completions_handler_helpers import (
     apply_selected_rerank_model as _apply_selected_rerank_model,
@@ -58,27 +51,27 @@ from llm_proxy.chat_completions_legacy_tool_stream import (
 from llm_proxy.chat_completions_messages import (
     _normalize_request_messages,
 )
+from llm_proxy.chat_completions_native_tools_nonstream import (
+    NativeToolsNonStreamContext,
+    try_build_native_tools_nonstream_response,
+)
 from llm_proxy.chat_completions_native_tools_prep import (
     analyze_tool_turn_state,
     resolve_native_tools_policy,
 )
+from llm_proxy.chat_completions_nonstream_response import (
+    StandardNonStreamContext,
+    build_standard_nonstream_response,
+)
 from llm_proxy.chat_completions_ollama_proxy import (
-    _PLACEHOLDER_REPLY_FALLBACK_EN,
     _append_trace_warning,
-    _apply_provider_trace_fields,
-    _apply_response_diagnostics,
     _apply_trace_response_text_fields,
     _build_rag_collection_issue,
-    _degenerate_assistant_reply,
     _effective_max_agent_steps,
     _effective_num_ctx,
     _effective_num_predict,
     _effective_rag_collection_name,
     _input_budget_from_context,
-    _output_budget_exhaustion_error,
-    _proxy_ollama_chat_text_parts,
-    _text_preview,
-    _trace_ollama_api_metrics,
     _trace_ollama_messages_for_ui,
     effective_ollama_think_from_body,
 )
@@ -91,20 +84,16 @@ from llm_proxy.chat_completions_ollama_proxy import (
 from llm_proxy.chat_completions_ollama_proxy import (
     vision_fallback_preferences as _vision_fallback_preferences,
 )
+from llm_proxy.chat_completions_rag_orchestration import (
+    resolve_project_context_collections,
+    resolve_skip_rag_retrieval,
+    run_chat_rag_pipeline,
+)
 from llm_proxy.chat_completions_rag_prep import (
     apply_proxy_context_char_limits as _apply_proxy_context_char_limits,
 )
 from llm_proxy.chat_completions_rag_prep import (
-    build_framework_name_to_collection_map as _build_framework_name_to_collection_map,
-)
-from llm_proxy.chat_completions_rag_prep import (
-    build_rag_context_log_snapshot as _build_rag_context_log_snapshot,
-)
-from llm_proxy.chat_completions_rag_prep import (
-    enrich_rag_trace_for_ui as _enrich_rag_trace_for_ui,
-)
-from llm_proxy.chat_completions_rag_prep import (
-    resolve_project_fresh_collections as _resolve_project_fresh_collections,
+    build_rag_metadata_for_response,
 )
 from llm_proxy.chat_completions_request_parsing import (
     resolve_trace_chain_id as _resolve_trace_chain_id,
@@ -113,13 +102,7 @@ from llm_proxy.chat_completions_request_parsing import (
     truthy_body_flag as _truthy_body_flag,
 )
 from llm_proxy.chat_completions_response_helpers import (
-    final_or_compat_content as _final_or_compat_content,
-)
-from llm_proxy.chat_completions_response_helpers import (
     record_reasoning_token_estimates as _record_reasoning_token_estimates,
-)
-from llm_proxy.chat_completions_response_helpers import (
-    text_parts_from_openai_assistant_message as _text_parts_from_openai_assistant_message,
 )
 from llm_proxy.chat_completions_response_helpers import (
     tool_loop_limit_final_message as _tool_loop_limit_final_message,
@@ -132,14 +115,10 @@ from llm_proxy.chat_completions_run_phases import (
     _tool_loop_needs_finalize_nudge,
 )
 from llm_proxy.chat_completions_sse_generators import (
-    NativeToolsSingleStreamContext,
     NativeToolsStreamContext,
-    PlainSingleStreamContext,
     StandardStreamContext,
     ToolLimitStreamContext,
-    iter_native_tools_single_sse_stream,
     iter_native_tools_sse_stream,
-    iter_plain_single_sse_stream,
     iter_standard_sse_stream,
     iter_tool_limit_sse_stream,
 )
@@ -164,33 +143,19 @@ from llm_proxy.contracts import LlmProxyWiring
 from llm_proxy.ollama_compat import (
     caps_supports_thinking,
     caps_supports_vision,
-    chat_error_suggests_no_think,
-    chat_error_suggests_no_tools,
     find_cached_ollama_vision_model,
     get_cached_ollama_capabilities,
-    ollama_chat_tool_choice_payload_value,
-    ollama_message_to_openai_assistant,
     ollama_tools_from_openai,
-    openai_finish_reason_from_ollama,
     openai_tool_choice_means_none,
 )
-from llm_proxy.pipeline_steps.merged_docs_step import run_merged_docs_step
-from llm_proxy.pipeline_steps.web_supplement_step import (
-    run_web_supplement_step,
-)
 from llm_proxy.tool_helpers import (
-    _build_tool_arguments,
     _build_tool_json_instruction,
     _client_files_snippet,
     _client_selection_snippet,
-    _extract_edit_from_response,
     _extract_file_path_from_user_text,
-    _extract_line_span_from_user_text,
     _get_tool_by_name,
     _select_edit_tool_name,
-    _tool_args_have_substantive_body,
     _tool_schema_accepts_content,
-    _workspace_doc_refactor_intent,
     _workspace_selection_snippet,
 )
 
@@ -613,32 +578,15 @@ def run_chat_completions(
     # IDE-independent mode: do not fail fast solely on schema checks.
     # Some clients expose incomplete tool schemas but still accept write payloads at runtime.
 
-    # Optional project_context: frameworks list -> fresh collection names for RAG filter, and needs_refresh for background index
+    # Optional project_context: frameworks list -> fresh collection names for RAG filter
     project_context = body.get("project_context")
-    project_fresh_collection_names: set[str] | None = None
-    needs_refresh: list[tuple[str, str]] = []  # (framework_id_lower, collection_name); also filled from resolved sources below
-    if (
-        fetch_web_knowledge
-        and isinstance(project_context, dict)
-        and w.external_docs.available
-        and w.external_docs.load_rag_sources_config
-    ):
-        frameworks = project_context.get("frameworks") or []
-        if frameworks:
-            rag_sources_config = w.external_docs.load_rag_sources_config()
-            name_to_collection = _build_framework_name_to_collection_map(rag_sources_config)
-            prep_settings_repo = None
-            try:
-                prep_settings_repo = w.get_settings_repository()
-            except Exception:
-                pass
-            project_fresh_collection_names, needs_refresh = _resolve_project_fresh_collections(
-                frameworks,
-                name_to_collection=name_to_collection,
-                settings_repo=prep_settings_repo,
-                check_collection_freshness=w.check_collection_freshness,
-                default_ttl_days=w.get_framework_collection_ttl_days(),
-            )
+    _project_ctx = resolve_project_context_collections(
+        w=w,
+        fetch_web_knowledge=bool(fetch_web_knowledge),
+        project_context=project_context,
+    )
+    project_fresh_collection_names = _project_ctx.project_fresh_collection_names
+    needs_refresh = list(_project_ctx.needs_refresh)
 
     # Resolve collection in priority order:
     # 1) request body collection_name
@@ -798,169 +746,56 @@ def run_chat_completions(
     )
     rag_keywords = w.get_rag_required_keywords()
 
-    # Skip embed/search/rerank when the client is doing a local selection-based edit (typical Zed flow).
-    # Model Tester feels faster largely because use_rag=false avoids this entire retrieval stack.
-    explicit_skip_rag = bool(body.get("skip_rag"))
-    doc_refactor_intent = _workspace_doc_refactor_intent(last_user or "")
-    doc_refactor_skip = bool(doc_refactor_intent and not force_rag)
-    trace["request"]["doc_refactor_intent"] = bool(doc_refactor_intent)
-    trace["request"]["doc_refactor_skip"] = bool(doc_refactor_skip)
-    local_tool_edit_fast_path = (
-        bool(tools)
-        and bool(selected_edit_tool_name)
-        and tool_choice_effective != "none"
-        and not use_native_tools
-        and not force_rag
-        and not fetch_web_knowledge
-        and not request_collection
-        and (
-            post_tool_success_turn
-            or (
-                bool(_extract_file_path_from_user_text(last_user or ""))
-                and _extract_line_span_from_user_text(last_user or "") is not None
-            )
-        )
+    _skip_rag = resolve_skip_rag_retrieval(
+        body=body,
+        last_user=last_user,
+        tools=tools,
+        selected_edit_tool_name=selected_edit_tool_name,
+        tool_choice_effective=tool_choice_effective,
+        use_native_tools=use_native_tools,
+        force_rag=bool(force_rag),
+        fetch_web_knowledge=bool(fetch_web_knowledge),
+        request_collection=request_collection,
+        post_tool_success_turn=post_tool_success_turn,
+        is_autocomplete=bool(is_autocomplete),
+        dumb_build_pipeline=dumb_build_pipeline,
+        proxy_settings=proxy_settings,
     )
-    skip_rag_retrieval = (
-        explicit_skip_rag
-        or local_tool_edit_fast_path
-        or is_autocomplete
-        or doc_refactor_skip
-        or (dumb_build_pipeline and not bool(proxy_settings.get("rag_enabled", True)))
-    )
+    trace["request"]["doc_refactor_intent"] = bool(_skip_rag.doc_refactor_intent)
+    trace["request"]["doc_refactor_skip"] = bool(_skip_rag.doc_refactor_skip)
+    skip_rag_retrieval = _skip_rag.skip_rag_retrieval
     trace["request"]["skip_rag_retrieval"] = bool(skip_rag_retrieval)
 
-    # Build RAG context: multi-collection (external_docs_rag) when triggered, else single collection
-    rag_ctx_for_log = None
-    rag_timings: dict[str, float] = {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0}
-    background_refresh_started = False
-    trace["internet"] = {"background_refresh_started": False}
-    try:
-        if skip_rag_retrieval:
-            rag_ctx_for_log = w.rag_context_factory(
-                context_text="", chunks_info=[], max_score=0.0, retrieval_skipped=True
-            )
-            trace["rag"]["retrieval_skipped"] = True
-        else:
-            trace["rag"]["retrieval_skipped"] = False
-
-        merged_step_status = "disabled"
-        merged_step_reason: str | None = None
-        if not skip_rag_retrieval:
-            merged_step = run_merged_docs_step(
-                w=w,
-                last_user=last_user,
-                messages=messages,
-                body=body,
-                fetch_web_knowledge=bool(fetch_web_knowledge),
-                request_collection=request_collection,
-                effective_embed_provider=effective_embed_provider,
-                effective_context_chunk_chars=effective_context_chunk_chars,
-                effective_context_total_chars=effective_context_total_chars,
-                project_fresh_collection_names=project_fresh_collection_names,
-                needs_refresh=needs_refresh,
-                logger=_RAG_LOG,
-            )
-            merged_step_status = merged_step.status
-            merged_step_reason = merged_step.reason
-            background_refresh_started = bool(merged_step.background_refresh_started)
-            trace["internet"]["background_refresh_started"] = background_refresh_started
-            if merged_step.used and merged_step.rag_ctx_for_log is not None:
-                rag_ctx_for_log = merged_step.rag_ctx_for_log
-                rag_timings = merged_step.rag_timings
-            else:
-                rag_ctx_for_log, rag_timings = w.build_rag_context(
-                    last_user,
-                    effective_rag_repo,
-                    effective_embed_provider,
-                    effective_rerank_client,
-                    effective_context_chunk_chars,
-                    effective_context_total_chars,
-                    top_k=effective_rag_top_k,
-                    rag_required_keywords=rag_keywords,
-                    trigger_threshold=None,
-                    force_rag=force_rag,
-                )
-        else:
-            merged_step_status = "skipped"
-            merged_step_reason = "rag_retrieval_skipped"
-        _append_pipeline_step_trace(
-            trace,
-            step_id="merged_docs",
-            status=merged_step_status,
-            reason=merged_step_reason,
-        )
-        if rag_timings:
-            w.set_latest_request_rag_steps(rag_timings)
-            if not private_build:
-                _RAG_LOG.debug(
-                    "RAG steps embed_s=%.2f search_s=%.2f rerank_s=%.2f fetch_s=%.2f discovery_s=%.2f total_rag_s=%.2f",
-                    rag_timings.get("embed_s", 0),
-                    rag_timings.get("search_s", 0),
-                    rag_timings.get("rerank_s", 0),
-                    rag_timings.get("fetch_s", 0),
-                    rag_timings.get("discovery_s", 0),
-                    rag_timings.get("total_rag_s", 0),
-                )
-        rag_context_data = _build_rag_context_log_snapshot(rag_ctx_for_log)
-
-        _enrich_rag_trace_for_ui(
-            trace,
-            rag_ctx_for_log=rag_ctx_for_log,
-            rag_timings=rag_timings,
-            effective_context_total_chars=effective_context_total_chars,
-            background_refresh_started=background_refresh_started,
-        )
-        publish_trace(trace)
-    except Exception as e:
-        if not private_build:
-            _RAG_LOG.warning("Failed to build RAG context for logging: %s", e)
-        rag_context_data = None
-    w.set_proxy_status(w.status_preparing_response)
-
-    web_supplement_text: str | None = None
-    web_sup_meta: dict[str, Any] = {
-        "trigger": "none",
-        "used": False,
-        "error": None,
-        "duration_ms": 0,
-        "snippets_chars": 0,
-    }
-    web_step = run_web_supplement_step(
+    _rag_pipeline = run_chat_rag_pipeline(
         w=w,
-        is_autocomplete=bool(is_autocomplete),
-        doc_refactor_skip=bool(doc_refactor_skip),
-        last_user=last_user or "",
-        rag_ctx_for_log=rag_ctx_for_log,
+        trace=trace,
+        last_user=last_user,
+        messages=messages,
+        body=body,
+        fetch_web_knowledge=bool(fetch_web_knowledge),
+        request_collection=request_collection,
+        effective_rag_repo=effective_rag_repo,
+        effective_embed_provider=effective_embed_provider,
+        effective_rerank_client=effective_rerank_client,
+        effective_context_chunk_chars=effective_context_chunk_chars,
+        effective_context_total_chars=effective_context_total_chars,
         effective_confidence_threshold=float(effective_confidence_threshold),
-        proxy_settings={str(k): v for k, v in (proxy_settings or {}).items()},
+        effective_rag_top_k=effective_rag_top_k,
+        rag_keywords=rag_keywords,
+        force_rag=bool(force_rag),
+        skip_rag_retrieval=skip_rag_retrieval,
+        is_autocomplete=bool(is_autocomplete),
+        doc_refactor_skip=bool(_skip_rag.doc_refactor_skip),
+        proxy_settings=proxy_settings,
+        project_fresh_collection_names=project_fresh_collection_names,
+        needs_refresh=needs_refresh,
+        private_build=private_build,
+        publish_trace=publish_trace,
     )
-    web_supplement_text = web_step.text
-    web_sup_meta = dict(web_step.meta or {})
-    trace["internet"]["web_supplement"] = {
-        "used": bool(web_sup_meta.get("used")),
-        "trigger": web_sup_meta.get("trigger"),
-        "error": web_sup_meta.get("error"),
-        "duration_ms": web_sup_meta.get("duration_ms", 0),
-        "snippets_chars": web_sup_meta.get("snippets_chars", 0),
-        "queries": web_sup_meta.get("queries") or [],
-        "cache_hit": bool(web_sup_meta.get("cache_hit")),
-        "fetch_used": bool(web_sup_meta.get("fetch_used")),
-        "wikipedia_used": bool(web_sup_meta.get("wikipedia_used")),
-        "ddg_news": bool(web_sup_meta.get("ddg_news")),
-        "domains_top": web_sup_meta.get("domains_top") or [],
-        "snippets_count": int(web_sup_meta.get("snippets_count") or 0),
-    }
-    trace["internet"]["used"] = bool(
-        trace["internet"].get("used") or trace["internet"]["web_supplement"].get("used")
-    )
-    _append_pipeline_step_trace(
-        trace,
-        step_id="web_supplement",
-        status=web_step.status,
-        reason=web_step.reason,
-    )
-    publish_trace(trace)
+    rag_ctx_for_log = _rag_pipeline.rag_ctx_for_log
+    rag_timings = _rag_pipeline.rag_timings
+    rag_context_data = _rag_pipeline.rag_context_data
+    web_supplement_text = _rag_pipeline.web_supplement_text
 
     # Reuse the same RAG context for messages (single RAG call per request)
     rag_ctx = rag_ctx_for_log if (include_rag_metadata and rag_ctx_for_log) else None
@@ -1118,11 +953,7 @@ def run_chat_completions(
                 ],
             }
             if include_rag_metadata and rag_ctx:
-                response_data["rag_metadata"] = {
-                    "chunks_info": rag_ctx.chunks_info,
-                    "max_score": rag_ctx.max_score,
-                    "chunks_count": len(rag_ctx.chunks_info),
-                }
+                response_data["rag_metadata"] = build_rag_metadata_for_response(rag_ctx)
 
             if stream:
                 rid = str(response_data["id"])
@@ -1263,314 +1094,41 @@ def run_chat_completions(
                 headers=_SSE_RESPONSE_HEADERS,
             )
 
-        # ------------------------------------------------------------------ #
-        #  NON-STREAMING native tools (existing retry cascade)                #
-        # ------------------------------------------------------------------ #
-        _co = dict(getattr(chat_client, "_default_options", None) or {})
-        _oo = ollama_options_overlay()
-        if _oo:
-            _co.update(_oo)
-        body_ollama: dict[str, object] = {
-            "model": use_model,
-            "messages": native_ollama_messages_for_upstream,
-            "stream": False,
-            "options": dict(_co),
-        }
-        if ollama_think is not None:
-            body_ollama["think"] = ollama_think
-        if oll_tools:
-            body_ollama["tools"] = oll_tools
-        _tc_native = ollama_chat_tool_choice_payload_value(tool_choice_effective)
-        if _tc_native is not None:
-            body_ollama["tool_choice"] = _tc_native
-
-        w.set_proxy_status(w.status_response)
-        _native_err: str | None = None
-        data: dict[str, object] = {}
-        try:
-            _apply_provider_trace_fields(
-                trace,
-                chat_client,
-                model_id=use_model,
-                operation="chat_api",
+        return try_build_native_tools_nonstream_response(
+            NativeToolsNonStreamContext(
+                w=w,
+                trace=trace,
+                private_build=private_build,
+                stream=bool(stream),
+                client_visible_model=client_visible_model,
+                chat_client=chat_client,
+                native_ollama_messages=native_ollama_messages,
+                native_ollama_messages_for_upstream=native_ollama_messages_for_upstream,
+                use_model=use_model,
+                ollama_think=ollama_think,
+                oll_tools=oll_tools,
+                tool_choice_effective=tool_choice_effective,
+                include_reasoning_content=include_reasoning_content,
+                include_rag_metadata=bool(include_rag_metadata),
+                user_query=user_query,
+                trace_id=trace_id,
+                proxy_db_path=proxy_db_path,
+                log_preview=log_preview,
+                start_time=start_time,
+                rag_ctx=rag_ctx,
+                rag_ctx_for_log=rag_ctx_for_log,
+                rag_timings=rag_timings,
+                requested_model=requested_model,
+                is_autocomplete=is_autocomplete,
+                post_tool_success_turn=post_tool_success_turn,
+                native_tools_diag=native_tools_diag,
+                ollama_options_overlay=ollama_options_overlay,
+                publish_trace=publish_trace,
+                publish_response_artifacts=publish_response_artifacts,
+                persist_proxy_request_log=persist_proxy_request_log,
+                log_rag_error_private=_log_rag_error_private,
+                rag_request_completed_payload=_rag_request_completed_payload,
             )
-            chat_fn = getattr(chat_client, "chat_api", None)
-            if callable(chat_fn):
-                attempt: dict[str, object] = dict(body_ollama)
-                last_exc: Exception | None = None
-                data = {}
-                for _ in range(3):
-                    try:
-                        data = chat_fn(attempt)
-                        last_exc = None
-                        break
-                    except Exception as e:
-                        last_exc = e
-                        if chat_error_suggests_no_tools(e) and "tools" in attempt:
-                            attempt.pop("tools", None)
-                            attempt.pop("tool_choice", None)
-                            trace["request"]["native_tools_fallback"] = "stripped_tools_unsupported"
-                            continue
-                        if chat_error_suggests_no_think(e) and "think" in attempt:
-                            attempt.pop("think", None)
-                            trace["request"]["native_think_fallback"] = "stripped_unsupported"
-                            continue
-                        break
-                if last_exc is not None:
-                    raise last_exc
-            else:
-                msg_only = chat_client.chat(
-                    native_ollama_messages,
-                    use_model,
-                    stream=False,
-                    options=ollama_options_overlay(),
-                    think=ollama_think,
-                )
-                data = {"message": {"role": "assistant", "content": msg_only}}
-        except Exception as e:
-            if not private_build:
-                meta: dict[str, Any] = {"stage": "native_tools_ollama"}
-                if native_tools_diag:
-                    meta["native_tools_diag"] = native_tools_diag
-                w.log_webui_error("rag_routes.chat_completions", e, meta)
-            _log_rag_error_private("native_tools_ollama", e, private_build=private_build)
-            _native_err = str(e)
-        finally:
-            w.set_proxy_status(w.status_idle)
-            w.set_latest_request_seconds(time.time() - start_time)
-
-        if _native_err:
-            return jsonify({"error": _native_err}), 500
-
-        err_obj = data.get("error")
-        if err_obj:
-            return jsonify({"error": str(err_obj)}), 502
-
-        if not data:
-            return jsonify(
-                {"error": "Empty response from Ollama (stream or connection closed without data)"}
-            ), 502
-
-        oll_msg = data.get("message") if isinstance(data.get("message"), dict) else {}
-        if not oll_msg and not err_obj:
-            return jsonify(
-                {
-                    "error": "Ollama returned no assistant message",
-                    "detail": json.dumps(data, ensure_ascii=False)[:800],
-                }
-            ), 502
-        openai_msg = ollama_message_to_openai_assistant(oll_msg)
-        finish = openai_finish_reason_from_ollama(
-            oll_msg, ollama_done_reason=data.get("done_reason"),
-        )
-        tool_calls_out = openai_msg.get("tool_calls") if isinstance(openai_msg.get("tool_calls"), list) else []
-        tool_calls_recovered_from_text = bool(
-            tool_calls_out
-            and not (
-                isinstance(oll_msg.get("tool_calls"), list)
-                and bool(oll_msg.get("tool_calls"))
-            )
-        )
-        tool_calls_out, shell_sanitize_count = _sanitize_outgoing_shell_tool_calls(tool_calls_out)
-        if tool_calls_recovered_from_text:
-            _append_trace_warning(trace, "native_tool_calls_recovered_from_text")
-            finish = "tool_calls"
-        gemini_tool_state_upserted = _persist_gemini_tool_calls_state(
-            tool_calls=tool_calls_out,
-            model_name=use_model,
-            trace_id=trace_id,
-            db_path=proxy_db_path,
-        )
-        content_parts = _text_parts_from_openai_assistant_message(openai_msg)
-        content_str = _final_or_compat_content(
-            content_parts,
-            include_reasoning_content=include_reasoning_content,
-        )
-        if (
-            content_parts["reasoning_content"]
-            and not content_parts["final_content"]
-            and not tool_calls_out
-        ):
-            _append_trace_warning(trace, "reasoning_only_response_guarded")
-            content_str = (
-                "[Error: model returned reasoning without final answer. "
-                "Try disabling thinking or shortening the prompt.]"
-            )
-            content_parts = {
-                "visible_content": f"{content_parts['visible_content']}\n\n{content_str}".strip(),
-                "reasoning_content": content_parts["reasoning_content"],
-                "final_content": content_str,
-            }
-        budget_error = _output_budget_exhaustion_error(trace, data if isinstance(data, dict) else None)
-        if budget_error and not tool_calls_out:
-            content_str = f"{content_str}\n\n{budget_error}".strip() if content_str.strip() else budget_error
-            content_parts = {
-                "visible_content": content_str,
-                "reasoning_content": content_parts["reasoning_content"],
-                "final_content": f"{content_parts['final_content']}\n\n{budget_error}".strip(),
-            }
-            finish = "length"
-
-        latency_ms = int((time.time() - start_time) * 1000)
-        _pt = max(1, int(len(json.dumps(native_ollama_messages_for_upstream, ensure_ascii=False)) / 4))
-        _ct = max(1, int(len(content_str or "") / 4))
-        w.set_latest_request_total_tokens(_pt + _ct)
-
-        _metric_model = "redacted" if private_build else use_model
-        increment("rag_requests_total", tags={"model": _metric_model, "is_autocomplete": str(is_autocomplete)})
-        histogram("rag_latency_ms", latency_ms, tags={"model": _metric_model})
-        histogram("rag_prompt_tokens", _pt, tags={"model": _metric_model})
-        histogram("rag_completion_tokens", _ct, tags={"model": _metric_model})
-        if rag_ctx:
-            gauge("rag_chunks_count", len(rag_ctx.chunks_info), tags={"model": _metric_model})
-            gauge("rag_max_score", rag_ctx.max_score, tags={"model": _metric_model})
-            if rag_ctx.max_score < 0.5:
-                increment("rag_low_confidence", tags={"model": _metric_model})
-        if not rag_ctx or not rag_ctx.chunks_info:
-            increment("rag_empty_results", tags={"model": _metric_model})
-
-        if not private_build:
-            _RAG_LOG.debug(
-                json.dumps(
-                    _rag_request_completed_payload(
-                        user_query=user_query,
-                        trace_id=trace_id,
-                        use_model=use_model,
-                        requested_model=requested_model,
-                        latency_ms=latency_ms,
-                        prompt_tokens=_pt,
-                        completion_tokens=_ct,
-                        rag_context_for_obs=rag_ctx_for_log,
-                        rag_timings=rag_timings,
-                        trace=trace,
-                        stream=bool(stream),
-                        is_autocomplete=bool(is_autocomplete),
-                        native_tools=True,
-                    )
-                )
-            )
-        trace["response"] = {
-            "latency_ms": latency_ms,
-            "tool_calls_count": len(tool_calls_out),
-            "native_tools": True,
-            **_trace_ollama_api_metrics(data if isinstance(data, dict) else None, model_id=use_model),
-        }
-        _record_reasoning_token_estimates(
-            trace["response"],
-            content_parts["reasoning_content"],
-            content_parts["final_content"],
-        )
-        _apply_trace_response_text_fields(
-            trace["response"],
-            visible_content=content_parts["visible_content"] or content_str,
-            reasoning_content=content_parts["reasoning_content"],
-            final_content=content_parts["final_content"],
-            log_preview=log_preview,
-        )
-        _apply_response_diagnostics(trace)
-        if tool_calls_out:
-            trace["response"]["tool_calls"] = tool_calls_out
-            if post_tool_success_turn:
-                trace["response"]["post_tool_returned_tool_calls"] = True
-        if tool_calls_recovered_from_text:
-            trace["response"]["tool_calls_recovered_from_text"] = True
-        if gemini_tool_state_upserted:
-            trace["response"]["gemini_tool_state_upserted_count"] = int(gemini_tool_state_upserted)
-        if shell_sanitize_count:
-            trace["response"]["shell_tool_sanitized_count"] = int(shell_sanitize_count)
-
-        choice_msg: dict[str, object] = {
-            "role": "assistant",
-            "content": None if tool_calls_out else (content_str or None),
-        }
-        if content_parts["reasoning_content"]:
-            choice_msg["reasoning_content"] = content_parts["reasoning_content"]
-        if tool_calls_out:
-            choice_msg["tool_calls"] = tool_calls_out
-        response_data: dict[str, object] = {
-            "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
-            "object": "chat.completion",
-            "created": 0,
-            "model": client_visible_model,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": choice_msg,
-                    "finish_reason": finish,
-                }
-            ],
-        }
-        if include_rag_metadata and rag_ctx:
-            _rm: dict[str, object] = {
-                "chunks_info": rag_ctx.chunks_info,
-                "max_score": rag_ctx.max_score,
-                "chunks_count": len(rag_ctx.chunks_info),
-            }
-            _rt = getattr(rag_ctx, "rag_trace", None)
-            if isinstance(_rt, list):
-                _rm["rag_trace"] = _rt
-            _cr = getattr(rag_ctx, "coverage_report", None)
-            if isinstance(_cr, dict):
-                _rm["coverage_report"] = _cr
-            _rq = getattr(rag_ctx, "rag_quality", None)
-            if isinstance(_rq, dict):
-                _rm["rag_quality"] = _rq
-            response_data["rag_metadata"] = _rm
-
-        if not stream:
-            trace["steps"].append(
-                {
-                    "name": "provider_chat_native_tools",
-                    "duration_ms": int(latency_ms),
-                    "tokens_in_est": _pt,
-                    "tokens_out_est": _ct,
-                }
-            )
-            publish_response_artifacts(
-                visible_content=content_parts["visible_content"] or content_str,
-                reasoning_content=content_parts["reasoning_content"],
-                final_content=content_parts["final_content"],
-            )
-            publish_trace(trace)
-            if not private_build:
-                persist_proxy_request_log(
-                    message=f"Proxy request (native tools): {user_query[:100]}...",
-                    response_preview=(content_str or ""),
-                    latency_ms_value=latency_ms,
-                    trace_payload=trace,
-                    stream_value=False,
-                    include_rag_fields=False,
-                    include_token_fields=False,
-                    warn_label="native-tools",
-                )
-            return jsonify(response_data)
-
-        trace["request"]["sse_single_chunk"] = True
-
-        return Response(
-            iter_native_tools_single_sse_stream(
-                NativeToolsSingleStreamContext(
-                    w=w,
-                    trace=trace,
-                    private_build=private_build,
-                    client_visible_model=client_visible_model,
-                    content_str=content_str,
-                    content_parts=content_parts,
-                    tool_calls_out=tool_calls_out,
-                    finish=finish,
-                    include_reasoning_content=include_reasoning_content,
-                    user_query=user_query,
-                    latency_ms=latency_ms,
-                    prompt_tokens=_pt,
-                    completion_tokens=_ct,
-                    start_time=start_time,
-                    publish_trace=publish_trace,
-                    publish_response_artifacts=publish_response_artifacts,
-                    persist_proxy_request_log=persist_proxy_request_log,
-                )
-            ),
-            mimetype=_SSE_MIMETYPE,
-            headers=_SSE_RESPONSE_HEADERS,
         )
 
     if tools and tool_choice_effective != "none":
@@ -1673,291 +1231,40 @@ def run_chat_completions(
             mimetype=_SSE_MIMETYPE,
             headers=_SSE_RESPONSE_HEADERS,
         )
-    budget_error = ""
-    try:
-        w.set_proxy_status(w.status_response)
-        _apply_provider_trace_fields(
-            trace,
-            chat_client,
-            model_id=use_model,
-            operation="chat_api",
-        )
-        content_parts = _proxy_ollama_chat_text_parts(
-            chat_client,
-            ollama_messages,
-            use_model,
-            ollama_think,
-            options_overlay=ollama_options_overlay(),
-        )
-        content = _final_or_compat_content(
-            content_parts,
+    return build_standard_nonstream_response(
+        StandardNonStreamContext(
+            w=w,
+            trace=trace,
+            private_build=private_build,
+            stream=bool(stream),
+            build_sse_streaming=build_sse_streaming,
+            client_visible_model=client_visible_model,
+            chat_client=chat_client,
+            ollama_messages=ollama_messages,
+            use_model=use_model,
+            ollama_think=ollama_think,
             include_reasoning_content=include_reasoning_content,
+            include_rag_metadata=bool(include_rag_metadata),
+            user_query=user_query,
+            trace_id=trace_id,
+            log_preview=log_preview,
+            start_time=start_time,
+            rag_ctx=rag_ctx,
+            rag_ctx_for_log=rag_ctx_for_log,
+            rag_timings=rag_timings,
+            requested_model=requested_model,
+            is_autocomplete=is_autocomplete,
+            tools=tools,
+            tool_choice_effective=tool_choice_effective,
+            post_tool_success_turn=post_tool_success_turn,
+            selected_edit_tool_name=selected_edit_tool_name,
+            selected_edit_tool=selected_edit_tool,
+            selected_tool_write_capable=selected_tool_write_capable,
+            ollama_options_overlay=ollama_options_overlay,
+            publish_trace=publish_trace,
+            publish_response_artifacts=publish_response_artifacts,
+            persist_proxy_request_log=persist_proxy_request_log,
+            log_rag_error_private=_log_rag_error_private,
+            rag_request_completed_payload=_rag_request_completed_payload,
         )
-        if _degenerate_assistant_reply(content) and not str(content_parts.get("reasoning_content") or ""):
-            content = _PLACEHOLDER_REPLY_FALLBACK_EN
-            content_parts = {
-                "visible_content": content,
-                "reasoning_content": "",
-                "final_content": content,
-                "ollama_payload": content_parts.get("ollama_payload") if isinstance(content_parts, dict) else {},
-            }
-        if (
-            str(content_parts.get("reasoning_content") or "")
-            and not str(content_parts.get("final_content") or "")
-        ):
-            tool_loop_limit_message = _tool_loop_limit_final_message(trace)
-            if tool_loop_limit_message:
-                _append_trace_warning(trace, "tool_loop_limit_response_guarded")
-                content = tool_loop_limit_message
-            else:
-                _append_trace_warning(trace, "reasoning_only_response_guarded")
-                content = (
-                    "[Error: model returned reasoning without final answer. "
-                    "Try disabling thinking or shortening the prompt.]"
-                )
-            content_parts = {
-                "visible_content": f"{content_parts.get('visible_content') or ''}\n\n{content}".strip(),
-                "reasoning_content": str(content_parts.get("reasoning_content") or ""),
-                "final_content": content,
-                "ollama_payload": content_parts.get("ollama_payload") if isinstance(content_parts, dict) else {},
-            }
-        budget_error = _output_budget_exhaustion_error(
-            trace,
-            content_parts.get("ollama_payload") if isinstance(content_parts, dict) else None,
-        )
-        if budget_error:
-            content = f"{content}\n\n{budget_error}".strip() if str(content or "").strip() else budget_error
-            content_parts = {
-                "visible_content": content,
-                "reasoning_content": str(content_parts.get("reasoning_content") or ""),
-                "final_content": f"{content_parts.get('final_content') or ''}\n\n{budget_error}".strip(),
-                "ollama_payload": content_parts.get("ollama_payload") if isinstance(content_parts, dict) else {},
-            }
-    except Exception as e:
-        if not private_build:
-            w.log_webui_error("rag_routes.chat_completions", e, {"stage": "chat"})
-        _log_rag_error_private("chat", e, private_build=private_build)
-        return jsonify({"error": str(e)}), 500
-    finally:
-        w.set_proxy_status(w.status_idle)
-        w.set_latest_request_seconds(time.time() - start_time)
-    latency_ms = int((time.time() - start_time) * 1000)
-    _prompt_text = " ".join(
-        _ollama_message_content_str(m.get("content"))
-        for m in ollama_messages
-        if isinstance(m, dict)
     )
-    prompt_tokens_approx = max(1, int(len(_prompt_text) / 4))
-    completion_tokens_approx = max(1, int(len(content or "") / 4))
-    _total_tokens_approx = prompt_tokens_approx + completion_tokens_approx
-    w.set_latest_request_total_tokens(_total_tokens_approx)
-    
-    # Record metrics for observability (non-streaming path)
-    _metric_model_ns = "redacted" if private_build else use_model
-    increment("rag_requests_total", tags={"model": _metric_model_ns, "is_autocomplete": str(is_autocomplete)})
-    histogram("rag_latency_ms", latency_ms, tags={"model": _metric_model_ns})
-    histogram("rag_prompt_tokens", prompt_tokens_approx, tags={"model": _metric_model_ns})
-    histogram("rag_completion_tokens", completion_tokens_approx, tags={"model": _metric_model_ns})
-    if rag_ctx:
-        gauge("rag_chunks_count", len(rag_ctx.chunks_info), tags={"model": _metric_model_ns})
-        gauge("rag_max_score", rag_ctx.max_score, tags={"model": _metric_model_ns})
-        if rag_ctx.max_score < 0.5:
-            increment("rag_low_confidence", tags={"model": _metric_model_ns})
-    if not rag_ctx or not rag_ctx.chunks_info:
-        increment("rag_empty_results", tags={"model": _metric_model_ns})
-
-    if not private_build:
-        _RAG_LOG.debug(
-            json.dumps(
-                _rag_request_completed_payload(
-                    user_query=user_query,
-                    trace_id=trace_id,
-                    use_model=use_model,
-                    requested_model=requested_model,
-                    latency_ms=latency_ms,
-                    prompt_tokens=prompt_tokens_approx,
-                    completion_tokens=completion_tokens_approx,
-                    rag_context_for_obs=rag_ctx_for_log,
-                    rag_timings=rag_timings,
-                    trace=trace,
-                    stream=bool(stream),
-                    is_autocomplete=bool(is_autocomplete),
-                    native_tools=False,
-                )
-            )
-        )
-
-    content_len = len(content or "")
-    content_preview = _text_preview(content or "", log_preview)
-    if not private_build:
-        _RAG_LOG.debug(
-            "RAG response model=%s len=%s preview=%s",
-            use_model,
-            content_len,
-            content_preview,
-        )
-    trace["ollama"]["tokens_estimates"] = {
-        "prompt_tokens_estimated": prompt_tokens_approx,
-        "completion_tokens_estimated": completion_tokens_approx,
-        "total_tokens_estimated": _total_tokens_approx,
-    }
-    trace["response"] = {
-        "latency_ms": latency_ms,
-        **_trace_ollama_api_metrics(
-            content_parts.get("ollama_payload") if isinstance(content_parts, dict) else None,
-            model_id=use_model,
-        ),
-    }
-    _record_reasoning_token_estimates(
-        trace["response"],
-        content_parts["reasoning_content"],
-        content_parts["final_content"],
-    )
-    _apply_trace_response_text_fields(
-        trace["response"],
-        visible_content=content_parts["visible_content"],
-        reasoning_content=content_parts["reasoning_content"],
-        final_content=content_parts["final_content"],
-        log_preview=log_preview,
-    )
-    _apply_response_diagnostics(trace)
-    trace["steps"].append(
-        {
-            "name": "ollama_chat",
-            "duration_ms": int(latency_ms),
-            "tokens_in_est": prompt_tokens_approx,
-            "tokens_out_est": completion_tokens_approx,
-        }
-    )
-    publish_response_artifacts(
-        visible_content=content_parts["visible_content"],
-        reasoning_content=content_parts["reasoning_content"],
-        final_content=content_parts["final_content"],
-    )
-    publish_trace(trace)
-    tool_calls: list[dict[str, object]] = []
-    if (
-        tools
-        and tool_choice_effective != "none"
-        and not post_tool_success_turn
-        and (not stream or not build_sse_streaming)
-    ):
-        edit_payload = _extract_edit_from_response(content or "")
-        if edit_payload and selected_edit_tool_name:
-            tool_args = _build_tool_arguments(
-                selected_tool_name=selected_edit_tool_name,
-                selected_tool=selected_edit_tool,
-                edit_payload=edit_payload,
-                user_query=user_query,
-            )
-            if selected_tool_write_capable and _tool_args_have_substantive_body(selected_edit_tool_name, tool_args):
-                tool_calls = [
-                    {
-                        "id": f"call_{uuid.uuid4().hex[:24]}",
-                        "type": "function",
-                        "function": {
-                            "name": selected_edit_tool_name,
-                            "arguments": json.dumps(tool_args, ensure_ascii=False),
-                        },
-                    }
-                ]
-            elif not selected_tool_write_capable:
-                content = (
-                    f"Cannot apply edit: client tool `{selected_edit_tool_name}` schema does not accept file content. "
-                    "Enable a write-capable file edit tool in the IDE (e.g., edit_file/save_file/replace_in_file_range with content/new_text/replacement)."
-                )
-
-    trace["response"]["tool_calls_count"] = len(tool_calls)
-    if tool_calls:
-        trace["response"]["tool_calls"] = tool_calls
-        publish_trace(trace)
-
-    _msg_obj: dict[str, object] = {
-        "role": "assistant",
-        "content": None if tool_calls else content,
-    }
-    if content_parts["reasoning_content"]:
-        _msg_obj["reasoning_content"] = content_parts["reasoning_content"]
-    if tool_calls:
-        _msg_obj["tool_calls"] = tool_calls
-    choice = {
-        "index": 0,
-        "message": _msg_obj,
-        "finish_reason": "tool_calls" if tool_calls else ("length" if budget_error else "stop"),
-    }
-    response_data = {
-        "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
-        "object": "chat.completion",
-        "created": 0,
-        "model": client_visible_model,
-        "choices": [choice],
-    }
-    
-    # Add RAG metadata if requested
-    if include_rag_metadata and rag_ctx:
-        _rm2: dict[str, object] = {
-            "chunks_info": rag_ctx.chunks_info,
-            "max_score": rag_ctx.max_score,
-            "chunks_count": len(rag_ctx.chunks_info),
-        }
-        _rt2 = getattr(rag_ctx, "rag_trace", None)
-        if isinstance(_rt2, list):
-            _rm2["rag_trace"] = _rt2
-        _cr2 = getattr(rag_ctx, "coverage_report", None)
-        if isinstance(_cr2, dict):
-            _rm2["coverage_report"] = _cr2
-        _rq2 = getattr(rag_ctx, "rag_quality", None)
-        if isinstance(_rq2, dict):
-            _rm2["rag_quality"] = _rq2
-        response_data["rag_metadata"] = _rm2
-
-    if stream:
-        trace["request"]["sse_single_chunk"] = True
-        trace["ollama"]["chat_stream"] = False
-        publish_trace(trace)
-
-        finish_sse = str(choice.get("finish_reason") or ("tool_calls" if tool_calls else "stop"))
-        rid = str(response_data.get("id") or f"chatcmpl-{uuid.uuid4().hex[:24]}")
-
-        return Response(
-            iter_plain_single_sse_stream(
-                PlainSingleStreamContext(
-                    response_id=rid,
-                    client_visible_model=client_visible_model,
-                    content=str(content or ""),
-                    content_parts=content_parts,
-                    tool_calls=tool_calls,
-                    finish_reason=finish_sse,
-                    include_reasoning_content=include_reasoning_content,
-                    private_build=private_build,
-                    user_query=user_query,
-                    content_preview=content_preview,
-                    latency_ms=latency_ms,
-                    trace=trace,
-                    prompt_tokens_approx=prompt_tokens_approx,
-                    completion_tokens_approx=completion_tokens_approx,
-                    total_tokens_approx=_total_tokens_approx,
-                    persist_proxy_request_log=persist_proxy_request_log,
-                )
-            ),
-            mimetype=_SSE_MIMETYPE,
-            headers=_SSE_RESPONSE_HEADERS,
-        )
-
-    # Persist trace for non-stream requests
-    if not private_build:
-        persist_proxy_request_log(
-            message=f"Proxy request: {user_query[:100]}...",
-            response_preview=content_preview,
-            latency_ms_value=latency_ms,
-            trace_payload=trace,
-            stream_value=False,
-            include_rag_fields=True,
-            include_token_fields=True,
-            prompt_tokens_value=prompt_tokens_approx,
-            completion_tokens_value=completion_tokens_approx,
-            total_tokens_value=_total_tokens_approx,
-            warn_label="non-stream",
-        )
-
-    return jsonify(response_data)

@@ -571,7 +571,7 @@ def test_extension_tabs_timeout_slow_provider_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import llm_interactor.manager as manager_module
+    import llm_interactor.manager_extension_tabs as extension_tabs_module
 
     class _Repo:
         def get_app_setting(self, key: str):
@@ -585,7 +585,7 @@ def test_extension_tabs_timeout_slow_provider_descriptor(
             time.sleep(1.0)
             return {"id": "slow", "title": "Slow"}
 
-    monkeypatch.setattr(manager_module, "_EXTENSION_TAB_DESCRIPTOR_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(extension_tabs_module, "EXTENSION_TAB_DESCRIPTOR_TIMEOUT_SEC", 0.05)
 
     repo = _Repo()
     root = Path(__file__).resolve().parents[2]
@@ -632,7 +632,7 @@ def test_extension_tab_payload_timeout_keeps_loading_payload_retryable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import llm_interactor.manager as manager_module
+    import llm_interactor.manager_extension_tabs as extension_tabs_module
 
     class _Repo:
         def get_app_setting(self, key: str):
@@ -646,7 +646,7 @@ def test_extension_tab_payload_timeout_keeps_loading_payload_retryable(
             time.sleep(1.0)
             return {"schema": {}}
 
-    monkeypatch.setattr(manager_module, "_EXTENSION_TAB_PAYLOAD_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(extension_tabs_module, "EXTENSION_TAB_PAYLOAD_TIMEOUT_SEC", 0.05)
 
     repo = _Repo()
     root = Path(__file__).resolve().parents[2]
@@ -992,7 +992,7 @@ def test_extension_zip_install_rejects_uncompressed_size_bomb(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import llm_interactor.manager as manager_module
+    import llm_interactor.manager_archive as archive_module
 
     class _Repo:
         def get_app_setting(self, key: str):
@@ -1012,7 +1012,7 @@ def test_extension_zip_install_rejects_uncompressed_size_bomb(
             _ = chunk_size
             yield self._content
 
-    monkeypatch.setattr(manager_module, "_MAX_EXTENSION_ZIP_UNCOMPRESSED_BYTES", 1024)
+    monkeypatch.setattr(archive_module, "MAX_EXTENSION_ZIP_UNCOMPRESSED_BYTES", 1024)
     buf = BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("sample-ext/payload.bin", b"0" * 2048)

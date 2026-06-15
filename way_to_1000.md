@@ -1,6 +1,6 @@
 # Way to 1000
 
-> **Implementation status (2026-06-15):** Phases 0–2 done; Phase 3–5 in progress. Session: legacy tool-mode stream prep → `chat_completions_legacy_tool_stream.py`; prior: SSE generators → `chat_completions_sse_generators.py`; splits (`streaming_orchestration`, `trace_request`, RAG trace + upstream budget helpers).
+> **Implementation status (2026-06-16):** Phases 0–2 done; Phase 3 items 3–4 (`chat_completions_handler`, `manager.py`) **done**; handler **~1186** lines; manager **~978** lines (−1138 from ~2116). *`manager_*` responsibility map: `manager.py` — thin `ExtensionManager` orchestration; `manager_archive` — zip/archive URL safety; `manager_install_helpers` — install target/provenance/validation; `manager_provider_catalog` — provider rows/catalog/sandbox diagnostics; `manager_extension_tabs` — tab cache/UI hooks; `manager_blocklist` — emergency blocklist + security disable; `manager_registry` — registry enrichment + GitHub details; `manager_bootstrap` — runtime discovery/bootstrap timing.*
 
 Цель: довести ChironAI от сильной локальной инженерной платформы до проекта, который можно оценивать как production-ready / enterprise-ready на **950–1000** баллов.
 
@@ -133,8 +133,8 @@
 | `tests/api/test_http_endpoints.py` | ~5340 | **1** — безопасный старт, не трогает runtime |
 | `CoreModules/CoreUI/src/services/api.js` | ~1681 | **2** — после трека C harness |
 | `api/http/webui_crawler_routes.py` | ~2468 | **3** — после helpers + test split |
-| `CoreModules/LlmProxy/llm_proxy/chat_completions_handler.py` | ~1963 | **4** — после трека B settings |
-| `CoreModules/LlmInteractor/llm_interactor/manager.py` | ~2110 | **5** |
+| `CoreModules/LlmProxy/llm_proxy/chat_completions_handler.py` | ~1186 | **4** — после трека B settings |
+| `CoreModules/LlmInteractor/llm_interactor/manager.py` | ~978 | **5** — *was ~2116; split into 7 `manager_*` modules + 36 module tests* |
 | `CoreModules/CoreUI/src/components/CrawlerTab.jsx` | ~2421 | **6** |
 | `CoreModules/CoreUI/src/components/RagTestsTab.jsx` | ~2804 | **7** — *добавлен, пропущен в v1* |
 | `CoreModules/CoreUI/src/components/RagTab.jsx` | — | **8** |
@@ -146,7 +146,7 @@
 - [ ] Карта ответственностей для каждого файла из top-10.
 - [ ] *(добавлено)* Characterization tests перед split там, где coverage тонкий.
 - [ ] Backend routes: вынести pure helpers → `api/http/*_helpers.py`; routes по доменам (crawler: sources, jobs, indexer, collection).
-- [ ] `chat_completions_handler`: orchestration, tools, RAG supplement, upstream, trace persistence. *(vision/url → `chat_completions_ollama_proxy.py`; RAG prep/trace → `chat_completions_rag_prep.py`; native tools → `chat_completions_native_tools_prep.py`; streaming post-process → `chat_completions_streaming_orchestration.py`; SSE generators → `chat_completions_sse_generators.py`; legacy tool stream prep → `chat_completions_legacy_tool_stream.py`; trace request → `chat_completions_trace_request.py`; trace log metadata → `chat_completions_trace_persistence.py`; upstream cap → `chat_completions_upstream_budget.py` + tests; handler **~1963** lines)*
+- [x] `chat_completions_handler`: thin orchestration; extracted RAG orchestration, non-stream native-tools retry/response, standard buffered response, SSE generators, legacy tool stream, trace/upstream/streaming helpers. *(handler **~1186** lines; delta **−777** from ~1963)*
 - [ ] Frontend tabs: container + list + editor + modals + hooks.
 - [ ] `api.js` → `services/{crawler,rag,proxy,extensions,docker}.ts` + общий `http.ts`.
 - [ ] `config/__init__.py` → `config/loader.py`, `config/env.py`, тонкий `__init__.py`.
@@ -322,13 +322,13 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 
 1. [x] `api.js` → domain services (+ TS). *(``http.js``, ``proxy.js``, ``crawler.js``, ``extensions.js``, ``rag.js``; api.js ~610 lines)*
 2. [x] `webui_crawler_routes.py` + helpers. *(partial: `compute_source_stats`, source meta/discover helpers)*
-3. [ ] `chat_completions_handler.py` (после settings resolver). *(RAG/trace/upstream/streaming_orchestration/trace_request/sse_generators/legacy_tool_stream splits + tests; handler ~1963 lines; non-stream native-tools retry cascade + non-stream response assembly remain)*
-4. [ ] `manager.py`.
+3. [x] `chat_completions_handler.py` (после settings resolver). *(RAG orchestration, non-stream native-tools, standard non-stream response, streaming/SSE/legacy/trace/upstream splits + tests; handler **~1186** lines)*
+4. [x] `manager.py`. *(7 `manager_*` modules + 36 module tests; **~978** lines, −1138 from ~2116)*
 5. [ ] `CrawlerTab` → `RagTab` → `RagTestsTab` → `LlmProxyBuildsTab`.
 6. [ ] `config/__init__.py`.
 7. [ ] При каждом split — зачистка `except Exception` в затронутом модуле.
 
-**Exit:** top-10 −40%; audit script green; drift-check required. *(frontend `--strict` green; handler split in progress)*
+**Exit:** top-10 −40%; audit script green; drift-check required. *(frontend `--strict` green; handler split **done** ~1186 lines)*
 
 ---
 

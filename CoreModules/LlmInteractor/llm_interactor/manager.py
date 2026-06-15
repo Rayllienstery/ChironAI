@@ -3,23 +3,13 @@
 from __future__ import annotations
 
 import logging
-import queue
-import re
 import shutil
-import stat
 import tempfile
 import threading
-import time
-import uuid
-import zipfile
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from hashlib import sha256
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import quote
 
-import requests
 from chironai_security import audit_extension_or_raise
 
 from llm_interactor.contracts import ProviderHostContext
@@ -27,18 +17,57 @@ from llm_interactor.discovery import (
     MANIFEST_FILENAME,
     FailedExtension,
     LoadedExtension,
-    discover_extensions,
     load_manifest_from_dir,
 )
 from llm_interactor.install_state import ExtensionsRepository, InstalledExtensionRecord
-from llm_interactor.manifest import EXTENSION_API_VERSION, EXTENSION_TYPE_LLM_PROVIDER
+from llm_interactor.manager_archive import (
+    download_extension_zip_to_dir,
+    github_archive_url,
+    github_raw_asset_url,
+    install_storage_segment,
+    path_contains_symlink,
+    validate_archive_url,
+)
+from llm_interactor.manager_blocklist import (
+    RESTART_SCOPE_PROVIDER_REGISTRY,
+    blocklist_match_for_entry,
+    blocklist_match_for_record,
+    blocklist_match_for_values,
+    disable_blocklisted_records,
+    disable_security_blocked_extensions,
+)
+from llm_interactor.manager_bootstrap import (
+    RuntimeBootstrap,
+    discover_runtime_extensions,
+    prewarm_provider_rows_async,
+    record_bootstrap_timing,
+    source_dirs_for_records,
+)
+from llm_interactor.manager_extension_tabs import (
+    ExtensionTabCacheEntry,
+    ExtensionTabMixin,
+)
+from llm_interactor.manager_install_helpers import (
+    capability_expansion,
+    install_provenance,
+    resolve_install_target,
+    utc_now_iso,
+    validate_install_manifest,
+)
+from llm_interactor.manager_provider_catalog import (
+    build_provider_catalog,
+    provider_rows_from_runtime,
+    sandbox_diagnostics,
+)
+from llm_interactor.manager_registry import (
+    fetch_extension_details,
+    load_registry_entries,
+    registry_diagnostics_payload,
+)
+from llm_interactor.manifest import EXTENSION_TYPE_LLM_PROVIDER
 from llm_interactor.runtime import LLMRuntime, ProviderRegistry
 
 _log = logging.getLogger(__name__)
-_MAX_EXTENSION_ZIP_BYTES = 500 * 1024 * 1024  # 500 MB hard ceiling
-_MAX_EXTENSION_ZIP_UNCOMPRESSED_BYTES = 500 * 1024 * 1024  # 500 MB after extraction
-_MAX_EXTENSION_ZIP_ENTRY_COUNT = 5000
-_MAX_EXTENSION_ZIP_COMPRESSION_RATIO = 100.0
 
 try:
     from extensions_backend import ExtensionBlocklistPolicy, ExtensionRegistryClient, GitHubExtensionRepositoryClient
@@ -54,169 +83,13 @@ except Exception as _ext_backend_import_error:  # pragma: no cover - optional mo
 
 DEFAULT_BUNDLED_DIR = "extensions/bundled"
 DEFAULT_INSTALLED_DIR = "logs/extensions/installed"
-RESTART_SCOPE_PROVIDER_REGISTRY = "provider_registry"
-_SEMVERISH_RE = re.compile(r"^v?\d+(?:\.\d+){1,3}(?:[-+][0-9A-Za-z.-]+)?$")
-
-# Keys in a tab payload that the extension must not override.  Authoritative
-# values come from the manifest; extension code cannot spoof its own identity.
-_PROTECTED_TAB_PAYLOAD_KEYS: frozenset[str] = frozenset({"extension_id", "title", "icon", "icon_url"})
-_EXTENSION_TAB_DESCRIPTOR_TIMEOUT_SEC = 2.0
-_EXTENSION_TAB_PAYLOAD_TIMEOUT_SEC = 12.0
-
-# Trusted hostnames for extension archive downloads.
-# Only these domains may serve .zip archives; all other URLs are rejected to
-# prevent SSRF attacks against internal services.
-_TRUSTED_ARCHIVE_HOSTS: frozenset[str] = frozenset(
-    {
-        "github.com",
-        "objects.githubusercontent.com",  # GitHub release asset CDN
-        "codeload.github.com",            # GitHub archive download service
-        "raw.githubusercontent.com",
-    }
-)
-
-_HIGH_RISK_CAPABILITIES = {
-    "docker",
-    "docker_runtime",
-    "host_services",
-    "service_actions",
-    "settings",
-    "secrets",
-    "network",
-    "filesystem",
-    "shell",
-    "subprocess",
-    "native_process",
-    "iframe_tab",
-    "external_urls",
-    "model_delete",
-}
-
-
-@dataclass(frozen=True)
-class RuntimeBootstrap:
-    runtime: LLMRuntime
-    registry: ProviderRegistry
-    loaded: list[LoadedExtension]
-    failed: list[FailedExtension]
-
-
-@dataclass
-class ExtensionTabCacheEntry:
-    status: str = "missing"
-    descriptor: dict[str, Any] | None = None
-    payload: dict[str, Any] | None = None
-    error: str = ""
-    started_at: str = ""
-    finished_at: str = ""
-    duration_ms: float | None = None
-    cached_at: str = ""
-    job_id: str = ""
-    generation: int = 0
-    phases: dict[str, str] = field(default_factory=dict)
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return utc_now_iso()
 
 
-def _github_archive_url(repository: str, ref: str) -> str:
-    repo = str(repository or "").strip()
-    selected_ref = str(ref or "").strip()
-    if not repo or not selected_ref:
-        return ""
-    parsed = urlparse(repo)
-    if parsed.scheme not in {"http", "https"} or parsed.netloc.lower() != "github.com":
-        return ""
-    parts = [part for part in parsed.path.strip("/").split("/") if part]
-    if len(parts) < 2:
-        return ""
-    owner = quote(parts[0], safe="")
-    name = quote(parts[1].removesuffix(".git"), safe="")
-    safe_ref = quote(selected_ref, safe="")
-    return f"https://github.com/{owner}/{name}/archive/{safe_ref}.zip"
-
-
-def _github_raw_asset_url(repository: str, asset_path: str, *, ref: str = "HEAD") -> str:
-    repo = str(repository or "").strip()
-    rel = str(asset_path or "").strip().replace("\\", "/")
-    selected_ref = str(ref or "").strip() or "HEAD"
-    if not repo or not rel:
-        return ""
-    parsed_asset = urlparse(rel)
-    if parsed_asset.scheme or parsed_asset.netloc or rel.startswith("/"):
-        return ""
-    parts = [part for part in rel.split("/") if part]
-    if not parts or any(part in {".", ".."} for part in parts):
-        return ""
-    parsed_repo = urlparse(repo)
-    if parsed_repo.scheme not in {"http", "https"} or parsed_repo.netloc.lower() != "github.com":
-        return ""
-    repo_parts = [part for part in parsed_repo.path.strip("/").split("/") if part]
-    if len(repo_parts) < 2:
-        return ""
-    owner = quote(repo_parts[0], safe="")
-    name = quote(repo_parts[1].removesuffix(".git"), safe="")
-    safe_ref = quote(selected_ref, safe="")
-    safe_path = "/".join(quote(part, safe="") for part in parts)
-    return f"https://github.com/{owner}/{name}/raw/{safe_ref}/{safe_path}"
-
-
-def _validate_archive_url(url: str) -> None:
-    """Raise ValueError if *url* is not from a trusted archive host.
-
-    This is the primary SSRF guard for extension downloads.  Only pre-approved
-    CDN and source-hosting domains may serve extension archives; attempting to
-    download from any other host (including ``localhost``, RFC-1918 addresses,
-    or cloud metadata endpoints) raises immediately.
-    """
-    if not url:
-        raise ValueError("archive URL is required")
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"}:
-        raise ValueError(
-            f"archive URL must use http or https scheme, got: {parsed.scheme!r}"
-        )
-    host = (parsed.hostname or "").lower().strip()
-    if not host:
-        raise ValueError("archive URL must have a valid hostname")
-    if host not in _TRUSTED_ARCHIVE_HOSTS:
-        raise ValueError(
-            f"archive URL host {host!r} is not in the trusted hosts list; "
-            "only github.com and its CDN domains are permitted"
-        )
-
-
-def _zip_member_is_symlink(info: zipfile.ZipInfo) -> bool:
-    mode = (info.external_attr >> 16) & 0o170000
-    return stat.S_ISLNK(mode)
-
-
-def _path_contains_symlink(root: Path, candidate: Path) -> bool:
-    """Return True if any existing component from root to candidate is a symlink."""
-    try:
-        rel = candidate.relative_to(root)
-    except ValueError:
-        return True
-    current = root
-    for part in rel.parts:
-        current = current / part
-        if current.is_symlink():
-            return True
-    return False
-
-
-def _install_storage_segment(selected_ref: str) -> str:
-    ref = str(selected_ref or "").strip()
-    if not ref:
-        return ""
-    if "/" not in ref and "\\" not in ref and ref not in {".", ".."}:
-        return ref
-    normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", ref).strip(".-")[:48] or "ref"
-    return f"{normalized}-{sha256(ref.encode('utf-8')).hexdigest()[:12]}"
-
-
-class ExtensionManager:
+class ExtensionManager(ExtensionTabMixin):
     """Owns install state, discovery, and runtime bootstrap."""
 
     def __init__(
@@ -338,76 +211,6 @@ class ExtensionManager:
         except Exception:
             pass
 
-    def _prewarm_provider_rows(self, runtime: Any) -> None:
-        """Populate _provider_rows_cache without blocking bootstrap or extension tab requests."""
-        try:
-            rows = self._provider_rows_from_runtime(runtime)
-            with self._lock:
-                # Only write if the cache is still empty (no concurrent update beat us).
-                if not self._provider_rows_cache:
-                    self._provider_rows_cache = rows
-        except Exception:
-            pass
-
-    def _tab_load_state(self, extension_id: str, entry: ExtensionTabCacheEntry | None = None) -> dict[str, Any]:
-        if entry is None:
-            with self._lock:
-                entry = self._tab_cache.get(extension_id)
-        if entry is None:
-            return {
-                "status": "missing",
-                "phases": {},
-                "job_id": "",
-                "started_at": "",
-                "finished_at": "",
-                "duration_ms": None,
-                "cached_at": "",
-                "error": "",
-            }
-        return {
-            "status": entry.status,
-            "phases": dict(entry.phases or {}),
-            "job_id": entry.job_id,
-            "started_at": entry.started_at,
-            "finished_at": entry.finished_at,
-            "duration_ms": entry.duration_ms,
-            "cached_at": entry.cached_at,
-            "error": entry.error,
-        }
-
-    def _mark_tab_cache_stale(self) -> None:
-        with self._lock:
-            self._tab_cache_generation += 1
-            for entry in self._tab_cache.values():
-                if entry.status == "ready":
-                    entry.status = "stale"
-                    entry.error = ""
-
-    def invalidate_extension_tab_cache(self, extension_id: str | None = None) -> None:
-        with self._lock:
-            self._tab_cache_generation += 1
-            if extension_id:
-                entry = self._tab_cache.get(extension_id)
-                if entry is None:
-                    return
-                if entry.payload or entry.descriptor:
-                    entry.status = "stale"
-                    entry.error = ""
-                else:
-                    self._tab_cache.pop(extension_id, None)
-                return
-            for entry in self._tab_cache.values():
-                if entry.payload or entry.descriptor:
-                    entry.status = "stale"
-                    entry.error = ""
-            stale_ids = [
-                ext_id
-                for ext_id, entry in self._tab_cache.items()
-                if not entry.payload and not entry.descriptor and entry.status != "refreshing"
-            ]
-            for ext_id in stale_ids:
-                self._tab_cache.pop(ext_id, None)
-
     def _bootstrap_runtime_worker(self) -> None:
         try:
             # bootstrap_runtime() acquires _bootstrap_lock, serializing against
@@ -491,13 +294,8 @@ class ExtensionManager:
 
     def _bootstrap_runtime_body(self) -> RuntimeBootstrap:
         import time as _time
-        _t_bootstrap_start = _time.perf_counter()
 
-        try:
-            from api.http.startup_timing import process_start_offset_ms, record_phase
-            _timing_available = True
-        except Exception:
-            _timing_available = False
+        _t_bootstrap_start = _time.perf_counter()
 
         with self._lock:
             self._runtime_status = "loading"
@@ -509,222 +307,61 @@ class ExtensionManager:
         _bundled_ms = (_time.perf_counter() - _t_bundled) * 1000
 
         records = [r for r in self._repo.list_records() if r.installed and r.enabled]
-        source_dirs = [
-            self._installed_dir / record.id / record.version
-            for record in records
-            if (self._installed_dir / record.id / record.version).is_dir()
-        ]
+        source_dirs = source_dirs_for_records(records, self._installed_dir)
 
         _t_discover = _time.perf_counter()
-        report = discover_extensions(
-            source_dirs,
+        bootstrap = discover_runtime_extensions(
+            source_dirs=source_dirs,
             host_context=self._host_context,
             enabled_extension_ids={r.id for r in records},
             use_sandbox=self._use_sandbox,
+            default_provider_id=self._default_provider_id,
+            on_security_blocked=self._disable_security_blocked_extensions,
         )
         _discover_ms = (_time.perf_counter() - _t_discover) * 1000
-
-        self._disable_security_blocked_extensions(report.failed)
-        registry = ProviderRegistry()
-        failed = list(report.failed)
-        for loaded in report.loaded:
-            if loaded.manifest.type != EXTENSION_TYPE_LLM_PROVIDER:
-                continue
-            try:
-                registry.register(loaded.provider)
-            except Exception as e:
-                close = getattr(loaded.provider, "close", None)
-                if callable(close):
-                    try:
-                        close()
-                    except Exception:
-                        pass
-                failed.append(
-                    FailedExtension(
-                        extension_id=loaded.manifest.id,
-                        source_dir=loaded.source_dir,
-                        error=f"{type(e).__name__}: {e}",
-                        manifest=loaded.manifest,
-                        sandbox_status=str(getattr(loaded.provider, "sandbox_status", "") or ""),
-                        sandbox_error=str(getattr(loaded.provider, "sandbox_error", "") or f"{type(e).__name__}: {e}"),
-                    )
-                )
         previous_loaded = self._loaded
-        runtime = LLMRuntime(registry, default_provider_id=self._default_provider_id)
-        bootstrap = RuntimeBootstrap(
-            runtime=runtime,
-            registry=registry,
-            loaded=list(report.loaded),
-            failed=list(failed),
-        )
+        runtime = bootstrap.runtime
         with self._lock:
             self._shutdown_loaded_extensions(previous_loaded)
-            # _loaded and _failed are written inside the lock so readers always
-            # see a consistent pair of values; use bootstrap's already-copied lists.
             self._loaded = list(bootstrap.loaded)
             self._failed = list(bootstrap.failed)
             self._runtime = bootstrap.runtime
             self._registry = bootstrap.registry
-            # Provider rows are computed lazily on first provider_catalog() call.
-            # Pre-computing here would block extension workers (health_check +
-            # list_models RPC calls) for up to ~18s per extension before _runtime
-            # becomes ready, making extension tabs unresponsive.
             self._provider_rows_cache = []
             self._mark_tab_cache_stale()
             self._runtime_status = "ready"
             self._runtime_error = ""
 
-        _bootstrap_total_ms = (_time.perf_counter() - _t_bootstrap_start) * 1000
-
-        if _timing_available:
-            ext_steps = []
-            for loaded in report.loaded:
-                timing = getattr(loaded, "startup_timing", None) or {}
-                ext_steps.append({
-                    "id": f"ext_{loaded.manifest.id}",
-                    "label": loaded.manifest.title or loaded.manifest.id,
-                    "description": f"v{loaded.manifest.version} — sandbox worker started",
-                    "start_offset_ms": process_start_offset_ms(_t_discover),
-                    "duration_ms": round(float(timing.get("startup_ms", 0)), 1),
-                    "status": "ok",
-                })
-            for f in report.failed:
-                ext_steps.append({
-                    "id": f"ext_{f.extension_id}",
-                    "label": getattr(f.manifest, "title", None) or f.extension_id if f.manifest else f.extension_id,
-                    "description": f"Failed: {f.error[:120]}",
-                    "start_offset_ms": process_start_offset_ms(_t_discover),
-                    "duration_ms": 0.0,
-                    "status": "failed",
-                })
-            record_phase(
-                phase_id="extensions_runtime",
-                label="Extensions Runtime",
-                description=(
-                    f"Background bootstrap: {len(report.loaded)} loaded, "
-                    f"{len(report.failed)} failed"
-                ),
-                start_offset_ms=process_start_offset_ms(_t_bootstrap_start),
-                duration_ms=_bootstrap_total_ms,
-                status="ok" if not report.failed else "failed",
-                steps=[
-                    {
-                        "id": "bundled_install",
-                        "label": "Bundled Extensions Install",
-                        "description": "Copy bundled extensions to installed dir, apply blocklist",
-                        "start_offset_ms": process_start_offset_ms(_t_bundled),
-                        "duration_ms": round(_bundled_ms, 1),
-                        "status": "ok",
-                    },
-                    {
-                        "id": "discovery",
-                        "label": "Extension Discovery",
-                        "description": f"Discover and start {len(source_dirs)} extension sandbox worker(s) in parallel",
-                        "start_offset_ms": process_start_offset_ms(_t_discover),
-                        "duration_ms": round(_discover_ms, 1),
-                        "status": "ok",
-                    },
-                    *ext_steps,
-                ],
-                metadata={
-                    "loaded_count": len(report.loaded),
-                    "failed_count": len(report.failed),
-                    "extension_ids": [e.manifest.id for e in report.loaded],
-                },
-            )
-
-        # Pre-warm provider rows in a background thread so the LLM Proxy /
-        # providers catalog is fast on first open without blocking tab loading.
-        threading.Thread(
-            target=self._prewarm_provider_rows,
-            args=(runtime,),
-            name="chironai-provider-rows-prewarm",
-            daemon=True,
-        ).start()
+        record_bootstrap_timing(
+            bootstrap_start=_t_bootstrap_start,
+            bundled_start=_t_bundled,
+            discover_start=_t_discover,
+            bootstrap=bootstrap,
+            source_dir_count=len(source_dirs),
+            bundled_ms=_bundled_ms,
+            discover_ms=_discover_ms,
+            bootstrap_total_ms=(_time.perf_counter() - _t_bootstrap_start) * 1000,
+        )
+        prewarm_provider_rows_async(
+            runtime,
+            provider_rows_fn=lambda rt: provider_rows_from_runtime(rt, asset_url=self._asset_url),
+            cache_lock=self._lock,
+            cache=self._provider_rows_cache,
+        )
         for loaded in bootstrap.loaded:
             if loaded.manifest.type == EXTENSION_TYPE_LLM_PROVIDER:
                 self.refresh_extension_tab(loaded.manifest.id, runtime=runtime)
         return bootstrap
 
     def _disable_security_blocked_extensions(self, failed: list[FailedExtension]) -> None:
-        blocked = [item for item in failed if item.security_findings]
-        if not blocked:
-            return
-        records = self._repo.list_records()
-        by_id = {item.extension_id: item for item in blocked}
-        changed = False
-        next_records: list[InstalledExtensionRecord] = []
-        for record in records:
-            failed_item = by_id.get(record.id)
-            if failed_item is None:
-                next_records.append(record)
-                continue
-            scan = {
-                "status": "blocked",
-                "scanner": "chironai_static_audit",
-                "scanned_at": _utc_now(),
-                "findings": list(failed_item.security_findings),
-            }
-            next_records.append(
-                InstalledExtensionRecord(
-                    **{
-                        **record.__dict__,
-                        "enabled": False,
-                        "restart_required": True,
-                        "restart_scope": RESTART_SCOPE_PROVIDER_REGISTRY,
-                        "security_scan": scan,
-                        "blocked_reason": failed_item.error,
-                    }
-                )
-            )
-            changed = True
-        if changed:
-            self._repo.save_records(next_records)
+        disable_security_blocked_extensions(failed, repo=self._repo, utc_now=_utc_now)
 
     def _disable_blocklisted_records(self) -> None:
-        records = self._repo.list_records()
-        changed = False
-        next_records: list[InstalledExtensionRecord] = []
-        for record in records:
-            if not record.installed:
-                next_records.append(record)
-                continue
-            match = self._blocklist_match_for_record(record)
-            if not match.get("matched"):
-                next_records.append(record)
-                continue
-            scan = {
-                "status": "blocked",
-                "scanner": "chironai_blocklist",
-                "scanned_at": _utc_now(),
-                "findings": [
-                    {
-                        "severity": "critical",
-                        "code": "EXTENSION_BLOCKLISTED",
-                        "message": match.get("reason") or "Extension is blocked by emergency policy.",
-                    }
-                ],
-            }
-            next_records.append(
-                InstalledExtensionRecord(
-                    **{
-                        **record.__dict__,
-                        "enabled": False,
-                        "restart_required": True,
-                        "restart_scope": RESTART_SCOPE_PROVIDER_REGISTRY,
-                        "security_scan": scan,
-                        "blocked_reason": str(match.get("reason") or "Extension is blocked by emergency policy."),
-                    }
-                )
-            )
-            changed = True
-        if changed:
-            self._repo.save_records(next_records)
-
-    def _publisher_name(self, value: Any) -> str:
-        if isinstance(value, dict):
-            return str(value.get("name") or value.get("id") or "").strip()
-        return str(value or "").strip()
+        disable_blocklisted_records(
+            repo=self._repo,
+            blocklist_policy=self._blocklist_policy,
+            utc_now=_utc_now,
+        )
 
     def _blocklist_match_for_values(
         self,
@@ -737,66 +374,22 @@ class ExtensionManager:
         publisher: str = "",
         source_path: str = "",
     ) -> dict[str, Any]:
-        if self._blocklist_policy is None:
-            # Module-level import failed (migration scenario).  Log loudly so
-            # operators notice, but allow bootstrap to continue — bricking an
-            # existing deployment is worse than running without the emergency
-            # blocklist in this transient state.  Remote installs and enables
-            # are NOT in this code path (they use a stricter guard below).
-            _log.error(
-                "Blocklist policy is unavailable (extensions_backend missing?); "
-                "extension '%s' will not be checked against emergency blocklist.",
-                extension_id,
-            )
-            return {"matched": False, "reason": "", "source": "", "matched_on": ""}
-        try:
-            match = self._blocklist_policy.match(
-                extension_id=extension_id,
-                version=version,
-                ref=ref,
-                repository=repository or source_path,
-                repository_id=repository_id,
-                publisher=publisher,
-            )
-            return match.to_dict() if hasattr(match, "to_dict") else dict(match)
-        except Exception as exc:
-            _log.error(
-                "Blocklist evaluation error for '%s' — treating as blocked (fail-closed): %s: %s",
-                extension_id,
-                type(exc).__name__,
-                exc,
-            )
-            return {
-                "matched": True,
-                "reason": f"Blocklist evaluation error — cannot verify extension safety: {type(exc).__name__}",
-                "source": "",
-                "matched_on": "",
-            }
-
-    def _blocklist_match_for_entry(self, entry: dict[str, Any], *, version: str = "", ref: str = "") -> dict[str, Any]:
-        return self._blocklist_match_for_values(
-            extension_id=str(entry.get("id") or ""),
+        return blocklist_match_for_values(
+            self._blocklist_policy,
+            extension_id=extension_id,
             version=version,
             ref=ref,
-            repository=str(entry.get("repository") or entry.get("repo_url") or ""),
-            repository_id=str(entry.get("repository_id") or ""),
-            publisher=self._publisher_name(entry.get("publisher")),
-            source_path=str(entry.get("source_path") or ""),
+            repository=repository,
+            repository_id=repository_id,
+            publisher=publisher,
+            source_path=source_path,
         )
 
+    def _blocklist_match_for_entry(self, entry: dict[str, Any], *, version: str = "", ref: str = "") -> dict[str, Any]:
+        return blocklist_match_for_entry(self._blocklist_policy, entry, version=version, ref=ref)
+
     def _blocklist_match_for_record(self, record: InstalledExtensionRecord) -> dict[str, Any]:
-        provenance = dict(record.provenance or {})
-        source = dict(record.source or {})
-        selected_ref = str(provenance.get("selected_ref") or provenance.get("selected_version") or record.version)
-        return self._blocklist_match_for_values(
-            extension_id=record.id,
-            version=record.version,
-            ref=selected_ref,
-            repository=str(provenance.get("repository") or source.get("repository") or source.get("repo_url") or source.get("source_path") or ""),
-            repository_id=str(provenance.get("repository_id") or ""),
-            publisher="",
-            source_path=str(source.get("source_path") or provenance.get("source_path") or ""),
-        )
+        return blocklist_match_for_record(self._blocklist_policy, record)
 
     def _asset_url(self, extension_id: str, icon: str) -> str:
         rel = str(icon or "").strip().replace("\\", "/")
@@ -824,7 +417,7 @@ class ExtensionManager:
                 candidate.relative_to(root)
             except ValueError:
                 continue
-            if _path_contains_symlink(root, lexical_candidate):
+            if path_contains_symlink(root, lexical_candidate):
                 continue
             if candidate.is_file():
                 return candidate
@@ -897,96 +490,25 @@ class ExtensionManager:
             invalidate()
 
     def registry_entries(self) -> list[dict[str, Any]]:
-        rows: list[dict[str, Any]] = []
-        for entry in self._registry_client.load():
-            out = dict(entry)
-            if not str(out.get("icon_url") or "").strip():
-                out["icon_url"] = _github_raw_asset_url(
-                    str(out.get("repository") or out.get("repo_url") or ""),
-                    str(out.get("icon") or ""),
-                    ref=str(out.get("default_ref") or "HEAD"),
-                )
-            match = self._blocklist_match_for_entry(out)
-            if match.get("matched"):
-                out["blocklist"] = match
-                out["visibility"] = "blocked"
-            rows.append(out)
-        return rows
+        return load_registry_entries(
+            self._registry_client,
+            blocklist_match_fn=self._blocklist_match_for_entry,
+            github_raw_asset_url_fn=github_raw_asset_url,
+        )
 
     def registry_diagnostics(self) -> dict[str, Any]:
-        loader = getattr(self._registry_client, "load_with_diagnostics", None)
-        if callable(loader):
-            result = loader()
-            return {
-                "registry_url": result.registry_url,
-                "diagnostics": [item.to_dict() for item in result.diagnostics],
-                "entries_count": len(result.entries),
-            }
-        return {
-            "registry_url": getattr(self._registry_client, "registry_url", None),
-            "diagnostics": [],
-            "entries_count": len(self.registry_entries()),
-        }
+        return registry_diagnostics_payload(
+            self._registry_client,
+            registry_entries_fn=self.registry_entries,
+        )
 
     def extension_details(self, extension_id: str, *, ref: str | None = None) -> dict[str, Any]:
-        ext_id = str(extension_id or "").strip()
-        if not ext_id:
-            raise ValueError("extension_id is required")
-        entry = next((item for item in self.registry_entries() if str(item.get("id") or "").strip() == ext_id), None)
-        if entry is None:
-            raise ValueError(f"Extension '{ext_id}' not found in registry")
-        repository = str(entry.get("repository") or entry.get("repo_url") or "").strip()
-        details: dict[str, Any] = {
-            "entry": dict(entry),
-            "versions": [],
-            "latest": {},
-            "readme": {"extension_id": ext_id, "repository": repository, "markdown": "", "sanitized_html": ""},
-            "publisher": dict(entry.get("publisher") or {}) if isinstance(entry.get("publisher"), dict) else {},
-        }
-        if not repository or self._repository_client is None:
-            return details
-        errors: list[str] = []
-        try:
-            latest = self._repository_client.latest_release(repository)
-            details["latest"] = latest
-        except Exception as e:
-            latest = {}
-            errors.append(f"latest_release: {type(e).__name__}: {e}")
-        try:
-            releases = self._repository_client.releases(repository)
-        except Exception as e:
-            releases = []
-            errors.append(f"releases: {type(e).__name__}: {e}")
-        try:
-            tags = self._repository_client.tags(repository)
-        except Exception as e:
-            tags = []
-            errors.append(f"tags: {type(e).__name__}: {e}")
-        versions_by_ref: dict[str, dict[str, Any]] = {}
-        for row in [latest, *releases, *tags]:
-            if not isinstance(row, dict):
-                continue
-            key = str(row.get("ref") or row.get("version") or "").strip()
-            if key and key not in versions_by_ref:
-                versions_by_ref[key] = dict(row)
-        details["versions"] = list(versions_by_ref.values())
-        readme_ref = str(ref or (latest or {}).get("ref") or (latest or {}).get("version") or "").strip() or None
-        try:
-            readme = self._repository_client.readme(repository, ref=readme_ref)
-            details["readme"] = {"extension_id": ext_id, **readme}
-        except Exception as e:
-            errors.append(f"readme: {type(e).__name__}: {e}")
-            details["readme"] = {
-                "extension_id": ext_id,
-                "repository": repository,
-                "ref": readme_ref or "",
-                "markdown": "",
-                "sanitized_html": "",
-                "error": f"{type(e).__name__}: {e}",
-            }
-        if errors:
-            details["warnings"] = errors
-        return details
+        return fetch_extension_details(
+            extension_id,
+            registry_entries_fn=self.registry_entries,
+            repository_client=self._repository_client,
+            ref=ref,
+        )
 
     def installed_extensions(self) -> list[dict[str, Any]]:
         with self._lock:
@@ -1000,7 +522,7 @@ class ExtensionManager:
                 continue
             loaded = loaded_by_id.get(record.id)
             failed = failed_by_id.get(record.id)
-            sandbox = self._sandbox_diagnostics(loaded, failed)
+            sandbox = sandbox_diagnostics(loaded, failed)
             blocklist = self._blocklist_match_for_record(record)
             status = "loaded" if loaded is not None else "failed" if failed is not None else "installed"
             if blocklist.get("matched") or str((record.security_scan or {}).get("status") or "") == "blocked":
@@ -1045,99 +567,6 @@ class ExtensionManager:
             )
         return out
 
-    def _sandbox_diagnostics(
-        self,
-        loaded: LoadedExtension | None,
-        failed: FailedExtension | None = None,
-    ) -> dict[str, Any]:
-        provider = loaded.provider if loaded is not None else None
-        sandboxed = bool(getattr(loaded, "sandboxed", False)) if loaded is not None else bool(failed and failed.sandbox_status)
-        sandbox_status = (
-            str(getattr(provider, "sandbox_status", "") or getattr(loaded, "sandbox_status", ""))
-            if loaded is not None
-            else str(failed.sandbox_status if failed is not None else "")
-        )
-        sandbox_error = (
-            str(
-                getattr(provider, "sandbox_last_error", "")
-                or getattr(provider, "sandbox_error", "")
-                or getattr(loaded, "sandbox_error", "")
-            )
-            if loaded is not None
-            else str(failed.sandbox_error if failed is not None else "")
-        )
-        sandbox_pid = getattr(provider, "sandbox_pid", None) if provider is not None else None
-        sandbox_restart_count = int(getattr(provider, "sandbox_restart_count", 0) or 0) if provider is not None else 0
-        sandbox_blocked = bool(getattr(provider, "sandbox_blocked", False)) if provider is not None else False
-        manual_required = (
-            bool(getattr(provider, "sandbox_manual_restart_required", False))
-            if provider is not None
-            else sandbox_status in {"blocked", "manual_stop"}
-        )
-        return {
-            "sandboxed": sandboxed,
-            "sandbox_pid": sandbox_pid,
-            "sandbox_status": sandbox_status,
-            "sandbox_error": sandbox_error,
-            "sandbox_last_error": sandbox_error,
-            "sandbox_restart_count": sandbox_restart_count,
-            "sandbox_blocked": sandbox_blocked,
-            "sandbox_manual_restart_required": manual_required,
-            "sandbox_can_restart": bool(loaded is not None and sandboxed),
-            "sandbox_can_kill": bool(loaded is not None and sandboxed and sandbox_pid is not None),
-        }
-
-    def _provider_rows_from_runtime(self, runtime: LLMRuntime | None = None) -> list[dict[str, Any]]:
-        rt = runtime
-        rows: list[dict[str, Any]] = []
-        if rt is not None:
-            healths = {}
-            for provider in rt.registry.providers():
-                try:
-                    health = provider.health_check()
-                    healths[health.provider_id] = health
-                except Exception:
-                    continue
-            models_by_provider: dict[str, list[dict[str, Any]]] = {}
-            descriptors = []
-            for provider in rt.registry.providers():
-                try:
-                    desc = provider.describe()
-                    descriptors.append(desc)
-                    for model in provider.list_models():
-                        models_by_provider.setdefault(model.provider_id, []).append(
-                            {
-                                "id": model.id,
-                                "label": model.label,
-                                "description": model.description,
-                                "metadata": dict(model.metadata or {}),
-                            }
-                        )
-                except Exception:
-                    continue
-            for desc in descriptors:
-                health = healths.get(desc.id)
-                rows.append(
-                    {
-                        "provider_id": desc.id,
-                        "extension_id": desc.extension_id,
-                        "title": desc.title,
-                        "description": desc.description,
-                        "icon": desc.icon,
-                        "icon_url": self._asset_url(desc.extension_id, desc.icon),
-                        "capabilities": desc.capabilities.__dict__,
-                        "metadata": dict(desc.metadata or {}),
-                        "health": {
-                            "ok": bool(health.ok) if health else False,
-                            "status": health.status if health else "unknown",
-                            "message": health.message if health else "",
-                            "details": dict(health.details or {}) if health else {},
-                        },
-                        "models": models_by_provider.get(desc.id, []),
-                    }
-                )
-        return rows
-
     def provider_rows(self, runtime: LLMRuntime | None = None) -> list[dict[str, Any]]:
         with self._lock:
             if self._provider_rows_cache:
@@ -1147,36 +576,13 @@ class ExtensionManager:
             rt = self.runtime
         if rt is None:
             return []
-        return self._provider_rows_from_runtime(rt)
+        return provider_rows_from_runtime(rt, asset_url=self._asset_url)
 
     def provider_catalog(self, *, runtime: LLMRuntime | None = None, capability: str | None = None) -> dict[str, Any]:
         if runtime is None:
             runtime = self.runtime
         rows = self.provider_rows(runtime)
-        cap = str(capability or "").strip().lower()
-        if cap:
-            rows = [
-                row
-                for row in rows
-                if bool((row.get("capabilities") or {}).get(cap))
-            ]
-        flat_models: list[dict[str, Any]] = []
-        for row in rows:
-            for model in row.get("models") or []:
-                flat_models.append(
-                    {
-                        "provider_id": row.get("provider_id"),
-                        "provider_title": row.get("title"),
-                        "provider_icon_url": row.get("icon_url"),
-                        "extension_id": row.get("extension_id"),
-                        "id": model.get("id"),
-                        "name": model.get("label") or model.get("id"),
-                        "label": model.get("label") or model.get("id"),
-                        "description": model.get("description") or "",
-                        "metadata": dict(model.get("metadata") or {}),
-                    }
-                )
-        return {"providers": rows, "models": flat_models}
+        return build_provider_catalog(rows, capability=capability)
 
     def _find_loaded_extension(self, extension_id: str) -> LoadedExtension | None:
         ext_id = str(extension_id or "").strip()
@@ -1189,74 +595,6 @@ class ExtensionManager:
                 return item
         return None
 
-    def _call_extension_ui_method(self, item: LoadedExtension, label: str, fn: Any, timeout_sec: float) -> Any:
-        """Run extension UI hooks with a hard response budget."""
-        result_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
-
-        def _target() -> None:
-            try:
-                result_queue.put((True, fn()))
-            except BaseException as exc:  # pragma: no cover - re-raised in caller thread
-                result_queue.put((False, exc))
-
-        thread = threading.Thread(
-            target=_target,
-            name=f"chironai-extension-ui-{item.manifest.id}-{label}",
-            daemon=True,
-        )
-        thread.start()
-        try:
-            ok, value = result_queue.get(timeout=timeout_sec)
-        except queue.Empty as exc:
-            raise TimeoutError(
-                f"Extension '{item.manifest.id}' {label} timed out after {timeout_sec:.1f}s"
-            ) from exc
-        if ok:
-            return value
-        raise value
-
-    def _extension_descriptor_row(
-        self,
-        item: LoadedExtension,
-        raw: dict[str, Any],
-    ) -> dict[str, Any]:
-        tab_id = str(raw.get("id") or "").strip() or item.manifest.id
-        title = str(raw.get("title") or item.manifest.title).strip() or item.manifest.title
-        icon = str(raw.get("icon") or item.manifest.icon or "")
-        return {
-            "id": tab_id,
-            "extension_id": item.manifest.id,
-            "title": title,
-            "icon": icon,
-            "icon_url": str(raw.get("icon_url") or "") or self._asset_url(item.manifest.id, icon),
-            "description": str(raw.get("description") or item.manifest.description or ""),
-            "frame": dict(raw.get("frame") or {}) if isinstance(raw.get("frame"), dict) else {},
-            "order": int(raw.get("order") or 0),
-            "status": dict(raw.get("status") or {}) if isinstance(raw.get("status"), dict) else None,
-        }
-
-    def _build_extension_descriptor(self, item: LoadedExtension, runtime: LLMRuntime | None) -> dict[str, Any] | None:
-        fn = getattr(item.provider, "get_tab_descriptor", None)
-        if not callable(fn):
-            return None
-        try:
-            raw = self._call_extension_ui_method(
-                item,
-                "tab descriptor",
-                lambda fn=fn: fn(runtime=runtime),
-                _EXTENSION_TAB_DESCRIPTOR_TIMEOUT_SEC,
-            )
-        except TypeError:
-            raw = self._call_extension_ui_method(
-                item,
-                "tab descriptor",
-                lambda fn=fn: fn(),
-                _EXTENSION_TAB_DESCRIPTOR_TIMEOUT_SEC,
-            )
-        if not isinstance(raw, dict):
-            return None
-        return self._extension_descriptor_row(item, raw)
-
     def _manifest_for_extension(self, extension_id: str) -> tuple[InstalledExtensionRecord, Any] | None:
         ext_id = str(extension_id or "").strip()
         if not ext_id:
@@ -1265,341 +603,6 @@ class ExtensionManager:
             if str(getattr(manifest, "id", record.id)) == ext_id or record.id == ext_id:
                 return record, manifest
         return None
-
-    def _minimal_tab_payload(self, extension_id: str, *, entry: ExtensionTabCacheEntry | None = None) -> dict[str, Any]:
-        item = self._find_loaded_extension(extension_id)
-        manifest = item.manifest if item is not None else None
-        record_manifest = None if manifest is not None else self._manifest_for_extension(extension_id)
-        if manifest is None and record_manifest is not None:
-            _record, manifest = record_manifest
-        if manifest is None:
-            raise ValueError(f"Extension '{extension_id}' is not loaded")
-        icon = str(getattr(manifest, "icon", "") or "")
-        return {
-            "extension_id": str(getattr(manifest, "id", extension_id)),
-            "title": str(getattr(manifest, "title", extension_id) or extension_id),
-            "icon": icon,
-            "icon_url": self._asset_url(str(getattr(manifest, "id", extension_id)), icon),
-            "status": {
-                "running": False,
-                "tone": "loading",
-                "message": "Extension tab payload is loading",
-            },
-            "schema": {"pages": []},
-            "load_state": self._tab_load_state(extension_id, entry),
-        }
-
-    def refresh_extension_tab(
-        self,
-        extension_id: str,
-        *,
-        runtime: LLMRuntime | None = None,
-    ) -> dict[str, Any]:
-        ext_id = str(extension_id or "").strip()
-        if not ext_id:
-            raise ValueError("extension_id is required")
-        if runtime is None:
-            runtime = self.runtime
-        with self._lock:
-            entry = self._tab_cache.get(ext_id)
-            if entry is not None and entry.status == "refreshing":
-                return {"job_id": entry.job_id, "load_state": self._tab_load_state(ext_id, entry)}
-            if entry is None:
-                entry = ExtensionTabCacheEntry()
-                self._tab_cache[ext_id] = entry
-            if runtime is None:
-                entry.status = "missing"
-                entry.error = "Extension runtime is still loading"
-                return {"job_id": "", "load_state": self._tab_load_state(ext_id, entry)}
-            self._tab_cache_generation += 1
-            generation = self._tab_cache_generation
-            job_id = uuid.uuid4().hex[:12]
-            started_at = _utc_now()
-            entry.status = "refreshing"
-            entry.error = ""
-            entry.started_at = started_at
-            entry.finished_at = ""
-            entry.duration_ms = None
-            entry.job_id = job_id
-            entry.generation = generation
-            entry.phases = {"descriptor": "pending", "payload": "pending"}
-        threading.Thread(
-            target=self._refresh_extension_tab_worker,
-            args=(ext_id, runtime, job_id, generation),
-            name=f"chironai-extension-tab-refresh-{ext_id}",
-            daemon=True,
-        ).start()
-        return {"job_id": job_id, "load_state": self._tab_load_state(ext_id)}
-
-    def _refresh_extension_tab_worker(
-        self,
-        extension_id: str,
-        runtime: LLMRuntime,
-        job_id: str,
-        generation: int,
-    ) -> None:
-        started = time.perf_counter()
-        descriptor: dict[str, Any] | None = None
-        payload: dict[str, Any] | None = None
-        status = "ready"
-        error = ""
-        phases = {"descriptor": "pending", "payload": "pending"}
-        try:
-            item = self._find_loaded_extension(extension_id)
-            if item is None:
-                raise ValueError(f"Extension '{extension_id}' is not loaded")
-            try:
-                phases["descriptor"] = "refreshing"
-                descriptor = self._build_extension_descriptor(item, runtime)
-                phases["descriptor"] = "ready" if descriptor is not None else "skipped"
-            except TimeoutError as exc:
-                phases["descriptor"] = "timeout"
-                status = "timeout"
-                error = str(exc)
-                descriptor = self._failed_tab_row(item, exc)
-            except Exception as exc:
-                phases["descriptor"] = "failed"
-                status = "failed"
-                error = f"{type(exc).__name__}: {exc}"
-                descriptor = self._failed_tab_row(item, exc)
-            phases["payload"] = "refreshing"
-            payload = self._build_extension_tab_payload(item, runtime)
-            phases["payload"] = "ready"
-            if status not in {"failed", "timeout"}:
-                status = "ready"
-                error = ""
-        except TimeoutError as exc:
-            status = "timeout"
-            error = str(exc)
-            phases["payload"] = "timeout"
-            payload = None
-        except Exception as exc:
-            status = "failed"
-            error = f"{type(exc).__name__}: {exc}"
-            phases["payload"] = "failed"
-            item = self._find_loaded_extension(extension_id)
-            payload = self._failed_tab_payload(item, exc) if item is not None else None
-        finished_at = _utc_now()
-        duration_ms = round((time.perf_counter() - started) * 1000, 1)
-        with self._lock:
-            entry = self._tab_cache.get(extension_id)
-            if entry is None or entry.job_id != job_id or entry.generation != generation:
-                return
-            entry.status = status
-            entry.descriptor = descriptor or entry.descriptor
-            entry.payload = payload or entry.payload
-            entry.error = error
-            entry.finished_at = finished_at
-            entry.duration_ms = duration_ms
-            entry.cached_at = finished_at if payload or descriptor else entry.cached_at
-            entry.phases = phases
-
-    def _failed_tab_row(self, item: LoadedExtension, error: Exception) -> dict[str, Any]:
-        sandbox_status = str(getattr(item.provider, "sandbox_status", "") or "failed")
-        sandbox_error = str(getattr(item.provider, "sandbox_error", "") or f"{type(error).__name__}: {error}")
-        return {
-            "id": item.manifest.id,
-            "extension_id": item.manifest.id,
-            "title": item.manifest.title,
-            "icon": item.manifest.icon,
-            "icon_url": self._asset_url(item.manifest.id, item.manifest.icon),
-            "description": item.manifest.description,
-            "frame": {},
-            "order": 0,
-            "status": {
-                "runtime": sandbox_status,
-                "tone": "warning" if sandbox_status == "manual_stop" else "error",
-                "message": sandbox_error,
-                "running": False,
-            },
-        }
-
-    def _loaded_tab_status_overlay(self, item: LoadedExtension) -> dict[str, Any] | None:
-        sandbox_status = str(getattr(item.provider, "sandbox_status", "") or "").strip()
-        if not sandbox_status or sandbox_status == "ready":
-            return None
-        sandbox_error = str(getattr(item.provider, "sandbox_error", "") or "").strip()
-        if not sandbox_error and sandbox_status == "manual_stop":
-            sandbox_error = "Extension worker is stopped until manual restart"
-        return {
-            "runtime": sandbox_status,
-            "tone": "warning" if sandbox_status == "manual_stop" else "error",
-            "message": sandbox_error or sandbox_status,
-            "running": False,
-        }
-
-    def _failed_tab_payload(self, item: LoadedExtension | None, error: Exception) -> dict[str, Any] | None:
-        if item is None:
-            return None
-        message = f"{type(error).__name__}: {error}"
-        return {
-            "extension_id": item.manifest.id,
-            "title": item.manifest.title,
-            "icon": item.manifest.icon,
-            "icon_url": self._asset_url(item.manifest.id, item.manifest.icon),
-            "status": {
-                "running": False,
-                "tone": "error",
-                "message": message,
-            },
-            "schema": {
-                "pages": [
-                    {
-                        "id": "extension-error",
-                        "title": item.manifest.title,
-                        "sections": [
-                            {
-                                "id": "extension-error",
-                                "title": "Extension runtime unavailable",
-                                "components": [
-                                    {
-                                        "type": "text",
-                                        "key": "extension_error",
-                                        "label": "Error",
-                                        "value": message,
-                                    }
-                                ],
-                            }
-                        ],
-                    }
-                ]
-            },
-        }
-
-    def _timeout_tab_payload(self, item: LoadedExtension, error: TimeoutError) -> dict[str, Any]:
-        message = str(error)
-        return {
-            "extension_id": item.manifest.id,
-            "title": item.manifest.title,
-            "icon": item.manifest.icon,
-            "icon_url": self._asset_url(item.manifest.id, item.manifest.icon),
-            "status": {
-                "running": False,
-                "tone": "error",
-                "message": message,
-            },
-            "schema": {
-                "pages": [
-                    {
-                        "id": "extension-timeout",
-                        "title": item.manifest.title,
-                        "sections": [
-                            {
-                                "id": "extension-timeout",
-                                "title": "Extension runtime unavailable",
-                                "components": [
-                                    {
-                                        "type": "text",
-                                        "key": "extension_timeout",
-                                        "label": "Timeout",
-                                        "value": message,
-                                    }
-                                ],
-                            }
-                        ],
-                    }
-                ]
-            },
-        }
-
-    def _build_extension_tab_payload(self, item: LoadedExtension, runtime: LLMRuntime | None = None) -> dict[str, Any]:
-        fn = getattr(item.provider, "get_tab_payload", None)
-        if not callable(fn):
-            return {
-                "extension_id": item.manifest.id,
-                "title": item.manifest.title,
-                "icon": item.manifest.icon,
-                "schema": dict(item.manifest.ui_schema or {}),
-            }
-        try:
-            payload = self._call_extension_ui_method(
-                item,
-                "tab payload",
-                lambda fn=fn: fn(runtime=runtime),
-                _EXTENSION_TAB_PAYLOAD_TIMEOUT_SEC,
-            )
-        except TypeError:
-            payload = self._call_extension_ui_method(
-                item,
-                "tab payload",
-                lambda fn=fn: fn(),
-                _EXTENSION_TAB_PAYLOAD_TIMEOUT_SEC,
-            )
-        if not isinstance(payload, dict):
-            raise ValueError(f"Extension '{item.manifest.id}' returned invalid tab payload")
-        # Strip keys that the extension must not override — extension_id, title,
-        # icon, and icon_url are authoritative from the manifest, not the payload.
-        safe_payload = {k: v for k, v in payload.items() if k not in _PROTECTED_TAB_PAYLOAD_KEYS}
-        return {
-            "extension_id": item.manifest.id,
-            "title": item.manifest.title,
-            "icon": item.manifest.icon,
-            "icon_url": self._asset_url(item.manifest.id, item.manifest.icon),
-            **safe_payload,
-        }
-
-    def extension_tabs(self, *, runtime: LLMRuntime | None = None) -> list[dict[str, Any]]:
-        if runtime is None:
-            runtime = self.runtime
-        out = self._manifest_tabs()
-        by_extension_id = {str(row.get("extension_id") or row.get("id") or ""): dict(row) for row in out}
-        with self._lock:
-            loaded_snapshot = list(self._loaded)
-            cache_snapshot = {k: v for k, v in self._tab_cache.items()}
-        for item in loaded_snapshot:
-            ext_id = item.manifest.id
-            entry = cache_snapshot.get(ext_id)
-            row = by_extension_id.get(ext_id)
-            if row is None and callable(getattr(item.provider, "get_tab_descriptor", None)):
-                row = {
-                    "id": ext_id,
-                    "extension_id": ext_id,
-                    "title": item.manifest.title,
-                    "icon": item.manifest.icon,
-                    "icon_url": self._asset_url(ext_id, item.manifest.icon),
-                    "description": item.manifest.description,
-                    "frame": {},
-                    "order": 0,
-                    "status": {
-                        "runtime": self.runtime_status,
-                        "tone": "loading",
-                        "message": "Extension descriptor is loading",
-                        "running": False,
-                    },
-                }
-            if row is None:
-                continue
-            status_overlay = self._loaded_tab_status_overlay(item)
-            if status_overlay is not None:
-                row["status"] = status_overlay
-            if entry is not None and entry.descriptor:
-                merged = {**row, **entry.descriptor}
-                row = merged
-            row["load_state"] = self._tab_load_state(ext_id, entry)
-            by_extension_id[ext_id] = row
-            if runtime is not None and (entry is None or entry.status in {"missing", "stale", "failed", "timeout"}):
-                self.refresh_extension_tab(ext_id, runtime=runtime)
-        out = list(by_extension_id.values())
-        out.sort(key=lambda row: (int(row.get("order") or 0), str(row.get("title") or "").lower()))
-        return out
-
-    def extension_tab_payload(self, extension_id: str, *, runtime: LLMRuntime | None = None) -> dict[str, Any]:
-        ext_id = str(extension_id or "").strip()
-        if not ext_id:
-            raise ValueError("extension_id is required")
-        if runtime is None:
-            runtime = self.runtime
-        with self._lock:
-            entry = self._tab_cache.get(ext_id)
-        if entry is not None and entry.payload is not None:
-            payload = dict(entry.payload)
-            payload["load_state"] = self._tab_load_state(ext_id, entry)
-            return payload
-        if runtime is not None and (entry is None or entry.status == "missing"):
-            self.refresh_extension_tab(ext_id, runtime=runtime)
-            with self._lock:
-                entry = self._tab_cache.get(ext_id)
-        return self._minimal_tab_payload(ext_id, entry=entry)
 
     def run_extension_action(
         self,
@@ -1646,7 +649,7 @@ class ExtensionManager:
         # Phase 3: invalidate cache and snapshot diagnostics under lock.
         with self._lock:
             self._provider_rows_cache = []
-            sandbox = self._sandbox_diagnostics(item)
+            sandbox = sandbox_diagnostics(item)
         self.invalidate_extension_tab_cache(ext_id)
         return {"id": ext_id, "ok": True, "action": "restart", **sandbox}
 
@@ -1662,7 +665,7 @@ class ExtensionManager:
             if not callable(kill):
                 raise ValueError(f"Extension '{ext_id}' is not sandboxed")
             kill()
-            sandbox = self._sandbox_diagnostics(item)
+            sandbox = sandbox_diagnostics(item)
         self.invalidate_extension_tab_cache(ext_id)
         return {"id": ext_id, "ok": True, "action": "kill", **sandbox}
 
@@ -1704,7 +707,7 @@ class ExtensionManager:
             self._loaded = [item for item in self._loaded if item.manifest.id != extension_id] + [loaded]
             self._failed = [item for item in self._failed if item.extension_id != extension_id]
             self._provider_rows_cache = []
-            sandbox = self._sandbox_diagnostics(loaded)
+            sandbox = sandbox_diagnostics(loaded)
         return {"id": extension_id, "ok": True, "action": "restart", **sandbox}
 
     def ui_payload(self) -> dict[str, Any]:
@@ -1729,7 +732,7 @@ class ExtensionManager:
                     "id": item.extension_id,
                     "error": item.error,
                     "security_findings": list(item.security_findings),
-                    **self._sandbox_diagnostics(None, item),
+                    **sandbox_diagnostics(None, item),
                 }
                 for item in failed_snapshot
             ],
@@ -1761,7 +764,11 @@ class ExtensionManager:
             or entry.get("default_ref")
             or ""
         ).strip()
-        resolved_entry, resolved_target = self._resolve_install_target(entry, requested_ref)
+        resolved_entry, resolved_target = resolve_install_target(
+            entry,
+            requested_ref,
+            repository_client=self._repository_client,
+        )
         entry = resolved_entry
         selected_ref = resolved_target
         if not selected_ref:
@@ -1775,7 +782,7 @@ class ExtensionManager:
         if blocklist.get("matched"):
             reason = str(blocklist.get("reason") or "Extension is blocked by emergency policy.")
             raise ValueError(f"Extension '{ext_id}' is blocked by emergency blocklist: {reason}")
-        storage_version = _install_storage_segment(selected_ref)
+        storage_version = install_storage_segment(selected_ref)
         if not storage_version:
             raise ValueError("extension version/ref must be a safe path segment")
         target_dir = self._installed_dir / ext_id / storage_version
@@ -1791,10 +798,14 @@ class ExtensionManager:
         try:
             self._install_entry_payload(entry, staging_dir, selected_ref=selected_ref)
             manifest = load_manifest_from_dir(staging_dir)
-            self._validate_install_manifest(entry, manifest, selected_ref)
+            validate_install_manifest(entry, manifest, selected_ref)
             if manifest.backend is None:
                 raise ValueError("manifest backend is required")
-            expansion = self._capability_expansion(existing_record, dict(getattr(manifest, "capabilities", {}) or {}))
+            expansion = capability_expansion(
+                existing_record,
+                dict(getattr(manifest, "capabilities", {}) or {}),
+                installed_capabilities_fn=self._installed_capabilities,
+            )
             high_risk_expansion = [
                 item for item in expansion if item.get("risk") in {"high", "critical"} or item.get("requires_user_consent")
             ]
@@ -1817,7 +828,7 @@ class ExtensionManager:
             if backup_dir is not None and backup_dir.exists():
                 shutil.rmtree(backup_dir, ignore_errors=True)
         records = [r for r in self._repo.list_records() if r.id != ext_id]
-        provenance = self._install_provenance(entry, selected_ref, storage_version=storage_version)
+        provenance = install_provenance(entry, selected_ref, storage_version=storage_version)
         security_scan = {
             "status": "passed",
             "scanner": "chironai_static_audit",
@@ -1867,23 +878,6 @@ class ExtensionManager:
             return "failed", f"{type(e).__name__}: {e}"
         return "reloaded", ""
 
-    def _capability_expansion(self, existing: InstalledExtensionRecord | None, next_capabilities: dict[str, Any]) -> list[dict[str, Any]]:
-        if existing is None:
-            return []
-        previous = self._installed_capabilities(existing)
-        previous_ids = self._enabled_capability_ids(previous)
-        next_ids = self._enabled_capability_ids(next_capabilities)
-        added = sorted(next_ids - previous_ids)
-        return [
-            {
-                "id": cap,
-                "label": cap.replace("_", " ").title(),
-                "risk": "high" if cap in _HIGH_RISK_CAPABILITIES else "medium",
-                "requires_user_consent": cap in _HIGH_RISK_CAPABILITIES,
-            }
-            for cap in added
-        ]
-
     def _installed_capabilities(self, record: InstalledExtensionRecord) -> dict[str, Any]:
         if record.capabilities:
             return dict(record.capabilities)
@@ -1895,106 +889,6 @@ class ExtensionManager:
         except Exception:
             return {}
         return dict(getattr(manifest, "capabilities", {}) or {})
-
-    def _enabled_capability_ids(self, capabilities: dict[str, Any]) -> set[str]:
-        out: set[str] = set()
-        for key, value in dict(capabilities or {}).items():
-            cap = str(key or "").strip()
-            if not cap:
-                continue
-            if isinstance(value, dict):
-                enabled = bool(value.get("enabled", True))
-            else:
-                enabled = bool(value)
-            if enabled:
-                out.add(cap)
-        return out
-
-    def _validate_install_manifest(self, entry: dict[str, Any], manifest: Any, target_version: str) -> None:
-        expected_id = str(entry.get("id") or "").strip()
-        if manifest.id != expected_id:
-            raise ValueError(f"manifest id mismatch: expected '{expected_id}', got '{manifest.id}'")
-        # For semver-shaped refs the manifest version must match exactly (modulo leading 'v').
-        # For non-semver refs (branch names, commit SHAs) we still reject obviously wrong
-        # versions: if the manifest declares a semver version it must not be empty.
-        if _SEMVERISH_RE.match(target_version):
-            if manifest.version.lstrip("v") != target_version.lstrip("v"):
-                raise ValueError(f"manifest version mismatch: expected '{target_version}', got '{manifest.version}'")
-        else:
-            if not str(manifest.version or "").strip():
-                raise ValueError(
-                    f"manifest for extension '{expected_id}' installed from ref '{target_version}' "
-                    "must declare a non-empty version"
-                )
-        self._validate_compatibility(dict(getattr(manifest, "compatibility", {}) or {}))
-        registry_compat = entry.get("compatibility")
-        if isinstance(registry_compat, dict):
-            self._validate_compatibility(dict(registry_compat))
-
-    def _validate_compatibility(self, compatibility: dict[str, Any]) -> None:
-        api_version = str(compatibility.get("extension_api_version") or EXTENSION_API_VERSION).strip()
-        if api_version != EXTENSION_API_VERSION:
-            raise ValueError(f"unsupported extension_api_version: {api_version}")
-        app = str(compatibility.get("app") or "chironai").strip().lower()
-        if app not in {"chironai", "chiron ai"}:
-            raise ValueError(f"unsupported extension app compatibility: {app}")
-
-    def _resolve_install_target(self, entry: dict[str, Any], requested_ref: str) -> tuple[dict[str, Any], str]:
-        resolved = dict(entry)
-        repository = str(resolved.get("repository") or resolved.get("repo_url") or "").strip()
-        if not repository or self._repository_client is None:
-            return resolved, requested_ref
-        if requested_ref:
-            try:
-                for version in self._repository_client.releases(repository):
-                    ref = str(version.get("ref") or version.get("version") or "").strip()
-                    if ref == requested_ref or ref.lstrip("v") == requested_ref.lstrip("v"):
-                        return self._entry_with_version_payload(resolved, version), ref
-            except Exception as exc:
-                _log.warning(
-                    "extension install: could not fetch releases for %s (ref=%s): %s: %s",
-                    repository,
-                    requested_ref,
-                    type(exc).__name__,
-                    exc,
-                )
-            return resolved, requested_ref
-        latest = self._repository_client.latest_release(repository)
-        latest_ref = str(latest.get("ref") or latest.get("version") or "").strip()
-        return self._entry_with_version_payload(resolved, latest), latest_ref
-
-    def _entry_with_version_payload(self, entry: dict[str, Any], version: dict[str, Any]) -> dict[str, Any]:
-        out = dict(entry)
-        archive_url = str(version.get("archive_url") or "").strip()
-        if archive_url:
-            out["archive_url"] = archive_url
-        for key in ("digest", "commit_sha", "provenance_level", "release_url", "target_kind"):
-            if version.get(key):
-                out[key] = version[key]
-        return out
-
-    def _install_provenance(self, entry: dict[str, Any], selected_ref: str, *, storage_version: str) -> dict[str, Any]:
-        repository = str(entry.get("repository") or entry.get("repo_url") or "").strip()
-        archive_url = str(entry.get("archive_url") or "").strip()
-        source_path = str(entry.get("source_path") or "").strip()
-        provenance_level = str(
-            entry.get("provenance_level")
-            or ("local_source" if source_path else "github_release_asset" if archive_url else "unknown")
-        )
-        return {
-            "repository": repository,
-            "repository_id": str(entry.get("repository_id") or ""),
-            "selected_ref": selected_ref,
-            "selected_version": selected_ref,
-            "storage_version": storage_version,
-            "target_kind": str(entry.get("target_kind") or ("release" if _SEMVERISH_RE.match(selected_ref) else "branch")),
-            "resolved_commit_sha": str(entry.get("resolved_commit_sha") or entry.get("commit_sha") or ""),
-            "archive_url": archive_url,
-            "digest": str(entry.get("digest") or ""),
-            "provenance_level": provenance_level,
-            "source_path": source_path,
-            "installed_at": _utc_now(),
-        }
 
     def _install_entry_payload(self, entry: dict[str, Any], target_dir: Path, *, selected_ref: str = "") -> None:
         source_path = str(entry.get("source_path") or "").strip()
@@ -2020,106 +914,22 @@ class ExtensionManager:
             shutil.copytree(src, target_dir, dirs_exist_ok=True)
             return
         if archive_url:
-            _validate_archive_url(archive_url)
+            validate_archive_url(archive_url)
             self._download_zip_to_dir(archive_url, target_dir, expected_digest=expected_digest)
             return
         if repo_url and repo_url.endswith(".zip"):
-            _validate_archive_url(repo_url)
+            validate_archive_url(repo_url)
             self._download_zip_to_dir(repo_url, target_dir, expected_digest=expected_digest)
             return
-        github_archive_url = _github_archive_url(repo_url, selected_ref)
-        if github_archive_url:
-            # _github_archive_url already restricts to github.com; still validate for defence-in-depth.
-            _validate_archive_url(github_archive_url)
-            self._download_zip_to_dir(github_archive_url, target_dir, expected_digest=expected_digest)
+        resolved_github_archive_url = github_archive_url(repo_url, selected_ref)
+        if resolved_github_archive_url:
+            validate_archive_url(resolved_github_archive_url)
+            self._download_zip_to_dir(resolved_github_archive_url, target_dir, expected_digest=expected_digest)
             return
         raise ValueError("registry entry must define source_path or archive_url/repo_url zip")
 
     def _download_zip_to_dir(self, url: str, target_dir: Path, *, expected_digest: str = "") -> None:
-        resp = requests.get(url, stream=True, timeout=60)
-        resp.raise_for_status()
-        hasher = sha256()
-        total_bytes = 0
-        tmp_path: Path | None = None
-        try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
-                tmp_path = Path(tmp.name)
-                for chunk in resp.iter_content(chunk_size=65536):
-                    if not chunk:
-                        continue
-                    total_bytes += len(chunk)
-                    if total_bytes > _MAX_EXTENSION_ZIP_BYTES:
-                        raise ValueError(
-                            f"extension archive exceeds maximum allowed size "
-                            f"({_MAX_EXTENSION_ZIP_BYTES // (1024 * 1024)} MB): {url}"
-                        )
-                    hasher.update(chunk)
-                    tmp.write(chunk)
-            if expected_digest:
-                actual_digest = hasher.hexdigest()
-                clean_expected = expected_digest.removeprefix("sha256:")
-                if actual_digest != clean_expected:
-                    raise ValueError(
-                        f"extension archive digest mismatch for {url}: "
-                        f"expected sha256:{clean_expected}, got sha256:{actual_digest}"
-                    )
-            with zipfile.ZipFile(tmp_path) as zf:
-                infos = [info for info in zf.infolist() if info.filename and not info.filename.endswith("/")]
-                if len(infos) > _MAX_EXTENSION_ZIP_ENTRY_COUNT:
-                    raise ValueError(
-                        f"extension archive contains too many files "
-                        f"({len(infos)} > {_MAX_EXTENSION_ZIP_ENTRY_COUNT})"
-                    )
-                uncompressed_total = 0
-                names = [info.filename.replace("\\", "/") for info in infos]
-                for info, name in zip(infos, names, strict=True):
-                    if _zip_member_is_symlink(info):
-                        raise ValueError(f"unsafe zip member is a symlink: {name}")
-                    uncompressed_total += int(info.file_size or 0)
-                    if uncompressed_total > _MAX_EXTENSION_ZIP_UNCOMPRESSED_BYTES:
-                        raise ValueError(
-                            f"extension archive expands beyond maximum allowed size "
-                            f"({_MAX_EXTENSION_ZIP_UNCOMPRESSED_BYTES // (1024 * 1024)} MB): {url}"
-                        )
-                    if info.file_size and info.compress_size == 0:
-                        raise ValueError(f"unsafe zip member has invalid compressed size: {name}")
-                    if info.file_size and info.compress_size:
-                        ratio = float(info.file_size) / float(info.compress_size)
-                        if ratio > _MAX_EXTENSION_ZIP_COMPRESSION_RATIO:
-                            raise ValueError(f"unsafe zip member compression ratio: {name}")
-                    parts = [part for part in name.split("/") if part]
-                    if (
-                        not parts
-                        or name.startswith("/")
-                        or ":" in parts[0]
-                        or any(part == ".." for part in parts)
-                    ):
-                        raise ValueError(f"unsafe zip member path: {name}")
-                root_prefix = ""
-                if names:
-                    first = names[0].split("/")[0]
-                    if first and all(name == first or name.startswith(first + "/") for name in names):
-                        root_prefix = first + "/"
-                if target_dir.exists():
-                    shutil.rmtree(target_dir)
-                target_dir.mkdir(parents=True, exist_ok=True)
-                for info in infos:
-                    name = info.filename.replace("\\", "/")
-                    rel = name[len(root_prefix):] if root_prefix and name.startswith(root_prefix) else name
-                    if not rel:
-                        continue
-                    dest = (target_dir / rel).resolve()
-                    root = target_dir.resolve()
-                    try:
-                        dest.relative_to(root)
-                    except ValueError as e:
-                        raise ValueError(f"unsafe zip member path: {name}") from e
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    with zf.open(info) as src, dest.open("wb") as dst:
-                        shutil.copyfileobj(src, dst)
-        finally:
-            if tmp_path is not None:
-                tmp_path.unlink(missing_ok=True)
+        download_extension_zip_to_dir(url, target_dir, expected_digest=expected_digest)
 
     def _rewrite_record(self, extension_id: str, fn) -> dict[str, Any]:
         records = self._repo.list_records()

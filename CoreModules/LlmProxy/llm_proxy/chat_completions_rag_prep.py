@@ -108,6 +108,25 @@ def apply_proxy_context_char_limits(
     return chunk_chars, total_chars, rag_top_k
 
 
+def build_rag_metadata_for_response(rag_ctx: Any) -> dict[str, object]:
+    """Build OpenAI response rag_metadata from a RAG context object."""
+    payload: dict[str, object] = {
+        "chunks_info": rag_ctx.chunks_info,
+        "max_score": rag_ctx.max_score,
+        "chunks_count": len(rag_ctx.chunks_info),
+    }
+    rag_trace = getattr(rag_ctx, "rag_trace", None)
+    if isinstance(rag_trace, list):
+        payload["rag_trace"] = rag_trace
+    coverage_report = getattr(rag_ctx, "coverage_report", None)
+    if isinstance(coverage_report, dict):
+        payload["coverage_report"] = coverage_report
+    rag_quality = getattr(rag_ctx, "rag_quality", None)
+    if isinstance(rag_quality, dict):
+        payload["rag_quality"] = rag_quality
+    return payload
+
+
 def build_rag_context_log_snapshot(rag_ctx_for_log: Any | None) -> dict[str, Any] | None:
     if not rag_ctx_for_log:
         return None
