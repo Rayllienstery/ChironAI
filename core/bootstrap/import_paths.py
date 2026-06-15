@@ -66,7 +66,7 @@ def ensure_webui_composition_paths(project_root: str | Path | None = None) -> st
         ("extensions_sandbox", os.path.join(root, "CoreModules", "ExtensionsSandbox")),
         ("docker_manager", os.path.join(root, "CoreModules", "DockerManager")),
         ("error_manager", os.path.join(root, "CoreModules", "ErrorManager")),
-        ("webui_backend", os.path.join(root, "CoreModules", "WebUIBackend")),
+        ("webui_backend", os.path.join(root, "modules", "webui_backend")),
     )
     for module_name, path in pairs:
         ensure_import_path(module_name, path)

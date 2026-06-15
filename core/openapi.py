@@ -60,6 +60,10 @@ _OPERATION_DETAILS: dict[tuple[str, str], dict[str, str]] = {
         "summary": "Check ChironAI stack health",
         "description": "Returns aggregate health for the local proxy host and required runtime services.",
     },
+    ("/ready", "GET"): {
+        "summary": "Readiness probe for ChironAI stack",
+        "description": "Returns readiness for required runtime dependencies (Ollama provider and Qdrant).",
+    },
     ("/api/webui/version", "GET"): {
         "summary": "Get application version",
         "description": "Returns the canonical ChironAI version, release stage, display name, and latest changelog entry used by CoreUI startup.",
@@ -251,6 +255,34 @@ _OPERATION_DETAILS: dict[tuple[str, str], dict[str, str]] = {
     ("/api/webui/rag/stop", "POST"): {
         "summary": "Stop RAG service",
         "description": "Stops the local RAG/Qdrant service through the configured runtime boundary.",
+    },
+    ("/api/webui/server/stop", "POST"): {
+        "summary": "Stop WebUI backend server",
+        "description": "Requests a graceful shutdown of the local WebUI backend process.",
+    },
+    ("/api/webui/crawler/sources", "GET"): {
+        "summary": "List crawler sources",
+        "description": "Returns configured crawl sources with status metadata for CoreUI.",
+    },
+    ("/api/webui/crawler/sources", "POST"): {
+        "summary": "Create crawler source",
+        "description": "Registers a new crawl source from submitted configuration.",
+    },
+    ("/api/webui/crawler/sources/{source_id}", "GET"): {
+        "summary": "Get crawler source",
+        "description": "Returns one crawl source definition and runtime status.",
+    },
+    ("/api/webui/crawler/sources/{source_id}/crawl", "POST"): {
+        "summary": "Start source crawl job",
+        "description": "Starts or resumes crawling for the given source id.",
+    },
+    ("/api/webui/crawler/sources/{source_id}/crawl/status", "GET"): {
+        "summary": "Get crawl job status",
+        "description": "Returns progress and last error for an active or recent crawl job.",
+    },
+    ("/api/webui/crawler/create-collection", "POST"): {
+        "summary": "Create collection from crawl",
+        "description": "Starts background indexing that builds a Qdrant collection from crawled content.",
     },
     ("/v1", "GET"): {
         "summary": "Get OpenAI-compatible API root",

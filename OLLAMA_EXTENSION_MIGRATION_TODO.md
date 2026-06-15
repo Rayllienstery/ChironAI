@@ -29,12 +29,18 @@ provider-generic.
 
 ## Manual Smoke Checklist
 
-- Start the app and confirm provider catalog contains Ollama models.
-- Pull an Ollama model through the extension action path.
-- Confirm `/v1/models` includes configured proxy builds.
-- Confirm raw Ollama-compatible routes are not registered by the main app.
-- Confirm `/v1/chat/completions`, `/v1/messages`, and `/v1/responses` still work.
-- Confirm RAG embedding still works without CoreUI calling Ollama directly.
+- [x] Start the app and confirm provider catalog contains Ollama models.
+- [ ] Pull an Ollama model through the extension action path.
+- [x] Confirm `/v1/models` includes configured proxy builds.
+- [x] Confirm raw Ollama-compatible routes are not registered by the main app.
+- [x] Confirm `/v1/chat/completions`, `/v1/messages`, and `/v1/responses` still work.
+- [x] Confirm RAG embedding still works without CoreUI calling Ollama directly (`mxbai-embed-large` via extension runtime).
+
+## Runtime fixes (2026-06)
+
+- Extension `chat` / `chat_api` / stream use direct Ollama HTTP (no host `chat_client` loop).
+- Sync `bootstrap_runtime()` at wiring startup; `llm_runtime` wired into embed/chat adapters.
+- Host passes `base_url` / `chat_url` metadata and sandbox injects `_url` into worker `chat_client` proxy.
 
 ## Suggested Regression Searches
 

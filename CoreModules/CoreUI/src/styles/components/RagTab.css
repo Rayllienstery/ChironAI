@@ -10,7 +10,6 @@
   align-items: center;
 }
 
-
 .rag-actions {
   display: flex;
   gap: var(--md-sys-spacing-sm);
@@ -142,13 +141,13 @@
 }
 
 .rag-pipeline-legend--core {
-  background: var(--md-sys-color-success-container, #e8f5e9);
-  color: var(--md-sys-color-on-success-container, #1b5e20);
+  background: var(--coreui-color-success-container);
+  color: var(--coreui-color-on-success-container);
 }
 
 .rag-pipeline-legend--on {
-  background: var(--md-sys-color-info-container, #e3f2fd);
-  color: var(--md-sys-color-on-info-container, #0d47a1);
+  background: var(--coreui-color-info-container);
+  color: var(--coreui-color-on-info-container);
 }
 
 .rag-pipeline-legend--off {
@@ -187,7 +186,10 @@
   width: 100%;
   text-align: left;
   cursor: pointer;
-  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease;
 }
 
 .rag-pipeline-step-card:hover {
@@ -541,7 +543,9 @@
   box-shadow: var(--md-sys-elevation-level1);
   border: 1px solid var(--md-sys-color-outline-variant);
   cursor: pointer;
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  transition:
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .rag-keywords-card:hover {
@@ -1110,4 +1114,3 @@
   justify-content: flex-start;
   margin-bottom: 8px;
 }
-

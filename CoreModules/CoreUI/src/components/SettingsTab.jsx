@@ -5,16 +5,19 @@ import '../styles/components/DashboardTab.css';
 
 const ACCENT_COLORS = [
   { id: 'purple', name: 'Purple', light: '#6750A4', dark: '#D0BCFF' },
-  { id: 'cyan', name: 'Cyan', light: '#00BCD4', dark: '#4DD0E1' },
-  { id: 'dark-green', name: 'Dark Green', light: '#4CAF50', dark: '#81C784' },
-  { id: 'blue', name: 'Blue', light: '#2196F3', dark: '#64B5F6' },
-  { id: 'orange', name: 'Orange', light: '#FF9800', dark: '#FFB74D' },
-  { id: 'red', name: 'Red', light: '#F44336', dark: '#E57373' },
-  { id: 'pink', name: 'Pink', light: '#E91E63', dark: '#F06292' },
-  { id: 'teal', name: 'Teal', light: '#009688', dark: '#4DB6AC' },
-  { id: 'indigo', name: 'Indigo', light: '#3F51B5', dark: '#7986CB' },
-  { id: 'amber', name: 'Amber', light: '#FFC107', dark: '#FFD54F' },
-  { id: 'slate', name: 'Slate', light: '#344767', dark: '#90A4AE' },
+  { id: 'blue', name: 'Blue', light: '#005AC1', dark: '#ABC7FF' },
+  { id: 'dark-green', name: 'Green', light: '#2E7D32', dark: '#81C784' },
+  { id: 'cyan', name: 'Cyan', light: '#006780', dark: '#5DD4FC' },
+  { id: 'teal', name: 'Teal', light: '#006A60', dark: '#82D5C8' },
+  { id: 'orange', name: 'Orange', light: '#8B5000', dark: '#FFB873' },
+  { id: 'red', name: 'Red', light: '#BA1A1A', dark: '#FFB4AB' },
+  { id: 'pink', name: 'Pink', light: '#984061', dark: '#FFB0C8' },
+  { id: 'indigo', name: 'Indigo', light: '#3D5AA9', dark: '#B8C4FF' },
+  { id: 'amber', name: 'Amber', light: '#7D5700', dark: '#F2C029' },
+  { id: 'slate', name: 'Slate', light: '#4A6572', dark: '#B0C9D6' },
+  { id: 'lime', name: 'Lime', light: '#4A6B00', dark: '#C6E063' },
+  { id: 'violet', name: 'Violet', light: '#5B3F94', dark: '#CBBEFF' },
+  { id: 'coral', name: 'Coral', light: '#9E4242', dark: '#FFB3B0' },
 ];
 
 const SERVICE_STATUS_POLL_DEFAULT = 5;
@@ -62,7 +65,7 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
   };
 
   const handleChange = (key, value) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
+    setSettings((prev) => ({ ...prev, [key]: value }));
   };
 
   const handleThemeModeChange = (mode) => {
@@ -154,7 +157,7 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
       <div className="settings-form">
         <div className="settings-section">
           <h3>Theme</h3>
-          
+
           <div className="form-group">
             <label>Theme Mode</label>
             <div className="radio-group">
@@ -203,8 +206,7 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
                     style={{ '--color-preview': color.light }}
                     onClick={() => handleLightAccentChange(color.id)}
                     title={color.name}
-                  >
-                  </button>
+                  ></button>
                 ))}
               </div>
             </div>
@@ -222,8 +224,7 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
                     style={{ '--color-preview': color.dark }}
                     onClick={() => handleDarkAccentChange(color.id)}
                     title={color.name}
-                  >
-                  </button>
+                  ></button>
                 ))}
               </div>
             </div>
@@ -232,7 +233,7 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
 
         <div className="settings-section">
           <h3>General</h3>
-          
+
           <div className="form-group">
             <label>Database Path</label>
             <input
@@ -256,7 +257,10 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
               type="number"
               value={settings.server_port || 8080}
               onChange={(e) =>
-                handleChange('server_port', e.target.value === '' ? '' : parseInt(e.target.value, 10))
+                handleChange(
+                  'server_port',
+                  e.target.value === '' ? '' : parseInt(e.target.value, 10),
+                )
               }
               min={SERVER_PORT_MIN}
               max={SERVER_PORT_MAX}
@@ -279,7 +283,8 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
           <div className="form-group">
             <label>Service status poll interval (seconds)</label>
             <p className="settings-form-hint coreui-text-muted-sm">
-              How often the app refreshes extension, provider, and RAG/Qdrant status (sidebar dots and polling).
+              How often the app refreshes extension, provider, and RAG/Qdrant status (sidebar dots
+              and polling).
             </p>
             <input
               type="number"
@@ -301,11 +306,7 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
             />
           </div>
 
-          <button
-            className="save-button"
-            onClick={handleSave}
-            disabled={saving}
-          >
+          <button className="save-button" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving...' : 'Save Settings'}
           </button>
         </div>
@@ -315,4 +316,3 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
 }
 
 export default SettingsTab;
-

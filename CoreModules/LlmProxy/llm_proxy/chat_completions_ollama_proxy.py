@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.request
 from collections.abc import Iterator
@@ -546,3 +547,56 @@ def _iter_proxy_ollama_chat_stream(
             elif parts["visible_content"]:
                 yield ("content_delta", parts["visible_content"])
             yield ("done", {})
+
+
+def ollama_messages_have_images(messages: list[dict[str, Any]]) -> bool:
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        images = msg.get("images")
+        if isinstance(images, list) and len(images) > 0:
+            return True
+    return False
+
+
+def vision_fallback_preferences(active_build: dict[str, Any] | None) -> tuple[str, ...]:
+    raw: list[str] = []
+    if active_build is not None:
+        raw.append(str(active_build.get("vision_model") or "").strip())
+    raw.append(os.getenv("LLM_PROXY_VISION_FALLBACK_MODEL", "").strip())
+    raw.extend(
+        (
+            "minimax-m3:cloud",
+            "kimi-k2.6:cloud",
+            "gemini-3-flash-preview:cloud",
+        )
+    )
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if item and item not in seen:
+            seen.add(item)
+            out.append(item)
+    return tuple(out)
+
+
+def resolved_ollama_chat_url(chat_client: Any) -> str | None:
+    provider_id = str(getattr(chat_client, "_provider_id", "") or "").strip().lower()
+    raw_url = getattr(chat_client, "_url", None)
+    if isinstance(raw_url, str) and raw_url.strip():
+        return raw_url.strip()
+    if provider_id and provider_id != "ollama":
+        return None
+    for import_path in ("config", "rag_service.config"):
+        try:
+            if import_path == "config":
+                from config import get_ollama_chat_url as _get_chat_url  # type: ignore[import-not-found]
+            else:
+                from rag_service.config import get_ollama_chat_url as _get_chat_url
+
+            chat_url = str(_get_chat_url() or "").strip()
+            if chat_url:
+                return chat_url
+        except Exception:
+            continue
+    return None

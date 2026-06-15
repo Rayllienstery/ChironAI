@@ -12,6 +12,37 @@ from tests.api.http_fixtures import set_extensions_app_state
 
 @pytest.mark.fast
 @pytest.mark.api
+def test_ready_endpoint_matches_health_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
+    ok = MagicMock()
+    ok.ok = True
+    monkeypatch.setattr("infrastructure.stack_health.requests.get", lambda *_a, **_k: ok)
+
+    class _HealthyProviderExtensions:
+        runtime = object()
+
+        def provider_rows(self, _runtime: Any) -> list[dict[str, Any]]:
+            return [
+                {
+                    "provider_id": "ollama",
+                    "extension_id": "ollama-provider",
+                    "title": "Ollama",
+                    "health": {"ok": True, "status": "ok", "message": "", "details": {}},
+                }
+            ]
+
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    set_extensions_app_state(app, service=_HealthyProviderExtensions(), runtime=_HealthyProviderExtensions.runtime)
+    r = app.test_client().get("/ready")
+    assert r.status_code == 200
+    data = r.get_json() or {}
+    assert data.get("probe") == "ready"
+    assert data.get("status") == "healthy"
+
+
+@pytest.mark.fast
+@pytest.mark.api
 def test_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     ok = MagicMock()
     ok.ok = True

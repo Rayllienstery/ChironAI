@@ -1,9 +1,11 @@
 /* Material 3 Design Tokens */
 :root {
   /* CoreUI font registry */
-  --coreui-font-family-base: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-  --coreui-font-family-mono: "Cascadia Code", "Segoe UI Mono", Consolas, "Liberation Mono", Menlo, monospace;
-  --coreui-font-family-icon: "Material Symbols Outlined", sans-serif;
+  --coreui-font-family-base:
+    'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+  --coreui-font-family-mono:
+    'Cascadia Code', 'Segoe UI Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+  --coreui-font-family-icon: 'Material Symbols Outlined', sans-serif;
 
   /* Color System - Material 3 Light Theme (default) */
   --md-sys-color-surface: #ffffff;
@@ -80,16 +82,43 @@
   --md-sys-color-on-error-container: #410002;
   --coreui-color-success: #2e7d32;
   --coreui-color-on-success: #ffffff;
-  --coreui-color-success-container: color-mix(in srgb, var(--coreui-color-success) 12%, var(--md-sys-color-surface));
+  --coreui-color-success-container: color-mix(
+    in srgb,
+    var(--coreui-color-success) 12%,
+    var(--md-sys-color-surface)
+  );
   --coreui-color-on-success-container: #143116;
-  --coreui-color-warning: #b26a00;
+  --coreui-color-warning: #7d5700;
   --coreui-color-on-warning: #ffffff;
-  --coreui-color-warning-container: color-mix(in srgb, #ffc107 22%, var(--md-sys-color-surface));
+  --coreui-color-warning-container: color-mix(
+    in srgb,
+    var(--coreui-color-warning) 22%,
+    var(--md-sys-color-surface)
+  );
   --coreui-color-on-warning-container: #5d3b00;
-  --coreui-color-info: #1565c0;
+  --coreui-color-info: #005ac1;
   --coreui-color-on-info: #ffffff;
-  --coreui-color-info-container: color-mix(in srgb, var(--coreui-color-info) 14%, var(--md-sys-color-surface));
+  --coreui-color-info-container: color-mix(
+    in srgb,
+    var(--coreui-color-info) 14%,
+    var(--md-sys-color-surface)
+  );
   --coreui-color-on-info-container: #0c3c72;
+
+  /* Material 3 semantic aliases (kept in sync with CoreUI semantic tokens) */
+  --md-sys-color-success: var(--coreui-color-success);
+  --md-sys-color-on-success: var(--coreui-color-on-success);
+  --md-sys-color-success-container: var(--coreui-color-success-container);
+  --md-sys-color-on-success-container: var(--coreui-color-on-success-container);
+  --md-sys-color-warning: var(--coreui-color-warning);
+  --md-sys-color-on-warning: var(--coreui-color-on-warning);
+  --md-sys-color-warning-container: var(--coreui-color-warning-container);
+  --md-sys-color-on-warning-container: var(--coreui-color-on-warning-container);
+  --md-sys-color-info: var(--coreui-color-info);
+  --md-sys-color-on-info: var(--coreui-color-on-info);
+  --md-sys-color-info-container: var(--coreui-color-info-container);
+  --md-sys-color-on-info-container: var(--coreui-color-on-info-container);
+
   --coreui-color-scrim: rgba(0, 0, 0, 0.48);
   --coreui-color-scrim-strong: rgba(0, 0, 0, 0.62);
   --coreui-color-overlay: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
@@ -97,7 +126,11 @@
   --coreui-border-strong: color-mix(in srgb, var(--md-sys-color-outline) 52%, transparent);
   --coreui-focus-ring: color-mix(in srgb, var(--md-sys-color-primary) 34%, transparent);
   --coreui-interactive-hover-bg: color-mix(in srgb, var(--md-sys-color-on-surface) 7%, transparent);
-  --coreui-interactive-active-bg: color-mix(in srgb, var(--md-sys-color-on-surface) 11%, transparent);
+  --coreui-interactive-active-bg: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface) 11%,
+    transparent
+  );
   --coreui-interactive-disabled-opacity: 0.5;
   --coreui-surface-panel: var(--md-sys-color-surface);
   --coreui-surface-panel-alt: var(--md-sys-color-surface-container-low);
@@ -115,15 +148,20 @@
   --coreui-radius-panel: var(--md-sys-shape-corner-large);
   --coreui-radius-pill: var(--md-sys-shape-corner-full);
   --coreui-radius-modal: var(--md-sys-shape-corner-large);
-  
+
   /* Elevation */
   --md-sys-elevation-level0: none;
-  --md-sys-elevation-level1: 0px 1px 2px 0px rgba(0, 0, 0, 0.3), 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
-  --md-sys-elevation-level2: 0px 1px 2px 0px rgba(0, 0, 0, 0.3), 0px 2px 6px 2px rgba(0, 0, 0, 0.15);
-  --md-sys-elevation-level3: 0px 1px 3px 0px rgba(0, 0, 0, 0.3), 0px 4px 8px 3px rgba(0, 0, 0, 0.15);
-  --md-sys-elevation-level4: 0px 2px 3px 0px rgba(0, 0, 0, 0.3), 0px 6px 10px 4px rgba(0, 0, 0, 0.15);
-  --md-sys-elevation-level5: 0px 4px 4px 0px rgba(0, 0, 0, 0.3), 0px 8px 12px 6px rgba(0, 0, 0, 0.15);
-  
+  --md-sys-elevation-level1:
+    0px 1px 2px 0px rgba(0, 0, 0, 0.3), 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level2:
+    0px 1px 2px 0px rgba(0, 0, 0, 0.3), 0px 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level3:
+    0px 1px 3px 0px rgba(0, 0, 0, 0.3), 0px 4px 8px 3px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level4:
+    0px 2px 3px 0px rgba(0, 0, 0, 0.3), 0px 6px 10px 4px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level5:
+    0px 4px 4px 0px rgba(0, 0, 0, 0.3), 0px 8px 12px 6px rgba(0, 0, 0, 0.15);
+
   /* Typography */
   --md-sys-typescale-display-large-font: 400 57px/64px var(--coreui-font-family-base);
   --md-sys-typescale-display-medium-font: 400 45px/52px var(--coreui-font-family-base);
@@ -140,14 +178,14 @@
   --md-sys-typescale-body-large-font: 400 16px/24px var(--coreui-font-family-base);
   --md-sys-typescale-body-medium-font: 400 14px/20px var(--coreui-font-family-base);
   --md-sys-typescale-body-small-font: 400 12px/16px var(--coreui-font-family-base);
-  
+
   /* Spacing */
   --md-sys-spacing-xs: 4px;
   --md-sys-spacing-sm: 8px;
   --md-sys-spacing-md: 16px;
   --md-sys-spacing-lg: 24px;
   --md-sys-spacing-xl: 32px;
-  
+
   /* Border Radius */
   --md-sys-shape-corner-none: 0px;
   --md-sys-shape-corner-extra-small: 4px;
@@ -210,16 +248,48 @@
   --md-sys-color-primary-tint-18: color-mix(in srgb, var(--md-sys-color-primary) 18%, transparent);
   --md-sys-color-primary-tint-25: color-mix(in srgb, var(--md-sys-color-primary) 25%, transparent);
   --md-sys-color-primary-tint-35: color-mix(in srgb, var(--md-sys-color-primary) 35%, transparent);
-  --md-sys-color-primary-outline-40: color-mix(in srgb, var(--md-sys-color-primary) 40%, var(--md-sys-color-outline-variant));
+  --md-sys-color-primary-outline-40: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 40%,
+    var(--md-sys-color-outline-variant)
+  );
   --coreui-button-primary-hover: color-mix(in srgb, var(--md-sys-color-primary) 88%, black);
   --coreui-button-danger-hover: color-mix(in srgb, var(--md-sys-color-error-container) 86%, black);
-  --md-sys-color-tertiary-tint-12: color-mix(in srgb, var(--md-sys-color-tertiary) 12%, transparent);
-  --coreui-surface-primary-soft-12: color-mix(in srgb, var(--md-sys-color-primary) 12%, var(--md-sys-color-surface));
-  --coreui-surface-primary-soft-14: color-mix(in srgb, var(--md-sys-color-primary) 14%, var(--md-sys-color-surface));
-  --coreui-surface-info-soft-10: color-mix(in srgb, var(--coreui-color-info) 10%, var(--md-sys-color-surface));
-  --coreui-surface-warning-soft-12: color-mix(in srgb, var(--coreui-color-warning) 12%, var(--md-sys-color-surface));
-  --coreui-surface-primary-container-soft: color-mix(in srgb, var(--md-sys-color-primary-container) 35%, transparent);
-  --coreui-surface-error-container-soft: color-mix(in srgb, var(--md-sys-color-error-container) 45%, transparent);
+  --md-sys-color-tertiary-tint-12: color-mix(
+    in srgb,
+    var(--md-sys-color-tertiary) 12%,
+    transparent
+  );
+  --coreui-surface-primary-soft-12: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 12%,
+    var(--md-sys-color-surface)
+  );
+  --coreui-surface-primary-soft-14: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 14%,
+    var(--md-sys-color-surface)
+  );
+  --coreui-surface-info-soft-10: color-mix(
+    in srgb,
+    var(--coreui-color-info) 10%,
+    var(--md-sys-color-surface)
+  );
+  --coreui-surface-warning-soft-12: color-mix(
+    in srgb,
+    var(--coreui-color-warning) 12%,
+    var(--md-sys-color-surface)
+  );
+  --coreui-surface-primary-container-soft: color-mix(
+    in srgb,
+    var(--md-sys-color-primary-container) 35%,
+    transparent
+  );
+  --coreui-surface-error-container-soft: color-mix(
+    in srgb,
+    var(--md-sys-color-error-container) 45%,
+    transparent
+  );
   --coreui-pulse-primary-40: color-mix(in srgb, var(--md-sys-color-primary) 40%, transparent);
   --coreui-pulse-primary-45: color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent);
   --coreui-chart-1: var(--md-sys-color-primary);
@@ -235,11 +305,7 @@
   /* CoreUI sidebar: active pill + collapsed rail follow current accent */
   --coreui-sidenav-active-bg: var(--md-sys-color-primary);
   --coreui-sidenav-active-fg: var(--md-sys-color-on-primary);
-  --coreui-sidenav-collapsed-bg: color-mix(
-    in srgb,
-    var(--md-sys-color-primary) 72%,
-    #0f1115
-  );
+  --coreui-sidenav-collapsed-bg: color-mix(in srgb, var(--md-sys-color-primary) 72%, #0f1115);
   --coreui-sidenav-collapsed-active-bg: rgba(255, 255, 255, 0.2);
   /* Collapsed rail is always dark-tinted; keep icons readable (not --on-primary). */
   --coreui-sidenav-rail-fg: #ffffff;
@@ -254,8 +320,10 @@
   --coreui-sidenav-rail-active-outline-stronger: rgba(255, 255, 255, 0.65);
   --coreui-sidenav-rail-stop-bg: rgba(255, 255, 255, 0.14);
   --coreui-sidenav-rail-stop-bg-hover: rgba(255, 255, 255, 0.22);
-  --coreui-shadow-sidebar: 0 0.25rem 1.25rem color-mix(in srgb, var(--md-sys-color-shadow, #000) 8%, transparent);
-  --coreui-shadow-sidebar-strong: 0 0.25rem 1.25rem color-mix(in srgb, var(--md-sys-color-shadow, #000) 20%, transparent);
+  --coreui-shadow-sidebar: 0 0.25rem 1.25rem
+    color-mix(in srgb, var(--md-sys-color-shadow, #000) 8%, transparent);
+  --coreui-shadow-sidebar-strong: 0 0.25rem 1.25rem
+    color-mix(in srgb, var(--md-sys-color-shadow, #000) 20%, transparent);
   --coreui-shadow-sidebar-dock:
     0 -1px 0 var(--md-sys-color-outline-variant),
     0 -10px 24px -10px color-mix(in srgb, var(--md-sys-color-shadow, #000) 10%, transparent);
@@ -288,11 +356,7 @@
    * Never use primary/accent here (avoids hue shift when changing theme accent).
    * Slightly closer in lightness to --md-sys-color-surface than flat #121214.
    */
-  --md-sys-color-background: color-mix(
-    in srgb,
-    var(--md-sys-color-surface) 46%,
-    rgb(5, 5, 6)
-  );
+  --md-sys-color-background: color-mix(in srgb, var(--md-sys-color-surface) 46%, rgb(5, 5, 6));
   --md-sys-color-on-background: #e6e1e5;
 
   --md-sys-color-primary: #d0bcff;
@@ -328,29 +392,66 @@
   --md-sys-color-on-error-container: #ffdad6;
   --coreui-color-success: #81c784;
   --coreui-color-on-success: #143116;
-  --coreui-color-success-container: color-mix(in srgb, var(--coreui-color-success) 16%, var(--md-sys-color-surface));
+  --coreui-color-success-container: color-mix(
+    in srgb,
+    var(--coreui-color-success) 16%,
+    var(--md-sys-color-surface)
+  );
   --coreui-color-on-success-container: #d8f4d9;
-  --coreui-color-warning: #ffd54f;
-  --coreui-color-on-warning: #5d3b00;
-  --coreui-color-warning-container: color-mix(in srgb, var(--coreui-color-warning) 16%, var(--md-sys-color-surface));
+  --coreui-color-warning: #f2c029;
+  --coreui-color-on-warning: #271900;
+  --coreui-color-warning-container: color-mix(
+    in srgb,
+    var(--coreui-color-warning) 16%,
+    var(--md-sys-color-surface)
+  );
   --coreui-color-on-warning-container: #fff0c2;
-  --coreui-color-info: #64b5f6;
-  --coreui-color-on-info: #0c3c72;
-  --coreui-color-info-container: color-mix(in srgb, var(--coreui-color-info) 16%, var(--md-sys-color-surface));
+  --coreui-color-info: #abc7ff;
+  --coreui-color-on-info: #001b3d;
+  --coreui-color-info-container: color-mix(
+    in srgb,
+    var(--coreui-color-info) 16%,
+    var(--md-sys-color-surface)
+  );
   --coreui-color-on-info-container: #d7ecff;
+
+  /* Material 3 semantic aliases (kept in sync with CoreUI semantic tokens) */
+  --md-sys-color-success: var(--coreui-color-success);
+  --md-sys-color-on-success: var(--coreui-color-on-success);
+  --md-sys-color-success-container: var(--coreui-color-success-container);
+  --md-sys-color-on-success-container: var(--coreui-color-on-success-container);
+  --md-sys-color-warning: var(--coreui-color-warning);
+  --md-sys-color-on-warning: var(--coreui-color-on-warning);
+  --md-sys-color-warning-container: var(--coreui-color-warning-container);
+  --md-sys-color-on-warning-container: var(--coreui-color-on-warning-container);
+  --md-sys-color-info: var(--coreui-color-info);
+  --md-sys-color-on-info: var(--coreui-color-on-info);
+  --md-sys-color-info-container: var(--coreui-color-info-container);
+  --md-sys-color-on-info-container: var(--coreui-color-on-info-container);
+
   --coreui-color-scrim: rgba(0, 0, 0, 0.56);
   --coreui-color-scrim-strong: rgba(0, 0, 0, 0.72);
   --coreui-color-overlay: color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
   --coreui-border-subtle: color-mix(in srgb, var(--md-sys-color-outline) 36%, transparent);
   --coreui-border-strong: color-mix(in srgb, var(--md-sys-color-outline) 56%, transparent);
   --coreui-focus-ring: color-mix(in srgb, var(--md-sys-color-primary) 46%, transparent);
-  --coreui-interactive-hover-bg: color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
-  --coreui-interactive-active-bg: color-mix(in srgb, var(--md-sys-color-on-surface) 14%, transparent);
+  --coreui-interactive-hover-bg: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface) 10%,
+    transparent
+  );
+  --coreui-interactive-active-bg: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface) 14%,
+    transparent
+  );
   --coreui-surface-panel: var(--md-sys-color-surface);
   --coreui-surface-panel-alt: var(--md-sys-color-surface-container-low);
   --coreui-surface-panel-raised: var(--md-sys-color-surface-container);
-  --coreui-shadow-sidebar: 0 0.25rem 1.25rem color-mix(in srgb, var(--md-sys-color-shadow, #000) 35%, transparent);
-  --coreui-shadow-sidebar-strong: 0 0.25rem 1.25rem color-mix(in srgb, var(--md-sys-color-shadow, #000) 45%, transparent);
+  --coreui-shadow-sidebar: 0 0.25rem 1.25rem
+    color-mix(in srgb, var(--md-sys-color-shadow, #000) 35%, transparent);
+  --coreui-shadow-sidebar-strong: 0 0.25rem 1.25rem
+    color-mix(in srgb, var(--md-sys-color-shadow, #000) 45%, transparent);
   --coreui-shadow-sidebar-dock:
     0 -1px 0 var(--coreui-sidenav-rail-border),
     0 -10px 24px -10px color-mix(in srgb, var(--md-sys-color-shadow, #000) 45%, transparent);
@@ -363,123 +464,156 @@
     0px 2px 3px 0px color-mix(in srgb, var(--md-sys-color-shadow, #000) 42%, transparent),
     0px 8px 18px 4px color-mix(in srgb, var(--md-sys-color-shadow, #000) 30%, transparent),
     0px 12px 34px -6px color-mix(in srgb, var(--md-sys-color-primary) 40%, transparent);
-  
-  --md-sys-elevation-level1: 0px 1px 3px 0px rgba(0, 0, 0, 0.3), 0px 4px 8px 3px rgba(0, 0, 0, 0.15);
-  --md-sys-elevation-level2: 0px 2px 3px 0px rgba(0, 0, 0, 0.3), 0px 6px 10px 4px rgba(0, 0, 0, 0.15);
-  --md-sys-elevation-level3: 0px 1px 3px 0px rgba(0, 0, 0, 0.3), 0px 8px 12px 6px rgba(0, 0, 0, 0.15);
-  --md-sys-elevation-level4: 0px 4px 4px 0px rgba(0, 0, 0, 0.3), 0px 12px 16px 8px rgba(0, 0, 0, 0.15);
-  --md-sys-elevation-level5: 0px 8px 4px 0px rgba(0, 0, 0, 0.3), 0px 16px 24px 12px rgba(0, 0, 0, 0.15);
+
+  --md-sys-elevation-level1:
+    0px 1px 3px 0px rgba(0, 0, 0, 0.3), 0px 4px 8px 3px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level2:
+    0px 2px 3px 0px rgba(0, 0, 0, 0.3), 0px 6px 10px 4px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level3:
+    0px 1px 3px 0px rgba(0, 0, 0, 0.3), 0px 8px 12px 6px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level4:
+    0px 4px 4px 0px rgba(0, 0, 0, 0.3), 0px 12px 16px 8px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level5:
+    0px 8px 4px 0px rgba(0, 0, 0, 0.3), 0px 16px 24px 12px rgba(0, 0, 0, 0.15);
 }
 
-/* Accent: only primary / on-primary (buttons, tabs). Tonal containers stay neutral from :root / .theme-dark. */
-[data-accent-color="purple"] {
+/* Accent: only primary / on-primary (buttons, tabs). Tonal containers stay neutral from :root / .theme-dark.
+   Colors are chosen from the Material 3 tonal palette for accessible contrast.
+   Light variants use Primary 40 (P-40); dark variants use Primary 80 (P-80) with a dark on-primary. */
+[data-accent-color='purple'] {
   --md-sys-color-primary: #6750a4;
   --md-sys-color-on-primary: #ffffff;
 }
-
-.theme-dark[data-accent-color="purple"] {
+.theme-dark[data-accent-color='purple'] {
   --md-sys-color-primary: #d0bcff;
   --md-sys-color-on-primary: #381e72;
 }
 
-[data-accent-color="cyan"] {
-  --md-sys-color-primary: #00bcd4;
+[data-accent-color='blue'] {
+  --md-sys-color-primary: #005ac1;
   --md-sys-color-on-primary: #ffffff;
 }
-
-.theme-dark[data-accent-color="cyan"] {
-  --md-sys-color-primary: #4dd0e1;
-  --md-sys-color-on-primary: #004d40;
+.theme-dark[data-accent-color='blue'] {
+  --md-sys-color-primary: #abc7ff;
+  --md-sys-color-on-primary: #001b3d;
 }
 
-[data-accent-color="dark-green"] {
-  --md-sys-color-primary: #4caf50;
+[data-accent-color='green'] {
+  --md-sys-color-primary: #2e7d32;
   --md-sys-color-on-primary: #ffffff;
 }
-
-.theme-dark[data-accent-color="dark-green"] {
+.theme-dark[data-accent-color='green'] {
   --md-sys-color-primary: #81c784;
-  --md-sys-color-on-primary: #1b5e20;
+  --md-sys-color-on-primary: #143116;
 }
 
-[data-accent-color="blue"] {
-  --md-sys-color-primary: #2196f3;
+/* Legacy alias: older settings may still reference "dark-green". */
+[data-accent-color='dark-green'] {
+  --md-sys-color-primary: #2e7d32;
   --md-sys-color-on-primary: #ffffff;
 }
-
-.theme-dark[data-accent-color="blue"] {
-  --md-sys-color-primary: #64b5f6;
-  --md-sys-color-on-primary: #0d47a1;
+.theme-dark[data-accent-color='dark-green'] {
+  --md-sys-color-primary: #81c784;
+  --md-sys-color-on-primary: #143116;
 }
 
-[data-accent-color="orange"] {
-  --md-sys-color-primary: #ff9800;
+[data-accent-color='cyan'] {
+  --md-sys-color-primary: #006780;
   --md-sys-color-on-primary: #ffffff;
 }
-
-.theme-dark[data-accent-color="orange"] {
-  --md-sys-color-primary: #ffb74d;
-  --md-sys-color-on-primary: #e65100;
+.theme-dark[data-accent-color='cyan'] {
+  --md-sys-color-primary: #5dd4fc;
+  --md-sys-color-on-primary: #001f2a;
 }
 
-[data-accent-color="red"] {
-  --md-sys-color-primary: #f44336;
+[data-accent-color='teal'] {
+  --md-sys-color-primary: #006a60;
   --md-sys-color-on-primary: #ffffff;
 }
-
-.theme-dark[data-accent-color="red"] {
-  --md-sys-color-primary: #e57373;
-  --md-sys-color-on-primary: #b71c1c;
+.theme-dark[data-accent-color='teal'] {
+  --md-sys-color-primary: #82d5c8;
+  --md-sys-color-on-primary: #00201c;
 }
 
-[data-accent-color="pink"] {
-  --md-sys-color-primary: #e91e63;
+[data-accent-color='orange'] {
+  --md-sys-color-primary: #8b5000;
   --md-sys-color-on-primary: #ffffff;
 }
-
-.theme-dark[data-accent-color="pink"] {
-  --md-sys-color-primary: #f06292;
-  --md-sys-color-on-primary: #880e4f;
+.theme-dark[data-accent-color='orange'] {
+  --md-sys-color-primary: #ffb873;
+  --md-sys-color-on-primary: #2a1700;
 }
 
-[data-accent-color="teal"] {
-  --md-sys-color-primary: #009688;
+[data-accent-color='red'] {
+  --md-sys-color-primary: #ba1a1a;
   --md-sys-color-on-primary: #ffffff;
 }
-
-.theme-dark[data-accent-color="teal"] {
-  --md-sys-color-primary: #4db6ac;
-  --md-sys-color-on-primary: #004d40;
+.theme-dark[data-accent-color='red'] {
+  --md-sys-color-primary: #ffb4ab;
+  --md-sys-color-on-primary: #690005;
 }
 
-[data-accent-color="indigo"] {
-  --md-sys-color-primary: #3f51b5;
+[data-accent-color='pink'] {
+  --md-sys-color-primary: #984061;
   --md-sys-color-on-primary: #ffffff;
 }
-
-.theme-dark[data-accent-color="indigo"] {
-  --md-sys-color-primary: #7986cb;
-  --md-sys-color-on-primary: #1a237e;
+.theme-dark[data-accent-color='pink'] {
+  --md-sys-color-primary: #ffb0c8;
+  --md-sys-color-on-primary: #3e001d;
 }
 
-[data-accent-color="amber"] {
-  --md-sys-color-primary: #ffc107;
-  --md-sys-color-on-primary: #000000;
-}
-
-.theme-dark[data-accent-color="amber"] {
-  --md-sys-color-primary: #ffd54f;
-  --md-sys-color-on-primary: #f57f17;
-}
-
-[data-accent-color="slate"] {
-  --md-sys-color-primary: #344767;
+[data-accent-color='indigo'] {
+  --md-sys-color-primary: #3d5aa9;
   --md-sys-color-on-primary: #ffffff;
 }
+.theme-dark[data-accent-color='indigo'] {
+  --md-sys-color-primary: #b8c4ff;
+  --md-sys-color-on-primary: #001945;
+}
 
-.theme-dark[data-accent-color="slate"] {
-  --md-sys-color-primary: #90a4ae;
-  --md-sys-color-on-primary: #1c2834;
+[data-accent-color='amber'] {
+  --md-sys-color-primary: #7d5700;
+  --md-sys-color-on-primary: #ffffff;
+}
+.theme-dark[data-accent-color='amber'] {
+  --md-sys-color-primary: #f2c029;
+  --md-sys-color-on-primary: #271900;
+}
+
+[data-accent-color='slate'] {
+  --md-sys-color-primary: #4a6572;
+  --md-sys-color-on-primary: #ffffff;
+}
+.theme-dark[data-accent-color='slate'] {
+  --md-sys-color-primary: #b0c9d6;
+  --md-sys-color-on-primary: #0f1f24;
+}
+
+[data-accent-color='lime'] {
+  --md-sys-color-primary: #4a6b00;
+  --md-sys-color-on-primary: #ffffff;
+}
+.theme-dark[data-accent-color='lime'] {
+  --md-sys-color-primary: #c6e063;
+  --md-sys-color-on-primary: #131f00;
+}
+
+[data-accent-color='violet'] {
+  --md-sys-color-primary: #5b3f94;
+  --md-sys-color-on-primary: #ffffff;
+}
+.theme-dark[data-accent-color='violet'] {
+  --md-sys-color-primary: #cbbeff;
+  --md-sys-color-on-primary: #1e0a5e;
+}
+
+[data-accent-color='coral'] {
+  --md-sys-color-primary: #9e4242;
+  --md-sys-color-on-primary: #ffffff;
+}
+.theme-dark[data-accent-color='coral'] {
+  --md-sys-color-primary: #ffb3b0;
+  --md-sys-color-on-primary: #561d20;
 }
 
 * {
@@ -493,7 +627,9 @@ body {
   background: var(--md-sys-color-background);
   color: var(--md-sys-color-on-background);
   font: var(--md-sys-typescale-body-medium-font);
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
 }
 
 .material-symbols-outlined {
@@ -504,7 +640,11 @@ body {
   line-height: 1;
   display: inline-flex;
   vertical-align: middle;
-  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
   letter-spacing: normal;
   text-transform: none;
   white-space: nowrap;

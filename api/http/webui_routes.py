@@ -78,6 +78,7 @@ from api.http.webui_rag_routes import (
     register_rag_pipeline_routes,
     register_rag_qdrant_routes,
 )
+from api.http.webui_server_routes import register_server_routes
 from api.http.webui_session_routes import register_session_routes
 from api.http.webui_settings_routes import register_settings_routes
 from api.http.webui_testing_routes import register_testing_routes
@@ -161,6 +162,7 @@ register_prompt_routes(webui_bp, prompts_dir=PROMPTS_DIR, trash_dir=TRASH_DIR, e
 register_extension_routes(webui_bp, error_log=_ERROR_LOG)
 register_docker_routes(webui_bp, error_log=_ERROR_LOG)
 register_session_routes(webui_bp, error_log=_ERROR_LOG)
+register_server_routes(webui_bp, error_log=_ERROR_LOG)
 register_version_routes(webui_bp, error_log=_ERROR_LOG)
 register_observability_routes(webui_bp, error_log=_ERROR_LOG)
 register_dependencies_routes(webui_bp, error_log=_ERROR_LOG)

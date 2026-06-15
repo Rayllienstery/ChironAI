@@ -395,10 +395,14 @@ def _build_extension_manager(
         from config import (
             get_default_embed_model,
             get_default_rerank_model,
+            get_ollama_base_url,
+            get_ollama_chat_url,
         )
 
         host_metadata.update(
             {
+                "base_url": get_ollama_base_url(),
+                "chat_url": get_ollama_chat_url(),
                 "embed_model": get_default_embed_model(),
                 "rerank_model": get_default_rerank_model(),
             }
@@ -433,14 +437,16 @@ def _build_extension_manager(
     llm_runtime = None
     provider_registry = None
     try:
-        service.start_background_bootstrap()
+        service.bootstrap_runtime()
+        llm_runtime = service.runtime
+        provider_registry = service.registry
         _RAG_LOG.info(
-            "Extension runtime bootstrap started in background (status=%s)",
+            "Extension runtime bootstrap complete (status=%s)",
             service.runtime_status,
         )
     except Exception as exc:
         err = str(getattr(service, "runtime_error", "") or exc)
-        _RAG_LOG.warning("Extension runtime background bootstrap failed at wiring: %s", err)
+        _RAG_LOG.warning("Extension runtime bootstrap failed at wiring: %s", err)
     runtime_chat_client = _runtime_resolving_chat_client(
         extension_manager=service,
         llm_runtime=llm_runtime,

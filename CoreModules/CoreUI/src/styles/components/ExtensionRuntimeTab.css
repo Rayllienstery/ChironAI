@@ -1,6 +1,6 @@
-@import "./DashboardTab.css";
-@import "./LlmProxyTab.css";
-@import "./SettingsTab.css";
+@import './DashboardTab.css';
+@import './LlmProxyTab.css';
+@import './SettingsTab.css';
 
 .extensions-runtime-loading-shell {
   display: grid;
@@ -16,13 +16,13 @@
   padding: 22px;
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 18%, transparent);
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--md-sys-color-primary) 9%, var(--md-sys-color-surface-container-lowest)) 0%,
-      var(--md-sys-color-surface-container-low) 48%,
-      var(--md-sys-color-surface) 100%
-    );
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--md-sys-color-primary) 9%, var(--md-sys-color-surface-container-lowest))
+      0%,
+    var(--md-sys-color-surface-container-low) 48%,
+    var(--md-sys-color-surface) 100%
+  );
   box-shadow: var(--md-sys-elevation-level2);
 }
 
@@ -475,9 +475,9 @@
 }
 
 .extensions-runtime-service-state--running {
-  color: #1f6d32;
-  background: color-mix(in srgb, #46a758 12%, var(--md-sys-color-surface));
-  border-color: color-mix(in srgb, #46a758 24%, transparent);
+  color: var(--coreui-color-success);
+  background: color-mix(in srgb, var(--coreui-color-success) 12%, var(--md-sys-color-surface));
+  border-color: color-mix(in srgb, var(--coreui-color-success) 24%, transparent);
 }
 
 .extensions-runtime-service-state--error {
@@ -757,8 +757,8 @@
 }
 
 .extensions-runtime-status--ok {
-  background: color-mix(in srgb, #46a758 20%, var(--md-sys-color-surface));
-  color: #1f6d32;
+  background: color-mix(in srgb, var(--coreui-color-success) 20%, var(--md-sys-color-surface));
+  color: var(--coreui-color-success);
 }
 
 .extensions-runtime-status--unreachable,
@@ -811,7 +811,7 @@
 }
 
 .extensions-runtime-step--done .extensions-runtime-step-icon {
-  color: #46a758;
+  color: var(--coreui-color-success);
 }
 
 .extensions-runtime-step--todo .extensions-runtime-step-icon {
@@ -1166,4 +1166,3 @@
     grid-template-columns: 1fr;
   }
 }
-

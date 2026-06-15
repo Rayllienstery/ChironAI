@@ -260,6 +260,9 @@ def test_create_app_syncs_extension_runtime_after_background_bootstrap() -> None
     manager._manager._runtime = runtime
     manager._manager._registry = registry
 
+    from api.http.rag_routes import _sync_llm_extension_runtime
+
+    _sync_llm_extension_runtime(app)
     assert get_extensions_runtime(app) is runtime
     assert get_extensions_provider_registry(app) is registry
 
@@ -270,25 +273,24 @@ def test_create_app_syncs_extension_runtime_after_background_bootstrap() -> None
     assert get_extensions_provider_registry(app) is registry
 
 
-def test_create_app_does_not_block_on_extension_runtime_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_app_bootstraps_extension_runtime_at_wiring(monkeypatch: pytest.MonkeyPatch) -> None:
     _ensure_root_on_path()
+    from unittest.mock import MagicMock
+
     from api.http.rag_routes import create_app
     from llm_interactor import ExtensionManager
 
-    started: list[bool] = []
-
-    def start_background(self: object) -> None:
-        started.append(True)
+    bootstrapped: list[bool] = []
 
     def bootstrap_runtime(self: object) -> object:
-        raise AssertionError("create_app must not synchronously bootstrap extensions")
+        bootstrapped.append(True)
+        return MagicMock(name="LLMRuntime")
 
-    monkeypatch.setattr(ExtensionManager, "start_background_bootstrap", start_background)
     monkeypatch.setattr(ExtensionManager, "bootstrap_runtime", bootstrap_runtime)
 
     app = create_app()
 
-    assert started == [True]
+    assert bootstrapped == [True]
     assert app.test_client().get("/api/webui/performance/startup").status_code == 200
 
 

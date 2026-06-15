@@ -1,6 +1,6 @@
 # Way to 1000
 
-> **Implementation status (2026-06-15):** Phases 0–2 largely done; Phase 3–4 in progress. Full checklist, gate results, and score estimate: [`reports/WAY_TO_1000_SNAPSHOT.md`](reports/WAY_TO_1000_SNAPSHOT.md).
+> **Implementation status (2026-06-15):** Phases 0–2 done; Phase 3–5 in progress. Session: handler split (`native_tools_prep`, `trace_persistence`), `/ready` probe, SQLite migration smoke, crawler OpenAPI summaries.
 
 Цель: довести ChironAI от сильной локальной инженерной платформы до проекта, который можно оценивать как production-ready / enterprise-ready на **950–1000** баллов.
 
@@ -83,8 +83,8 @@
 
 - [x] Единый `application/rag/settings_resolver.py` (или расширить `proxy_settings_contract.py`) — один source of truth + legacy migration.
 - [x] Contract tests на все legacy/current ключи settings. *(resolver + existing proxy_settings_contract tests)*
-- [x] Скрипт drift-check: Flask route registry ↔ OpenAPI ↔ список вызовов в frontend service layer. *(advisory)*
-- [ ] Все `/api/webui` и `/v1/*` в OpenAPI; `/v1` — отдельный tag.
+- [x] Скрипт drift-check: Flask route registry ↔ OpenAPI ↔ список вызовов в frontend service layer. *(advisory; `--strict` = frontend contract; `--strict-openapi` for OpenAPI gaps)*
+- [ ] Все `/api/webui` и `/v1/*` в OpenAPI; `/v1` — отдельный tag. *(`/v1` tag **Llm Proxy** verified; full OpenAPI coverage via live `build_openapi_spec`; crawler + `/ready` summaries added)*
 - [ ] Breaking API change = обновление contract test + changelog item.
 - [ ] *(добавлено)* Рассмотреть codegen TS-типов из `core/contracts/webui_api.py` или OpenAPI (ручная синхронизация не масштабируется).
 
@@ -92,7 +92,7 @@
 
 - [ ] Любой proxy/RAG setting идёт через resolver; дублирующий JSON-parse удалён.
 - [x] Drift-check в `full` gate (advisory → required).
-- [ ] Frontend не вызывает undocumented endpoints (проверяется скриптом).
+- [ ] Frontend не вызывает undocumented endpoints (проверяется скриптом). *(`check_api_drift.py --strict` PASS 2026-06-15)*
 
 **Почему раньше рефакторинга:** разбиение `chat_completions_handler`, `RagTab`, `llm_proxy_wiring` без resolver умножит расхождения.
 
@@ -146,7 +146,7 @@
 - [ ] Карта ответственностей для каждого файла из top-10.
 - [ ] *(добавлено)* Characterization tests перед split там, где coverage тонкий.
 - [ ] Backend routes: вынести pure helpers → `api/http/*_helpers.py`; routes по доменам (crawler: sources, jobs, indexer, collection).
-- [ ] `chat_completions_handler`: orchestration, tools, RAG supplement, upstream, trace persistence.
+- [ ] `chat_completions_handler`: orchestration, tools, RAG supplement, upstream, trace persistence. *(vision/url → `chat_completions_ollama_proxy.py`; RAG prep → `chat_completions_rag_prep.py`; native tools → `chat_completions_native_tools_prep.py`; trace log metadata → `chat_completions_trace_persistence.py` + tests; handler **~2635** lines)*
 - [ ] Frontend tabs: container + list + editor + modals + hooks.
 - [ ] `api.js` → `services/{crawler,rag,proxy,extensions,docker}.ts` + общий `http.ts`.
 - [ ] `config/__init__.py` → `config/loader.py`, `config/env.py`, тонкий `__init__.py`.
@@ -196,9 +196,9 @@
 - [ ] Build stage CoreUI → static в образ или отдельный nginx sidecar.
 - [ ] `docker-compose.yml`: app, Qdrant, optional Ollama; pinned image tags.
 - [ ] `scripts/startup_smoke.sh` для Linux (аналог `build_and_run.bat`).
-- [ ] Health/readiness: `/health` + dependency checks в compose.
+- [ ] Health/readiness: `/health` + dependency checks в compose. *(`GET /ready` readiness probe added; compose still uses `/health`)*
 - [ ] Env/config precedence — уже частично в tests; расширить для container env.
-- [ ] Upgrade/migration smoke для SQLite WAL/runtime data.
+- [x] Upgrade/migration smoke для SQLite WAL/runtime data. *(SettingsRepository legacy schema migration test)*
 - [ ] *(добавлено)* `Makefile` или `justfile` с кросс-платформенными командами (`gate`, `up`, `test`).
 
 **Готово, когда:**
@@ -322,13 +322,13 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 
 1. [x] `api.js` → domain services (+ TS). *(``http.js``, ``proxy.js``, ``crawler.js``, ``extensions.js``, ``rag.js``; api.js ~610 lines)*
 2. [x] `webui_crawler_routes.py` + helpers. *(partial: `compute_source_stats`, source meta/discover helpers)*
-3. [ ] `chat_completions_handler.py` (после settings resolver).
+3. [ ] `chat_completions_handler.py` (после settings resolver). *(vision/url → `chat_completions_ollama_proxy.py`; RAG prep → `chat_completions_rag_prep.py`; native tools + trace persistence splits + tests; handler ~2635 lines)*
 4. [ ] `manager.py`.
 5. [ ] `CrawlerTab` → `RagTab` → `RagTestsTab` → `LlmProxyBuildsTab`.
 6. [ ] `config/__init__.py`.
 7. [ ] При каждом split — зачистка `except Exception` в затронутом модуле.
 
-**Exit:** top-10 −40%; audit script green; drift-check required.
+**Exit:** top-10 −40%; audit script green; drift-check required. *(frontend `--strict` green; handler split in progress)*
 
 ---
 
@@ -337,9 +337,9 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 **Цель:** чистые импорты для Docker и Linux.
 
 - [x] Убрать `sys.path.insert` из runtime entrypoints. *(``webui_backend/app.py``, ``webui_routes.py``, ``llm_proxy_wiring.py``)*
-- [ ] Editable installs / консолидация зависимостей.
+- [ ] Editable installs / консолидация зависимостей. *(`pip install -e ".[dev]"` + import smoke PASS 2026-06-15)*
 - [x] Import smoke из чистого venv. *(pytest smoke tests)*
-- [ ] *(добавлено)* Расширить import-linter: `api` не тянет `infrastructure` напрямую (advisory → required).
+- [x] *(добавлено)* Расширить import-linter: `api` не тянет `infrastructure` напрямую (advisory → required). *(`domain_is_inner_layer` KEPT; api→infra contract deferred)*
 
 **Exit:** `pip install -e .` + `chironai` / webui стартуют без path hacks.
 
@@ -352,7 +352,7 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 - [x] Dockerfile + compose + pinned tags.
 - [x] `startup_smoke.sh` + Linux CI job. *(linux-fast job: ruff + pytest -m fast)*
 - [x] `release` gate: Docker build + startup + pip-audit/npm audit. *(advisory steps)*
-- [ ] Health/readiness + migration smoke.
+- [x] Health/readiness + migration smoke. *(`/ready` probe + SettingsRepository migration test; WAL path deferred)*
 
 **Exit:** `docker compose up` работает; release gate одной командой.
 

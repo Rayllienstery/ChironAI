@@ -31,7 +31,6 @@ from llm_proxy.chat_completions_gemini_native import (
     _resolve_proxy_db_path_from_wiring,
     _sanitize_outgoing_shell_tool_calls,
     _sse_tool_calls_payload,
-    _tool_round_stats_since_last_user,
 )
 from llm_proxy.chat_completions_handler_helpers import (
     append_pipeline_step_trace as _append_pipeline_step_trace,
@@ -57,6 +56,10 @@ from llm_proxy.chat_completions_handler_helpers import (
 from llm_proxy.chat_completions_messages import (
     _normalize_request_messages,
 )
+from llm_proxy.chat_completions_native_tools_prep import (
+    analyze_tool_turn_state,
+    resolve_native_tools_policy,
+)
 from llm_proxy.chat_completions_ollama_proxy import (
     _PLACEHOLDER_REPLY_FALLBACK_EN,
     _append_trace_warning,
@@ -78,6 +81,24 @@ from llm_proxy.chat_completions_ollama_proxy import (
     _trace_ollama_messages_for_ui,
     effective_ollama_think_from_body,
 )
+from llm_proxy.chat_completions_ollama_proxy import (
+    ollama_messages_have_images as _ollama_messages_have_images,
+)
+from llm_proxy.chat_completions_ollama_proxy import (
+    resolved_ollama_chat_url as _resolved_ollama_chat_url,
+)
+from llm_proxy.chat_completions_ollama_proxy import (
+    vision_fallback_preferences as _vision_fallback_preferences,
+)
+from llm_proxy.chat_completions_rag_prep import (
+    apply_proxy_context_char_limits as _apply_proxy_context_char_limits,
+)
+from llm_proxy.chat_completions_rag_prep import (
+    build_framework_name_to_collection_map as _build_framework_name_to_collection_map,
+)
+from llm_proxy.chat_completions_rag_prep import (
+    resolve_project_fresh_collections as _resolve_project_fresh_collections,
+)
 from llm_proxy.chat_completions_request_parsing import (
     resolve_trace_chain_id as _resolve_trace_chain_id,
 )
@@ -86,9 +107,6 @@ from llm_proxy.chat_completions_request_parsing import (
 )
 from llm_proxy.chat_completions_response_helpers import (
     final_or_compat_content as _final_or_compat_content,
-)
-from llm_proxy.chat_completions_response_helpers import (
-    proxy_settings_optional_int as _proxy_settings_optional_int,
 )
 from llm_proxy.chat_completions_response_helpers import (
     record_reasoning_token_estimates as _record_reasoning_token_estimates,
@@ -138,6 +156,9 @@ from llm_proxy.chat_completions_streaming import (
 from llm_proxy.chat_completions_streaming import (
     stream_completion_id as _stream_completion_id,
 )
+from llm_proxy.chat_completions_trace_persistence import (
+    build_proxy_request_log_metadata,
+)
 from llm_proxy.chat_completions_upstream_budget import (
     _compact_upstream_messages_for_budget,
     _ollama_message_content_str,
@@ -172,66 +193,12 @@ from llm_proxy.tool_helpers import (
     _get_tool_by_name,
     _select_edit_tool_name,
     _tool_args_have_substantive_body,
-    _tool_result_looks_like_unintended_deletion,
     _tool_schema_accepts_content,
     _workspace_doc_refactor_intent,
     _workspace_selection_snippet,
 )
 
 _RAG_LOG = logging.getLogger("llm_proxy")
-
-
-def _ollama_messages_have_images(messages: list[dict[str, Any]]) -> bool:
-    for msg in messages:
-        if not isinstance(msg, dict):
-            continue
-        images = msg.get("images")
-        if isinstance(images, list) and len(images) > 0:
-            return True
-    return False
-
-
-def _vision_fallback_preferences(active_build: dict[str, Any] | None) -> tuple[str, ...]:
-    raw: list[str] = []
-    if active_build is not None:
-        raw.append(str(active_build.get("vision_model") or "").strip())
-    raw.append(os.getenv("LLM_PROXY_VISION_FALLBACK_MODEL", "").strip())
-    raw.extend(
-        (
-            "minimax-m3:cloud",
-            "kimi-k2.6:cloud",
-            "gemini-3-flash-preview:cloud",
-        )
-    )
-    out: list[str] = []
-    seen: set[str] = set()
-    for item in raw:
-        if item and item not in seen:
-            seen.add(item)
-            out.append(item)
-    return tuple(out)
-
-
-def _resolved_ollama_chat_url(chat_client: Any) -> str | None:
-    provider_id = str(getattr(chat_client, "_provider_id", "") or "").strip().lower()
-    raw_url = getattr(chat_client, "_url", None)
-    if isinstance(raw_url, str) and raw_url.strip():
-        return raw_url.strip()
-    if provider_id and provider_id != "ollama":
-        return None
-    for import_path in ("config", "rag_service.config"):
-        try:
-            if import_path == "config":
-                from config import get_ollama_chat_url as _get_chat_url  # type: ignore[import-not-found]
-            else:
-                from rag_service.config import get_ollama_chat_url as _get_chat_url
-
-            chat_url = str(_get_chat_url() or "").strip()
-            if chat_url:
-                return chat_url
-        except Exception:
-            continue
-    return None
 
 
 def run_chat_completions(
@@ -457,31 +424,28 @@ def run_chat_completions(
             session_manager = w.get_session_manager()
             session_manager.get_or_create_session("proxy")
             logs_repo = w.get_logs_repository()
-            metadata: dict[str, Any] = {
-                "user_query": user_query[:500],
-                "response_preview": response_preview[:500],
-                "trace_id": trace_id,
-                "model": use_model,
-                "latency_ms": latency_ms_value,
-                "trace": trace_payload,
-                "stream": bool(stream_value),
-                "is_autocomplete": bool(is_autocomplete),
-                "requested_model": requested_model,
-                "proxy_backend": proxy_backend_tag(),
-            }
-            if include_rag_fields:
-                metadata["rag_context"] = rag_context_data
-                metadata["rag_steps"] = rag_timings
-            if include_token_fields:
-                metadata["prompt_tokens"] = prompt_tokens_value
-                metadata["completion_tokens"] = completion_tokens_value
-                metadata["total_tokens"] = total_tokens_value
-            if ollama_chat_stream is not None:
-                metadata["ollama_chat_stream"] = bool(ollama_chat_stream)
-            if sse_single_chunk:
-                metadata["sse_single_chunk"] = True
-            if extra_metadata:
-                metadata.update(extra_metadata)
+            metadata = build_proxy_request_log_metadata(
+                user_query=user_query,
+                response_preview=response_preview,
+                trace_id=trace_id,
+                use_model=use_model,
+                latency_ms_value=latency_ms_value,
+                trace_payload=trace_payload,
+                stream_value=stream_value,
+                is_autocomplete=is_autocomplete,
+                requested_model=requested_model,
+                proxy_backend=proxy_backend_tag(),
+                include_rag_fields=include_rag_fields,
+                rag_context_data=rag_context_data,
+                rag_timings=rag_timings,
+                include_token_fields=include_token_fields,
+                prompt_tokens_value=prompt_tokens_value,
+                completion_tokens_value=completion_tokens_value,
+                total_tokens_value=total_tokens_value,
+                ollama_chat_stream=ollama_chat_stream,
+                sse_single_chunk=sse_single_chunk,
+                extra_metadata=extra_metadata,
+            )
             logs_repo.add_log(
                 session_id="proxy",
                 level="INFO",
@@ -498,87 +462,8 @@ def run_chat_completions(
         tools = []
         body["tools"] = []
         tool_choice_effective = "none"
-    has_tool_result = any(isinstance(m, dict) and m.get("role") == "tool" for m in messages)
-    last_tool_content = ""
-    for m in reversed(messages):
-        if isinstance(m, dict) and m.get("role") == "tool":
-            last_tool_content = str(
-                m.get("content")
-                or m.get("output")
-                or m.get("result")
-                or m.get("text")
-                or ""
-            )
-            break
-    _ltl = last_tool_content.lower()
-    _tool_exit_code: int | None = None
-    _tool_ok_flag: bool | None = None
-    _tool_error_text: str = ""
-    try:
-        _parsed_tool = json.loads(last_tool_content) if last_tool_content.strip().startswith(("{", "[")) else None
-        if isinstance(_parsed_tool, dict):
-            if isinstance(_parsed_tool.get("ok"), bool):
-                _tool_ok_flag = bool(_parsed_tool.get("ok"))
-            _meta = _parsed_tool.get("metadata")
-            if isinstance(_meta, dict):
-                _ec = _meta.get("exit_code")
-                if isinstance(_ec, (int, float)):
-                    _tool_exit_code = int(_ec)
-                _stderr = _meta.get("stderr")
-                if isinstance(_stderr, str) and _stderr.strip():
-                    _tool_error_text = _stderr.strip().lower()
-            _err = _parsed_tool.get("error")
-            if isinstance(_err, str) and _err.strip():
-                _tool_error_text = (_tool_error_text + "\n" + _err.strip().lower()).strip()
-    except Exception:
-        pass
-    tool_result_indicates_failure = any(
-        x in _ltl
-        for x in (
-            "no edits were made",
-            "no edits",
-            "failed to receive tool input",
-            "path not found",
-            "can't edit file",
-            "cannot edit file",
-            "can't create file",
-            "cannot create file",
-            "parent directory doesn't exist",
-            "parent directory does not exist",
-            "file not found",
-            "unknown variant",
-        )
-    )
-    if not tool_result_indicates_failure and _tool_ok_flag is False:
-        tool_result_indicates_failure = True
-    if not tool_result_indicates_failure and _tool_exit_code is not None and _tool_exit_code != 0:
-        tool_result_indicates_failure = True
-    if not tool_result_indicates_failure and _tool_error_text:
-        tool_result_indicates_failure = True
-    if not tool_result_indicates_failure and _tool_result_looks_like_unintended_deletion(last_tool_content):
-        tool_result_indicates_failure = True
-    _last_msg = messages[-1] if messages else None
-    _last_role = _last_msg.get("role") if isinstance(_last_msg, dict) else None
-    _last_tool_idx = -1
-    _last_user_idx = -1
-    for i in range(len(messages) - 1, -1, -1):
-        mi = messages[i]
-        if not isinstance(mi, dict):
-            continue
-        r = mi.get("role")
-        if _last_tool_idx < 0 and r == "tool":
-            _last_tool_idx = i
-        if r == "user" and _last_user_idx < 0:
-            _last_user_idx = i
-        if _last_tool_idx >= 0 and _last_user_idx >= 0:
-            break
-    # Only treat it as a "post tool success" turn when the latest message is a tool result
-    # and there is NO newer user message after that tool result.
-    post_tool_success_turn = bool(
-        _last_role == "tool"
-        and has_tool_result
-        and not tool_result_indicates_failure
-        and (_last_user_idx < 0 or _last_user_idx < _last_tool_idx)
+    has_tool_result, last_tool_content, tool_result_indicates_failure, post_tool_success_turn = (
+        analyze_tool_turn_state(messages)
     )
 
     if is_autocomplete:
@@ -642,21 +527,18 @@ def run_chat_completions(
             selected_edit_tool_name = "edit_file"
             selected_edit_tool = None
             selected_tool_write_capable = True
-    use_native_tools = bool(tools) and tool_choice_effective != "none"
-    tool_loop_stats: dict[str, Any] | None = None
-    if use_native_tools:
-        tool_loop_stats = _tool_round_stats_since_last_user(messages)
     effective_max_agent_steps = _effective_max_agent_steps(active_build)
-    tool_loop_limit_reached = bool(
-        use_native_tools
-        and effective_max_agent_steps is not None
-        and tool_loop_stats is not None
-        and int(tool_loop_stats.get("rounds") or 0) >= effective_max_agent_steps
+    _native_tools_policy = resolve_native_tools_policy(
+        messages,
+        tools,
+        tool_choice_effective,
+        effective_max_agent_steps=effective_max_agent_steps,
     )
-    if tool_loop_limit_reached:
-        tools = []
-        tool_choice_effective = "none"
-        use_native_tools = False
+    tools = _native_tools_policy.tools
+    tool_choice_effective = _native_tools_policy.tool_choice_effective
+    use_native_tools = _native_tools_policy.use_native_tools
+    tool_loop_stats = _native_tools_policy.tool_loop_stats
+    tool_loop_limit_reached = _native_tools_policy.tool_loop_limit_reached
     context_length = len(last_user.split())
     if system_prefix is not None:
         effective_prefix = prefix
@@ -782,48 +664,19 @@ def run_chat_completions(
         frameworks = project_context.get("frameworks") or []
         if frameworks:
             rag_sources_config = w.external_docs.load_rag_sources_config()
-            # Map framework name (e.g. "Alamofire") -> collection_name from config
-            name_to_collection: dict[str, str] = {}
-            for cfg in rag_sources_config:
-                for kw in (cfg.trigger_keywords or []):
-                    name_to_collection[(kw or "").strip().lower()] = cfg.collection_name
-                if (cfg.external_source_id or "").strip():
-                    name_to_collection[(cfg.external_source_id or "").strip().lower()] = cfg.collection_name
-            ttl_days = w.get_framework_collection_ttl_days()
-            settings_repo = None
+            name_to_collection = _build_framework_name_to_collection_map(rag_sources_config)
+            prep_settings_repo = None
             try:
-                settings_repo = w.get_settings_repository()
-                ttl_raw = settings_repo.get_app_setting("framework_collection_ttl_days")
-                if ttl_raw is not None and str(ttl_raw).strip() != "":
-                    try:
-                        ttl_days = int(ttl_raw)
-                    except (TypeError, ValueError):
-                        pass
+                prep_settings_repo = w.get_settings_repository()
             except Exception:
                 pass
-            fresh_collections: list[str] = []
-            needs_refresh.clear()
-            for fw in frameworks:
-                if not isinstance(fw, dict):
-                    continue
-                name = (fw.get("name") or "").strip()
-                if not name:
-                    continue
-                coll = name_to_collection.get(name.lower())
-                if not coll:
-                    continue
-                meta = None
-                if settings_repo:
-                    try:
-                        meta = settings_repo.get_collection_meta(coll)
-                    except Exception:
-                        pass
-                if w.check_collection_freshness(meta, ttl_days) == "fresh":
-                    if coll not in fresh_collections:
-                        fresh_collections.append(coll)
-                else:
-                    needs_refresh.append((name.lower(), coll))
-            project_fresh_collection_names = set(fresh_collections) if fresh_collections else None
+            project_fresh_collection_names, needs_refresh = _resolve_project_fresh_collections(
+                frameworks,
+                name_to_collection=name_to_collection,
+                settings_repo=prep_settings_repo,
+                check_collection_freshness=w.check_collection_freshness,
+                default_ttl_days=w.get_framework_collection_ttl_days(),
+            )
 
     # Resolve collection in priority order:
     # 1) request body collection_name
@@ -908,13 +761,13 @@ def run_chat_completions(
         except Exception:
             pass
 
-    _cco = _proxy_settings_optional_int(proxy_settings, "context_chunk_chars", 64, 500_000)
-    if _cco is not None:
-        effective_context_chunk_chars = _cco
-    _cto = _proxy_settings_optional_int(proxy_settings, "context_total_chars", 256, 2_000_000)
-    if _cto is not None:
-        effective_context_total_chars = _cto
-    effective_rag_top_k = _proxy_settings_optional_int(proxy_settings, "rag_top_k", 1, 256)
+    effective_context_chunk_chars, effective_context_total_chars, effective_rag_top_k = (
+        _apply_proxy_context_char_limits(
+            proxy_settings,
+            effective_context_chunk_chars=effective_context_chunk_chars,
+            effective_context_total_chars=effective_context_total_chars,
+        )
+    )
     trace["request"]["effective_context_chunk_chars"] = effective_context_chunk_chars
     trace["request"]["effective_context_total_chars"] = effective_context_total_chars
     if effective_rag_top_k is not None:
