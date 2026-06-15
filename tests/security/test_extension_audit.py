@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from chironai_security import audit_extension, audit_extension_or_raise
 
 

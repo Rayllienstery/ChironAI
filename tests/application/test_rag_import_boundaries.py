@@ -3,7 +3,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RUNTIME_DIRS = ("api", "application", "CoreModules", "infrastructure", "modules", "scripts")
 REMOVED_RAG_IMPORTS = {

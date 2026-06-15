@@ -10,11 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from llm_proxy.ollama_compat import (
+    VISION_MAX_DECODED_BYTES,
     openai_parts_to_flat_text,
     promote_inline_data_image_urls_in_content,
     sanitize_openai_text_part,
     sanitize_proxy_content_parts,
-    VISION_MAX_DECODED_BYTES,
 )
 
 _VISION_READ_LOCAL_FILES = str(os.getenv("LLM_PROXY_VISION_READ_LOCAL_FILES", "0")).strip() in {

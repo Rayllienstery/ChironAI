@@ -1,9 +1,8 @@
 import os
 
 from webui_backend import app
-from webui_backend.apple_docs_fetcher import fetch_apple_doc_raw
 from webui_backend.apple_docs_extract import build_apple_doc_page, render_apple_doc_to_markdown
-
+from webui_backend.apple_docs_fetcher import fetch_apple_doc_raw
 
 # Test problematic overview pages
 DOC_URL = "https://developer.apple.com/documentation/swiftui/view"

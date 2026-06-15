@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, MutableMapping
 
+from rag_service.application.pipeline_steps.helpers import retrieval_bool_with_ui_override
 from rag_service.config import get_retrieval_int
 from rag_service.core.contracts import StepResult
 from rag_service.domain.services.retrieval import (
@@ -14,7 +15,6 @@ from rag_service.domain.services.retrieval import (
     merge_qdrant_filters,
     need_more_chunks,
 )
-from rag_service.application.pipeline_steps.helpers import retrieval_bool_with_ui_override
 
 
 class QueryPrepStep:

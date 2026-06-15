@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-
 import pytest
-
 from llm_proxy.chat_completions_request_parsing import (
     non_empty_str,
     positive_int_env,

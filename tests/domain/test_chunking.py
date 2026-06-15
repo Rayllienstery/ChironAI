@@ -5,11 +5,10 @@ Unit tests for rag_service.domain.services.chunking.
 from __future__ import annotations
 
 import pytest
-
 from rag_service.domain.services.chunking import (
+    _is_heading_only_chunk,
     chunk_quality_ok,
     split_markdown_into_chunks,
-    _is_heading_only_chunk,
 )
 
 

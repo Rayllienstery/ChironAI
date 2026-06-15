@@ -18,7 +18,6 @@ from typing import Any
 
 import yaml
 
-
 _DEFAULT_RETRIEVAL: dict[str, Any] = {
     "max_embed_text_length": 400,
     "top_k": 8,

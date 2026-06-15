@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
-
 EXTENSIONS_API_VERSION: str = "1"
 EXTENSIONS_API_PREFIX: str = "/api/extensions"
 WEBUI_EXTENSIONS_PROXY_PREFIX: str = "/api/webui/extensions"

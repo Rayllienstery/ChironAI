@@ -127,8 +127,9 @@ class QdrantChunkSink:
         self._ensure_collection(collection_name, vector_size, hybrid_sparse=hybrid_cfg)
         client = self._get_client()
         effective_hybrid = hybrid_cfg and _collection_has_sparse(client, collection_name)
-        from infrastructure.rag.qdrant_point_builder import build_named_vectors
         from qdrant_client.http.models import PointStruct  # noqa: PLC0415
+
+        from infrastructure.rag.qdrant_point_builder import build_named_vectors
         points: list[PointStruct] = []
         for payload, vec in zip(chunks, vectors):
             text = payload.get("text", "")

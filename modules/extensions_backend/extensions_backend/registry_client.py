@@ -14,7 +14,6 @@ import requests
 
 from core.contracts.extensions_api import EXTENSIONS_API_VERSION
 
-
 DEFAULT_REGISTRY_PATH = "extensions/registry/extensions.json"
 SUPPORTED_REGISTRY_APPS = {"", "chironai", "chiron ai"}
 

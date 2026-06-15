@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 from flask import g, request
 
-from infrastructure.database import get_session_manager, get_logs_repository
+from infrastructure.database import get_logs_repository, get_session_manager
 
 
 def with_session(f: Callable[..., Any]) -> Callable[..., Any]:

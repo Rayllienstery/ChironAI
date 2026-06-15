@@ -6,15 +6,14 @@ import logging
 import time
 from typing import Any, Mapping, MutableMapping
 
-from rag_service.core.contracts import StepResult
-from rag_service.domain.entities import RagContext
-from rag_service.domain.services.prompt_builder import build_context_block
-from rag_service.domain.services.rag_trace import build_rag_trace_from_timings
-
 from rag_service.application.pipeline_steps.helpers import (
     build_rag_quality_from_report,
     coverage_trace_extra,
 )
+from rag_service.core.contracts import StepResult
+from rag_service.domain.entities import RagContext
+from rag_service.domain.services.prompt_builder import build_context_block
+from rag_service.domain.services.rag_trace import build_rag_trace_from_timings
 
 _rag_log = logging.getLogger("trag.rag")
 

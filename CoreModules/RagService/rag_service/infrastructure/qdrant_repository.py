@@ -7,9 +7,8 @@ from typing import Any
 
 import httpx
 
-from rag_service.domain.errors import RetrievalError
-
 from rag_service.config import get_qdrant_url
+from rag_service.domain.errors import RetrievalError
 
 
 class QdrantRagRepository:

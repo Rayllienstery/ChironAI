@@ -15,9 +15,8 @@ can be tuned without changing code.
 
 from __future__ import annotations
 
-from typing import Any
-
 import re
+from typing import Any
 
 from rag_service.config import (
     get_retrieval_bool,
@@ -26,7 +25,6 @@ from rag_service.config import (
     get_retrieval_list,
 )
 from rag_service.domain.entities import QueryIntent
-
 
 # --- Configuration-backed constants -------------------------------------------------
 

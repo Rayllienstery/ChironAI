@@ -21,6 +21,7 @@ from rag_service.infrastructure.openai_ollama_tool_bridge import (
     openai_finish_reason_from_ollama,
     openai_tool_choice_means_none,
 )
+
 from llm_proxy.wire_format.gemini_model_id import is_gemini_family_model_name
 from llm_proxy.wire_format.model_brand import resolve_brand_key
 from llm_proxy.wire_format.model_capabilities import (

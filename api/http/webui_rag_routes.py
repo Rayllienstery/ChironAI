@@ -11,7 +11,10 @@ import time
 from typing import Any, Callable
 
 import requests
+from chironai_rag.consumers import RAG_COLLECTION_APP_SETTING
+from error_manager.http import error_response as _error_response
 from flask import Blueprint, jsonify, request
+from rag_service.domain.services.rag_trigger import compute_rag_trigger_score
 
 from api.http.proxy_status import (
     get_latest_request_rag_steps,
@@ -19,27 +22,25 @@ from api.http.proxy_status import (
     get_latest_request_total_tokens,
     get_proxy_status_label,
 )
+from api.http.proxy_trace import get_current_trace
+from api.http.rag_sources_meta import (
+    clear_chunk_hashes_for_sources,
+    parse_source_ids_from_framework_id,
+)
 from api.http.service_control import (
     start_qdrant as start_qdrant_service,
+)
+from api.http.service_control import (
     stop_qdrant as stop_qdrant_service,
 )
-from config import get_default_rag_top_k, get_framework_collection_ttl_days, get_qdrant_url
-from api.http.proxy_trace import get_current_trace
+from api.http.webui_crawler_helpers import is_safe_identifier
 from application.rag.proxy_settings_contract import (
     load_proxy_settings,
     resolve_hybrid_sparse_enabled,
     resolve_web_interaction_flags,
 )
-from chironai_rag.consumers import RAG_COLLECTION_APP_SETTING
-from config import get_retrieval_bool
-from error_manager.http import error_response as _error_response
-from api.http.rag_sources_meta import (
-    clear_chunk_hashes_for_sources,
-    parse_source_ids_from_framework_id,
-)
-from api.http.webui_crawler_helpers import is_safe_identifier
+from config import get_default_rag_top_k, get_framework_collection_ttl_days, get_qdrant_url, get_retrieval_bool
 from infrastructure.database import get_settings_repository
-from rag_service.domain.services.rag_trigger import compute_rag_trigger_score
 
 _WEBUI_LOG = logging.getLogger("webui")
 

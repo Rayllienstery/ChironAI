@@ -121,8 +121,9 @@ def test_resolved_ollama_chat_url_prefers_client_url() -> None:
 
 
 def test_resolved_ollama_chat_url_uses_config_for_runtime_ollama_client(monkeypatch) -> None:
-    import config
     from llm_proxy.chat_completions_handler import _resolved_ollama_chat_url
+
+    import config
 
     monkeypatch.setattr(config, "get_ollama_chat_url", lambda: "http://localhost:11434/api/chat")
     client = SimpleNamespace(_provider_id="ollama", _url=None)

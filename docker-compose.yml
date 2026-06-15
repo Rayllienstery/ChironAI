@@ -1,21 +1,32 @@
-# ChironAI: Qdrant + optional modular services.
-# Start infra: docker-compose up -d
-# Config: config/server.yaml (qdrant.url = http://localhost:6333)
-#
-# Modular layout (see docs/MODULAR_STRUCTURE.md):
-# - rag_service (port 5001), md_ingestion_service (5002), crawler_service (5003), webui_backend (5000)
-# - Frontend: CoreModules/CoreUI (build and serve via webui_backend or proxy)
-# Run Python services from repo root with PYTHONPATH=. or install each module.
-
 services:
   qdrant:
-    image: qdrant/qdrant:latest
-    container_name: qdrant
+    image: qdrant/qdrant:v1.12.5
     ports:
       - "6333:6333"
-      - "6334:6334"
     volumes:
-      - qdrant_storage:/qdrant/storage
-    restart: unless-stopped
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:6333/readyz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "${WEBUI_PORT:-5000}:5000"
+    environment:
+      WEBUI_PORT: "5000"
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5000/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+
 volumes:
-  qdrant_storage:
+  qdrant_data:

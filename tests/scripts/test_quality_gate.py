@@ -7,7 +7,7 @@ from scripts import quality_gate
 
 
 def test_quality_gate_profiles_are_registered() -> None:
-    assert set(quality_gate.PROFILES) == {"minimal", "full", "release"}
+    assert set(quality_gate.PROFILES) == {"minimal", "full", "release", "strict-lint"}
 
 
 def test_minimal_gate_has_required_steps_and_timeouts() -> None:
@@ -30,8 +30,8 @@ def test_release_gate_keeps_startup_smoke_advisory() -> None:
     required = quality_gate.iter_steps("release")
     with_advisory = quality_gate.iter_steps("release", include_advisory=True)
 
-    assert "startup-smoke" not in [step.name for step in required]
-    startup = next(step for step in with_advisory if step.name == "startup-smoke")
+    assert "startup-smoke-bat" not in [step.name for step in required]
+    startup = next(step for step in with_advisory if step.name == "startup-smoke-bat")
     assert startup.required is False
     assert startup.timeout_seconds == 120
 

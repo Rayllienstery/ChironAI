@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 import json
+import logging
 import os
 import sys
 import time
@@ -22,7 +22,7 @@ if os.path.isdir(_ERROR_MANAGER_DIR) and _ERROR_MANAGER_DIR not in sys.path:
 
 from error_manager.http import error_response as _error_response
 
-from llm_proxy.apply_edit import run_apply_file_edit
+from config import get_v1_include_autocomplete_logical_model
 from llm_proxy.anthropic_compat import (
     anthropic_messages_request_to_openai_body,
     anthropic_models_list_payload,
@@ -31,11 +31,10 @@ from llm_proxy.anthropic_compat import (
     wants_anthropic_models_list,
 )
 from llm_proxy.api_key import verify_proxy_api_key
+from llm_proxy.apply_edit import run_apply_file_edit
 from llm_proxy.chat_completions import run_chat_completions
 from llm_proxy.external_ingest import run_external_docs_ingest
 from llm_proxy.workspace import set_workspace_root
-
-from config import get_v1_include_autocomplete_logical_model
 
 if TYPE_CHECKING:
     from llm_proxy.contracts import LlmProxyWiring

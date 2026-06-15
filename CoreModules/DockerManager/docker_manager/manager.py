@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import os
 import platform
 import shutil
@@ -14,7 +14,6 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Iterator
 from urllib.error import URLError
 from urllib.request import Request, urlopen
-
 
 SPEC_HASH_LABEL = "chironai.docker_manager.spec_hash"
 MANAGED_LABEL = "chironai.docker_manager.managed"

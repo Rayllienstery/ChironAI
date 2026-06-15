@@ -27,13 +27,13 @@ from external_docs_rag.domain.services.framework_candidates import (
     extract_framework_version_pairs,
 )
 from external_docs_rag.infrastructure.content_parser import parse_document_to_markdown
-from external_docs_rag.infrastructure.github_tree import list_markdown_raw_urls
 from external_docs_rag.infrastructure.github_discovery import (
     discover_and_fetch_readme,
     get_latest_release_tag,
     parse_raw_github_full_name,
     replace_ref_in_raw_github_url,
 )
+from external_docs_rag.infrastructure.github_tree import list_markdown_raw_urls
 
 
 def fetch_on_demand_context(

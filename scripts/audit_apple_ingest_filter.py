@@ -76,9 +76,10 @@ def main(argv: list[str] | None = None) -> int:
     sys.path.insert(0, str(root))
     sys.path.insert(0, str(root / "CoreModules" / "MdIngestionService"))
 
-    from rag_service.domain.services.chunking import chunk_quality_ok, split_markdown_into_chunks
-    from config import get_indexing_int
     from md_ingestion_service.domain.services.indexing_prepare import prepare_markdown_for_indexing
+    from rag_service.domain.services.chunking import chunk_quality_ok, split_markdown_into_chunks
+
+    from config import get_indexing_int
 
     meta_path = root / "WebUI" / "rag_sources" / "apple_documentation" / "meta.json"
     pages_dir = root / "WebUI" / "rag_sources" / "apple_documentation" / "pages"

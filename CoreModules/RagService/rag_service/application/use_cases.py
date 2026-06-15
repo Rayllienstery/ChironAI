@@ -12,8 +12,8 @@ import logging
 import time
 from typing import Any
 
-from rag_service.application.pipeline_steps.context_assembly import ContextAssemblyStep
 from rag_service.application.pipeline_steps.concept_expansion_pass2 import ConceptExpansionPass2Step
+from rag_service.application.pipeline_steps.context_assembly import ContextAssemblyStep
 from rag_service.application.pipeline_steps.coverage_gate import CoverageGateStep
 from rag_service.application.pipeline_steps.coverage_supplemental import CoverageSupplementalStep
 from rag_service.application.pipeline_steps.embed_search_pass1 import EmbedSearchPass1Step
@@ -23,11 +23,15 @@ from rag_service.application.pipeline_steps.query_prep import QueryPrepStep
 from rag_service.application.pipeline_steps.rerank import RerankStep
 from rag_service.application.pipeline_steps.retrieval_flow import (
     apply_metadata_rank,
-    apply_rerank as _rf_apply_rerank,
     init_retrieval_timings,
-    retrieve_pass1_candidates,
-    search_one as _rf_search_one,
     maybe_apply_concept_expansion,
+    retrieve_pass1_candidates,
+)
+from rag_service.application.pipeline_steps.retrieval_flow import (
+    apply_rerank as _rf_apply_rerank,
+)
+from rag_service.application.pipeline_steps.retrieval_flow import (
+    search_one as _rf_search_one,
 )
 from rag_service.config import get_retrieval_bool, get_retrieval_int
 from rag_service.core import PipelineExecutionError, RagCore, StepRegistry

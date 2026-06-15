@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from crawler_service.domain.url_rules import crawl_url_allowed, link_passes_filters
 from crawler_service.domain.wwdc_transcript import (
     extract_wwdc_session_id_from_url,
     flatten_wwdc_transcript_json,
     parse_wwdc_event_year,
 )
-from crawler_service.domain.url_rules import crawl_url_allowed, link_passes_filters
 
 
 def test_parse_wwdc_event_year() -> None:

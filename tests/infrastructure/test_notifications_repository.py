@@ -1,7 +1,8 @@
-from infrastructure.database.notifications_repository import NotificationsRepository
+import sqlite3
+
 import infrastructure.database.notifications_repository as notifications_repo_module
 import infrastructure.database.session_manager as session_manager_module
-import sqlite3
+from infrastructure.database.notifications_repository import NotificationsRepository
 
 
 def _make_repo(tmp_path):

@@ -7,10 +7,10 @@ import json
 from rag_service.infrastructure.openai_ollama_tool_bridge import (
     arguments_to_ollama_object,
     arguments_to_openai_string,
-    openai_finish_reason_from_ollama,
-    openai_messages_to_ollama,
     ollama_message_to_openai_assistant,
     ollama_tools_from_openai,
+    openai_finish_reason_from_ollama,
+    openai_messages_to_ollama,
 )
 
 

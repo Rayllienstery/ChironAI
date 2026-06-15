@@ -7,7 +7,6 @@ from typing import Any
 
 import requests
 
-
 RAG_SERVICE_URL = os.getenv("RAG_SERVICE_URL", "http://localhost:5001")
 
 

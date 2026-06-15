@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 from application.rag_tests.loader import (
     get_rag_tests_root,
     list_test_filters,

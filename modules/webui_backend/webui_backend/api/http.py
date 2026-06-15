@@ -11,7 +11,6 @@ from flask import Flask, jsonify
 
 from core.contracts.webui_api import WEBUI_URL_PREFIX
 from core.openapi import register_openapi_routes
-
 from webui_backend.application.use_cases import get_dashboard_stats
 from webui_backend.infrastructure.http_crawler_client import HttpCrawlerClient
 from webui_backend.infrastructure.http_rag_client import HttpRagClient

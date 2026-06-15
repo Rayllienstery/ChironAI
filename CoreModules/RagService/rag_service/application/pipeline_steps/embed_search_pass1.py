@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Mapping, MutableMapping
 
-from rag_service.core.contracts import StepResult
 from rag_service.application.pipeline_steps.retrieval_flow import init_retrieval_timings, retrieve_pass1_candidates
+from rag_service.core.contracts import StepResult
 
 
 class EmbedSearchPass1Step:

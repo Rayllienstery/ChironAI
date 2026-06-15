@@ -4,14 +4,15 @@ import json
 import os
 import shutil
 import stat
-import zipfile
-from io import BytesIO
 import sys
 import time
+import zipfile
+from io import BytesIO
 from pathlib import Path
 
 import pytest
 
+from extensions_backend import ExtensionBlocklistPolicy
 from llm_interactor import (
     EXTENSION_API_VERSION,
     ExtensionManager,
@@ -23,6 +24,7 @@ from llm_interactor import (
     LLMResponse,
     LLMRuntime,
     LLMStreamEvent,
+    LoadedExtension,
     ModelDescriptor,
     ProviderCapabilities,
     ProviderDescriptor,
@@ -30,9 +32,7 @@ from llm_interactor import (
     ProviderHostContext,
     ProviderRegistry,
     RuntimeBackedChatClient,
-    LoadedExtension,
 )
-from extensions_backend import ExtensionBlocklistPolicy
 
 
 class _StubProvider:

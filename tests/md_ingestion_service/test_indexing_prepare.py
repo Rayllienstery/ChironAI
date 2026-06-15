@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from md_ingestion_service.domain.services.indexing_prepare import (
     apply_source_prepare_options,
     prepare_markdown_for_indexing,

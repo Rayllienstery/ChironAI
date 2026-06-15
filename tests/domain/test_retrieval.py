@@ -4,7 +4,6 @@ Unit tests for rag_service.domain.services.retrieval.
 
 from __future__ import annotations
 
-
 from rag_service.domain.entities import QueryIntent
 from rag_service.domain.services.retrieval import (
     build_qdrant_filter,

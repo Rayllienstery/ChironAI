@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-
 EXTENSION_API_VERSION = "1"
 EXTENSION_TYPE_LLM_PROVIDER = "llm_provider"
 EXTENSION_TYPE_UI_EXTENSION = "ui_extension"

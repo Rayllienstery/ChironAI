@@ -18,6 +18,7 @@ from typing import Any
 
 import requests
 
+
 class OllamaHttpError(Exception):
     """CLI exited non-zero or produced invalid output."""
 

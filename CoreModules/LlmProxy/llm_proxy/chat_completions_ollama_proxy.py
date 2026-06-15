@@ -15,7 +15,6 @@ from llm_proxy.ollama_compat import (
     resolve_brand_key,
 )
 
-
 _OLLAMA_TRACE_MSG_PREVIEW = 300
 _OLLAMA_TRACE_MSG_FULL_CAP = 32_768
 

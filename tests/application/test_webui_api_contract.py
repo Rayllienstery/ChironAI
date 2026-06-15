@@ -11,13 +11,13 @@ from flask import Blueprint, Flask
 from api.http.rag_tests_routes import rag_tests_bp
 from api.http.webui_routes import webui_bp
 from api.http.webui_version_routes import register_version_routes
-from core.openapi import build_openapi_spec, register_openapi_routes
 from core.contracts.webui_api import VERSION_RESPONSE_KEYS, WEBUI_URL_PREFIX
+from core.openapi import build_openapi_spec, register_openapi_routes
 from core.version import APP_NAME, APP_STAGE, VERSION
-
 
 _ROOT = Path(__file__).resolve().parents[2]
 _COREUI_API = _ROOT / "CoreModules" / "CoreUI" / "src" / "services" / "api.js"
+_COREUI_HTTP = _ROOT / "CoreModules" / "CoreUI" / "src" / "services" / "http.js"
 
 
 class _Logger:
@@ -26,10 +26,15 @@ class _Logger:
 
 
 def _frontend_api_base() -> str:
-    text = _COREUI_API.read_text(encoding="utf-8")
-    match = re.search(r"const\s+API_BASE\s*=\s*['\"]([^'\"]+)['\"]", text)
-    assert match is not None, "CoreUI API_BASE constant was not found"
-    return match.group(1)
+    for path in (_COREUI_HTTP, _COREUI_API):
+        text = path.read_text(encoding="utf-8")
+        match = re.search(
+            r"(?:export const|const)\s+API_BASE\s*=\s*['\"]([^'\"]+)['\"]",
+            text,
+        )
+        if match is not None:
+            return match.group(1)
+    raise AssertionError("CoreUI API_BASE constant was not found in http.js or api.js")
 
 
 def test_frontend_api_base_matches_python_contract() -> None:

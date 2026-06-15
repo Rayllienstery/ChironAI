@@ -19,9 +19,9 @@ import time as _time
 
 from flask import make_response, request, send_from_directory
 
-from config import get_log_level, get_server_port, record_active_server_port
 from api.http.rag_routes import create_app
 from api.http.startup_timing import process_start_offset_ms, record_phase
+from config import get_log_level, get_server_port, record_active_server_port
 from webui_backend.paths import coreui_dir, project_root, webui_data_dir
 
 logging.basicConfig(
@@ -177,8 +177,9 @@ if __name__ == "__main__":
     print(f"WebUI: {webui_url}", flush=True)
     open_browser_when_ready()
     try:
-        from waitress import serve as _waitress_serve
         import logging as _logging
+
+        from waitress import serve as _waitress_serve
         # Waitress is a production-grade WSGI server — much faster than Werkzeug on Windows.
         # Uses I/O threads + task threads, no GIL contention for concurrent static file serving.
         _logging.getLogger("waitress").setLevel(_logging.WARNING)

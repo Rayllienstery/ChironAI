@@ -12,7 +12,8 @@ import logging
 import re
 from typing import Any
 
-from ollama_http import OllamaHttpError, invoke_generate, invoke_rerank as _invoke_rerank
+from ollama_http import OllamaHttpError, invoke_generate
+from ollama_http import invoke_rerank as _invoke_rerank
 
 _rerank_log = logging.getLogger("ollama_provider.rerank")
 _disabled_missing_models: set[str] = set()

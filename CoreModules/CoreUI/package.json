@@ -8,7 +8,13 @@
     "build:strict": "npm run build && npm run check:lockfile",
     "build:stats": "vite build && node -e \"console.log('Bundle report: dist/stats.html')\"",
     "check:lockfile": "git diff --exit-code HEAD -- package-lock.json",
+    "test": "vitest",
+    "test:run": "vitest run",
     "test:module-timings": "node scripts/test_module_timings.mjs",
+    "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\"",
+    "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
+    "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "knip": "knip"
   },
@@ -22,9 +28,22 @@
     "recharts": "^2.12.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.22.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.2.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.2.1",
+    "eslint": "^9.22.0",
+    "eslint-plugin-react": "^7.37.4",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^16.0.0",
+    "jsdom": "^26.0.0",
     "knip": "^6.4.1",
+    "prettier": "^3.5.3",
     "rollup-plugin-visualizer": "^7.0.1",
-    "vite": "^5.0.8"
+    "typescript": "^5.8.2",
+    "vite": "^5.0.8",
+    "vitest": "^3.0.9"
   }
 }

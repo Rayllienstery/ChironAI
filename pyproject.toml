@@ -90,6 +90,7 @@ pythonpath = [
     "CoreModules/LogsManager",
     "CoreModules/MdIngestionService",
     "CoreModules/ErrorManager",
+    "CoreModules/Localization",
 ]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
@@ -148,8 +149,19 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E9", "F"]
+select = ["E9", "F", "I"]
 ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = [
+  "api",
+  "application",
+  "config",
+  "core",
+  "domain",
+  "infrastructure",
+  "webui_backend",
+]
 
 # Domain layer must not depend on outer layers (application / api / infrastructure).
 [tool.importlinter]

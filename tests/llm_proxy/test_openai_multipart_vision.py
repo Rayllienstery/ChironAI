@@ -6,7 +6,6 @@ from rag_service.infrastructure.openai_multipart_vision import (
     sanitize_proxy_content_parts,
 )
 
-
 PNG_B64 = "aW1hZ2UtYnl0ZXM="
 
 

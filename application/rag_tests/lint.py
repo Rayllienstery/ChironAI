@@ -10,8 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, List
 
-from application.rag_tests.loader import load_all_tests, get_rag_tests_root
-
+from application.rag_tests.loader import get_rag_tests_root, load_all_tests
 
 MULTI_CONCEPT_SEPARATORS: tuple[str, ...] = ("/", ",", ";", " and ")
 

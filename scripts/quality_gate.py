@@ -44,24 +44,79 @@ MINIMAL_GATE: tuple[GateStep, ...] = (
     GateStep("coreui-lockfile", _npm_command("run", "check:lockfile"), COREUI_ROOT, 30),
 )
 
-FULL_GATE: tuple[GateStep, ...] = (
-    GateStep("ruff", ("ruff", "check", "."), REPO_ROOT, 120),
+FULL_GATE_EXTRA: tuple[GateStep, ...] = (
     GateStep("vulture", _python_command("-m", "vulture"), REPO_ROOT, 120),
-    GateStep("pytest-collect", ("pytest", "--collect-only", "-q"), REPO_ROOT, 180),
     GateStep("pytest-full", ("pytest", "-q"), REPO_ROOT, 600),
-    GateStep("coreui-build", _npm_command("run", "build"), COREUI_ROOT, 180),
-    GateStep("coreui-knip", _npm_command("run", "knip"), COREUI_ROOT, 120),
-    GateStep("coreui-lockfile", _npm_command("run", "check:lockfile"), COREUI_ROOT, 30),
+    GateStep(
+        "oversized-files",
+        _python_command("scripts/audit_oversized_files.py", "--mode", "check"),
+        REPO_ROOT,
+        60,
+        required=False,
+    ),
+    GateStep(
+        "import-linter",
+        ("lint-imports",),
+        REPO_ROOT,
+        120,
+        required=False,
+    ),
+    GateStep(
+        "api-drift-check",
+        _python_command("scripts/check_api_drift.py"),
+        REPO_ROOT,
+        60,
+        required=False,
+    ),
+    GateStep("coreui-lint", _npm_command("run", "lint"), COREUI_ROOT, 120, required=False),
+    GateStep("coreui-test", _npm_command("run", "test", "--", "--run"), COREUI_ROOT, 180, required=False),
+    GateStep("coreui-typecheck", _npm_command("run", "typecheck"), COREUI_ROOT, 120, required=False),
 )
 
-RELEASE_GATE: tuple[GateStep, ...] = (
-    *FULL_GATE,
-    GateStep("startup-smoke", (str(REPO_ROOT / "build_and_run.bat"),), REPO_ROOT, 120, required=False),
+FULL_GATE: tuple[GateStep, ...] = MINIMAL_GATE + FULL_GATE_EXTRA
+
+STRICT_LINT_GATE: tuple[GateStep, ...] = (
+    GateStep("ruff-strict", ("ruff", "check", ".", "--select", "E9,F,I,B,SIM"), REPO_ROOT, 180),
 )
+
+RELEASE_GATE_EXTRA: tuple[GateStep, ...] = (
+    GateStep(
+        "pip-audit",
+        _python_command("-m", "pip_audit", "--desc", "on"),
+        REPO_ROOT,
+        180,
+        required=False,
+    ),
+    GateStep("npm-audit", _npm_command("audit", "--audit-level=high"), COREUI_ROOT, 120, required=False),
+    GateStep(
+        "docker-build",
+        ("docker", "build", "-t", "chironai:gate", "."),
+        REPO_ROOT,
+        600,
+        required=False,
+    ),
+    GateStep(
+        "startup-smoke-sh",
+        ("bash", str(REPO_ROOT / "scripts" / "startup_smoke.sh")),
+        REPO_ROOT,
+        180,
+        required=False,
+    ),
+    GateStep(
+        "startup-smoke-bat",
+        (str(REPO_ROOT / "build_and_run.bat"),),
+        REPO_ROOT,
+        120,
+        required=False,
+    ),
+)
+
+RELEASE_GATE: tuple[GateStep, ...] = FULL_GATE + RELEASE_GATE_EXTRA
 
 PROFILES: dict[str, tuple[GateStep, ...]] = {
     "minimal": MINIMAL_GATE,
     "full": FULL_GATE,
+    "strict-lint": STRICT_LINT_GATE,
     "release": RELEASE_GATE,
 }
 
@@ -81,13 +136,18 @@ def run_step(step: GateStep) -> bool:
     print(f"\n==> {step.name} [{step.kind}, timeout={step.timeout_seconds}s]")
     print(f"cwd: {step.cwd}")
     print(f"$ {format_command(step)}")
-    shell = os.name == "nt" and step.command[0].lower().endswith(".bat")
+    shell = os.name == "nt" and (
+        step.command[0].lower().endswith(".bat") or step.command[0] == "bash"
+    )
     command: str | tuple[str, ...] = format_command(step) if shell else step.command
     try:
         completed = subprocess.run(command, cwd=step.cwd, timeout=step.timeout_seconds, check=False, shell=shell)
     except subprocess.TimeoutExpired:
         print(f"TIMEOUT: {step.name} exceeded {step.timeout_seconds}s")
         return False
+    except FileNotFoundError:
+        print(f"SKIP: {step.name} — executable not found")
+        return step.kind == "advisory"
     if completed.returncode == 0:
         print(f"PASS: {step.name}")
         return True
@@ -101,7 +161,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--include-advisory",
         action="store_true",
-        help="Also run advisory steps such as the long-running startup smoke.",
+        help="Also run advisory steps such as Docker smoke and oversized-file audit.",
     )
     parser.add_argument("--list", action="store_true", help="Print selected steps without running them.")
     parser.add_argument("--dry-run", action="store_true", help="Alias for --list.")

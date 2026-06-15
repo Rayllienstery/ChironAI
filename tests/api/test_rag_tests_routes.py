@@ -289,8 +289,9 @@ def test_rag_tests_v2_worker_uses_build_rag_context_without_chat_completion(
 def test_rag_tests_v2_worker_applies_preset_and_can_disable_rerank(
     monkeypatch,
 ) -> None:
-    import api.http.rag_tests_routes as routes
     from rag_service.config import get_retrieval_bool
+
+    import api.http.rag_tests_routes as routes
 
     observed: dict[str, object] = {}
     app = Flask(__name__)

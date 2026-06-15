@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from error_manager.http import error_response as _error_response
 from flask import Blueprint, jsonify, request
 
 from api.http.startup_timing import get_startup_report, record_browser_timing
-from error_manager.http import error_response as _error_response
 
 
 def register_performance_routes(bp: Blueprint) -> None:

@@ -9,8 +9,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from modules.md_indexer.domain.schema import Pipeline, Step
 from modules.md_indexer.application import steps as step_impl
+from modules.md_indexer.domain.schema import Pipeline, Step
 
 
 def _pipelines_dir() -> Path:

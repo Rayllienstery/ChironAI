@@ -20,9 +20,17 @@ def import_qdrant() -> tuple[type, type, type, type, type, type]:
     from qdrant_client import QdrantClient as _QC  # noqa: PLC0415
     from qdrant_client.http.models import (  # noqa: PLC0415
         Distance as _Dist,
+    )
+    from qdrant_client.http.models import (
         PayloadSchemaType as _PST,
+    )
+    from qdrant_client.http.models import (
         PointStruct as _PS,
+    )
+    from qdrant_client.http.models import (
         SparseVectorParams as _SVP,
+    )
+    from qdrant_client.http.models import (
         VectorParams as _VP,
     )
 

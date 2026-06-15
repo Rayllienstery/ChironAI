@@ -35,7 +35,8 @@ except ImportError:
     parse_and_strip_meta_block = None  # type: ignore[assignment,misc]
 
 try:
-    from modules.md_indexer import get_active_pipeline_name, run_pipeline as run_md_indexer_pipeline
+    from modules.md_indexer import get_active_pipeline_name
+    from modules.md_indexer import run_pipeline as run_md_indexer_pipeline
 except ImportError:
     get_active_pipeline_name = None  # type: ignore[assignment,misc]
     run_md_indexer_pipeline = None  # type: ignore[assignment,misc]

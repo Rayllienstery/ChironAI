@@ -13,7 +13,6 @@ import re
 
 from rag_service.config import get_retrieval_int, get_retrieval_list
 
-
 # --- Config -----------------------------------------------------------------
 
 _DEFAULT_GREETINGS = ["hi", "hello", "hey", "good morning", "good evening"]

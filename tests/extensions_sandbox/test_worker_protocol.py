@@ -5,10 +5,10 @@ import time
 from pathlib import Path
 
 import pytest
+from llm_interactor.discovery import discover_extensions, load_manifest_from_dir
 
 from extensions_sandbox import ExtensionWorkerClient, ExtensionWorkerTimeout
 from llm_interactor import LLMRequest, ProviderHostContext
-from llm_interactor.discovery import discover_extensions, load_manifest_from_dir
 
 
 class _Repo:

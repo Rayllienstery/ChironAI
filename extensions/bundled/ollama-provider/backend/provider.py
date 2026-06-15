@@ -14,13 +14,14 @@ _backend_dir = _os.path.dirname(_os.path.abspath(__file__))
 if _backend_dir not in _sys.path:
     _sys.path.insert(0, _backend_dir)
 
-from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import threading
 import time
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from typing import Any
 from urllib.parse import urlparse
 
+from embed_client import OllamaEmbeddingProvider  # noqa: E402
 from llm_interactor.contracts import (
     DockerContainerSpec,
     LLMRequest,
@@ -32,7 +33,6 @@ from llm_interactor.contracts import (
     ProviderHealth,
     ProviderHostContext,
 )
-
 from model_brand import resolve_brand_key  # noqa: E402
 from model_visibility import (  # noqa: E402
     filter_ollama_tag_entries_for_editors,
@@ -48,7 +48,6 @@ from ollama_http import (  # noqa: E402
     iter_pull_objects,
     iter_raw_lines,
 )
-from embed_client import OllamaEmbeddingProvider  # noqa: E402
 from rerank_client import OllamaRerankClient  # noqa: E402
 
 _CACHE_LOCK = threading.Lock()

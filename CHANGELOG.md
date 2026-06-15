@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.1] - 2026-06-15
+### Added
+- Way to 1000 Phase 0–6 foundations: quality gates, settings resolver, CoreUI lint/test harness, test splits, Docker scaffold, and shared Localization catalog.
+- `.editorconfig`, oversized-file audit, API drift-check script, and documented gate profiles.
+- CoreUI ESLint, Prettier, Vitest, TypeScript check on services, and `http.js` service split start.
+- `CoreModules/Localization` with Python `t()` and CoreUI i18n adapter skeleton.
+
+### Changed
+- Split HTTP health and proxy-auth tests from `test_http_endpoints.py`; shared fixtures in `tests/api/http_fixtures.py`.
+- WebUI backend entrypoint uses conditional import-path bootstrap instead of unconditional `sys.path.insert`.
+
 ## [0.7.0] - 2026-06-14
 ### Changed
 - Promoted the application version to 0.7.0.

@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(ROOT, "CoreModules", "WebUIBackend"))
 sys.path.insert(0, os.path.join(ROOT, "modules", "crawler_service"))
 
 from crawler_service.application.crawl_runner import page_filename_for_url  # noqa: E402
+
 from webui_backend.apple_docs_extract import (  # noqa: E402
     build_apple_doc_page,
     render_apple_doc_to_markdown,

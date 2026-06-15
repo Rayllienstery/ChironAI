@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from llm_interactor import ProviderHostContext
 from llm_interactor.discovery import discover_extensions
+
+from llm_interactor import ProviderHostContext
 
 
 class _Repo:

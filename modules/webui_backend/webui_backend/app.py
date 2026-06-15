@@ -14,32 +14,20 @@ import time
 
 from flask import Flask
 
+from core.bootstrap.import_paths import ensure_webui_runtime_paths
 from webui_backend.paths import project_root, webui_data_dir
 
 _ROOT_DIR = str(project_root())
-if _ROOT_DIR not in sys.path:
-    sys.path.insert(0, _ROOT_DIR)
-
-_CRAWLER_ROOT = os.path.join(_ROOT_DIR, "modules", "crawler_service")
-if _CRAWLER_ROOT not in sys.path:
-    sys.path.insert(0, _CRAWLER_ROOT)
-_HTML_MD_ROOT = os.path.join(_ROOT_DIR, "modules", "html_md")
-if _HTML_MD_ROOT not in sys.path:
-    sys.path.insert(0, _HTML_MD_ROOT)
-for _extra in (
-    "CoreModules/ErrorManager",
-    "CoreModules/RagService",
-    "CoreModules/MdIngestionService",
-    "modules/extensions_backend",
-):
-    _p = os.path.join(_ROOT_DIR, _extra)
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
+ensure_webui_runtime_paths(_ROOT_DIR)
 
 from crawler_service.application.crawl_runner import (  # noqa: E402
     build_crawl_host,
-    crawl_source as _crawl_source_impl,
     page_filename_for_url,
+)
+from crawler_service.application.crawl_runner import (
+    crawl_source as _crawl_source_impl,
+)
+from crawler_service.application.crawl_runner import (
     run_crawl_all_sources as _run_crawl_all_sources_impl,
 )
 from crawler_service.sources_io import load_sources, save_sources  # noqa: E402

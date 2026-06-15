@@ -33,8 +33,8 @@ def cmd_list(config_path: str | None) -> int:
 
 def cmd_ingest(source_id: str, config_path: str | None, qdrant_url: str | None) -> int:
     _ensure_path()
-    from external_docs_rag.config_loader import load_external_sources
     from external_docs_rag.application.use_cases import ingest_source_to_collection
+    from external_docs_rag.config_loader import load_external_sources
     from external_docs_rag.infrastructure import HttpFetchClient, QdrantChunkSink
     from external_docs_rag.infrastructure.provider_embed_adapter import ProviderEmbedAdapter
 

@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from web_interaction.format import format_web_supplement
-from web_interaction.supplement import build_web_supplement_bundle, build_web_supplement_text, should_fetch_web_supplement
+from web_interaction.supplement import (
+    build_web_supplement_bundle,
+    build_web_supplement_text,
+    should_fetch_web_supplement,
+)
 from web_interaction.triggers import decide_trigger, looks_like_framework_question, wants_freshness_or_release
 
 

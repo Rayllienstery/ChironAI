@@ -31,7 +31,7 @@ def _require_runtime(runtime_getter: Callable[[], Any | None] | None, runtime: A
         if resolved is not None:
             return resolved
     try:
-        from flask import has_app_context, current_app
+        from flask import current_app, has_app_context
 
         if has_app_context():
             app = current_app._get_current_object()
@@ -55,7 +55,7 @@ def _require_runtime(runtime_getter: Callable[[], Any | None] | None, runtime: A
         pass
     detail = ""
     try:
-        from flask import has_app_context, current_app
+        from flask import current_app, has_app_context
 
         if has_app_context():
             from api.http.extensions_service_access import get_extensions_service

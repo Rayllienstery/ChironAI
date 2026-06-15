@@ -1,0 +1,14 @@
+{
+  "app.title": "ChironAI",
+  "app.subtitle": "Local, model-agnostic RAG layer for developers",
+  "nav.dashboard": "Dashboard",
+  "nav.settings": "Settings",
+  "nav.logs": "Logs",
+  "common.loading": "Loading…",
+  "common.error.generic": "Something went wrong. Check logs or try again.",
+  "common.error.network": "Network error. Is the backend running?",
+  "common.empty": "No data yet",
+  "common.save": "Save",
+  "common.cancel": "Cancel",
+  "common.close": "Close"
+}

@@ -7,8 +7,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from llm_interactor import LLMRequest, ProviderHostContext
 from llm_interactor.discovery import load_manifest_from_dir, validate_extension_backend_docker_policy
+
+from llm_interactor import LLMRequest, ProviderHostContext
 
 
 def _load_ollama_provider_module():

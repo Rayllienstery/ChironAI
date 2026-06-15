@@ -1,8 +1,8 @@
 from rag_service.domain.entities import (
+    QueryIntent,
     RagAnswerResponse,
     RagChunk,
     RagContext,
-    QueryIntent,
     RagQuestionRequest,
 )
 from rag_service.domain.errors import EmbeddingError, RerankError, RetrievalError

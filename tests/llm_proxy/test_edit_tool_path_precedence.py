@@ -16,8 +16,8 @@ if root not in sys.path:
 def test_extract_file_path_for_edit_prefers_last_uri_on_copy_to_end(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("llm_proxy.workspace._workspace_root_fn", lambda: Path(root))
     from llm_proxy.tool_helpers import (
-        _extract_file_path_for_edit_tool_precedence,
         _build_tool_arguments,
+        _extract_file_path_for_edit_tool_precedence,
     )
 
     f1 = Path(root) / "tests" / "_tmp_path_prec_a.md"

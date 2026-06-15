@@ -16,14 +16,133 @@ except ImportError:
     RAG_COLLECTION_APP_SETTING = "rag_collection"
 
 from flask import Response, jsonify, request
-from api.http.proxy_trace import set_response_artifacts
 
-from infrastructure.metrics import increment, histogram, gauge
+from api.http.proxy_trace import set_response_artifacts
 from application.rag.proxy_settings_contract import (
     resolve_fetch_web_knowledge,
     resolve_rag_collection,
 )
-
+from infrastructure.metrics import gauge, histogram, increment
+from llm_proxy.chat_completions_gemini_native import (
+    _interpolate_native_tools_for_gemini,
+    _persist_gemini_tool_calls_state,
+    _preflight_native_tool_messages,
+    _preflight_native_tools_payload,
+    _resolve_proxy_db_path_from_wiring,
+    _sanitize_outgoing_shell_tool_calls,
+    _sse_tool_calls_payload,
+    _tool_round_stats_since_last_user,
+)
+from llm_proxy.chat_completions_handler_helpers import (
+    append_pipeline_step_trace as _append_pipeline_step_trace,
+)
+from llm_proxy.chat_completions_handler_helpers import (
+    apply_selected_rerank_model as _apply_selected_rerank_model,
+)
+from llm_proxy.chat_completions_handler_helpers import (
+    build_forced_think_value as _build_forced_think_value,
+)
+from llm_proxy.chat_completions_handler_helpers import (
+    load_proxy_settings_and_model as _load_proxy_settings_and_model,
+)
+from llm_proxy.chat_completions_handler_helpers import (
+    log_rag_error as _log_rag_error,
+)
+from llm_proxy.chat_completions_handler_helpers import (
+    log_rag_error_private as _log_rag_error_private,
+)
+from llm_proxy.chat_completions_handler_helpers import (
+    rag_request_completed_payload as _rag_request_completed_payload,
+)
+from llm_proxy.chat_completions_messages import (
+    _normalize_request_messages,
+)
+from llm_proxy.chat_completions_ollama_proxy import (
+    _PLACEHOLDER_REPLY_FALLBACK_EN,
+    _append_trace_warning,
+    _apply_provider_trace_fields,
+    _apply_response_diagnostics,
+    _apply_trace_response_text_fields,
+    _build_rag_collection_issue,
+    _degenerate_assistant_reply,
+    _effective_max_agent_steps,
+    _effective_num_ctx,
+    _effective_num_predict,
+    _effective_rag_collection_name,
+    _input_budget_from_context,
+    _iter_proxy_ollama_chat_stream,
+    _output_budget_exhaustion_error,
+    _proxy_ollama_chat_text_parts,
+    _text_preview,
+    _trace_ollama_api_metrics,
+    _trace_ollama_messages_for_ui,
+    effective_ollama_think_from_body,
+)
+from llm_proxy.chat_completions_request_parsing import (
+    resolve_trace_chain_id as _resolve_trace_chain_id,
+)
+from llm_proxy.chat_completions_request_parsing import (
+    truthy_body_flag as _truthy_body_flag,
+)
+from llm_proxy.chat_completions_response_helpers import (
+    final_or_compat_content as _final_or_compat_content,
+)
+from llm_proxy.chat_completions_response_helpers import (
+    proxy_settings_optional_int as _proxy_settings_optional_int,
+)
+from llm_proxy.chat_completions_response_helpers import (
+    record_reasoning_token_estimates as _record_reasoning_token_estimates,
+)
+from llm_proxy.chat_completions_response_helpers import (
+    text_parts_from_openai_assistant_message as _text_parts_from_openai_assistant_message,
+)
+from llm_proxy.chat_completions_response_helpers import (
+    tool_loop_limit_final_message as _tool_loop_limit_final_message,
+)
+from llm_proxy.chat_completions_response_helpers import (
+    upstream_chat_error_message as _upstream_chat_error_message,
+)
+from llm_proxy.chat_completions_response_helpers import (
+    with_initial_system_message as _with_initial_system_message,
+)
+from llm_proxy.chat_completions_run_phases import (
+    _new_chat_trace_dict,
+    _tool_loop_needs_finalize_nudge,
+)
+from llm_proxy.chat_completions_streaming import (
+    SSE_MIMETYPE as _SSE_MIMETYPE,
+)
+from llm_proxy.chat_completions_streaming import (
+    SSE_RESPONSE_HEADERS as _SSE_RESPONSE_HEADERS,
+)
+from llm_proxy.chat_completions_streaming import (
+    StreamContentAccumulator,
+    append_budget_error_chunks,
+    iter_sse_finish_with_done,
+    iter_sse_from_ollama_stream_events,
+    iter_sse_plain_content_response,
+    iter_sse_single_shot_assistant,
+    iter_sse_tool_calls_response,
+    iter_sse_tool_limit_response,
+    reasoning_guard_limit_from_env,
+)
+from llm_proxy.chat_completions_streaming import (
+    approx_token_count as _stream_approx_token_count,
+)
+from llm_proxy.chat_completions_streaming import (
+    sse_content_chunk as _sse_content_chunk,
+)
+from llm_proxy.chat_completions_streaming import (
+    sse_role_assistant_chunk as _sse_role_assistant_chunk,
+)
+from llm_proxy.chat_completions_streaming import (
+    stream_completion_id as _stream_completion_id,
+)
+from llm_proxy.chat_completions_upstream_budget import (
+    _compact_upstream_messages_for_budget,
+    _ollama_message_content_str,
+)
+from llm_proxy.contracts import LlmProxyWiring
 from llm_proxy.ollama_compat import (
     caps_supports_thinking,
     caps_supports_vision,
@@ -31,13 +150,12 @@ from llm_proxy.ollama_compat import (
     chat_error_suggests_no_tools,
     find_cached_ollama_vision_model,
     get_cached_ollama_capabilities,
+    ollama_chat_tool_choice_payload_value,
     ollama_message_to_openai_assistant,
     ollama_tools_from_openai,
-    ollama_chat_tool_choice_payload_value,
     openai_finish_reason_from_ollama,
     openai_tool_choice_means_none,
 )
-from llm_proxy.contracts import LlmProxyWiring
 from llm_proxy.pipeline_steps.merged_docs_step import run_merged_docs_step
 from llm_proxy.pipeline_steps.web_supplement_step import (
     run_web_supplement_step,
@@ -58,88 +176,6 @@ from llm_proxy.tool_helpers import (
     _tool_schema_accepts_content,
     _workspace_doc_refactor_intent,
     _workspace_selection_snippet,
-)
-
-from llm_proxy.chat_completions_upstream_budget import (
-    _compact_upstream_messages_for_budget,
-    _ollama_message_content_str,
-)
-from llm_proxy.chat_completions_messages import (
-    _normalize_request_messages,
-)
-from llm_proxy.chat_completions_gemini_native import (
-    _interpolate_native_tools_for_gemini,
-    _persist_gemini_tool_calls_state,
-    _preflight_native_tool_messages,
-    _preflight_native_tools_payload,
-    _resolve_proxy_db_path_from_wiring,
-    _sanitize_outgoing_shell_tool_calls,
-    _sse_tool_calls_payload,
-    _tool_round_stats_since_last_user,
-)
-from llm_proxy.chat_completions_ollama_proxy import (
-    _apply_provider_trace_fields,
-    _append_trace_warning,
-    _apply_response_diagnostics,
-    _apply_trace_response_text_fields,
-    _build_rag_collection_issue,
-    _degenerate_assistant_reply,
-    _effective_max_agent_steps,
-    _effective_num_ctx,
-    _effective_num_predict,
-    _effective_rag_collection_name,
-    _input_budget_from_context,
-    _iter_proxy_ollama_chat_stream,
-    _output_budget_exhaustion_error,
-    _PLACEHOLDER_REPLY_FALLBACK_EN,
-    _proxy_ollama_chat_text_parts,
-    _text_preview,
-    _trace_ollama_api_metrics,
-    _trace_ollama_messages_for_ui,
-    effective_ollama_think_from_body,
-)
-from llm_proxy.chat_completions_request_parsing import (
-    resolve_trace_chain_id as _resolve_trace_chain_id,
-    truthy_body_flag as _truthy_body_flag,
-)
-from llm_proxy.chat_completions_response_helpers import (
-    final_or_compat_content as _final_or_compat_content,
-    proxy_settings_optional_int as _proxy_settings_optional_int,
-    record_reasoning_token_estimates as _record_reasoning_token_estimates,
-    text_parts_from_openai_assistant_message as _text_parts_from_openai_assistant_message,
-    tool_loop_limit_final_message as _tool_loop_limit_final_message,
-    upstream_chat_error_message as _upstream_chat_error_message,
-    with_initial_system_message as _with_initial_system_message,
-)
-from llm_proxy.chat_completions_handler_helpers import (
-    append_pipeline_step_trace as _append_pipeline_step_trace,
-    apply_selected_rerank_model as _apply_selected_rerank_model,
-    build_forced_think_value as _build_forced_think_value,
-    load_proxy_settings_and_model as _load_proxy_settings_and_model,
-    log_rag_error as _log_rag_error,
-    log_rag_error_private as _log_rag_error_private,
-    rag_request_completed_payload as _rag_request_completed_payload,
-)
-from llm_proxy.chat_completions_streaming import (
-    SSE_MIMETYPE as _SSE_MIMETYPE,
-    SSE_RESPONSE_HEADERS as _SSE_RESPONSE_HEADERS,
-    StreamContentAccumulator,
-    append_budget_error_chunks,
-    approx_token_count as _stream_approx_token_count,
-    iter_sse_finish_with_done,
-    iter_sse_from_ollama_stream_events,
-    iter_sse_plain_content_response,
-    iter_sse_single_shot_assistant,
-    iter_sse_tool_calls_response,
-    iter_sse_tool_limit_response,
-    reasoning_guard_limit_from_env,
-    sse_content_chunk as _sse_content_chunk,
-    sse_role_assistant_chunk as _sse_role_assistant_chunk,
-    stream_completion_id as _stream_completion_id,
-)
-from llm_proxy.chat_completions_run_phases import (
-    _new_chat_trace_dict,
-    _tool_loop_needs_finalize_nudge,
 )
 
 _RAG_LOG = logging.getLogger("llm_proxy")

@@ -4,6 +4,7 @@ import CoreUIModal from './CoreUIModal';
 import CoreUIButton from './CoreUIButton';
 import CoreUIPillTabs from './CoreUIPillTabs';
 import { getLlmProxyStatus } from '../services/api';
+import { t } from '../services/i18n.js';
 import '../styles/components/DashboardTab.css';
 import '../styles/components/SettingsTab.css';
 
@@ -44,7 +45,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
         <section className="dashboard-info-card" aria-label="About ChironAI">
           <div className="dashboard-info-card-header">
             <h2 className="dashboard-info-card-title">ChironAI</h2>
-            <p className="dashboard-info-card-subtitle">Local, model-agnostic RAG layer for developers</p>
+            <p className="dashboard-info-card-subtitle">{t('app.subtitle')}</p>
           </div>
           <CoreUISubtabs
             tabs={INFO_TABS}

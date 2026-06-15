@@ -4,7 +4,6 @@ from typing import Any
 
 import pytest
 
-
 PRODUCT_HARDENING_FLOWS = {
     "app_start": "GET /api/webui/performance/startup",
     "coreui_dashboard": "GET /",

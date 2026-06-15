@@ -6,14 +6,14 @@ import time
 from collections import deque
 from typing import Any, Callable
 
+from error_manager.http import error_response as _error_response
 from flask import jsonify, request
+from llm_proxy.config import AUTOCOMPLETE_MODEL_ID
 
 from api.http.proxy_status import STATUS_IDLE
 from api.http.webui_session import log_to_database
 from config import get_rag_float, get_rag_int
-from error_manager.http import error_response as _error_response
 from infrastructure.database import get_settings_repository
-from llm_proxy.config import AUTOCOMPLETE_MODEL_ID
 
 _REQUEST_BUFFER: deque[dict[str, Any]] = deque(maxlen=50)
 

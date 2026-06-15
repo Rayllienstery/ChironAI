@@ -7,8 +7,8 @@ import logging
 import uuid
 
 from flask import Flask, Response, jsonify, request
-from core.openapi import register_openapi_routes
 
+from core.openapi import register_openapi_routes
 from rag_service.application.params import get_rag_answer_params
 from rag_service.application.use_cases import (
     answer_question,

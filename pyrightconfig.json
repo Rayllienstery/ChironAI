@@ -1,0 +1,18 @@
+{
+  "include": [
+    "application",
+    "core/contracts",
+    "core/shared",
+    "domain"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    ".venv",
+    "venv"
+  ],
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none",
+  "useLibraryCodeForTypes": true
+}

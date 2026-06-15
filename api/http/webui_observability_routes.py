@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from error_manager.http import error_response as _error_response
 from flask import Blueprint, jsonify, request
 
 from api.http.proxy_status import get_proxy_status_label
@@ -16,7 +17,6 @@ from api.http.proxy_trace import (
     get_current_trace_updated_at,
     recent_proxy_traces,
 )
-from error_manager.http import error_response as _error_response
 from infrastructure.database import get_logs_repository, get_notifications_repository
 
 

@@ -8,15 +8,26 @@ import threading
 import time
 from typing import Any, Callable
 
-from flask import Blueprint, current_app, jsonify, request
-
+import requests
 from error_manager.exceptions import ValidationError as _ValidationError
 from error_manager.http import error_response as _error_response
+from flask import Blueprint, current_app, jsonify, request
+from llm_proxy.api_key import (
+    delete_proxy_api_key_record,
+    generate_proxy_api_key_record,
+    proxy_api_key_status,
+    reveal_proxy_api_key,
+    store_proxy_api_key_record,
+)
 
 from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
 from api.http.webui_provider_helpers import (
     default_llm_provider_id as _default_llm_provider_id,
+)
+from api.http.webui_provider_helpers import (
     provider_catalog_payload as _provider_catalog_payload,
+)
+from api.http.webui_provider_helpers import (
     run_provider_extension_action as _run_provider_extension_action,
 )
 from api.http.webui_rag_routes import (
@@ -31,13 +42,6 @@ from application.llm_proxy_builds import (
     load_builds_json,
     validate_builds_list,
 )
-from llm_proxy.api_key import (
-    delete_proxy_api_key_record,
-    generate_proxy_api_key_record,
-    proxy_api_key_status,
-    reveal_proxy_api_key,
-    store_proxy_api_key_record,
-)
 from config import (
     get_active_server_port,
     get_qdrant_url,
@@ -50,8 +54,6 @@ from infrastructure.database import (
     get_settings_repository,
 )
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
-import requests
-
 
 _WEBUI_LOG = logging.getLogger("webui")
 _ERROR_LOG = get_webui_error_logger()

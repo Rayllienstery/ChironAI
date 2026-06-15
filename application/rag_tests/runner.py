@@ -8,21 +8,20 @@ prepare_ollama_messages, chat_client.chat. Returns result dicts compatible with 
 from __future__ import annotations
 
 import time
-from contextlib import contextmanager
 from collections.abc import Callable
+from contextlib import contextmanager
 from typing import Any
 
-from application.rag_tests.metrics import (
-    CURRENT_RAG_TESTS_EVALUATION_METHOD_VERSION,
-    CURRENT_RAG_TESTS_METRICS_VERSION,
-)
 from rag_service.application.params import get_rag_answer_params
 from rag_service.application.use_cases import build_rag_context, prepare_ollama_messages
 from rag_service.config import override_retrieval_settings
 from rag_service.domain.entities import RagQuestionRequest
 
+from application.rag_tests.metrics import (
+    CURRENT_RAG_TESTS_EVALUATION_METHOD_VERSION,
+    CURRENT_RAG_TESTS_METRICS_VERSION,
+)
 from application.rag_tests.validator import validate_result
-
 
 STRICT_RAG_QUOTE_INSTRUCTION = """RAG Tests Strict Mode is enabled.
 You must include exactly one line near the top of the answer in this form:

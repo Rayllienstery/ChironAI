@@ -4,15 +4,14 @@ Unit tests for rag_service.domain.services.rerank.
 
 from __future__ import annotations
 
-
 from rag_service.domain.services.rerank import (
     apply_rerank_scores_and_cut,
     build_rerank_prompt,
     extract_candidates_from_rerank_prompt,
+    native_rerank_response_to_order,
     parse_rerank_order,
     reorder_hits_by_indices,
     shorten_for_rerank,
-    native_rerank_response_to_order,
 )
 
 

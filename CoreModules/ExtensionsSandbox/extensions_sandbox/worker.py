@@ -10,9 +10,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from extensions_sandbox.serialization import to_jsonable
 from llm_interactor.contracts import LLMRequest, ProviderHostContext
 from llm_interactor.manifest import manifest_from_dict
+
+from extensions_sandbox.serialization import to_jsonable
 
 _PROTOCOL_OUT = sys.stdout
 sys.stdout = sys.stderr

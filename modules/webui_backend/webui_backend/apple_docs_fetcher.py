@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
-
 from urllib.parse import urlparse
 
 try:  # Optional dependency; caller must handle ImportError gracefully.

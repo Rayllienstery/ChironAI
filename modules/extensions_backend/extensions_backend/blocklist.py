@@ -13,7 +13,6 @@ from urllib.parse import urlparse
 
 import requests
 
-
 DEFAULT_BLOCKLIST_PATH = "extensions/registry/blocklist.json"
 _MAX_BLOCKLIST_RESPONSE_BYTES = 1 * 1024 * 1024  # 1 MB — protect against malicious/runaway URL
 _BLOCKLIST_TTL_SEC = 300.0  # 5-minute TTL for remote URLs; local files reload on TTL too

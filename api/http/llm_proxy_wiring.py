@@ -8,15 +8,16 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from llm_proxy.config import LlmProxyRuntimeConfig
+from llm_proxy.contracts import LlmProxyBaseContext, LlmProxyExternalDocsBundle, LlmProxyWiring
+from rag_service.application.params import RAGAnswerParams, RAGDependencies
+
 from application.rag.proxy_settings_contract import (
     load_proxy_settings,
     resolve_proxy_rerank_enabled,
     resolve_web_interaction_flags,
 )
 from infrastructure.database import get_settings_repository
-from llm_proxy.config import LlmProxyRuntimeConfig
-from llm_proxy.contracts import LlmProxyBaseContext, LlmProxyExternalDocsBundle, LlmProxyWiring
-from rag_service.application.params import RAGAnswerParams, RAGDependencies
 
 try:
     from config import (
@@ -385,15 +386,15 @@ def _build_extension_manager(
     deps: RAGDependencies,
 ) -> tuple[Any | None, Any | None, Any | None, Any | None, str | None]:
     try:
-        from llm_interactor import (
-            ExtensionManager,
-            ProviderHostContext,
-        )
         from extensions_backend import (
             ExtensionBlocklistPolicy,
             ExtensionManagementService,
             ExtensionRegistryClient,
             GitHubExtensionRepositoryClient,
+        )
+        from llm_interactor import (
+            ExtensionManager,
+            ProviderHostContext,
         )
     except Exception as e:
         _RAG_LOG.warning("LlmInteractor unavailable; falling back to direct chat client: %s", e)

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import os
 import sys
-
 from typing import Any
 
 from flask import Flask, Response, jsonify
@@ -44,16 +43,17 @@ _ERROR_MANAGER = os.path.join(_ROOT, "CoreModules", "ErrorManager")
 if os.path.isdir(_ERROR_MANAGER) and _ERROR_MANAGER not in sys.path:
     sys.path.insert(0, _ERROR_MANAGER)
 
+from rag_service.application.params import get_rag_answer_params
+from rag_service.application.use_cases import build_rag_context, prepare_ollama_messages
+from rag_service.domain.entities import RagContext, RagQuestionRequest
+from rag_service.domain.services.prompt_builder import determine_reasoning_level, last_user_content
+
 from application.rag.collection_freshness import check_collection_freshness
 from config.rag_prompts import get_rag_system_prompt, rag_prompt_file_exists
 from infrastructure.database import get_logs_repository, get_session_manager, get_settings_repository
 from infrastructure.logging import log_webui_error
 from infrastructure.stack_health import check_stack_health
 from llm_proxy import create_v1_blueprint
-from rag_service.application.params import get_rag_answer_params
-from rag_service.application.use_cases import build_rag_context, prepare_ollama_messages
-from rag_service.domain.entities import RagContext, RagQuestionRequest
-from rag_service.domain.services.prompt_builder import determine_reasoning_level, last_user_content
 
 try:
     from config import get_framework_collection_ttl_days, get_proxy_rerank_enabled, get_qdrant_url
@@ -62,7 +62,6 @@ except ImportError:
     get_qdrant_url = lambda: "http://localhost:6333"  # type: ignore[assignment,misc]
     get_framework_collection_ttl_days = lambda: 90  # type: ignore[assignment,misc]
 
-from api.http.llm_proxy_wiring import build_llm_proxy_wiring
 from api.http.extensions_service_access import (
     get_extensions_provider_registry,
     get_extensions_runtime,
@@ -71,6 +70,7 @@ from api.http.extensions_service_access import (
     set_extensions_runtime,
     set_extensions_service,
 )
+from api.http.llm_proxy_wiring import build_llm_proxy_wiring
 
 
 def _sync_llm_extension_runtime(app: Flask) -> bool:
@@ -99,6 +99,7 @@ def create_app(
     system_prefix/suffix: optional overrides for RAG system prompt; if None use config (same as rag_client).
     """
     import time as _time
+
     from api.http.startup_timing import process_start_offset_ms, record_phase
 
     _t_app_start = _time.perf_counter()
@@ -127,8 +128,9 @@ def create_app(
     if getattr(wiring, "extension_manager", None) is not None:
         set_extensions_service(app, wiring.extension_manager)
 
-    from api.http.llm_runtime_access import resolve_llm_runtime
     from rag_service.infrastructure.runtime_hooks import set_llm_runtime_getter
+
+    from api.http.llm_runtime_access import resolve_llm_runtime
 
     def _app_llm_runtime() -> Any | None:
         svc = get_extensions_service(app)
@@ -148,8 +150,8 @@ def create_app(
 
     _t_bp_start = _time.perf_counter()
     app.register_blueprint(create_v1_blueprint(wiring))
-    from api.http.webui_routes import webui_bp
     from api.http.rag_tests_routes import rag_tests_bp
+    from api.http.webui_routes import webui_bp
     from core.openapi import register_openapi_routes
     app.register_blueprint(webui_bp)
     app.register_blueprint(rag_tests_bp)

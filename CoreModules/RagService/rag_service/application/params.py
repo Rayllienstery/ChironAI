@@ -10,9 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from rag_service.domain.ports import ChatLLMClient, EmbeddingProvider, RagRepository, RerankClient
-
 from rag_service.config import get_default_chat_model, get_rag_float, get_rag_int, get_rag_system_prompt
+from rag_service.domain.ports import ChatLLMClient, EmbeddingProvider, RagRepository, RerankClient
 
 
 class RAGAnswerParams(NamedTuple):
@@ -43,13 +42,14 @@ def wire_rag_use_cases(
     collection_name: str | None = None,
 ) -> tuple[RagRepository, EmbeddingProvider, RerankClient, ChatLLMClient]:
     """Return (rag_repo, embed_provider, rerank_client, chat_client). Uses rag_service infrastructure."""
+    import os
+
     from rag_service.infrastructure.container import (  # noqa: PLC0415
         default_chat_client,
         default_embed_provider,
         default_rag_repository,
         default_rerank_client,
     )
-    import os
     if collection_file is None and webui_dir:
         collection_file = os.path.join(webui_dir, "last_collection.txt")
     rag_repo = default_rag_repository(collection_file=collection_file, collection_name=collection_name)

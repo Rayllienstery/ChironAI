@@ -15,7 +15,6 @@ import re
 
 from rag_service.config import get_indexing_float, get_indexing_int
 
-
 CHUNK_MAX_SIZE: int = get_indexing_int("chunk_max_size", 1200)
 CHUNK_MIN_SIZE: int = get_indexing_int("chunk_min_size", 300)
 CHUNK_OVERLAP: int = get_indexing_int("chunk_overlap", 0)

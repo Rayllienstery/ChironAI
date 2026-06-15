@@ -33,7 +33,8 @@ from crawler_service.paths import default_project_root, rag_sources_dir, resolve
 from crawler_service.sources_io import load_sources
 
 try:
-    from modules.md_indexer import get_active_pipeline_name, run_pipeline as run_md_indexer_pipeline
+    from modules.md_indexer import get_active_pipeline_name
+    from modules.md_indexer import run_pipeline as run_md_indexer_pipeline
 except ImportError:
     get_active_pipeline_name = None
     run_md_indexer_pipeline = None  # type: ignore[assignment,misc]

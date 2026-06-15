@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+
 # Default root for tests (project root / rag_tests)
 def _get_rag_tests_root() -> Path:
     root = os.environ.get("RAG_TESTS_ROOT")

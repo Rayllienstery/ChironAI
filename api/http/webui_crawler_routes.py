@@ -15,17 +15,12 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable
-
-from flask import Blueprint, current_app, jsonify, request
+from typing import TYPE_CHECKING, Any, Callable
 
 from error_manager.http import error_response as _error_response
-from webui_backend.paths import webui_data_dir
-from config import (
-    get_indexing_int,
-    get_qdrant_url,
-)
-from application.rag.hybrid_sparse import is_hybrid_sparse_enabled
+from flask import Blueprint, current_app, jsonify, request
+from md_ingestion_service.domain.services.indexing_prepare import prepare_markdown_for_indexing
+from rag_service.application.params import get_rag_answer_params
 from rag_service.domain.services.chunking import chunk_quality_ok, split_markdown_into_chunks
 from rag_service.domain.services.metadata_inference import (
     _apple_doc_scope_from_doc_kind,
@@ -35,7 +30,12 @@ from rag_service.domain.services.metadata_inference import (
     infer_chunk_display_meta,
     infer_metadata,
 )
-from rag_service.application.params import get_rag_answer_params
+
+from application.rag.hybrid_sparse import is_hybrid_sparse_enabled
+from config import (
+    get_indexing_int,
+    get_qdrant_url,
+)
 from infrastructure.database import get_settings_repository
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
 from infrastructure.rag.qdrant_point_builder import (
@@ -43,9 +43,7 @@ from infrastructure.rag.qdrant_point_builder import (
     dense_vectors_config,
     hybrid_vectors_config,
 )
-from md_ingestion_service.domain.services.indexing_prepare import prepare_markdown_for_indexing
-
-from typing import TYPE_CHECKING
+from webui_backend.paths import webui_data_dir
 
 if TYPE_CHECKING:
     from qdrant_client import QdrantClient
@@ -54,21 +52,39 @@ if TYPE_CHECKING:
     )
 
 from api.http.rag_sources_meta import update_page_chunk_hashes
-from api.http.webui_crawler_helpers import is_safe_identifier
+from api.http.webui_crawler_helpers import compute_source_stats, is_safe_identifier
 from api.http.webui_crawler_indexing_helpers import (
     clip_text_for_embedding as _clip_text_for_embedding,
+)
+from api.http.webui_crawler_indexing_helpers import (
     config_default_embed_model as _config_default_embed_model,
+)
+from api.http.webui_crawler_indexing_helpers import (
     import_qdrant as _import_qdrant,
+)
+from api.http.webui_crawler_indexing_helpers import (
     is_embed_context_length_error as _is_embed_context_length_error,
+)
+from api.http.webui_crawler_indexing_helpers import (
     log_indexing_embed_path_once as _log_indexing_embed_path_once,
+)
+from api.http.webui_crawler_indexing_helpers import (
     max_embed_chars as _max_embed_chars,
+)
+from api.http.webui_crawler_indexing_helpers import (
     runtime_embed_available as _runtime_embed_available,
+)
+from api.http.webui_crawler_indexing_helpers import (
     write_create_collection_final_log as _write_create_collection_final_log,
 )
 from api.http.webui_crawler_source_routes import register_crawler_source_routes
 from api.http.webui_provider_helpers import (
     default_llm_provider_id as _default_llm_provider_id,
+)
+from api.http.webui_provider_helpers import (
     invoke_runtime_chat as _invoke_runtime_chat,
+)
+from api.http.webui_provider_helpers import (
     invoke_runtime_embed as _invoke_runtime_embed,
 )
 from api.http.webui_rag_routes import get_qdrant_collection_names as _get_qdrant_collection_names
@@ -84,6 +100,8 @@ _ERROR_LOG = get_webui_error_logger()
 try:
     from modules.md_indexer import (
         delete_pipeline as md_indexer_delete_pipeline,
+    )
+    from modules.md_indexer import (
         get_active_pipeline_name,
         list_pipeline_names,
         load_pipeline,
@@ -132,17 +150,7 @@ def register_crawler_routes(bp: Blueprint, *, error_log: Any) -> None:
 
     def _get_source_stats(meta: dict) -> dict[str, Any]:
         """Calculate statistics from meta.json."""
-        pages = meta.get("pages", {})
-        total_pages = len(pages)
-        indexed_pages = sum(
-            1 for p in pages.values() 
-            if p.get("chunk_hashes") and len(p.get("chunk_hashes", [])) > 0
-        )
-        return {
-            "total_pages": total_pages,
-            "indexed_pages": indexed_pages,
-            "last_crawled": meta.get("last_crawled"),
-        }
+        return compute_source_stats(meta)
 
 
     def _discover_sources() -> list[str]:

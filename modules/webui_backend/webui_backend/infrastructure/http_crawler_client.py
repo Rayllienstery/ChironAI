@@ -7,7 +7,6 @@ from typing import Any
 
 import requests
 
-
 CRAWLER_SERVICE_URL = os.getenv("CRAWLER_SERVICE_URL", "http://localhost:5003")
 
 

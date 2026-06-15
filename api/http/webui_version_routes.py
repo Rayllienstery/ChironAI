@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from typing import Any
+
 from flask import Blueprint, jsonify
 
-from core.version import VERSION, APP_NAME, APP_STAGE
 from core.changelog_helper import get_latest_changelog_content
+from core.version import APP_NAME, APP_STAGE, VERSION
 from webui_backend.paths import project_root
 
 

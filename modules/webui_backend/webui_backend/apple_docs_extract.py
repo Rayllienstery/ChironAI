@@ -9,11 +9,10 @@ and can optionally incorporate hints from `initial_state`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
-
 import json
 import re
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 try:
     from lxml import html as lxml_html  # type: ignore[import]

@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Iterator
 
-from extensions_sandbox.client import ExtensionWorkerClient
 from llm_interactor.contracts import (
     LLMRequest,
     LLMResponse,
@@ -15,6 +14,8 @@ from llm_interactor.contracts import (
     ProviderDescriptor,
     ProviderHealth,
 )
+
+from extensions_sandbox.client import ExtensionWorkerClient
 
 
 def _capabilities(raw: Any) -> ProviderCapabilities:

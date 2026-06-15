@@ -7,20 +7,19 @@ import time
 import uuid
 from typing import Any, Callable
 
-from flask import Blueprint, current_app, jsonify, request
-
-from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
 from chironai_rag.bindings import ConsumerRagBindings
 from chironai_rag.consumers import RAG_COLLECTION_APP_SETTING, RagConsumer
-from config import get_rag_float, get_rag_int, get_rag_prompt_name
-from config.rag_prompts import get_rag_system_prompt, rag_prompt_file_exists
 from error_manager.http import error_response as _error_response
-from infrastructure.database import get_settings_repository
+from flask import Blueprint, current_app, jsonify, request
 from rag_service.application.params import get_rag_answer_params
 from rag_service.domain.services.prompt_builder import build_system_content
-from webui_backend.paths import webui_data_dir
 
+from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
 from api.http.webui_prompts import is_readme_name
+from config import get_rag_float, get_rag_int, get_rag_prompt_name
+from config.rag_prompts import get_rag_system_prompt, rag_prompt_file_exists
+from infrastructure.database import get_settings_repository
+from webui_backend.paths import webui_data_dir
 
 
 def register_model_tester_routes(

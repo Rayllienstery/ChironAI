@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 _SAFE_IDENTIFIER_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
@@ -44,4 +43,22 @@ def build_source_meta(
     }
 
 
-__all__ = ["build_source_meta", "is_safe_identifier", "normalize_seed_urls"]
+def compute_source_stats(meta: dict[str, Any]) -> dict[str, Any]:
+    """Calculate page/index statistics from a source meta document."""
+    pages = meta.get("pages", {})
+    if not isinstance(pages, dict):
+        pages = {}
+    total_pages = len(pages)
+    indexed_pages = sum(
+        1
+        for p in pages.values()
+        if isinstance(p, dict) and p.get("chunk_hashes") and len(p.get("chunk_hashes", [])) > 0
+    )
+    return {
+        "total_pages": total_pages,
+        "indexed_pages": indexed_pages,
+        "last_crawled": meta.get("last_crawled"),
+    }
+
+
+__all__ = ["build_source_meta", "compute_source_stats", "is_safe_identifier", "normalize_seed_urls"]

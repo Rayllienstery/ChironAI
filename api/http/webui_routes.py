@@ -82,7 +82,6 @@ except ImportError:
     get_active_pipeline_name = None  # type: ignore[assignment]
     run_pipeline = None  # type: ignore[assignment]
 
-from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
 from api.http.proxy_status import set_latest_request_seconds, set_proxy_status
 from api.http.webui_chat_routes import register_chat_routes
 from api.http.webui_crawler_routes import register_crawler_routes
@@ -96,13 +95,23 @@ from api.http.webui_performance_routes import register_performance_routes
 from api.http.webui_prompt_routes import register_prompt_routes
 from api.http.webui_provider_helpers import (
     default_llm_provider_id as _default_llm_provider_id,
+)
+from api.http.webui_provider_helpers import (
     default_provider_row as _default_provider_row,
+)
+from api.http.webui_provider_helpers import (
     provider_catalog_payload as _provider_catalog_payload,
+)
+from api.http.webui_provider_helpers import (
     read_app_provider_model_ref as _read_app_provider_model_ref,
+)
+from api.http.webui_provider_helpers import (
     run_unified_proxy_chat as _run_unified_proxy_chat,
 )
 from api.http.webui_rag_routes import (
     get_qdrant_collection_names as _get_qdrant_collection_names,
+)
+from api.http.webui_rag_routes import (
     register_rag_pipeline_routes,
     register_rag_qdrant_routes,
 )
@@ -110,6 +119,7 @@ from api.http.webui_session_routes import register_session_routes
 from api.http.webui_settings_routes import register_settings_routes
 from api.http.webui_testing_routes import register_testing_routes
 from api.http.webui_version_routes import register_version_routes
+from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
 
 TRASH_DIR = PROMPTS_DIR / ".trash"
 

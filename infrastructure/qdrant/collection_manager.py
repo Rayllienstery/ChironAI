@@ -4,22 +4,23 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Protocol
 
+from modules.external_docs_rag.external_docs_rag.application.use_cases import (  # type: ignore
+    ingest_github_repo_markdown,
+)
 from modules.external_docs_rag.external_docs_rag.domain.entities import (
     ResolvedVersion,
     VersionConstraint,
 )
-from modules.external_docs_rag.external_docs_rag.application.use_cases import (  # type: ignore
-    ingest_github_repo_markdown,
-)
-from modules.external_docs_rag.external_docs_rag.infrastructure.version_resolver import (  # type: ignore
-    resolve_version_for_framework,
-)
-from infrastructure.database.settings_repository import get_settings_repository
 from modules.external_docs_rag.external_docs_rag.domain.ports import (  # type: ignore
     ChunkSink,
     EmbeddingPort,
     FetchClient,
 )
+from modules.external_docs_rag.external_docs_rag.infrastructure.version_resolver import (  # type: ignore
+    resolve_version_for_framework,
+)
+
+from infrastructure.database.settings_repository import get_settings_repository
 
 
 @dataclass(frozen=True)

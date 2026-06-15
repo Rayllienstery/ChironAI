@@ -4,7 +4,6 @@ Unit tests for application.rag_tests.validator.
 
 from __future__ import annotations
 
-
 from application.rag_tests.validator import concept_satisfied, validate_concepts, validate_result
 
 

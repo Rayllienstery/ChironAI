@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from error_manager.http import error_response as _error_response
 from flask import Blueprint, jsonify, request
 
 from config import (
@@ -12,9 +13,7 @@ from config import (
     _valid_server_port,
     get_server_port_metadata,
 )
-from error_manager.http import error_response as _error_response
 from infrastructure.database import get_settings_repository
-
 
 _SERVER_PORT_METADATA_KEYS = {
     "status",

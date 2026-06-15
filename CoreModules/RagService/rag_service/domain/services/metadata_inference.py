@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import re
 
-
 _IOS_VERSION_RE = re.compile(r"\biOS\s+(\d+(?:\.\d+)*)\+?", re.IGNORECASE)
 _SWIFT_VERSION_RE = re.compile(r"\bSwift\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
 _TECHNOLOGY_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (

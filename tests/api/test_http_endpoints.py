@@ -1,10 +1,12 @@
 """
 Light integration tests for HTTP endpoints (Flask test client).
+
+Domain-specific suites: ``test_http_health``, ``test_http_proxy_auth``.
+Shared fixtures: ``tests.api.http_fixtures``.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,166 +14,18 @@ from typing import Any
 
 import pytest
 
-TEST_PROXY_API_KEY = "test-chiron-proxy-key"
-NO_TEST_PROXY_AUTH_HEADER = "X-Test-Skip-Chiron-Auth"
-TEST_PROXY_API_KEY_SETTING = "llm_proxy_api_key"
-TEST_PROXY_API_KEY_SETTING_VALUE = json.dumps(
-    {
-        "sha256": hashlib.sha256(TEST_PROXY_API_KEY.encode("utf-8")).hexdigest(),
-        "prefix": TEST_PROXY_API_KEY[:20],
-        "created_at": "2026-05-04T00:00:00Z",
-        "rotated_at": None,
-    }
+from tests.api.http_fixtures import (
+    OllamaShimChatClient as _OllamaShimChatClient,
 )
-
-
-def _test_proxy_api_key_setting(key: str) -> str | None:
-    if key == TEST_PROXY_API_KEY_SETTING:
-        return TEST_PROXY_API_KEY_SETTING_VALUE
-    return None
-
-
-def _set_extensions_app_state(
-    app: Any,
-    *,
-    service: Any | None = None,
-    runtime: Any | None = None,
-) -> None:
-    from api.http.extensions_service_access import set_extensions_runtime, set_extensions_service
-
-    set_extensions_service(app, service)
-    if runtime is not None:
-        set_extensions_runtime(app, runtime)
-
-
-def _webui_blueprint_client():
-    from flask import Flask
-
-    import api.http.webui_routes as webui_routes
-
-    app = Flask(__name__)
-    app.register_blueprint(webui_routes.webui_bp)
-    return app.test_client()
-
-
-class _OllamaShimChatClient:
-    """
-    Wraps test doubles whose ``chat()`` returns legacy JSON-in-text edit payloads.
-    Exposes ``chat_api`` / ``chat_api_stream_final`` expected by the native Ollama tools path.
-    """
-
-    def __init__(self, inner: Any) -> None:
-        self._inner = inner
-
-    def chat(self, *args: Any, **kwargs: Any) -> Any:
-        return self._inner.chat(*args, **kwargs)
-
-    def stream_chat(self, *args: Any, **kwargs: Any) -> Any:
-        return self._inner.stream_chat(*args, **kwargs)
-
-    def chat_api(self, body: dict[str, Any]) -> dict[str, Any]:
-        from llm_proxy.tool_helpers import (
-            _build_tool_arguments,
-            _extract_edit_from_response,
-            _get_tool_by_name,
-            _select_edit_tool_name,
-            _tool_args_have_substantive_body,
-        )
-
-        messages = body.get("messages") or []
-        tools = body.get("tools") or []
-        raw = self._inner.chat(messages, body.get("model"), stream=False, options=None)
-        raw = raw or ""
-        if not tools:
-            return {"message": {"role": "assistant", "content": str(raw)}}
-        uq = ""
-        for m in reversed(messages):
-            if isinstance(m, dict) and m.get("role") == "user":
-                c = m.get("content")
-                uq = c if isinstance(c, str) else ""
-                break
-        edit = _extract_edit_from_response(raw)
-        sel = _select_edit_tool_name(tools, uq)
-        if edit and sel:
-            tdef = _get_tool_by_name(tools, sel)
-            args = _build_tool_arguments(
-                selected_tool_name=sel,
-                selected_tool=tdef,
-                edit_payload=edit,
-                user_query=uq,
-            )
-            if _tool_args_have_substantive_body(sel, args):
-                return {
-                    "message": {
-                        "role": "assistant",
-                        "content": "",
-                        "tool_calls": [
-                            {"type": "function", "function": {"name": sel, "arguments": args}},
-                        ],
-                    }
-                }
-        return {"message": {"role": "assistant", "content": str(raw)}}
-
-    def chat_api_stream_final(self, body: dict[str, Any]) -> dict[str, Any]:
-        return self.chat_api({**body, "stream": False})
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._inner, name)
-
-
-@pytest.fixture(autouse=True)
-def _rag_routes_llm_proxy_app_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    """/chat/completions requires saved proxy_model + prompt_name unless create_app uses system_prefix."""
-    import json
-
-    from flask.testing import FlaskClient
-    from werkzeug.datastructures import Headers
-
-    import api.http.rag_routes as rag_routes
-    import api.http.webui_routes as webui_routes
-    from llm_interactor import ExtensionManager
-
-    original_open = FlaskClient.open
-
-    def open_with_proxy_auth(self, *args: Any, **kwargs: Any):
-        path = kwargs.get("path")
-        if path is None and args and isinstance(args[0], str):
-            path = args[0]
-        if isinstance(path, str) and (path == "/v1" or path.startswith("/v1/")):
-            headers = Headers(kwargs.get("headers") or {})
-            if headers.get(NO_TEST_PROXY_AUTH_HEADER):
-                del headers[NO_TEST_PROXY_AUTH_HEADER]
-            elif not headers.get("Authorization") and not headers.get("x-api-key"):
-                headers["Authorization"] = f"Bearer {TEST_PROXY_API_KEY}"
-            kwargs["headers"] = headers
-        return original_open(self, *args, **kwargs)
-
-    monkeypatch.setattr(FlaskClient, "open", open_with_proxy_auth)
-
-    class _FakeRepo:
-        def __init__(self, include_api_key: bool = True) -> None:
-            self.app_settings = {
-                "proxy_model": "fake-proxy-ollama-model",
-                "proxy_settings": json.dumps({"prompt_name": "system_senior_ios_assistant_v1"}),
-                "rag_collection": "",
-            }
-            if include_api_key:
-                self.app_settings[TEST_PROXY_API_KEY_SETTING] = TEST_PROXY_API_KEY_SETTING_VALUE
-
-        def get_app_setting(self, key: str):
-            return self.app_settings.get(key)
-
-        def set_app_setting(self, key: str, value: str) -> None:
-            self.app_settings[key] = value
-
-        def delete_app_setting(self, key: str) -> None:
-            self.app_settings.pop(key, None)
-
-    fake_repo = _FakeRepo()
-
-    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: fake_repo)
-    monkeypatch.setattr(webui_routes, "get_settings_repository", lambda: fake_repo)
-    monkeypatch.setattr(ExtensionManager, "start_background_bootstrap", lambda self: None)
+from tests.api.http_fixtures import (
+    set_extensions_app_state as _set_extensions_app_state,
+)
+from tests.api.http_fixtures import (
+    test_proxy_api_key_setting as _test_proxy_api_key_setting,
+)
+from tests.api.http_fixtures import (
+    webui_blueprint_client as _webui_blueprint_client,
+)
 
 
 def test_proxy_logs_passes_autocomplete_only_to_repository(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -678,444 +532,6 @@ def test_rag_trigger_settings_uses_registered_threshold_callback(monkeypatch: py
 
     assert response.status_code == 200
     assert response.get_json()["rag_trigger_threshold"] == 9
-
-
-def test_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
-    import os
-    import sys
-    from unittest.mock import MagicMock
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    ok = MagicMock()
-    ok.ok = True
-
-    def fake_get(url: str, timeout: float = 0) -> MagicMock:
-        return ok
-
-    monkeypatch.setattr("infrastructure.stack_health.requests.get", fake_get)
-
-    class _HealthyProviderExtensions:
-        runtime = object()
-
-        def provider_rows(self, _runtime: Any) -> list[dict[str, Any]]:
-            return [
-                {
-                    "provider_id": "ollama",
-                    "extension_id": "ollama-provider",
-                    "title": "Ollama",
-                    "health": {"ok": True, "status": "ok", "message": "", "details": {}},
-                }
-            ]
-
-    from api.http.rag_routes import create_app
-
-    app = create_app()
-    _set_extensions_app_state(app, service=_HealthyProviderExtensions(), runtime=_HealthyProviderExtensions.runtime)
-    client = app.test_client()
-    r = client.get("/health")
-    assert r.status_code == 200
-    data = r.get_json() or {}
-    assert data.get("status") == "healthy"
-    assert data.get("service") == "rag_proxy"
-    comps = data.get("components") or {}
-    assert comps.get("ollama") == "healthy"
-    assert comps.get("qdrant") == "healthy"
-    assert data.get("timestamp")
-
-
-def test_health_endpoint_503_when_qdrant_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
-    import os
-    import sys
-    from unittest.mock import MagicMock
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    ollama_ok = MagicMock()
-    ollama_ok.ok = True
-    qdrant_bad = MagicMock()
-    qdrant_bad.ok = False
-
-    def fake_get(url: str, timeout: float = 0) -> MagicMock:
-        if "qdrant" in url or "/collections" in url:
-            return qdrant_bad
-        return ollama_ok
-
-    monkeypatch.setattr("infrastructure.stack_health.requests.get", fake_get)
-
-    from api.http.rag_routes import create_app
-
-    app = create_app()
-    r = app.test_client().get("/health")
-    assert r.status_code == 503
-    data = r.get_json() or {}
-    assert data.get("status") == "unhealthy"
-    assert (data.get("components") or {}).get("qdrant") == "unhealthy"
-
-
-def test_health_endpoint_uses_provider_health_when_runtime_available(monkeypatch: pytest.MonkeyPatch) -> None:
-    import os
-    import sys
-    from unittest.mock import MagicMock
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    qdrant_ok = MagicMock()
-    qdrant_ok.ok = True
-    requested: list[str] = []
-
-    def fake_get(url: str, timeout: float = 0) -> MagicMock:
-        requested.append(url)
-        return qdrant_ok
-
-    class FakeExtensionsService:
-        runtime = object()
-
-        def provider_rows(self, _runtime: Any) -> list[dict[str, Any]]:
-            return [
-                {
-                    "provider_id": "ollama",
-                    "extension_id": "ollama-provider",
-                    "title": "Ollama",
-                    "health": {"ok": True, "status": "ok", "message": "", "details": {}},
-                }
-            ]
-
-    monkeypatch.setattr("infrastructure.stack_health.requests.get", fake_get)
-
-    from api.http.rag_routes import create_app
-
-    app = create_app()
-    _set_extensions_app_state(app, service=FakeExtensionsService(), runtime=FakeExtensionsService.runtime)
-    r = app.test_client().get("/health")
-
-    assert r.status_code == 200
-    data = r.get_json() or {}
-    assert data.get("status") == "healthy"
-    assert (data.get("components") or {}).get("ollama") == "healthy"
-    assert (data.get("components") or {}).get("qdrant") == "healthy"
-    assert requested and all("/api/tags" not in url for url in requested)
-
-
-def test_health_endpoint_503_when_provider_health_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    import os
-    import sys
-    from unittest.mock import MagicMock
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    qdrant_ok = MagicMock()
-    qdrant_ok.ok = True
-
-    class FakeExtensionsService:
-        runtime = object()
-
-        def provider_rows(self, _runtime: Any) -> list[dict[str, Any]]:
-            return [
-                {
-                    "provider_id": "ollama",
-                    "extension_id": "ollama-provider",
-                    "title": "Ollama",
-                    "health": {"ok": False, "status": "error", "message": "offline", "details": {}},
-                }
-            ]
-
-    monkeypatch.setattr("infrastructure.stack_health.requests.get", lambda *_a, **_k: qdrant_ok)
-
-    from api.http.rag_routes import create_app
-
-    app = create_app()
-    _set_extensions_app_state(app, service=FakeExtensionsService(), runtime=FakeExtensionsService.runtime)
-    r = app.test_client().get("/health")
-
-    assert r.status_code == 503
-    data = r.get_json() or {}
-    assert data.get("status") == "unhealthy"
-    assert (data.get("components") or {}).get("ollama") == "unhealthy"
-    assert (data.get("components") or {}).get("qdrant") == "healthy"
-
-
-def test_v1_models_returns_503_when_proxy_api_key_not_configured(monkeypatch: pytest.MonkeyPatch) -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    import api.http.rag_routes as rag_routes
-    from api.http.rag_routes import create_app
-
-    class NoKeyRepo:
-        def get_app_setting(self, key: str):
-            if key == "proxy_model":
-                return "fake-proxy-ollama-model"
-            if key == "proxy_settings":
-                return "{}"
-            if key == "rag_collection":
-                return ""
-            return None
-
-    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: NoKeyRepo())
-
-    r = create_app().test_client().get("/v1/models", headers={NO_TEST_PROXY_AUTH_HEADER: "1"})
-    assert r.status_code == 503
-    data = r.get_json() or {}
-    assert (data.get("error") or {}).get("type") == "server_configuration_error"
-    assert (data.get("error") or {}).get("message") == "Chiron proxy API key is not configured"
-
-
-def test_v1_models_returns_401_when_proxy_api_key_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from api.http.rag_routes import create_app
-
-    r = create_app().test_client().get("/v1/models", headers={NO_TEST_PROXY_AUTH_HEADER: "1"})
-    assert r.status_code == 401
-    data = r.get_json() or {}
-    assert (data.get("error") or {}).get("type") == "authentication_error"
-    assert (data.get("error") or {}).get("message") == "Invalid or missing API key"
-
-
-def test_v1_models_returns_401_when_proxy_api_key_invalid() -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from api.http.rag_routes import create_app
-
-    r = create_app().test_client().get("/v1/models", headers={"Authorization": "Bearer wrong-key"})
-    assert r.status_code == 401
-    data = r.get_json() or {}
-    assert (data.get("error") or {}).get("type") == "authentication_error"
-    assert (data.get("error") or {}).get("message") == "Invalid or missing API key"
-
-
-def test_v1_models_accepts_bearer_proxy_api_key() -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from api.http.rag_routes import create_app
-
-    r = create_app().test_client().get(
-        "/v1/models",
-        headers={"Authorization": f"Bearer {TEST_PROXY_API_KEY}"},
-    )
-    assert r.status_code == 200
-    assert "data" in (r.get_json() or {})
-
-
-def test_v1_models_accepts_x_api_key_proxy_api_key() -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from api.http.rag_routes import create_app
-
-    r = create_app().test_client().get("/v1/models", headers={"x-api-key": TEST_PROXY_API_KEY})
-    assert r.status_code == 200
-    assert "data" in (r.get_json() or {})
-
-
-def test_webui_reveal_proxy_api_key_returns_404_for_hash_only_legacy_key() -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from api.http.rag_routes import create_app
-
-    client = create_app().test_client()
-    status = client.get("/api/webui/llm-proxy/api-key").get_json() or {}
-    assert status.get("configured") is True
-    assert status.get("recoverable") is False
-
-    r = client.post("/api/webui/llm-proxy/api-key/reveal")
-    assert r.status_code == 404
-    error = (r.get_json() or {}).get("error") or {}
-    assert "not recoverable" in (error.get("message") or "")
-
-
-def test_webui_generate_proxy_api_key_returns_plaintext_once_and_enables_v1() -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from api.http.rag_routes import create_app
-
-    client = create_app().test_client()
-    generated = client.post("/api/webui/llm-proxy/api-key/generate").get_json() or {}
-    key = generated.get("key")
-    assert isinstance(key, str)
-    assert key.startswith("chiron_sk_")
-    assert generated.get("configured") is True
-    assert generated.get("recoverable") is True
-    assert generated.get("prefix")
-    assert generated.get("created_at")
-    assert "sha256" not in generated
-    assert "secret" not in generated
-
-    status = client.get("/api/webui/llm-proxy/api-key").get_json() or {}
-    assert status.get("configured") is True
-    assert "key" not in status
-    assert "sha256" not in status
-    assert "secret" not in status
-
-    revealed = client.post("/api/webui/llm-proxy/api-key/reveal").get_json() or {}
-    assert revealed.get("key") == key
-    assert revealed.get("recoverable") is True
-    assert "sha256" not in revealed
-    assert "secret" not in revealed
-
-    r = client.get("/v1/models", headers={"Authorization": f"Bearer {key}"})
-    assert r.status_code == 200
-    assert "data" in (r.get_json() or {})
-
-
-def test_webui_generated_proxy_api_key_accepts_x_api_key() -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from api.http.rag_routes import create_app
-
-    client = create_app().test_client()
-    generated = client.post("/api/webui/llm-proxy/api-key/generate").get_json() or {}
-    key = generated["key"]
-
-    r = client.get("/v1/models", headers={"x-api-key": key})
-    assert r.status_code == 200
-    assert "data" in (r.get_json() or {})
-
-
-def test_webui_regenerate_proxy_api_key_invalidates_old_key() -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from api.http.rag_routes import create_app
-
-    client = create_app().test_client()
-    first = client.post("/api/webui/llm-proxy/api-key/generate").get_json() or {}
-    second = client.post("/api/webui/llm-proxy/api-key/generate").get_json() or {}
-    assert first["key"] != second["key"]
-    assert second.get("rotated_at")
-
-    old_response = client.get("/v1/models", headers={"Authorization": f"Bearer {first['key']}"})
-    assert old_response.status_code == 401
-
-    new_response = client.get("/v1/models", headers={"Authorization": f"Bearer {second['key']}"})
-    assert new_response.status_code == 200
-
-
-def test_webui_delete_proxy_api_key_closes_v1() -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from api.http.rag_routes import create_app
-
-    client = create_app().test_client()
-    generated = client.post("/api/webui/llm-proxy/api-key/generate").get_json() or {}
-    assert generated.get("configured") is True
-
-    deleted = client.delete("/api/webui/llm-proxy/api-key").get_json() or {}
-    assert deleted.get("configured") is False
-
-    r = client.get("/v1/models", headers={"Authorization": f"Bearer {generated['key']}"})
-    assert r.status_code == 503
-    assert ((r.get_json() or {}).get("error") or {}).get("type") == "server_configuration_error"
-
-
-@pytest.mark.parametrize(
-    ("method", "path", "body"),
-    [
-        ("get", "/v1/models", None),
-        ("post", "/v1/chat/completions", {"model": "fake", "messages": []}),
-        ("post", "/v1/messages", {"model": "fake", "messages": []}),
-        ("post", "/v1/responses", {"model": "fake", "input": "hi"}),
-        ("post", "/v1/files/apply-edit", {}),
-        ("post", "/v1/external-docs/ingest", {}),
-    ],
-)
-def test_v1_routes_share_proxy_api_key_middleware(method: str, path: str, body: dict[str, Any] | None) -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from api.http.rag_routes import create_app
-
-    client = create_app().test_client()
-    request_fn = getattr(client, method)
-    kwargs: dict[str, Any] = {"headers": {NO_TEST_PROXY_AUTH_HEADER: "1"}}
-    if body is not None:
-        kwargs["json"] = body
-    r = request_fn(path, **kwargs)
-    assert r.status_code == 401
-    assert ((r.get_json() or {}).get("error") or {}).get("type") == "authentication_error"
-
-
-def test_non_v1_routes_remain_reachable_without_proxy_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    import os
-    import sys
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    import api.http.rag_routes as rag_routes
-
-    monkeypatch.setattr(
-        rag_routes,
-        "check_stack_health",
-        lambda: SimpleNamespace(
-            http_status=200,
-            to_json_dict=lambda service: {"service": service, "status": "healthy"},
-        ),
-    )
-
-    client = rag_routes.create_app().test_client()
-    assert client.get("/health").status_code == 200
 
 
 @pytest.mark.parametrize(
@@ -3618,8 +3034,9 @@ def test_chat_completions_collection_params_call_is_compatible_without_prompt_na
 def test_v1_blueprint_unhandled_exception_is_logged_for_notifications(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import api.http.rag_routes as rag_routes
     import llm_proxy.v1_blueprint as v1_blueprint
+
+    import api.http.rag_routes as rag_routes
 
     logged: list[tuple[str, str, str | None]] = []
 
@@ -3650,9 +3067,10 @@ def test_v1_blueprint_unhandled_exception_is_logged_for_notifications(
 def test_v1_chat_completions_smoke_supports_two_turn_requests(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import api.http.rag_routes as rag_routes
     import llm_proxy.v1_blueprint as v1_blueprint
     from flask import jsonify, request
+
+    import api.http.rag_routes as rag_routes
 
     calls: list[dict[str, Any]] = []
 
@@ -3714,9 +3132,10 @@ def test_v1_chat_completions_smoke_supports_two_turn_requests(
 def test_v1_responses_route_maps_to_chat_and_returns_response_json(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import api.http.rag_routes as rag_routes
     import llm_proxy.v1_blueprint as v1_blueprint
     from flask import jsonify
+
+    import api.http.rag_routes as rag_routes
 
     captured: dict[str, Any] = {}
 
@@ -3985,9 +3404,10 @@ def test_v1_responses_tool_choice_normalized_after_tools_mapping() -> None:
 def test_v1_responses_route_maps_local_shell_to_function_tool_for_chat(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import api.http.rag_routes as rag_routes
     import llm_proxy.v1_blueprint as v1_blueprint
     from flask import jsonify
+
+    import api.http.rag_routes as rag_routes
 
     captured: dict[str, Any] = {}
 
@@ -4029,9 +3449,10 @@ def test_v1_responses_route_maps_local_shell_to_function_tool_for_chat(
 def test_v1_responses_followup_with_function_call_output_uses_previous_response_history(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import api.http.rag_routes as rag_routes
     import llm_proxy.v1_blueprint as v1_blueprint
     from flask import jsonify
+
+    import api.http.rag_routes as rag_routes
 
     v1_blueprint._RESPONSES_HISTORY.clear()
     v1_blueprint._RESPONSES_CHAIN_IDS.clear()
@@ -4430,9 +3851,10 @@ def test_resolve_trace_chain_id_prefers_explicit_proxy_trace_meta() -> None:
 def test_v1_chat_completions_route_injects_incoming_request_id_into_proxy_trace_meta(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import api.http.rag_routes as rag_routes
     import llm_proxy.v1_blueprint as v1_blueprint
     from flask import jsonify
+
+    import api.http.rag_routes as rag_routes
 
     captured: dict[str, Any] = {}
 
@@ -4469,9 +3891,10 @@ def test_v1_chat_completions_route_injects_incoming_request_id_into_proxy_trace_
 def test_v1_responses_route_injects_incoming_request_id_into_proxy_trace_meta(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import api.http.rag_routes as rag_routes
     import llm_proxy.v1_blueprint as v1_blueprint
     from flask import jsonify
+
+    import api.http.rag_routes as rag_routes
 
     captured: dict[str, Any] = {}
 
@@ -4584,8 +4007,9 @@ def test_native_tools_stream_trace_includes_tokens_estimates_and_latency(
 def test_streaming_vision_request_preserves_native_tools_when_model_supports_them(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import api.http.rag_routes as rag_routes
     import llm_proxy.chat_completions_handler as handler
+
+    import api.http.rag_routes as rag_routes
 
     class VisionStreamChatClient:
         def __init__(self) -> None:
@@ -4669,8 +4093,9 @@ def test_streaming_vision_request_preserves_native_tools_when_model_supports_the
 def test_streaming_vision_request_preserves_native_tools_even_when_caps_omit_tools(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import api.http.rag_routes as rag_routes
     import llm_proxy.chat_completions_handler as handler
+
+    import api.http.rag_routes as rag_routes
 
     class VisionStreamChatClient:
         def __init__(self) -> None:
@@ -4755,8 +4180,9 @@ def test_streaming_vision_request_uses_fallback_when_model_lacks_vision(
 ) -> None:
     import json
 
-    import api.http.rag_routes as rag_routes
     import llm_proxy.chat_completions_handler as handler
+
+    import api.http.rag_routes as rag_routes
     from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
 
     class Repo:
@@ -5032,9 +4458,10 @@ def test_stream_trace_separates_reasoning_and_final_content_in_sse(
 def test_chat_completions_non_stream_uses_ollama_provider_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from llm_interactor.contracts import LLMResponse
+
     import api.http.rag_routes as rag_routes
     from llm_interactor import ExtensionManager
-    from llm_interactor.contracts import LLMResponse
 
     class Runtime:
         def __init__(self) -> None:
@@ -5154,9 +4581,10 @@ def test_chat_completions_non_stream_uses_ollama_provider_runtime(
 def test_chat_completions_stream_uses_ollama_provider_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from llm_interactor.contracts import LLMStreamEvent
+
     import api.http.rag_routes as rag_routes
     from llm_interactor import ExtensionManager
-    from llm_interactor.contracts import LLMStreamEvent
 
     class Runtime:
         def __init__(self) -> None:

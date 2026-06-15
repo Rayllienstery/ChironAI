@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import base64
 import binascii
+import ipaddress
 import json
 import os
 import re
 import socket
-import ipaddress
-from urllib.parse import urlparse
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 

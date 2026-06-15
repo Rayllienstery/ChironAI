@@ -25,7 +25,11 @@ from llm_interactor.manifest import (
     BackendManifest,
     ExtensionManifest,
 )
-from llm_interactor.registry_client import ExtensionRegistryClient, ExtensionRegistryDiagnostic, ExtensionRegistryLoadResult
+from llm_interactor.registry_client import (
+    ExtensionRegistryClient,
+    ExtensionRegistryDiagnostic,
+    ExtensionRegistryLoadResult,
+)
 from llm_interactor.runtime import LLMRuntime, ProviderRegistry
 
 __all__ = [

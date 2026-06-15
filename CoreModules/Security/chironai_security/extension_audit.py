@@ -12,7 +12,6 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 from urllib.parse import urlparse
 
-
 MANIFEST_FILENAME = "chironai-extension.json"
 BLOCKING_SEVERITIES = {"critical"}
 

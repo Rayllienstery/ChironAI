@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from api.http.webui_crawler_indexing_helpers import create_collection_log_metadata
 from api.http.webui_crawler_routes import (
     _clip_text_for_embedding,
     _is_embed_context_length_error,
 )
-from api.http.webui_crawler_indexing_helpers import create_collection_log_metadata
 
 
 def test_clip_text_for_embedding_prefers_sentence_boundary() -> None:

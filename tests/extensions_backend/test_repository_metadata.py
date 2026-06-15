@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import pytest
+from extensions_backend.repository_metadata import sanitize_readme_markdown
 
 from extensions_backend import GitHubExtensionRepositoryClient
-from extensions_backend.repository_metadata import sanitize_readme_markdown
 
 
 def test_github_repository_client_maps_latest_release(monkeypatch: pytest.MonkeyPatch) -> None:

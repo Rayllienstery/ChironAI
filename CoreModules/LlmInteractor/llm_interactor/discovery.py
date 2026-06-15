@@ -13,9 +13,9 @@ from chironai_security import (
     audit_extension_or_raise,
     format_blocking_error,
 )
+
 from llm_interactor.contracts import LLMProvider, ProviderHostContext
 from llm_interactor.manifest import ExtensionManifest, manifest_from_dict
-
 
 MANIFEST_FILENAME = "chironai-extension.json"
 

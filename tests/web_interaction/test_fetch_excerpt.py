@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import requests
-
 from web_interaction.fetch_excerpt import excerpt_url_allowed, fetch_page_excerpt
 
 

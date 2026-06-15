@@ -232,8 +232,8 @@ def cmd_rag_tests_lint(_: argparse.Namespace) -> int:
     if root not in sys.path:
         sys.path.insert(0, root)
     try:
+        from application.rag_tests.lint import format_issues_text, lint_expected_concepts
         from application.rag_tests.loader import get_rag_tests_root, load_all_tests
-        from application.rag_tests.lint import lint_expected_concepts, format_issues_text
     except ImportError as e:
         print(f"RAG tests module not available: {e}", file=sys.stderr)
         return 1

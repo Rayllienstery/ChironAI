@@ -5,7 +5,6 @@ Focused tests for Qdrant payload structure and search request shape.
 from __future__ import annotations
 
 
-
 def test_qdrant_search_body_shape() -> None:
     """Search request must have vector, limit, with_payload."""
     from infrastructure.qdrant.rag_repository_impl import QdrantRagRepository

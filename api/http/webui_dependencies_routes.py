@@ -15,9 +15,8 @@ from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
 
-from flask import Blueprint, jsonify
-
 from error_manager.http import error_response as _error_response
+from flask import Blueprint, jsonify
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COREUI_ROOT = REPO_ROOT / "CoreModules" / "CoreUI"

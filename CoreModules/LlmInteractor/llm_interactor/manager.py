@@ -7,8 +7,8 @@ import queue
 import re
 import shutil
 import stat
-import threading
 import tempfile
+import threading
 import time
 import uuid
 import zipfile
@@ -20,10 +20,16 @@ from typing import Any
 from urllib.parse import quote, urlparse
 
 import requests
-
 from chironai_security import audit_extension_or_raise
+
 from llm_interactor.contracts import ProviderHostContext
-from llm_interactor.discovery import FailedExtension, LoadedExtension, MANIFEST_FILENAME, discover_extensions, load_manifest_from_dir
+from llm_interactor.discovery import (
+    MANIFEST_FILENAME,
+    FailedExtension,
+    LoadedExtension,
+    discover_extensions,
+    load_manifest_from_dir,
+)
 from llm_interactor.install_state import ExtensionsRepository, InstalledExtensionRecord
 from llm_interactor.manifest import EXTENSION_API_VERSION, EXTENSION_TYPE_LLM_PROVIDER
 from llm_interactor.runtime import LLMRuntime, ProviderRegistry

@@ -7,7 +7,6 @@ from typing import Any
 
 import requests
 
-
 MD_INGESTION_URL = os.getenv("MD_INGESTION_SERVICE_URL", "http://localhost:5002")
 
 

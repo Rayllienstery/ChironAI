@@ -29,13 +29,13 @@ DEFAULT_PROVIDER_ID = (os.getenv("DEFAULT_LLM_PROVIDER_ID") or "ollama").strip()
 
 
 def _bootstrap_cli_runtime() -> object:
-    from llm_interactor import ExtensionManager, ProviderHostContext
     from extensions_backend import (
         ExtensionBlocklistPolicy,
         ExtensionManagementService,
         ExtensionRegistryClient,
         GitHubExtensionRepositoryClient,
     )
+    from llm_interactor import ExtensionManager, ProviderHostContext
 
     try:
         from config import (

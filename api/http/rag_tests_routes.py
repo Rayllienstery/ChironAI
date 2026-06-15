@@ -18,10 +18,15 @@ from typing import Any
 
 import requests
 from flask import Blueprint, Response, current_app, jsonify, request
+from rag_service.application.params import get_rag_answer_params
+from rag_service.application.use_cases import build_rag_context
 
+from api.http.proxy_trace import get_current_trace, get_response_artifacts, recent_proxy_traces
 from application.rag.proxy_settings_contract import load_proxy_settings, resolve_rag_collection
 from application.rag_tests.authoring import (
     build_rag_test_markdown as _rag_tests_build_md,
+)
+from application.rag_tests.authoring import (
     normalize_concepts as _normalize_concepts,
 )
 from application.rag_tests.metrics import (
@@ -29,19 +34,16 @@ from application.rag_tests.metrics import (
     normalize_rag_test_run,
 )
 from application.rag_tests.runner import (
-    build_test_retrieval_query,
     build_proxy_chat_payload,
     build_rag_test_error_result,
     build_rag_test_result,
+    build_test_retrieval_query,
     rag_tests_retrieval_preset,
 )
 from config import get_qdrant_url
 from core.contracts.webui_api import WEBUI_URL_PREFIX
-from api.http.proxy_trace import get_current_trace, get_response_artifacts, recent_proxy_traces
 from infrastructure.database import get_rag_test_runs_repository, get_settings_repository
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
-from rag_service.application.params import get_rag_answer_params
-from rag_service.application.use_cases import build_rag_context
 
 rag_tests_bp = Blueprint("rag_tests", __name__, url_prefix=WEBUI_URL_PREFIX)
 _ERROR_LOG = get_webui_error_logger()

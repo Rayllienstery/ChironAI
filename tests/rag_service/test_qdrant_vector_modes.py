@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-
 from rag_service.domain.errors import RetrievalError
 from rag_service.infrastructure.qdrant_repository import QdrantRagRepository
 
