@@ -1,6 +1,6 @@
 # Way to 1000
 
-> **Implementation status (2026-06-15):** Phases 0–2 done; Phase 3–5 in progress. Session: handler split (`native_tools_prep`, `trace_persistence`), `/ready` probe, SQLite migration smoke, crawler OpenAPI summaries.
+> **Implementation status (2026-06-15):** Phases 0–2 done; Phase 3–5 in progress. Session: legacy tool-mode stream prep → `chat_completions_legacy_tool_stream.py`; prior: SSE generators → `chat_completions_sse_generators.py`; splits (`streaming_orchestration`, `trace_request`, RAG trace + upstream budget helpers).
 
 Цель: довести ChironAI от сильной локальной инженерной платформы до проекта, который можно оценивать как production-ready / enterprise-ready на **950–1000** баллов.
 
@@ -133,7 +133,7 @@
 | `tests/api/test_http_endpoints.py` | ~5340 | **1** — безопасный старт, не трогает runtime |
 | `CoreModules/CoreUI/src/services/api.js` | ~1681 | **2** — после трека C harness |
 | `api/http/webui_crawler_routes.py` | ~2468 | **3** — после helpers + test split |
-| `CoreModules/LlmProxy/llm_proxy/chat_completions_handler.py` | ~2601 | **4** — после трека B settings |
+| `CoreModules/LlmProxy/llm_proxy/chat_completions_handler.py` | ~1963 | **4** — после трека B settings |
 | `CoreModules/LlmInteractor/llm_interactor/manager.py` | ~2110 | **5** |
 | `CoreModules/CoreUI/src/components/CrawlerTab.jsx` | ~2421 | **6** |
 | `CoreModules/CoreUI/src/components/RagTestsTab.jsx` | ~2804 | **7** — *добавлен, пропущен в v1* |
@@ -146,7 +146,7 @@
 - [ ] Карта ответственностей для каждого файла из top-10.
 - [ ] *(добавлено)* Characterization tests перед split там, где coverage тонкий.
 - [ ] Backend routes: вынести pure helpers → `api/http/*_helpers.py`; routes по доменам (crawler: sources, jobs, indexer, collection).
-- [ ] `chat_completions_handler`: orchestration, tools, RAG supplement, upstream, trace persistence. *(vision/url → `chat_completions_ollama_proxy.py`; RAG prep → `chat_completions_rag_prep.py`; native tools → `chat_completions_native_tools_prep.py`; trace log metadata → `chat_completions_trace_persistence.py` + tests; handler **~2635** lines)*
+- [ ] `chat_completions_handler`: orchestration, tools, RAG supplement, upstream, trace persistence. *(vision/url → `chat_completions_ollama_proxy.py`; RAG prep/trace → `chat_completions_rag_prep.py`; native tools → `chat_completions_native_tools_prep.py`; streaming post-process → `chat_completions_streaming_orchestration.py`; SSE generators → `chat_completions_sse_generators.py`; legacy tool stream prep → `chat_completions_legacy_tool_stream.py`; trace request → `chat_completions_trace_request.py`; trace log metadata → `chat_completions_trace_persistence.py`; upstream cap → `chat_completions_upstream_budget.py` + tests; handler **~1963** lines)*
 - [ ] Frontend tabs: container + list + editor + modals + hooks.
 - [ ] `api.js` → `services/{crawler,rag,proxy,extensions,docker}.ts` + общий `http.ts`.
 - [ ] `config/__init__.py` → `config/loader.py`, `config/env.py`, тонкий `__init__.py`.
@@ -322,7 +322,7 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 
 1. [x] `api.js` → domain services (+ TS). *(``http.js``, ``proxy.js``, ``crawler.js``, ``extensions.js``, ``rag.js``; api.js ~610 lines)*
 2. [x] `webui_crawler_routes.py` + helpers. *(partial: `compute_source_stats`, source meta/discover helpers)*
-3. [ ] `chat_completions_handler.py` (после settings resolver). *(vision/url → `chat_completions_ollama_proxy.py`; RAG prep → `chat_completions_rag_prep.py`; native tools + trace persistence splits + tests; handler ~2635 lines)*
+3. [ ] `chat_completions_handler.py` (после settings resolver). *(RAG/trace/upstream/streaming_orchestration/trace_request/sse_generators/legacy_tool_stream splits + tests; handler ~1963 lines; non-stream native-tools retry cascade + non-stream response assembly remain)*
 4. [ ] `manager.py`.
 5. [ ] `CrawlerTab` → `RagTab` → `RagTestsTab` → `LlmProxyBuildsTab`.
 6. [ ] `config/__init__.py`.

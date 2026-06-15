@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from llm_proxy.chat_completions_rag_prep import (
     apply_proxy_context_char_limits,
     build_framework_name_to_collection_map,
+    build_rag_context_log_snapshot,
+    enrich_rag_trace_for_ui,
     resolve_framework_collection_ttl_days,
     resolve_project_fresh_collections,
 )
@@ -88,3 +90,32 @@ def test_apply_proxy_context_char_limits_keeps_defaults_when_unset() -> None:
     assert chunk == 1024
     assert total == 2048
     assert top_k is None
+
+
+def test_build_rag_context_log_snapshot() -> None:
+    ctx = SimpleNamespace(
+        chunks_info=[{"id": 1}],
+        max_score=0.9,
+        context_text="hello world",
+    )
+    snapshot = build_rag_context_log_snapshot(ctx)
+    assert snapshot is not None
+    assert snapshot["chunks_count"] == 1
+    assert snapshot["max_score"] == 0.9
+
+
+def test_enrich_rag_trace_for_ui_builds_steps() -> None:
+    trace: dict = {"rag": {}, "internet": {"background_refresh_started": False}}
+    ctx = SimpleNamespace(
+        context_text="abc",
+        chunks_info=[{"score": 1.0}],
+    )
+    enrich_rag_trace_for_ui(
+        trace,
+        rag_ctx_for_log=ctx,
+        rag_timings={"embed_s": 0.01, "search_s": 0.02, "total_rag_s": 0.03},
+        effective_context_total_chars=2048,
+        background_refresh_started=False,
+    )
+    assert trace["rag"]["context"]["context_chars_used"] == 3
+    assert len(trace["steps"]) == 3

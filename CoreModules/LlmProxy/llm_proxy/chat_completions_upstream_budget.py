@@ -3,7 +3,51 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
+
+_DEFAULT_UPSTREAM_JSON_CAP = 380_000
+_MIN_UPSTREAM_JSON_CAP = 160_000
+_MAX_UPSTREAM_JSON_CAP = 2_000_000
+_UPSTREAM_JSON_CAP_ENV = "LLM_PROXY_UPSTREAM_MESSAGES_JSON_CAP"
+
+
+def resolve_upstream_json_cap(
+    input_budget: dict[str, Any] | None,
+    *,
+    env_var: str = _UPSTREAM_JSON_CAP_ENV,
+    default_cap: int = _DEFAULT_UPSTREAM_JSON_CAP,
+) -> int:
+    """Resolve the JSON char cap for upstream message compaction."""
+    try:
+        cap_raw = os.getenv(env_var, str(default_cap)).strip()
+        upstream_json_cap = int(cap_raw)
+    except (TypeError, ValueError):
+        upstream_json_cap = default_cap
+    upstream_json_cap = max(_MIN_UPSTREAM_JSON_CAP, min(upstream_json_cap, _MAX_UPSTREAM_JSON_CAP))
+    if input_budget is not None:
+        upstream_json_cap = min(
+            upstream_json_cap,
+            int(input_budget.get("input_budget_json_chars") or upstream_json_cap),
+        )
+    return upstream_json_cap
+
+
+def compact_upstream_messages_for_budget(
+    messages: list[Any],
+    input_budget: dict[str, Any] | None,
+) -> tuple[list[Any], dict[str, Any]]:
+    """Compact upstream messages using env cap, optionally limited by input budget."""
+    budget_json_chars = resolve_upstream_json_cap(input_budget)
+    compacted_messages, compact_diag = _compact_upstream_messages_for_budget(
+        messages,
+        budget_json_chars=budget_json_chars,
+    )
+    if input_budget is not None:
+        compact_diag["reserved_output_tokens"] = input_budget["reserved_output_tokens"]
+        compact_diag["safety_margin_tokens"] = input_budget["safety_margin_tokens"]
+        compact_diag["input_budget_tokens"] = input_budget["input_budget_tokens"]
+    return compacted_messages, compact_diag
 
 
 def _ollama_message_content_str(content: Any) -> str:

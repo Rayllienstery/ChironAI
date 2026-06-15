@@ -106,3 +106,74 @@ def apply_proxy_context_char_limits(
         total_chars = total_override
     rag_top_k = proxy_settings_optional_int(proxy_settings, "rag_top_k", 1, 256)
     return chunk_chars, total_chars, rag_top_k
+
+
+def build_rag_context_log_snapshot(rag_ctx_for_log: Any | None) -> dict[str, Any] | None:
+    if not rag_ctx_for_log:
+        return None
+    return {
+        "chunks_count": len(rag_ctx_for_log.chunks_info),
+        "max_score": rag_ctx_for_log.max_score,
+        "context_length": len(rag_ctx_for_log.context_text),
+        "chunks_info": rag_ctx_for_log.chunks_info[:5] if rag_ctx_for_log.chunks_info else [],
+    }
+
+
+def enrich_rag_trace_for_ui(
+    trace: dict[str, Any],
+    *,
+    rag_ctx_for_log: Any | None,
+    rag_timings: dict[str, float] | None,
+    effective_context_total_chars: int,
+    background_refresh_started: bool,
+) -> None:
+    """Populate trace rag/internet fields and RAG sub-step timeline for the UI."""
+    rag_timings = rag_timings or {}
+    trace["rag"]["timings"] = dict(rag_timings)
+    trace["internet"].update(
+        {
+            "fetch_s": float(rag_timings.get("fetch_s", 0.0) or 0.0),
+            "discovery_s": float(rag_timings.get("discovery_s", 0.0) or 0.0),
+        }
+    )
+    trace["internet"]["used"] = bool(
+        rag_timings.get("fetch_s")
+        or rag_timings.get("discovery_s")
+        or background_refresh_started
+    )
+    if rag_ctx_for_log:
+        trace["rag"]["context"] = {
+            "context_chars_used": len(rag_ctx_for_log.context_text or ""),
+            "context_budget_chars": int(effective_context_total_chars or 0),
+            "context_text_preview": (rag_ctx_for_log.context_text or "")[:2000],
+            "chunks": rag_ctx_for_log.chunks_info[:20] if rag_ctx_for_log.chunks_info else [],
+        }
+        trace["rag"]["tokens_estimates"] = {
+            "embed_tokens_in": rag_timings.get("embed_tokens_in"),
+            "rerank_prompt_tokens_in": rag_timings.get("rerank_prompt_tokens_in"),
+            "fetch_tokens_in": rag_timings.get("fetch_tokens_in"),
+            "discovery_tokens_in": rag_timings.get("discovery_tokens_in"),
+        }
+    else:
+        trace["rag"]["context"] = None
+
+    steps: list[dict[str, object]] = []
+
+    def _add_step(name: str, dur_s: float, tokens_in_est: object | None = None) -> None:
+        if dur_s and dur_s > 0:
+            steps.append(
+                {
+                    "name": name,
+                    "duration_ms": int(dur_s * 1000),
+                    "tokens_in_est": tokens_in_est,
+                    "tokens_out_est": 0,
+                }
+            )
+
+    _add_step("embed", float(rag_timings.get("embed_s", 0.0) or 0.0), rag_timings.get("embed_tokens_in"))
+    _add_step("search", float(rag_timings.get("search_s", 0.0) or 0.0), None)
+    _add_step("rerank", float(rag_timings.get("rerank_s", 0.0) or 0.0), rag_timings.get("rerank_prompt_tokens_in"))
+    _add_step("fetch", float(rag_timings.get("fetch_s", 0.0) or 0.0), rag_timings.get("fetch_tokens_in"))
+    _add_step("discovery", float(rag_timings.get("discovery_s", 0.0) or 0.0), rag_timings.get("discovery_tokens_in"))
+    _add_step("total_rag", float(rag_timings.get("total_rag_s", 0.0) or 0.0), None)
+    trace["steps"] = steps
