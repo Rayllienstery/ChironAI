@@ -47,8 +47,9 @@ tmp/                   # Temporary/dev-only material
 
 During migration, some host-owned folders may still exist at the repository
 root. Treat those as migration tails, not as permanent architecture. Phase 1
-has moved the main host packages into `Core/`; `modules/` and `prompts/` remain
-root-level migration tails for later phases.
+moved the main host packages into `Core/`; Phase 2 moved host-owned services
+into `Core/modules/`. `prompts/` remains a root-level migration tail for a
+later phase.
 
 `scripts/root_layout_guard.py` is the automated root allowlist. Update that
 guardrail and this document together when a root folder is intentionally added,
@@ -86,7 +87,6 @@ intentional public boundary. Host-specific code goes under `Core/`.
 | `docs/` | project support | architecture and runbooks |
 | `extensions/` | extensions | extension payloads |
 | `logs/` | runtime data | local logs and databases |
-| `modules/` | Core | migration tail: host-owned services |
 | `prompts/` | Core | migration tail: prompt templates |
 | `rag_tests/` | project support | RAG evaluation fixtures |
 | `reports/` | project support | generated reports |
@@ -105,12 +105,7 @@ intentional public boundary. Host-specific code goes under `Core/`.
 | `infrastructure/` | `Core/infrastructure/` | Host adapters and compatibility shims. |
 | `config/` | `Core/config/` | Configuration authority and env/yaml loading. |
 | `core/` | `Core/core/` | Shared contracts/config package; import name remains `core`. |
-| `modules/webui_backend/` | `Core/modules/webui_backend/` | Canonical WebUI backend package. |
-| `modules/extensions_backend/` | `Core/modules/extensions_backend/` | Extension registry/discovery/install/status owner. |
-| `modules/crawler_service/` | `Core/modules/crawler_service/` | Crawl service, unless later promoted with a module contract. |
-| `modules/html_md/` | `Core/modules/html_md/` | Host-owned helper/service package. |
-| `modules/md_indexer/` | `Core/modules/md_indexer/` | Host-owned indexing pipeline package unless promoted deliberately. |
-| `modules/tools/` | `Core/modules/tools/` | Host-owned support tooling. |
+| `modules/*` | `Core/modules/*` | Host-owned services (webui_backend, extensions_backend, crawler_service, html_md, md_indexer, tools, external_docs_rag). |
 | `prompts/` | TBD owner under `Core/` or `CoreModules/PromptsManager/` | Must not remain an unowned root runtime dependency. |
 
 ## Module Responsibilities

@@ -23,11 +23,11 @@ CoreUI (RAG Tests / Notifications / Builds)
 
 ## Root freelance runtime folders
 
-- Current root-level runtime folders (`modules/`, `prompts/`) are migration
-  tails. Host packages now live under `Core/`.
+- Root-level runtime folder `prompts/` is a migration tail. Host packages and
+  host-owned services now live under `Core/` and `Core/modules/`.
 - Target ownership:
-  - host layers move under `Core/`;
-  - host-owned services move under `Core/modules/`;
+  - host layers under `Core/`;
+  - host-owned services under `Core/modules/` (Phase 2 complete);
   - reusable modules stay or move under `CoreModules/`;
   - prompt templates get an explicit owner instead of remaining root runtime
     data.

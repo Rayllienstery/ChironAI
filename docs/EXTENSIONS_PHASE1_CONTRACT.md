@@ -13,12 +13,12 @@ Extensions ownership moves outside the core app.
 
 | Area | Owner |
 |------|-------|
-| Registry URL, registry polling, registry cache | `modules/extensions_backend` |
-| GitHub README/release/tag/ref metadata | `modules/extensions_backend` |
-| Install/update/remove/rollback/purge lifecycle | `modules/extensions_backend` |
-| Local install state and provenance | `modules/extensions_backend` |
-| Blocklist and marketplace policy | `modules/extensions_backend` |
-| Extension runtime status polling | `modules/extensions_backend` |
+| Registry URL, registry polling, registry cache | `Core/modules/extensions_backend` |
+| GitHub README/release/tag/ref metadata | `Core/modules/extensions_backend` |
+| Install/update/remove/rollback/purge lifecycle | `Core/modules/extensions_backend` |
+| Local install state and provenance | `Core/modules/extensions_backend` |
+| Blocklist and marketplace policy | `Core/modules/extensions_backend` |
+| Extension runtime status polling | `Core/modules/extensions_backend` |
 | Host capabilities, provider runtime bridge, sandbox protocol | `CoreModules/ExtensionsHost` target |
 | Out-of-process worker isolation | `CoreModules/ExtensionsSandbox` |
 | Shared DTOs and HTTP constants | `core/contracts/extensions_api.py` |

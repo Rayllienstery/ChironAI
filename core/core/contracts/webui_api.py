@@ -3,7 +3,7 @@ WebUI HTTP JSON contract.
 
 The React app ([CoreModules/CoreUI/src/services/api.js](CoreModules/CoreUI/src/services/api.js))
 calls ``GET/POST ...`` under this prefix. The canonical backend package is
-[modules/webui_backend](modules/webui_backend); its Flask entrypoints and the
+[Core/modules/webui_backend](Core/modules/webui_backend); its Flask entrypoints and the
 remaining route-composition modules under [api/http](api/http) must use the same
 ``WEBUI_URL_PREFIX`` and payload shapes for CoreUI (or version the API explicitly).
 """

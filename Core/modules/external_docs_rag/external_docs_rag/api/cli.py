@@ -1,7 +1,7 @@
 """
 CLI to ingest external docs (e.g. TMArchitecture) into a Qdrant collection.
 
-Usage (from repo root, with modules/external_docs_rag on PYTHONPATH):
+Usage (from repo root, with Core/modules/external_docs_rag on PYTHONPATH):
   python -m external_docs_rag.api.cli ingest tm_architecture
   python -m external_docs_rag.api.cli ingest --list
 """

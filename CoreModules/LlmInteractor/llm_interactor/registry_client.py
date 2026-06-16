@@ -1,6 +1,6 @@
 """Compatibility wrapper for the extension registry client.
 
-The registry implementation is owned by ``modules/extensions_backend``.
+The registry implementation is owned by ``Core/modules/extensions_backend``.
 """
 
 from __future__ import annotations

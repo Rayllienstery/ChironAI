@@ -7,7 +7,7 @@ def test_legacy_extension_service_flask_key_is_removed() -> None:
     root = Path(__file__).resolve().parents[2]
     legacy_key = "llm_" + "extensions_service"
     offenders: list[str] = []
-    for base in ("Core/api", "CoreModules", "modules", "Core/core"):
+    for base in ("Core/api", "CoreModules", "Core/modules", "Core/core"):
         for path in (root / base).rglob("*.py"):
             text = path.read_text(encoding="utf-8")
             if legacy_key in text:
@@ -24,7 +24,7 @@ def test_extension_runtime_flask_keys_are_confined_to_contract_accessors() -> No
     }
     forbidden = ("llm_interactor_runtime", "llm_provider_registry")
     offenders: list[str] = []
-    for base in ("Core/api", "CoreModules", "modules", "Core/core"):
+    for base in ("Core/api", "CoreModules", "Core/modules", "Core/core"):
         for path in (root / base).rglob("*.py"):
             rel = path.relative_to(root).as_posix()
             text = path.read_text(encoding="utf-8")

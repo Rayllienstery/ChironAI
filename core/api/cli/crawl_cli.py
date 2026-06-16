@@ -23,8 +23,8 @@ def main() -> None:
             root,
             os.path.join(root, "Core"),
             os.path.join(root, "CoreModules", "WebUIBackend"),
-            os.path.join(root, "modules", "crawler_service"),
-            os.path.join(root, "modules", "html_md"),
+            os.path.join(root, "Core", "modules", "crawler_service"),
+            os.path.join(root, "Core", "modules", "html_md"),
         ]
     )
     env["PYTHONPATH"] = _p + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")

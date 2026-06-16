@@ -165,10 +165,10 @@ services as CoreModules.
 
 ### Acceptance Criteria
 
-- [ ] There is no top-level `modules/` source folder.
-- [ ] `webui_backend` remains the canonical Web UI backend package.
-- [ ] `extensions_backend` remains the owner of registry/discovery/install/status.
-- [ ] No module is promoted to `CoreModules/` without a documented module
+- [x] There is no top-level `modules/` source folder.
+- [x] `webui_backend` remains the canonical Web UI backend package.
+- [x] `extensions_backend` remains the owner of registry/discovery/install/status.
+- [x] No module is promoted to `CoreModules/` without a documented module
       contract and responsibility.
 
 ## Phase 3. Prompt Ownership

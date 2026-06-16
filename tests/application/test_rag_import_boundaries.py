@@ -4,7 +4,7 @@ import ast
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-RUNTIME_DIRS = ("Core/api", "Core/application", "CoreModules", "Core/infrastructure", "modules", "scripts")
+RUNTIME_DIRS = ("Core/api", "Core/application", "CoreModules", "Core/infrastructure", "Core/modules", "scripts")
 REMOVED_RAG_IMPORTS = {
     "application.rag.use_cases",
     "application.container",

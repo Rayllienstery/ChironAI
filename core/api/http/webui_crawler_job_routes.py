@@ -101,8 +101,8 @@ def register_crawler_job_routes(
                 [
                     _ROOT,
                     _WEBUI_BACKEND,
-                    os.path.join(_ROOT, "modules", "crawler_service"),
-                    os.path.join(_ROOT, "modules", "html_md"),
+                    os.path.join(_ROOT, "Core", "modules", "crawler_service"),
+                    os.path.join(_ROOT, "Core", "modules", "html_md"),
                 ]
             )
             env["PYTHONPATH"] = _extra_path + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")

@@ -17,8 +17,8 @@
 -e CoreModules/Security
 -e CoreModules/ExtensionsSandbox
 -e CoreModules/ErrorManager
--e modules/html_md
--e modules/crawler_service
--e modules/webui_backend
--e modules/extensions_backend
--e modules/external_docs_rag
+-e Core/modules/html_md
+-e Core/modules/crawler_service
+-e Core/modules/webui_backend
+-e Core/modules/extensions_backend
+-e Core/modules/external_docs_rag

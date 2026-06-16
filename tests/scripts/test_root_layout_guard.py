@@ -28,6 +28,5 @@ def test_ownership_table_mentions_migration_tails() -> None:
     table = render_ownership_table()
 
     assert "`Core/` | Core | application host container" in table
-    assert "`modules/` | Core | migration tail: host-owned services" in table
     assert "`WebUI/` | runtime data | runtime/data folder, not frontend source" in table
     assert ALLOWED_ROOT_DIRECTORIES["CoreModules"].owner == "CoreModules"

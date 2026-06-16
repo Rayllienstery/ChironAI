@@ -59,8 +59,8 @@ where = [
   "Core",
   "CoreModules/Security",
   "CoreModules/ExtensionsSandbox",
-  "modules/extensions_backend",
-  "modules/webui_backend",
+  "Core/modules/extensions_backend",
+  "Core/modules/webui_backend",
 ]
 include = [
   "application*",
@@ -81,10 +81,10 @@ testpaths = ["tests"]
 pythonpath = [
     ".",
     "Core",
-    "modules/webui_backend",
-    "modules/crawler_service",
-    "modules/extensions_backend",
-    "modules/html_md",
+    "Core/modules/webui_backend",
+    "Core/modules/crawler_service",
+    "Core/modules/extensions_backend",
+    "Core/modules/html_md",
     "CoreModules/LlmInteractor",
     "CoreModules/Security",
     "CoreModules/ExtensionsSandbox",
@@ -141,16 +141,16 @@ src = [
   "CoreModules/WebInteraction/web_interaction",
   "CoreModules/LogsManager/logs_manager",
   "CoreModules/MdIngestionService/md_ingestion_service",
-  "modules/webui_backend/webui_backend",
-  "modules/crawler_service/crawler_service",
-  "modules/extensions_backend/extensions_backend",
-  "modules/html_md/html_md",
+  "Core/modules/webui_backend/webui_backend",
+  "Core/modules/crawler_service/crawler_service",
+  "Core/modules/extensions_backend/extensions_backend",
+  "Core/modules/html_md/html_md",
 ]
 exclude = [
   ".venv",
   "venv",
   "CoreModules/CoreUI",
-  "modules/open_webui",
+  "Core/modules/open_webui",
 ]
 
 [tool.ruff.lint]
@@ -190,9 +190,9 @@ paths = [
   "Core/infrastructure",
   "Core/core",
   "CoreModules",
-  "modules/webui_backend/webui_backend",
-  "modules",
-  "modules/html_md",
+  "Core/modules/webui_backend/webui_backend",
+  "Core/modules",
+  "Core/modules/html_md",
   "scripts",
   "tests",
 ]
@@ -202,7 +202,7 @@ exclude = [
   ".venv",
   "venv",
   "CoreModules/CoreUI",
-  "modules/open_webui",
+  "Core/modules/open_webui",
 ]
 ignore_decorators = [
   "@*.route",

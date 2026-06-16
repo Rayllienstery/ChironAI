@@ -12,7 +12,7 @@ extraction.
 - **Dependencies**: installed by the root project; standalone work can use `pip install -r requirements.txt`.
 - **Environment**: `RAG_SERVICE_URL` (default 5001), `MD_INGESTION_SERVICE_URL` (5002), `CRAWLER_SERVICE_URL` (5003). DB for logs/settings can be added in infrastructure.
 - **Run full WebUI**: from the repository root, use `start_webui.bat` or `python -m webui_backend.rag_proxy`.
-- **Run modular target app only**: `PYTHONPATH=.;modules/webui_backend python -c "from webui_backend.api.http import create_app; create_app().run(port=5000)"`.
+- **Run modular target app only**: `PYTHONPATH=.;Core;Core/modules/webui_backend python -c "from webui_backend.api.http import create_app; create_app().run(port=5000)"`.
 
 ## API
 

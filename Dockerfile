@@ -21,7 +21,6 @@ RUN apt-get update \
 
 COPY pyproject.toml README.md ./
 COPY Core ./Core
-COPY modules ./modules
 COPY CoreModules/Security ./CoreModules/Security
 COPY CoreModules/ExtensionsSandbox ./CoreModules/ExtensionsSandbox
 COPY CoreModules/RagService ./CoreModules/RagService
@@ -32,10 +31,10 @@ COPY --from=coreui-build /build/CoreModules/CoreUI/dist ./CoreModules/CoreUI/dis
 
 RUN pip install --upgrade pip \
     && pip install . \
-    && pip install ./modules/html_md \
-    && pip install ./modules/webui_backend \
-    && pip install ./modules/crawler_service \
-    && pip install ./modules/extensions_backend \
+    && pip install ./Core/modules/html_md \
+    && pip install ./Core/modules/webui_backend \
+    && pip install ./Core/modules/crawler_service \
+    && pip install ./Core/modules/extensions_backend \
     && pip install ./CoreModules/Security \
     && pip install ./CoreModules/ExtensionsSandbox \
     && pip install ./CoreModules/RagService \

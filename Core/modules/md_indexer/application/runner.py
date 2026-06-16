@@ -15,7 +15,7 @@ from modules.md_indexer.domain.schema import Pipeline, Step
 
 def _pipelines_dir() -> Path:
     """Directory containing pipeline JSON files (Core/config/md_pipelines)."""
-    # Runner lives in modules/md_indexer/application/; project root is 3 levels up from application
+    # Runner lives in Core/modules/md_indexer/application/; project root is 3 levels up from application
     project_root = Path(__file__).resolve().parent.parent.parent.parent
     core_dir = project_root / "Core" / "config" / "md_pipelines"
     return core_dir if core_dir.is_dir() else project_root / "config" / "md_pipelines"

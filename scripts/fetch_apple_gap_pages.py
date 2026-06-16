@@ -12,7 +12,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEBUI = os.path.join(ROOT, "WebUI")
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "CoreModules", "WebUIBackend"))
-sys.path.insert(0, os.path.join(ROOT, "modules", "crawler_service"))
+sys.path.insert(0, os.path.join(ROOT, "Core", "modules", "crawler_service"))
 
 from crawler_service.application.crawl_runner import page_filename_for_url  # noqa: E402
 

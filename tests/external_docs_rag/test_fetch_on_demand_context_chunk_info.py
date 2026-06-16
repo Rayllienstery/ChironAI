@@ -7,7 +7,7 @@ import pytest
 
 # Ensure external_docs_rag package is importable.
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-_EXT_RAG_ROOT = os.path.join(_ROOT, "modules", "external_docs_rag")
+_EXT_RAG_ROOT = os.path.join(_ROOT, "Core", "modules", "external_docs_rag")
 if _EXT_RAG_ROOT not in sys.path:
     sys.path.insert(0, _EXT_RAG_ROOT)
 

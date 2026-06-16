@@ -45,7 +45,7 @@ def test_core_no_direct_ollama_http_ownership() -> None:
         "Core/api",
         "Core/application",
         "CoreModules/LlmProxy",
-        "modules/webui_backend",
+        "Core/modules/webui_backend",
         "Core/domain",
         "Core/infrastructure",
     ]:

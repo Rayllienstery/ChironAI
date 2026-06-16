@@ -35,7 +35,7 @@ DOCUMENTED_EXCEPTIONS: dict[str, str] = {
     "tests/llm_interactor/test_runtime.py": "Interactor runtime characterization suite; split deferred",
     "CoreModules/CoreUI/src/services/api.js": "Phase 3 domain service split complete; facade retained",
     "Core/config/env.py": "Phase 3 acceptable; env overrides cohesive unit",
-    "modules/webui_backend/webui_backend/apple_docs_extract.py": "Apple docs extractor; split deferred",
+    "Core/modules/webui_backend/webui_backend/apple_docs_extract.py": "Apple docs extractor; split deferred",
     "Core/api/http/rag_tests_routes.py": "RAG tests API; split after contract stabilization",
     "CoreModules/LlmProxy/llm_proxy/chat_completions_handler.py": "Phase 3 split complete; orchestration shell",
     "CoreModules/LlmProxy/llm_proxy/tool_helpers.py": "Shared tool helpers; extract incrementally",

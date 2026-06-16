@@ -25,11 +25,11 @@ def _root() -> str:
 
 
 def _app_py() -> str:
-    return os.path.join(_root(), "modules", "webui_backend", "webui_backend", "app.py")
+    return os.path.join(_root(), "Core", "modules", "webui_backend", "webui_backend", "app.py")
 
 
 def _webui_backend_root() -> str:
-    return os.path.join(_root(), "modules", "webui_backend")
+    return os.path.join(_root(), "Core", "modules", "webui_backend")
 
 
 def _module_env() -> dict[str, str]:
@@ -55,9 +55,9 @@ def _crawl_env() -> dict[str, str]:
         [
             _root(),
             os.path.join(_root(), "Core"),
-            os.path.join(_root(), "modules", "webui_backend"),
-            os.path.join(_root(), "modules", "crawler_service"),
-            os.path.join(_root(), "modules", "html_md"),
+            os.path.join(_root(), "Core", "modules", "webui_backend"),
+            os.path.join(_root(), "Core", "modules", "crawler_service"),
+            os.path.join(_root(), "Core", "modules", "html_md"),
         ]
     )
     env["PYTHONPATH"] = _p + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")

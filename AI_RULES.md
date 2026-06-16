@@ -31,11 +31,11 @@ Allowed ownership buckets:
   `WebUI/`, `logs/`, `tmp/`, and config files, when they are not importable
   runtime packages.
 
-Root-level runtime packages such as `modules/` or `prompts/` are migration
-tails only. Host-owned packages `api/`, `application`, `domain`,
-`infrastructure`, `config`, and `core` now live physically under `Core/` while
-keeping their public import names stable. Any new root-level runtime package
-requires an explicit allowlist entry and a documented owner.
+Root-level runtime packages such as `prompts/` are migration tails only.
+Host-owned packages `api/`, `application`, `domain`, `infrastructure`, `config`,
+`core`, and host services under `Core/modules/` live under `Core/` while keeping
+their public import names stable. Any new root-level runtime package requires an
+explicit allowlist entry and a documented owner.
 
 Automated guardrail: `scripts/root_layout_guard.py` and
 `tests/scripts/test_root_layout_guard.py` reject new top-level directories until
@@ -60,7 +60,6 @@ Current root directory ownership:
 | `docs/` | project support | architecture and runbooks |
 | `extensions/` | extensions | extension payloads |
 | `logs/` | runtime data | local logs and databases |
-| `modules/` | Core | migration tail: host-owned services |
 | `prompts/` | Core | migration tail: prompt templates |
 | `rag_tests/` | project support | RAG evaluation fixtures |
 | `reports/` | project support | generated reports |
@@ -93,7 +92,7 @@ are migration tails rather than permanent freelance packages.
 |------|------------|
 | **CoreUI** | React/Vite SPA under `CoreModules/CoreUI/`. Talks to the backend **only over HTTP**—no direct RAG, crawler, or ingestion calls. See `CoreModules/CoreUI/README.md`. |
 | **`WebUI/` folder** | Runtime/data directory (`rag_sources`, caches, logs, `last_collection.txt`). This is **not** the frontend and no longer contains Python entrypoints. |
-| **WebUIBackend** | Canonical Python backend package currently under `modules/webui_backend/webui_backend/`, target `Core/modules/webui_backend/webui_backend/`; owns WebUI entrypoints plus legacy crawl/ingest helpers that have not yet been extracted further. |
+| **WebUIBackend** | Canonical Python backend package under `Core/modules/webui_backend/webui_backend/`; owns WebUI entrypoints plus legacy crawl/ingest helpers that have not yet been extracted further. |
 | **Web UI (HTTP API)** | REST under the `/api/webui` prefix for dashboard, settings, logs, etc. The canonical package is `webui_backend`; the remaining route-composition tail is in the host API layer (`Core/api/http/...`, import name `api.http...`). |
 | **Open WebUI** | A separate Docker product; status/start is owned by the `open-webui` extension through DockerManager host capabilities. Do not conflate with **CoreUI** (our React app) or call it “our WebUI” without qualification. |
 
@@ -101,9 +100,8 @@ Ambiguous “WebUI” in conversation: clarify—**`WebUI/` data folder**, **Web
 
 ---
 
-Path note: `modules/webui_backend` and `modules/extensions_backend` are current
-physical locations. The root-cleanup target is `Core/modules/...` with stable
-import names, not automatic promotion into `CoreModules/`.
+Host-owned services live under `Core/modules/` with stable import names, not
+automatic promotion into `CoreModules/`.
 
 ## 3. CoreUI: how to change the UI
 
@@ -305,8 +303,8 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 | `docs/legacy_map.md` | Current risks and legacy wiring |
 | `docs/RAG_BEHAVIOR.md` | RAG behavior (retrieval/prompt work) |
 | `CoreModules/CoreUI/README.md` | Running the frontend, `VITE_API_URL` |
-| `modules/webui_backend/README.md` | Canonical Web UI backend |
-| `modules/README.md` | Module index |
+| `Core/modules/webui_backend/README.md` | Canonical Web UI backend |
+| `Core/modules/README.md` | Host-owned module index |
 | `CoreModules/LlmProxy/README.md` | Proxy, endpoints, env |
 | `CoreModules/LogsManager/README.md` | Internal proxy journal reader for LLM agents |
 | `CoreModules/RagService/README.md` | RAG package |

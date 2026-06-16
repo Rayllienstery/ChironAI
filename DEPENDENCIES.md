@@ -31,10 +31,10 @@ This document lists all files responsible for dependency management in the proje
 
 | File | Description |
 |------|-------------|
-| `modules/html_md/pyproject.toml` | Dependencies for HTML→Markdown converter (lxml, html2text) |
-| `modules/crawler_service/pyproject.toml` | Dependencies for Crawler Service (requests, playwright, html2text, lxml, PyYAML) |
-| `modules/crawler_service/requirements.txt` | Legacy requirements for crawler service |
-| `modules/webui_backend/requirements.txt` | Dependencies for WebUI Backend (flask, requests) |
+| `Core/modules/html_md/pyproject.toml` | Dependencies for HTML→Markdown converter (lxml, html2text) |
+| `Core/modules/crawler_service/pyproject.toml` | Dependencies for Crawler Service (requests, playwright, html2text, lxml, PyYAML) |
+| `Core/modules/crawler_service/requirements.txt` | Legacy requirements for crawler service |
+| `Core/modules/webui_backend/requirements.txt` | Dependencies for WebUI Backend (flask, requests) |
 
 ### WebUI
 

@@ -10,8 +10,8 @@
 From repository root (after `chironai-html-md`):
 
 ```bash
-pip install -e modules/html_md
-pip install -e modules/crawler_service
+pip install -e Core/modules/html_md
+pip install -e Core/modules/crawler_service
 ```
 
 Or use `requirements-dev.txt` (includes both).

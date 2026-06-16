@@ -1,7 +1,7 @@
 """
 WebUI Flask host: registers shared API blueprint and crawl entrypoints.
 
-Crawl logic lives in ``crawler_service`` (install: ``pip install -e modules/crawler_service``).
+Crawl logic lives in ``crawler_service`` (install: ``pip install -e Core/modules/crawler_service``).
 """
 
 from __future__ import annotations

@@ -43,12 +43,12 @@ def ensure_webui_runtime_paths(project_root: str | Path) -> None:
     """Bootstrap paths for the WebUI backend entrypoint when not installed editable."""
     root = ensure_repo_root_on_path(project_root)
     pairs = (
-        ("crawler_service", os.path.join(root, "modules", "crawler_service")),
-        ("html_md", os.path.join(root, "modules", "html_md")),
+        ("crawler_service", os.path.join(root, "Core", "modules", "crawler_service")),
+        ("html_md", os.path.join(root, "Core", "modules", "html_md")),
         ("error_manager", os.path.join(root, "CoreModules", "ErrorManager")),
         ("rag_service", os.path.join(root, "CoreModules", "RagService")),
         ("md_ingestion_service", os.path.join(root, "CoreModules", "MdIngestionService")),
-        ("extensions_backend", os.path.join(root, "modules", "extensions_backend")),
+        ("extensions_backend", os.path.join(root, "Core", "modules", "extensions_backend")),
     )
     for module_name, path in pairs:
         ensure_import_path(module_name, path)
@@ -62,7 +62,7 @@ def ensure_webui_composition_paths(project_root: str | Path | None = None) -> st
     """
     root = ensure_repo_root_on_path(project_root)
     pairs = (
-        ("external_docs_rag", os.path.join(root, "modules", "external_docs_rag")),
+        ("external_docs_rag", os.path.join(root, "Core", "modules", "external_docs_rag")),
         ("webinteraction", os.path.join(root, "CoreModules", "WebInteraction")),
         ("md_ingestion_service", os.path.join(root, "CoreModules", "MdIngestionService")),
         ("rag_service", os.path.join(root, "CoreModules", "RagService")),
@@ -72,7 +72,7 @@ def ensure_webui_composition_paths(project_root: str | Path | None = None) -> st
         ("extensions_sandbox", os.path.join(root, "CoreModules", "ExtensionsSandbox")),
         ("docker_manager", os.path.join(root, "CoreModules", "DockerManager")),
         ("error_manager", os.path.join(root, "CoreModules", "ErrorManager")),
-        ("webui_backend", os.path.join(root, "modules", "webui_backend")),
+        ("webui_backend", os.path.join(root, "Core", "modules", "webui_backend")),
     )
     for module_name, path in pairs:
         ensure_import_path(module_name, path)

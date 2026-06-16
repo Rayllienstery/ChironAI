@@ -5,7 +5,7 @@ Deterministic HTML → Markdown helpers (regex fallback, lxml DOM path, optional
 Install from repo root:
 
 ```bash
-pip install -e modules/html_md
+pip install -e Core/modules/html_md
 ```
 
 Used by `crawler_service` and `external_docs_rag`.

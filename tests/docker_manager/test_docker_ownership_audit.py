@@ -11,7 +11,7 @@ def test_docker_mechanics_are_owned_by_docker_manager() -> None:
         root / "CoreModules",
         root / "extensions",
         root / "Core" / "infrastructure",
-        root / "modules",
+        root / "Core" / "modules",
         root / "WebUI",
     ]
     banned = [

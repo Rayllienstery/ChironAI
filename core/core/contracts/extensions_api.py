@@ -5,7 +5,7 @@ route constants shared by CoreUI/WebUIBackend, the future ``extensions_backend``
 module, and the extension host/runtime layer.
 
 Ownership boundary:
-- ``modules/extensions_backend`` owns registry polling, GitHub repository
+- ``Core/modules/extensions_backend`` owns registry polling, GitHub repository
   metadata, install/update/remove, blocklist policy, local install state, and
   lifecycle status.
 - Core modules expose host/runtime/sandbox capability surfaces only.
