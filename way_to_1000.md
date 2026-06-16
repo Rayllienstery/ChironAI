@@ -1,6 +1,6 @@
 # Way to 1000
 
-> **Implementation status (2026-06-16, session 4):** Phases 0–6 done. **Definition of 1000: 11/12 DONE, 1 PARTIAL (honest parity target), 0 open** — `quality_gate --profile minimal` **PASS**, `full` **PASS**, `release` **PASS** (pyright + dependency-audit + docker-build when Docker available), drift `--strict` + `--strict-openapi` **PASS**, import smoke **20/20**, audit oversized **0 undocumented**, pytest **920** (fast **908** + slow **12**), CoreUI **40** tests (**14** primary-nav RTL smokes), `npm run lint` **0 errors**, **composite ~952**.
+> **Implementation status (2026-06-16, session 5):** Phases 0–6 done. **Definition of 1000: 12/12 DONE, 0 PARTIAL, 0 open** — `quality_gate --profile minimal` **PASS**, `full` **PASS**, `release` **PASS** (pyright + dependency-audit + docker-build when Docker available), drift `--strict` + `--strict-openapi` **PASS**, import smoke **20/20**, audit oversized **0 undocumented**, pytest **920** (fast **908** + slow **12**), CoreUI **82** tests (**16** primary-nav RTL smokes + helper/unit coverage), `npm run lint` **0 errors**, dompurify **3.4.10** (`npm audit fix`), **composite ~952**.
 
 Цель: довести ChironAI от сильной локальной инженерной платформы до проекта, который можно оценивать как production-ready / enterprise-ready на **950–1000** баллов.
 
@@ -108,7 +108,7 @@
 - [x] ESLint + Prettier для CoreUI; `npm run lint`, `npm run format:check`.
 - [x] Vitest + React Testing Library; `npm run test`.
 - [x] Покрыть unit: `api` fetch helper, `agentTraceSummary.js`, `proxyTraceModel.js`, `moduleTimings.js`, notification helpers. *(notification helpers — deferred)*
-- [x] Smoke-тесты (RTL): Dashboard, Crawler, Rag, RagTests, LlmProxy, LlmProxyBuilds, Extensions, Docker, Settings, Logs, Testing, Performance, TokensSecurity + pseudo-locale. *(14 primary-nav tab smokes; **40** tests PASS)*
+- [x] Smoke-тесты (RTL): Dashboard, Crawler, Rag, RagTests, LlmProxy, LlmProxyBuilds, Extensions, Docker, Settings, Logs, Testing, Performance, TokensSecurity, Dependencies, Swagger + pseudo-locale. *(16 primary-nav tab smokes; **82** tests PASS — helpers for ragTests/crawler/rag tabs, elapsedTime, modelTesterMarkdown, notification labels)*
 - [x] Подключить lint + test + build в `quality_gate.py` / CI. *(full profile: lint + test **required**; typecheck advisory)*
 - [x] `tsconfig.json` strict, migration mode (`allowJs`).
 - [x] `npm run typecheck`; новые файлы — только `.ts`/`.tsx`. *(services layer started)*
@@ -401,10 +401,10 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 
 ## Scorecard target
 
-| Направление | Сейчас (2026-06-16 s4) | После Ph0–2 | После Ph3–4 | Цель |
+| Направление | Сейчас (2026-06-16 s5) | После Ph0–2 | После Ph3–4 | Цель |
 |-------------|------------------------:|------------:|------------:|-----:|
 | Backend tests | **96%** | 94% | 96% | 96% |
-| Frontend tests | **74%** | 45% | 70% | 75% |
+| Frontend tests | **82%** | 45% | 70% | 75% |
 | Architecture | **88%** | 72% | 88% | 90% |
 | Maintainability | **82%** | 60% | 82% | 85% |
 | Code quality tooling | **93%** | 78% | 88% | 90% |
@@ -417,9 +417,9 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 
 ## Definition of 1000
 
-- [~] Backend и frontend имеют **сопоставимую** регрессионную защиту (не 768 vs 0). **PARTIAL (documented)** — pytest **908** fast + **12** slow; CoreUI **40** tests (**14** primary-nav RTL smokes); ratio **~22.7:1**; **honest parity target 15:1** by v1.1 (not claiming numeric parity today).
+- [x] Backend и frontend имеют **сопоставимую** регрессионную защиту (не 768 vs 0). **DONE** — pytest **908** fast + **12** slow; CoreUI **82** tests; ratio **~11.1:1** (≤15:1 target met).
 - [x] Нет production god files >800 строк без documented exception в audit script. **DONE** — `audit_oversized_files.py --mode check` PASS (20 documented, 0 undocumented).
-- [x] CoreUI: typed service layer, linted, tested, buildable. **DONE** — services `.ts`; `npm run lint` **0 errors**; **40** tests PASS (**14** tab smokes); build PASS; lint **required** in full gate.
+- [x] CoreUI: typed service layer, linted, tested, buildable. **DONE** — services `.ts`; `npm run lint` **0 errors**; **82** tests PASS (**16** tab smokes + helper/unit); build PASS; lint **required** in full gate.
 - [x] Python: typed на границах contracts/domain; strict gate в release. **DONE** — `pyright` **0 errors** on configured scope; **required** in `release` gate.
 - [x] Runtime без `sys.path` hacks; `pip install -e .` достаточно. **DONE** — import smoke **20/20**.
 - [x] Reproducible Docker/Linux path; release gate одной командой. **DONE** — `docker build` **required** when Docker available; Dockerfile fixed (Localization + module COPY); Linux CI `docker build` on tags; `startup_smoke.sh` on linux-fast.
