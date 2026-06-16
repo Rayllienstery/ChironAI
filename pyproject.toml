@@ -85,6 +85,7 @@ pythonpath = [
     "Core/modules/crawler_service",
     "Core/modules/extensions_backend",
     "Core/modules/html_md",
+    "Core/modules/prompts_manager",
     "CoreModules/LlmInteractor",
     "CoreModules/Security",
     "CoreModules/ExtensionsSandbox",
@@ -145,6 +146,7 @@ src = [
   "Core/modules/crawler_service/crawler_service",
   "Core/modules/extensions_backend/extensions_backend",
   "Core/modules/html_md/html_md",
+  "Core/modules/prompts_manager/prompts_manager",
 ]
 exclude = [
   ".venv",
@@ -166,6 +168,7 @@ known-first-party = [
   "domain",
   "infrastructure",
   "webui_backend",
+  "prompts_manager",
 ]
 
 # Domain layer must not depend on outer layers (application / api / infrastructure).
@@ -193,6 +196,7 @@ paths = [
   "Core/modules/webui_backend/webui_backend",
   "Core/modules",
   "Core/modules/html_md",
+  "Core/modules/prompts_manager/prompts_manager",
   "scripts",
   "tests",
 ]

@@ -16,7 +16,7 @@ from core.contracts.webui_api import WEBUI_URL_PREFIX
 ensure_webui_composition_paths()
 
 from config import get_retrieval_int
-from config.rag_prompts import PROMPTS_DIR
+from config.rag_prompts import PROMPTS_DIR, TRASH_DIR
 from infrastructure.database import get_settings_repository
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
 
@@ -84,9 +84,6 @@ from api.http.webui_settings_routes import register_settings_routes
 from api.http.webui_testing_routes import register_testing_routes
 from api.http.webui_version_routes import register_version_routes
 from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
-
-TRASH_DIR = PROMPTS_DIR / ".trash"
-
 _WEBUI_LOG = logging.getLogger("webui")
 _ERROR_LOG = get_webui_error_logger()
 

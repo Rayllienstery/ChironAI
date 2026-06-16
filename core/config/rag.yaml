@@ -14,7 +14,7 @@
 ## - reasoning_level_models: substrings of model names that support reasoning levels.
 
 rag:
-  ## Prompt name = stem of file in prompts/*.md (e.g. system_rag_v1.md -> "system_rag_v1").
+  ## Prompt name = stem of a template file (for example bundled ``system_rag_v1`` or ``WebUI/prompts/<name>.md``).
   ## Override with env RAG_PROMPT. Use list_rag_prompt_names() to see available names.
   prompt: "system_rag_v1"
   context_chunk_chars: 1000

@@ -31,11 +31,8 @@ Allowed ownership buckets:
   `WebUI/`, `logs/`, `tmp/`, and config files, when they are not importable
   runtime packages.
 
-Root-level runtime packages such as `prompts/` are migration tails only.
-Host-owned packages `api/`, `application`, `domain`, `infrastructure`, `config`,
-`core`, and host services under `Core/modules/` live under `Core/` while keeping
-their public import names stable. Any new root-level runtime package requires an
-explicit allowlist entry and a documented owner.
+Root-level runtime packages are forbidden unless explicitly allowlisted as migration
+tails. Host-owned packages and services live under `Core/` and `Core/modules/`.
 
 Automated guardrail: `scripts/root_layout_guard.py` and
 `tests/scripts/test_root_layout_guard.py` reject new top-level directories until
@@ -60,7 +57,6 @@ Current root directory ownership:
 | `docs/` | project support | architecture and runbooks |
 | `extensions/` | extensions | extension payloads |
 | `logs/` | runtime data | local logs and databases |
-| `prompts/` | Core | migration tail: prompt templates |
 | `rag_tests/` | project support | RAG evaluation fixtures |
 | `reports/` | project support | generated reports |
 | `scripts/` | project support | repo tooling |
@@ -305,6 +301,7 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 | `CoreModules/CoreUI/README.md` | Running the frontend, `VITE_API_URL` |
 | `Core/modules/webui_backend/README.md` | Canonical Web UI backend |
 | `Core/modules/README.md` | Host-owned module index |
+| `Core/modules/prompts_manager/README.md` | RAG prompt template ownership |
 | `CoreModules/LlmProxy/README.md` | Proxy, endpoints, env |
 | `CoreModules/LogsManager/README.md` | Internal proxy journal reader for LLM agents |
 | `CoreModules/RagService/README.md` | RAG package |

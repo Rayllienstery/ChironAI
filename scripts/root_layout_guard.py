@@ -34,7 +34,6 @@ ALLOWED_ROOT_DIRECTORIES: dict[str, RootEntry] = {
     "docs": RootEntry("project support", "architecture and runbooks"),
     "extensions": RootEntry("extensions", "extension payloads", runtime_source=True),
     "logs": RootEntry("runtime data", "local logs and databases"),
-    "prompts": RootEntry("Core", "migration tail: prompt templates", runtime_source=True),
     "rag_tests": RootEntry("project support", "RAG evaluation fixtures"),
     "reports": RootEntry("project support", "generated reports"),
     "scripts": RootEntry("project support", "repo tooling"),
@@ -62,11 +61,13 @@ def find_root_layout_violations(root: Path) -> list[str]:
             if _looks_like_python_runtime_package(entry):
                 message += " and looks like a Python runtime package"
             violations.append(message)
-    legacy_tails = ("api", "application", "config", "core", "domain", "infrastructure", "modules")
+    legacy_tails = ("api", "application", "config", "core", "domain", "infrastructure", "modules", "prompts")
     for name in legacy_tails:
         if name in existing_names:
             if name == "modules":
                 violations.append(f"{name}: Phase 2 moved host-owned services under Core/modules/")
+            elif name == "prompts":
+                violations.append(f"{name}: Phase 3 moved prompt templates under Core/modules/prompts_manager/")
             else:
                 violations.append(f"{name}: Phase 1 moved this host runtime package under Core/")
     return violations

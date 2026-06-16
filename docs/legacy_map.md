@@ -23,8 +23,9 @@ CoreUI (RAG Tests / Notifications / Builds)
 
 ## Root freelance runtime folders
 
-- Root-level runtime folder `prompts/` is a migration tail. Host packages and
-  host-owned services now live under `Core/` and `Core/modules/`.
+- Root-level runtime folder `prompts/` was removed in Phase 3. Prompt templates
+  are owned by `Core/modules/prompts_manager/` with mutable storage under
+  `WebUI/prompts/`.
 - Target ownership:
   - host layers under `Core/`;
   - host-owned services under `Core/modules/` (Phase 2 complete);

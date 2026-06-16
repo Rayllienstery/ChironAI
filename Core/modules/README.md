@@ -13,6 +13,7 @@ ownership boundary.
 | `html_md` | HTML/markdown conversion helpers. |
 | `md_indexer` | Config-driven markdown cleanup/indexing pipelines. |
 | `tools` | Host-owned support tooling. |
+| [prompts_manager](prompts_manager/README.md) | RAG system prompt templates (bundled defaults + `WebUI/prompts/` runtime store). |
 
 Related CoreModules:
 

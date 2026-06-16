@@ -15,7 +15,7 @@ from api.http.webui_prompts import (
     prompt_original_name,
     prompt_trash_entries,
 )
-from config.rag_prompts import list_rag_prompt_names
+from prompts_manager.storage import list_rag_prompt_names, read_prompt_content
 
 
 def register_prompt_routes(
@@ -40,11 +40,11 @@ def register_prompt_routes(
             if has_unsafe_path_segments(name):
                 return jsonify({"error": "Invalid prompt name"}), 400
 
-            path = prompt_file_path(prompts_dir, name)
-            if not path.is_file():
+            content = read_prompt_content(name)
+            if content is None:
                 return jsonify({"error": "Prompt not found"}), 404
 
-            return jsonify({"name": name, "content": path.read_text(encoding="utf-8")})
+            return jsonify({"name": name, "content": content})
         except Exception as e:
             error_log.error("webui_routes.get_prompt_content", exc_info=True)
             return jsonify({"error": str(e)}), 500

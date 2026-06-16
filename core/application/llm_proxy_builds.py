@@ -374,7 +374,7 @@ def diagnose_build(
     use_prompt_template = build.get("use_prompt_template", True) is not False
     pn = str(build.get("prompt_name") or "").strip()
     if use_prompt_template and pn and not prompt_exists:
-        issues.append(f'Prompt template "{pn}" not found under prompts/')
+        issues.append(f'Prompt template "{pn}" not found in the prompt store')
     rc = str(build.get("rag_collection") or "").strip()
     if rc and qdrant_collection_names is not None and rc not in qdrant_collection_names:
         issues.append(f'RAG collection "{rc}" not found in Qdrant')

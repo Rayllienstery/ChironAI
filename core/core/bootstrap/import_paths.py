@@ -73,6 +73,7 @@ def ensure_webui_composition_paths(project_root: str | Path | None = None) -> st
         ("docker_manager", os.path.join(root, "CoreModules", "DockerManager")),
         ("error_manager", os.path.join(root, "CoreModules", "ErrorManager")),
         ("webui_backend", os.path.join(root, "Core", "modules", "webui_backend")),
+        ("prompts_manager", os.path.join(root, "Core", "modules", "prompts_manager")),
     )
     for module_name, path in pairs:
         ensure_import_path(module_name, path)

@@ -195,10 +195,10 @@ Create a small prompt ownership layer instead of only moving files:
 
 ### Acceptance Criteria
 
-- [ ] `prompts/` no longer lives as an unowned root runtime dependency.
-- [ ] Prompt listing, loading, creation, trash, restore, and preview still work.
-- [ ] Existing `RAG_PROMPT` and `rag.prompt` behavior is preserved.
-- [ ] Prompt storage owner is documented.
+- [x] `prompts/` no longer lives as an unowned root runtime dependency.
+- [x] Prompt listing, loading, creation, trash, restore, and preview still work.
+- [x] Existing `RAG_PROMPT` and `rag.prompt` behavior is preserved.
+- [x] Prompt storage owner is documented.
 
 ## Phase 4. Extension Host Boundary Cleanup
 

@@ -276,7 +276,7 @@ def get_qdrant_url() -> str:
 
 
 def get_rag_prompt_name() -> str:
-    """Return RAG system prompt name (stem of a .md file in prompts/). Override with RAG_PROMPT env."""
+    """Return RAG system prompt name (template stem). Override with RAG_PROMPT env."""
     return os.getenv("RAG_PROMPT", RAG_CONFIG.get("prompt", "system_rag_v1"))
 
 

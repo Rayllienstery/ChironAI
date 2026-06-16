@@ -21,6 +21,7 @@ Core/                  # Application host and host-owned services
     webui_backend/
     html_md/
     md_indexer/
+    prompts_manager/
     tools/
 
 CoreModules/           # Reusable modules/apps the host depends on
@@ -48,8 +49,8 @@ tmp/                   # Temporary/dev-only material
 During migration, some host-owned folders may still exist at the repository
 root. Treat those as migration tails, not as permanent architecture. Phase 1
 moved the main host packages into `Core/`; Phase 2 moved host-owned services
-into `Core/modules/`. `prompts/` remains a root-level migration tail for a
-later phase.
+into `Core/modules/`; Phase 3 moved prompt templates under
+`Core/modules/prompts_manager/` with runtime storage in `WebUI/prompts/`.
 
 `scripts/root_layout_guard.py` is the automated root allowlist. Update that
 guardrail and this document together when a root folder is intentionally added,
@@ -87,7 +88,6 @@ intentional public boundary. Host-specific code goes under `Core/`.
 | `docs/` | project support | architecture and runbooks |
 | `extensions/` | extensions | extension payloads |
 | `logs/` | runtime data | local logs and databases |
-| `prompts/` | Core | migration tail: prompt templates |
 | `rag_tests/` | project support | RAG evaluation fixtures |
 | `reports/` | project support | generated reports |
 | `scripts/` | project support | repo tooling |
@@ -105,8 +105,7 @@ intentional public boundary. Host-specific code goes under `Core/`.
 | `infrastructure/` | `Core/infrastructure/` | Host adapters and compatibility shims. |
 | `config/` | `Core/config/` | Configuration authority and env/yaml loading. |
 | `core/` | `Core/core/` | Shared contracts/config package; import name remains `core`. |
-| `modules/*` | `Core/modules/*` | Host-owned services (webui_backend, extensions_backend, crawler_service, html_md, md_indexer, tools, external_docs_rag). |
-| `prompts/` | TBD owner under `Core/` or `CoreModules/PromptsManager/` | Must not remain an unowned root runtime dependency. |
+| `modules/*` | `Core/modules/*` | Host-owned services (webui_backend, extensions_backend, crawler_service, html_md, md_indexer, prompts_manager, tools, external_docs_rag). |
 
 ## Module Responsibilities
 

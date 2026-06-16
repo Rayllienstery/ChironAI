@@ -461,7 +461,7 @@ def run_chat_completions(
                     {
                         "error": (
                             "LLM Proxy is not configured: choose a valid Prompt template in WebUI "
-                            "(LLM Proxy → builds or saved proxy settings). The file prompts/<name>.md must exist."
+                            "(LLM Proxy → builds or saved proxy settings). The prompt template must exist in the prompt store."
                         ),
                         "detail": f"prompt_name={_pn!r}" if _pn else "prompt_name is empty",
                     }
