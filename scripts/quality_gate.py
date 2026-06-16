@@ -55,6 +55,13 @@ FULL_GATE_EXTRA: tuple[GateStep, ...] = (
         required=False,
     ),
     GateStep(
+        "silent-exceptions",
+        _python_command("scripts/audit_silent_exceptions.py", "--mode", "check"),
+        REPO_ROOT,
+        60,
+        required=False,
+    ),
+    GateStep(
         "import-linter",
         ("lint-imports",),
         REPO_ROOT,
@@ -69,7 +76,7 @@ FULL_GATE_EXTRA: tuple[GateStep, ...] = (
     ),
     GateStep("coreui-lint", _npm_command("run", "lint"), COREUI_ROOT, 120),
     GateStep("coreui-test", _npm_command("run", "test", "--", "--run"), COREUI_ROOT, 180),
-    GateStep("coreui-typecheck", _npm_command("run", "typecheck"), COREUI_ROOT, 120, required=False),
+    GateStep("coreui-typecheck", _npm_command("run", "typecheck"), COREUI_ROOT, 120, required=True),
 )
 
 RELEASE_TYPING_GATE: tuple[GateStep, ...] = (

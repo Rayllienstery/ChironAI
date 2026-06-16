@@ -116,7 +116,7 @@
 
 **Готово, когда:**
 
-- [~] `lint` + `format:check` + `test` + `typecheck` + `build` проходят в CI. **PARTIAL** — lint + test + build in full gate; `format:check` + `typecheck` not required in gate yet.
+- [~] `lint` + `format:check` + `test` + `typecheck` + `build` проходят в CI. **PARTIAL** — lint + test + build + **typecheck required** in full gate (2026-06-16 debt cleanup); `format:check` advisory.
 - [ ] API service layer типизирован; ≥50% компонентов на `.tsx`.
 - [ ] PR с изменением поведения UI требует test или явное обоснование в описании.
 
@@ -232,7 +232,7 @@
 
 **Готово, когда:**
 
-- [ ] Silent `pass` только с комментарием `# safe: <reason>`.
+- [~] Silent `pass` только с комментарием `# safe: <reason>`. **PARTIAL** — `scripts/audit_silent_exceptions.py` (advisory in full gate); UI/extension hotspots documented (`config/env.py`, `webui_rag_routes.py`, `webui_crawler_indexing_runtime_embed.py`, `ollama_http.py`).
 - [ ] Critical flows логируют correlation id.
 - [ ] Security tests + dependency scan в release gate.
 

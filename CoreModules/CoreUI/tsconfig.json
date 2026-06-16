@@ -12,7 +12,15 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
-    "types": ["vitest/globals"]
+    "types": ["vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["src/services/**/*.ts", "src/services/**/*.js", "src/**/*.test.{js,jsx,ts,tsx}"]
+  "include": [
+    "src/types/**/*.d.ts",
+    "src/services/**/*.js",
+    "src/components/extensionRuntimeTab/**/*.ts",
+    "src/components/extensionRuntimeTab/**/*.tsx",
+    "src/components/showcase/**/*.tsx",
+    "src/components/*.tsx",
+    "src/**/*.test.{js,jsx,ts,tsx}"
+  ]
 }

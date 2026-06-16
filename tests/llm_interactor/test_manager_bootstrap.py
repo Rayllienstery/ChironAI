@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from llm_interactor.contracts import ProviderHostContext
-from llm_interactor.install_state import InstalledExtensionRecord
+from llm_interactor.install_state import ExtensionsRepository, InstalledExtensionRecord
 from llm_interactor.manager_bootstrap import (
     RuntimeBootstrap,
     discover_runtime_extensions,
+    ensure_required_bundled_enabled,
     source_dirs_for_records,
 )
 
@@ -39,3 +40,46 @@ def test_discover_runtime_extensions_returns_empty_bootstrap_for_no_sources(tmp_
     assert bootstrap.loaded == []
     assert bootstrap.failed == []
     assert blocked == []
+
+
+def test_ensure_required_bundled_enabled_reenables_ollama_provider() -> None:
+    class _Repo:
+        def __init__(self) -> None:
+            self.data: dict[str, str] = {}
+
+        def get_app_setting(self, key: str):
+            return self.data.get(key)
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            self.data[key] = value
+
+    repo = _Repo()
+    ext_repo = ExtensionsRepository(repo)
+    ext_repo.save_records(
+        [
+            InstalledExtensionRecord(
+                id="ollama-provider",
+                version="0.1.6",
+                enabled=False,
+                installed=True,
+                source={"type": "bundled"},
+            ),
+            InstalledExtensionRecord(
+                id="open-webui",
+                version="0.1.2",
+                enabled=False,
+                installed=True,
+                source={"type": "bundled"},
+            ),
+        ]
+    )
+
+    changed = ensure_required_bundled_enabled(
+        repo=ext_repo,
+        blocklist_match_for_record=lambda _record: {"matched": False},
+    )
+
+    assert changed is True
+    records = {item.id: item for item in ext_repo.list_records()}
+    assert records["ollama-provider"].enabled is True
+    assert records["open-webui"].enabled is False

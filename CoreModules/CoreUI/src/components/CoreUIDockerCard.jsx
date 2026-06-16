@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import CoreUIBadge from "./CoreUIBadge";
 import CoreUIButton from "./CoreUIButton";
 import { formatElapsedMs } from "../utils/elapsedTime";
+import { useConfirmDialog } from "./useConfirmDialog";
 import "../styles/components/CoreUIDockerCard.css";
 
 function joinClasses(parts) {
@@ -160,6 +161,7 @@ export default function CoreUIDockerCard({
   fieldKey = "backend_url",
   ...rest
 }) {
+  const { confirm, ConfirmDialogHost } = useConfirmDialog();
   const isLive = Boolean(service);
 
   const liveIconUrl = isLive ? (service?.iconUrl || iconUrl || "") : (iconUrl || "");
@@ -206,9 +208,8 @@ export default function CoreUIDockerCard({
     }
   };
 
-  const wrapWithConfirm = (action, clickHandler) => () => {
-    const confirmText = String(action?.confirm || "").trim();
-    if (confirmText && !window.confirm(confirmText)) return;
+  const wrapWithConfirm = (action, clickHandler) => async () => {
+    if (!(await confirm({ message: action?.confirm, variant: "danger" }))) return;
     clickHandler();
   };
 
@@ -273,7 +274,7 @@ export default function CoreUIDockerCard({
                     busy={busy}
                     activeAction={activeAction}
                     actionTimerNow={actionTimerNow}
-                    onClick={isLive && action?.confirm ? wrapWithConfirm(action, click) : click}
+                    onClick={!isLive && action?.confirm ? wrapWithConfirm(action, click) : click}
                   />
                 );
               })}
@@ -294,6 +295,7 @@ export default function CoreUIDockerCard({
           </div>
         ) : null}
       </div>
+      <ConfirmDialogHost />
     </div>
   );
 }

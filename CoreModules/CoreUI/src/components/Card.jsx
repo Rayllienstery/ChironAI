@@ -15,6 +15,7 @@
  * @param {string} [props.background] - Background color at rest.
  * @param {React.ReactNode} props.children - Card content.
  * @param {Object} [props.style] - Inline style overrides.
+ * @param {Function} [props.onClick] - Click handler when interactive.
  */
 export default function Card({
   as: Component = "div",

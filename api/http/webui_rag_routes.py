@@ -77,7 +77,7 @@ def _collection_is_stale(last_refreshed_at: str | None, ttl_days: int) -> bool:
             refreshed = refreshed.replace(tzinfo=timezone.utc)
         age_days = (datetime.now(timezone.utc) - refreshed).total_seconds() / 86400.0
         return age_days > float(ttl_days)
-    except Exception:
+    except Exception:  # safe: invalid coercion defaults to disabled
         return False
 
 
@@ -101,7 +101,7 @@ def _qdrant_status_snapshot(timeout_sec: float) -> dict[str, Any]:
                         .get("status", {})
                         .get("version")
                     )
-            except Exception:
+            except Exception:  # safe: Qdrant cluster version probe is optional
                 pass
     except Exception as e:
         status["error"] = str(e)
@@ -130,7 +130,7 @@ def get_qdrant_collection_names_with_timeout(timeout_sec: float) -> list[str]:
             if name:
                 names.append(name)
         return names
-    except Exception:
+    except Exception:  # safe: unreachable Qdrant returns empty collection list
         return []
 
 
@@ -198,7 +198,7 @@ def _retrieval_yaml_raw_bool(key: str) -> bool:
         if isinstance(v, (int, float)):
             return bool(v)
         return bool(v)
-    except Exception:
+    except Exception:  # safe: invalid coercion defaults to disabled
         return False
 
 
@@ -209,7 +209,7 @@ def _get_rag_pipeline_definition_payload() -> list[dict[str, Any]]:
         steps = get_rag_pipeline_definition()
         if isinstance(steps, list):
             return [dict(s) for s in steps if isinstance(s, dict)]
-    except Exception:
+    except Exception:  # safe: pipeline definition optional when rag_service unavailable
         pass
     return []
 
@@ -221,7 +221,7 @@ def _get_proxy_pipeline_definition_payload() -> list[dict[str, Any]]:
         steps = get_proxy_pipeline_definition()
         if isinstance(steps, list):
             return [dict(s) for s in steps if isinstance(s, dict)]
-    except Exception:
+    except Exception:  # safe: pipeline definition optional when rag_service unavailable
         pass
     return []
 
@@ -594,11 +594,8 @@ def register_rag_qdrant_routes(
                     default_top_k = int(top_k_raw)
                 except (TypeError, ValueError):
                     pass
-        except Exception:
+        except Exception:  # safe: settings repository optional for RAG defaults
             pass
-
-        try:
-            resp = requests.get(f"{url}/collections", timeout=5)
         except requests.exceptions.RequestException as e:
             _WEBUI_LOG.warning("Qdrant unreachable at %s: %s", url, e)
             return jsonify({
@@ -688,9 +685,8 @@ def register_rag_qdrant_routes(
                                 item["index_meta"] = json.loads(index_meta_raw)
                             except json.JSONDecodeError:
                                 pass
-                    except Exception:
+                    except Exception:  # safe: per-collection enrichment failure skips optional fields
                         pass
-                    detailed.append(item)
                 except Exception as e:
                     _WEBUI_LOG.warning("Failed to get collection %s: %s", name, e)
                     detailed.append({"name": name})
@@ -722,10 +718,8 @@ def register_rag_qdrant_routes(
             meta = settings_repo.get_collection_meta(name)
             if meta:
                 source_ids = parse_source_ids_from_framework_id(meta.get("framework_id"))
-        except Exception:
+        except Exception:  # safe: collection meta lookup optional before delete
             pass
-        try:
-            resp = requests.delete(f"{url}/collections/{name}", timeout=30)
             if resp.status_code not in (200, 202, 404):
                 return jsonify({
                     "error": f"Qdrant delete failed: HTTP {resp.status_code}",

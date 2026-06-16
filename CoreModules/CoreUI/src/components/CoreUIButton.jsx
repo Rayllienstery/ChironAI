@@ -13,6 +13,8 @@ function joinClasses(parts) {
  * @param {'sm'|'md'|'icon'} [props.size='md'] - The size of the button.
  * @param {string} [props.className=''] - Additional CSS classes.
  * @param {string} [props.type] - The HTML button type (e.g., 'submit').
+ * @param {Function} [props.onClick] - Click handler.
+ * @param {boolean} [props.disabled] - Disabled state.
  * @param {React.ReactNode} props.children - The button content.
  */
 export default function CoreUIButton({

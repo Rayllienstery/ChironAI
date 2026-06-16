@@ -15,6 +15,12 @@ function joinClasses(parts) {
  * @param {string} [props.className] - Wrapper class.
  * @param {string} [props.inputClassName] - Class for the input element.
  * @param {string} [props.id] - Optional id; auto-generated if omitted.
+ * @param {string} [props.min] - Minimum value for the range input.
+ * @param {string} [props.max] - Maximum value for the range input.
+ * @param {string} [props.step] - Step increment for the range input.
+ * @param {string} [props.value] - Current slider value.
+ * @param {Function} [props.onChange] - Change handler for the range input.
+ * @param {string} [props.aria-label] - Accessible label for the range input.
  */
 export default function CoreUISlider({
   label,

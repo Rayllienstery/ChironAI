@@ -466,6 +466,21 @@
   flex-shrink: 0;
 }
 
+.coreui-confirm-dialog__message {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+}
+
+.coreui-confirm-dialog__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--md-sys-spacing-sm);
+  width: 100%;
+}
+
 .coreui-modal-close-btn {
   display: inline-flex;
   align-items: center;

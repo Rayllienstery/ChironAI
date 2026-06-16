@@ -105,7 +105,7 @@ def get_embeddings_simple(
         try:
             settings_repo = get_settings_repository()
             resolved_provider_id = str(settings_repo.get_app_setting("rag_embed_provider_id") or "").strip()
-        except Exception:
+        except Exception:  # safe: settings repository optional for embed provider lookup
             resolved_provider_id = ""
     if not resolved_provider_id:
         resolved_provider_id = _default_llm_provider_id()
@@ -118,7 +118,7 @@ def get_embeddings_simple(
             settings_repo = get_settings_repository()
             raw = settings_repo.get_app_setting("rag_embed_model")
             rag_embed_model = (raw or "").strip()
-        except Exception:
+        except Exception:  # safe: settings repository optional for embed model lookup
             rag_embed_model = ""
 
         # Fallback order:
@@ -225,7 +225,7 @@ def qdrant_collection_has_sparse_vectors(qclient: QdrantClient, collection_name:
         if isinstance(sv, dict):
             return len(sv) > 0
         return bool(sv)
-    except Exception:
+    except Exception:  # safe: Qdrant collection introspection failure treated as non-hybrid
         return False
 
 
@@ -253,12 +253,12 @@ def ensure_collection_with_name(
                         field_name=field,
                         field_schema=PayloadSchemaType.KEYWORD,
                     )
-                except Exception:
-                    pass  # Index may already exist
-        except Exception:
+                except Exception:  # safe: index may already exist
+                    pass
+        except Exception:  # safe: payload index ensure is best-effort on existing collection
             pass
         return
-    except Exception:
+    except Exception:  # safe: collection missing triggers create path below
         pass
 
     # Create collection (dense-only or dense+sparse hybrid)
@@ -287,9 +287,8 @@ def ensure_collection_with_name(
                     field_name=field,
                     field_schema=PayloadSchemaType.KEYWORD,
                 )
-            except Exception:
+            except Exception:  # safe: payload index may already exist on new collection
                 pass
-    except Exception as e:
         _WEBUI_LOG.error(f"Failed to create collection '{collection_name}': {e}")
         raise
 

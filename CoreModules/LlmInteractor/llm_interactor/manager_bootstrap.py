@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from llm_interactor.contracts import ProviderHostContext
 from llm_interactor.discovery import FailedExtension, LoadedExtension, discover_extensions
-from llm_interactor.install_state import InstalledExtensionRecord
+from llm_interactor.install_state import ExtensionsRepository, InstalledExtensionRecord
 from llm_interactor.manifest import EXTENSION_TYPE_LLM_PROVIDER
 from llm_interactor.runtime import LLMRuntime, ProviderRegistry
+
+# Bundled extensions required for core chat/RAG; re-enabled on bootstrap if disabled.
+REQUIRED_BUNDLED_EXTENSION_IDS = frozenset({"ollama-provider"})
 
 
 @dataclass(frozen=True)
@@ -20,6 +24,35 @@ class RuntimeBootstrap:
     registry: ProviderRegistry
     loaded: list[LoadedExtension]
     failed: list[FailedExtension]
+
+
+def ensure_required_bundled_enabled(
+    *,
+    repo: ExtensionsRepository,
+    blocklist_match_for_record: Callable[[InstalledExtensionRecord], dict[str, Any]],
+) -> bool:
+    """Re-enable bundled extensions required for core LLM/RAG when they were disabled."""
+    records = repo.list_records()
+    changed = False
+    next_records: list[InstalledExtensionRecord] = []
+    for record in records:
+        source_type = str((record.source or {}).get("type") or "").strip().lower()
+        security_status = str((record.security_scan or {}).get("status") or "").strip().lower()
+        if (
+            record.id in REQUIRED_BUNDLED_EXTENSION_IDS
+            and record.installed
+            and not record.enabled
+            and source_type in {"", "bundled"}
+            and not str(record.blocked_reason or "").strip()
+            and security_status != "blocked"
+            and not blocklist_match_for_record(record).get("matched")
+        ):
+            record = replace(record, enabled=True)
+            changed = True
+        next_records.append(record)
+    if changed:
+        repo.save_records(next_records)
+    return changed
 
 
 def discover_runtime_extensions(

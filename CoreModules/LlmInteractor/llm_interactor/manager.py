@@ -39,6 +39,7 @@ from llm_interactor.manager_blocklist import (
 from llm_interactor.manager_bootstrap import (
     RuntimeBootstrap,
     discover_runtime_extensions,
+    ensure_required_bundled_enabled,
     prewarm_provider_rows_async,
     record_bootstrap_timing,
     source_dirs_for_records,
@@ -304,6 +305,10 @@ class ExtensionManager(ExtensionTabMixin):
         _t_bundled = _time.perf_counter()
         self.ensure_bundled_installed()
         self._disable_blocklisted_records()
+        ensure_required_bundled_enabled(
+            repo=self._repo,
+            blocklist_match_for_record=self._blocklist_match_for_record,
+        )
         _bundled_ms = (_time.perf_counter() - _t_bundled) * 1000
 
         records = [r for r in self._repo.list_records() if r.installed and r.enabled]

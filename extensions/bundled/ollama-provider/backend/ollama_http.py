@@ -146,7 +146,7 @@ def _ollama_interactor_http_module() -> Any | None:
         from ollama_interactor import ollama_http as oh  # noqa: PLC0415
 
         return oh
-    except Exception:
+    except Exception:  # safe: optional ollama_interactor import; CLI fallback used
         return None
 
 
@@ -156,7 +156,7 @@ def invoke_ping(*, base_url: str, timeout: float = 5.0) -> dict[str, Any]:
     if oh is not None:
         try:
             return oh.ping(base_url.rstrip("/"), timeout=timeout)
-        except Exception:
+        except Exception:  # safe: HTTP helper failed; fall back to CLI invoke
             pass
     return _invoke_json(
         ["ping", "--base-url", base_url, "--timeout", str(timeout)],
@@ -170,7 +170,7 @@ def invoke_tags(*, base_url: str, timeout: float = 30.0) -> dict[str, Any]:
     if oh is not None:
         try:
             return oh.get_tags(base_url.rstrip("/"), timeout=timeout)
-        except Exception:
+        except Exception:  # safe: HTTP helper failed; fall back to CLI invoke
             pass
     return _invoke_json(
         ["tags", "--base-url", base_url, "--timeout", str(timeout)],
@@ -235,7 +235,7 @@ def invoke_show(*, base_url: str, name: str, timeout: float = 120.0) -> dict[str
     if oh is not None:
         try:
             return oh.post_show(base_url.rstrip("/"), name, timeout=timeout)
-        except Exception:
+        except Exception:  # safe: HTTP helper failed; fall back to CLI invoke
             pass
     return _invoke_json(
         ["show", "--base-url", base_url.rstrip("/"), "--name", name, "--timeout", str(timeout)],
@@ -249,7 +249,7 @@ def invoke_delete(*, base_url: str, name: str, timeout: float = 120.0) -> dict[s
     if oh is not None:
         try:
             return oh.post_delete(base_url.rstrip("/"), name, timeout=timeout)
-        except Exception:
+        except Exception:  # safe: HTTP helper failed; fall back to CLI invoke
             pass
     return _invoke_json(
         ["delete", "--base-url", base_url.rstrip("/"), "--name", name, "--timeout", str(timeout)],

@@ -75,7 +75,7 @@ def get_ollama_chat_url() -> str:
     if _config_loader._rsc is not None:
         try:
             return str(_config_loader._rsc.get_ollama_chat_url())
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     return os.getenv(
         "OLLAMA_CHAT_URL",
@@ -139,7 +139,7 @@ def get_ollama_generate_url() -> str:
     if _config_loader._rsc is not None:
         try:
             return str(_config_loader._rsc.get_ollama_generate_url())
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     return os.getenv(
         "OLLAMA_URL",
@@ -152,7 +152,7 @@ def get_ollama_embed_url() -> str:
     if _config_loader._rsc is not None:
         try:
             return str(_config_loader._rsc.get_ollama_embed_url())
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     return os.getenv(
         "OLLAMA_EMBED_URL",
@@ -180,7 +180,7 @@ def get_ollama_chat_model() -> str:
     if _config_loader._rsc is not None:
         try:
             return str(_config_loader._rsc.get_ollama_chat_model())
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     env_val = os.getenv("OLLAMA_CHAT_MODEL")
     if env_val is not None:
@@ -200,7 +200,7 @@ def get_ollama_embed_model() -> str:
     if _config_loader._rsc is not None:
         try:
             return str(_config_loader._rsc.get_ollama_embed_model())
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     env_v = os.getenv("RAG_EMBED_MODEL")
     if env_v is not None and str(env_v).strip() != "":
@@ -222,7 +222,7 @@ def get_ollama_embed_timeout_seconds() -> float:
     if _config_loader._rsc is not None:
         try:
             return float(_config_loader._rsc.get_ollama_embed_timeout_seconds())
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     raw = os.getenv("OLLAMA_EMBED_TIMEOUT")
     if raw is not None and str(raw).strip() != "":
@@ -251,7 +251,7 @@ def get_ollama_rerank_model() -> str:
     if _config_loader._rsc is not None:
         try:
             return str(_config_loader._rsc.get_ollama_rerank_model())
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     env_v = os.getenv("OLLAMA_RERANK_MODEL")
     if env_v is not None and str(env_v).strip() != "":
@@ -270,7 +270,7 @@ def get_qdrant_url() -> str:
     if _config_loader._rsc is not None:
         try:
             return str(_config_loader._rsc.get_qdrant_url())
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     return os.getenv("QDRANT_URL", QDRANT_CONFIG.get("url", "http://localhost:6333"))
 
@@ -291,7 +291,7 @@ def get_rag_int(key: str, default: int) -> int:
     if _config_loader._rsc is not None:
         try:
             return int(_config_loader._rsc.get_rag_int(key, default))
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     env_name = _RAG_INT_ENV_KEYS.get(key)
     if env_name:
@@ -313,7 +313,7 @@ def get_rag_float(key: str, default: float) -> float:
     if _config_loader._rsc is not None:
         try:
             return float(_config_loader._rsc.get_rag_float(key, default))
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     try:
         value = RAG_CONFIG.get(key, default)
@@ -327,7 +327,7 @@ def get_proxy_rerank_enabled() -> bool:
     if _config_loader._rsc is not None:
         try:
             return bool(_config_loader._rsc.get_rag_bool("proxy_rerank_enabled", False))
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     return bool(RAG_CONFIG.get("proxy_rerank_enabled", False))
 
@@ -337,7 +337,7 @@ def get_retrieval_int(key: str, default: int) -> int:
     if _config_loader._rsc is not None:
         try:
             return int(_config_loader._rsc.get_retrieval_int(key, default))
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     if key == "top_k":
         env_v = os.getenv("RAG_TOP_K")
@@ -358,7 +358,7 @@ def get_retrieval_list(key: str, default: list) -> list:
     if _config_loader._rsc is not None:
         try:
             return list(_config_loader._rsc.get_retrieval_list(key, default))
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     value = RETRIEVAL_CONFIG.get(key, default)
     return value if isinstance(value, list) else default
@@ -369,7 +369,7 @@ def get_retrieval_dict(key: str, default: dict) -> dict:
     if _config_loader._rsc is not None:
         try:
             return dict(_config_loader._rsc.get_retrieval_dict(key, default))
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     value = RETRIEVAL_CONFIG.get(key, default)
     return value if isinstance(value, dict) else default
@@ -380,7 +380,7 @@ def get_retrieval_bool(key: str, default: bool = False) -> bool:
     if _config_loader._rsc is not None:
         try:
             return bool(_config_loader._rsc.get_retrieval_bool(key, default))
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     value = RETRIEVAL_CONFIG.get(key, default)
     if isinstance(value, bool):
@@ -410,7 +410,7 @@ def get_indexing_int(key: str, default: int) -> int:
     if _config_loader._rsc is not None:
         try:
             return int(_config_loader._rsc.get_indexing_int(key, default))
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     try:
         value = INDEXING_CONFIG.get(key, default)
@@ -424,7 +424,7 @@ def get_indexing_float(key: str, default: float) -> float:
     if _config_loader._rsc is not None:
         try:
             return float(_config_loader._rsc.get_indexing_float(key, default))
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     try:
         value = INDEXING_CONFIG.get(key, default)
@@ -450,7 +450,7 @@ def get_ollama_chat_options() -> Dict[str, Any]:
     if _config_loader._rsc is not None:
         try:
             return dict(_config_loader._rsc.get_ollama_chat_options())
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     return OLLAMA_CONFIG.get("chat_options", {
         "num_predict": 3072,
@@ -468,7 +468,7 @@ def get_qdrant_collection_name() -> str:
                 "QDRANT_COLLECTION_NAME",
                 str(_config_loader._rsc.QDRANT_CONFIG.get("collection_name", "webcrawl")),
             )
-        except Exception:
+        except Exception:  # safe: optional runtime settings client; fall back to env defaults
             pass
     return os.getenv(
         "QDRANT_COLLECTION_NAME",
@@ -523,7 +523,7 @@ def _get_app_setting_value(key: str, settings_repo: Any | None = None) -> str | 
             repo = get_settings_repository()
         value = repo.get_app_setting(key)
         return None if value is None else str(value)
-    except Exception:
+    except Exception:  # safe: settings repository optional during bootstrap
         return None
 
 
@@ -570,7 +570,7 @@ def record_active_server_port(port: int, settings_repo: Any | None = None) -> No
 
             repo = get_settings_repository()
         repo.set_app_setting(SERVER_PORT_LAST_ACTIVE_APP_SETTING, str(valid_port))
-    except Exception:
+    except Exception:  # safe: persisting active port is best-effort during startup
         pass
 
 
