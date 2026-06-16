@@ -21,7 +21,7 @@ from api.http.webui_crawler_source_config import load_sources_config, save_sourc
 from api.http.webui_crawler_source_routes import register_crawler_source_routes
 from api.http.webui_crawler_sources_read_routes import register_crawler_sources_read_routes
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 _WEBUI_BACKEND = os.path.join(_ROOT, "CoreModules", "WebUIBackend")
 
 

@@ -176,8 +176,13 @@ def run_step(step: GateStep) -> bool:
         step.command[0].lower().endswith(".bat") or step.command[0] == "bash"
     )
     command: str | tuple[str, ...] = format_command(step) if shell else step.command
+    env = os.environ.copy()
+    source_paths = [str(REPO_ROOT / "Core")]
+    if env.get("PYTHONPATH"):
+        source_paths.append(env["PYTHONPATH"])
+    env["PYTHONPATH"] = os.pathsep.join(source_paths)
     try:
-        completed = subprocess.run(command, cwd=step.cwd, timeout=step.timeout_seconds, check=False, shell=shell)
+        completed = subprocess.run(command, cwd=step.cwd, timeout=step.timeout_seconds, check=False, shell=shell, env=env)
     except subprocess.TimeoutExpired:
         print(f"TIMEOUT: {step.name} exceeded {step.timeout_seconds}s")
         return False

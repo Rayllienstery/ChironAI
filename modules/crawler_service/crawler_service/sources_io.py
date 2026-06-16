@@ -8,8 +8,15 @@ from typing import Any
 import yaml
 
 
+def _sources_config_path(project_root: Path) -> Path:
+    core_config = project_root / "Core" / "config" / "sources.yaml"
+    if core_config.is_file():
+        return core_config
+    return project_root / "config" / "sources.yaml"
+
+
 def load_sources(project_root: Path) -> list[dict[str, Any]]:
-    config_path = project_root / "config" / "sources.yaml"
+    config_path = _sources_config_path(project_root)
     if not config_path.is_file():
         return _default_sources()
     try:
@@ -40,7 +47,7 @@ def _default_sources() -> list[dict[str, Any]]:
 
 
 def save_sources(project_root: Path, sources: list[dict[str, Any]]) -> bool:
-    config_path = project_root / "config" / "sources.yaml"
+    config_path = _sources_config_path(project_root)
     try:
         config_path.parent.mkdir(parents=True, exist_ok=True)
         with config_path.open("w", encoding="utf-8") as f:

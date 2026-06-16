@@ -19,9 +19,10 @@ except ImportError:  # pragma: no cover - runtime error if dependency missing
     yaml = None  # type: ignore
 
 
-_BASE_DIR = Path(__file__).resolve().parent.parent
-_CONFIG_DIR = _BASE_DIR / "config"
-_RAG_SERVICE_DIR = _BASE_DIR / "CoreModules" / "RagService"
+_CORE_DIR = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = _CORE_DIR.parent
+_CONFIG_DIR = _CORE_DIR / "config"
+_RAG_SERVICE_DIR = _PROJECT_ROOT / "CoreModules" / "RagService"
 if _RAG_SERVICE_DIR.is_dir():
     ensure_import_path("rag_service", _RAG_SERVICE_DIR)
 

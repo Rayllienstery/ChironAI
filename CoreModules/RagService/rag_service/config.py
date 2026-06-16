@@ -248,7 +248,9 @@ def _load_host_repo_overlay() -> dict[str, Any]:
     root = _repo_root_guess()
     if root is None:
         return {}
-    cfg_dir = root / "config"
+    cfg_dir = root / "Core" / "config"
+    if not cfg_dir.is_dir():
+        cfg_dir = root / "config"
     if not cfg_dir.is_dir():
         return {}
 

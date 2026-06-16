@@ -596,6 +596,9 @@ def register_rag_qdrant_routes(
                     pass
         except Exception:  # safe: settings repository optional for RAG defaults
             pass
+
+        try:
+            resp = requests.get(f"{url}/collections", timeout=5)
         except requests.exceptions.RequestException as e:
             _WEBUI_LOG.warning("Qdrant unreachable at %s: %s", url, e)
             return jsonify({
@@ -687,6 +690,7 @@ def register_rag_qdrant_routes(
                                 pass
                     except Exception:  # safe: per-collection enrichment failure skips optional fields
                         pass
+                    detailed.append(item)
                 except Exception as e:
                     _WEBUI_LOG.warning("Failed to get collection %s: %s", name, e)
                     detailed.append({"name": name})
@@ -720,6 +724,8 @@ def register_rag_qdrant_routes(
                 source_ids = parse_source_ids_from_framework_id(meta.get("framework_id"))
         except Exception:  # safe: collection meta lookup optional before delete
             pass
+        try:
+            resp = requests.delete(f"{url}/collections/{name}", timeout=10)
             if resp.status_code not in (200, 202, 404):
                 return jsonify({
                     "error": f"Qdrant delete failed: HTTP {resp.status_code}",

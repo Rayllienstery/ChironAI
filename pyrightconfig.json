@@ -1,9 +1,9 @@
 {
   "include": [
-    "application",
-    "core/contracts",
-    "core/shared",
-    "domain"
+    "Core/application",
+    "Core/core/contracts",
+    "Core/core/shared",
+    "Core/domain"
   ],
   "exclude": [
     "**/__pycache__",

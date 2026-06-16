@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.6] - 2026-06-16
+### Changed
+- Moved host runtime packages under `Core/` while preserving public import names.
+- Updated tooling, startup paths, and architecture docs for the new host container.
+
+## [0.7.5] - 2026-06-16
+### Added
+- Added a root layout guardrail for classified top-level repository ownership.
+- Documented current root folder ownership in project architecture rules.
+
+## [0.7.4] - 2026-06-16
+### Fixed
+- Restored Qdrant collection list/delete HTTP calls in WebUI RAG routes.
+- Fixed create-collection embedding runtime syntax so Python gates and test collection pass again.
+
 ## [0.7.3] - 2026-06-15
 ### Added
 - HTTP test splits: `test_http_chat_completions.py`, `test_http_v1_models.py`, `test_http_extensions.py`.

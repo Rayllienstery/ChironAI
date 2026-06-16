@@ -14,13 +14,14 @@ import sys
 
 
 def main() -> None:
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     env = os.environ.copy()
     env["CHIRONAI_PROJECT_ROOT"] = root
     env["CHIRONAI_WEBUI_DIR"] = os.path.join(root, "WebUI")
     _p = os.pathsep.join(
         [
             root,
+            os.path.join(root, "Core"),
             os.path.join(root, "CoreModules", "WebUIBackend"),
             os.path.join(root, "modules", "crawler_service"),
             os.path.join(root, "modules", "html_md"),

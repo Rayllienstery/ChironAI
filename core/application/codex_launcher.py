@@ -42,7 +42,7 @@ def _proxy_api_key_module() -> Any:
     try:
         return importlib.import_module("llm_proxy.api_key")
     except Exception:
-        path = Path(__file__).resolve().parents[1] / "CoreModules" / "LlmProxy" / "llm_proxy" / "api_key.py"
+        path = Path(__file__).resolve().parents[2] / "CoreModules" / "LlmProxy" / "llm_proxy" / "api_key.py"
         spec = importlib.util.spec_from_file_location("_chironai_llm_proxy_api_key", path)
         if spec is None or spec.loader is None:
             raise

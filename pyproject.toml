@@ -56,7 +56,7 @@ Homepage = "https://github.com"
 # --- Editable install: root packages plus canonical shared modules (multi-root discovery)
 [tool.setuptools.packages.find]
 where = [
-  ".",
+  "Core",
   "CoreModules/Security",
   "CoreModules/ExtensionsSandbox",
   "modules/extensions_backend",
@@ -80,6 +80,7 @@ exclude = ["tests*", "tests"]
 testpaths = ["tests"]
 pythonpath = [
     ".",
+    "Core",
     "modules/webui_backend",
     "modules/crawler_service",
     "modules/extensions_backend",
@@ -123,12 +124,12 @@ markers = [
 target-version = "py310"
 line-length = 120
 src = [
-  "application",
-  "api",
-  "config",
-  "core",
-  "domain",
-  "infrastructure",
+  "Core/application",
+  "Core/api",
+  "Core/config",
+  "Core/core",
+  "Core/domain",
+  "Core/infrastructure",
   "tests",
   "CoreModules/LlmInteractor/llm_interactor",
   "CoreModules/Security/chironai_security",
@@ -182,11 +183,12 @@ forbidden_modules = ["application", "api", "infrastructure"]
 [tool.vulture]
 min_confidence = 80
 paths = [
-  "application",
-  "api",
-  "config",
-  "domain",
-  "infrastructure",
+  "Core/application",
+  "Core/api",
+  "Core/config",
+  "Core/domain",
+  "Core/infrastructure",
+  "Core/core",
   "CoreModules",
   "modules/webui_backend/webui_backend",
   "modules",

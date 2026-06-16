@@ -5,7 +5,7 @@ cd /d "%~dp0"
 echo Starting ChironAI server...
 echo Working directory: %CD%
 
-set "PYTHONPATH=%CD%;%CD%\modules\webui_backend;%PYTHONPATH%"
+set "PYTHONPATH=%CD%;%CD%\Core;%CD%\modules\webui_backend;%PYTHONPATH%"
 
 where python >nul 2>&1
 if errorlevel 1 (

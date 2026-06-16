@@ -46,7 +46,13 @@ tmp/                   # Temporary/dev-only material
 ```
 
 During migration, some host-owned folders may still exist at the repository
-root. Treat those as migration tails, not as permanent architecture.
+root. Treat those as migration tails, not as permanent architecture. Phase 1
+has moved the main host packages into `Core/`; `modules/` and `prompts/` remain
+root-level migration tails for later phases.
+
+`scripts/root_layout_guard.py` is the automated root allowlist. Update that
+guardrail and this document together when a root folder is intentionally added,
+removed, or reclassified.
 
 ## Ownership Buckets
 
@@ -60,6 +66,34 @@ root. Treat those as migration tails, not as permanent architecture.
 `CoreModules/` is not a replacement name for every important folder. A package
 is promoted to `CoreModules/` only when it is a standalone module with an
 intentional public boundary. Host-specific code goes under `Core/`.
+
+## Current Root Ownership
+
+| Root folder | Owner | Classification |
+|-------------|-------|----------------|
+| `.cursor/` | project support | editor metadata |
+| `.git/` | project support | VCS metadata |
+| `.github/` | project support | CI metadata |
+| `.import_linter_cache/` | project support | tool cache |
+| `.kilo/` | project support | agent metadata |
+| `.ruff_cache/` | project support | tool cache |
+| `.tmp_openwebui_data/` | temporary | local runtime data |
+| `.tmp_test_local/` | temporary | local test data |
+| `.vscode/` | project support | editor metadata |
+| `chironai.egg-info/` | project support | packaging metadata |
+| `Core/` | Core | application host container |
+| `CoreModules/` | CoreModules | reusable modules and applications |
+| `docs/` | project support | architecture and runbooks |
+| `extensions/` | extensions | extension payloads |
+| `logs/` | runtime data | local logs and databases |
+| `modules/` | Core | migration tail: host-owned services |
+| `prompts/` | Core | migration tail: prompt templates |
+| `rag_tests/` | project support | RAG evaluation fixtures |
+| `reports/` | project support | generated reports |
+| `scripts/` | project support | repo tooling |
+| `tests/` | project support | test suite |
+| `tmp/` | temporary | scratch and cloned dependency worktrees |
+| `WebUI/` | runtime data | runtime/data folder, not frontend source |
 
 ## Current-to-Target Path Map
 

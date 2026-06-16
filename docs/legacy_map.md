@@ -8,7 +8,7 @@ Active cleanup roadmap: [`QUALITY_AUDIT.md`](../QUALITY_AUDIT.md).
 
 ```text
 CoreUI (RAG Tests / Notifications / Builds)
-  -> api/http/webui_routes.py (+ webui_*_routes.py splits)
+  -> Core/api/http/webui_routes.py (+ webui_*_routes.py splits)
       -> application/rag_tests/*
       -> application/rag/proxy_settings_contract.py (monolith boundary helpers)
       -> rag_service.application.params / rag_service.application.use_cases
@@ -23,9 +23,8 @@ CoreUI (RAG Tests / Notifications / Builds)
 
 ## Root freelance runtime folders
 
-- Current root-level runtime folders (`api/`, `application/`, `domain/`,
-  `infrastructure/`, `config/`, `core/`, `modules/`, `prompts/`) are migration
-  tails.
+- Current root-level runtime folders (`modules/`, `prompts/`) are migration
+  tails. Host packages now live under `Core/`.
 - Target ownership:
   - host layers move under `Core/`;
   - host-owned services move under `Core/modules/`;
@@ -49,15 +48,15 @@ documented.
 - Documented precedence: [`config/CONFIG_AUTHORITY.md`](../config/CONFIG_AUTHORITY.md),
   env index: [`config/ENV_REFERENCE.md`](../config/ENV_REFERENCE.md).
 - Main files:
-  - `api/http/webui_settings_routes.py`, `webui_rag_routes.py`
+  - `Core/api/http/webui_settings_routes.py`, `webui_rag_routes.py`
   - `CoreModules/LlmProxy/llm_proxy/chat_completions_handler.py`
-  - `api/http/llm_proxy_wiring.py`
+  - `Core/api/http/llm_proxy_wiring.py`
 
 Risk: hidden runtime divergence (mitigated by precedence tests in `tests/config/`).
 
 ## B) WebUI routes composition
 
-- `api/http/webui_routes.py` is the composition root (~255 lines): blueprint bootstrap,
+- `Core/api/http/webui_routes.py` is the composition root (~255 lines): blueprint bootstrap,
   `register_*` calls, RAG trigger helpers, legacy Ollama model defaults.
 - Domain routes live in `webui_*_routes.py` (chat, rag, model tester, llm proxy,
   crawler, docker, extensions, observability, prompts, sessions, settings, performance,
@@ -107,7 +106,7 @@ Guardrail: `tests/application/test_ollama_migration_guardrails.py` rejects any
 - Documented: [`CoreModules/RagService/docs/QDRANT_VECTOR_MODES.md`](../CoreModules/RagService/docs/QDRANT_VECTOR_MODES.md).
 - Main files:
   - `CoreModules/RagService/rag_service/infrastructure/qdrant_repository.py`
-  - `infrastructure/qdrant/rag_repository_impl.py` (shim)
+  - `Core/infrastructure/qdrant/rag_repository_impl.py` (shim)
 
 Risk: hybrid vs dense-only mismatch; guarded by `tests/rag_service/test_qdrant_vector_modes.py`.
 
@@ -116,7 +115,7 @@ Risk: hybrid vs dense-only mismatch; guarded by `tests/rag_service/test_qdrant_v
 - WebUI-level Qdrant actions now delegate to RagRuntime; extension-owned
   services use DockerManager host capabilities.
 - Main files:
-  - `api/http/service_control.py`
+  - `Core/api/http/service_control.py`
   - `CoreModules/RagService/rag_service/runtime.py`
 
 Risk: keep Qdrant status/ports aligned between WebUI and RagRuntime.

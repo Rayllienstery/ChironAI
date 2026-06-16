@@ -17,7 +17,8 @@ class CrawlerRuntimeConfig:
 
 
 def load_crawler_runtime_config(project_root: Path) -> CrawlerRuntimeConfig:
-    config_path = project_root / "config" / "crawler.yaml"
+    core_config = project_root / "Core" / "config" / "crawler.yaml"
+    config_path = core_config if core_config.is_file() else project_root / "config" / "crawler.yaml"
     if not config_path.is_file():
         return CrawlerRuntimeConfig(
             framework_root_prefixes=list(DEFAULT_FRAMEWORK_ROOT_PREFIXES),

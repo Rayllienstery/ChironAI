@@ -7,7 +7,7 @@ def test_legacy_extension_service_flask_key_is_removed() -> None:
     root = Path(__file__).resolve().parents[2]
     legacy_key = "llm_" + "extensions_service"
     offenders: list[str] = []
-    for base in ("api", "CoreModules", "modules", "core"):
+    for base in ("Core/api", "CoreModules", "modules", "Core/core"):
         for path in (root / base).rglob("*.py"):
             text = path.read_text(encoding="utf-8")
             if legacy_key in text:
@@ -19,12 +19,12 @@ def test_legacy_extension_service_flask_key_is_removed() -> None:
 def test_extension_runtime_flask_keys_are_confined_to_contract_accessors() -> None:
     root = Path(__file__).resolve().parents[2]
     allowed = {
-        "api/http/extensions_service_access.py",
-        "core/contracts/extensions_api.py",
+        "Core/api/http/extensions_service_access.py",
+        "Core/core/contracts/extensions_api.py",
     }
     forbidden = ("llm_interactor_runtime", "llm_provider_registry")
     offenders: list[str] = []
-    for base in ("api", "CoreModules", "modules", "core"):
+    for base in ("Core/api", "CoreModules", "modules", "Core/core"):
         for path in (root / base).rglob("*.py"):
             rel = path.relative_to(root).as_posix()
             text = path.read_text(encoding="utf-8")
@@ -38,7 +38,7 @@ def test_api_routes_use_extension_service_accessor_not_legacy_flask_keys() -> No
     root = Path(__file__).resolve().parents[2]
     offenders: list[str] = []
     legacy_key = "llm_" + "extensions_service"
-    for path in (root / "api").rglob("*.py"):
+    for path in (root / "Core" / "api").rglob("*.py"):
         if path.name == "extensions_service_access.py":
             continue
         text = path.read_text(encoding="utf-8")
@@ -59,7 +59,7 @@ def test_api_routes_do_not_scan_bundled_extension_directories() -> None:
         ".joinpath('extensions', 'bundled')",
     )
     offenders: list[str] = []
-    for path in (root / "api").rglob("*.py"):
+    for path in (root / "Core" / "api").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         if any(pattern in text for pattern in forbidden_patterns):
             offenders.append(str(path.relative_to(root)))

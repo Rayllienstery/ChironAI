@@ -2,7 +2,7 @@
 #   pip install -r requirements-dev.txt
 #
 # Installs:
-#   - chironai (root: application, api, config, core, domain, infrastructure, shared modules) + [dev]
+#   - chironai (Core: application, api, config, core, domain, infrastructure) + [dev]
 #   - all runtime CoreModules and modules used by WebUI / proxy / crawl entrypoints
 
 -e .[dev]

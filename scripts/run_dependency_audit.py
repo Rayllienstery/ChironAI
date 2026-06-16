@@ -11,7 +11,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 COREUI_ROOT = REPO_ROOT / "CoreModules" / "CoreUI"
-EXCEPTIONS_PATH = REPO_ROOT / "config" / "dependency_audit_exceptions.json"
+EXCEPTIONS_PATH = REPO_ROOT / "Core" / "config" / "dependency_audit_exceptions.json"
 
 
 def _load_exceptions() -> dict[str, list[dict[str, str]]]:

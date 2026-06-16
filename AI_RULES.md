@@ -31,11 +31,43 @@ Allowed ownership buckets:
   `WebUI/`, `logs/`, `tmp/`, and config files, when they are not importable
   runtime packages.
 
-Root-level runtime packages such as `api/`, `application/`, `domain/`,
-`infrastructure/`, `config/`, `core/`, `modules/`, or `prompts/` are migration
-tails only. The target is to move host-owned code under `Core/` while keeping
-import names stable during the first pass. Any new root-level runtime package
+Root-level runtime packages such as `modules/` or `prompts/` are migration
+tails only. Host-owned packages `api/`, `application`, `domain`,
+`infrastructure`, `config`, and `core` now live physically under `Core/` while
+keeping their public import names stable. Any new root-level runtime package
 requires an explicit allowlist entry and a documented owner.
+
+Automated guardrail: `scripts/root_layout_guard.py` and
+`tests/scripts/test_root_layout_guard.py` reject new top-level directories until
+they are classified in the root ownership allowlist.
+
+Current root directory ownership:
+
+| Root folder | Owner | Classification |
+|-------------|-------|----------------|
+| `.cursor/` | project support | editor metadata |
+| `.git/` | project support | VCS metadata |
+| `.github/` | project support | CI metadata |
+| `.import_linter_cache/` | project support | tool cache |
+| `.kilo/` | project support | agent metadata |
+| `.ruff_cache/` | project support | tool cache |
+| `.tmp_openwebui_data/` | temporary | local runtime data |
+| `.tmp_test_local/` | temporary | local test data |
+| `.vscode/` | project support | editor metadata |
+| `chironai.egg-info/` | project support | packaging metadata |
+| `Core/` | Core | application host container |
+| `CoreModules/` | CoreModules | reusable modules and applications |
+| `docs/` | project support | architecture and runbooks |
+| `extensions/` | extensions | extension payloads |
+| `logs/` | runtime data | local logs and databases |
+| `modules/` | Core | migration tail: host-owned services |
+| `prompts/` | Core | migration tail: prompt templates |
+| `rag_tests/` | project support | RAG evaluation fixtures |
+| `reports/` | project support | generated reports |
+| `scripts/` | project support | repo tooling |
+| `tests/` | project support | test suite |
+| `tmp/` | temporary | scratch and cloned dependency worktrees |
+| `WebUI/` | runtime data | runtime/data folder, not frontend source |
 
 When deciding where code belongs:
 
@@ -62,7 +94,7 @@ are migration tails rather than permanent freelance packages.
 | **CoreUI** | React/Vite SPA under `CoreModules/CoreUI/`. Talks to the backend **only over HTTP**—no direct RAG, crawler, or ingestion calls. See `CoreModules/CoreUI/README.md`. |
 | **`WebUI/` folder** | Runtime/data directory (`rag_sources`, caches, logs, `last_collection.txt`). This is **not** the frontend and no longer contains Python entrypoints. |
 | **WebUIBackend** | Canonical Python backend package currently under `modules/webui_backend/webui_backend/`, target `Core/modules/webui_backend/webui_backend/`; owns WebUI entrypoints plus legacy crawl/ingest helpers that have not yet been extracted further. |
-| **Web UI (HTTP API)** | REST under the `/api/webui` prefix for dashboard, settings, logs, etc. The canonical package is `webui_backend`; the remaining route-composition tail is still in the host API layer (`api/http/...` during migration, target `Core/api/http/...`). |
+| **Web UI (HTTP API)** | REST under the `/api/webui` prefix for dashboard, settings, logs, etc. The canonical package is `webui_backend`; the remaining route-composition tail is in the host API layer (`Core/api/http/...`, import name `api.http...`). |
 | **Open WebUI** | A separate Docker product; status/start is owned by the `open-webui` extension through DockerManager host capabilities. Do not conflate with **CoreUI** (our React app) or call it “our WebUI” without qualification. |
 
 Ambiguous “WebUI” in conversation: clarify—**`WebUI/` data folder**, **WebUIBackend**, **`/api/webui` HTTP API**, **CoreUI**, or **Open WebUI**.
@@ -78,9 +110,9 @@ import names, not automatic promotion into `CoreModules/`.
 ### API and contract
 
 - The **`/api/webui`** prefix must match in four places:
-  1. `core/contracts/webui_api.py` — constant `WEBUI_URL_PREFIX`;
+  1. `Core/core/contracts/webui_api.py` — constant `WEBUI_URL_PREFIX`;
   2. `CoreModules/CoreUI/src/services/api.js` — `API_BASE`;
-  3. Flask Web UI blueprint — `url_prefix` (today around `api/http/webui_routes.py` and related registration).
+  3. Flask Web UI blueprint — `url_prefix` (today around `Core/api/http/webui_routes.py` and related registration).
   4. RESTX/OpenAPI documentation — the generated spec and Swagger UI exposed through `/api/webui/openapi.json` and `/api/webui/swagger/`.
 - Any new endpoint: update the contract (types/DTOs in `webui_api.py` as needed), the client in `api.js`, server routes, and RESTX/OpenAPI descriptions/models/tests. Otherwise you get **docs ↔ frontend ↔ backend** drift.
 
@@ -153,12 +185,12 @@ In practice:
 
 ## 5. Python core (monolith)
 
-Layers (top to bottom): **`api/`** → **`application/`** → **`domain/`** → **`infrastructure/`**, plus `config/`, `utils/`. Details: `docs/ARCHITECTURE.md`.
+Layers (top to bottom): **`Core/api/`** → **`Core/application/`** → **`Core/domain/`** → **`Core/infrastructure/`**, plus `Core/config/`. Import names remain `api`, `application`, `domain`, `infrastructure`, and `config`. Details: `docs/ARCHITECTURE.md`.
 
-- **`domain/`** must not import `application`, `api`, or `infrastructure`. Enforcement: **import-linter** in `pyproject.toml` (contract `domain_is_inner_layer`). After changing layer boundaries, run `lint-imports` if your environment is set up for it.
+- **`Core/domain/`** must not import `application`, `api`, or `infrastructure`. Enforcement: **import-linter** in `pyproject.toml` (contract `domain_is_inner_layer`). After changing layer boundaries, run `lint-imports` if your environment is set up for it.
 - Web UI responsibility split:
-  - **`api/http/service_control.py`** — lifecycle bridge for WebUI service actions; Qdrant delegates to `RagRuntime`, while extension-owned services use DockerManager host capabilities.
-  - **`api/http/webui_routes.py`** — HTTP composition for the UI.
+  - **`Core/api/http/service_control.py`** — lifecycle bridge for WebUI service actions; Qdrant delegates to `RagRuntime`, while extension-owned services use DockerManager host capabilities.
+  - **`Core/api/http/webui_routes.py`** — HTTP composition for the UI.
   Do not merge them back without a strong reason—this split is intentional for tests and evolution.
 
 ### 5.1 LogsManager (internal LLM only)
@@ -185,7 +217,7 @@ matched = mgr.find_latest_log_with_user_message("Найди")
   - find a recent request by prompt fragment → `find_latest_log_with_user_message()` (Unicode case-insensitive substring match on user text)
 - **Fields to inspect:** `metadata.user_query`, `metadata.response_preview`, `metadata.trace`, `metadata.trace_id`, `metadata.rag_steps`, `metadata.rag_context`.
 - **Limitation:** `user_query` is truncated to 500 characters when persisted.
-- **Live traces:** in-memory snapshots from `api/http/proxy_trace.py` are out of scope; use `recent_proxy_traces()` for active requests. LogsManager reads the persisted journal only.
+- **Live traces:** in-memory snapshots from `Core/api/http/proxy_trace.py` are out of scope; use `recent_proxy_traces()` for active requests. LogsManager reads the persisted journal only.
 - **Details:** `CoreModules/LogsManager/README.md`.
 
 ---
@@ -211,9 +243,9 @@ flowchart LR
   WUB -->|HTTP_contracts| CR
 ```
 
-Modules must not import each other's **implementations**—only contracts and HTTP. Shared layer: `core/` (`core/contracts/`, `core/shared/`, `core/config/`). Read: `docs/MODULAR_STRUCTURE.md`, `core/README.md`.
+Modules must not import each other's **implementations**—only contracts and HTTP. Shared layer: `Core/core/` (`core/contracts/`, `core/shared/`, `core/config/`). Read: `docs/MODULAR_STRUCTURE.md`, `Core/core/README.md`.
 
-Until migration completes, the monolith (`api/`, `application/`, `domain/`, `infrastructure/`) and new modules coexist; state clearly in commits which path you changed.
+Until migration completes, the host monolith under `Core/` and new modules coexist; state clearly in commits which path you changed.
 
 ---
 
@@ -222,9 +254,9 @@ Until migration completes, the monolith (`api/`, `application/`, `domain/`, `inf
 Change carefully; if behavior shifts, document and align with team/repo norms.
 
 1. **LlmProxy / OpenAI compatibility** — `CoreModules/LlmProxy/`: canonical `/v1/chat/completions`, intentional legacy (`/v1/completions` and related). See `docs/ARCHITECTURE.md` (compatibility section), `CoreModules/LlmProxy/README.md`.
-2. **Web UI API sync** — `core/contracts/webui_api.py` ↔ `CoreModules/CoreUI/src/services/api.js` ↔ Flask routes.
-3. **Settings overlap** — `proxy_settings`, app fields, YAML/env; risk of silent divergence. Key files: `api/http/webui_routes.py`, `api/http/llm_proxy_wiring.py`, `CoreModules/LlmProxy/llm_proxy/chat_completions.py` (see `docs/legacy_map.md`).
-4. **Qdrant / retrieval** — multiple modes (dense, hybrid, name compatibility); edits to `CoreModules/RagService/.../qdrant_repository.py` and mirrors under `infrastructure/qdrant/` must stay aligned.
+2. **Web UI API sync** — `Core/core/contracts/webui_api.py` ↔ `CoreModules/CoreUI/src/services/api.js` ↔ Flask routes.
+3. **Settings overlap** — `proxy_settings`, app fields, YAML/env; risk of silent divergence. Key files: `Core/api/http/webui_routes.py`, `Core/api/http/llm_proxy_wiring.py`, `CoreModules/LlmProxy/llm_proxy/chat_completions.py` (see `docs/legacy_map.md`).
+4. **Qdrant / retrieval** — multiple modes (dense, hybrid, name compatibility); edits to `CoreModules/RagService/.../qdrant_repository.py` and mirrors under `Core/infrastructure/qdrant/` must stay aligned.
 5. **Service control** — Qdrant Web UI call paths delegate to `CoreModules/RagService`; extension service actions must use DockerManager host capabilities.
 
 Risk and “tail” summary: `docs/legacy_map.md`.
@@ -234,7 +266,7 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 ## 8. Versioning and Changelog
 
 - **Version Increment:** Every time a task is completed that involves changing at least one file in the project code, the version must be incremented: `X.Y.Z` -> `X.Y.(Z+1)`.
-- **Source of Truth:** The canonical version is stored in `core/version.py`.
+- **Source of Truth:** The canonical version is stored in `Core/core/version.py`.
 - **CHANGELOG.md:** Must be updated for every version bump. Use a concise bulleted list to describe **what** was done, but **not how** it was done.
 
 ### Runtime smoke check

@@ -11,6 +11,7 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "Core"))
 
 from config import get_indexing_int, get_webui_port  # noqa: E402
 from core.contracts.webui_api import WEBUI_URL_PREFIX  # noqa: E402

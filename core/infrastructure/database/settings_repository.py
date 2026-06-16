@@ -271,7 +271,7 @@ def _resolve_default_db_path() -> str:
     env_path = os.getenv("WEBUI_DB_PATH")
     if env_path:
         return env_path
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = Path(__file__).resolve().parents[3]
     return str(project_root / "logs" / "webui.db")
 
 

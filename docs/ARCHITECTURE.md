@@ -8,34 +8,32 @@ The codebase is organized in layers: **Presentation → Application → Domain �
 
 **Current (legacy) layout:**
 
-The paths below describe the current physical layout. Their target owners are
-defined in `docs/MODULAR_STRUCTURE.md`: host layers move under `Core/`, current
-top-level `modules/` moves under `Core/modules/`, and reusable modules remain
-under `CoreModules/`.
+The paths below describe the current physical layout. Host layers live under
+`Core/`, current top-level `modules/` moves under `Core/modules/` in the next
+phase, and reusable modules remain under `CoreModules/`.
 
 ```
-api/                 — Presentation (HTTP routes, CLI entrypoints)
-application/         — Application (use cases, container/wiring)
-domain/              — Domain (entities, services, ports, errors)
-infrastructure/      — Infrastructure (Qdrant, Ollama, FS, crawl, logging)
-config/              — Configuration (YAML + env)
-utils/               — Pure helpers
+Core/api/            — Presentation (HTTP routes, CLI entrypoints)
+Core/application/    — Application (use cases, container/wiring)
+Core/domain/         — Domain (entities, services, ports, errors)
+Core/infrastructure/ — Infrastructure (Qdrant, FS, crawl, logging)
+Core/config/         — Configuration (YAML + env)
+Core/core/           — Shared contracts/config package; import name `core`
 tests/               — Pytest (domain, application, api, infrastructure)
 
 modules/             — Host-owned services; target Core/modules (RAG pipeline package lives under **CoreModules/RagService**)
 CoreModules/         — Shared core apps/libs (e.g. LlmProxy, RagService / `rag_service` + `chironai_rag`, CoreUI, MdIngestionService / `md_ingestion_service`)
-core/                — (Target) config, shared, contracts
 ```
 
 ## Data flow
 
-- **HTTP**: Client -> `api/http/rag_routes.py` (Flask) -> `rag_service.application.use_cases` -> `rag_service.domain.services/*` + ports -> `rag_service.infrastructure/*` (plus root `infrastructure/*` where the monolith still wires Qdrant and other shared adapters).
+- **HTTP**: Client -> `Core/api/http/rag_routes.py` (Flask; import name `api.http.rag_routes`) -> `rag_service.application.use_cases` -> `rag_service.domain.services/*` + ports -> `rag_service.infrastructure/*` (plus `Core/infrastructure/*` where the host still wires Qdrant and other shared adapters).
 - **CLI**: `api/cli/crawl_cli.py` (or `python -m api.cli crawl`) -> delegates to crawler_service/webui_backend crawl/index workflows.
 - **RAG**: `query_for_retrieval` (domain) → embed (Ollama) → search (Qdrant) → rerank (Ollama) → `build_context_block` (domain) → chat (Ollama).
 
 ## Layers
 
-- **api/**: Flask app (`create_app` in `api/http/rag_routes.py`), CLI wrappers (`api/cli/crawl_cli.py`). No direct infrastructure imports; uses application use cases.
+- **Core/api/**: Flask app (`create_app` in `Core/api/http/rag_routes.py`), CLI wrappers (`Core/api/cli/crawl_cli.py`). No direct infrastructure imports; uses application use cases.
 - **application/**: Monolith-boundary helpers under `application/rag/` (for example `proxy_settings_contract`, `collection_freshness`). Canonical RAG use cases and composition live in **`rag_service.application`**; default RAG wiring is in **`rag_service.infrastructure.container`**.
 - **domain/**: Shared non-RAG services (for example `markdown_meta`), ports, and errors. RAG entities and services are owned by **`rag_service.domain`**.
 - **infrastructure/**: Qdrant compatibility shims, FS (MarkdownStore), crawl (Playwright), logging (WebUI error logger), metrics, and stack health. Ollama provider behavior is owned by the extension/runtime boundary; wire-format compatibility helpers live in `rag_service.infrastructure.openai_*` and LlmProxy modules.
@@ -63,12 +61,12 @@ Domain and application tests use mocks; API tests use Flask test client with wir
 
 The repository root is an installable project **`chironai`** ([`pyproject.toml`](../pyproject.toml)):
 
-- **Editable install**: `pip install -e ".[dev]"` installs top-level packages (`application`, `api`, `config`, `core`, `domain`, `infrastructure`, `utils`) and console scripts `tmrag` / `chironai`.
+- **Editable install**: `pip install -e ".[dev]"` installs host packages from `Core/` (`application`, `api`, `config`, `core`, `domain`, `infrastructure`) and console scripts `tmrag` / `chironai`.
 - **`modules/*`**: treated as separate subtrees (many already ship their own README / layout). They are on `sys.path` for tests via pytest `pythonpath`, not necessarily part of the `chironai` distribution—add them to setuptools `packages.find` only if you want a single wheel to include everything.
 - **`CoreModules/OllamaInteractor`**: separate distribution `ollama-interactor`; temporary compatibility adapters and the `ollama-provider` extension HTTP helper may invoke it for Ollama REST calls. The canonical extension source is its dedicated GitHub repository; `extensions/bundled/ollama-provider` is only a bootstrap/offline mirror.
 - **`CoreModules/DockerManager`**: separate distribution `docker-manager`; provides Docker host capabilities to service-owning extensions and runtime helpers. App-level Ollama start/stop/status UX belongs to the `ollama-provider` extension, which receives Docker access through `host_context.docker_runtime`.
-- **`CoreModules/LlmProxy`**: separate distribution `llm-proxy`; OpenAI-compatible `/v1` HTTP surface plus **Anthropic-compatible** `POST /v1/messages` and multiplexed `GET /v1/models` (via `anthropic-version` header), sharing the same RAG pipeline as `chat/completions`; also apply-edit and external-docs ingest. The host app supplies a `LlmProxyWiring` built in [`api/http/llm_proxy_wiring.py`](../api/http/llm_proxy_wiring.py); see [`CoreModules/LlmProxy/README.md`](../CoreModules/LlmProxy/README.md).
-- **`CoreModules/WebInteraction`**: separate distribution `web-interaction`; free web snippet helpers (DuckDuckGo search, trigger heuristics) used when building the proxy system prompt. Wired from [`api/http/llm_proxy_wiring.py`](../api/http/llm_proxy_wiring.py); see [`CoreModules/WebInteraction/README.md`](../CoreModules/WebInteraction/README.md).
+- **`CoreModules/LlmProxy`**: separate distribution `llm-proxy`; OpenAI-compatible `/v1` HTTP surface plus **Anthropic-compatible** `POST /v1/messages` and multiplexed `GET /v1/models` (via `anthropic-version` header), sharing the same RAG pipeline as `chat/completions`; also apply-edit and external-docs ingest. The host app supplies a `LlmProxyWiring` built in [`Core/api/http/llm_proxy_wiring.py`](../Core/api/http/llm_proxy_wiring.py); see [`CoreModules/LlmProxy/README.md`](../CoreModules/LlmProxy/README.md).
+- **`CoreModules/WebInteraction`**: separate distribution `web-interaction`; free web snippet helpers (DuckDuckGo search, trigger heuristics) used when building the proxy system prompt. Wired from [`Core/api/http/llm_proxy_wiring.py`](../Core/api/http/llm_proxy_wiring.py); see [`CoreModules/WebInteraction/README.md`](../CoreModules/WebInteraction/README.md).
 - **Import boundaries**: [import-linter](https://github.com/seddonym/import-linter) contract `domain_is_inner_layer` forbids `domain` → `application` | `api` | `infrastructure`. Run `lint-imports` after `pip install -r requirements-dev.txt`.
 
 ## Adding a new source or model
@@ -81,10 +79,10 @@ The repository root is an installable project **`chironai`** ([`pyproject.toml`]
 ## Service Control Boundary
 
 Service orchestration for WebUI endpoints is routed through
-`api/http/service_control.py`.
+`Core/api/http/service_control.py`.
 
-- `api/http/webui_routes.py` stays focused on HTTP composition.
-- `api/http/service_control.py` owns the WebUI bridge for Qdrant start/stop
+- `Core/api/http/webui_routes.py` stays focused on HTTP composition.
+- `Core/api/http/service_control.py` owns the WebUI bridge for Qdrant start/stop
   and delegates container lifecycle to `rag_service.runtime.RagRuntime`.
 - Extension-owned service actions such as Ollama and Open WebUI use
   DockerManager through `host_context.docker_runtime`.

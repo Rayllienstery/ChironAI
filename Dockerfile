@@ -20,12 +20,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md ./
-COPY application ./application
-COPY api ./api
-COPY config ./config
-COPY core ./core
-COPY domain ./domain
-COPY infrastructure ./infrastructure
+COPY Core ./Core
 COPY modules ./modules
 COPY CoreModules/Security ./CoreModules/Security
 COPY CoreModules/ExtensionsSandbox ./CoreModules/ExtensionsSandbox

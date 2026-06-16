@@ -1,4 +1,4 @@
-"""Conditional sys.path setup for editable installs (Phase 4 / Track E)."""
+"""Conditional sys.path setup for editable installs."""
 
 from __future__ import annotations
 
@@ -9,14 +9,20 @@ from pathlib import Path
 
 
 def _repo_root_from_here() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return Path(__file__).resolve().parents[3]
+
+
+def _core_root_from_repo(root: str | Path) -> Path:
+    return Path(root).resolve() / "Core"
 
 
 def ensure_repo_root_on_path(root: str | Path | None = None) -> str:
-    """Ensure repository root is on sys.path; return normalized root string."""
+    """Ensure repository and Core roots are on sys.path; return repository root."""
     resolved = str(Path(root).resolve() if root is not None else _repo_root_from_here())
-    if resolved not in sys.path:
-        sys.path.insert(0, resolved)
+    core_root = str(_core_root_from_repo(resolved))
+    for path in (resolved, core_root):
+        if os.path.isdir(path) and path not in sys.path:
+            sys.path.insert(0, path)
     return resolved
 
 

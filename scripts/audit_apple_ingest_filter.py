@@ -74,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
 
     root = _repo_root()
     sys.path.insert(0, str(root))
+    sys.path.insert(0, str(root / "Core"))
     sys.path.insert(0, str(root / "CoreModules" / "MdIngestionService"))
 
     from md_ingestion_service.domain.services.indexing_prepare import prepare_markdown_for_indexing

@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+CORE_ROOT = REPO_ROOT / "Core"
+if str(CORE_ROOT) not in sys.path:
+    sys.path.insert(0, str(CORE_ROOT))
 WEBUI_PREFIX = "/api/webui"
 V1_PREFIX = "/v1"
 
@@ -120,9 +124,9 @@ def collect_frontend_paths(services_dir: Path) -> set[str]:
 
 
 def run_drift_check() -> tuple[list[str], list[str], list[str], int]:
-    webui_dir = REPO_ROOT / "api" / "http"
+    webui_dir = REPO_ROOT / "Core" / "api" / "http"
     v1_blueprint_py = REPO_ROOT / "CoreModules" / "LlmProxy" / "llm_proxy" / "v1_blueprint.py"
-    openapi_py = REPO_ROOT / "core" / "openapi.py"
+    openapi_py = REPO_ROOT / "Core" / "core" / "openapi.py"
     api_js = REPO_ROOT / "CoreModules" / "CoreUI" / "src" / "services" / "api.js"
     services_dir = api_js.parent
 

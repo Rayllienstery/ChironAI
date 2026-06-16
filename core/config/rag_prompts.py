@@ -11,9 +11,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# Project root (parent of config/)
+# Project root (parent of Core/)
 _CONFIG_DIR = Path(__file__).resolve().parent
-_PROJECT_ROOT = _CONFIG_DIR.parent
+_PROJECT_ROOT = _CONFIG_DIR.parent.parent
 PROMPTS_DIR = _PROJECT_ROOT / "prompts"
 
 # Default suffix appended after system prompt (RAG context block follows)

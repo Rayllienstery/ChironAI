@@ -7,10 +7,10 @@ def test_docker_mechanics_are_owned_by_docker_manager() -> None:
     root = Path(__file__).resolve().parents[2]
     allowed_root = root / "CoreModules" / "DockerManager"
     scanned_roots = [
-        root / "api",
+        root / "Core" / "api",
         root / "CoreModules",
         root / "extensions",
-        root / "infrastructure",
+        root / "Core" / "infrastructure",
         root / "modules",
         root / "WebUI",
     ]

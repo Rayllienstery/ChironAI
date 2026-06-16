@@ -289,6 +289,7 @@ def ensure_collection_with_name(
                 )
             except Exception:  # safe: payload index may already exist on new collection
                 pass
+    except Exception as e:
         _WEBUI_LOG.error(f"Failed to create collection '{collection_name}': {e}")
         raise
 

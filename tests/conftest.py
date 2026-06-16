@@ -1,6 +1,4 @@
-"""
-Pytest configuration. Ensures project root is on sys.path for domain/application imports.
-"""
+"""Pytest configuration. Ensures source roots are on sys.path."""
 
 from __future__ import annotations
 
@@ -15,8 +13,10 @@ import pytest
 pytest_plugins = ["tests.api.http_fixtures"]
 
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
+_CORE_ROOT = os.path.join(_ROOT, "Core")
+for _path in (_ROOT, _CORE_ROOT):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 _PATH_MARKERS = {
     "api": ("api", "integration"),

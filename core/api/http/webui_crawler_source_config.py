@@ -8,12 +8,19 @@ import os
 _WEBUI_LOG = logging.getLogger("webui")
 
 
+def _sources_config_path(root: str) -> str:
+    core_config = os.path.join(root, "Core", "config", "sources.yaml")
+    if os.path.isfile(core_config):
+        return core_config
+    return os.path.join(root, "config", "sources.yaml")
+
+
 def load_sources_config(root: str) -> list[dict]:
     """Load sources from config/sources.yaml."""
     try:
         import yaml
 
-        config_path = os.path.join(root, "config", "sources.yaml")
+        config_path = _sources_config_path(root)
         if not os.path.isfile(config_path):
             return []
 
@@ -31,7 +38,7 @@ def save_sources_config(root: str, sources: list[dict]) -> bool:
     try:
         import yaml
 
-        config_path = os.path.join(root, "config", "sources.yaml")
+        config_path = _sources_config_path(root)
         config_dir = os.path.dirname(config_path)
         os.makedirs(config_dir, exist_ok=True)
 

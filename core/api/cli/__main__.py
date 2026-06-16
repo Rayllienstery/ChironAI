@@ -21,7 +21,7 @@ import sys
 
 
 def _root() -> str:
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 
 def _app_py() -> str:
@@ -37,7 +37,7 @@ def _module_env() -> dict[str, str]:
     env = os.environ.copy()
     if importlib.util.find_spec("webui_backend") is not None:
         return env
-    paths = [_root(), _webui_backend_root()]
+    paths = [_root(), os.path.join(_root(), "Core"), _webui_backend_root()]
     existing = env.get("PYTHONPATH")
     if existing:
         paths.append(existing)
@@ -54,6 +54,7 @@ def _crawl_env() -> dict[str, str]:
     _p = os.pathsep.join(
         [
             _root(),
+            os.path.join(_root(), "Core"),
             os.path.join(_root(), "modules", "webui_backend"),
             os.path.join(_root(), "modules", "crawler_service"),
             os.path.join(_root(), "modules", "html_md"),

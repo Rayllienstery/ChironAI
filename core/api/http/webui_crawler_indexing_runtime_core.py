@@ -41,7 +41,7 @@ from infrastructure.rag.qdrant_point_builder import build_named_vectors
 if TYPE_CHECKING:
     from qdrant_client.http.models import PointStruct
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 _WEBUI_LOG = logging.getLogger("webui")
 
 _collection_jobs: dict[str, dict[str, Any]] = {}

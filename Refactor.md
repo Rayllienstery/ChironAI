@@ -104,9 +104,9 @@ support, or temporary/dev-only material.
 
 ### Acceptance Criteria
 
-- [ ] Every root folder has an owner classification.
-- [ ] New unowned root runtime folders are rejected by an automated guardrail.
-- [ ] The allowlist distinguishes source code from runtime data.
+- [x] Every root folder has an owner classification.
+- [x] New unowned root runtime folders are rejected by an automated guardrail.
+- [x] The allowlist distinguishes source code from runtime data.
 
 ## Phase 1. Introduce `Core/` Container Without Import Renames
 
@@ -133,11 +133,11 @@ Python import names stable.
 
 ### Acceptance Criteria
 
-- [ ] The moved packages no longer live at the repository root.
-- [ ] Existing import names still work.
-- [ ] Import-linter domain boundary still passes or any known gap is documented.
-- [ ] API route composition imports successfully.
-- [ ] App startup path is verified through `build_and_run.bat` if any non-md
+- [x] The moved packages no longer live at the repository root.
+- [x] Existing import names still work.
+- [x] Import-linter domain boundary still passes or any known gap is documented.
+- [x] API route composition imports successfully.
+- [x] App startup path is verified through `build_and_run.bat` if any non-md
       files changed.
 
 ## Phase 2. Move Host-Owned `modules/` Under `Core/modules/`

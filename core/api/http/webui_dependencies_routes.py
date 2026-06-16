@@ -18,7 +18,7 @@ from typing import Any
 from error_manager.http import error_response as _error_response
 from flask import Blueprint, jsonify
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 COREUI_ROOT = REPO_ROOT / "CoreModules" / "CoreUI"
 
 _REQ_NAME_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)(?:\[[^\]]+\])?")
