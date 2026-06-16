@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
-from application.rag.hybrid_sparse import is_hybrid_sparse_enabled
-from config import get_indexing_int, get_qdrant_url
-from infrastructure.rag.qdrant_point_builder import build_named_vectors
 from md_ingestion_service.domain.services.indexing_prepare import prepare_markdown_for_indexing
 from rag_service.domain.services.chunking import chunk_quality_ok, split_markdown_into_chunks
 from rag_service.domain.services.metadata_inference import (
@@ -26,11 +24,19 @@ from api.http.rag_sources_meta import update_page_chunk_hashes
 from api.http.webui_crawler_helpers import get_crawler_sources_dir, load_source_meta
 from api.http.webui_crawler_indexing_helpers import import_qdrant as _import_qdrant
 from api.http.webui_crawler_indexing_runtime_embed import (
+    authority_tier,
     ensure_collection_with_name,
     get_embeddings_simple,
+    is_hub_url,
+    material_class,
+    point_id_from_hash,
     qdrant_collection_has_sparse_vectors,
+    sha256_text,
 )
 from api.http.webui_crawler_source_config import load_sources_config
+from application.rag.hybrid_sparse import is_hybrid_sparse_enabled
+from config import get_indexing_int, get_qdrant_url
+from infrastructure.rag.qdrant_point_builder import build_named_vectors
 
 if TYPE_CHECKING:
     from qdrant_client.http.models import PointStruct
@@ -187,7 +193,7 @@ def record_page_skip(
         recent.append(skip_entry)
         del recent[:-12]
         status = "error" if reason in {"read_error", "chunk_failed", "embed_failed", "dim_mismatch"} else "skipped"
-        _remember_embedding_history(
+        remember_embedding_history(
             st,
             source_id=source_id,
             filename=filename,
@@ -312,7 +318,7 @@ def create_collection_from_sources(
     embed_batch_size = max(1, get_indexing_int("embed_batch_size", 32))
     embed_window_chunks = max(embed_batch_size, get_indexing_int("embed_window_chunks", embed_batch_size * 4))
 
-    config_sources = {s.get("id"): s for s in _load_sources_config(_ROOT) if s.get("id")}
+    config_sources = {s.get("id"): s for s in load_sources_config(_ROOT) if s.get("id")}
     source_extras: dict[str, dict[str, Any]] = {
         sid: (cfg.get("extra") or {}) if isinstance(cfg.get("extra"), dict) else {}
         for sid, cfg in config_sources.items()

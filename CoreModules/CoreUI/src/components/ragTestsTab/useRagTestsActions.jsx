@@ -23,7 +23,7 @@ export function useRagTestsActions(core, {
     selectedPromptName, runTemperature, runTopK, runStrictMode, runConcurrency,
     selectedTestIds, setSelectedTestIds, setError, createForm, setCreateForm,
     setCreateOpen, setCreateSubmitting, setCreateConceptsWarning, editForm, setEditForm,
-    setEditOpen, setEditTestId, setEditSubmitting, setEditConceptsWarning, collections,
+    setEditOpen, editTestId, setEditTestId, setEditSubmitting, setEditConceptsWarning, collections,
     loadTests, liveMonitorDetailOpen, setLiveMonitorDetailOpen, liveDetailCardIndex,
     setLiveDetailCardIndex, currentStepStartedAt, liveNowMs, liveTrace, liveSse,
     resultDetailModal, setResultDetailModal, runHistoryModal, setRunHistoryModal,

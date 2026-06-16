@@ -1,5 +1,5 @@
 import React from 'react';
-import { CUSTOM_PARAMETER_PREFAB_NOTE } from './constants';
+import { CUSTOM_PARAMETER_PREFAB_NOTE, PARAMETER_PREFABS } from './constants';
 
 export default function LlmProxyWizardSteps({
   wizardStep,
@@ -14,6 +14,8 @@ export default function LlmProxyWizardSteps({
   applySelectedModelDefaults,
   parameterPrefabNote,
   applyParameterPrefab,
+  prompts,
+  matchingParameterPrefab,
   buildModalPipelineData,
   buildModalHybrid,
   buildModalRerank,

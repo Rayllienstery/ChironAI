@@ -3,20 +3,16 @@
 from __future__ import annotations
 
 import os
-import subprocess
-import sys
-import threading
-import time
-import uuid
 from typing import Any, Callable
 
 from error_manager.http import error_response as _error_response
 from flask import jsonify, request
-from typing import Callable
 
 try:
     from modules.md_indexer import (
         delete_pipeline as md_indexer_delete_pipeline,
+    )
+    from modules.md_indexer import (
         get_active_pipeline_name,
         list_pipeline_names,
         load_pipeline,

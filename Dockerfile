@@ -1,10 +1,12 @@
 # syntax=docker/dockerfile:1
 
 FROM node:20-bookworm-slim AS coreui-build
+WORKDIR /build
+COPY CoreModules/CoreUI/package.json CoreModules/CoreUI/package-lock.json ./CoreModules/CoreUI/
+RUN cd CoreModules/CoreUI && npm ci
+COPY CoreModules/CoreUI/ ./CoreModules/CoreUI/
+COPY CoreModules/Localization ./CoreModules/Localization
 WORKDIR /build/CoreModules/CoreUI
-COPY CoreModules/CoreUI/package.json CoreModules/CoreUI/package-lock.json ./
-RUN npm ci
-COPY CoreModules/CoreUI/ ./
 RUN npm run build
 
 FROM python:3.12-slim-bookworm AS runtime
@@ -18,17 +20,33 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md ./
-COPY application api config core domain infrastructure chironai_security extensions_sandbox extensions_backend webui_backend modules ./ 
+COPY application ./application
+COPY api ./api
+COPY config ./config
+COPY core ./core
+COPY domain ./domain
+COPY infrastructure ./infrastructure
+COPY modules ./modules
+COPY CoreModules/Security ./CoreModules/Security
+COPY CoreModules/ExtensionsSandbox ./CoreModules/ExtensionsSandbox
+COPY CoreModules/RagService ./CoreModules/RagService
+COPY CoreModules/LlmProxy ./CoreModules/LlmProxy
+COPY CoreModules/LlmInteractor ./CoreModules/LlmInteractor
+COPY CoreModules/ErrorManager ./CoreModules/ErrorManager
 COPY --from=coreui-build /build/CoreModules/CoreUI/dist ./CoreModules/CoreUI/dist
 
 RUN pip install --upgrade pip \
-    && pip install -e . \
-    && pip install -e modules/webui_backend \
-    && pip install -e modules/crawler_service \
-    && pip install -e CoreModules/RagService \
-    && pip install -e CoreModules/LlmProxy \
-    && pip install -e CoreModules/LlmInteractor \
-    && pip install -e CoreModules/ErrorManager
+    && pip install . \
+    && pip install ./modules/html_md \
+    && pip install ./modules/webui_backend \
+    && pip install ./modules/crawler_service \
+    && pip install ./modules/extensions_backend \
+    && pip install ./CoreModules/Security \
+    && pip install ./CoreModules/ExtensionsSandbox \
+    && pip install ./CoreModules/RagService \
+    && pip install ./CoreModules/LlmProxy \
+    && pip install ./CoreModules/LlmInteractor \
+    && pip install ./CoreModules/ErrorManager
 
 EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \

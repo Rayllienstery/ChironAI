@@ -2,24 +2,24 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from flask import Blueprint
 
-from api.http.webui_crawler_indexing_helpers import (
-    clip_text_for_embedding as _clip_text_for_embedding,
-    is_embed_context_length_error as _is_embed_context_length_error,
-)
 from api.http.webui_crawler_helpers import get_crawler_sources_dir, load_source_meta
 from api.http.webui_crawler_indexer_routes import register_crawler_indexer_routes
+from api.http.webui_crawler_indexing_helpers import (
+  clip_text_for_embedding as _clip_text_for_embedding,
+)
+from api.http.webui_crawler_indexing_helpers import (
+  is_embed_context_length_error as _is_embed_context_length_error,
+)
 from api.http.webui_crawler_job_routes import register_crawler_job_routes
 from api.http.webui_crawler_md_pipeline_routes import register_crawler_md_pipeline_routes
 from api.http.webui_crawler_source_config import load_sources_config, save_sources_config
 from api.http.webui_crawler_source_routes import register_crawler_source_routes
 from api.http.webui_crawler_sources_read_routes import register_crawler_sources_read_routes
-
-import os
-import sys
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _WEBUI_BACKEND = os.path.join(_ROOT, "CoreModules", "WebUIBackend")

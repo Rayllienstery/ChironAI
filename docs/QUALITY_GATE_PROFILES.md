@@ -15,7 +15,7 @@ python scripts/quality_gate.py --profile release --include-advisory
 | `minimal` | Every PR / local pre-push | `ruff`, `pytest -m fast`, `pytest --collect-only`, CoreUI `build`, `knip`, lockfile check |
 | `full` | Main branch / nightly | `minimal` superset: `vulture`, full `pytest`, oversized-file audit (advisory), `lint-imports`, API drift-check (advisory), CoreUI `lint` + `test` + `typecheck` when configured |
 | `strict-lint` | Incremental ruff expansion | `ruff` with import (`I`) and selected bugbear rules |
-| `release` | Pre-tag / deploy candidate | `full` + Docker build smoke (advisory on Windows), `startup_smoke.sh` (Linux), `pip-audit` / `npm audit` (advisory) |
+| `release` | Pre-tag / deploy candidate | `full` + `pyright`, `scripts/run_dependency_audit.py` (required), `docker build` (required when Docker available), `startup_smoke.sh` (required on Linux) |
 
 ## Advisory vs required
 

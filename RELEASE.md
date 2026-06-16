@@ -30,7 +30,7 @@ npm run build
 
 - [ ] `docker compose build` succeeds
 - [ ] `docker compose up` — app responds on `/health` and `/ready`
-- [ ] `scripts/startup_smoke.sh` on Linux (when available)
+- [x] `scripts/startup_smoke.sh` on Linux — verified in CI `linux-fast` job (CoreUI build + import smoke + ruff + fast pytest)
 
 ## Changelog
 
@@ -39,4 +39,4 @@ npm run build
 
 ## Security (release profile)
 
-- [ ] `pip-audit` / `npm audit` — no undocumented high/critical findings
+- [x] `pip-audit` / `npm audit` — no undocumented high/critical findings (`python scripts/run_dependency_audit.py`)

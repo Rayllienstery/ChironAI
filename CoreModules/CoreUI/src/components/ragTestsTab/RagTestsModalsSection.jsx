@@ -20,6 +20,8 @@ export default function RagTestsModalsSection(props) {
     summaryBars,
     summaryBarMax,
     timingAverages,
+    latencyStatsMs,
+    renderTimingCards,
     fastestTests,
     slowestTests,
     topChunks,

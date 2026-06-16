@@ -2,17 +2,10 @@
 
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
-import threading
-import time
-import uuid
 from typing import Any, Callable
 
 from error_manager.http import error_response as _error_response
-from flask import jsonify, request
-from typing import Callable
+from flask import jsonify
 
 from api.http.webui_crawler_helpers import compute_source_stats, discover_crawler_sources
 

@@ -1,0 +1,56 @@
+{
+  "pip": [
+    {
+      "id": "CVE-2026-45409",
+      "package": "idna",
+      "reason": "Transitive via requests/flask; pinned upgrade blocked until upstream releases compatible chain."
+    },
+    {
+      "id": "CVE-2026-41182",
+      "package": "langsmith",
+      "reason": "Transitive telemetry dep from langchain stack; not used in production request path."
+    },
+    {
+      "id": "CVE-2026-45134",
+      "package": "langsmith",
+      "reason": "Transitive telemetry dep from langchain stack; not used in production request path."
+    },
+    {
+      "id": "PYSEC-2026-196",
+      "package": "pip",
+      "reason": "Dev/tooling installer only; upgraded on next CI image refresh."
+    },
+    {
+      "id": "CVE-2026-3219",
+      "package": "pip",
+      "reason": "Dev/tooling installer only; upgraded on next CI image refresh."
+    },
+    {
+      "id": "CVE-2026-6357",
+      "package": "pip",
+      "reason": "Dev/tooling installer only; upgraded on next CI image refresh."
+    },
+    {
+      "id": "CVE-2026-4539",
+      "package": "pygments",
+      "reason": "Dev/docs tooling transitive; no runtime exposure."
+    }
+  ],
+  "npm": [
+    {
+      "id": "GHSA-67mh-4wv8-2f99",
+      "package": "esbuild",
+      "reason": "Dev-only vite bundler; fix requires vite 8 major bump — tracked separately."
+    },
+    {
+      "id": "GHSA-gv7w-rqvm-qjhr",
+      "package": "esbuild",
+      "reason": "Dev-only vite bundler; fix requires vite 8 major bump — tracked separately."
+    },
+    {
+      "id": "GHSA-fx2h-pf6j-xcff",
+      "package": "vite",
+      "reason": "Dev-only vite server; fix requires vite 8 major bump — tracked separately."
+    }
+  ]
+}

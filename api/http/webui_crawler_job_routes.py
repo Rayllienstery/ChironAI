@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 import subprocess
 import sys
@@ -13,22 +15,31 @@ from typing import Any, Callable
 from error_manager.http import error_response as _error_response
 from flask import current_app, jsonify, request
 
-from webui_backend.paths import webui_data_dir
-
-from error_manager.http import error_response as _error_response
-from flask import current_app, jsonify, request
-from typing import Any
-
-from api.http.webui_crawler_indexing_helpers import write_create_collection_final_log as _write_create_collection_final_log
+from api.http.webui_crawler_helpers import is_safe_identifier
+from api.http.webui_crawler_indexing_helpers import (
+    import_qdrant as _import_qdrant,
+)
+from api.http.webui_crawler_indexing_helpers import (
+    write_create_collection_final_log as _write_create_collection_final_log,
+)
 from api.http.webui_crawler_indexing_runtime_core import (
     _collection_jobs,
     _collection_jobs_lock,
     create_collection_from_sources,
     touch_collection_job_timing,
 )
+from config import get_indexing_int, get_qdrant_url
+from core.shared.correlation import log_operation, resolve_correlation_id
 from infrastructure.database import get_settings_repository
+from webui_backend.paths import webui_data_dir
+
+try:
+    from modules.md_indexer import get_active_pipeline_name
+except ImportError:
+    get_active_pipeline_name = None  # type: ignore[assignment,misc]
 
 _ERROR_LOG: Any = None
+_WEBUI_LOG = logging.getLogger("webui")
 
 
 def register_crawler_job_routes(
@@ -71,8 +82,19 @@ def register_crawler_job_routes(
                         "message": f"Crawl for source '{source_id}' is already in progress"
                     }), 409
     
+            correlation_id = resolve_correlation_id()
+            log_operation(
+                _WEBUI_LOG,
+                logging.INFO,
+                operation="crawler.crawl.start",
+                correlation_id=correlation_id,
+                message=f"Starting crawl for source '{source_id}'",
+                source_id=source_id,
+            )
+
             # Run crawl in subprocess
             env = os.environ.copy()
+            env["CHIRONAI_CORRELATION_ID"] = correlation_id
             env["CHIRONAI_PROJECT_ROOT"] = _ROOT
             env["CHIRONAI_WEBUI_DIR"] = str(webui_data_dir())
             _extra_path = os.pathsep.join(
@@ -108,6 +130,7 @@ def register_crawler_job_routes(
             return jsonify({
                 "status": "started",
                 "source_id": source_id,
+                "correlation_id": correlation_id,
                 "message": f"Crawl started for source '{source_id}'"
             })
         except Exception as e:
@@ -143,7 +166,7 @@ def register_crawler_job_routes(
                             stderr_preview = err.decode("utf-8", errors="replace").strip()
                             if len(stderr_preview) > 2000:
                                 stderr_preview = "... " + stderr_preview[-2000:]
-                except Exception:
+                except Exception:  # safe: stderr read is best-effort after subprocess exit
                     pass
                 del _crawling_processes[source_id]
                 out = {
@@ -174,6 +197,21 @@ def register_crawler_job_routes(
     ) -> None:
         """Background task: run indexing and update job progress."""
         with app_context:
+            correlation_id = ""
+            with _collection_jobs_lock:
+                job = _collection_jobs.get(job_id)
+                if job:
+                    correlation_id = str(job.get("correlation_id") or job_id)
+            log_operation(
+                _WEBUI_LOG,
+                logging.INFO,
+                operation="crawler.index.start",
+                correlation_id=correlation_id or job_id,
+                message=f"Create-collection job started for '{collection_name}'",
+                job_id=job_id,
+                collection_name=collection_name,
+            )
+
             def should_cancel() -> bool:
                 with _collection_jobs_lock:
                     job = _collection_jobs.get(job_id)
@@ -340,7 +378,7 @@ def register_crawler_job_routes(
                             f"rag_collection_index_meta:{collection_name}",
                             json.dumps(index_meta, ensure_ascii=False),
                         )
-                    except Exception:
+                    except Exception:  # safe: index meta persistence failure must not abort job
                         _ERROR_LOG.warning(
                             "Failed to persist collection meta for %s",
                             collection_name,
@@ -491,7 +529,7 @@ def register_crawler_job_routes(
             try:
                 qclient.get_collection(collection_name)
                 return _error_response(f"Collection '{collection_name}' already exists", 409)
-            except Exception:
+            except Exception:  # safe: Qdrant 404 means collection absent — proceed with create
                 pass
 
             available_sources = []
@@ -510,6 +548,7 @@ def register_crawler_job_routes(
                 }), 400
 
             job_id = str(uuid.uuid4())
+            correlation_id = resolve_correlation_id()
             total_pages = 0
             for sid in available_sources:
                 meta = load_source_meta(sid)
@@ -520,6 +559,7 @@ def register_crawler_job_routes(
                 started_perf = time.perf_counter()
                 _collection_jobs[job_id] = {
                     "status": "running",
+                    "correlation_id": correlation_id,
                     "_started_perf": started_perf,
                     "_phase_started_perf": started_perf,
                     "collection_name": collection_name,
@@ -570,7 +610,7 @@ def register_crawler_job_routes(
                 }
 
             thread = threading.Thread(
-                target=_run_create_collection_job,
+                target=run_create_collection_job,
                 args=(
                     job_id,
                     current_app.app_context(),
@@ -588,6 +628,7 @@ def register_crawler_job_routes(
 
             return jsonify({
                 "job_id": job_id,
+                "correlation_id": correlation_id,
                 "status": "started",
                 "collection_name": collection_name,
             }), 202

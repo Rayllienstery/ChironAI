@@ -25,6 +25,8 @@ export default function RagSettingsPanel({
   triggerTestLoading,
   handleCheckTrigger,
   overlappingWords,
+  collections,
+  keywordCollections,
   sheetOpen,
   setSheetOpen,
   llmProxyRagSelect,

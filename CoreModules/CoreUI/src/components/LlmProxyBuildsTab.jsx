@@ -51,6 +51,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
             rowBusy={tab.rowBusy}
             detailId={tab.detailId}
             openDetails={tab.openDetails}
+            closeDetails={tab.closeDetails}
             openEdit={tab.openEdit}
             openDetailModal={tab.openDetailModal}
             deleteBuild={tab.deleteBuild}
@@ -79,6 +80,8 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
             applySelectedModelDefaults={tab.applySelectedModelDefaults}
             parameterPrefabNote={parameterPrefabNote}
             applyParameterPrefab={tab.applyParameterPrefab}
+            prompts={tab.prompts}
+            matchingParameterPrefab={tab.matchingParameterPrefab}
             buildModalPipelineData={tab.buildModalPipelineData}
             buildModalHybrid={tab.buildModalHybrid}
             buildModalRerank={tab.buildModalRerank}

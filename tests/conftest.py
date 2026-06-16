@@ -43,7 +43,27 @@ _PATH_MARKERS = {
 
 _SLOW_TEST_NODEIDS = {
     "tests/api/test_webui_dependencies_routes.py::test_run_job_records_streaming_progress",
+    "tests/api/test_http_chat_completions.py::test_chat_completions_stream_returns_tool_calls_chunks",
+    "tests/api/test_http_chat_completions.py::test_stream_tool_mode_returns_plain_text_when_no_tool_json",
+    "tests/api/test_http_chat_completions.py::test_streaming_vision_request_preserves_native_tools_when_model_supports_them",
+    "tests/api/test_http_chat_completions.py::test_streaming_vision_request_preserves_native_tools_even_when_caps_omit_tools",
+    "tests/api/test_http_chat_completions.py::test_streaming_vision_request_uses_fallback_when_model_lacks_vision",
+    "tests/api/test_http_chat_completions.py::test_native_tools_finalize_nudge_stays_in_initial_system_message",
+    "tests/api/test_http_chat_completions.py::test_stream_trace_separates_reasoning_and_final_content_in_sse",
+    "tests/api/test_http_chat_completions.py::test_chat_completions_non_stream_uses_ollama_provider_runtime",
+    "tests/api/test_http_chat_completions.py::test_chat_completions_stream_uses_ollama_provider_runtime",
+    "tests/api/test_http_chat_completions.py::test_stream_reasoning_only_guard_stops_visible_repeat",
+    "tests/api/test_http_chat_completions.py::test_streaming_budget_exhaustion_is_visible_to_client",
 }
+
+_REAL_EXTENSION_WIRING_TESTS = frozenset(
+    {
+        "tests/api/test_http_extensions.py::test_create_app_syncs_extension_runtime_after_background_bootstrap",
+        "tests/api/test_http_extensions.py::test_create_app_bootstraps_extension_runtime_at_wiring",
+        "tests/api/test_extensions_routes.py::test_create_app_syncs_extension_runtime_after_background_bootstrap",
+        "tests/api/test_extensions_routes.py::test_create_app_bootstraps_extension_runtime_at_wiring",
+    }
+)
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

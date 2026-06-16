@@ -49,6 +49,7 @@ def create_collection_log_metadata(
     """Build the final create-collection log payload shared by UI logs and file logs."""
     return {
         "job_id": job_id,
+        "correlation_id": stats.get("correlation_id", ""),
         "collection_name": collection_name,
         "source_ids": list(source_ids),
         "status": status,

@@ -1,6 +1,6 @@
 import { RAG_TESTS_LAST_USED_KEY } from './constants';
 
-export function modelTagLooksCloud(modelId) {
+function modelTagLooksCloud(modelId) {
   const s = String(modelId || '').trim().toLowerCase();
   if (!s) return false;
   return s.includes(':cloud') || s.endsWith('-cloud');

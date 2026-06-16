@@ -67,9 +67,13 @@ FULL_GATE_EXTRA: tuple[GateStep, ...] = (
         REPO_ROOT,
         60,
     ),
-    GateStep("coreui-lint", _npm_command("run", "lint"), COREUI_ROOT, 120, required=False),
+    GateStep("coreui-lint", _npm_command("run", "lint"), COREUI_ROOT, 120),
     GateStep("coreui-test", _npm_command("run", "test", "--", "--run"), COREUI_ROOT, 180),
     GateStep("coreui-typecheck", _npm_command("run", "typecheck"), COREUI_ROOT, 120, required=False),
+)
+
+RELEASE_TYPING_GATE: tuple[GateStep, ...] = (
+    GateStep("pyright", _python_command("-m", "pyright"), REPO_ROOT, 300),
 )
 
 FULL_GATE: tuple[GateStep, ...] = MINIMAL_GATE + FULL_GATE_EXTRA
@@ -78,28 +82,54 @@ STRICT_LINT_GATE: tuple[GateStep, ...] = (
     GateStep("ruff-strict", ("ruff", "check", ".", "--select", "E9,F,I,B,SIM"), REPO_ROOT, 180),
 )
 
+def _docker_available() -> bool:
+    try:
+        completed = subprocess.run(
+            ("docker", "version"),
+            cwd=REPO_ROOT,
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
+
+
+def _bash_available() -> bool:
+    try:
+        completed = subprocess.run(
+            ("bash", "--version"),
+            cwd=REPO_ROOT,
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
+
+
 RELEASE_GATE_EXTRA: tuple[GateStep, ...] = (
     GateStep(
-        "pip-audit",
-        _python_command("-m", "pip_audit", "--desc", "on"),
+        "dependency-audit",
+        _python_command("scripts/run_dependency_audit.py"),
         REPO_ROOT,
-        180,
-        required=False,
+        240,
     ),
-    GateStep("npm-audit", _npm_command("audit", "--audit-level=high"), COREUI_ROOT, 120, required=False),
     GateStep(
         "docker-build",
         ("docker", "build", "-t", "chironai:gate", "."),
         REPO_ROOT,
         600,
-        required=False,
+        required=_docker_available(),
     ),
     GateStep(
         "startup-smoke-sh",
         ("bash", str(REPO_ROOT / "scripts" / "startup_smoke.sh")),
         REPO_ROOT,
         180,
-        required=False,
+        required=_bash_available() and os.name != "nt",
     ),
     GateStep(
         "startup-smoke-bat",
@@ -110,7 +140,7 @@ RELEASE_GATE_EXTRA: tuple[GateStep, ...] = (
     ),
 )
 
-RELEASE_GATE: tuple[GateStep, ...] = FULL_GATE + RELEASE_GATE_EXTRA
+RELEASE_GATE: tuple[GateStep, ...] = FULL_GATE + RELEASE_TYPING_GATE + RELEASE_GATE_EXTRA
 
 PROFILES: dict[str, tuple[GateStep, ...]] = {
     "minimal": MINIMAL_GATE,

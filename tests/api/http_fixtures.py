@@ -10,6 +10,15 @@ import pytest
 from flask.testing import FlaskClient
 from werkzeug.datastructures import Headers
 
+_REAL_EXTENSION_WIRING_TESTS = frozenset(
+    {
+        "tests/api/test_http_extensions.py::test_create_app_syncs_extension_runtime_after_background_bootstrap",
+        "tests/api/test_http_extensions.py::test_create_app_bootstraps_extension_runtime_at_wiring",
+        "tests/api/test_extensions_routes.py::test_create_app_syncs_extension_runtime_after_background_bootstrap",
+        "tests/api/test_extensions_routes.py::test_create_app_bootstraps_extension_runtime_at_wiring",
+    }
+)
+
 TEST_PROXY_API_KEY = "test-chiron-proxy-key"
 NO_TEST_PROXY_AUTH_HEADER = "X-Test-Skip-Chiron-Auth"
 TEST_PROXY_API_KEY_SETTING = "llm_proxy_api_key"
@@ -117,8 +126,52 @@ class OllamaShimChatClient:
         return getattr(self._inner, name)
 
 
+def default_fake_rag_answer_bundle():
+    """Stable (params, deps) for HTTP tests that call ``create_app()`` without a live Ollama runtime."""
+    from types import SimpleNamespace
+
+    class FakeChatClient:
+        def chat(self, _messages, model, stream=False, options=None):  # noqa: ARG002
+            return "ok"
+
+        def stream_chat(self, _messages, _model):
+            yield ""
+
+    fc = FakeChatClient()
+    fc._url = "http://ollama.test:11434/api/chat"
+    fake_params = SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name="fake-model",
+        log_preview_chars=200,
+    )
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=OllamaShimChatClient(fc),
+    )
+    return fake_params, fake_deps
+
+
+def patch_rag_answer_params(monkeypatch: pytest.MonkeyPatch, fake_params: Any, fake_deps: Any) -> None:
+    """Patch both import sites used by ``create_app`` and llm proxy wiring."""
+    import rag_service.application.params as rag_params
+
+    import api.http.rag_routes as rag_routes
+
+    def _fake_get_rag_answer_params(**_kwargs: Any) -> tuple[Any, Any]:
+        return fake_params, fake_deps
+
+    monkeypatch.setattr(rag_params, "get_rag_answer_params", _fake_get_rag_answer_params)
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", _fake_get_rag_answer_params)
+
+
 @pytest.fixture(autouse=True)
-def rag_routes_llm_proxy_app_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+def rag_routes_llm_proxy_app_settings(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
     """/chat/completions requires saved proxy_model + prompt_name unless create_app uses system_prefix."""
     import api.http.rag_routes as rag_routes
     import api.http.webui_routes as webui_routes
@@ -165,3 +218,17 @@ def rag_routes_llm_proxy_app_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: fake_repo)
     monkeypatch.setattr(webui_routes, "get_settings_repository", lambda: fake_repo)
     monkeypatch.setattr(ExtensionManager, "start_background_bootstrap", lambda self: None)
+
+    nodeid = request.node.nodeid.replace("\\", "/")
+    if nodeid not in _REAL_EXTENSION_WIRING_TESTS:
+        def _skip_extension_bootstrap(*, deps: Any) -> tuple[None, None, None, None, str]:
+            del deps
+            return None, None, None, None, "ollama"
+
+        monkeypatch.setattr(
+            "api.http.llm_proxy_wiring._build_extension_manager",
+            _skip_extension_bootstrap,
+        )
+
+    fake_params, fake_deps = default_fake_rag_answer_bundle()
+    patch_rag_answer_params(monkeypatch, fake_params, fake_deps)

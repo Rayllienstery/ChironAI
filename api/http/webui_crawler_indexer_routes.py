@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
+import difflib
 import os
-import subprocess
-import sys
+import random
 import threading
-import time
 import uuid
 from typing import Any, Callable
 
 from error_manager.http import error_response as _error_response
 from flask import jsonify, request
-from typing import Callable
+from rag_service.application.params import get_rag_answer_params
 
+from api.http.rag_tests_routes import _get_qdrant_collection_names
 from api.http.webui_provider_helpers import invoke_runtime_chat as _invoke_runtime_chat
+from webui_backend.paths import webui_data_dir
+
 try:
     from modules.md_indexer import get_active_pipeline_name, run_pipeline
 except ImportError:
@@ -65,7 +67,7 @@ def register_crawler_indexer_routes(
                         if os.path.isfile(os.path.join(pages_dir, name))
                         and name.lower().endswith(".md")
                     ]
-                except Exception:
+                except Exception:  # safe: unreadable page dir skipped in indexer tester listing
                     files = []
                 result.append(
                     {
@@ -404,11 +406,11 @@ def register_crawler_indexer_routes(
                 try:
                     with open(full_path, "r", encoding="utf-8") as f:
                         source_md = f.read()
-                except Exception:
+                except Exception:  # safe: unreadable source file skipped in batch eval sampling
                     continue
                 try:
                     _pm, processed_md = run_pipeline(pipeline_name, source_md)
-                except Exception:
+                except Exception:  # safe: pipeline failure skips file in batch eval sampling
                     continue
                 if len((processed_md or "").strip()) > BATCH_EVAL_MIN_CHARS_AFTER_CLEANUP:
                     filtered.append(entry)

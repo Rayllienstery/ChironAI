@@ -13,6 +13,9 @@ from tests.api.http_fixtures import (
     OllamaShimChatClient as _OllamaShimChatClient,
 )
 from tests.api.http_fixtures import (
+    patch_rag_answer_params as _patch_rag_answer_params,
+)
+from tests.api.http_fixtures import (
     test_proxy_api_key_setting as _test_proxy_api_key_setting,
 )
 
@@ -23,6 +26,8 @@ def test_chat_completions_chironai_autocomplete_uses_same_prompt_template_as_wor
     """Logical id ChironAI-Autocomplete uses the same prompt template as Worker and maps to the AC Ollama tag."""
     import json
     from types import SimpleNamespace
+
+    import rag_service.application.params as rag_params
 
     import api.http.rag_routes as rag_routes
 
@@ -62,7 +67,9 @@ def test_chat_completions_chironai_autocomplete_uses_same_prompt_template_as_wor
         rerank_client=None,
         chat_client=_OllamaShimChatClient(fc),
     )
-    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    _fake_rag_params = lambda **kwargs: (fake_params, fake_deps)
+    monkeypatch.setattr(rag_params, "get_rag_answer_params", _fake_rag_params)
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", _fake_rag_params)
     monkeypatch.setattr(
         rag_routes,
         "build_rag_context",
@@ -3836,7 +3843,19 @@ def test_chat_completions_non_stream_uses_ollama_provider_runtime(
     )
 
     monkeypatch.setattr(ExtensionManager, "start_background_bootstrap", bootstrap_runtime)
-    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    _patch_rag_answer_params(monkeypatch, fake_params, fake_deps)
+
+    def _fake_build_extension_manager(*, deps: Any) -> tuple[Any, Any, Any, Any, str]:
+        from rag_service.infrastructure.provider_runtime import RuntimeResolvingChatClient
+
+        runtime_chat = RuntimeResolvingChatClient(
+            runtime=runtime,
+            provider_id="ollama",
+            fallback=deps.chat_client,
+        )
+        return None, runtime, None, runtime_chat, "ollama"
+
+    monkeypatch.setattr("api.http.llm_proxy_wiring._build_extension_manager", _fake_build_extension_manager)
     monkeypatch.setattr(
         rag_routes,
         "build_rag_context",
@@ -3961,7 +3980,19 @@ def test_chat_completions_stream_uses_ollama_provider_runtime(
     )
 
     monkeypatch.setattr(ExtensionManager, "start_background_bootstrap", bootstrap_runtime)
-    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (fake_params, fake_deps))
+    _patch_rag_answer_params(monkeypatch, fake_params, fake_deps)
+
+    def _fake_build_extension_manager(*, deps: Any) -> tuple[Any, Any, Any, Any, str]:
+        from rag_service.infrastructure.provider_runtime import RuntimeResolvingChatClient
+
+        runtime_chat = RuntimeResolvingChatClient(
+            runtime=runtime,
+            provider_id="ollama",
+            fallback=deps.chat_client,
+        )
+        return None, runtime, None, runtime_chat, "ollama"
+
+    monkeypatch.setattr("api.http.llm_proxy_wiring._build_extension_manager", _fake_build_extension_manager)
     monkeypatch.setattr(
         rag_routes,
         "build_rag_context",

@@ -4,26 +4,35 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
-import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any
-
-from config import get_indexing_int
-from infrastructure.database import get_settings_repository
-from infrastructure.rag.qdrant_point_builder import dense_vectors_config, hybrid_vectors_config
+from typing import TYPE_CHECKING
 
 from api.http.webui_crawler_indexing_helpers import (
     clip_text_for_embedding as _clip_text_for_embedding,
+)
+from api.http.webui_crawler_indexing_helpers import (
     config_default_embed_model as _config_default_embed_model,
+)
+from api.http.webui_crawler_indexing_helpers import (
     import_qdrant as _import_qdrant,
+)
+from api.http.webui_crawler_indexing_helpers import (
     is_embed_context_length_error as _is_embed_context_length_error,
+)
+from api.http.webui_crawler_indexing_helpers import (
     log_indexing_embed_path_once as _log_indexing_embed_path_once,
+)
+from api.http.webui_crawler_indexing_helpers import (
     max_embed_chars as _max_embed_chars,
+)
+from api.http.webui_crawler_indexing_helpers import (
     runtime_embed_available as _runtime_embed_available,
 )
 from api.http.webui_provider_helpers import default_llm_provider_id as _default_llm_provider_id
 from api.http.webui_provider_helpers import invoke_runtime_embed as _invoke_runtime_embed
+from config import get_indexing_int
+from infrastructure.database import get_settings_repository
+from infrastructure.rag.qdrant_point_builder import dense_vectors_config, hybrid_vectors_config
 
 if TYPE_CHECKING:
     from qdrant_client import QdrantClient
@@ -65,7 +74,7 @@ def material_class(source_id: str, url: str) -> str:
         return "swift_book"
     if source_id.startswith("wwdc_sessions_"):
         return "wwdc"
-    if _is_hub_url(source_id, url):
+    if is_hub_url(source_id, url):
         return "hub"
     return "community"
 

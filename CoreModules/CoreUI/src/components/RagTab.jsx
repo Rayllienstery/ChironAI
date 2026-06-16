@@ -65,6 +65,8 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
           triggerTestLoading={rag.triggerTestLoading}
           handleCheckTrigger={rag.handleCheckTrigger}
           overlappingWords={rag.overlappingWords}
+          collections={rag.collections}
+          keywordCollections={rag.keywordCollections}
           sheetOpen={rag.sheetOpen}
           setSheetOpen={rag.setSheetOpen}
           llmProxyRagSelect={rag.llmProxyRagSelect}

@@ -13,6 +13,7 @@ export default function LlmProxyBuildsListPanel({
   rowBusy,
   detailId,
   openDetails,
+  closeDetails,
   openEdit,
   openDetailModal,
   deleteBuild,
