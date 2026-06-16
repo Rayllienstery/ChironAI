@@ -3,35 +3,6 @@ export const SECTION_TABS = [
   { id: 'autocomplete', label: 'Autocomplete' },
 ];
 
-function mergeBuildDraftIntoPipelinePreview(snapshot, hybridSparse, rerankForRag, draft) {
-  if (!snapshot || !draft) return null;
-  const base = mergePipelineSnapshot(snapshot, hybridSparse, rerankForRag);
-  const webOff = draft.web_enabled === false;
-  const env = base.env && typeof base.env === 'object' ? { ...base.env } : {};
-  if (webOff) {
-    env.ddg_news = false;
-    env.fetch_page = false;
-    env.wikipedia = false;
-  } else {
-    env.ddg_news = Boolean(draft.web_interaction_ddg_news) || Boolean(env.ddg_news);
-    env.fetch_page = Boolean(draft.web_interaction_fetch_page) || Boolean(env.fetch_page);
-    env.wikipedia = Boolean(draft.web_interaction_wikipedia) || Boolean(env.wikipedia);
-  }
-  return {
-    ...base,
-    env,
-    backend: 'rag_fusion',
-    rag_collection_configured:
-      Boolean(draft.rag_enabled) &&
-      (Boolean(String(draft.rag_collection || '').trim()) || Boolean(base.rag_collection_configured)),
-    fetch_web_knowledge: webOff ? false : Boolean(draft.fetch_web_knowledge),
-    web_interaction_enabled: webOff ? false : Boolean(draft.web_interaction_enabled),
-    web_interaction_on_keywords: draft.web_interaction_on_keywords !== false,
-    web_interaction_on_low_confidence_framework:
-      draft.web_interaction_on_low_confidence_framework !== false,
-  };
-}
-
 export const WIZARD_STEPS = [
   { id: 'basic', label: 'Basic Info', icon: 'info' },
   { id: 'rag', label: 'RAG', icon: 'search' },

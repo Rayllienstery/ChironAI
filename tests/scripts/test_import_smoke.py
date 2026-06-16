@@ -2,7 +2,36 @@
 
 from __future__ import annotations
 
+import importlib
+
 import pytest
+
+_RUNTIME_PACKAGES = (
+    "api",
+    "application",
+    "config",
+    "core",
+    "domain",
+    "infrastructure",
+    "webui_backend",
+    "extensions_backend",
+    "crawler_service",
+    "llm_proxy",
+    "rag_service",
+    "error_manager",
+    "external_docs_rag",
+    "chironai_security",
+    "extensions_sandbox",
+    "docker_manager",
+)
+
+
+@pytest.mark.fast
+@pytest.mark.scripts
+@pytest.mark.parametrize("package_name", _RUNTIME_PACKAGES)
+def test_runtime_package_importable(package_name: str) -> None:
+    module = importlib.import_module(package_name)
+    assert module is not None
 
 
 @pytest.mark.fast
@@ -30,3 +59,12 @@ def test_bootstrap_paths_idempotent() -> None:
 
     ensure_webui_runtime_paths(project_root())
     ensure_webui_runtime_paths(project_root())
+
+
+@pytest.mark.fast
+@pytest.mark.scripts
+def test_chironai_console_script_registered() -> None:
+    import importlib.metadata as metadata
+
+    entry_points = {ep.name for ep in metadata.entry_points(group="console_scripts")}
+    assert "chironai" in entry_points

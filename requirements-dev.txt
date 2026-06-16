@@ -2,12 +2,8 @@
 #   pip install -r requirements-dev.txt
 #
 # Installs:
-#   - chironai (root packages: application, api, domain, infrastructure, …) + runtime deps
-#   - optional [dev]: pytest, pytest-cov, import-linter, ruff
-#   - ollama-interactor (Ollama HTTP CLI boundary)
-#   - llm-proxy (OpenAI-compatible /v1 Flask blueprint)
-#   - llm-interactor, docker-manager, web-interaction, md-ingestion-service (runtime CoreModules)
-#   - RagService, html_md, crawler_service
+#   - chironai (root: application, api, config, core, domain, infrastructure, shared modules) + [dev]
+#   - all runtime CoreModules and modules used by WebUI / proxy / crawl entrypoints
 
 -e .[dev]
 -e CoreModules/OllamaInteractor
@@ -18,5 +14,11 @@
 -e CoreModules/LogsManager
 -e CoreModules/MdIngestionService
 -e CoreModules/RagService
+-e CoreModules/Security
+-e CoreModules/ExtensionsSandbox
+-e CoreModules/ErrorManager
 -e modules/html_md
 -e modules/crawler_service
+-e modules/webui_backend
+-e modules/extensions_backend
+-e modules/external_docs_rag

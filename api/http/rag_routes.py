@@ -8,40 +8,13 @@ Re-exports RAG/proxy symbols so tests can `monkeypatch.setattr(api.http.rag_rout
 
 from __future__ import annotations
 
-import os
-import sys
 from typing import Any
 
 from flask import Flask, Response, jsonify
 
-# Ensure project root on path when running from api or WebUI.
-_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
-_MODULES_EXT_RAG = os.path.join(_ROOT, "modules", "external_docs_rag")
-if _MODULES_EXT_RAG not in sys.path:
-    sys.path.insert(0, _MODULES_EXT_RAG)
-_RAG_SVC = os.path.join(_ROOT, "CoreModules", "RagService")
-if os.path.isdir(_RAG_SVC) and _RAG_SVC not in sys.path:
-    sys.path.insert(0, _RAG_SVC)
-_DOCKER_MANAGER = os.path.join(_ROOT, "CoreModules", "DockerManager")
-if os.path.isdir(_DOCKER_MANAGER) and _DOCKER_MANAGER not in sys.path:
-    sys.path.insert(0, _DOCKER_MANAGER)
-_LLM_INTERACTOR = os.path.join(_ROOT, "CoreModules", "LlmInteractor")
-if os.path.isdir(_LLM_INTERACTOR) and _LLM_INTERACTOR not in sys.path:
-    sys.path.insert(0, _LLM_INTERACTOR)
-_SECURITY = os.path.join(_ROOT, "CoreModules", "Security")
-if os.path.isdir(_SECURITY) and _SECURITY not in sys.path:
-    sys.path.insert(0, _SECURITY)
-_EXTENSIONS_SANDBOX = os.path.join(_ROOT, "CoreModules", "ExtensionsSandbox")
-if os.path.isdir(_EXTENSIONS_SANDBOX) and _EXTENSIONS_SANDBOX not in sys.path:
-    sys.path.insert(0, _EXTENSIONS_SANDBOX)
-_EXTENSIONS_BACKEND = os.path.join(_ROOT, "modules", "extensions_backend")
-if os.path.isdir(_EXTENSIONS_BACKEND) and _EXTENSIONS_BACKEND not in sys.path:
-    sys.path.insert(0, _EXTENSIONS_BACKEND)
-_ERROR_MANAGER = os.path.join(_ROOT, "CoreModules", "ErrorManager")
-if os.path.isdir(_ERROR_MANAGER) and _ERROR_MANAGER not in sys.path:
-    sys.path.insert(0, _ERROR_MANAGER)
+from core.bootstrap.import_paths import ensure_webui_composition_paths
+
+_ROOT = ensure_webui_composition_paths()
 
 from rag_service.application.params import get_rag_answer_params
 from rag_service.application.use_cases import build_rag_context, prepare_ollama_messages

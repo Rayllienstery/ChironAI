@@ -1,4 +1,5 @@
 import React from "react";
+import ActionableError from "../ActionableError";
 import MdPipelineAddStepModal from "./MdPipelineAddStepModal";
 import MdPipelineStepCard from "./MdPipelineStepCard";
 
@@ -36,12 +37,13 @@ export default function MdPipelineSection({
   onAddLine,
   onRemoveLine,
   onAddStep,
+  onRetryPipeline,
 }) {
   return (
     <div className="md-pipeline-section">
       <h3>MD Pipeline</h3>
       {pipelineError && (
-        <div className="crawler-error">{pipelineError}</div>
+        <ActionableError error={pipelineError} onRetry={onRetryPipeline} />
       )}
           <div className="md-pipeline-toolbar">
             <label className="indexer-select-label">

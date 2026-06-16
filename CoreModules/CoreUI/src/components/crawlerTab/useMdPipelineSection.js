@@ -326,6 +326,12 @@ export function useMdPipelineSection({ activeSection }) {
     }
   }, [activeSection, pipelinePreviewSourceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const retryPipelineLoad = async () => {
+    const list = await loadMdPipelinesList();
+    const name = selectedPipelineName || list[0];
+    if (name) await loadMdPipelineBody(name);
+  };
+
   return {
     pipelineList,
     selectedPipelineName,
@@ -371,5 +377,6 @@ export function useMdPipelineSection({ activeSection }) {
     handleConfirmCreatePipeline,
     handleDeletePipelineClick,
     handleConfirmDeletePipeline,
+    retryPipelineLoad,
   };
 }

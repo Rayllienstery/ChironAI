@@ -115,7 +115,13 @@ Root package with dev tools only (without other `-e` entries from the file):
 pip install -e .[dev]
 ```
 
-For tests, LLM Proxy, RAG Service, crawler, and related `PYTHONPATH` entries use **`requirements-dev.txt`** — it additionally installs `OllamaInteractor`, `LlmProxy`, `RagService`, `html_md`, `crawler_service`.
+For the full WebUI / proxy / crawl stack (recommended for development and import smoke), use **`requirements-dev.txt`** — it installs root `chironai` with `[dev]` plus all editable CoreModules and modules (LlmProxy, RagService, webui_backend, ErrorManager, extensions_backend, external_docs_rag, crawler, and others).
+
+Verify imports after install:
+
+```bash
+python scripts/import_smoke.py
+```
 
 ### Windows
 
@@ -181,11 +187,24 @@ Modules/
 
 ---
 
+## `sys.path` inventory (Phase 4 / Track E)
+
+| Category | Policy | Examples |
+|----------|--------|----------|
+| **Runtime entrypoints** | Use `core.bootstrap.import_paths` (`ensure_import_path`, `ensure_webui_composition_paths`, `ensure_webui_runtime_paths`) — no raw `sys.path.insert` | `webui_backend/app.py`, `api/http/rag_routes.py`, `api/http/webui_routes.py`, `config/loader.py`, `llm_proxy/v1_blueprint.py` |
+| **Tests** | `tests/conftest.py` + targeted test fixtures may insert repo paths when simulating pre-install layouts | `tests/conftest.py`, `tests/api/test_http_chat_completions.py` |
+| **Scripts / one-off tools** | May insert paths; not part of runtime packaging contract | `scripts/fetch_apple_gap_pages.py`, `scripts/audit_apple_ingest_filter.py` |
+| **Bundled extensions** | Isolated provider sandboxes | `extensions/bundled/ollama-provider/backend/` |
+
+After `pip install -r requirements-dev.txt`, runtime imports should work **without** setting `PYTHONPATH`. The `chironai` CLI skips `PYTHONPATH` when editable packages are present.
+
+---
+
 ## Notes
 
 - **Source of truth**: root `pyproject.toml`
 - **Python reproducibility**: the current Python stack uses editable installs and dependency ranges, not a fully frozen constraints file. For release-grade reproducibility, add a generated constraints/lock artifact in a dedicated dependency update.
 - **CoreUI reproducibility**: `package-lock.json` is the source of truth; normal installs should use `npm ci`.
-- **Editable installs**: packages from `requirements-dev.txt` are installed via `-e`; other CoreModules - manually as needed (`pip install -e CoreModules/...`)
+- **Editable installs**: `pip install -r requirements-dev.txt` installs root `chironai` (with `[dev]`) plus all runtime CoreModules and modules; verify with `python scripts/import_smoke.py`.
 - **Docker**: Qdrant is started via docker-compose
 - **Python version**: requires Python >=3.10

@@ -1,5 +1,6 @@
 import React from "react";
 import EmptyState from "../EmptyState";
+import { t } from "../../services/i18n.js";
 import { formatDate } from "./helpers";
 
 export default function CrawlerSourcesPanel({
@@ -16,12 +17,12 @@ export default function CrawlerSourcesPanel({
   onCrawlSource,
 }) {
   if (loading) {
-    return <div className="loading">Loading sources...</div>;
+    return <div className="loading">{t('crawler.loading_sources')}</div>;
   }
   if (!sources.length) {
     return (
       <EmptyState className="empty-state">
-        No crawl sources found. Run crawler first.
+        {t('crawler.empty_sources')}
       </EmptyState>
     );
   }

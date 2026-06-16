@@ -1,5 +1,6 @@
 import React from 'react';
 import CoreUIPillTabs from './CoreUIPillTabs';
+import ActionableError from './ActionableError';
 import '../styles/components/CoreUIButtons.css';
 import '../styles/components/RagTab.css';
 import { RAG_TABS } from './ragTab/constants';
@@ -89,7 +90,9 @@ function RagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
         />
       )}
 
-      {rag.error && <div className="rag-error">Error: {rag.error}</div>}
+      {rag.error && (
+        <ActionableError error={rag.error} onRetry={rag.handleRefresh} className="rag-error" />
+      )}
 
       <RagKeywordsSheets
         sheetOpen={rag.sheetOpen}

@@ -24,3 +24,9 @@ def test_t_en_xa_nav_labels_longer_than_en() -> None:
     en_label = t("nav.dashboard", locale="en")
     xa_label = t("nav.dashboard", locale="en-XA")
     assert len(xa_label) > len(en_label)
+
+
+def test_en_xa_catalog_has_same_keys_as_en() -> None:
+    en_keys = set(load_catalog("en").keys())
+    xa_keys = set(load_catalog("en-XA").keys())
+    assert en_keys == xa_keys

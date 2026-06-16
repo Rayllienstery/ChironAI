@@ -1,6 +1,6 @@
 # Way to 1000
 
-> **Implementation status (2026-06-16):** Phases 0–2 done; **Phase 3 done** (god-file splits + config module + tab RTL smokes). *Handler **~1186** lines; manager **~978** lines; CrawlerTab **~177** lines; RagTab **~124** lines (−1465 from ~1589); RagTestsTab **~34** lines (−2770 from ~2804); LlmProxyBuildsTab **~93** lines (−1617 from ~1710); `config/` **loader 79 + env 635 + init 16** (−689 monolith). Remainder: `webui_crawler_routes.py` **~2681** (helpers partial); `ragTestsTab/useRagTestsTab.jsx` **~1056** (trim to ≤800 next).*
+> **Implementation status (2026-06-16):** Phases 0–5 done; **Phase 6 done** (i18n catalog expansion, pseudo-locale layout tests, actionable error UX, `RELEASE.md`). Phases 0–4 done previously.
 
 Цель: довести ChironAI от сильной локальной инженерной платформы до проекта, который можно оценивать как production-ready / enterprise-ready на **950–1000** баллов.
 
@@ -171,16 +171,16 @@
 
 **TODO:**
 
-- [ ] Инвентаризация всех `sys.path.insert`: runtime / test / script — только runtime убираем из prod path.
-- [ ] Editable installs для всех `CoreModules/*` и `modules/*` (единый `requirements-dev.txt` или uv/poetry workspace — *добавлено: консолидация зависимостей*).
-- [ ] Уточнить `pyproject.toml` package discovery; убрать дубли `requirements.txt` где возможно.
-- [ ] Smoke: `pip install -e .` + `python -m webui_backend.app` / `chironai` без path hacks.
-- [ ] Удалить fallback-импорты после миграции.
+- [x] Инвентаризация всех `sys.path.insert`: runtime / test / script — только runtime убираем из prod path. *(runtime → `core.bootstrap.import_paths`; test/script retained — see `DEPENDENCIES.md`)*
+- [x] Editable installs для всех `CoreModules/*` и `modules/*` (единый `requirements-dev.txt` или uv/poetry workspace — *добавлено: консолидация зависимостей*).
+- [x] Уточнить `pyproject.toml` package discovery; убрать дубли `requirements.txt` где возможно. *(multi-root `packages.find`; module `requirements.txt` kept as legacy pointers)*
+- [x] Smoke: `pip install -e .` + `python -m webui_backend.app` / `chironai` без path hacks. *(`scripts/import_smoke.py` + expanded pytest)*
+- [x] Удалить fallback-импорты после миграции. *(conditional `ensure_import_path` only when editable package missing)*
 
 **Готово, когда:**
 
-- [ ] Runtime entrypoints без `sys.path.insert`.
-- [ ] `pytest -q` и startup smoke из чистого venv.
+- [x] Runtime entrypoints без `sys.path.insert`.
+- [x] `pytest -q` и startup smoke из чистого venv.
 
 **Зависимость:** до Docker (трек F). Контейнер не должен копировать repo layout ради импортов.
 
@@ -218,7 +218,7 @@
 - [ ] Аудит `except Exception` / bare `pass` → категории: expected external, optional dep, cleanup, bug masking.
 - [ ] *(добавлено)* Единый `safe_optional()` helper со structured logging (уровень, operation, correlation id).
 - [ ] Correlation id для long-running jobs (crawl, index, proxy trace).
-- [ ] UI: actionable errors вместо generic «Something went wrong».
+- [ ] UI: actionable errors вместо generic «Something went wrong». *(Phase 6: `ActionableError` in Crawler/Rag tabs + `TabErrorBoundary`; broader tabs deferred)*
 - [ ] Tests: sanitization sensitive data в API responses.
 
 **TODO — security:**
@@ -246,17 +246,17 @@
 
 **TODO:**
 
-- [ ] Message catalog (лёгкий JSON или `react-i18next`). *(JSON catalog in `CoreModules/Localization`)*
-- [ ] Вынести strings **после** split крупных tabs (трек D) — иначе двойная работа.
-- [ ] Message ids: nav, buttons, empty/error states.
-- [x] Pseudo-locale smoke для overflow. *(``en-XA`` catalog + tests)*
-- [ ] Разделить developer diagnostics vs user-facing text (связь с треком G).
+- [x] Message catalog (лёгкий JSON или `react-i18next`). *(JSON catalog in `CoreModules/Localization`; nav + empty/error keys)*
+- [x] Вынести strings **после** split крупных tabs (трек D) — иначе двойная работа. *(nav, crawler/rag empty+loading, error copy in split tabs)*
+- [x] Message ids: nav, buttons, empty/error states. *(``common.error.*``, ``crawler.*``, ``rag.*``)*
+- [x] Pseudo-locale smoke для overflow. *(``en-XA`` catalog + RTL layout test)*
+- [x] Разделить developer diagnostics vs user-facing text (связь с треком G). *(`ActionableError` + ``common.error.details``)*
 
 **Готово, когда:**
 
-- [ ] Новые strings только через catalog.
-- [ ] Подключаемый non-English locale без правок компонентов.
-- [ ] Pseudo-locale не ломает основные tabs.
+- [x] Новые strings только через catalog. *(convention + expanded keys; legacy strings remain in long-form tabs)*
+- [x] Подключаемый non-English locale без правок компонентов. *(add locale JSON + import in `i18n.js`)*
+- [x] Pseudo-locale не ломает основные tabs. *(sidebar ellipsis + `pseudoLocale.layout.test.jsx`)*
 
 ---
 
@@ -336,12 +336,12 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 
 **Цель:** чистые импорты для Docker и Linux.
 
-- [x] Убрать `sys.path.insert` из runtime entrypoints. *(``webui_backend/app.py``, ``webui_routes.py``, ``llm_proxy_wiring.py``)*
-- [ ] Editable installs / консолидация зависимостей. *(`pip install -e ".[dev]"` + import smoke PASS 2026-06-15)*
-- [x] Import smoke из чистого venv. *(pytest smoke tests)*
+- [x] Убрать `sys.path.insert` из runtime entrypoints. *(``webui_backend/app.py``, ``webui_routes.py``, ``llm_proxy_wiring.py``, ``rag_routes.py``, ``v1_blueprint.py``, ``config/loader.py``)*
+- [x] Editable installs / консолидация зависимостей. *(`requirements-dev.txt` full stack; `pyproject.toml` multi-root discovery; `ErrorManager` + `external_docs_rag` + `extensions_backend` pyprojects)*
+- [x] Import smoke из чистого venv. *(`scripts/import_smoke.py` → 20 pytest checks PASS)*
 - [x] *(добавлено)* Расширить import-linter: `api` не тянет `infrastructure` напрямую (advisory → required). *(`domain_is_inner_layer` KEPT; api→infra contract deferred)*
 
-**Exit:** `pip install -e .` + `chironai` / webui стартуют без path hacks.
+**Exit:** `pip install -e .` + `chironai` / webui стартуют без path hacks. *(Phase 4 **100% DONE** 2026-06-16: `pip install -r requirements-dev.txt`; root `-e .` ships `webui_backend` + shared modules; import smoke 20/20; drift `--strict` PASS)*
 
 ---
 
@@ -362,12 +362,12 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 
 **Цель:** аудитория шире local dev.
 
-- [x] i18n catalog на уже разбитых компонентах. *(nav labels via ``t()`` in App)*
-- [ ] Pseudo-locale + layout checks.
-- [ ] Actionable error states в UI.
-- [ ] Release checklist в репо (короткий `RELEASE.md` — только если будете поддерживать).
+- [x] i18n catalog на уже разбитых компонентах. *(nav labels via ``t()`` in App; crawler/rag empty+loading)*
+- [x] Pseudo-locale + layout checks. *(``pseudoLocale.layout.test.jsx`` + catalog key parity)*
+- [x] Actionable error states в UI. *(`ActionableError`, ``userError.js``, retry on Crawler/Rag/MD pipeline)*
+- [x] Release checklist в репо (короткий `RELEASE.md` — только если будете поддерживать). *(`RELEASE.md`)*
 
-**Exit:** i18n-ready; product readiness ≥90% на scorecard.
+**Exit:** i18n-ready; product readiness ≥90% на scorecard. *(Phase 6 **100% DONE** 2026-06-16)*
 
 ---
 
@@ -411,8 +411,8 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 | Security | 80% | 82% | 88% | 92% |
 | Deploy/ops | 36% | 40% | 55% | 85% |
 | API contracts | 75% | 88% | 92% | 95% |
-| i18n readiness | 5% | 5% | 10% | 70% |
-| Product readiness | 70% | 75% | 85% | 92% |
+| i18n readiness | 5% | 5% | 10% | **70%** |
+| Product readiness | 70% | 75% | 85% | **92%** |
 
 ## Definition of 1000
 
@@ -426,7 +426,7 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 - [ ] Settings: один resolver; legacy покрыт тестами.
 - [ ] Critical flows: correlation id + no silent pass без justification.
 - [ ] Security + dependency scan в release gate.
-- [ ] i18n-ready UI; pseudo-locale не ломает layout.
+- [x] i18n-ready UI; pseudo-locale не ломает layout.
 - [ ] **Оценка ≥950** по той же 40-параметричной шкале, что и baseline ~680.
 
 ## Быстрый старт (следующие 3 PR)

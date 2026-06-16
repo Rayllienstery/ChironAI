@@ -8,11 +8,10 @@ override YAML values where appropriate.
 
 from __future__ import annotations
 
-import os
-import sys
 from pathlib import Path
 from typing import Any, Dict
-from urllib.parse import urlparse
+
+from core.bootstrap.import_paths import ensure_import_path
 
 try:
     import yaml  # type: ignore
@@ -24,9 +23,7 @@ _BASE_DIR = Path(__file__).resolve().parent.parent
 _CONFIG_DIR = _BASE_DIR / "config"
 _RAG_SERVICE_DIR = _BASE_DIR / "CoreModules" / "RagService"
 if _RAG_SERVICE_DIR.is_dir():
-    _rag_svc_path = str(_RAG_SERVICE_DIR)
-    if _rag_svc_path not in sys.path:
-        sys.path.insert(0, _rag_svc_path)
+    ensure_import_path("rag_service", _RAG_SERVICE_DIR)
 
 try:
     import rag_service.config as _rsc  # type: ignore

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import sys
 import time
 import uuid
 from typing import TYPE_CHECKING, Any
@@ -13,12 +12,12 @@ from typing import TYPE_CHECKING, Any
 from flask import Blueprint, Response, jsonify, request
 from werkzeug.exceptions import HTTPException
 
-# ErrorManager lives in CoreModules/ErrorManager — add to path if not already present.
+from core.bootstrap.import_paths import ensure_import_path
+
 _LLM_PROXY_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # CoreModules/LlmProxy
 _CORE_MODULES_DIR = os.path.dirname(_LLM_PROXY_DIR)  # CoreModules/
 _ERROR_MANAGER_DIR = os.path.join(_CORE_MODULES_DIR, "ErrorManager")
-if os.path.isdir(_ERROR_MANAGER_DIR) and _ERROR_MANAGER_DIR not in sys.path:
-    sys.path.insert(0, _ERROR_MANAGER_DIR)
+ensure_import_path("error_manager", _ERROR_MANAGER_DIR)
 
 from error_manager.http import error_response as _error_response
 

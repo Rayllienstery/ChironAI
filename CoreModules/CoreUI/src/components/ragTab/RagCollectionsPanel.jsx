@@ -1,4 +1,6 @@
 import React from 'react';
+import EmptyState from '../EmptyState';
+import { t } from '../../services/i18n.js';
 
 export default function RagCollectionsPanel({
   loading,
@@ -11,9 +13,9 @@ export default function RagCollectionsPanel({
             <h3>Collections</h3>
           </div>
           {loading ? (
-            <div className="loading">Checking Qdrant status...</div>
+            <div className="loading">{t('rag.loading_collections')}</div>
           ) : !collections.length ? (
-            <div className="empty-state">No collections found or Qdrant is not reachable.</div>
+            <EmptyState className="empty-state">{t('rag.empty_collections')}</EmptyState>
           ) : (
             <>
               <table className="collections-table">

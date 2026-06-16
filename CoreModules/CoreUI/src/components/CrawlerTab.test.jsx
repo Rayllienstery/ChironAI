@@ -67,7 +67,9 @@ describe("CrawlerTab smoke", () => {
     mockGetCrawlerSources.mockRejectedValue(new Error("Network down"));
     render(<CrawlerTab />);
     await waitFor(() => {
-      expect(screen.getByText(/Error: Network down/i)).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(screen.getByText(/something went wrong|network error/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
     });
   });
 

@@ -49,9 +49,15 @@ tmrag = "api.cli.__main__:main"
 [project.urls]
 Homepage = "https://github.com"
 
-# --- Editable install: core Python packages at repository root plus canonical shared modules
+# --- Editable install: root packages plus canonical shared modules (multi-root discovery)
 [tool.setuptools.packages.find]
-where = ["."]
+where = [
+  ".",
+  "CoreModules/Security",
+  "CoreModules/ExtensionsSandbox",
+  "modules/extensions_backend",
+  "modules/webui_backend",
+]
 include = [
   "application*",
   "api*",
@@ -65,12 +71,6 @@ include = [
   "webui_backend*",
 ]
 exclude = ["tests*", "tests"]
-
-[tool.setuptools.package-dir]
-chironai_security = "CoreModules/Security/chironai_security"
-extensions_sandbox = "CoreModules/ExtensionsSandbox/extensions_sandbox"
-extensions_backend = "modules/extensions_backend/extensions_backend"
-webui_backend = "modules/webui_backend/webui_backend"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

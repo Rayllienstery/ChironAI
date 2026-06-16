@@ -14,6 +14,7 @@ Or: python tmrag.py <command> ...
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import subprocess
 import sys
@@ -32,12 +33,33 @@ def _webui_backend_root() -> str:
 
 
 def _module_env() -> dict[str, str]:
+    """Return subprocess env; PYTHONPATH only when editable installs are missing."""
     env = os.environ.copy()
+    if importlib.util.find_spec("webui_backend") is not None:
+        return env
     paths = [_root(), _webui_backend_root()]
     existing = env.get("PYTHONPATH")
     if existing:
         paths.append(existing)
     env["PYTHONPATH"] = os.pathsep.join(paths)
+    return env
+
+
+def _crawl_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["CHIRONAI_PROJECT_ROOT"] = _root()
+    env["CHIRONAI_WEBUI_DIR"] = os.path.join(_root(), "WebUI")
+    if importlib.util.find_spec("crawler_service") is not None:
+        return env
+    _p = os.pathsep.join(
+        [
+            _root(),
+            os.path.join(_root(), "modules", "webui_backend"),
+            os.path.join(_root(), "modules", "crawler_service"),
+            os.path.join(_root(), "modules", "html_md"),
+        ]
+    )
+    env["PYTHONPATH"] = _p + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
     return env
 
 
@@ -54,25 +76,13 @@ def cmd_start(_: argparse.Namespace) -> int:
 
 
 def cmd_crawl(ns: argparse.Namespace) -> int:
-    root = _root()
-    env = os.environ.copy()
-    env["CHIRONAI_PROJECT_ROOT"] = root
-    env["CHIRONAI_WEBUI_DIR"] = os.path.join(root, "WebUI")
-    _p = os.pathsep.join(
-        [
-            root,
-            os.path.join(root, "modules", "webui_backend"),
-            os.path.join(root, "modules", "crawler_service"),
-            os.path.join(root, "modules", "html_md"),
-        ]
-    )
-    env["PYTHONPATH"] = _p + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    env = _crawl_env()
     argv = [sys.executable, "-m", "crawler_service.api.cli", "crawl"]
     if getattr(ns, "dry_run", False):
         argv.append("--dry-run")
     for s in getattr(ns, "sources", None) or []:
         argv.extend(["--source", s])
-    return subprocess.run(argv, cwd=root, env=env).returncode
+    return subprocess.run(argv, cwd=_root(), env=env).returncode
 
 
 def cmd_proxy(_: argparse.Namespace) -> int:
@@ -120,9 +130,6 @@ def _pick_codex_build(builds: list[dict]) -> dict | None:
 
 
 def cmd_codex(ns: argparse.Namespace) -> int:
-    root = _root()
-    if root not in sys.path:
-        sys.path.insert(0, root)
     try:
         from application.codex_launcher import (
             CodexLauncherError,
@@ -176,9 +183,6 @@ def cmd_codex(ns: argparse.Namespace) -> int:
 
 def cmd_rag_tests_run(ns: argparse.Namespace) -> int:
     """Run RAG tests from CLI (no Flask)."""
-    root = _root()
-    if root not in sys.path:
-        sys.path.insert(0, root)
     try:
         from application.rag_tests.loader import get_rag_tests_root, load_all_tests
         from application.rag_tests.runner import run_tests_sync
@@ -228,9 +232,6 @@ def cmd_rag_tests_run(ns: argparse.Namespace) -> int:
 
 def cmd_rag_tests_lint(_: argparse.Namespace) -> int:
     """Lint RAG tests for multi-concept Expected Concepts."""
-    root = _root()
-    if root not in sys.path:
-        sys.path.insert(0, root)
     try:
         from application.rag_tests.lint import format_issues_text, lint_expected_concepts
         from application.rag_tests.loader import get_rag_tests_root, load_all_tests

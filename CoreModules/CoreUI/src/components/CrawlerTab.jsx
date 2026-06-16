@@ -5,6 +5,7 @@ import {
   DeletePipelineConfirmModal,
   SourceModal,
 } from "./CrawlerModals";
+import ActionableError from "./ActionableError";
 import "../styles/components/CoreUIButtons.css";
 import "../styles/components/CrawlerTab.css";
 import { useOptionalNotificationCenter } from "./NotificationCenterContext";
@@ -59,7 +60,7 @@ function CrawlerTab() {
         )}
 
       {activeSection === "crawler" && crawler.error && (
-        <div className="crawler-error">Error: {crawler.error}</div>
+        <ActionableError error={crawler.error} onRetry={crawler.handleRefresh} />
       )}
 
       {activeSection === "crawler" && (
@@ -113,6 +114,7 @@ function CrawlerTab() {
           onAddLine={mdPipeline.addMdStepLine}
           onRemoveLine={mdPipeline.removeMdStepLine}
           onAddStep={mdPipeline.handleAddMdStep}
+          onRetryPipeline={mdPipeline.retryPipelineLoad}
         />
       )}
 

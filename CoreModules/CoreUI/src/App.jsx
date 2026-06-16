@@ -8,6 +8,9 @@ import {
   lazy,
 } from "react";
 import SidebarNav from "./components/SidebarNav";
+import ActionableError from "./components/ActionableError";
+import CoreUIButton from "./components/CoreUIButton";
+import { t } from "./services/i18n";
 
 class TabErrorBoundary extends Component {
   state = { hasError: false, error: null };
@@ -18,10 +21,20 @@ class TabErrorBoundary extends Component {
     if (this.state.hasError) {
       return (
         <div className="app-main" style={{ padding: 24 }}>
-          <h2>Something went wrong</h2>
-          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-            {this.state.error?.message ?? String(this.state.error)}
-          </pre>
+          <ActionableError
+            error={this.state.error}
+            title={t("common.error.boundary_title")}
+            className="tab-error-boundary"
+          />
+          <p style={{ marginTop: 12, fontSize: "0.875rem" }}>{t("common.error.boundary_hint")}</p>
+          <CoreUIButton
+            variant="primary"
+            type="button"
+            onClick={() => window.location.reload()}
+            style={{ marginTop: 8 }}
+          >
+            {t("common.error.reload")}
+          </CoreUIButton>
         </div>
       );
     }
@@ -170,7 +183,6 @@ import {
   subscribeDockerEvents,
 } from "./services/api";
 import { loadTrackedModule } from "./services/moduleTimings";
-import { t } from "./services/i18n";
 import Sparkline from "./components/Sparkline";
 import { NotificationCenterProvider } from "./components/NotificationCenterContext";
 import NotificationCenterShell from "./components/NotificationCenterShell";
