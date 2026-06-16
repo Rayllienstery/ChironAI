@@ -11,19 +11,67 @@ For humans and AI assistants: terminology, module boundaries, what to keep in sy
 
 ---
 
+### 1.1 Root ownership rule: no freelance runtime code
+
+Runtime code must not live at the repository root as an unowned "freelancer".
+If code is required for startup or product behavior, it must have a documented
+owner, purpose, dependency boundary, and verification path.
+
+Allowed ownership buckets:
+
+- **`Core/`** - the application host: composition root, legacy monolith tail,
+  host `api/application/domain/infrastructure/config`, shared `core`
+  contracts/config package, and host-owned services under `Core/modules/`.
+- **`CoreModules/`** - explicit reusable modules/apps that the host depends on
+  (`CoreUI`, `LlmProxy`, `RagService`, `DockerManager`, `LogsManager`, etc.).
+  Do not use `CoreModules/` as a dumping ground for unrelated host code.
+- **`extensions/`** - extension payloads managed through the extension
+  contracts and extension-management backend.
+- **Project support/runtime data** - `docs/`, `tests/`, `scripts/`, `.github/`,
+  `WebUI/`, `logs/`, `tmp/`, and config files, when they are not importable
+  runtime packages.
+
+Root-level runtime packages such as `api/`, `application/`, `domain/`,
+`infrastructure/`, `config/`, `core/`, `modules/`, or `prompts/` are migration
+tails only. The target is to move host-owned code under `Core/` while keeping
+import names stable during the first pass. Any new root-level runtime package
+requires an explicit allowlist entry and a documented owner.
+
+When deciding where code belongs:
+
+- Put host composition, app-specific adapters, compatibility shims, shared
+  contracts/config, and legacy monolith tails under `Core/`.
+- Put only named reusable modules with clear public responsibility under
+  `CoreModules/`.
+- Keep CoreUI source in `CoreModules/CoreUI` unless the UI is extension-owned
+  and uses supported extension integration points.
+- Do not leave code in the root merely because "the app needs it"; that is the
+  smell this rule exists to remove.
+
+---
+
 ## 2. Project vocabulary (critical)
+
+**Core** is the target application host container under `Core/`: composition
+root, host layers, shared `core` package, and host-owned modules. During
+migration, some host folders may still exist at the repository root, but they
+are migration tails rather than permanent freelance packages.
 
 | Term | What it is |
 |------|------------|
 | **CoreUI** | React/Vite SPA under `CoreModules/CoreUI/`. Talks to the backend **only over HTTP**—no direct RAG, crawler, or ingestion calls. See `CoreModules/CoreUI/README.md`. |
 | **`WebUI/` folder** | Runtime/data directory (`rag_sources`, caches, logs, `last_collection.txt`). This is **not** the frontend and no longer contains Python entrypoints. |
-| **WebUIBackend** | Canonical Python backend package under `modules/webui_backend/webui_backend/`; owns WebUI entrypoints plus legacy crawl/ingest helpers that have not yet been extracted further. |
-| **Web UI (HTTP API)** | REST under the `/api/webui` prefix for dashboard, settings, logs, etc. The canonical package is `modules/webui_backend/`; the remaining route-composition tail is still `api/http/webui_routes.py` and related `api/http/webui_*_routes.py` modules. |
+| **WebUIBackend** | Canonical Python backend package currently under `modules/webui_backend/webui_backend/`, target `Core/modules/webui_backend/webui_backend/`; owns WebUI entrypoints plus legacy crawl/ingest helpers that have not yet been extracted further. |
+| **Web UI (HTTP API)** | REST under the `/api/webui` prefix for dashboard, settings, logs, etc. The canonical package is `webui_backend`; the remaining route-composition tail is still in the host API layer (`api/http/...` during migration, target `Core/api/http/...`). |
 | **Open WebUI** | A separate Docker product; status/start is owned by the `open-webui` extension through DockerManager host capabilities. Do not conflate with **CoreUI** (our React app) or call it “our WebUI” without qualification. |
 
 Ambiguous “WebUI” in conversation: clarify—**`WebUI/` data folder**, **WebUIBackend**, **`/api/webui` HTTP API**, **CoreUI**, or **Open WebUI**.
 
 ---
+
+Path note: `modules/webui_backend` and `modules/extensions_backend` are current
+physical locations. The root-cleanup target is `Core/modules/...` with stable
+import names, not automatic promotion into `CoreModules/`.
 
 ## 3. CoreUI: how to change the UI
 
@@ -143,6 +191,10 @@ matched = mgr.find_latest_log_with_user_message("Найди")
 ---
 
 ## 6. Modular target state
+
+Root-cleanup target: host-owned top-level runtime folders move under `Core/`,
+while `CoreModules/` remains the place for explicit reusable modules/apps. Do
+not treat root cleanup as permission to move all host code into `CoreModules/`.
 
 Target data flow:
 

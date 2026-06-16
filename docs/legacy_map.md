@@ -21,6 +21,25 @@ CoreUI (RAG Tests / Notifications / Builds)
 
 ## Legacy Clusters
 
+## Root freelance runtime folders
+
+- Current root-level runtime folders (`api/`, `application/`, `domain/`,
+  `infrastructure/`, `config/`, `core/`, `modules/`, `prompts/`) are migration
+  tails.
+- Target ownership:
+  - host layers move under `Core/`;
+  - host-owned services move under `Core/modules/`;
+  - reusable modules stay or move under `CoreModules/`;
+  - prompt templates get an explicit owner instead of remaining root runtime
+    data.
+
+Risk: startup-critical code can become invisible ownership debt if it remains
+at the repository root with no documented owner.
+
+Guardrail target: add a root source allowlist test that rejects new importable
+runtime package folders at the repository root unless they are explicitly
+documented.
+
 ## A) Configuration/authority overlap
 
 - Multiple config sources for similar behavior:

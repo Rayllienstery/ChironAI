@@ -29,9 +29,8 @@ EXCLUDE_DIR_NAMES = {
 # Documented exceptions: relative path → reason (must stay ≤ limit growth).
 DOCUMENTED_EXCEPTIONS: dict[str, str] = {
     "tests/api/test_http_endpoints.py": "Phase 1 split in progress; target domain modules",
-    "api/http/webui_crawler_routes.py": "Phase 3 split after helpers extraction",
     "CoreModules/CoreUI/src/services/api.js": "Phase 3 domain service split after FE harness",
-    "CoreModules/LlmProxy/llm_proxy/chat_completions_handler.py": "Phase 3 after settings resolver",
+    "config/env.py": "Phase 3 acceptable; env overrides cohesive unit",
 }
 
 PRODUCTION_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx"}

@@ -34,10 +34,12 @@ def test_get_ollama_base_url_uses_yaml_chat_host(monkeypatch: pytest.MonkeyPatch
 
 def test_get_ollama_rerank_model_does_not_use_retrieval_yaml(monkeypatch: pytest.MonkeyPatch) -> None:
     import config as cfg
+    import config.loader as loader
 
-    monkeypatch.setattr(cfg, "_rsc", None)
+    monkeypatch.setattr(loader, "_rsc", None)
     monkeypatch.delenv("OLLAMA_RERANK_MODEL", raising=False)
-    monkeypatch.setattr(cfg, "OLLAMA_CONFIG", {"rerank_model": "", "rerank_model_last_resort": "fallback-rerank"})
-    monkeypatch.setattr(cfg, "RETRIEVAL_CONFIG", {"rerank_model": "wrong-devstral-rerank"})
+    monkeypatch.setitem(loader.OLLAMA_CONFIG, "rerank_model", "")
+    monkeypatch.setitem(loader.OLLAMA_CONFIG, "rerank_model_last_resort", "fallback-rerank")
+    monkeypatch.setitem(loader.RETRIEVAL_CONFIG, "rerank_model", "wrong-devstral-rerank")
 
     assert cfg.get_ollama_rerank_model() == "fallback-rerank"

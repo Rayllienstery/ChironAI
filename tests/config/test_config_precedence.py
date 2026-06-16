@@ -7,9 +7,9 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _no_rag_service_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    import config as cfg
+    import config.loader as loader
 
-    monkeypatch.setattr(cfg, "_rsc", None)
+    monkeypatch.setattr(loader, "_rsc", None)
 
 
 def test_get_rag_int_env_overrides_yaml(monkeypatch: pytest.MonkeyPatch) -> None:

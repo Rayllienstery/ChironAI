@@ -1,16 +1,39 @@
 # Modules
 
-Business-domain projects (services and applications) live here. Each subdirectory is a **separate project** with its own README, dependencies, and entrypoints.
+This directory is a migration tail. Host-owned business services currently live
+here, but the root-cleanup target is:
 
-| Project | Responsibility |
-|---------|----------------|
-| [RagService / rag_service](../CoreModules/RagService/README.md) | RAG pipeline + `chironai_rag` contracts (package **CoreModules/RagService**, pip `chironai-rag-service`) |
-| [md_ingestion_service](../CoreModules/MdIngestionService/README.md) | Markdown/document ingestion, filtering, `prepare_markdown_for_indexing`, chunking (package under **CoreModules**) |
-| [crawler_service](crawler_service/README.md) | Web/docs crawl (Playwright + WWDC) into `WebUI/rag_sources`; `chironai-crawl` CLI |
-| [webui_backend](webui_backend/README.md) | WebUI backend: dashboard, settings, logs, aggregation over other services |
-| [CoreUI](../CoreModules/CoreUI/README.md) | React SPA (WebUI); talks to API via HTTP |
-| [open_webui](open_webui/README.md) | Open WebUI Docker container; status/start/stop in WebUI header |
+```text
+Core/modules/
+```
 
-Communication between modules is via **interfaces** defined in `core/contracts/`. No cross-import of concrete implementations.
+Do not create new long-lived runtime packages in top-level `modules/`. New
+host-owned services should be planned for `Core/modules/`; reusable standalone
+modules should be considered for `CoreModules/` only when they have a clear
+module contract and ownership boundary.
 
-The repository root [`pyproject.toml`](../pyproject.toml) installs the **core** Python packages (`domain`, `application`, `api`, …) as the `chironai` distribution; `modules/*` often stay on `PYTHONPATH` via pytest or manual `sys.path` until each gets its own `pyproject.toml` for a full split.
+| Project | Responsibility | Target |
+|---------|----------------|--------|
+| [crawler_service](crawler_service/README.md) | Web/docs crawl into ingestion/indexing flows. | `Core/modules/crawler_service` |
+| [extensions_backend](extensions_backend/README.md) | Extension registry, repository metadata, install/update/remove, status, blocklist, and marketplace governance. | `Core/modules/extensions_backend` |
+| [webui_backend](webui_backend/README.md) | WebUI backend: dashboard, settings, logs, and aggregation over other services. | `Core/modules/webui_backend` |
+| `html_md` | HTML/markdown conversion helpers. | `Core/modules/html_md` |
+| `md_indexer` | Config-driven markdown cleanup/indexing pipelines. | `Core/modules/md_indexer` |
+| `tools` | Host-owned support tooling. | `Core/modules/tools` |
+
+Related CoreModules:
+
+| CoreModule | Responsibility |
+|------------|----------------|
+| [RagService / rag_service](../CoreModules/RagService/README.md) | RAG pipeline and `chironai_rag` contracts. |
+| [MdIngestionService](../CoreModules/MdIngestionService/README.md) | Markdown/document ingestion, filtering, and chunking. |
+| [CoreUI](../CoreModules/CoreUI/README.md) | React SPA. Talks to API only over HTTP. |
+
+Communication between host modules and CoreModules should go through
+`core/contracts/`, stable Python protocols, or HTTP contracts. No module should
+cross-import another module's concrete implementation as a convenience shortcut.
+
+The repository root `pyproject.toml` currently adds this directory and selected
+subdirectories to package/tool paths. During the move to `Core/modules/`, keep
+public import names stable first, then consider import renames only as a
+separate cleanup.

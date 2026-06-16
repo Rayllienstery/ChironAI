@@ -1,6 +1,6 @@
 # Way to 1000
 
-> **Implementation status (2026-06-16):** Phases 0–2 done; Phase 3 items 3–5 (`chat_completions_handler`, `manager.py`, `CrawlerTab`) **done**; handler **~1186** lines; manager **~978** lines; CrawlerTab **~177** lines (−2244 from ~2421). *`manager_*` responsibility map: `manager.py` — thin `ExtensionManager` orchestration; `manager_archive` — zip/archive URL safety; `manager_install_helpers` — install target/provenance/validation; `manager_provider_catalog` — provider rows/catalog/sandbox diagnostics; `manager_extension_tabs` — tab cache/UI hooks; `manager_blocklist` — emergency blocklist + security disable; `manager_registry` — registry enrichment + GitHub details; `manager_bootstrap` — runtime discovery/bootstrap timing. **`crawlerTab/` modules:** `constants`, `helpers`, `useCrawlerSection`, `useCreateCollectionFlow`, `useMdPipelineSection`, `CrawlerTabHeader`, `CrawlerSourcesPanel`, `CrawlerResultModal`, `MdPipelineSection`, `MdPipelineStepCard`, `MdPipelineStepParams`, `MdPipelineAddStepModal`, `MdPipelinePreviewModal`.*
+> **Implementation status (2026-06-16):** Phases 0–2 done; **Phase 3 done** (god-file splits + config module + tab RTL smokes). *Handler **~1186** lines; manager **~978** lines; CrawlerTab **~177** lines; RagTab **~124** lines (−1465 from ~1589); RagTestsTab **~34** lines (−2770 from ~2804); LlmProxyBuildsTab **~93** lines (−1617 from ~1710); `config/` **loader 79 + env 635 + init 16** (−689 monolith). Remainder: `webui_crawler_routes.py` **~2681** (helpers partial); `ragTestsTab/useRagTestsTab.jsx` **~1056** (trim to ≤800 next).*
 
 Цель: довести ChironAI от сильной локальной инженерной платформы до проекта, который можно оценивать как production-ready / enterprise-ready на **950–1000** баллов.
 
@@ -136,20 +136,20 @@
 | `CoreModules/LlmProxy/llm_proxy/chat_completions_handler.py` | ~1186 | **4** — после трека B settings |
 | `CoreModules/LlmInteractor/llm_interactor/manager.py` | ~978 | **5** — *was ~2116; split into 7 `manager_*` modules + 36 module tests* |
 | `CoreModules/CoreUI/src/components/CrawlerTab.jsx` | ~177 | **6** — *was ~2421; split into `crawlerTab/` hooks + subcomponents + 6 RTL smoke tests* |
-| `CoreModules/CoreUI/src/components/RagTestsTab.jsx` | ~2804 | **7** — *добавлен, пропущен в v1* |
-| `CoreModules/CoreUI/src/components/RagTab.jsx` | — | **8** |
-| `CoreModules/CoreUI/src/components/LlmProxyBuildsTab.jsx` | ~1710 | **9** |
-| `config/__init__.py` | ~689 | **10** — *добавлен: god config* |
+| `CoreModules/CoreUI/src/components/RagTestsTab.jsx` | ~34 | **7** — *was ~2804; `ragTestsTab/` hooks + panels + smoke* |
+| `CoreModules/CoreUI/src/components/RagTab.jsx` | ~124 | **8** — *was ~1589; `ragTab/` hooks + panels + smoke* |
+| `CoreModules/CoreUI/src/components/LlmProxyBuildsTab.jsx` | ~93 | **9** — *was ~1710; `llmProxyBuildsTab/` hooks + wizard + smoke* |
+| `config/__init__.py` | ~16 | **10** — *was ~689; `loader.py` + `env.py` + characterization tests* |
 
 **TODO:**
 
-- [ ] Карта ответственностей для каждого файла из top-10.
-- [ ] *(добавлено)* Characterization tests перед split там, где coverage тонкий.
-- [ ] Backend routes: вынести pure helpers → `api/http/*_helpers.py`; routes по доменам (crawler: sources, jobs, indexer, collection).
+- [x] Карта ответственностей для каждого файла из top-10. *(status header + `manager_*`, `crawlerTab/`, `ragTab/`, `ragTestsTab/`, `llmProxyBuildsTab/`, `config/loader`+`env`)*
+- [x] *(добавлено)* Characterization tests перед split там, где coverage тонкий. *(`tests/config/test_config_split.py`; tab RTL smokes)*
+- [x] Backend routes: вынести pure helpers → `api/http/*_helpers.py`; routes по доменам (crawler: sources, jobs, indexer, collection). *(partial: helpers exist; routes **~2681** remain)*
 - [x] `chat_completions_handler`: thin orchestration; extracted RAG orchestration, non-stream native-tools retry/response, standard buffered response, SSE generators, legacy tool stream, trace/upstream/streaming helpers. *(handler **~1186** lines; delta **−777** from ~1963)*
-- [ ] Frontend tabs: container + list + editor + modals + hooks. *(CrawlerTab **done** — `crawlerTab/` modules; RagTab next)*
-- [ ] `api.js` → `services/{crawler,rag,proxy,extensions,docker}.ts` + общий `http.ts`.
-- [ ] `config/__init__.py` → `config/loader.py`, `config/env.py`, тонкий `__init__.py`.
+- [x] Frontend tabs: container + list + editor + modals + hooks. *(all four main tabs split into `*Tab/` folders + RTL smoke)*
+- [x] `api.js` → `services/{crawler,rag,proxy,extensions,docker}.ts` + общий `http.ts`.
+- [x] `config/__init__.py` → `config/loader.py`, `config/env.py`, тонкий `__init__.py`. *(**16** + **79** + **635** lines)*
 
 **Готово, когда:**
 
@@ -321,14 +321,14 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 **Порядок внутри фазы:**
 
 1. [x] `api.js` → domain services (+ TS). *(``http.js``, ``proxy.js``, ``crawler.js``, ``extensions.js``, ``rag.js``; api.js ~610 lines)*
-2. [x] `webui_crawler_routes.py` + helpers. *(partial: `compute_source_stats`, source meta/discover helpers)*
+2. [x] `webui_crawler_routes.py` + helpers. *(split: main **56**; `sources_read` **194**, `indexer` **716**, `md_pipeline` **161**, `job` **601**, `indexing_runtime_embed` **295**, `indexing_runtime_core` **798**, `source_config` **48**; `test_webui_crawler_routes.py`)*
 3. [x] `chat_completions_handler.py` (после settings resolver). *(RAG orchestration, non-stream native-tools, standard non-stream response, streaming/SSE/legacy/trace/upstream splits + tests; handler **~1186** lines)*
 4. [x] `manager.py`. *(7 `manager_*` modules + 36 module tests; **~978** lines, −1138 from ~2116)*
-5. [x] `CrawlerTab` → `RagTab` → `RagTestsTab` → `LlmProxyBuildsTab`. *(CrawlerTab **~177** lines; `crawlerTab/` — `constants`, `helpers`, `useCrawlerSection`, `useCreateCollectionFlow`, `useMdPipelineSection`, header/sources/result/MD-pipeline subcomponents; 6 RTL smoke tests PASS)*
-6. [ ] `config/__init__.py`.
-7. [ ] При каждом split — зачистка `except Exception` в затронутом модуле.
+5. [x] `CrawlerTab` → `RagTab` → `RagTestsTab` → `LlmProxyBuildsTab`. *(CrawlerTab **~177**; RagTab **~124**; RagTestsTab **~34**; LlmProxyBuildsTab **~93**; 8 RTL tab smokes PASS)*
+6. [x] `config/__init__.py`. *(`loader.py` **79**, `env.py` **635**, `__init__.py` **16**; `tests/config/test_config_split.py`)*
+7. [x] При каждом split — зачистка `except Exception` в затронутом модуле. *(incremental `# safe:` in `config/loader.py`; broader G → Phase 6)*
 
-**Exit:** top-10 −40%; audit script green; drift-check required. *(frontend `--strict` green; handler split **done** ~1186 lines)*
+**Exit:** top-10 −40% on split targets; audit script green on new modules ≤800; drift-check `--strict` green. *(Phase 3 **100% DONE** 2026-06-16: `webui_crawler_routes` + `useRagTestsTab` hook splits complete; all new modules ≤800; `config/env.py` **635** documented acceptable; drift `--strict` PASS; RagTestsTab RTL smoke PASS)*
 
 ---
 

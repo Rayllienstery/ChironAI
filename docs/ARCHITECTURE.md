@@ -4,9 +4,14 @@
 
 The codebase is organized in layers: **Presentation → Application → Domain → Infrastructure**, with **Config** and **Utils** as cross-cutting concerns.
 
-**Target layout:** The repository is moving to a **modular structure**: each major domain (RAG, MD ingestion, crawler, WebUI backend/frontend) lives as a separate project under `modules/`, with shared config and contracts under `core/`. See [MODULAR_STRUCTURE.md](MODULAR_STRUCTURE.md) for the full target architecture.
+**Target layout:** The repository is moving to a **root-clean modular structure**: host-owned runtime code lives under `Core/`, reusable support modules live under `CoreModules/`, extension payloads live under `extensions/`, and the repository root stays free of unowned startup-critical packages. See [MODULAR_STRUCTURE.md](MODULAR_STRUCTURE.md) for the full target architecture.
 
 **Current (legacy) layout:**
+
+The paths below describe the current physical layout. Their target owners are
+defined in `docs/MODULAR_STRUCTURE.md`: host layers move under `Core/`, current
+top-level `modules/` moves under `Core/modules/`, and reusable modules remain
+under `CoreModules/`.
 
 ```
 api/                 — Presentation (HTTP routes, CLI entrypoints)
@@ -17,7 +22,7 @@ config/              — Configuration (YAML + env)
 utils/               — Pure helpers
 tests/               — Pytest (domain, application, api, infrastructure)
 
-modules/             — Separate projects: crawler_service, webui_backend (RAG pipeline package lives under **CoreModules/RagService**)
+modules/             — Host-owned services; target Core/modules (RAG pipeline package lives under **CoreModules/RagService**)
 CoreModules/         — Shared core apps/libs (e.g. LlmProxy, RagService / `rag_service` + `chironai_rag`, CoreUI, MdIngestionService / `md_ingestion_service`)
 core/                — (Target) config, shared, contracts
 ```
