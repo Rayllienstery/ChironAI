@@ -1,6 +1,6 @@
 # Way to 1000
 
-> **Implementation status (2026-06-16):** Phases 0–2 done; Phase 3 items 3–4 (`chat_completions_handler`, `manager.py`) **done**; handler **~1186** lines; manager **~978** lines (−1138 from ~2116). *`manager_*` responsibility map: `manager.py` — thin `ExtensionManager` orchestration; `manager_archive` — zip/archive URL safety; `manager_install_helpers` — install target/provenance/validation; `manager_provider_catalog` — provider rows/catalog/sandbox diagnostics; `manager_extension_tabs` — tab cache/UI hooks; `manager_blocklist` — emergency blocklist + security disable; `manager_registry` — registry enrichment + GitHub details; `manager_bootstrap` — runtime discovery/bootstrap timing.*
+> **Implementation status (2026-06-16):** Phases 0–2 done; Phase 3 items 3–5 (`chat_completions_handler`, `manager.py`, `CrawlerTab`) **done**; handler **~1186** lines; manager **~978** lines; CrawlerTab **~177** lines (−2244 from ~2421). *`manager_*` responsibility map: `manager.py` — thin `ExtensionManager` orchestration; `manager_archive` — zip/archive URL safety; `manager_install_helpers` — install target/provenance/validation; `manager_provider_catalog` — provider rows/catalog/sandbox diagnostics; `manager_extension_tabs` — tab cache/UI hooks; `manager_blocklist` — emergency blocklist + security disable; `manager_registry` — registry enrichment + GitHub details; `manager_bootstrap` — runtime discovery/bootstrap timing. **`crawlerTab/` modules:** `constants`, `helpers`, `useCrawlerSection`, `useCreateCollectionFlow`, `useMdPipelineSection`, `CrawlerTabHeader`, `CrawlerSourcesPanel`, `CrawlerResultModal`, `MdPipelineSection`, `MdPipelineStepCard`, `MdPipelineStepParams`, `MdPipelineAddStepModal`, `MdPipelinePreviewModal`.*
 
 Цель: довести ChironAI от сильной локальной инженерной платформы до проекта, который можно оценивать как production-ready / enterprise-ready на **950–1000** баллов.
 
@@ -135,7 +135,7 @@
 | `api/http/webui_crawler_routes.py` | ~2468 | **3** — после helpers + test split |
 | `CoreModules/LlmProxy/llm_proxy/chat_completions_handler.py` | ~1186 | **4** — после трека B settings |
 | `CoreModules/LlmInteractor/llm_interactor/manager.py` | ~978 | **5** — *was ~2116; split into 7 `manager_*` modules + 36 module tests* |
-| `CoreModules/CoreUI/src/components/CrawlerTab.jsx` | ~2421 | **6** |
+| `CoreModules/CoreUI/src/components/CrawlerTab.jsx` | ~177 | **6** — *was ~2421; split into `crawlerTab/` hooks + subcomponents + 6 RTL smoke tests* |
 | `CoreModules/CoreUI/src/components/RagTestsTab.jsx` | ~2804 | **7** — *добавлен, пропущен в v1* |
 | `CoreModules/CoreUI/src/components/RagTab.jsx` | — | **8** |
 | `CoreModules/CoreUI/src/components/LlmProxyBuildsTab.jsx` | ~1710 | **9** |
@@ -147,7 +147,7 @@
 - [ ] *(добавлено)* Characterization tests перед split там, где coverage тонкий.
 - [ ] Backend routes: вынести pure helpers → `api/http/*_helpers.py`; routes по доменам (crawler: sources, jobs, indexer, collection).
 - [x] `chat_completions_handler`: thin orchestration; extracted RAG orchestration, non-stream native-tools retry/response, standard buffered response, SSE generators, legacy tool stream, trace/upstream/streaming helpers. *(handler **~1186** lines; delta **−777** from ~1963)*
-- [ ] Frontend tabs: container + list + editor + modals + hooks.
+- [ ] Frontend tabs: container + list + editor + modals + hooks. *(CrawlerTab **done** — `crawlerTab/` modules; RagTab next)*
 - [ ] `api.js` → `services/{crawler,rag,proxy,extensions,docker}.ts` + общий `http.ts`.
 - [ ] `config/__init__.py` → `config/loader.py`, `config/env.py`, тонкий `__init__.py`.
 
@@ -324,7 +324,7 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 2. [x] `webui_crawler_routes.py` + helpers. *(partial: `compute_source_stats`, source meta/discover helpers)*
 3. [x] `chat_completions_handler.py` (после settings resolver). *(RAG orchestration, non-stream native-tools, standard non-stream response, streaming/SSE/legacy/trace/upstream splits + tests; handler **~1186** lines)*
 4. [x] `manager.py`. *(7 `manager_*` modules + 36 module tests; **~978** lines, −1138 from ~2116)*
-5. [ ] `CrawlerTab` → `RagTab` → `RagTestsTab` → `LlmProxyBuildsTab`.
+5. [x] `CrawlerTab` → `RagTab` → `RagTestsTab` → `LlmProxyBuildsTab`. *(CrawlerTab **~177** lines; `crawlerTab/` — `constants`, `helpers`, `useCrawlerSection`, `useCreateCollectionFlow`, `useMdPipelineSection`, header/sources/result/MD-pipeline subcomponents; 6 RTL smoke tests PASS)*
 6. [ ] `config/__init__.py`.
 7. [ ] При каждом split — зачистка `except Exception` в затронутом модуле.
 
