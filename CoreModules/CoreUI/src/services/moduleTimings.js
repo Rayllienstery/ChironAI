@@ -45,7 +45,7 @@ function createImportTimeoutError(id, timeoutMs) {
   return error;
 }
 
-function withLoadTimeout(id, promise, timeoutMs, source, startPerfMs) {
+function withLoadTimeout(id, promise, timeoutMs, source, startPerfMs, trackedPromise = promise) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return promise;
 
   return new Promise((resolve, reject) => {
@@ -54,7 +54,9 @@ function withLoadTimeout(id, promise, timeoutMs, source, startPerfMs) {
       if (settled) return;
       settled = true;
       const error = createImportTimeoutError(id, timeoutMs);
-      _promises.delete(id);
+      if (_promises.get(id) === trackedPromise) {
+        _promises.delete(id);
+      }
       recordModuleLoad(id, nowMs() - startPerfMs, 'failed', {
         source,
         step: 'timed out',
@@ -87,7 +89,7 @@ function clearStaleTimer(id) {
   }
 }
 
-function scheduleStaleMarker(id, staleAfterMs, source, startPerfMs) {
+function scheduleStaleMarker(id, staleAfterMs, source, startPerfMs, trackedPromise = null) {
   clearStaleTimer(id);
   if (!Number.isFinite(staleAfterMs) || staleAfterMs <= 0) return;
 
@@ -96,6 +98,9 @@ function scheduleStaleMarker(id, staleAfterMs, source, startPerfMs) {
     const current = _records.get(id);
     if (!current || current.status !== 'in_progress') return;
     const elapsedMs = Math.max(0, nowMs() - startPerfMs);
+    if (trackedPromise && _promises.get(id) === trackedPromise) {
+      _promises.delete(id);
+    }
     _records.set(id, {
       ...current,
       status: 'skipped',
@@ -173,9 +178,9 @@ export function loadTrackedModule(key, importer, options = {}) {
     const existing = _promises.get(id);
     const startPerfMs = active?.start_perf_ms ?? nowMs();
     if (timeoutMs <= 0) {
-      scheduleStaleMarker(id, staleAfterMs, source, startPerfMs);
+      scheduleStaleMarker(id, staleAfterMs, source, startPerfMs, existing);
     }
-    return withLoadTimeout(id, existing, timeoutMs, source, startPerfMs);
+    return withLoadTimeout(id, existing, timeoutMs, source, startPerfMs, existing);
   }
 
   const startPerfMs = nowMs();
@@ -193,14 +198,13 @@ export function loadTrackedModule(key, importer, options = {}) {
     elapsed_ms: 0,
   });
   notify();
-  if (timeoutMs <= 0) {
-    scheduleStaleMarker(id, staleAfterMs, source, startPerfMs);
-  }
-
-  const promise = importer()
+  let promise;
+  promise = importer()
     .then((mod) => {
       clearStaleTimer(id);
-      _promises.delete(id);
+      if (_promises.get(id) === promise) {
+        _promises.delete(id);
+      }
       recordModuleLoad(id, nowMs() - startPerfMs, 'ok', {
         source,
         step: 'resolved',
@@ -209,7 +213,9 @@ export function loadTrackedModule(key, importer, options = {}) {
     })
     .catch((error) => {
       clearStaleTimer(id);
-      _promises.delete(id);
+      if (_promises.get(id) === promise) {
+        _promises.delete(id);
+      }
       if (error?.name !== 'ModuleImportTimeoutError') {
         recordModuleLoad(id, nowMs() - startPerfMs, 'failed', {
           source,
@@ -221,7 +227,10 @@ export function loadTrackedModule(key, importer, options = {}) {
     });
 
   _promises.set(id, promise);
-  return withLoadTimeout(id, promise, timeoutMs, source, startPerfMs);
+  if (timeoutMs <= 0) {
+    scheduleStaleMarker(id, staleAfterMs, source, startPerfMs, promise);
+  }
+  return withLoadTimeout(id, promise, timeoutMs, source, startPerfMs, promise);
 }
 
 /**

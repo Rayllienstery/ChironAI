@@ -59,6 +59,7 @@
   gap: var(--md-sys-spacing-sm);
   width: var(--notification-center-panel-width);
   max-width: var(--notification-center-panel-width);
+  max-height: calc(100vh - var(--md-sys-spacing-md) * 2);
   pointer-events: none;
 }
 
@@ -67,13 +68,14 @@
   --app-card-box-shadow: var(--md-sys-elevation-level2) !important;
   box-shadow: var(--md-sys-elevation-level2) !important;
   border-radius: var(--app-card-radius, var(--md-sys-shape-corner-medium)) !important;
-  overflow-x: hidden;
-  overflow-y: visible;
+  overflow: visible;
   border: 1px solid var(--md-sys-color-outline-variant) !important;
   animation: notification-card-enter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  max-height: none;
+  flex-shrink: 0;
   box-sizing: border-box;
 }
 
@@ -153,14 +155,26 @@
   pointer-events: auto;
 }
 
+.notification-center-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.notification-center-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 .notification-center-stack {
   display: flex;
   flex-direction: column-reverse;
   align-items: stretch;
   gap: var(--md-sys-spacing-sm);
-  max-height: none;
-  overflow-x: hidden;
-  overflow-y: visible;
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
@@ -169,11 +183,16 @@
   margin: -2px -6px;
 }
 
+.notification-center-stack > * {
+  flex-shrink: 0;
+}
+
 .notification-center-actions-row {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .notification-center-card {
@@ -266,7 +285,7 @@
 }
 
 .notification-center-card-main {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
 }
 
@@ -641,7 +660,8 @@
   overflow: hidden;
   align-self: stretch;
   animation: notification-popover-enter 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
-  scrollbar-gutter: stable;
+  flex: 0 1 auto;
+  min-height: 0;
 }
 
 .notification-center-popover-header {
@@ -665,8 +685,16 @@
 }
 
 .notification-center-popover-list {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 6px 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.notification-center-popover-list::-webkit-scrollbar {
+  display: none;
 }
 
 .notification-center-popover-empty {

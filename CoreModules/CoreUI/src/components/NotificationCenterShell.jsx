@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Card from './Card';
 import CoreUIButton from './CoreUIButton';
 import CoreUINotificationActionButton from './CoreUINotificationActionButton';
@@ -94,6 +94,24 @@ function FormattedMessage({ text }) {
   });
 }
 
+const NOTIFICATION_SCROLL_BOTTOM_THRESHOLD_PX = 8;
+
+function isNotificationScrollAtBottom(scrollEl) {
+  if (!scrollEl) return true;
+  const distanceFromBottom = scrollEl.scrollHeight - scrollEl.clientHeight - scrollEl.scrollTop;
+  return distanceFromBottom <= NOTIFICATION_SCROLL_BOTTOM_THRESHOLD_PX;
+}
+
+function scrollNotificationListToLatest(scrollEl, behavior = 'auto') {
+  if (!scrollEl) return;
+  const top = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+  if (behavior === 'auto') {
+    scrollEl.scrollTop = top;
+    return;
+  }
+  scrollEl.scrollTo({ top, behavior });
+}
+
 function NotificationCenterShell({ onOpenRagRunDetails = null }) {
   const {
     sessionId,
@@ -114,6 +132,9 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
   const [clearBatchLiveIds, setClearBatchLiveIds] = useState(() => []);
   const [historyLeaving, setHistoryLeaving] = useState(false);
   const rootRef = useRef(null);
+  const scrollRef = useRef(null);
+  const stickToBottomRef = useRef(true);
+  const [showLatestAction, setShowLatestAction] = useState(false);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -153,6 +174,62 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
       .map((id) => [id, liveActivities.get(id) || { source: 'system', node: null, headerLeading: null }]),
   );
   const hasVisibleCards = activePersisted.length > 0 || liveEntries.length > 0;
+  const visibleCardSignature = `${visiblePersisted.length}:${visibleLiveEntries.length}`;
+
+  const updateScrollState = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom = isNotificationScrollAtBottom(el);
+    const canScroll = el.scrollHeight > el.clientHeight + 1;
+    stickToBottomRef.current = atBottom;
+    setShowLatestAction(canScroll && !atBottom);
+  }, []);
+
+  const scrollToLatest = useCallback((behavior = 'smooth') => {
+    const el = scrollRef.current;
+    if (!el) return;
+    scrollNotificationListToLatest(el, behavior);
+    stickToBottomRef.current = true;
+    setShowLatestAction(false);
+  }, []);
+
+  useLayoutEffect(() => {
+    scrollNotificationListToLatest(scrollRef.current, 'auto');
+    updateScrollState();
+  }, [updateScrollState]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return undefined;
+
+    const onScroll = () => updateScrollState();
+    el.addEventListener('scroll', onScroll, { passive: true });
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (stickToBottomRef.current) {
+        scrollNotificationListToLatest(el, 'auto');
+      }
+      updateScrollState();
+    });
+    resizeObserver.observe(el);
+    if (el.firstElementChild) {
+      resizeObserver.observe(el.firstElementChild);
+    }
+
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      resizeObserver.disconnect();
+    };
+  }, [updateScrollState]);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (stickToBottomRef.current) {
+      scrollNotificationListToLatest(el, 'auto');
+    }
+    updateScrollState();
+  }, [visibleCardSignature, updateScrollState]);
 
   const handleDismissPersisted = (id) => {
     setLeavingPersistedIds((prev) => {
@@ -365,7 +442,8 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
         </div>
       )}
 
-      <div className="notification-center-stack" aria-live="polite">
+      <div className="notification-center-scroll" ref={scrollRef}>
+        <div className="notification-center-stack" aria-live="polite">
         {visiblePersisted.map((n) => {
           const isLeaving = leavingPersistedIds.has(n.id);
           return (
@@ -457,9 +535,18 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
           </Card>
           );
         })}
+        </div>
       </div>
 
       <div className="notification-center-actions-row">
+        {showLatestAction ? (
+          <CoreUINotificationActionButton
+            icon="keyboard_arrow_down"
+            label="Latest"
+            onClick={() => scrollToLatest('smooth')}
+            title="Scroll to latest notifications"
+          />
+        ) : null}
         {hasVisibleCards ? (
           <CoreUINotificationActionButton
             icon="cleaning_services"

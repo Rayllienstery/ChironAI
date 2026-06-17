@@ -1,4 +1,5 @@
 import React from 'react';
+import CoreUIButton from '../CoreUIButton';
 import { CUSTOM_PARAMETER_PREFAB_NOTE, PARAMETER_PREFABS } from './constants';
 
 export default function LlmProxyWizardSteps({

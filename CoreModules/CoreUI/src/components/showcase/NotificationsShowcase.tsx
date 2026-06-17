@@ -108,12 +108,13 @@ export default function NotificationsShowcase() {
 
       <ShowcaseSection title="Action Buttons">
         <ShowcaseItem
-          name="Action button (Bell and Clear)"
+          name="Action button (Bell, Clear, and Latest)"
           classes={[".coreui-notification-action-btn", ".coreui-notification-action-btn-icon", ".coreui-notification-action-btn-label"]}
           source={`${sourceRoot}/components/CoreUINotificationActionButton.jsx, ${sourceRoot}/styles/components/CoreUINotificationActionButton.css`}
-          description="Pill-shaped action buttons used in the floating notification center. The same component drives the Bell toggle, the Clear action, and any other overlay button, so heights and styling stay in lockstep."
+          description="Pill-shaped action buttons used in the floating notification center. Latest jumps back to the newest notifications when the stack is scrolled up."
         >
           <div className="coreui-showcase-notification-action-row">
+            <CoreUINotificationActionButton icon="keyboard_arrow_down" label="Latest" />
             <CoreUINotificationActionButton icon="cleaning_services" label="Clear" />
             <CoreUINotificationActionButton icon="notifications" label="Notifications" />
           </div>

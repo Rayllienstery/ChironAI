@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.11] - 2026-06-17
+### Fixed
+- Prevented stale lazy-module prefetches from blocking later tab navigation imports.
+
+## [0.7.10] - 2026-06-17
+### Fixed
+- Made the Extensions tab render installed extensions without waiting for slower provider/UI payload requests.
+
+## [0.7.9] - 2026-06-17
+### Changed
+- Notification center opens at the latest items and shows a Latest jump button when scrolled up.
+
+## [0.7.8] - 2026-06-17
+### Fixed
+- Notification center scrolls as one vertical list with a hidden scrollbar instead of per-card scrolling.
+
 ## [0.7.7] - 2026-06-17
 ### Changed
 - Removed legacy compatibility shims (`config.rag_prompts`, `rag_repository_impl`) and dead one-off split scripts.

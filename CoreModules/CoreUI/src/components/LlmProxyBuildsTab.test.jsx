@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import LlmProxyBuildsTab from './LlmProxyBuildsTab.jsx';
 
 vi.mock('../services/api.js', () => ({
@@ -22,6 +22,35 @@ describe('LlmProxyBuildsTab smoke', () => {
     render(<LlmProxyBuildsTab />);
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 2, name: /LLM Proxy/i })).toBeInTheDocument();
+    });
+  });
+
+  it('opens new build wizard without crashing', async () => {
+    render(<LlmProxyBuildsTab />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /new build/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /new build/i }));
+    await waitFor(() => {
+      expect(screen.getByText('Create new build')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /check model/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /save build/i })).toBeInTheDocument();
+    });
+  });
+
+  it('navigates wizard to parameters step and renders prefab buttons', async () => {
+    render(<LlmProxyBuildsTab />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /new build/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /new build/i }));
+    await waitFor(() => {
+      expect(screen.getByText('Create new build')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('tab', { name: /step 5: parameters/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^light$/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^medium$/i })).toBeInTheDocument();
     });
   });
 });

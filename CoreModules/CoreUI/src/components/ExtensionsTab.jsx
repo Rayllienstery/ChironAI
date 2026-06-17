@@ -587,44 +587,12 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
     setLoading(true);
     setError("");
     void loadRegistry({ forceRefresh, notifyOnError: forceRefresh });
-    const results = await Promise.allSettled([
-        getExtensionInstalled({ dockerVersions: false }),
-        getExtensionProviders(),
-        getExtensionUiPayload(),
-    ]);
-    const [installedResult, providersResult, uiResult] = results;
     const failures = [];
 
-    if (installedResult.status === "fulfilled") {
-      const installedRows = installedResult.value.extensions || [];
-      setInstalled(installedRows);
-      if (installedRows.length) {
-        void getExtensionInstalled({ dockerVersions: true })
-          .then((data) => {
-            setInstalled(data.extensions || []);
-          })
-          .catch(() => {});
-      }
-    } else {
-      failures.push(installedResult.reason);
-    }
-    if (providersResult.status === "fulfilled") {
-      setProviders(providersResult.value.providers || []);
-    } else {
-      failures.push(providersResult.reason);
-    }
-    if (uiResult.status === "fulfilled") {
-      const uiData = uiResult.value;
-      setUiPayload({ extensions: uiData.extensions || [], failed: uiData.failed || [] });
-    } else {
-      failures.push(uiResult.reason);
-    }
-
-    if (failures.length) {
-      const msg = failures
-        .map((item) => String(item?.message || item || "Failed to load extensions"))
-        .join("; ");
-      setError(msg);
+    const reportFailure = (reason) => {
+      failures.push(reason);
+      const msg = String(reason?.message || reason || "Failed to load extensions");
+      setError((prev) => (prev ? `${prev}; ${msg}` : msg));
       if (persistExtensionNotification) {
         void persistExtensionNotification({
           kind: "error",
@@ -636,10 +604,40 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
         });
       }
       onErrorStateChange?.(true);
-    } else {
+    };
+
+    const installedPromise = getExtensionInstalled({ dockerVersions: false })
+      .then((data) => {
+        const installedRows = data.extensions || [];
+        setInstalled(installedRows);
+        if (installedRows.length) {
+          void getExtensionInstalled({ dockerVersions: true })
+            .then((versionsData) => {
+              setInstalled(versionsData.extensions || []);
+            })
+            .catch(() => {});
+        }
+      })
+      .catch(reportFailure);
+
+    const providersPromise = getExtensionProviders()
+      .then((data) => {
+        setProviders(data.providers || []);
+      })
+      .catch(reportFailure);
+
+    const uiPromise = getExtensionUiPayload()
+      .then((uiData) => {
+        setUiPayload({ extensions: uiData.extensions || [], failed: uiData.failed || [] });
+      })
+      .catch(reportFailure);
+
+    await installedPromise;
+    setLoading(false);
+    await Promise.allSettled([providersPromise, uiPromise]);
+    if (!failures.length) {
       onErrorStateChange?.(false);
     }
-    setLoading(false);
   }, [loadRegistry, onErrorStateChange, persistExtensionNotification]);
 
   useEffect(() => {
