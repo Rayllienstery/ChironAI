@@ -127,6 +127,11 @@ When the request includes a non-empty `tools` list and `tool_choice` is not `"no
 
 Plain chat (no native tools) likewise goes through the provider runtime; OpenAI streaming responses are synthesized from provider stream events.
 
+### Wire-format compatibility modules
+
+- `llm_proxy/ollama_compat.py` — intentional re-export boundary for OpenAI-shaped chat/tool/vision normalization (not provider HTTP ownership).
+- `llm_proxy/chat_completions_legacy_tool_stream.py` — buffered SSE path for older IDE clients that stream with `tools` before native tool streaming.
+
 If `tool_choice` is `"none"` or `tools` is empty, the legacy text-only path (no synthetic JSON tool shim) is used as before.
 
 ## Proxy pipeline (single mode)

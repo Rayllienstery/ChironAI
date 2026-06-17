@@ -11,6 +11,9 @@ Unnamed single-vector collections (plain `vectors: 128`) are **not supported**. 
 collections via WebUI crawler, external-docs sink, or `dense_vectors_config()` helpers in
 `infrastructure.rag.qdrant_point_builder`.
 
+`external_docs_rag.infrastructure.QdrantRagSearchAdapter` delegates search to
+`QdrantRagRepository` (named dense path only; no duplicate HTTP client).
+
 ## Upsert shape
 
 Use `build_named_vectors(text, embedding, hybrid_sparse=...)` so points always carry

@@ -25,9 +25,9 @@ from application.rag.webui_retrieval_settings import (
 from application.rag.webui_retrieval_settings import (
     get_effective_rag_trigger_threshold as _get_effective_rag_trigger_threshold,
 )
-from config.rag_prompts import PROMPTS_DIR, TRASH_DIR
 from infrastructure.database import get_settings_repository
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
+from prompts_manager import PROMPTS_DIR, TRASH_DIR
 
 try:
     from rag_service.infrastructure.keyword_collections_sqlite import get_keyword_collections_repository

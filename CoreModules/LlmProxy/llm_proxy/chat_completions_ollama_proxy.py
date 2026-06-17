@@ -590,9 +590,9 @@ def resolved_ollama_chat_url(chat_client: Any) -> str | None:
     for import_path in ("config", "rag_service.config"):
         try:
             if import_path == "config":
-                from config import get_ollama_chat_url as _get_chat_url  # type: ignore[import-not-found]
+                from config import get_default_chat_url as _get_chat_url  # type: ignore[import-not-found]
             else:
-                from rag_service.config import get_ollama_chat_url as _get_chat_url
+                from rag_service.config import get_default_chat_url as _get_chat_url
 
             chat_url = str(_get_chat_url() or "").strip()
             if chat_url:

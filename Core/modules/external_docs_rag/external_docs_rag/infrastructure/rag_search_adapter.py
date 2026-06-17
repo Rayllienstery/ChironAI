@@ -6,17 +6,15 @@ from __future__ import annotations
 
 from typing import Any
 
-try:
-    import httpx
-except ImportError:
-    httpx = None  # type: ignore
+from rag_service.domain.errors import RetrievalError
+from rag_service.infrastructure.qdrant_repository import QdrantRagRepository
 
 
 class QdrantRagSearchAdapter:
-    """RagSearchPort implementation: search(collection_name, vector, top_k) via Qdrant HTTP API."""
+    """RagSearchPort implementation delegating to canonical ``QdrantRagRepository``."""
 
     def __init__(self, base_url: str = "http://localhost:6333") -> None:
-        self._url = base_url.rstrip("/")
+        self._base_url = base_url.rstrip("/")
 
     def search(
         self,
@@ -25,21 +23,14 @@ class QdrantRagSearchAdapter:
         top_k: int,
     ) -> list[dict[str, Any]]:
         """Search collection by vector. Returns list of hits with id, score, payload."""
-        if not httpx:
-            return []
+        repo = QdrantRagRepository(
+            base_url=self._base_url,
+            explicit_collection=collection_name,
+        )
         try:
-            resp = httpx.post(
-                f"{self._url}/collections/{collection_name}/points/search",
-                json={
-                    "vector": {"name": "dense", "vector": vector},
-                    "limit": top_k,
-                    "with_payload": True,
-                },
-                timeout=30,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("result") or []
+            return repo.search(vector, top_k)
+        except RetrievalError:
+            return []
         except Exception:
             return []
 

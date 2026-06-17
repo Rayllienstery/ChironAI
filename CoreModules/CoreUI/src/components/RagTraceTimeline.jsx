@@ -2,7 +2,6 @@ import '../styles/components/RagTraceTimeline.css';
 
 /** Shared with ModelTester + RagTab: persist last trace for the RAG tab mirror. */
 export const CHIRONAI_RAG_TRACE_STORAGE_KEY = 'chironai_last_rag_trace';
-export const CHIRONAI_RAG_TRACE_EVENT = 'chironai-rag-trace';
 
 function iconClassForStep(id) {
   const s = String(id || '');

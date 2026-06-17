@@ -16,9 +16,10 @@ from rag_service.domain.services.prompt_builder import build_system_content
 
 from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
 from api.http.webui_prompts import is_readme_name
+from application.rag.proxy_settings_contract import load_proxy_settings
 from config import get_rag_float, get_rag_int, get_rag_prompt_name
-from config.rag_prompts import get_rag_system_prompt, rag_prompt_file_exists
 from infrastructure.database import get_settings_repository
+from prompts_manager import get_rag_system_prompt, rag_prompt_file_exists
 from webui_backend.paths import webui_data_dir
 
 
@@ -44,7 +45,7 @@ def register_model_tester_routes(
                 model_key="proxy_model",
                 fallback_provider=default_provider_id,
             )
-            stored_settings_json = settings_repo.get_app_setting("proxy_settings")
+            blob = load_proxy_settings(settings_repo)
             stored_rag_col = (settings_repo.get_app_setting(RAG_COLLECTION_APP_SETTING) or "").strip()
             stored_autocomplete_provider_id, stored_autocomplete = read_app_provider_model_ref(
                 settings_repo,
@@ -74,20 +75,16 @@ def register_model_tester_routes(
                 "autocomplete_model": stored_autocomplete,
             }
 
-            if stored_settings_json:
-                try:
-                    blob = json.loads(stored_settings_json)
-                    for key, val in blob.items():
-                        if key in out:
-                            out[key] = val
-                        elif key == "model" and not out["model"]:
-                            out["model"] = str(val or "").strip()
-                    if not out["provider_id"] and out["model"]:
-                        out["provider_id"] = default_provider_id
-                    if not out["autocomplete_provider_id"] and out["autocomplete_model"]:
-                        out["autocomplete_provider_id"] = default_provider_id
-                except json.JSONDecodeError:
-                    pass
+            if blob:
+                for key, val in blob.items():
+                    if key in out:
+                        out[key] = val
+                    elif key == "model" and not out["model"]:
+                        out["model"] = str(val or "").strip()
+                if not out["provider_id"] and out["model"]:
+                    out["provider_id"] = default_provider_id
+                if not out["autocomplete_provider_id"] and out["autocomplete_model"]:
+                    out["autocomplete_provider_id"] = default_provider_id
 
             pn = str(out.get("prompt_name") or "").strip()
             try:
@@ -126,15 +123,7 @@ def register_model_tester_routes(
                 ConsumerRagBindings(settings_repo).set_stored_collection(
                     RagConsumer.LLM_PROXY, str(body.get("rag_collection") or "").strip()
                 )
-            existing_blob: dict[str, Any] = {}
-            try:
-                raw_ps = settings_repo.get_app_setting("proxy_settings")
-                if raw_ps:
-                    existing_blob = json.loads(raw_ps)
-                    if not isinstance(existing_blob, dict):
-                        existing_blob = {}
-            except (json.JSONDecodeError, TypeError):
-                existing_blob = {}
+            existing_blob = dict(load_proxy_settings(settings_repo))
             merged = {
                 **existing_blob,
                 **{

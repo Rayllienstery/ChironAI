@@ -354,13 +354,7 @@ def register_rag_pipeline_routes(
             yaml_hybrid = get_retrieval_bool("hybrid_sparse_enabled", True)
             hybrid_sparse_enabled = bool(body.get("hybrid_sparse_enabled", yaml_hybrid))
 
-            proxy_settings_json = settings_repo.get_app_setting("proxy_settings")
-            proxy_settings: dict[str, Any] = {}
-            if proxy_settings_json:
-                try:
-                    proxy_settings = json.loads(proxy_settings_json) or {}
-                except json.JSONDecodeError:
-                    proxy_settings = {}
+            proxy_settings = dict(load_proxy_settings(settings_repo))
 
             proxy_settings["rerank_for_rag"] = rerank_for_rag
             proxy_settings["hybrid_sparse_enabled"] = hybrid_sparse_enabled

@@ -40,7 +40,7 @@ def test_build_queries_empty_after_strip() -> None:
 
 def test_clip_zed_context_tail_drops_title_suffix() -> None:
     raw = (
-        "[@TODO.md](file:///x/TODO.md) move to POST_MVP.md <context></context> "
+        "[@notes.md](file:///x/notes.md) move to backlog.md <context></context> "
         "Generate a concise 3-7 word title for this conversation"
     )
     clipped = clip_zed_context_tail_for_search(raw)

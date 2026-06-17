@@ -1,8 +1,24 @@
 # Configuration Authority
 
 Single reference for **who wins** when the same knob is set in multiple places.
-This pass documents behavior only; code changes to simplify fallbacks are deferred
-until precedence tests stay green.
+
+## Application code (canonical getters)
+
+Use **`get_default_*`** in Core, LlmProxy, extensions, and scripts:
+
+| Getter | Purpose |
+|--------|---------|
+| `get_default_chat_model()` | Default chat model id |
+| `get_default_embed_model()` | Default embedding model id |
+| `get_default_rerank_model()` | Default rerank model id |
+| `get_default_chat_url()` | Default chat HTTP endpoint |
+| `get_default_base_url()` | Default LLM base URL (`scheme://host:port`) |
+| `get_default_embed_url()` | Default embed HTTP endpoint |
+| `get_default_generate_url()` | Default generate HTTP endpoint |
+
+`get_ollama_*` names remain in the **config layer** (`Core/config/env.py`,
+`rag_service/config.py`) for env/YAML key compatibility only. Guardrail:
+`tests/application/test_ollama_migration_guardrails.py`.
 
 ## Resolution layers (general)
 
@@ -31,13 +47,13 @@ precedence documented here.
 | Server port | `get_server_port_metadata()` | `SERVER_PORT` | `server.yaml` → `server.port` | `server_port`, `server_port_last_active` | Env beats settings beats YAML; invalid saved port ignored. |
 | Qdrant URL | `get_qdrant_url()` | `QDRANT_URL` | `server.yaml` → `qdrant.url` | `rag_collection` (collection name, not URL) | |
 | Qdrant collection | `get_qdrant_collection_name()` / app setting | `QDRANT_COLLECTION_NAME` | `server.yaml` → `qdrant.collection_name` | `rag_collection` | |
-| Ollama chat URL | `get_ollama_chat_url()` | `OLLAMA_CHAT_URL` | `models.yaml` → `ollama.chat_url` | — | |
-| Ollama base | `get_ollama_base_url()` | `OLLAMA_BASE_URL` | Derived from chat URL host | — | Strips `/api/*` suffixes from env. |
-| Ollama generate | `get_ollama_generate_url()` | `OLLAMA_URL` | `ollama.generate_url` | — | |
-| Ollama embed URL | `get_ollama_embed_url()` | `OLLAMA_EMBED_URL` | `ollama.embed_url` | — | |
-| Ollama chat model | `get_ollama_chat_model()` | `OLLAMA_CHAT_MODEL` | `ollama.chat_model` | — | Empty env string is valid (clears model). |
-| Ollama embed model | `get_ollama_embed_model()` | `RAG_EMBED_MODEL` | `embed_model`, then `embed_model_last_resort` | — | Skips empty YAML strings. |
-| Ollama rerank model | `get_ollama_rerank_model()` | `OLLAMA_RERANK_MODEL` | `rerank_model`, then `rerank_model_last_resort` | — | Does **not** read `retrieval.yaml`. |
+| Default chat model | `get_default_chat_model()` (`get_ollama_chat_model()` in config layer) | `OLLAMA_CHAT_MODEL` | `ollama.chat_model` | — | Empty env string is valid (clears model). |
+| Default embed model | `get_default_embed_model()` (`get_ollama_embed_model()` in config layer) | `RAG_EMBED_MODEL` | `embed_model`, then `embed_model_last_resort` | — | Skips empty YAML strings. |
+| Default rerank model | `get_default_rerank_model()` (`get_ollama_rerank_model()` in config layer) | `OLLAMA_RERANK_MODEL` | `rerank_model`, then `rerank_model_last_resort` | — | Does **not** read `retrieval.yaml`. |
+| Default chat URL | `get_default_chat_url()` (`get_ollama_chat_url()` in config layer) | `OLLAMA_CHAT_URL` | `models.yaml` → `ollama.chat_url` | — | |
+| Default LLM base | `get_default_base_url()` (`get_ollama_base_url()` in config layer) | `OLLAMA_BASE_URL` | Derived from chat URL host | — | Strips `/api/*` suffixes from env. |
+| Default generate URL | `get_default_generate_url()` (`get_ollama_generate_url()` in config layer) | `OLLAMA_URL` | `ollama.generate_url` | — | |
+| Default embed URL | `get_default_embed_url()` (`get_ollama_embed_url()` in config layer) | `OLLAMA_EMBED_URL` | `ollama.embed_url` | — | |
 | RAG ints | `get_rag_int(key, default)` | `RAG_CONTEXT_CHUNK_CHARS`, `RAG_CONTEXT_TOTAL_CHARS` (mapped keys only) | `rag.yaml` | Via `proxy_settings` / builds | Other keys: YAML then default. |
 | Retrieval ints | `get_retrieval_int(key, default)` | `RAG_TOP_K` when `key == "top_k"` | `retrieval.yaml` | Build `rag_top_k` when merged | |
 | RAG prompt name | `get_rag_prompt_name()` | `RAG_PROMPT` | `rag.prompt` | — | |

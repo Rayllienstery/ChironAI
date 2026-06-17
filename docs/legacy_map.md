@@ -26,7 +26,6 @@ Active cleanup roadmap: this document and [`QUALITY_GATE_PROFILES.md`](QUALITY_G
 | `Core/application/rag/proxy_settings_contract.py` | Core/application | Config authority helpers for proxy/RAG settings precedence |
 | `Core/application/rag/webui_retrieval_settings.py` | Core/application | WebUI RAG trigger threshold + default model helpers |
 | `Core/infrastructure/qdrant/collection_names.py` | Core/infrastructure | Shared Qdrant collection listing for WebUI, RAG tests, indexer |
-| `config.rag_prompts` | Core/config facade | Compatibility import path for `prompts_manager` |
 | `CoreModules/LlmProxy/*` wire-format | LlmProxy | Intentional OpenAI/Anthropic compatibility surface |
 | `extensions/bundled/*` | extensions + `extensions_backend` | Trusted bootstrap/offline mirrors only |
 
@@ -115,19 +114,19 @@ clearly when the provider runtime is unavailable.
   `rag_service.infrastructure.openai_*` for public HTTP compatibility only.
 - LlmProxy keeps `llm_proxy/ollama_compat.py` and `llm_proxy/wire_format/*` as
   explicit OpenAI/provider wire-format compatibility boundaries for `/v1`.
-- Config keeps deprecated `get_ollama_*` env/yaml names; app code should prefer
-  `get_default_chat_model`, `get_default_embed_model`, `get_default_rerank_model`.
+- Application code uses `get_default_*` config getters; `get_ollama_*` names
+  remain in the config layer for env/YAML compatibility only (guardrail:
+  `tests/application/test_ollama_migration_guardrails.py`).
 
 Guardrail: `tests/application/test_ollama_migration_guardrails.py` rejects any
 `from infrastructure.ollama` import in core trees.
 
 ## D) Retrieval mode compatibility
 
-- Dense-only + hybrid + named dense compatibility in Qdrant repositories.
+- Named dense + hybrid only in `QdrantRagRepository` (unnamed single-vector collections rejected).
+- `external_docs_rag` search adapter delegates to the same repository (no duplicate HTTP search path).
 - Documented: [`CoreModules/RagService/docs/QDRANT_VECTOR_MODES.md`](../CoreModules/RagService/docs/QDRANT_VECTOR_MODES.md).
-- Main files:
-  - `CoreModules/RagService/rag_service/infrastructure/qdrant_repository.py`
-  - `Core/infrastructure/qdrant/rag_repository_impl.py` (shim)
+- Main file: `CoreModules/RagService/rag_service/infrastructure/qdrant_repository.py`
 
 Risk: hybrid vs dense-only mismatch; guarded by `tests/rag_service/test_qdrant_vector_modes.py`.
 
@@ -143,13 +142,14 @@ Risk: keep Qdrant status/ports aligned between WebUI and RagRuntime.
 
 ## F) UI integration legacy tails (mostly reduced)
 
-- Event-based cross-tab open flow remains.
+- RAG run open from notifications uses App state (`pendingRagRunOpenId`), not window events.
+- Model Tester → RAG tab pipeline trace uses `sessionStorage` only (no `CustomEvent` bridge).
 - Main files:
   - `CoreModules/CoreUI/src/App.jsx`
   - `CoreModules/CoreUI/src/components/NotificationCenterShell.jsx`
-  - `CoreModules/CoreUI/src/components/RagTestsTab.jsx`
+  - `CoreModules/CoreUI/src/components/ragTab/helpers.js`
 
-Risk: medium-low; manageable with explicit state contract.
+Risk: low; trace mirror refreshes on Rag tab mount and `visibilitychange`.
 
 ## Keep vs Remove
 
@@ -160,14 +160,14 @@ Keep (intentional compatibility):
 
 Remove (technical legacy):
 - core raw Ollama-compatible route ownership and direct `localhost:11434` fallbacks.
-- dead compatibility wrappers around stable internal contracts.
+- dead compatibility wrappers around stable internal contracts (removed: `config.rag_prompts`, `rag_repository_impl`).
 - global UI shims and implicit state globals.
 - route-layer orchestration that belongs in application services.
 
 ## Suggested Sequence
 
-1. Extract RAG Tests backend from `webui_routes.py`.
-2. Lock config authority table and enforce in code.
-3. Reduce Qdrant compatibility branches.
-4. Normalize UI action dispatch to state-only flow.
-5. Review compatibility endpoints and either bless or deprecate.
+1. ~~Extract RAG Tests backend from `webui_routes.py`.~~ (split into `rag_tests_routes.py`)
+2. ~~Lock config authority table and enforce in code.~~ (`CONFIG_AUTHORITY.md`, `get_default_*`, guardrails)
+3. ~~Reduce Qdrant compatibility branches.~~ (canonical `QdrantRagRepository`; adapter delegates)
+4. ~~Normalize UI action dispatch to state-only flow.~~ (RAG run + trace mirror)
+5. Review compatibility endpoints and either bless or deprecate (`ollama_compat`, legacy tool stream documented as intentional).

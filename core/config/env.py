@@ -71,7 +71,10 @@ def get_github_token() -> str:
 
 
 def get_ollama_chat_url() -> str:
-    """Return Ollama chat URL, allowing env override."""
+    """Return Ollama chat URL, allowing env override.
+
+    Config-layer name; application code should use :func:`get_default_chat_url`.
+    """
     if _config_loader._rsc is not None:
         try:
             return str(_config_loader._rsc.get_ollama_chat_url())
@@ -86,6 +89,8 @@ def get_ollama_chat_url() -> str:
 def get_ollama_base_url() -> str:
     """
     Ollama HTTP API base ``scheme://host:port`` with no path (suitable for ``/api/tags``, etc.).
+
+    Config-layer name; application code should use :func:`get_default_base_url`.
 
     Order:
     1. ``OLLAMA_BASE_URL`` if set (trailing ``/api/...`` segments are stripped if present).
@@ -160,6 +165,26 @@ def get_ollama_embed_url() -> str:
     )
 
 
+def get_default_chat_url() -> str:
+    """Default LLM chat endpoint URL from env/yaml."""
+    return get_ollama_chat_url()
+
+
+def get_default_base_url() -> str:
+    """Default LLM HTTP base URL (``scheme://host:port``) from env/yaml."""
+    return get_ollama_base_url()
+
+
+def get_default_embed_url() -> str:
+    """Default embedding endpoint URL from env/yaml."""
+    return get_ollama_embed_url()
+
+
+def get_default_generate_url() -> str:
+    """Default text-generation endpoint URL from env/yaml."""
+    return get_ollama_generate_url()
+
+
 def get_default_chat_model() -> str:
     """Default chat model id from env/yaml (compat env: ``OLLAMA_CHAT_MODEL``)."""
     return get_ollama_chat_model()
@@ -176,7 +201,10 @@ def get_default_rerank_model() -> str:
 
 
 def get_ollama_chat_model() -> str:
-    """Return chat model name, allowing env override. Empty string means 'not configured'."""
+    """Return chat model name, allowing env override. Empty string means 'not configured'.
+
+    Config-layer name; application code should use :func:`get_default_chat_model`.
+    """
     if _config_loader._rsc is not None:
         try:
             return str(_config_loader._rsc.get_ollama_chat_model())
@@ -191,6 +219,8 @@ def get_ollama_chat_model() -> str:
 
 def get_ollama_embed_model() -> str:
     """Return embed model name (Ollama /api/embed).
+
+    Config-layer name; application code should use :func:`get_default_embed_model`.
 
     Resolution order (first non-empty wins):
     1. ``RAG_EMBED_MODEL``

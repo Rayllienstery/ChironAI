@@ -19,7 +19,6 @@ import {
   updateRagTriggerSettings,
 } from '../../services/api';
 import { useMergedPipelinePreview } from '../../hooks/useMergedPipelinePreview';
-import { CHIRONAI_RAG_TRACE_EVENT } from '../RagTraceTimeline';
 import { capitalize, readMirroredRagTraceFromStorage, wordsInMultipleCollections } from './helpers';
 
 export function useRagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
@@ -91,17 +90,6 @@ export function useRagTab({ scrollToModelsSection, onModelsSectionScrolled }) {
   });
 
   const [mirroredPipelineTrace, setMirroredPipelineTrace] = useState(readMirroredRagTraceFromStorage);
-
-  useEffect(() => {
-    const onTrace = (e) => {
-      const d = e?.detail;
-      if (d && Array.isArray(d.trace) && d.trace.length > 0) {
-        setMirroredPipelineTrace({ steps: d.trace, latencyMs: d.latencyMs ?? null });
-      }
-    };
-    window.addEventListener(CHIRONAI_RAG_TRACE_EVENT, onTrace);
-    return () => window.removeEventListener(CHIRONAI_RAG_TRACE_EVENT, onTrace);
-  }, []);
 
   useEffect(() => {
     const onVis = () => {

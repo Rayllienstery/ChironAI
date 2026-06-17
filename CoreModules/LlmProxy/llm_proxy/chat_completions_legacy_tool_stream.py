@@ -1,4 +1,9 @@
-"""Buffered chat + edit resolution for legacy tool-mode SSE streaming."""
+"""Buffered chat + edit resolution for legacy tool-mode SSE streaming.
+
+Intentional compatibility path for IDE clients that request ``stream: true`` with
+``tools`` before native provider tool streaming is available. New clients should
+prefer native tool responses; this module remains for older edit/tool SSE shapes.
+"""
 
 from __future__ import annotations
 

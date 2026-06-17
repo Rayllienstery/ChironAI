@@ -454,6 +454,18 @@ def get_ollama_embed_url() -> str:
     return _env("OLLAMA_EMBED_URL") or str(_section("ollama").get("embed_url", _DEFAULT_OLLAMA["embed_url"]))
 
 
+def get_default_chat_url() -> str:
+    return get_ollama_chat_url()
+
+
+def get_default_embed_url() -> str:
+    return get_ollama_embed_url()
+
+
+def get_default_generate_url() -> str:
+    return get_ollama_generate_url()
+
+
 def get_default_chat_model() -> str:
     return get_ollama_chat_model()
 

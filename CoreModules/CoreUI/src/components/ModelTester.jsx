@@ -8,7 +8,7 @@ import {
   testerPromptPreview,
   getRagCollections,
 } from '../services/api';
-import { CHIRONAI_RAG_TRACE_EVENT, CHIRONAI_RAG_TRACE_STORAGE_KEY } from './RagTraceTimeline';
+import { persistMirroredRagTraceToStorage } from './ragTab/helpers';
 import CoreUISlider from './CoreUISlider';
 import { renderTesterMarkdown } from '../utils/modelTesterMarkdown';
 import { buildTesterRunLogCards } from '../utils/testerRunLog';
@@ -230,17 +230,7 @@ function ModelTester({ sessionId }) {
         const tr = result.rag_metadata.rag_trace;
         if (tr.length > 0) {
           const lat = typeof result.latency_ms === 'number' ? result.latency_ms : null;
-          try {
-            sessionStorage.setItem(
-              CHIRONAI_RAG_TRACE_STORAGE_KEY,
-              JSON.stringify({ trace: tr, latencyMs: lat, updatedAt: Date.now() })
-            );
-          } catch (_) {
-            /* ignore */
-          }
-          window.dispatchEvent(
-            new CustomEvent(CHIRONAI_RAG_TRACE_EVENT, { detail: { trace: tr, latencyMs: lat } })
-          );
+          persistMirroredRagTraceToStorage(tr, lat);
         }
       }
 

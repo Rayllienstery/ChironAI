@@ -8,7 +8,7 @@ from pathlib import Path
 
 def project_root() -> Path:
     """Return the repository root."""
-    return Path(__file__).resolve().parents[3]
+    return Path(__file__).resolve().parents[4]
 
 
 def webui_data_dir() -> Path:

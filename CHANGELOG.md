@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.7] - 2026-06-17
+### Changed
+- Removed legacy compatibility shims (`config.rag_prompts`, `rag_repository_impl`) and dead one-off split scripts.
+- Migrated application code to `get_default_*` config getters with guardrails and centralized `proxy_settings` loading.
+- Replaced RAG trace cross-tab `CustomEvent` bridge with sessionStorage-only mirror flow.
+- Delegated external-docs Qdrant search to canonical `QdrantRagRepository`.
+- Documented intentional `/v1` wire-format and legacy tool-stream compatibility boundaries.
+- Fixed WebUI backend `project_root()` and startup path bootstrap so `build_and_run` serves CoreUI and loads extensions.
+
 ## [0.7.6] - 2026-06-16
 ### Changed
 - Moved host runtime packages under `Core/` while preserving public import names.

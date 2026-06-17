@@ -17,7 +17,7 @@ On first access, any legacy root-level `prompts/` directory is copied into
 
 - Default prompt name: `rag.prompt` in `Core/config/rag.yaml`
 - Override: environment variable `RAG_PROMPT`
-- Compatibility import path: `config.rag_prompts` (facade until call sites migrate)
+- Import: `from prompts_manager import get_rag_system_prompt, PROMPTS_DIR, ...`
 
 ## API
 

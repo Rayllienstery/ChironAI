@@ -16,6 +16,18 @@ export function readMirroredRagTraceFromStorage() {
   return null;
 }
 
+export function persistMirroredRagTraceToStorage(trace, latencyMs = null) {
+  if (!Array.isArray(trace) || trace.length === 0) return;
+  try {
+    sessionStorage.setItem(
+      CHIRONAI_RAG_TRACE_STORAGE_KEY,
+      JSON.stringify({ trace, latencyMs, updatedAt: Date.now() })
+    );
+  } catch (_) {
+    /* ignore */
+  }
+}
+
 export function wordsInMultipleCollections(collections) {
   const wordToCollections = new Map();
   (collections || []).forEach((c) => {

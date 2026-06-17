@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT / "CoreModules" / "RagService"))
 
 import httpx  # noqa: E402
 
-from config import get_ollama_embed_model, get_qdrant_url  # noqa: E402
+from config import get_default_embed_model, get_qdrant_url  # noqa: E402
 from infrastructure.rag.sparse_text import normalize_text_for_sparse, text_to_sparse_vector  # noqa: E402
 
 COLL = "Apple_Collection"
@@ -141,7 +141,7 @@ def verdict(expected: str, hits: list[dict]) -> str:
 
 
 def main() -> int:
-    model = get_ollama_embed_model()
+    model = get_default_embed_model()
     print("embed_model:", model)
     stats = scroll_stats()
     print("\n=== SCROLL STATS ===")

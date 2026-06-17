@@ -125,7 +125,7 @@ def test_resolved_ollama_chat_url_uses_config_for_runtime_ollama_client(monkeypa
 
     import config
 
-    monkeypatch.setattr(config, "get_ollama_chat_url", lambda: "http://localhost:11434/api/chat")
+    monkeypatch.setattr(config, "get_default_chat_url", lambda: "http://localhost:11434/api/chat")
     client = SimpleNamespace(_provider_id="ollama", _url=None)
 
     assert _resolved_ollama_chat_url(client) == "http://localhost:11434/api/chat"

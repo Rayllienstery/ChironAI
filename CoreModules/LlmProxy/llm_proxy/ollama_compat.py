@@ -1,8 +1,9 @@
-"""Temporary provider wire-format compatibility boundary for proxy chat behavior.
+"""OpenAI/provider wire-format compatibility boundary for proxy chat behavior.
 
 Provider-owned behavior lives in bundled LLM extensions (for example ``ollama-provider``).
-These imports preserve public ``/v1/chat/completions`` compatibility while the proxy
-normalizes OpenAI-shaped chat/tool/vision payloads around provider-runtime calls.
+This module is the intentional public ``/v1`` wire-format surface: it re-exports
+OpenAI-shaped chat/tool/vision normalization helpers used while the proxy adapts
+requests around provider-runtime calls. Do not add provider HTTP ownership here.
 """
 
 from __future__ import annotations

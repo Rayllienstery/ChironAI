@@ -87,12 +87,12 @@ def build_extension_host_stack(
     metadata = dict(host_metadata or {})
     metadata.setdefault("source", "extensions_host.wiring")
     try:
-        from config import get_default_embed_model, get_default_rerank_model, get_ollama_base_url, get_ollama_chat_url
+        from config import get_default_base_url, get_default_chat_url, get_default_embed_model, get_default_rerank_model
 
         metadata.update(
             {
-                "base_url": get_ollama_base_url(),
-                "chat_url": get_ollama_chat_url(),
+                "base_url": get_default_base_url(),
+                "chat_url": get_default_chat_url(),
                 "embed_model": get_default_embed_model(),
                 "rerank_model": get_default_rerank_model(),
             }

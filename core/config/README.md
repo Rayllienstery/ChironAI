@@ -31,7 +31,7 @@ from config import (
     get_retrieval_int,
     get_crawler_int,
     get_indexing_int,
-    get_ollama_chat_model,
+    get_default_chat_model,
     get_qdrant_url,
     # ... etc
 )
@@ -40,7 +40,7 @@ from config import (
 top_k = get_rag_int("top_k", 4)
 
 # Get model name (env override supported)
-model = get_ollama_chat_model()
+model = get_default_chat_model()
 ```
 
 ### Environment Overrides

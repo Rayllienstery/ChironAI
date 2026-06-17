@@ -47,13 +47,11 @@ from config import (
     get_qdrant_url,
     get_server_host,
 )
-from config.rag_prompts import (
-    rag_prompt_file_exists,
-)
 from infrastructure.database import (
     get_settings_repository,
 )
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
+from prompts_manager import rag_prompt_file_exists
 
 _WEBUI_LOG = logging.getLogger("webui")
 _ERROR_LOG = get_webui_error_logger()

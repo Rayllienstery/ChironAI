@@ -12,9 +12,10 @@ from typing import Any
 
 from flask import Flask, Response, jsonify
 
-from core.bootstrap.import_paths import ensure_webui_composition_paths
+from core.bootstrap.import_paths import ensure_webui_composition_paths, ensure_webui_runtime_paths
 
 _ROOT = ensure_webui_composition_paths()
+ensure_webui_runtime_paths(_ROOT)
 
 from rag_service.application.params import get_rag_answer_params
 from rag_service.application.use_cases import build_rag_context, prepare_ollama_messages
@@ -22,11 +23,11 @@ from rag_service.domain.entities import RagContext, RagQuestionRequest
 from rag_service.domain.services.prompt_builder import determine_reasoning_level, last_user_content
 
 from application.rag.collection_freshness import check_collection_freshness
-from config.rag_prompts import get_rag_system_prompt, rag_prompt_file_exists
 from infrastructure.database import get_logs_repository, get_session_manager, get_settings_repository
 from infrastructure.logging import log_webui_error
 from infrastructure.stack_health import check_stack_health
 from llm_proxy import create_v1_blueprint
+from prompts_manager import get_rag_system_prompt, rag_prompt_file_exists
 
 try:
     from config import get_framework_collection_ttl_days, get_proxy_rerank_enabled, get_qdrant_url
