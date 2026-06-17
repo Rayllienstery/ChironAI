@@ -19,7 +19,7 @@ from llm_proxy.chat_completions_ollama_proxy import (
     _apply_response_diagnostics,
     _apply_trace_response_text_fields,
     _iter_proxy_ollama_chat_stream,
-    _output_budget_exhaustion_error,
+    _output_budget_is_exhausted,
     _trace_ollama_api_metrics,
 )
 from llm_proxy.chat_completions_response_helpers import (
@@ -28,7 +28,6 @@ from llm_proxy.chat_completions_response_helpers import (
 )
 from llm_proxy.chat_completions_streaming import (
     StreamContentAccumulator,
-    append_budget_error_chunks,
     approx_token_count,
     iter_sse_finish_with_done,
     iter_sse_from_ollama_stream_events,
@@ -42,7 +41,6 @@ from llm_proxy.chat_completions_streaming import (
     stream_completion_id,
 )
 from llm_proxy.chat_completions_streaming_orchestration import (
-    apply_standard_stream_budget_to_content,
     apply_stream_empty_response_fallback,
     build_native_tools_stream_response_base,
     build_ollama_stream_token_estimates_dict,
@@ -251,6 +249,8 @@ def iter_native_tools_sse_stream(ctx: NativeToolsStreamContext) -> Iterator[str]
             accumulator=stream_acc,
             reasoning_guard_limit_chars=reasoning_guard_limit_chars,
             on_reasoning_guard=_on_reasoning_guard,
+            upstream_model=ctx.use_model,
+            trace=ctx.trace,
         )
     except Exception as exc:
         if not ctx.private_build:
@@ -269,11 +269,7 @@ def iter_native_tools_sse_stream(ctx: NativeToolsStreamContext) -> Iterator[str]
     ollama_done_reason = stream_acc.ollama_done_reason
     reasoning_guard_triggered = stream_acc.reasoning_guard_triggered
     stream_latency_ms = int((time.time() - stream_start_time) * 1000)
-    budget_error = _output_budget_exhaustion_error(ctx.trace, ollama_done_payload)
-    if append_budget_error_chunks(stream_acc, budget_error):
-        yield sse_content_chunk(oid, ctx.client_visible_model, budget_error)
-        full_content = stream_acc.visible_content
-        final_content = stream_acc.final_content
+    budget_exhausted = _output_budget_is_exhausted(ctx.trace, ollama_done_payload)
 
     tool_resolution = resolve_native_stream_tool_calls(
         tool_calls_raw=tool_calls_raw,
@@ -281,7 +277,7 @@ def iter_native_tools_sse_stream(ctx: NativeToolsStreamContext) -> Iterator[str]
         final_content=final_content,
         full_content=full_content,
         ollama_done_reason=ollama_done_reason,
-        budget_error=budget_error,
+        budget_exhausted=budget_exhausted,
         reasoning_guard_triggered=reasoning_guard_triggered,
     )
     mapped_calls = tool_resolution.mapped_calls
@@ -505,6 +501,8 @@ def iter_standard_sse_stream(ctx: StandardStreamContext) -> Iterator[str]:
             accumulator=stream_acc,
             reasoning_guard_limit_chars=reasoning_guard_limit_chars,
             on_reasoning_guard=_on_reasoning_guard,
+            upstream_model=ctx.use_model,
+            trace=ctx.trace,
         )
     except Exception as exc:
         if not ctx.private_build:
@@ -521,14 +519,7 @@ def iter_standard_sse_stream(ctx: StandardStreamContext) -> Iterator[str]:
     ollama_done_payload = stream_acc.ollama_done_payload
     ollama_done_reason = stream_acc.ollama_done_reason
     reasoning_guard_triggered = stream_acc.reasoning_guard_triggered
-    budget_error = _output_budget_exhaustion_error(ctx.trace, ollama_done_payload)
-    if budget_error:
-        yield sse_content_chunk(oid, ctx.client_visible_model, budget_error)
-        full_response, final_content = apply_standard_stream_budget_to_content(
-            full_response,
-            final_content,
-            budget_error,
-        )
+    budget_exhausted = _output_budget_is_exhausted(ctx.trace, ollama_done_payload)
 
     full_response, final_content, empty_fallback = apply_stream_empty_response_fallback(
         full_response,
@@ -539,7 +530,7 @@ def iter_standard_sse_stream(ctx: StandardStreamContext) -> Iterator[str]:
 
     finish_reason = resolve_stream_finish_reason(
         ollama_done_reason=ollama_done_reason,
-        budget_error=budget_error,
+        budget_exhausted=budget_exhausted,
         reasoning_guard_triggered=reasoning_guard_triggered,
     )
     yield from iter_sse_finish_with_done(oid, ctx.client_visible_model, finish_reason)

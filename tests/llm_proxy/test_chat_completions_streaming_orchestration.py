@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from llm_proxy.chat_completions_streaming_orchestration import (
-    apply_standard_stream_budget_to_content,
     apply_stream_empty_response_fallback,
     build_native_tools_stream_response_base,
     build_ollama_stream_token_estimates_dict,
@@ -17,17 +16,17 @@ from llm_proxy.chat_completions_streaming_orchestration import (
 def test_resolve_stream_finish_reason_length_on_budget_or_guard() -> None:
     assert resolve_stream_finish_reason(
         ollama_done_reason="stop",
-        budget_error="",
+        budget_exhausted=False,
         reasoning_guard_triggered=False,
     ) == "stop"
     assert resolve_stream_finish_reason(
         ollama_done_reason="stop",
-        budget_error="out of tokens",
+        budget_exhausted=True,
         reasoning_guard_triggered=False,
     ) == "length"
     assert resolve_stream_finish_reason(
         ollama_done_reason="stop",
-        budget_error="",
+        budget_exhausted=False,
         reasoning_guard_triggered=True,
     ) == "length"
 
@@ -81,7 +80,7 @@ def test_resolve_native_stream_tool_calls_no_tools_stop_finish() -> None:
         final_content="hello",
         full_content="hello",
         ollama_done_reason="stop",
-        budget_error="",
+        budget_exhausted=False,
         reasoning_guard_triggered=False,
     )
     assert not result.has_tool_calls
@@ -96,18 +95,11 @@ def test_resolve_native_stream_tool_calls_length_on_guard() -> None:
         final_content="",
         full_content="thinking",
         ollama_done_reason="stop",
-        budget_error="",
+        budget_exhausted=False,
         reasoning_guard_triggered=True,
     )
     assert result.finish_reason == "length"
 
-
-def test_apply_standard_stream_budget_to_content() -> None:
-    full, final = apply_standard_stream_budget_to_content("hi", "hi", "")
-    assert full == "hi"
-    full, final = apply_standard_stream_budget_to_content("", "", "budget hit")
-    assert full == "budget hit"
-    assert final == "budget hit"
 
 
 def test_build_provider_stream_step() -> None:

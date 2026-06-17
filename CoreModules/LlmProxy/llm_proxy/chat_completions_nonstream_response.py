@@ -20,7 +20,7 @@ from llm_proxy.chat_completions_ollama_proxy import (
     _apply_response_diagnostics,
     _apply_trace_response_text_fields,
     _degenerate_assistant_reply,
-    _output_budget_exhaustion_error,
+    _output_budget_is_exhausted,
     _proxy_ollama_chat_text_parts,
     _text_preview,
     _trace_ollama_api_metrics,
@@ -172,7 +172,7 @@ def build_standard_nonstream_response(
     """Fetch buffered chat, assemble OpenAI response, and return jsonify or single-chunk SSE."""
     content = ""
     content_parts: dict[str, Any] = {}
-    budget_error = ""
+    budget_exhausted = False
     try:
         ctx.w.set_proxy_status(ctx.w.status_response)
         _apply_provider_trace_fields(
@@ -220,18 +220,10 @@ def build_standard_nonstream_response(
                 "final_content": content,
                 "ollama_payload": content_parts.get("ollama_payload") if isinstance(content_parts, dict) else {},
             }
-        budget_error = _output_budget_exhaustion_error(
+        budget_exhausted = _output_budget_is_exhausted(
             ctx.trace,
             content_parts.get("ollama_payload") if isinstance(content_parts, dict) else None,
         )
-        if budget_error:
-            content = f"{content}\n\n{budget_error}".strip() if str(content or "").strip() else budget_error
-            content_parts = {
-                "visible_content": content,
-                "reasoning_content": str(content_parts.get("reasoning_content") or ""),
-                "final_content": f"{content_parts.get('final_content') or ''}\n\n{budget_error}".strip(),
-                "ollama_payload": content_parts.get("ollama_payload") if isinstance(content_parts, dict) else {},
-            }
     except Exception as exc:
         if not ctx.private_build:
             ctx.w.log_webui_error("rag_routes.chat_completions", exc, {"stage": "chat"})
@@ -361,7 +353,7 @@ def build_standard_nonstream_response(
     choice = {
         "index": 0,
         "message": msg_obj,
-        "finish_reason": "tool_calls" if tool_calls else ("length" if budget_error else "stop"),
+        "finish_reason": "tool_calls" if tool_calls else ("length" if budget_exhausted else "stop"),
     }
     response_data = {
         "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",

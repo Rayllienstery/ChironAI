@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+_REQUESTS_HTTP_ERROR_RE = re.compile(
+    r"^(?P<status>\d{3})\s+.*?Error:\s*(?P<detail>.+?)\s+for url:\s*(?P<url>\S+)\s*$",
+    re.IGNORECASE,
+)
 
 
 def reasoning_sse_delta(kind: str, data: Any, *, include_reasoning_content: bool) -> dict[str, Any]:
@@ -83,7 +89,32 @@ def tool_loop_limit_final_message(trace: dict[str, Any]) -> str:
     )
 
 
-def upstream_chat_error_message(exc: Exception, trace: dict[str, Any], *, model: str = "") -> str:
+def _exception_from_requests_error_text(text: str) -> Exception | None:
+    match = _REQUESTS_HTTP_ERROR_RE.match(str(text or "").strip())
+    if not match:
+        return None
+    err = Exception(str(text).strip())
+    err.response = type(  # type: ignore[attr-defined]
+        "UpstreamHttpResponse",
+        (),
+        {
+            "status_code": int(match.group("status")),
+            "reason": str(match.group("detail") or "").strip(),
+            "url": str(match.group("url") or "").strip(),
+        },
+    )()
+    return err
+
+
+def upstream_chat_error_message(
+    exc: Exception | str,
+    trace: dict[str, Any],
+    *,
+    model: str = "",
+) -> str:
+    if isinstance(exc, str):
+        parsed = _exception_from_requests_error_text(exc)
+        exc = parsed if parsed is not None else RuntimeError(exc)
     response = getattr(exc, "response", None)
     status_code = getattr(response, "status_code", None)
     reason = str(getattr(response, "reason", "") or "").strip()

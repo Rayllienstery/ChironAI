@@ -22,7 +22,7 @@ from llm_proxy.chat_completions_ollama_proxy import (
     _apply_provider_trace_fields,
     _apply_response_diagnostics,
     _apply_trace_response_text_fields,
-    _output_budget_exhaustion_error,
+    _output_budget_is_exhausted,
     _trace_ollama_api_metrics,
 )
 from llm_proxy.chat_completions_rag_prep import build_rag_metadata_for_response
@@ -311,14 +311,8 @@ def try_build_native_tools_nonstream_response(
             "reasoning_content": content_parts["reasoning_content"],
             "final_content": content_str,
         }
-    budget_error = _output_budget_exhaustion_error(ctx.trace, data if isinstance(data, dict) else None)
-    if budget_error and not tool_calls_out:
-        content_str = f"{content_str}\n\n{budget_error}".strip() if content_str.strip() else budget_error
-        content_parts = {
-            "visible_content": content_str,
-            "reasoning_content": content_parts["reasoning_content"],
-            "final_content": f"{content_parts['final_content']}\n\n{budget_error}".strip(),
-        }
+    budget_exhausted = _output_budget_is_exhausted(ctx.trace, data if isinstance(data, dict) else None)
+    if budget_exhausted and not tool_calls_out:
         finish = "length"
 
     latency_ms = int((time.time() - ctx.start_time) * 1000)

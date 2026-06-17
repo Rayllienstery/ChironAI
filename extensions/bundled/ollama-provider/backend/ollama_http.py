@@ -192,15 +192,40 @@ def invoke_raw_json(
     base = base_url.rstrip("/")
     segment = api_segment.strip().lstrip("/")
     url = f"{base}/api/{segment}"
-    if method.upper() == "GET":
-        resp = requests.get(url, params=params or {}, timeout=timeout, headers=headers or None)
-    else:
-        resp = requests.request(method.upper(), url, json=dict(body or {}), timeout=timeout, headers=headers or None)
-    resp.raise_for_status()
-    try:
-        return resp.json()
-    finally:
-        resp.close()
+    retries = max(0, _env_int("OLLAMA_CHAT_MAX_RETRIES", 2))
+    base_delay = _env_float("OLLAMA_CHAT_RETRY_BASE_SEC", 1.0)
+    attempts = max(1, retries + 1)
+    last_exc: BaseException | None = None
+    for attempt in range(attempts):
+        try:
+            if method.upper() == "GET":
+                resp = requests.get(url, params=params or {}, timeout=timeout, headers=headers or None)
+            else:
+                resp = requests.request(
+                    method.upper(),
+                    url,
+                    json=dict(body or {}),
+                    timeout=timeout,
+                    headers=headers or None,
+                )
+            resp.raise_for_status()
+            try:
+                return resp.json()
+            finally:
+                resp.close()
+        except requests.HTTPError as exc:
+            last_exc = exc
+            if attempt >= attempts - 1 or not _requests_error_is_transient(exc):
+                raise
+            time.sleep(max(0.1, float(base_delay)) * (2**attempt))
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt >= attempts - 1 or not _requests_error_is_transient(exc):
+                raise
+            time.sleep(max(0.1, float(base_delay)) * (2**attempt))
+    if last_exc is not None:
+        raise last_exc
+    raise OllamaHttpError("invoke_raw_json: unreachable")
 
 
 def iter_raw_lines(
@@ -213,20 +238,40 @@ def iter_raw_lines(
 ) -> Iterator[str]:
     """Forward a raw Ollama-compatible streaming request and yield NDJSON lines."""
     url = f"{base_url.rstrip('/')}/api/{api_segment.strip().lstrip('/')}"
-    resp = requests.post(
-        url,
-        json=dict(body or {}),
-        timeout=(30.0, max(float(read_timeout), 60.0)),
-        stream=True,
-        headers=headers or None,
-    )
-    resp.raise_for_status()
-    try:
-        for line in resp.iter_lines(decode_unicode=True):
-            if line:
-                yield str(line)
-    finally:
-        resp.close()
+    retries = max(0, _env_int("OLLAMA_CHAT_MAX_RETRIES", 2))
+    base_delay = _env_float("OLLAMA_CHAT_RETRY_BASE_SEC", 1.0)
+    attempts = max(1, retries + 1)
+    last_exc: BaseException | None = None
+    for attempt in range(attempts):
+        try:
+            resp = requests.post(
+                url,
+                json=dict(body or {}),
+                timeout=(30.0, max(float(read_timeout), 60.0)),
+                stream=True,
+                headers=headers or None,
+            )
+            resp.raise_for_status()
+            try:
+                for line in resp.iter_lines(decode_unicode=True):
+                    if line:
+                        yield str(line)
+            finally:
+                resp.close()
+            return
+        except requests.HTTPError as exc:
+            last_exc = exc
+            if attempt >= attempts - 1 or not _requests_error_is_transient(exc):
+                raise
+            time.sleep(max(0.1, float(base_delay)) * (2**attempt))
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt >= attempts - 1 or not _requests_error_is_transient(exc):
+                raise
+            time.sleep(max(0.1, float(base_delay)) * (2**attempt))
+    if last_exc is not None:
+        raise last_exc
+    raise OllamaHttpError("iter_raw_lines: unreachable")
 
 
 def invoke_show(*, base_url: str, name: str, timeout: float = 120.0) -> dict[str, Any]:
@@ -271,6 +316,28 @@ def _env_float(name: str, default: float) -> float:
         return float(raw) if raw else default
     except ValueError:
         return default
+
+
+def _requests_error_is_transient(exc: BaseException) -> bool:
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    if status_code in (500, 502, 503, 504):
+        return True
+    blob = str(exc).lower()
+    if "timeout" in blob:
+        return True
+    return any(
+        token in blob
+        for token in (
+            "connection refused",
+            "connection reset",
+            "temporarily unavailable",
+            "econnrefused",
+            "503 server error",
+            "502 server error",
+            "504 server error",
+        )
+    )
 
 
 def _embed_error_is_transient(err: OllamaHttpError) -> bool:

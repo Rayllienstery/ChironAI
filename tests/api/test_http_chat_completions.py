@@ -4401,7 +4401,7 @@ def test_request_max_tokens_overrides_build_num_predict_and_warns_when_exhausted
     payload = r.get_json() or {}
     choice = (payload.get("choices") or [{}])[0]
     content = ((choice.get("message") or {}).get("content") or "")
-    assert "output token budget exhausted" in content
+    assert "output token budget exhausted" not in content
     assert choice.get("finish_reason") == "length"
     assert captured_payload.get("options", {}).get("num_predict") == 64
 
@@ -4901,7 +4901,7 @@ def test_streaming_budget_exhaustion_is_visible_to_client(
     assert r.status_code == 200
     body = r.get_data(as_text=True)
     assert "partial" in body
-    assert "output token budget exhausted" in body
+    assert "output token budget exhausted" not in body
     assert '"finish_reason": "length"' in body
 
     trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}

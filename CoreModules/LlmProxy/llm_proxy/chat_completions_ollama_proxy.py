@@ -317,11 +317,14 @@ def _apply_response_diagnostics(trace: dict[str, Any]) -> None:
         _append_trace_warning(trace, "output_token_budget_exhausted")
 
 
-def _output_budget_exhaustion_error(trace: dict[str, Any], metrics_src: dict[str, Any] | None = None) -> str:
+def _output_budget_eval_count(
+    trace: dict[str, Any],
+    metrics_src: dict[str, Any] | None = None,
+) -> tuple[int | None, int | None]:
     req = trace.get("request") if isinstance(trace.get("request"), dict) else {}
     effective = _positive_int_or_none(req.get("effective_num_predict"))
     if effective is None:
-        return ""
+        return None, None
     eval_count = None
     if isinstance(metrics_src, dict):
         eval_count = _positive_int_or_none(metrics_src.get("eval_count"))
@@ -332,7 +335,19 @@ def _output_budget_exhaustion_error(trace: dict[str, Any], metrics_src: dict[str
         eval_count = _positive_int_or_none(resp.get("ollama_eval_count"))
         if eval_count is None:
             eval_count = _positive_int_or_none(resp.get("eval_count"))
-    if eval_count is None or eval_count < effective:
+    return effective, eval_count
+
+
+def _output_budget_is_exhausted(trace: dict[str, Any], metrics_src: dict[str, Any] | None = None) -> bool:
+    effective, eval_count = _output_budget_eval_count(trace, metrics_src)
+    if effective is None or eval_count is None:
+        return False
+    return eval_count >= effective
+
+
+def _output_budget_exhaustion_error(trace: dict[str, Any], metrics_src: dict[str, Any] | None = None) -> str:
+    effective, eval_count = _output_budget_eval_count(trace, metrics_src)
+    if effective is None or eval_count is None or eval_count < effective:
         return ""
     return (
         f"[Error: output token budget exhausted: generated {eval_count} tokens reached "

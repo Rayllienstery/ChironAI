@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.13] - 2026-06-17
+### Fixed
+- Stopped appending output-budget error text to chat responses when finish_reason is already length, avoiding duplicate output-limit warnings in Cursor/Kilo clients.
+
+## [0.7.12] - 2026-06-17
+### Fixed
+- Streamed upstream Ollama chat failures now use the same clear proxy error format as non-stream paths.
+- Ollama chat HTTP calls retry transient 503/502/504 responses after RAG rerank or other short-lived upstream load.
+
 ## [0.7.11] - 2026-06-17
 ### Fixed
 - Prevented stale lazy-module prefetches from blocking later tab navigation imports.

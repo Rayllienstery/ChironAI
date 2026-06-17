@@ -12,6 +12,7 @@ from llm_proxy.chat_completions_request_parsing import positive_int_env
 from llm_proxy.chat_completions_response_helpers import (
     reasoning_sse_delta,
     stream_reasoning_guard_message,
+    upstream_chat_error_message,
 )
 
 DEFAULT_REASONING_ONLY_GUARD_CHARS = 32_000
@@ -98,6 +99,8 @@ def iter_sse_from_ollama_stream_events(
     accumulator: StreamContentAccumulator,
     reasoning_guard_limit_chars: int,
     on_reasoning_guard: Callable[[], None] | None = None,
+    upstream_model: str = "",
+    trace: dict[str, Any] | None = None,
 ) -> Iterator[str]:
     """Map Ollama stream events to OpenAI-style SSE chunk lines."""
     for kind, data in events:
@@ -134,26 +137,20 @@ def iter_sse_from_ollama_stream_events(
             accumulator.ollama_done_payload = data
             accumulator.ollama_done_reason = data.get("done_reason")
         elif kind == "error":
-            err_text = f"[Error: {data}]"
+            err_source: Exception | str
+            if isinstance(data, BaseException):
+                err_source = data
+            else:
+                err_source = str(data)
+            err_text = upstream_chat_error_message(
+                err_source,
+                trace if isinstance(trace, dict) else {},
+                model=upstream_model,
+            )
             accumulator.visible_parts.append(err_text)
             accumulator.final_parts.append(err_text)
             yield sse_content_chunk(completion_id, client_visible_model, err_text)
             return
-
-
-def append_budget_error_chunks(
-    accumulator: StreamContentAccumulator,
-    budget_error: str,
-    *,
-    only_when_no_tool_calls: bool = True,
-) -> bool:
-    if not budget_error:
-        return False
-    if only_when_no_tool_calls and accumulator.tool_calls_raw:
-        return False
-    accumulator.visible_parts.append(budget_error)
-    accumulator.final_parts.append(budget_error)
-    return True
 
 
 def iter_sse_tool_limit_response(completion_id: str, model: str, content: str) -> Iterator[str]:

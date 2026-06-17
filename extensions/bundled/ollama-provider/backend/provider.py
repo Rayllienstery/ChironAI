@@ -266,7 +266,7 @@ class OllamaProvider:
                     provider_id=self._provider_id,
                     model=request.model,
                     type="error",
-                    data=str(e),
+                    data=e,
                 )
             return
         yield LLMStreamEvent(

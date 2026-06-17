@@ -42,7 +42,7 @@ def resolve_native_stream_tool_calls(
     final_content: str,
     full_content: str,
     ollama_done_reason: Any,
-    budget_error: str,
+    budget_exhausted: bool,
     reasoning_guard_triggered: bool,
 ) -> NativeStreamToolCallsResolution:
     """Map Ollama stream tool_calls; recover from assistant text when missing."""
@@ -82,7 +82,7 @@ def resolve_native_stream_tool_calls(
     else:
         finish_reason = resolve_stream_finish_reason(
             ollama_done_reason=ollama_done_reason,
-            budget_error=budget_error,
+            budget_exhausted=budget_exhausted,
             reasoning_guard_triggered=reasoning_guard_triggered,
         )
 
@@ -100,11 +100,11 @@ def resolve_native_stream_tool_calls(
 def resolve_stream_finish_reason(
     *,
     ollama_done_reason: Any,
-    budget_error: str,
+    budget_exhausted: bool,
     reasoning_guard_triggered: bool,
 ) -> str:
     finish_reason = openai_finish_reason_from_ollama({}, ollama_done_reason=ollama_done_reason)
-    if budget_error or reasoning_guard_triggered:
+    if budget_exhausted or reasoning_guard_triggered:
         return "length"
     return finish_reason
 
@@ -167,18 +167,6 @@ def build_native_tools_stream_response_base(
         "reasoning_only_guard_triggered": bool(reasoning_guard_triggered),
         **ollama_metrics,
     }
-
-
-def apply_standard_stream_budget_to_content(
-    full_response: str,
-    final_content: str,
-    budget_error: str,
-) -> tuple[str, str]:
-    if not budget_error:
-        return full_response, final_content
-    full = f"{full_response}\n\n{budget_error}".strip() if full_response.strip() else budget_error
-    final = f"{final_content}\n\n{budget_error}".strip() if final_content.strip() else budget_error
-    return full, final
 
 
 def build_standard_stream_response_base(
