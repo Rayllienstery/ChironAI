@@ -15,7 +15,16 @@ from core.contracts.webui_api import WEBUI_URL_PREFIX
 
 ensure_webui_composition_paths()
 
-from config import get_retrieval_int
+from application.rag.webui_retrieval_settings import (
+    RAG_TRIGGER_HELP_ROWS,
+    config_default_chat_model,
+    config_default_embed_model,
+    config_default_rerank_model,
+    get_rag_required_keywords_from_module,
+)
+from application.rag.webui_retrieval_settings import (
+    get_effective_rag_trigger_threshold as _get_effective_rag_trigger_threshold,
+)
 from config.rag_prompts import PROMPTS_DIR, TRASH_DIR
 from infrastructure.database import get_settings_repository
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
@@ -84,75 +93,20 @@ from api.http.webui_settings_routes import register_settings_routes
 from api.http.webui_testing_routes import register_testing_routes
 from api.http.webui_version_routes import register_version_routes
 from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
+
 _WEBUI_LOG = logging.getLogger("webui")
 _ERROR_LOG = get_webui_error_logger()
 
 # Compatibility hook for older tests/integrations that monkeypatch this name.
 _enrich_builds_with_diagnostics = None
 
+
+def get_effective_rag_trigger_threshold() -> int:
+    """Resolve threshold via WebUI settings repo (patchable in tests)."""
+    return _get_effective_rag_trigger_threshold(get_settings_repository())
+
+
 webui_bp = Blueprint("webui", __name__, url_prefix=WEBUI_URL_PREFIX)
-
-
-def _get_rag_required_keywords_from_module() -> list[str] | None:
-    if get_keyword_collections_repository is None:
-        return None
-    try:
-        repo = get_keyword_collections_repository()
-        flat = repo.get_enabled_keywords_flat()
-        return flat if flat else None
-    except Exception:
-        return None
-
-
-def _get_effective_rag_trigger_threshold() -> int:
-    try:
-        settings_repo = get_settings_repository()
-        raw = settings_repo.get_app_setting("rag_trigger_threshold")
-        if raw is not None and str(raw).strip() != "":
-            return int(raw)
-    except Exception:
-        pass
-    return get_retrieval_int("rag_trigger_threshold", 2)
-
-
-RAG_TRIGGER_HELP_ROWS = [
-    {"signal": "Keyword (from collections or config)", "points": "+3"},
-    {"signal": "CamelCase (e.g. SwiftUI, URLSession)", "points": "+2"},
-    {"signal": "Code block (```)", "points": "+4"},
-    {"signal": "Code keyword (func, class, struct, let, var…)", "points": "+4"},
-    {"signal": "API signature name(...)", "points": "+2"},
-    {"signal": "File extension (.swift, .py…)", "points": "+2"},
-    {"signal": "snake_case (e.g. load_data)", "points": "+1"},
-    {"signal": "Strong technical phrase (error, API, framework…)", "points": "+2"},
-    {"signal": "Weak technical phrase (how does, best practice…)", "points": "+1"},
-]
-
-
-def _config_default_chat_model() -> str:
-    try:
-        from config import get_default_chat_model
-
-        return str(get_default_chat_model() or "").strip()
-    except Exception:
-        return ""
-
-
-def _config_default_embed_model() -> str:
-    try:
-        from config import get_default_embed_model
-
-        return str(get_default_embed_model() or "").strip()
-    except Exception:
-        return ""
-
-
-def _config_default_rerank_model() -> str:
-    try:
-        from config import get_default_rerank_model
-
-        return str(get_default_rerank_model() or "").strip()
-    except Exception:
-        return ""
 
 
 register_prompt_routes(webui_bp, prompts_dir=PROMPTS_DIR, trash_dir=TRASH_DIR, error_log=_ERROR_LOG)
@@ -167,7 +121,7 @@ register_settings_routes(
     webui_bp,
     error_log=_ERROR_LOG,
     keyword_collections_repository_factory=get_keyword_collections_repository,
-    get_effective_rag_trigger_threshold=_get_effective_rag_trigger_threshold,
+    get_effective_rag_trigger_threshold=get_effective_rag_trigger_threshold,
     trigger_help_rows=RAG_TRIGGER_HELP_ROWS,
 )
 register_llm_proxy_routes(webui_bp, error_log=_ERROR_LOG)
@@ -185,10 +139,12 @@ register_rag_pipeline_routes(
     error_log=_ERROR_LOG,
     default_llm_provider_id=_default_llm_provider_id,
     read_app_provider_model_ref=_read_app_provider_model_ref,
-    config_default_embed_model=_config_default_embed_model,
-    config_default_rerank_model=_config_default_rerank_model,
-    get_effective_rag_trigger_threshold=_get_effective_rag_trigger_threshold,
-    get_rag_required_keywords_from_module=_get_rag_required_keywords_from_module,
+    config_default_embed_model=config_default_embed_model,
+    config_default_rerank_model=config_default_rerank_model,
+    get_effective_rag_trigger_threshold=get_effective_rag_trigger_threshold,
+    get_rag_required_keywords_from_module=lambda: get_rag_required_keywords_from_module(
+        get_keyword_collections_repository
+    ),
 )
 register_rag_qdrant_routes(
     webui_bp,
@@ -200,7 +156,7 @@ register_chat_routes(
     error_log=_ERROR_LOG,
     provider_catalog_payload=_provider_catalog_payload,
     default_llm_provider_id=_default_llm_provider_id,
-    config_default_chat_model=_config_default_chat_model,
+    config_default_chat_model=config_default_chat_model,
     run_unified_proxy_chat=_run_unified_proxy_chat,
     set_proxy_status=set_proxy_status,
     set_latest_request_seconds=set_latest_request_seconds,
@@ -212,7 +168,7 @@ register_model_tester_routes(
     default_llm_provider_id=_default_llm_provider_id,
     read_app_provider_model_ref=_read_app_provider_model_ref,
     get_qdrant_collection_names=_get_qdrant_collection_names,
-    config_default_chat_model=_config_default_chat_model,
+    config_default_chat_model=config_default_chat_model,
 )
 
 __all__ = ["webui_bp", "get_settings_repository", "LLM_PROXY_BUILDS_APP_KEY"]

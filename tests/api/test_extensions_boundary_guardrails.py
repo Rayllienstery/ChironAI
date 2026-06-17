@@ -65,3 +65,38 @@ def test_api_routes_do_not_scan_bundled_extension_directories() -> None:
             offenders.append(str(path.relative_to(root)))
 
     assert offenders == []
+
+
+def test_crawler_routes_do_not_import_rag_tests_routes() -> None:
+    root = Path(__file__).resolve().parents[2]
+    offenders: list[str] = []
+    crawler_dir = root / "Core" / "api" / "http"
+    for path in crawler_dir.glob("webui_crawler*.py"):
+        text = path.read_text(encoding="utf-8")
+        if "rag_tests_routes" in text:
+            offenders.append(path.relative_to(root).as_posix())
+
+    assert offenders == []
+    root = Path(__file__).resolve().parents[2]
+    allowed_prefixes = (
+        "Core/modules/extensions_backend/",
+        "CoreModules/ExtensionsHost/",
+    )
+    forbidden_tokens = (
+        "from extensions_backend",
+        "import extensions_backend",
+    )
+    offenders: list[str] = []
+    for base in ("Core/api", "Core/application", "Core/core", "Core/infrastructure", "Core/modules", "CoreModules"):
+        scan_root = root / base
+        if not scan_root.is_dir():
+            continue
+        for path in scan_root.rglob("*.py"):
+            rel = path.relative_to(root).as_posix()
+            if rel.startswith(allowed_prefixes):
+                continue
+            text = path.read_text(encoding="utf-8")
+            if any(token in text for token in forbidden_tokens):
+                offenders.append(rel)
+
+    assert offenders == []

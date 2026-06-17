@@ -16,7 +16,6 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Any
 
-import requests
 from flask import Blueprint, Response, current_app, jsonify, request
 from rag_service.application.params import get_rag_answer_params
 from rag_service.application.use_cases import build_rag_context
@@ -40,35 +39,13 @@ from application.rag_tests.runner import (
     build_test_retrieval_query,
     rag_tests_retrieval_preset,
 )
-from config import get_qdrant_url
 from core.contracts.webui_api import WEBUI_URL_PREFIX
 from infrastructure.database import get_rag_test_runs_repository, get_settings_repository
 from infrastructure.logging.webui_error_logger import get_webui_error_logger
+from infrastructure.qdrant.collection_names import list_collection_names
 
 rag_tests_bp = Blueprint("rag_tests", __name__, url_prefix=WEBUI_URL_PREFIX)
 _ERROR_LOG = get_webui_error_logger()
-
-
-def _get_qdrant_collection_names() -> list[str]:
-    """Return list of Qdrant collection names (empty if unavailable)."""
-    url = get_qdrant_url().rstrip("/")
-    try:
-        resp = requests.get(f"{url}/collections", timeout=5.0)
-        if not resp.ok:
-            return []
-        data = resp.json() or {}
-        raw = data.get("result", {}).get("collections", []) if isinstance(data, dict) else []
-        names: list[str] = []
-        for col in raw:
-            if isinstance(col, dict):
-                name = col.get("name")
-            else:
-                name = str(col)
-            if name:
-                names.append(name)
-        return names
-    except Exception:
-        return []
 
 
 # ----- RAG Tests (Markdown-defined tests, run against proxy, validate concepts + RAG) -----
@@ -173,7 +150,7 @@ def _resolve_collection_name(requested_collection_name: str) -> tuple[str | None
     collection_source = source
     if collection_name:
         return collection_name, collection_source, None
-    names = _get_qdrant_collection_names()
+    names = list_collection_names()
     if not names:
         return None, None, "No Qdrant collections. Create one in Crawler / RAG then come back."
     return names[0], "qdrant.first_collection", None

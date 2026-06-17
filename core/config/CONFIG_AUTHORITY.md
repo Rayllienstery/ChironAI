@@ -69,4 +69,4 @@ Precedence is locked by:
 - `config/README.md` — file layout and parameter descriptions
 - `config/ENV_REFERENCE.md` — flat env var index
 - `DEPENDENCIES.md` — runtime services
-- `QUALITY_AUDIT.md` — Pass 6 (config authority) status
+- `docs/legacy_map.md` — legacy tail ownership and refactor status

@@ -12,12 +12,11 @@ from pathlib import Path
 
 import pytest
 
-from extensions_backend import ExtensionBlocklistPolicy
+from extensions_backend import ExtensionBlocklistPolicy, ExtensionRegistryClient
 from llm_interactor import (
     EXTENSION_API_VERSION,
     ExtensionManager,
     ExtensionManifest,
-    ExtensionRegistryClient,
     ExtensionsRepository,
     InstalledExtensionRecord,
     LLMRequest,
@@ -33,6 +32,12 @@ from llm_interactor import (
     ProviderRegistry,
     RuntimeBackedChatClient,
 )
+
+
+def _empty_blocklist_policy(tmp_path: Path) -> ExtensionBlocklistPolicy:
+    blocklist = tmp_path / "blocklist.json"
+    blocklist.write_text(json.dumps({"blocked": []}), encoding="utf-8")
+    return ExtensionBlocklistPolicy(str(blocklist), project_root=tmp_path)
 
 
 class _StubProvider:
@@ -898,6 +903,7 @@ def test_extension_install_rejects_unsafe_staged_extension_and_cleans_target(tmp
         registry_client=_Registry(),  # type: ignore[arg-type]
         installed_dir=installed_dir,
         bundled_dir=tmp_path / "bundled",
+        blocklist_policy=_empty_blocklist_policy(tmp_path),
     )
 
     with pytest.raises(ValueError, match="Extension security audit blocked"):
@@ -937,8 +943,10 @@ def test_extension_zip_install_rejects_path_traversal_member(tmp_path: Path, mon
         project_root=root,
         host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
         settings_repo=repo,
+        registry_client=ExtensionRegistryClient(project_root=root),
         installed_dir=tmp_path / "installed",
         bundled_dir=tmp_path / "bundled",
+        blocklist_policy=_empty_blocklist_policy(tmp_path),
     )
 
     with pytest.raises(ValueError, match="unsafe zip member path"):
@@ -980,8 +988,10 @@ def test_extension_zip_install_rejects_symlink_member(tmp_path: Path, monkeypatc
         project_root=root,
         host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
         settings_repo=repo,
+        registry_client=ExtensionRegistryClient(project_root=root),
         installed_dir=tmp_path / "installed",
         bundled_dir=tmp_path / "bundled",
+        blocklist_policy=_empty_blocklist_policy(tmp_path),
     )
 
     with pytest.raises(ValueError, match="symlink"):
@@ -1024,8 +1034,10 @@ def test_extension_zip_install_rejects_uncompressed_size_bomb(
         project_root=root,
         host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
         settings_repo=repo,
+        registry_client=ExtensionRegistryClient(project_root=root),
         installed_dir=tmp_path / "installed",
         bundled_dir=tmp_path / "bundled",
+        blocklist_policy=_empty_blocklist_policy(tmp_path),
     )
 
     with pytest.raises(ValueError, match="expands beyond maximum allowed size"):
@@ -1062,6 +1074,7 @@ def test_extension_asset_resolution_rejects_symlink_assets(tmp_path: Path) -> No
         project_root=root,
         host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
         settings_repo=repo,
+        registry_client=ExtensionRegistryClient(project_root=root),
         installed_dir=installed_root,
         bundled_dir=tmp_path / "bundled",
     )
@@ -1211,6 +1224,7 @@ def test_extension_install_rejects_manifest_id_mismatch(tmp_path: Path) -> None:
         registry_client=_Registry(),  # type: ignore[arg-type]
         installed_dir=tmp_path / "installed",
         bundled_dir=tmp_path / "bundled",
+        blocklist_policy=_empty_blocklist_policy(tmp_path),
     )
 
     with pytest.raises(ValueError, match="manifest id mismatch"):
@@ -1242,6 +1256,7 @@ def test_extension_install_rejects_manifest_version_mismatch(tmp_path: Path) -> 
         registry_client=_Registry(),  # type: ignore[arg-type]
         installed_dir=tmp_path / "installed",
         bundled_dir=tmp_path / "bundled",
+        blocklist_policy=_empty_blocklist_policy(tmp_path),
     )
 
     with pytest.raises(ValueError, match="manifest version mismatch"):
@@ -1272,6 +1287,7 @@ def test_extension_install_rejects_unsupported_registry_compatibility(tmp_path: 
         registry_client=_Registry(),  # type: ignore[arg-type]
         installed_dir=tmp_path / "installed",
         bundled_dir=tmp_path / "bundled",
+        blocklist_policy=_empty_blocklist_policy(tmp_path),
     )
 
     with pytest.raises(ValueError, match="unsupported extension_api_version"):
@@ -1355,6 +1371,7 @@ def test_extension_details_and_install_resolve_latest_github_release(tmp_path: P
         repository_client=_RepositoryClient(zip_digest),
         installed_dir=tmp_path / "installed",
         bundled_dir=tmp_path / "bundled",
+        blocklist_policy=_empty_blocklist_policy(tmp_path),
     )
 
     details = manager.extension_details("sample-ext")
@@ -1419,6 +1436,7 @@ def test_extension_install_accepts_branch_refs_with_slashes(tmp_path: Path, monk
         repository_client=_RepositoryClient(),
         installed_dir=tmp_path / "installed",
         bundled_dir=tmp_path / "bundled",
+        blocklist_policy=_empty_blocklist_policy(tmp_path),
     )
 
     result = manager.install("sample-ext", target={"ref": "feature/github-registry", "target_kind": "branch"})
@@ -1454,6 +1472,7 @@ def test_extension_install_preserves_previous_safe_version_when_update_scan_fail
         registry_client=_Registry(),  # type: ignore[arg-type]
         installed_dir=tmp_path / "installed",
         bundled_dir=tmp_path / "bundled",
+        blocklist_policy=_empty_blocklist_policy(tmp_path),
     )
 
     manager.install("sample-ext")
@@ -1540,6 +1559,7 @@ def test_extension_update_requires_consent_for_high_risk_capability_expansion(tm
         registry_client=registry,  # type: ignore[arg-type]
         installed_dir=tmp_path / "installed",
         bundled_dir=tmp_path / "bundled",
+        blocklist_policy=_empty_blocklist_policy(tmp_path),
     )
 
     manager.install("sample-ext")
@@ -1591,6 +1611,7 @@ def test_blocklisted_installed_extension_is_disabled_on_bootstrap(tmp_path: Path
         project_root=root,
         host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
         settings_repo=repo,
+        registry_client=ExtensionRegistryClient(project_root=root),
         installed_dir=tmp_path / "installed",
         bundled_dir=tmp_path / "bundled",
         use_sandbox=False,
@@ -1630,9 +1651,11 @@ def test_extension_security_failure_disables_installed_extension(tmp_path: Path)
         project_root=root,
         host_context=ProviderHostContext(project_root=root, get_settings_repository=lambda: repo, chat_client=None),
         settings_repo=repo,
+        registry_client=ExtensionRegistryClient(project_root=root),
         installed_dir=tmp_path / "installed",
         bundled_dir=tmp_path / "bundled",
         use_sandbox=False,
+        blocklist_policy=_empty_blocklist_policy(tmp_path),
     )
 
     manager.bootstrap_runtime()

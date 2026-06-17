@@ -29,20 +29,9 @@ DEFAULT_PROVIDER_ID = (os.getenv("DEFAULT_LLM_PROVIDER_ID") or "ollama").strip()
 
 
 def _bootstrap_cli_runtime() -> object:
-    from extensions_backend import (
-        ExtensionBlocklistPolicy,
-        ExtensionManagementService,
-        ExtensionRegistryClient,
-        GitHubExtensionRepositoryClient,
-    )
-    from llm_interactor import ExtensionManager, ProviderHostContext
+    from extensions_host import build_extension_host_stack
 
     try:
-        from config import (
-            get_extensions_blocklist_url,
-            get_extensions_registry_url,
-            get_github_token,
-        )
         from infrastructure.database import get_settings_repository
     except ImportError as exc:
         raise RuntimeError(
@@ -50,34 +39,19 @@ def _bootstrap_cli_runtime() -> object:
         ) from exc
 
     settings_repo = get_settings_repository()
-    host_context = ProviderHostContext(
+    stack = build_extension_host_stack(
         project_root=str(_ROOT),
-        get_settings_repository=get_settings_repository,
+        settings_repo=settings_repo,
         chat_client=None,
         docker_runtime=None,
-        metadata={"source": "external_docs_rag.cli"},
-    )
-    manager = ExtensionManager(
-        project_root=str(_ROOT),
-        host_context=host_context,
-        settings_repo=settings_repo,
-        registry_client=ExtensionRegistryClient(
-            get_extensions_registry_url() or None,
-            project_root=str(_ROOT),
-        ),
-        blocklist_policy=ExtensionBlocklistPolicy(
-            get_extensions_blocklist_url() or None,
-            project_root=str(_ROOT),
-        ),
-        repository_client=GitHubExtensionRepositoryClient(token=get_github_token() or None),
+        host_metadata={"source": "external_docs_rag.cli"},
+        get_settings_repository=get_settings_repository,
         default_provider_id=DEFAULT_PROVIDER_ID,
+        bootstrap_sync=True,
     )
-    service = ExtensionManagementService(manager)
-    bootstrap = service.bootstrap_runtime()
-    runtime = getattr(bootstrap, "runtime", None) or getattr(manager, "runtime", None)
-    if runtime is None:
+    if stack is None or stack.runtime is None:
         raise RuntimeError("Failed to bootstrap LLM runtime for external-docs ingest.")
-    return runtime
+    return stack.runtime
 
 
 def _resolve_runtime() -> object:

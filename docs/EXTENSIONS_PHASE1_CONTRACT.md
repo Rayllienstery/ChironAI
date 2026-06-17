@@ -19,7 +19,7 @@ Extensions ownership moves outside the core app.
 | Local install state and provenance | `Core/modules/extensions_backend` |
 | Blocklist and marketplace policy | `Core/modules/extensions_backend` |
 | Extension runtime status polling | `Core/modules/extensions_backend` |
-| Host capabilities, provider runtime bridge, sandbox protocol | `CoreModules/ExtensionsHost` target |
+| Host capabilities, provider runtime bridge, sandbox protocol | `CoreModules/ExtensionsHost` |
 | Out-of-process worker isolation | `CoreModules/ExtensionsSandbox` |
 | Shared DTOs and HTTP constants | `core/contracts/extensions_api.py` |
 

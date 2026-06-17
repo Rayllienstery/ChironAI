@@ -9,6 +9,7 @@ Ownership boundary:
   metadata, install/update/remove, blocklist policy, local install state, and
   lifecycle status.
 - Core modules expose host/runtime/sandbox capability surfaces only.
+- ``CoreModules/ExtensionsHost`` wires ``extensions_backend`` with ``llm_interactor`` for host bootstrap.
 - CoreUI, WebUIBackend, and LlmProxy consume extension state through contracts.
 """
 

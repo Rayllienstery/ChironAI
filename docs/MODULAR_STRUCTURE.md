@@ -28,6 +28,7 @@ CoreModules/           # Reusable modules/apps the host depends on
   CoreUI/              # React/Vite SPA
   DockerManager/
   ErrorManager/
+  ExtensionsHost/
   ExtensionsSandbox/
   LlmInteractor/
   LlmProxy/
@@ -119,8 +120,8 @@ intentional public boundary. Host-specific code goes under `Core/`.
 | **RagService** | Full RAG pipeline: retrieval, rerank, prompt, and answer generation contracts/runtime. |
 | **MdIngestionService** | Markdown/document ingestion, filtering, chunking, and prepare-for-indexing flow. |
 | **CoreUI** | React SPA. Talks to the backend only over HTTP. |
+| **ExtensionsHost** | Host/runtime contracts and capability bridge (`extensions_host`). Wires `extensions_backend` with `llm_interactor`; does not own registry polling or marketplace policy. |
 | **ExtensionsSandbox** | Out-of-process extension worker isolation. |
-| **ExtensionsHost** (target) | Host/runtime contracts and capability bridge. It must not own registry polling, repository metadata fetching, install state, or marketplace policy. |
 
 ## Dependency Rules
 

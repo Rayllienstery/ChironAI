@@ -1,8 +1,36 @@
 # Legacy Map
 
-Updated: 2026-06-01
+Updated: 2026-06-16
 
-Active cleanup roadmap: [`QUALITY_AUDIT.md`](../QUALITY_AUDIT.md).
+Active cleanup roadmap: this document and [`QUALITY_GATE_PROFILES.md`](QUALITY_GATE_PROFILES.md).
+
+## Refactor status (Phases 0–5)
+
+| Phase | Outcome |
+|-------|---------|
+| 0 | Root ownership allowlist (`scripts/root_layout_guard.py`) |
+| 1 | Host layers under `Core/` with stable import names |
+| 2 | Host services under `Core/modules/` |
+| 3 | Prompt templates owned by `Core/modules/prompts_manager/` (`WebUI/prompts/` runtime store) |
+| 4 | Extension host bridge in `CoreModules/ExtensionsHost/`; marketplace in `extensions_backend` |
+| 5 | Legacy tails documented by owner; Qdrant listing + WebUI retrieval settings moved out of route composition |
+
+## Legacy tail ownership
+
+| Tail | Owner | Reason kept |
+|------|-------|-------------|
+| `Core/api/http/webui_routes.py` | Core/api | WebUI blueprint composition root only (registers `webui_*_routes`) |
+| `Core/api/http/webui_*_routes.py` | Core/api | HTTP adapters per bounded context (chat, crawler, rag, prompts, extensions, …) |
+| `Core/api/http/rag_tests_routes.py` | Core/api + `application/rag_tests` | RAG test orchestration split from WebUI composition |
+| `Core/api/http/llm_proxy_wiring.py` | Core/api | Host wiring into `CoreModules/LlmProxy` (uses `ExtensionsHost`) |
+| `Core/application/rag/proxy_settings_contract.py` | Core/application | Config authority helpers for proxy/RAG settings precedence |
+| `Core/application/rag/webui_retrieval_settings.py` | Core/application | WebUI RAG trigger threshold + default model helpers |
+| `Core/infrastructure/qdrant/collection_names.py` | Core/infrastructure | Shared Qdrant collection listing for WebUI, RAG tests, indexer |
+| `config.rag_prompts` | Core/config facade | Compatibility import path for `prompts_manager` |
+| `CoreModules/LlmProxy/*` wire-format | LlmProxy | Intentional OpenAI/Anthropic compatibility surface |
+| `extensions/bundled/*` | extensions + `extensions_backend` | Trusted bootstrap/offline mirrors only |
+
+No root-level runtime packages remain except documented project support (`docs/`, `tests/`, `rag_tests/` fixtures, `WebUI/` data).
 
 ## System Map
 
@@ -23,22 +51,12 @@ CoreUI (RAG Tests / Notifications / Builds)
 
 ## Root freelance runtime folders
 
-- Root-level runtime folder `prompts/` was removed in Phase 3. Prompt templates
-  are owned by `Core/modules/prompts_manager/` with mutable storage under
-  `WebUI/prompts/`.
-- Target ownership:
-  - host layers under `Core/`;
-  - host-owned services under `Core/modules/` (Phase 2 complete);
-  - reusable modules stay or move under `CoreModules/`;
-  - prompt templates get an explicit owner instead of remaining root runtime
-    data.
+- Phases 1–4 removed root `api/`, `modules/`, and `prompts/` runtime folders.
+- Phase 5 documents remaining intentional tails under `Core/`, `Core/modules/`,
+  and `CoreModules/` (see table above).
 
-Risk: startup-critical code can become invisible ownership debt if it remains
-at the repository root with no documented owner.
-
-Guardrail target: add a root source allowlist test that rejects new importable
-runtime package folders at the repository root unless they are explicitly
-documented.
+Risk: startup-critical code can become invisible ownership debt if it returns
+to the repository root without an allowlist entry.
 
 ## A) Configuration/authority overlap
 
@@ -57,13 +75,15 @@ Risk: hidden runtime divergence (mitigated by precedence tests in `tests/config/
 
 ## B) WebUI routes composition
 
-- `Core/api/http/webui_routes.py` is the composition root (~255 lines): blueprint bootstrap,
-  `register_*` calls, RAG trigger helpers, legacy Ollama model defaults.
+- `Core/api/http/webui_routes.py` is the composition root (~170 lines): blueprint bootstrap and
+  `register_*` calls only.
+- RAG trigger/default-model helpers live in `Core/application/rag/webui_retrieval_settings.py`.
+- Qdrant collection listing lives in `Core/infrastructure/qdrant/collection_names.py`.
 - Domain routes live in `webui_*_routes.py` (chat, rag, model tester, llm proxy,
   crawler, docker, extensions, observability, prompts, sessions, settings, performance,
   testing, provider helpers module).
 
-Risk: low after Pass 4 split; regressions show up in `pytest tests/api tests/webui`.
+Risk: low after route splits; regressions show up in `pytest tests/api tests/webui`.
 
 ## C) Protocol compatibility surface
 

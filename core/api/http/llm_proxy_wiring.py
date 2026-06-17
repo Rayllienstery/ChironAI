@@ -24,10 +24,7 @@ from infrastructure.database import get_settings_repository
 
 try:
     from config import (
-        get_extensions_blocklist_url,
-        get_extensions_registry_url,
         get_framework_collection_ttl_days,
-        get_github_token,
         get_proxy_rerank_enabled,
         get_qdrant_url,
     )
@@ -35,9 +32,6 @@ except ImportError:
     get_proxy_rerank_enabled = lambda: False  # type: ignore[assignment,misc]
     get_qdrant_url = lambda: "http://localhost:6333"  # type: ignore[assignment,misc]
     get_framework_collection_ttl_days = lambda: 90  # type: ignore[assignment,misc]
-    get_extensions_registry_url = lambda: ""  # type: ignore[assignment,misc]
-    get_extensions_blocklist_url = lambda: ""  # type: ignore[assignment,misc]
-    get_github_token = lambda: ""  # type: ignore[assignment,misc]
 
 from api.http.proxy_status import (
     STATUS_IDLE,
@@ -363,97 +357,39 @@ def _build_extension_manager(
     deps: RAGDependencies,
 ) -> tuple[Any | None, Any | None, Any | None, Any | None, str | None]:
     try:
-        from extensions_backend import (
-            ExtensionBlocklistPolicy,
-            ExtensionManagementService,
-            ExtensionRegistryClient,
-            GitHubExtensionRepositoryClient,
-        )
-        from llm_interactor import (
-            ExtensionManager,
-            ProviderHostContext,
-        )
+        from extensions_host import build_extension_host_stack
     except Exception as e:
-        _RAG_LOG.warning("LlmInteractor unavailable; falling back to direct chat client: %s", e)
+        _RAG_LOG.warning("ExtensionsHost unavailable; falling back to direct chat client: %s", e)
         return None, None, None, None, None
 
     try:
         settings_repo = get_settings_repository()
     except Exception as e:
-        _RAG_LOG.warning("settings repository unavailable for LlmInteractor: %s", e)
+        _RAG_LOG.warning("settings repository unavailable for extension host: %s", e)
         return None, None, None, None, None
-    try:
-        from docker_manager import DockerManager
 
-        docker_runtime = DockerManager()
-    except Exception as e:
-        _RAG_LOG.warning("DockerManager unavailable for LlmInteractor extensions: %s", e)
-        docker_runtime = None
-
-    host_metadata: dict[str, Any] = {"source": "api.http.llm_proxy_wiring"}
-    try:
-        from config import (
-            get_default_embed_model,
-            get_default_rerank_model,
-            get_ollama_base_url,
-            get_ollama_chat_url,
-        )
-
-        host_metadata.update(
-            {
-                "base_url": get_ollama_base_url(),
-                "chat_url": get_ollama_chat_url(),
-                "embed_model": get_default_embed_model(),
-                "rerank_model": get_default_rerank_model(),
-            }
-        )
-    except Exception as meta_exc:
-        _RAG_LOG.warning("Provider host metadata unavailable for extensions: %s", meta_exc)
-
-    host_context = ProviderHostContext(
+    stack = build_extension_host_stack(
         project_root=_workspace_root(),
-        get_settings_repository=get_settings_repository,
-        chat_client=deps.chat_client,
-        docker_runtime=docker_runtime,
-        metadata=host_metadata,
-    )
-    github_token = get_github_token() or None
-    manager = ExtensionManager(
-        project_root=_workspace_root(),
-        host_context=host_context,
         settings_repo=settings_repo,
-        registry_client=ExtensionRegistryClient(
-            get_extensions_registry_url() or None,
-            project_root=_workspace_root(),
-        ),
-        blocklist_policy=ExtensionBlocklistPolicy(
-            get_extensions_blocklist_url() or None,
-            project_root=_workspace_root(),
-        ),
-        repository_client=GitHubExtensionRepositoryClient(token=github_token),
+        chat_client=deps.chat_client,
+        host_metadata={"source": "api.http.llm_proxy_wiring"},
+        get_settings_repository=get_settings_repository,
         default_provider_id=DEFAULT_LLM_PROVIDER_ID,
+        bootstrap_sync=True,
     )
-    service = ExtensionManagementService(manager, docker_manager=docker_runtime)
-    llm_runtime = None
-    provider_registry = None
-    try:
-        service.bootstrap_runtime()
-        llm_runtime = service.runtime
-        provider_registry = service.registry
-        _RAG_LOG.info(
-            "Extension runtime bootstrap complete (status=%s)",
-            service.runtime_status,
-        )
-    except Exception as exc:
-        err = str(getattr(service, "runtime_error", "") or exc)
-        _RAG_LOG.warning("Extension runtime bootstrap failed at wiring: %s", err)
+    if stack is None:
+        return None, None, None, None, None
+
+    service = stack.service
+    llm_runtime = stack.runtime
+    provider_registry = stack.provider_registry
     runtime_chat_client = _runtime_resolving_chat_client(
         extension_manager=service,
         llm_runtime=llm_runtime,
-        provider_id=DEFAULT_LLM_PROVIDER_ID,
+        provider_id=stack.default_provider_id,
         fallback=deps.chat_client,
     )
-    return service, llm_runtime, provider_registry, runtime_chat_client, DEFAULT_LLM_PROVIDER_ID
+    return service, llm_runtime, provider_registry, runtime_chat_client, stack.default_provider_id
 
 
 def build_llm_proxy_wiring(

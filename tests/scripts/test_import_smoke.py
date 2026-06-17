@@ -22,6 +22,8 @@ _RUNTIME_PACKAGES = (
     "external_docs_rag",
     "chironai_security",
     "extensions_sandbox",
+    "extensions_host",
+    "prompts_manager",
     "docker_manager",
 )
 

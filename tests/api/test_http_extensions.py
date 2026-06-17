@@ -446,7 +446,8 @@ def test_ollama_compat_start_stop_routes_are_removed() -> None:
 def test_extension_asset_route_serves_installed_assets_and_blocks_escape(tmp_path: Path) -> None:
     _ensure_root_on_path()
     from api.http.rag_routes import create_app
-    from llm_interactor import ExtensionManager, ExtensionRegistryClient, ProviderHostContext
+    from extensions_backend import ExtensionRegistryClient
+    from llm_interactor import ExtensionManager, ProviderHostContext
 
     class _Repo:
         def __init__(self) -> None:

@@ -41,6 +41,7 @@ from application.rag.proxy_settings_contract import (
 )
 from config import get_default_rag_top_k, get_framework_collection_ttl_days, get_qdrant_url, get_retrieval_bool
 from infrastructure.database import get_settings_repository
+from infrastructure.qdrant.collection_names import list_collection_names
 
 _WEBUI_LOG = logging.getLogger("webui")
 
@@ -114,29 +115,12 @@ def _qdrant_status_snapshot(timeout_sec: float) -> dict[str, Any]:
 
 
 def get_qdrant_collection_names_with_timeout(timeout_sec: float) -> list[str]:
-    url = get_qdrant_url().rstrip("/")
-    try:
-        resp = requests.get(f"{url}/collections", timeout=timeout_sec)
-        if not resp.ok:
-            return []
-        data = resp.json() or {}
-        raw = data.get("result", {}).get("collections", []) if isinstance(data, dict) else []
-        names: list[str] = []
-        for col in raw:
-            if isinstance(col, dict):
-                name = col.get("name")
-            else:
-                name = str(col)
-            if name:
-                names.append(name)
-        return names
-    except Exception:  # safe: unreachable Qdrant returns empty collection list
-        return []
+    return list_collection_names(timeout_sec=timeout_sec)
 
 
 def get_qdrant_collection_names() -> list[str]:
     """Return Qdrant collection names (empty if unreachable)."""
-    return get_qdrant_collection_names_with_timeout(timeout_sec=5.0)
+    return list_collection_names(timeout_sec=5.0)
 
 
 def get_cached_qdrant_collection_name_set_for_builds_diag() -> set[str]:

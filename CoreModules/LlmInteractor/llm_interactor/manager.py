@@ -70,18 +70,6 @@ from llm_interactor.runtime import LLMRuntime, ProviderRegistry
 
 _log = logging.getLogger(__name__)
 
-try:
-    from extensions_backend import ExtensionBlocklistPolicy, ExtensionRegistryClient, GitHubExtensionRepositoryClient
-except Exception as _ext_backend_import_error:  # pragma: no cover - optional module path during migration
-    _log.warning(
-        "extensions_backend module unavailable — blocklist enforcement and GitHub metadata are DISABLED: %s",
-        _ext_backend_import_error,
-    )
-    ExtensionBlocklistPolicy = None  # type: ignore[assignment,misc]
-    ExtensionRegistryClient = None  # type: ignore[assignment,misc]
-    GitHubExtensionRepositoryClient = None  # type: ignore[assignment,misc]
-
-
 DEFAULT_BUNDLED_DIR = "extensions/bundled"
 DEFAULT_INSTALLED_DIR = "logs/extensions/installed"
 
@@ -99,7 +87,7 @@ class ExtensionManager(ExtensionTabMixin):
         project_root: Path,
         host_context: ProviderHostContext,
         settings_repo: Any,
-        registry_client: Any | None = None,
+        registry_client: Any,
         bundled_dir: Path | None = None,
         installed_dir: Path | None = None,
         default_provider_id: str | None = None,
@@ -111,19 +99,17 @@ class ExtensionManager(ExtensionTabMixin):
         self._host_context = host_context
         self._settings_repo = settings_repo
         self._repo = ExtensionsRepository(settings_repo)
-        if registry_client is not None:
-            self._registry_client = registry_client
-        elif ExtensionRegistryClient is not None:
-            self._registry_client = ExtensionRegistryClient(project_root=project_root)
-        else:
-            raise RuntimeError("ExtensionRegistryClient is unavailable")
+        if registry_client is None:
+            raise TypeError(
+                "registry_client is required; construct the host stack via extensions_host "
+                "or inject registry clients from the extension-management backend"
+            )
+        self._registry_client = registry_client
         if repository_client is not None:
             self._repository_client = repository_client
-        elif GitHubExtensionRepositoryClient is not None:
-            self._repository_client = GitHubExtensionRepositoryClient()
         else:
             self._repository_client = None
-        self._blocklist_policy = blocklist_policy or (ExtensionBlocklistPolicy(project_root=project_root) if ExtensionBlocklistPolicy else None)
+        self._blocklist_policy = blocklist_policy
         self._bundled_dir = bundled_dir or (project_root / DEFAULT_BUNDLED_DIR)
         self._installed_dir = installed_dir or (project_root / DEFAULT_INSTALLED_DIR)
         self._installed_dir.mkdir(parents=True, exist_ok=True)
@@ -781,7 +767,7 @@ class ExtensionManager(ExtensionTabMixin):
         if self._blocklist_policy is None:
             raise ValueError(
                 f"Cannot install extension '{ext_id}': blocklist policy is unavailable. "
-                "Ensure extensions_backend is installed and operational before installing extensions."
+                "Ensure extension registry services are available before installing extensions."
             )
         blocklist = self._blocklist_match_for_entry(entry, version=selected_ref, ref=selected_ref)
         if blocklist.get("matched"):

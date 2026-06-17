@@ -183,7 +183,7 @@ Modules/
 | `config/CONFIG_AUTHORITY.md` | Priority: env / settings / YAML / build |
 | `config/ENV_REFERENCE.md` | Environment variable index |
 | `infrastructure/ollama/README.md` | Root Ollama adapter boundary and import allowlist |
-| `QUALITY_AUDIT.md` | Roadmap cleanup (Passes 1–6) |
+| `docs/legacy_map.md` | Legacy tail ownership and refactor status |
 
 ---
 

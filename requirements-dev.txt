@@ -16,6 +16,7 @@
 -e CoreModules/RagService
 -e CoreModules/Security
 -e CoreModules/ExtensionsSandbox
+-e CoreModules/ExtensionsHost
 -e CoreModules/ErrorManager
 -e Core/modules/html_md
 -e Core/modules/crawler_service

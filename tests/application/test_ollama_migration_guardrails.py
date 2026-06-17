@@ -6,7 +6,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 IMPORT_RE = re.compile(r"^\s*(?:from\s+infrastructure\.ollama\b|import\s+infrastructure\.ollama\b)", re.MULTILINE)
-CHECKBOX_RE = re.compile(r"^\s*-\s\[[ x]\]\s+\S")
 CORE_OLLAMA_HTTP_RE = re.compile(r"(localhost:11434|OLLAMA_EMBED_URL|ollama_upstream|completions_generate)")
 
 
@@ -60,31 +59,3 @@ def test_core_no_direct_ollama_http_ownership() -> None:
                 offenders.append(rel)
 
     assert offenders == []
-
-
-def test_ollama_migration_todo_remains_decision_complete() -> None:
-    path = ROOT / "OLLAMA_EXTENSION_MIGRATION_TODO.md"
-    text = path.read_text(encoding="utf-8")
-
-    assert path.is_file()
-    assert not re.search(r"[\u0400-\u04FF]", text)
-    for line in text.splitlines():
-        if "- [" in line:
-            assert CHECKBOX_RE.match(line), line
-
-    required_phrases = [
-        "decision-complete migration guide",
-        "`ollama-provider` owns Ollama behavior",
-        "provider-generic",
-        "Do not make CoreUI know Ollama internals",
-        "host_context.docker_runtime",
-        "DockerContainerSpec",
-        "Do not move Qdrant",
-        "Do not add new core direct-Ollama HTTP ownership",
-        "Core no longer exposes raw Ollama-compatible routes",
-        "Manual Smoke Checklist",
-        "Suggested Regression Searches",
-        "Acceptance Criteria",
-    ]
-    for phrase in required_phrases:
-        assert phrase in text

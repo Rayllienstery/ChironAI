@@ -13,8 +13,8 @@ from error_manager.http import error_response as _error_response
 from flask import jsonify, request
 from rag_service.application.params import get_rag_answer_params
 
-from api.http.rag_tests_routes import _get_qdrant_collection_names
 from api.http.webui_provider_helpers import invoke_runtime_chat as _invoke_runtime_chat
+from infrastructure.qdrant.collection_names import list_collection_names
 from webui_backend.paths import webui_data_dir
 
 try:
@@ -425,7 +425,7 @@ def register_crawler_indexer_routes(
             _batch_eval_jobs[job_id]["results"] = []
 
         webui_dir = str(webui_data_dir()) if webui_data_dir().is_dir() else None
-        collection_name = (_get_qdrant_collection_names() or [None])[0]
+        collection_name = (list_collection_names() or [None])[0]
         try:
             params, deps = get_rag_answer_params(webui_dir=webui_dir, collection_name=collection_name)
         except Exception as e:
@@ -536,7 +536,7 @@ def register_crawler_indexer_routes(
 
             webui_dir = str(webui_data_dir()) if webui_data_dir().is_dir() else None
             collection_name = None
-            names = _get_qdrant_collection_names()
+            names = list_collection_names()
             if names:
                 collection_name = names[0]
             params, deps = get_rag_answer_params(webui_dir=webui_dir, collection_name=collection_name)
@@ -684,7 +684,7 @@ def register_crawler_indexer_routes(
             )
 
             webui_dir = str(webui_data_dir()) if webui_data_dir().is_dir() else None
-            collection_name = (_get_qdrant_collection_names() or [None])[0]
+            collection_name = (list_collection_names() or [None])[0]
             params, deps = get_rag_answer_params(webui_dir=webui_dir, collection_name=collection_name)
             chat_client = deps.chat_client
             use_model = model or (params.model_name if params else None)
