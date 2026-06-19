@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.30] - 2026-06-19
+### Added
+- Property-based tests for the markdown meta block parser using Hypothesis.
+### Changed
+- Classified `.hypothesis` cache directory in the root layout guard.
+
+## [0.7.29] - 2026-06-19
+### Changed
+- Split RAG test routes and OpenAI-compatible v1 blueprint into focused modules.
+
+## [0.7.28] - 2026-06-19
+### Changed
+- Split LlmProxy chat completions handler and tool helpers into focused modules.
+
 ## [0.7.27] - 2026-06-19
 ### Changed
 - Split Apple docs extraction into focused modules.

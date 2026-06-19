@@ -22,6 +22,7 @@ ALLOWED_ROOT_DIRECTORIES: dict[str, RootEntry] = {
     ".cursor": RootEntry("project support", "editor metadata"),
     ".git": RootEntry("project support", "VCS metadata"),
     ".github": RootEntry("project support", "CI metadata"),
+    ".hypothesis": RootEntry("project support", "tool cache"),
     ".import_linter_cache": RootEntry("project support", "tool cache"),
     ".kilo": RootEntry("project support", "agent metadata"),
     ".ruff_cache": RootEntry("project support", "tool cache"),

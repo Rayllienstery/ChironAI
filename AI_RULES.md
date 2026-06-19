@@ -45,6 +45,7 @@ Current root directory ownership:
 | `.cursor/` | project support | editor metadata |
 | `.git/` | project support | VCS metadata |
 | `.github/` | project support | CI metadata |
+| `.hypothesis/` | project support | tool cache |
 | `.import_linter_cache/` | project support | tool cache |
 | `.kilo/` | project support | agent metadata |
 | `.ruff_cache/` | project support | tool cache |

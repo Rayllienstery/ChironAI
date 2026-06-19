@@ -2,31 +2,34 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
 import uuid
 from typing import Any
+
+from flask import Response, jsonify, request
 
 try:
     from chironai_rag.consumers import RAG_COLLECTION_APP_SETTING
 except ImportError:
     RAG_COLLECTION_APP_SETTING = "rag_collection"
 
-import contextlib
-
-from flask import Response, jsonify, request
-
-from api.http.proxy_trace import set_response_artifacts
 from application.rag.proxy_settings_contract import (
     resolve_fetch_web_knowledge,
     resolve_rag_collection,
 )
+from llm_proxy import chat_completions_handler_prepare as _handler_prepare_module
 from llm_proxy.chat_completions_gemini_native import (
-    _interpolate_native_tools_for_gemini,
-    _preflight_native_tool_messages,
-    _preflight_native_tools_payload,
     _resolve_proxy_db_path_from_wiring,
 )
+from llm_proxy.chat_completions_handler_closures import (
+    build_ollama_options_overlay,
+    make_persist_proxy_request_log,
+    make_publish_response_artifacts,
+    make_publish_trace,
+)
+from llm_proxy.chat_completions_handler_dispatch import dispatch_response
 from llm_proxy.chat_completions_handler_helpers import (
     apply_selected_rerank_model as _apply_selected_rerank_model,
 )
@@ -45,36 +48,24 @@ from llm_proxy.chat_completions_handler_helpers import (
 from llm_proxy.chat_completions_handler_helpers import (
     rag_request_completed_payload as _rag_request_completed_payload,
 )
-from llm_proxy.chat_completions_legacy_tool_stream import (
-    LegacyToolStreamContext,
-    is_legacy_tool_stream_mode,
-    try_build_legacy_tool_stream_response,
+from llm_proxy.chat_completions_handler_prepare import (
+    prepare_messages_and_handle_tool_limit,
 )
 from llm_proxy.chat_completions_messages import (
     _normalize_request_messages,
-)
-from llm_proxy.chat_completions_native_tools_nonstream import (
-    NativeToolsNonStreamContext,
-    try_build_native_tools_nonstream_response,
 )
 from llm_proxy.chat_completions_native_tools_prep import (
     analyze_tool_turn_state,
     resolve_native_tools_policy,
 )
-from llm_proxy.chat_completions_nonstream_response import (
-    StandardNonStreamContext,
-    build_standard_nonstream_response,
-)
 from llm_proxy.chat_completions_ollama_proxy import (
     _append_trace_warning,
-    _apply_trace_response_text_fields,
     _build_rag_collection_issue,
     _effective_max_agent_steps,
     _effective_num_ctx,
     _effective_num_predict,
     _effective_rag_collection_name,
     _input_budget_from_context,
-    _trace_ollama_messages_for_ui,
     effective_ollama_think_from_body,
 )
 from llm_proxy.chat_completions_ollama_proxy import (
@@ -94,9 +85,6 @@ from llm_proxy.chat_completions_rag_orchestration import (
 from llm_proxy.chat_completions_rag_prep import (
     apply_proxy_context_char_limits as _apply_proxy_context_char_limits,
 )
-from llm_proxy.chat_completions_rag_prep import (
-    build_rag_metadata_for_response,
-)
 from llm_proxy.chat_completions_request_parsing import (
     resolve_trace_chain_id as _resolve_trace_chain_id,
 )
@@ -104,64 +92,39 @@ from llm_proxy.chat_completions_request_parsing import (
     truthy_body_flag as _truthy_body_flag,
 )
 from llm_proxy.chat_completions_response_helpers import (
-    record_reasoning_token_estimates as _record_reasoning_token_estimates,
-)
-from llm_proxy.chat_completions_response_helpers import (
     tool_loop_limit_final_message as _tool_loop_limit_final_message,
-)
-from llm_proxy.chat_completions_response_helpers import (
-    with_initial_system_message as _with_initial_system_message,
 )
 from llm_proxy.chat_completions_run_phases import (
     _new_chat_trace_dict,
-    _tool_loop_needs_finalize_nudge,
-)
-from llm_proxy.chat_completions_sse_generators import (
-    NativeToolsStreamContext,
-    StandardStreamContext,
-    ToolLimitStreamContext,
-    iter_native_tools_sse_stream,
-    iter_standard_sse_stream,
-    iter_tool_limit_sse_stream,
-)
-from llm_proxy.chat_completions_streaming import (
-    SSE_MIMETYPE as _SSE_MIMETYPE,
-)
-from llm_proxy.chat_completions_streaming import (
-    SSE_RESPONSE_HEADERS as _SSE_RESPONSE_HEADERS,
-)
-from llm_proxy.chat_completions_trace_persistence import (
-    build_proxy_request_log_metadata,
 )
 from llm_proxy.chat_completions_trace_request import (
     build_chat_trace_request_dict,
     enrich_chat_trace_request,
 )
-from llm_proxy.chat_completions_upstream_budget import (
-    _ollama_message_content_str,
-    compact_upstream_messages_for_budget,
-)
 from llm_proxy.contracts import LlmProxyWiring
 from llm_proxy.ollama_compat import (
-    caps_supports_thinking,
-    caps_supports_vision,
     find_cached_ollama_vision_model,
     get_cached_ollama_capabilities,
-    ollama_tools_from_openai,
     openai_tool_choice_means_none,
 )
 from llm_proxy.tool_helpers import (
-    _build_tool_json_instruction,
-    _client_files_snippet,
-    _client_selection_snippet,
     _extract_file_path_from_user_text,
     _get_tool_by_name,
     _select_edit_tool_name,
     _tool_schema_accepts_content,
-    _workspace_selection_snippet,
 )
 
 _RAG_LOG = logging.getLogger("llm_proxy")
+
+__all__ = [
+    "_ollama_messages_have_images",
+    "_resolved_ollama_chat_url",
+    "_tool_loop_limit_final_message",
+    "_vision_fallback_preferences",
+    "find_cached_ollama_vision_model",
+    "get_cached_ollama_capabilities",
+    "run_chat_completions",
+]
 
 
 def run_chat_completions(
@@ -285,17 +248,6 @@ def run_chat_completions(
     if dumb_build_pipeline and active_build:
         build_sse_streaming = active_build.get("sse_streaming", True) is not False
 
-    def ollama_options_overlay() -> dict[str, Any] | None:
-        merged: dict[str, Any] = {**build_extra_options}
-        if chat_max_tokens is not None:
-            build_np = build_extra_options.get("num_predict")
-            try:
-                build_np_int = int(build_np)
-            except (TypeError, ValueError):
-                build_np_int = 0
-            merged["num_predict"] = min(chat_max_tokens, build_np_int) if build_np_int > 0 else chat_max_tokens
-        return merged if merged else None
-
     effective_num_predict = _effective_num_predict(
         chat_client,
         build_extra_options,
@@ -311,28 +263,9 @@ def run_chat_completions(
     if private_build:
         w.set_current_trace(None)
 
-    def publish_trace(tr: dict[str, Any]) -> None:
-        if private_build:
-            w.set_current_trace(None)
-        else:
-            w.set_current_trace(tr)
-
-    def publish_response_artifacts(
-        *,
-        visible_content: str,
-        reasoning_content: str = "",
-        final_content: str = "",
-    ) -> None:
-        if private_build:
-            return
-        req = trace.get("request") if isinstance(trace.get("request"), dict) else {}
-        set_response_artifacts(
-            trace_id=str(trace.get("trace_id") or "").strip() or None,
-            client_request_id=str(req.get("client_request_id") or "").strip() or None,
-            visible_content=visible_content,
-            reasoning_content=reasoning_content,
-            final_content=final_content,
-        )
+    ollama_options_overlay = lambda: build_ollama_options_overlay(build_extra_options, chat_max_tokens)
+    publish_trace = make_publish_trace(w, private_build)
+    publish_response_artifacts = make_publish_response_artifacts(trace, private_build)
 
     autocomplete_id = rt.autocomplete_model_logical_id
     is_autocomplete = requested_model == autocomplete_id
@@ -349,68 +282,6 @@ def run_chat_completions(
     else:
         include_rag_metadata = bool(body.get("include_rag_metadata", False))
     include_reasoning_content = _truthy_body_flag(body.get("include_reasoning_content"))
-
-    def proxy_backend_tag() -> str:
-        if is_autocomplete:
-            return "autocomplete"
-        if dumb_build_pipeline:
-            return "rag_fusion"
-        return "direct"
-
-    def persist_proxy_request_log(
-        *,
-        message: str,
-        response_preview: str,
-        latency_ms_value: int,
-        trace_payload: dict[str, Any],
-        stream_value: bool,
-        include_rag_fields: bool,
-        include_token_fields: bool,
-        prompt_tokens_value: int | None = None,
-        completion_tokens_value: int | None = None,
-        total_tokens_value: int | None = None,
-        ollama_chat_stream: bool | None = None,
-        sse_single_chunk: bool = False,
-        extra_metadata: dict[str, Any] | None = None,
-        warn_label: str,
-    ) -> None:
-        if private_build:
-            return
-        try:
-            session_manager = w.get_session_manager()
-            session_manager.get_or_create_session("proxy")
-            logs_repo = w.get_logs_repository()
-            metadata = build_proxy_request_log_metadata(
-                user_query=user_query,
-                response_preview=response_preview,
-                trace_id=trace_id,
-                use_model=use_model,
-                latency_ms_value=latency_ms_value,
-                trace_payload=trace_payload,
-                stream_value=stream_value,
-                is_autocomplete=is_autocomplete,
-                requested_model=requested_model,
-                proxy_backend=proxy_backend_tag(),
-                include_rag_fields=include_rag_fields,
-                rag_context_data=rag_context_data,
-                rag_timings=rag_timings,
-                include_token_fields=include_token_fields,
-                prompt_tokens_value=prompt_tokens_value,
-                completion_tokens_value=completion_tokens_value,
-                total_tokens_value=total_tokens_value,
-                ollama_chat_stream=ollama_chat_stream,
-                sse_single_chunk=sse_single_chunk,
-                extra_metadata=extra_metadata,
-            )
-            logs_repo.add_log(
-                session_id="proxy",
-                level="INFO",
-                message=message,
-                source="proxy",
-                metadata=metadata,
-            )
-        except Exception as e:
-            _RAG_LOG.warning("Failed to log proxy %s request to database: %s", warn_label, e)
 
     force_rag = bool(body.get("force_rag"))
     if is_autocomplete:
@@ -792,474 +663,130 @@ def run_chat_completions(
     rag_context_data = _rag_pipeline.rag_context_data
     web_supplement_text = _rag_pipeline.web_supplement_text
 
-    # Reuse the same RAG context for messages (single RAG call per request)
     rag_ctx = rag_ctx_for_log if (include_rag_metadata and rag_ctx_for_log) else None
+    use_model_ref = [actual_model]
+    persist_proxy_request_log = make_persist_proxy_request_log(
+        w,
+        private_build=private_build,
+        user_query=user_query,
+        trace_id=trace_id,
+        is_autocomplete=is_autocomplete,
+        requested_model=requested_model,
+        dumb_build_pipeline=dumb_build_pipeline,
+        rag_context_data=[rag_context_data],
+        rag_timings=[rag_timings],
+        use_model_ref=use_model_ref,
+    )
     try:
-        req = w.rag_question_request_factory(
+        _handler_prepare_module.get_cached_ollama_capabilities = get_cached_ollama_capabilities
+        _handler_prepare_module.find_cached_ollama_vision_model = find_cached_ollama_vision_model
+        _handler_prepare_module._vision_fallback_preferences = _vision_fallback_preferences
+        prepared = prepare_messages_and_handle_tool_limit(
+            w=w,
+            trace=trace,
             messages=messages,
-            model=actual_model,  # Use actual_model instead of requested_model
             stream=stream,
-            reasoning_level=reasoning_for_prompt,
-        )
-        ollama_messages, use_model = w.prepare_ollama_messages(
-            req,
-            effective_rag_repo,
-            effective_embed_provider,
-            effective_rerank_client,
-            effective_prefix,
-            effective_suffix,
-            effective_context_chunk_chars,
-            effective_context_total_chars,
-            effective_confidence_threshold,
-            effective_ollama_model,
-            reasoning_level=reasoning_for_prompt,
-            rag_required_keywords=rag_keywords,
-            rag_context=rag_ctx_for_log,
-            trigger_threshold=None,
+            body=body,
+            actual_model=actual_model,
+            reasoning_for_prompt=reasoning_for_prompt,
+            effective_rag_repo=effective_rag_repo,
+            effective_embed_provider=effective_embed_provider,
+            effective_rerank_client=effective_rerank_client,
+            effective_prefix=effective_prefix,
+            effective_suffix=effective_suffix,
+            effective_context_chunk_chars=effective_context_chunk_chars,
+            effective_context_total_chars=effective_context_total_chars,
+            effective_confidence_threshold=effective_confidence_threshold,
+            effective_ollama_model=effective_ollama_model,
+            rag_keywords=rag_keywords,
+            rag_ctx_for_log=rag_ctx_for_log,
             force_rag=force_rag,
-            native_tools=use_native_tools,
-            web_supplement=web_supplement_text,
+            use_native_tools=use_native_tools,
+            web_supplement_text=web_supplement_text,
+            autocomplete_id=autocomplete_id,
+            input_budget=input_budget,
+            ollama_think=ollama_think,
+            ollama_chat_url=ollama_chat_url,
+            _ollama_caps=_ollama_caps,
+            active_build=active_build,
+            dumb_build_pipeline=dumb_build_pipeline,
+            requested_model=requested_model,
+            is_autocomplete=is_autocomplete,
+            tool_choice_effective=tool_choice_effective,
+            tools=tools,
+            tool_loop_limit_reached=tool_loop_limit_reached,
+            include_rag_metadata=include_rag_metadata,
+            include_reasoning_content=include_reasoning_content,
+            private_build=private_build,
+            user_query=user_query,
+            log_preview=log_preview,
+            start_time=start_time,
+            rag_ctx=rag_ctx,
+            rag_timings=rag_timings,
+            latency_ms=latency_ms,
+            prompt_tokens_approx=prompt_tokens_approx,
+            completion_tokens_approx=completion_tokens_approx,
+            publish_trace=publish_trace,
+            publish_response_artifacts=publish_response_artifacts,
+            persist_proxy_request_log=persist_proxy_request_log,
+            log_rag_error_private=_log_rag_error_private,
+            _append_trace_warning=_append_trace_warning,
         )
-        if use_model == autocomplete_id:
-            use_model = effective_ollama_model
-
-        if input_budget is not None:
-            ollama_messages, compact_diag = compact_upstream_messages_for_budget(
-                ollama_messages,
-                input_budget,
-            )
-            if compact_diag.get("compacted") or compact_diag.get("still_over_budget_after_history_compaction"):
-                trace["request"]["upstream_context_compaction"] = compact_diag
-
-        trace["ollama"]["model"] = use_model
-        trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(ollama_messages)
-        trace["ollama"]["think"] = ollama_think
-        trace["ollama"]["chat_stream"] = False
-        ollama_messages_have_images = _ollama_messages_have_images(ollama_messages)
-        image_model_caps: frozenset[str] | None = _ollama_caps
-        if ollama_messages_have_images and ollama_chat_url:
-            try:
-                image_model_caps = get_cached_ollama_capabilities(use_model, ollama_chat_url)
-            except Exception:
-                image_model_caps = None
-            if image_model_caps is not None:
-                _ollama_caps = image_model_caps
-                trace["request"]["ollama_capabilities"] = sorted(image_model_caps)
-            if image_model_caps is not None and not caps_supports_vision(image_model_caps):
-                fallback_model = find_cached_ollama_vision_model(
-                    ollama_chat_url,
-                    preferred_models=_vision_fallback_preferences(active_build),
-                )
-                if fallback_model and fallback_model != use_model:
-                    original_use_model = use_model
-                    use_model = fallback_model
-                    effective_ollama_model = fallback_model
-                    fallback_caps = get_cached_ollama_capabilities(fallback_model, ollama_chat_url)
-                    if fallback_caps is not None:
-                        image_model_caps = fallback_caps
-                        _ollama_caps = fallback_caps
-                        trace["request"]["ollama_capabilities"] = sorted(fallback_caps)
-                        if ollama_think is not None and not caps_supports_thinking(fallback_caps):
-                            ollama_think = None
-                            trace["request"]["ollama_think"] = None
-                            trace["request"]["vision_fallback_stripped_think"] = True
-                    trace["request"]["actual_model"] = use_model
-                    trace["request"]["vision_model_fallback"] = {
-                        "from": original_use_model,
-                        "to": use_model,
-                        "reason": "selected_ollama_model_lacks_vision",
-                    }
-                    trace["ollama"]["model"] = use_model
-                    trace["ollama"]["think"] = ollama_think
-                    _append_trace_warning(trace, "vision_model_fallback")
-        trace["request"]["use_native_tools"] = use_native_tools
-        trace["request"]["tool_choice_effective"] = (
-            tool_choice_effective
-            if isinstance(tool_choice_effective, (str, dict))
-            else str(tool_choice_effective)
-        )
-        trace["request"]["tools_count_effective"] = (
-            len(tools) if use_native_tools and tool_choice_effective != "none" else 0
-        )
-        if use_native_tools and ollama_messages_have_images:
-            trace["request"]["native_tools_preserved_for_vision"] = True
-        client_visible_model = requested_model if dumb_build_pipeline else use_model
-
-        if tool_loop_limit_reached:
-            content = _tool_loop_limit_final_message(trace) or (
-                "[Error: max_agent_steps limit reached. Tools were disabled for this turn.]"
-            )
-            _append_trace_warning(trace, "tool_loop_limit_response_forced")
-            latency_ms = int((time.time() - start_time) * 1000)
-            _prompt_text = " ".join(
-                _ollama_message_content_str(m.get("content"))
-                for m in ollama_messages
-                if isinstance(m, dict)
-            )
-            prompt_tokens_approx = max(1, int(len(_prompt_text) / 4))
-            completion_tokens_approx = max(1, int(len(content) / 4))
-            _total_tokens_approx = prompt_tokens_approx + completion_tokens_approx
-            w.set_proxy_status(w.status_idle)
-            w.set_latest_request_seconds(time.time() - start_time)
-            w.set_latest_request_total_tokens(_total_tokens_approx)
-            trace["ollama"]["chat_skipped"] = "tool_loop_limit_reached"
-            trace["ollama"]["tokens_estimates"] = {
-                "prompt_tokens_estimated": prompt_tokens_approx,
-                "completion_tokens_estimated": completion_tokens_approx,
-                "total_tokens_estimated": _total_tokens_approx,
-            }
-            trace["response"] = {
-                "latency_ms": latency_ms,
-                "tool_calls_count": 0,
-            }
-            _record_reasoning_token_estimates(trace["response"], "", content)
-            _apply_trace_response_text_fields(
-                trace["response"],
-                visible_content=content,
-                reasoning_content="",
-                final_content=content,
-                log_preview=log_preview,
-            )
-            trace["steps"].append(
-                {
-                    "name": "tool_loop_limit_response",
-                    "duration_ms": latency_ms,
-                    "tokens_in_est": prompt_tokens_approx,
-                    "tokens_out_est": completion_tokens_approx,
-                }
-            )
-            publish_response_artifacts(
-                visible_content=content,
-                reasoning_content="",
-                final_content=content,
-            )
-            publish_trace(trace)
-            response_data: dict[str, object] = {
-                "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
-                "object": "chat.completion",
-                "created": 0,
-                "model": client_visible_model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": content},
-                        "finish_reason": "stop",
-                    }
-                ],
-            }
-            if include_rag_metadata and rag_ctx:
-                response_data["rag_metadata"] = build_rag_metadata_for_response(rag_ctx)
-
-            if stream:
-                rid = str(response_data["id"])
-
-                return Response(
-                    iter_tool_limit_sse_stream(
-                        ToolLimitStreamContext(
-                            response_id=rid,
-                            client_visible_model=client_visible_model,
-                            content=content,
-                            private_build=private_build,
-                            user_query=user_query,
-                            log_preview=log_preview,
-                            latency_ms=latency_ms,
-                            trace=trace,
-                            prompt_tokens_approx=prompt_tokens_approx,
-                            completion_tokens_approx=completion_tokens_approx,
-                            total_tokens_approx=_total_tokens_approx,
-                            persist_proxy_request_log=persist_proxy_request_log,
-                        )
-                    ),
-                    mimetype=_SSE_MIMETYPE,
-                    headers=_SSE_RESPONSE_HEADERS,
-                )
-
-            if not private_build:
-                persist_proxy_request_log(
-                    message=f"Proxy request (tool limit): {user_query[:100]}...",
-                    response_preview=content[:log_preview],
-                    latency_ms_value=latency_ms,
-                    trace_payload=trace,
-                    stream_value=False,
-                    include_rag_fields=True,
-                    include_token_fields=True,
-                    prompt_tokens_value=prompt_tokens_approx,
-                    completion_tokens_value=completion_tokens_approx,
-                    total_tokens_value=_total_tokens_approx,
-                    extra_metadata={"tool_loop_limit_response": True},
-                    warn_label="tool limit",
-                )
-            return jsonify(response_data)
     except Exception as e:
         if not private_build:
             w.log_webui_error("rag_routes.chat_completions", e, {"stage": "prepare_rag"})
         _log_rag_error_private("prepare_rag", e, private_build=private_build)
         return jsonify({"error": str(e)}), 500
 
-    if use_native_tools:
-        trace["request"]["native_tools"] = True
-        native_tools_diag: dict[str, Any] = {}
-        native_tools_input = list(tools)
-        native_tools_input, interpolation_diag = _interpolate_native_tools_for_gemini(
-            native_tools_input,
-            model_name=use_model,
-        )
-        if interpolation_diag:
-            native_tools_diag.update(interpolation_diag)
-        native_tools_payload, tools_diag = _preflight_native_tools_payload(native_tools_input)
-        if tools_diag:
-            native_tools_diag.update(tools_diag)
-        oll_tools = ollama_tools_from_openai(native_tools_payload)
-        native_ollama_messages, messages_diag = _preflight_native_tool_messages(
-            ollama_messages,
-            model_name=use_model,
-            trace_id=trace_id,
-            db_path=proxy_db_path,
-        )
-        if messages_diag:
-            native_tools_diag.update(messages_diag)
+    if prepared.early_return is not None:
+        return prepared.early_return
+    ollama_messages = prepared.ollama_messages
+    use_model = prepared.use_model
+    use_model_ref[0] = use_model
+    client_visible_model = prepared.client_visible_model
+    ollama_think = prepared.ollama_think
+    ollama_messages_have_images = prepared.ollama_messages_have_images
 
-        native_ollama_messages, compact_diag = compact_upstream_messages_for_budget(
-            native_ollama_messages,
-            input_budget,
-        )
-        if compact_diag.get("compacted") or compact_diag.get("still_over_budget_after_history_compaction"):
-            native_tools_diag["upstream_context_compaction"] = compact_diag
-
-        native_ollama_messages_for_upstream = native_ollama_messages
-        trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(native_ollama_messages_for_upstream)
-        trace["ollama"]["tools"] = list(oll_tools) if isinstance(oll_tools, list) else []
-        if (
-            has_tool_result
-            and not tool_result_indicates_failure
-            and _tool_loop_needs_finalize_nudge(tool_loop_stats)
-        ):
-            native_ollama_messages = _with_initial_system_message(
-                native_ollama_messages,
-                (
-                    "You have already completed multiple consecutive tool rounds of the same type. "
-                    "Prefer synthesizing the final answer now, and call another tool only if a concrete blocker remains."
-                ),
-            )
-            native_tools_diag["tool_loop_finalize_nudge"] = True
-            native_ollama_messages_for_upstream = native_ollama_messages
-            trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(native_ollama_messages_for_upstream)
-        if native_tools_diag:
-            trace["request"]["native_tools_preflight"] = native_tools_diag
-
-        # ------------------------------------------------------------------ #
-        #  STREAMING native tools: true token-by-token SSE                    #
-        # ------------------------------------------------------------------ #
-        if stream and build_sse_streaming:
-            w.set_proxy_status(w.status_response)
-            trace["request"]["ollama_stream_timeout_disabled"] = True
-
-            return Response(
-                iter_native_tools_sse_stream(
-                    NativeToolsStreamContext(
-                        w=w,
-                        trace=trace,
-                        private_build=private_build,
-                        client_visible_model=client_visible_model,
-                        chat_client=chat_client,
-                        native_ollama_messages_for_upstream=native_ollama_messages_for_upstream,
-                        use_model=use_model,
-                        ollama_think=ollama_think,
-                        oll_tools=oll_tools,
-                        tool_choice_effective=tool_choice_effective,
-                        include_reasoning_content=include_reasoning_content,
-                        user_query=user_query,
-                        trace_id=trace_id,
-                        proxy_db_path=proxy_db_path,
-                        log_preview=log_preview,
-                        start_time=start_time,
-                        rag_ctx_for_log=rag_ctx_for_log,
-                        rag_timings=rag_timings,
-                        requested_model=requested_model,
-                        is_autocomplete=is_autocomplete,
-                        ollama_options_overlay=ollama_options_overlay,
-                        publish_trace=publish_trace,
-                        publish_response_artifacts=publish_response_artifacts,
-                        persist_proxy_request_log=persist_proxy_request_log,
-                        log_rag_error_private=_log_rag_error_private,
-                        rag_request_completed_payload=_rag_request_completed_payload,
-                    )
-                ),
-                mimetype=_SSE_MIMETYPE,
-                headers=_SSE_RESPONSE_HEADERS,
-            )
-
-        return try_build_native_tools_nonstream_response(
-            NativeToolsNonStreamContext(
-                w=w,
-                trace=trace,
-                private_build=private_build,
-                stream=bool(stream),
-                client_visible_model=client_visible_model,
-                chat_client=chat_client,
-                native_ollama_messages=native_ollama_messages,
-                native_ollama_messages_for_upstream=native_ollama_messages_for_upstream,
-                use_model=use_model,
-                ollama_think=ollama_think,
-                oll_tools=oll_tools,
-                tool_choice_effective=tool_choice_effective,
-                include_reasoning_content=include_reasoning_content,
-                include_rag_metadata=bool(include_rag_metadata),
-                user_query=user_query,
-                trace_id=trace_id,
-                proxy_db_path=proxy_db_path,
-                log_preview=log_preview,
-                start_time=start_time,
-                rag_ctx=rag_ctx,
-                rag_ctx_for_log=rag_ctx_for_log,
-                rag_timings=rag_timings,
-                requested_model=requested_model,
-                is_autocomplete=is_autocomplete,
-                post_tool_success_turn=post_tool_success_turn,
-                native_tools_diag=native_tools_diag,
-                ollama_options_overlay=ollama_options_overlay,
-                publish_trace=publish_trace,
-                publish_response_artifacts=publish_response_artifacts,
-                persist_proxy_request_log=persist_proxy_request_log,
-                log_rag_error_private=_log_rag_error_private,
-                rag_request_completed_payload=_rag_request_completed_payload,
-            )
-        )
-
-    if tools and tool_choice_effective != "none":
-        if not post_tool_success_turn:
-            tool_json_instruction = _build_tool_json_instruction(
-                selected_edit_tool_name, selected_edit_tool
-            )
-            if tool_json_instruction:
-                ollama_messages = _with_initial_system_message(ollama_messages, tool_json_instruction)
-            excerpt_sys = _workspace_selection_snippet(user_query or last_user or "").strip()
-            if not excerpt_sys:
-                excerpt_sys = (
-                    _client_selection_snippet(user_query or last_user or "").strip()
-                    or _client_files_snippet(user_query or last_user or "").strip()
-                )
-            if excerpt_sys:
-                ollama_messages = _with_initial_system_message(ollama_messages, excerpt_sys)
-
-        if input_budget is not None:
-            ollama_messages, compact_diag = compact_upstream_messages_for_budget(
-                ollama_messages,
-                input_budget,
-            )
-            if compact_diag.get("compacted") or compact_diag.get("still_over_budget_after_history_compaction"):
-                trace["request"]["upstream_context_compaction"] = compact_diag
-
-        trace["ollama"]["messages"] = _trace_ollama_messages_for_ui(ollama_messages)
-        trace["ollama"]["model"] = use_model
-        publish_trace(trace)
-
-    if is_legacy_tool_stream_mode(
-        stream=stream,
+    return dispatch_response(
+        w=w,
+        trace=trace,
+        use_native_tools=use_native_tools,
         tools=tools,
         tool_choice_effective=tool_choice_effective,
+        use_model=use_model,
+        ollama_messages=ollama_messages,
+        ollama_think=ollama_think,
+        ollama_messages_have_images=ollama_messages_have_images,
+        input_budget=input_budget,
+        trace_id=trace_id,
+        proxy_db_path=proxy_db_path,
+        has_tool_result=has_tool_result,
+        tool_result_indicates_failure=tool_result_indicates_failure,
+        tool_loop_stats=tool_loop_stats,
+        stream=stream,
+        build_sse_streaming=build_sse_streaming,
+        private_build=private_build,
+        client_visible_model=client_visible_model,
+        chat_client=chat_client,
+        include_reasoning_content=include_reasoning_content,
+        include_rag_metadata=include_rag_metadata,
+        user_query=user_query,
+        log_preview=log_preview,
+        start_time=start_time,
+        rag_ctx=rag_ctx,
+        rag_ctx_for_log=rag_ctx_for_log,
+        rag_timings=rag_timings,
+        requested_model=requested_model,
+        is_autocomplete=is_autocomplete,
         post_tool_success_turn=post_tool_success_turn,
-    ):
-        legacy_tool_response = try_build_legacy_tool_stream_response(
-            LegacyToolStreamContext(
-                w=w,
-                trace=trace,
-                trace_id=trace_id,
-                private_build=private_build,
-                client_visible_model=client_visible_model,
-                chat_client=chat_client,
-                ollama_messages=ollama_messages,
-                use_model=use_model,
-                ollama_think=ollama_think,
-                user_query=user_query,
-                log_preview=log_preview,
-                start_time=start_time,
-                rag_ctx_for_log=rag_ctx_for_log,
-                rag_timings=rag_timings,
-                requested_model=requested_model,
-                is_autocomplete=is_autocomplete,
-                selected_edit_tool_name=selected_edit_tool_name,
-                selected_edit_tool=selected_edit_tool,
-                selected_tool_write_capable=selected_tool_write_capable,
-                ollama_options_overlay=ollama_options_overlay,
-                publish_trace=publish_trace,
-                publish_response_artifacts=publish_response_artifacts,
-                persist_proxy_request_log=persist_proxy_request_log,
-                log_rag_error_private=_log_rag_error_private,
-                rag_request_completed_payload=_rag_request_completed_payload,
-            )
-        )
-        if legacy_tool_response is not None:
-            return legacy_tool_response
-
-    if stream and build_sse_streaming:
-        w.set_proxy_status(w.status_response)
-
-        return Response(
-            iter_standard_sse_stream(
-                StandardStreamContext(
-                    w=w,
-                    trace=trace,
-                    trace_id=trace_id,
-                    private_build=private_build,
-                    client_visible_model=client_visible_model,
-                    chat_client=chat_client,
-                    ollama_messages=ollama_messages,
-                    use_model=use_model,
-                    ollama_think=ollama_think,
-                    include_reasoning_content=include_reasoning_content,
-                    user_query=user_query,
-                    log_preview=log_preview,
-                    start_time=start_time,
-                    rag_ctx_for_log=rag_ctx_for_log,
-                    rag_timings=rag_timings,
-                    requested_model=requested_model,
-                    is_autocomplete=is_autocomplete,
-                    ollama_options_overlay=ollama_options_overlay,
-                    publish_trace=publish_trace,
-                    publish_response_artifacts=publish_response_artifacts,
-                    persist_proxy_request_log=persist_proxy_request_log,
-                    log_rag_error_private=_log_rag_error_private,
-                    rag_request_completed_payload=_rag_request_completed_payload,
-                )
-            ),
-            mimetype=_SSE_MIMETYPE,
-            headers=_SSE_RESPONSE_HEADERS,
-        )
-    return build_standard_nonstream_response(
-        StandardNonStreamContext(
-            w=w,
-            trace=trace,
-            private_build=private_build,
-            stream=bool(stream),
-            build_sse_streaming=build_sse_streaming,
-            client_visible_model=client_visible_model,
-            chat_client=chat_client,
-            ollama_messages=ollama_messages,
-            use_model=use_model,
-            ollama_think=ollama_think,
-            include_reasoning_content=include_reasoning_content,
-            include_rag_metadata=bool(include_rag_metadata),
-            user_query=user_query,
-            trace_id=trace_id,
-            log_preview=log_preview,
-            start_time=start_time,
-            rag_ctx=rag_ctx,
-            rag_ctx_for_log=rag_ctx_for_log,
-            rag_timings=rag_timings,
-            requested_model=requested_model,
-            is_autocomplete=is_autocomplete,
-            tools=tools,
-            tool_choice_effective=tool_choice_effective,
-            post_tool_success_turn=post_tool_success_turn,
-            selected_edit_tool_name=selected_edit_tool_name,
-            selected_edit_tool=selected_edit_tool,
-            selected_tool_write_capable=selected_tool_write_capable,
-            ollama_options_overlay=ollama_options_overlay,
-            publish_trace=publish_trace,
-            publish_response_artifacts=publish_response_artifacts,
-            persist_proxy_request_log=persist_proxy_request_log,
-            log_rag_error_private=_log_rag_error_private,
-            rag_request_completed_payload=_rag_request_completed_payload,
-        )
+        selected_edit_tool_name=selected_edit_tool_name,
+        selected_edit_tool=selected_edit_tool,
+        selected_tool_write_capable=selected_tool_write_capable,
+        last_user=last_user,
+        ollama_options_overlay=ollama_options_overlay,
+        publish_trace=publish_trace,
+        publish_response_artifacts=publish_response_artifacts,
+        persist_proxy_request_log=persist_proxy_request_log,
+        log_rag_error_private=_log_rag_error_private,
+        rag_request_completed_payload=_rag_request_completed_payload,
     )
