@@ -40,3 +40,15 @@ def test_check_version_drift_help() -> None:
     result = _run_script_help("check_version_drift.py")
     assert result.returncode == 0, result.stderr
     assert "versions match" in result.stdout.lower()
+
+
+def test_sync_version_help() -> None:
+    result = _run_script_help("sync_version.py")
+    assert result.returncode == 0, result.stderr
+    assert "synchronize" in result.stdout.lower()
+
+
+def test_validate_openapi_help() -> None:
+    result = _run_script_help("validate_openapi.py")
+    assert result.returncode == 0, result.stderr
+    assert "openapi 3.1" in result.stdout.lower()

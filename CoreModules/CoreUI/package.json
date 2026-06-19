@@ -4,13 +4,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run gen:types && vite build",
     "build:strict": "npm run build && npm run check:lockfile",
     "build:stats": "vite build && node -e \"console.log('Bundle report: dist/stats.html')\"",
     "check:lockfile": "git diff --exit-code HEAD -- package-lock.json",
     "test": "vitest",
     "test:run": "vitest run",
     "test:module-timings": "node scripts/test_module_timings.mjs",
+    "gen:types": "node scripts/gen_api_types.mjs",
     "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\"",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
@@ -45,5 +46,10 @@
     "typescript": "^5.8.2",
     "vite": "^5.0.8",
     "vitest": "^3.0.9"
+  },
+  "knip": {
+    "ignoreBinaries": [
+      "python"
+    ]
   }
 }

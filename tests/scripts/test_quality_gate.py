@@ -18,6 +18,7 @@ def test_minimal_gate_has_required_steps_and_timeouts() -> None:
         "ruff",
         "version-drift",
         "api-drift",
+        "openapi-schema",
         "pytest-fast",
         "pytest-collect",
         "coreui-build",

@@ -800,7 +800,8 @@ def build_openapi_spec(app: Flask) -> dict[str, Any]:
             path_item[method.lower()] = operation
 
     return {
-        "openapi": "3.0.3",
+        "openapi": "3.1.0",
+        "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
         "info": {
             "title": f"{APP_NAME} API",
             "version": VERSION,

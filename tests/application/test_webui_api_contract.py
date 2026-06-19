@@ -94,7 +94,8 @@ def test_openapi_json_route_exposes_expected_document() -> None:
     spec = response.get_json() or {}
 
     assert response.status_code == 200
-    assert spec["openapi"].startswith("3.")
+    assert spec["openapi"] == "3.1.0"
+    assert spec["jsonSchemaDialect"] == "https://json-schema.org/draft/2020-12/schema"
     assert spec["info"]["title"] == f"{APP_NAME} API"
     assert spec["info"]["version"] == VERSION
     assert "/api/webui/version" in spec["paths"]

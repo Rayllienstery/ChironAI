@@ -74,10 +74,10 @@ SMOKE          = .\build_and_run.bat      (cwd: repo root)
 - [x] **T7.1** Строгий ruff (SIM) · +3 · deps: —
 - [x] **T7.2** pyright strict для domain/core · +2 · deps: T7.1
 - [x] **T10.1** check_api_drift → required в minimal-gate · +2 · deps: —
-- [ ] **T10.2** Codegen TS-типов из OpenAPI · +3 · deps: T10.1
-- [ ] **T12.1** Автоматизация bump + CHANGELOG (commitizen) · +4 · deps: T20.1
-- [ ] **T15.1** CODEOWNERS + PR template · +5 · deps: —
-- [ ] **T16.1** OpenAPI 3.1 + валидация схемы · +3 · deps: T10.1
+- [x] **T10.2** Codegen TS-типов из OpenAPI · +3 · deps: T10.1
+- [x] **T12.1** Автоматизация bump + CHANGELOG (commitizen) · +4 · deps: T20.1
+- [x] **T15.1** CODEOWNERS + PR template · +5 · deps: —
+- [x] **T16.1** OpenAPI 3.1 + валидация схемы · +3 · deps: T10.1
 - [ ] **T19.1** Hard-лимит размера файла (required) · +4 · deps: —
 - [ ] **T4.1** Порог покрытия domain/application в CI · +2 · deps: —
 
@@ -106,7 +106,7 @@ SMOKE          = .\build_and_run.bat      (cwd: repo root)
 
 ### Фаза 2 — P2 (стратегические, ≈+34 → 1000)
 
-- [ ] **T17.1** Второй язык i18n (ru) + i18n-lint + workflow · +8 · deps: —
+- [ ] **T17.1** Второй язык i18n (german), возможность переключения в Settings + i18n-lint + workflow · +8 · deps: —
 - [ ] **T18.1** Документирование tribal knowledge · +10 · deps: T1.2
 - [!] **T18.2** Второй контрибьютор (ЧЕЛОВЕК — не ИИ-задача) · +12 · deps: T18.1
 - [ ] **T4.4** Мутационное тестирование критичных сервисов · +2 · deps: T4.2

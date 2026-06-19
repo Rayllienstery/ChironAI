@@ -19,6 +19,7 @@ class VersionState:
     core_version: str
     pyproject_version: str
     changelog_version: str
+    commitizen_version: str | None = None
 
 
 def _read_text(path: Path) -> str:
@@ -34,10 +35,14 @@ def parse_core_version(version_py: Path) -> str:
 
 
 def parse_pyproject_version(pyproject: Path) -> str:
+    return parse_pyproject_section_version(pyproject, "[project]")
+
+
+def parse_pyproject_section_version(pyproject: Path, section: str) -> str:
     in_project = False
     for raw_line in _read_text(pyproject).splitlines():
         line = raw_line.strip()
-        if line == "[project]":
+        if line == section:
             in_project = True
             continue
         if line.startswith("[") and line.endswith("]"):
@@ -48,7 +53,14 @@ def parse_pyproject_version(pyproject: Path) -> str:
         match = PROJECT_VERSION_RE.match(line)
         if match:
             return match.group(1)
-    raise ValueError(f"Could not find [project].version in {pyproject}")
+    raise ValueError(f"Could not find {section}.version in {pyproject}")
+
+
+def parse_commitizen_version(pyproject: Path) -> str | None:
+    try:
+        return parse_pyproject_section_version(pyproject, "[tool.commitizen]")
+    except ValueError:
+        return None
 
 
 def parse_changelog_version(changelog: Path) -> str:
@@ -60,10 +72,12 @@ def parse_changelog_version(changelog: Path) -> str:
 
 
 def collect_version_state(repo_root: Path = REPO_ROOT) -> VersionState:
+    pyproject = repo_root / "pyproject.toml"
     return VersionState(
         core_version=parse_core_version(repo_root / "Core" / "core" / "version.py"),
-        pyproject_version=parse_pyproject_version(repo_root / "pyproject.toml"),
+        pyproject_version=parse_pyproject_version(pyproject),
         changelog_version=parse_changelog_version(repo_root / "CHANGELOG.md"),
+        commitizen_version=parse_commitizen_version(pyproject),
     )
 
 
@@ -76,6 +90,10 @@ def find_version_drift(state: VersionState) -> list[str]:
         )
     if state.changelog_version != expected:
         issues.append(f"CHANGELOG.md latest version is {state.changelog_version}, expected {expected}")
+    if state.commitizen_version is not None and state.commitizen_version != expected:
+        issues.append(
+            f"pyproject.toml [tool.commitizen].version is {state.commitizen_version}, expected {expected}"
+        )
     return issues
 
 

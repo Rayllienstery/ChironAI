@@ -17,6 +17,7 @@
   "include": [
     "src/types/**/*.d.ts",
     "src/services/**/*.js",
+    "src/services/**/*.ts",
     "src/components/extensionRuntimeTab/**/*.ts",
     "src/components/extensionRuntimeTab/**/*.tsx",
     "src/components/showcase/**/*.tsx",

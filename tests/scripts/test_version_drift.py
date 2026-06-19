@@ -14,7 +14,14 @@ def _write_version_repo(root: Path, *, core: str, pyproject: str, changelog: str
     version_dir.mkdir(parents=True)
     (version_dir / "version.py").write_text(f'VERSION = "{core}"\n', encoding="utf-8")
     (root / "pyproject.toml").write_text(
-        f'[build-system]\nrequires = []\n\n[project]\nname = "sample"\nversion = "{pyproject}"\n',
+        "[build-system]\n"
+        "requires = []\n\n"
+        "[project]\n"
+        'name = "sample"\n'
+        f'version = "{pyproject}"\n\n'
+        "[tool.commitizen]\n"
+        'name = "cz_conventional_commits"\n'
+        f'version = "{pyproject}"\n',
         encoding="utf-8",
     )
     (root / "CHANGELOG.md").write_text(
@@ -32,6 +39,7 @@ def test_collect_version_state_reads_all_sources(tmp_path: Path) -> None:
         core_version="1.2.3",
         pyproject_version="1.2.3",
         changelog_version="1.2.3",
+        commitizen_version="1.2.3",
     )
     assert check_version_drift.find_version_drift(state) == []
 
@@ -41,12 +49,14 @@ def test_find_version_drift_reports_mismatches() -> None:
         core_version="1.2.3",
         pyproject_version="1.2.2",
         changelog_version="1.2.1",
+        commitizen_version="1.2.0",
     )
 
     issues = check_version_drift.find_version_drift(state)
 
     assert "pyproject.toml" in issues[0]
     assert "CHANGELOG.md" in issues[1]
+    assert "[tool.commitizen]" in issues[2]
 
 
 def test_check_version_drift_cli_fails_on_drift(tmp_path: Path) -> None:

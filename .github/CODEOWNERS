@@ -1,0 +1,9 @@
+# Repository ownership
+* @kostiantyn-kolosov
+
+/Core/ @kostiantyn-kolosov
+/CoreModules/CoreUI/ @kostiantyn-kolosov
+/CoreModules/LlmProxy/ @kostiantyn-kolosov
+/extensions/ @kostiantyn-kolosov
+/docs/ @kostiantyn-kolosov
+/tests/ @kostiantyn-kolosov

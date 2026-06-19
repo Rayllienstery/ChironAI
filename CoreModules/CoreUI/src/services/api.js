@@ -1,3 +1,7 @@
+/**
+ * @typedef {import('./api.types').paths} ApiPaths
+ */
+
 import {
   API_BASE,
   COREUI_SESSION_STORAGE_KEY,
@@ -104,8 +108,6 @@ export {
   stopRag,
 } from './rag.js';
 
-
-
 export async function getVersion() {
   const response = await fetch(`${API_BASE}/version`);
   const data = await response.json().catch(() => ({}));
@@ -118,7 +120,8 @@ export async function getVersion() {
 export async function getSession({ maxRetries = 3, baseDelayMs = 500, timeoutMs = 1500 } = {}) {
   let url = `${API_BASE}/sessions`;
   try {
-    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(COREUI_SESSION_STORAGE_KEY) : null;
+    const stored =
+      typeof localStorage !== 'undefined' ? localStorage.getItem(COREUI_SESSION_STORAGE_KEY) : null;
     if (stored && String(stored).trim()) {
       const params = new URLSearchParams({ session_id: String(stored).trim() });
       url = `${API_BASE}/sessions?${params}`;
@@ -131,7 +134,7 @@ export async function getSession({ maxRetries = 3, baseDelayMs = 500, timeoutMs 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     if (attempt > 0) {
       // Exponential backoff: 500ms, 1s, 2s, 4s, 8s
-      await new Promise(resolve => setTimeout(resolve, baseDelayMs * Math.pow(2, attempt - 1)));
+      await new Promise((resolve) => setTimeout(resolve, baseDelayMs * Math.pow(2, attempt - 1)));
     }
     try {
       const { response, data: session } = await fetchJsonWithTimeout(url, {
@@ -173,7 +176,6 @@ export async function getModelSettings() {
   }
   return response.json();
 }
-
 
 export async function updateModelSettings(settings) {
   const response = await fetch(`${API_BASE}/model-settings`, {
@@ -389,7 +391,6 @@ export async function clearLogs(sessionId, options = {}) {
   return response.json();
 }
 
-
 export async function getSettings() {
   const response = await fetch(`${API_BASE}/settings`);
   if (!response.ok) {
@@ -515,9 +516,12 @@ export async function updateTrashPrompt(trashName, content) {
 }
 
 export async function restorePrompt(trashName) {
-  const response = await fetch(`${API_BASE}/prompts/trash/${encodeURIComponent(trashName)}/restore`, {
-    method: 'POST',
-  });
+  const response = await fetch(
+    `${API_BASE}/prompts/trash/${encodeURIComponent(trashName)}/restore`,
+    {
+      method: 'POST',
+    },
+  );
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(extractApiError(error, 'Failed to restore prompt'));
@@ -535,7 +539,6 @@ export async function clearTrash() {
   }
   return response.json();
 }
-
 
 export async function getDockerStatus() {
   const response = await fetch(`${API_BASE}/docker/status`, {
@@ -625,7 +628,6 @@ export async function removeDockerContainer(container, force = false) {
 export async function removeDockerImage(image, force = false) {
   return dockerJsonAction('/docker/images', { image, force, confirm: image }, 'DELETE');
 }
-
 
 /**
  * Fetch the startup timing report from the backend.

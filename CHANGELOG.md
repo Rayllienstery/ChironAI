@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.24] - 2026-06-19
+### Changed
+- Updated the generated API document to OpenAPI 3.1 and added schema validation to the quality gate.
+
+## [0.7.23] - 2026-06-19
+### Changed
+- Added repository code ownership and pull request checklist templates.
+
+## [0.7.22] - 2026-06-19
+### Changed
+- Added automated project version and changelog synchronization.
+
+## [0.7.21] - 2026-06-18
+### Added
+- Added CoreUI OpenAPI TypeScript type generation from the backend OpenAPI spec.
+
 ## [0.7.20] - 2026-06-18
 ### Changed
 - Made strict API drift checking a required minimal quality gate step.

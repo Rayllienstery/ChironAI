@@ -39,6 +39,7 @@ MINIMAL_GATE: tuple[GateStep, ...] = (
     GateStep("ruff", ("ruff", "check", "."), REPO_ROOT, 120),
     GateStep("version-drift", _python_command("scripts/check_version_drift.py"), REPO_ROOT, 30),
     GateStep("api-drift", _python_command("scripts/check_api_drift.py", "--strict", "--strict-openapi"), REPO_ROOT, 60),
+    GateStep("openapi-schema", _python_command("scripts/validate_openapi.py"), REPO_ROOT, 60),
     GateStep("pytest-fast", ("pytest", "-q", "-m", "fast", "--maxfail=1"), REPO_ROOT, 300),
     GateStep("pytest-collect", ("pytest", "--collect-only", "-q"), REPO_ROOT, 180),
     GateStep("coreui-build", _npm_command("run", "build"), COREUI_ROOT, 180),

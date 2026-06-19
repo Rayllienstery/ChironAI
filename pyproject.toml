@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chironai"
-version = "0.7.20"
+version = "0.7.24"
 description = "Modular RAG platform (Ollama + Qdrant) with WebUI and crawl/index pipelines. Configured for Apple platforms, supports any domain."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -39,7 +39,9 @@ dependencies = [
 dev = [
   "pytest>=9.0.3",
   "pytest-cov>=4.0.0",
+  "commitizen>=3.0",
   "import-linter>=2.0",
+  "jsonschema>=4.0",
   "ruff>=0.8.0",
   "vulture>=2.14",
   "pyright>=1.1.0",
@@ -52,6 +54,17 @@ tmrag = "api.cli.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com"
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.7.24"
+version_files = [
+  "Core/core/version.py:VERSION",
+  "pyproject.toml:version",
+]
+changelog_file = "CHANGELOG.md"
+tag_format = "v$version"
+update_changelog_on_bump = true
 
 # --- Editable install: root packages plus canonical shared modules (multi-root discovery)
 [tool.setuptools.packages.find]
