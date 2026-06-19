@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.27] - 2026-06-19
+### Changed
+- Split Apple docs extraction into focused modules.
+- Kept CoreUI lint focused on JavaScript sources while TypeScript remains covered by typecheck.
+
+## [0.7.26] - 2026-06-19
+### Changed
+- Added required domain/application coverage gate.
+
+## [0.7.25] - 2026-06-19
+### Changed
+- Made oversized-file auditing a required full quality gate step.
+
 ## [0.7.24] - 2026-06-19
 ### Changed
 - Updated the generated API document to OpenAPI 3.1 and added schema validation to the quality gate.

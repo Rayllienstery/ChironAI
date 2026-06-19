@@ -39,6 +39,22 @@ def test_release_gate_keeps_startup_smoke_advisory() -> None:
     assert startup.timeout_seconds == 120
 
 
+def test_full_gate_requires_oversized_file_audit() -> None:
+    oversized = next(step for step in quality_gate.iter_steps("full") if step.name == "oversized-files")
+
+    assert oversized.required is True
+    assert oversized.command[-3:] == ("scripts/audit_oversized_files.py", "--mode", "check")
+
+
+def test_full_gate_requires_domain_application_coverage() -> None:
+    coverage = next(step for step in quality_gate.iter_steps("full") if step.name == "coverage-domain")
+
+    assert coverage.required is True
+    assert "--cov=domain" in coverage.command
+    assert "--cov=application" in coverage.command
+    assert "--cov-fail-under=80" in coverage.command
+
+
 def test_quality_gate_help() -> None:
     result = subprocess.run(
         [sys.executable, "scripts/quality_gate.py", "--help"],

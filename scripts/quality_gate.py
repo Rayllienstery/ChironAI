@@ -51,11 +51,24 @@ FULL_GATE_EXTRA: tuple[GateStep, ...] = (
     GateStep("vulture", _python_command("-m", "vulture"), REPO_ROOT, 120),
     GateStep("pytest-full", ("pytest", "-q"), REPO_ROOT, 600),
     GateStep(
+        "coverage-domain",
+        (
+            "pytest",
+            "-q",
+            "-m",
+            "fast",
+            "--cov=domain",
+            "--cov=application",
+            "--cov-fail-under=80",
+        ),
+        REPO_ROOT,
+        300,
+    ),
+    GateStep(
         "oversized-files",
         _python_command("scripts/audit_oversized_files.py", "--mode", "check"),
         REPO_ROOT,
         60,
-        required=False,
     ),
     GateStep(
         "silent-exceptions",

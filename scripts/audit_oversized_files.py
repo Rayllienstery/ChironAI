@@ -12,6 +12,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PRODUCTION_LIMIT = 800
 TEST_LIMIT = 1200
 
+GENERATED_FILE_PATHS = {
+    "CoreModules/CoreUI/src/services/api.types.ts",
+}
+
 # Paths excluded from enforcement (generated, vendor, build output).
 EXCLUDE_DIR_NAMES = {
     ".git",
@@ -35,7 +39,6 @@ DOCUMENTED_EXCEPTIONS: dict[str, str] = {
     "tests/llm_interactor/test_runtime.py": "Interactor runtime characterization suite; split deferred",
     "CoreModules/CoreUI/src/services/api.js": "Phase 3 domain service split complete; facade retained",
     "Core/config/env.py": "Phase 3 acceptable; env overrides cohesive unit",
-    "Core/modules/webui_backend/webui_backend/apple_docs_extract.py": "Apple docs extractor; split deferred",
     "Core/api/http/rag_tests_routes.py": "RAG tests API; split after contract stabilization",
     "CoreModules/LlmProxy/llm_proxy/chat_completions_handler.py": "Phase 3 split complete; orchestration shell",
     "CoreModules/LlmProxy/llm_proxy/tool_helpers.py": "Shared tool helpers; extract incrementally",
@@ -69,6 +72,8 @@ class Violation:
 def _is_excluded(path: Path) -> bool:
     rel = path.as_posix()
     if rel.startswith("extensions/bundled/"):
+        return True
+    if rel in GENERATED_FILE_PATHS:
         return True
     return any(part in EXCLUDE_DIR_NAMES for part in path.parts)
 
