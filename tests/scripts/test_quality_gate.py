@@ -16,6 +16,8 @@ def test_minimal_gate_has_required_steps_and_timeouts() -> None:
 
     assert names == [
         "ruff",
+        "version-drift",
+        "api-drift",
         "pytest-fast",
         "pytest-collect",
         "coreui-build",

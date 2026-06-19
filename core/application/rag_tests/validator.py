@@ -42,9 +42,7 @@ def _matches_weak_reference(response: str, _concept: str) -> bool:
         return True
     if re.search(r"\bweak\s+var\b", r, re.IGNORECASE):
         return True
-    if re.search(r"\bweak\s+let\b", r, re.IGNORECASE):
-        return True
-    return False
+    return bool(re.search(r"\bweak\s+let\b", r, re.IGNORECASE))
 
 
 def _matches_id_colon(response: str, _concept: str) -> bool:
@@ -53,9 +51,7 @@ def _matches_id_colon(response: str, _concept: str) -> bool:
         return True
     if re.search(r"\bid\s*:\s*", r, re.IGNORECASE):
         return True
-    if re.search(r"identified\s+by", r, re.IGNORECASE):
-        return True
-    return False
+    return bool(re.search(r"identified\s+by", r, re.IGNORECASE))
 
 
 def _matches_custom_layout(response: str, _concept: str) -> bool:
@@ -63,10 +59,7 @@ def _matches_custom_layout(response: str, _concept: str) -> bool:
     if _response_contains_concept(r, "custom Layout") or _response_contains_concept(r, "custom layout"):
         return True
     low = r.lower()
-    for needle in ("lazyvgrid", "lazyhgrid", "griditem", "layout protocol", "layout that"):
-        if needle in low:
-            return True
-    return False
+    return any(needle in low for needle in ("lazyvgrid", "lazyhgrid", "griditem", "layout protocol", "layout that"))
 
 
 def _matches_slash_pair(response: str, concept: str) -> bool:
@@ -152,10 +145,7 @@ def validate_concepts(
     total = len(flat) + len(groups)
     hits = flat_hits + group_hits
 
-    if concept_mode == "any":
-        flat_ok = (not flat) or (flat_hits >= 1)
-    else:
-        flat_ok = (not flat) or (flat_hits == len(flat))
+    flat_ok = not flat or flat_hits >= 1 if concept_mode == "any" else not flat or flat_hits == len(flat)
 
     groups_ok = (not groups) or (group_hits == len(groups))
     passed = flat_ok and groups_ok

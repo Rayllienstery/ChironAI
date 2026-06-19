@@ -244,7 +244,7 @@ class NotificationsRepository:
 
 
 def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
-    d = {k: row[k] for k in row.keys()}
+    d = {k: row[k] for k in row.keys()}  # noqa: SIM118 - sqlite3.Row iterates values, not column names.
     meta = d.get("metadata")
     if isinstance(meta, str) and meta:
         try:

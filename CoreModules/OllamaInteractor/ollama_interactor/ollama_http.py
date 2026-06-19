@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from collections.abc import Iterator
 from typing import Any, Union
@@ -113,10 +114,8 @@ def stream_pull_objects(
             if isinstance(obj, dict):
                 yield obj
     finally:
-        try:
+        with contextlib.suppress(Exception):
             resp.close()
-        except Exception:
-            pass
 
 
 def format_http_error(exc: requests.exceptions.HTTPError) -> dict[str, Any]:

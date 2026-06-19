@@ -3,7 +3,6 @@ import {
   formatBytesLoose,
   formatIsoShort,
   modelIsHidden,
-  normalizeModelDetailsForModal,
   parseModelName,
 } from './extensionRuntimeTabUtils';
 
@@ -207,5 +206,3 @@ export default function ExtensionRuntimeModelCard({
     </Card>
   );
 }
-
-export { normalizeModelDetailsForModal };

@@ -66,14 +66,14 @@ SMOKE          = .\build_and_run.bat      (cwd: repo root)
 
 ### Фаза 0 — P0 (быстрые победы, ≈+45 → ~881)
 
-- [ ] **T20.1** Синхронизировать версию pyproject↔version.py · +4 · deps: —
-- [ ] **T20.2** Исправить устаревшие ссылки в README · +3 · deps: —
-- [ ] **T20.3** CI-проверка дрифта версии · +4 · deps: T20.1
-- [ ] **T20.4** Pre-commit hooks · +3 · deps: T20.1
-- [ ] **T3.1** Расширить import-linter контракты для всех слоёв · +3 · deps: —
-- [ ] **T7.1** Строгий ruff (SIM) · +3 · deps: —
-- [ ] **T7.2** pyright strict для domain/core · +2 · deps: T7.1
-- [ ] **T10.1** check_api_drift → required в minimal-gate · +2 · deps: —
+- [x] **T20.1** Синхронизировать версию pyproject↔version.py · +4 · deps: —
+- [x] **T20.2** Исправить устаревшие ссылки в README · +3 · deps: —
+- [x] **T20.3** CI-проверка дрифта версии · +4 · deps: T20.1
+- [x] **T20.4** Pre-commit hooks · +3 · deps: T20.1
+- [x] **T3.1** Расширить import-linter контракты для всех слоёв · +3 · deps: —
+- [x] **T7.1** Строгий ruff (SIM) · +3 · deps: —
+- [x] **T7.2** pyright strict для domain/core · +2 · deps: T7.1
+- [x] **T10.1** check_api_drift → required в minimal-gate · +2 · deps: —
 - [ ] **T10.2** Codegen TS-типов из OpenAPI · +3 · deps: T10.1
 - [ ] **T12.1** Автоматизация bump + CHANGELOG (commitizen) · +4 · deps: T20.1
 - [ ] **T15.1** CODEOWNERS + PR template · +5 · deps: —

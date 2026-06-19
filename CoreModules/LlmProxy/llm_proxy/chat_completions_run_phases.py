@@ -39,6 +39,4 @@ def _tool_loop_needs_finalize_nudge(tool_loop_stats: dict[str, Any] | None) -> b
         return False
     if dominant in _TOOL_LOOP_FINALIZE_WHITELIST and dom_rounds >= 3:
         return True
-    if dominant and dom_rounds >= 8:
-        return True
-    return False
+    return bool(dominant and dom_rounds >= 8)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -247,14 +248,12 @@ def ensure_collection_with_name(
                 "symbol", "framework", "section",
             ]
             for field in index_fields:
-                try:
+                with contextlib.suppress(Exception):
                     qclient.create_payload_index(
                         collection_name=collection_name,
                         field_name=field,
                         field_schema=PayloadSchemaType.KEYWORD,
                     )
-                except Exception:  # safe: index may already exist
-                    pass
         except Exception:  # safe: payload index ensure is best-effort on existing collection
             pass
         return
@@ -281,14 +280,12 @@ def ensure_collection_with_name(
             _WEBUI_LOG.info(f"Created Qdrant collection '{collection_name}' (dim={dim}, named dense)")
         # Ensure payload indexes on new collection
         for field in ["language", "technology", "domain", "product", "doc_type", "doc_scope", "symbol", "framework", "section"]:
-            try:
+            with contextlib.suppress(Exception):
                 qclient.create_payload_index(
                     collection_name=collection_name,
                     field_name=field,
                     field_schema=PayloadSchemaType.KEYWORD,
                 )
-            except Exception:  # safe: payload index may already exist on new collection
-                pass
     except Exception as e:
         _WEBUI_LOG.error(f"Failed to create collection '{collection_name}': {e}")
         raise

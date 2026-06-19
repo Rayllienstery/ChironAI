@@ -383,9 +383,7 @@ def _ollama_native_think_broken_for_model(model_name: str | None) -> bool:
     if idx < 0:
         return False
     after = idx + 5  # position right after "qwen3"
-    if after < len(name) and name[after] in ".0123456789":
-        return False
-    return True
+    return not (after < len(name) and name[after] in ".0123456789")
 
 
 def effective_ollama_think_from_body(

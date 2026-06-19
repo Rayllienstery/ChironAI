@@ -12,6 +12,8 @@ try:
 except ImportError:
     RAG_COLLECTION_APP_SETTING = "rag_collection"
 
+import contextlib
+
 from flask import Response, jsonify, request
 
 from api.http.proxy_trace import set_response_artifacts
@@ -202,10 +204,7 @@ def run_chat_completions(
         _RAG_LOG.warning("LLM runtime preflight before chat completions failed: %s", exc)
 
     try:
-        if body_override is not None:
-            body = dict(body_override)
-        else:
-            body = request.get_json(force=True, silent=True) or {}
+        body = dict(body_override) if body_override is not None else request.get_json(force=True, silent=True) or {}
     except Exception as e:
         w.log_webui_error("rag_routes.chat_completions", e, {"stage": "parse_body"})
         _log_rag_error("parse_body", e)
@@ -272,15 +271,11 @@ def run_chat_completions(
             proxy_model_setting = _om_b
         build_extra_options = build_ollama_options(active_build)
         if active_build.get("temperature") is not None:
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 build_extra_options["temperature"] = float(active_build["temperature"])
-            except (TypeError, ValueError):
-                pass
         if active_build.get("top_p") is not None:
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 build_extra_options["top_p"] = float(active_build["top_p"])
-            except (TypeError, ValueError):
-                pass
         dumb_build_pipeline = True
         _rl_b = str(active_build.get("reasoning_level") or "").strip()
         if _rl_b and not body.get("reasoning_level") and not body.get("reasoning"):

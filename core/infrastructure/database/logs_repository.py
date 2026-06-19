@@ -32,10 +32,7 @@ def _normalize_log_timestamp_bound(value: str, *, end: bool) -> str:
             dt = datetime.fromisoformat(s)
         else:
             dt = datetime.strptime(s[:10], "%Y-%m-%d")
-            if end:
-                dt = dt.replace(hour=23, minute=59, second=59)
-            else:
-                dt = dt.replace(hour=0, minute=0, second=0)
+            dt = dt.replace(hour=23, minute=59, second=59) if end else dt.replace(hour=0, minute=0, second=0)
     except ValueError:
         return s
     if dt.tzinfo is not None:

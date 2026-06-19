@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -58,10 +59,8 @@ def resolve_project_context_collections(
     rag_sources_config = w.external_docs.load_rag_sources_config()
     name_to_collection = build_framework_name_to_collection_map(rag_sources_config)
     prep_settings_repo = None
-    try:
+    with contextlib.suppress(Exception):
         prep_settings_repo = w.get_settings_repository()
-    except Exception:
-        pass
     fresh_names, needs_refresh = resolve_project_fresh_collections(
         frameworks,
         name_to_collection=name_to_collection,

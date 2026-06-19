@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from typing import Any
 
@@ -76,10 +77,8 @@ def resolve_project_fresh_collections(
             continue
         meta = None
         if settings_repo is not None:
-            try:
+            with contextlib.suppress(Exception):
                 meta = settings_repo.get_collection_meta(coll)
-            except Exception:
-                pass
         if check_collection_freshness(meta, ttl_days) == "fresh":
             if coll not in fresh_collections:
                 fresh_collections.append(coll)

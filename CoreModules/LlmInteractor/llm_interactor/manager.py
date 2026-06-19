@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import shutil
 import tempfile
@@ -135,10 +136,8 @@ class ExtensionManager(ExtensionTabMixin):
         for item in list(loaded if loaded is not None else self._loaded):
             close = getattr(item.provider, "close", None)
             if callable(close):
-                try:
+                with contextlib.suppress(Exception):
                     close()
-                except Exception:
-                    pass
 
     @property
     def runtime_status(self) -> str:
@@ -193,10 +192,8 @@ class ExtensionManager(ExtensionTabMixin):
             ).start()
 
     def _prewarm_registry(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self._registry_client.load_with_diagnostics()
-        except Exception:
-            pass
 
     def _bootstrap_runtime_worker(self) -> None:
         try:
@@ -888,10 +885,7 @@ class ExtensionManager(ExtensionTabMixin):
         expected_digest = str(entry.get("digest") or "").strip()
         if source_path:
             src = Path(source_path)
-            if not src.is_absolute():
-                src = (self._project_root / src).resolve()
-            else:
-                src = src.resolve()
+            src = (self._project_root / src).resolve() if not src.is_absolute() else src.resolve()
             # Guard against path traversal: source must stay inside project root.
             project_root_resolved = self._project_root.resolve()
             try:
@@ -1006,10 +1000,8 @@ class ExtensionManager(ExtensionTabMixin):
             if item.manifest.id == ext_id:
                 close = getattr(item.provider, "close", None)
                 if callable(close):
-                    try:
+                    with contextlib.suppress(Exception):
                         close()
-                    except Exception:
-                        pass
         tombstone = InstalledExtensionRecord(
             id=target.id,
             version=target.version,

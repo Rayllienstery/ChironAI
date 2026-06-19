@@ -363,10 +363,7 @@ def write_codex_profile(
         if idx >= 0:
             rest = text[idx + len(header) :]
             end_idx = rest.find("\n[")
-            if end_idx >= 0:
-                text = text[:idx] + block + rest[end_idx + 1 :]
-            else:
-                text = text[:idx] + block
+            text = text[:idx] + block + rest[end_idx + 1:] if end_idx >= 0 else text[:idx] + block
         else:
             if text and not text.endswith("\n"):
                 text += "\n"

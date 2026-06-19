@@ -138,7 +138,7 @@ export function isRuntimeStillLoadingMessage(message: unknown): boolean {
   return String(message || '').toLowerCase().includes('extension runtime is still loading');
 }
 
-export function extensionTabLoadStatus(payload: unknown): string {
+function extensionTabLoadStatus(payload: unknown): string {
   const loadState = (payload as { load_state?: { status?: string } })?.load_state;
   return String(loadState?.status || '').trim().toLowerCase();
 }

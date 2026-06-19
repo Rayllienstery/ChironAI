@@ -22,12 +22,14 @@ def test_expand_query_variants_disabled_returns_single() -> None:
 
 
 def test_expand_query_variants_adds_phrase_when_enabled() -> None:
-    with patch("rag_service.domain.services.retrieval.get_retrieval_bool", return_value=True):
-        with patch("rag_service.domain.services.retrieval.get_retrieval_int", return_value=3):
-            with patch(
-                "rag_service.domain.services.retrieval.get_retrieval_dict",
-                return_value={"MVVM": "Model View ViewModel"},
-            ):
-                v = expand_query_variants("How does MVVM work in SwiftUI?")
-                assert len(v) >= 2
-                assert any("Model View ViewModel" in x for x in v)
+    with (
+        patch("rag_service.domain.services.retrieval.get_retrieval_bool", return_value=True),
+        patch("rag_service.domain.services.retrieval.get_retrieval_int", return_value=3),
+        patch(
+            "rag_service.domain.services.retrieval.get_retrieval_dict",
+            return_value={"MVVM": "Model View ViewModel"},
+        ),
+    ):
+        v = expand_query_variants("How does MVVM work in SwiftUI?")
+        assert len(v) >= 2
+        assert any("Model View ViewModel" in x for x in v)

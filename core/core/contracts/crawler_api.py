@@ -7,7 +7,7 @@ REST shape (future HTTP service) is documented inline; this module provides type
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, TypedDict, cast
 
 
 class CrawlSourceDict(TypedDict, total=False):
@@ -55,7 +55,7 @@ class CrawlPageResult:
     url: str
     html: str
     source_id: str
-    extra: dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=lambda: cast(dict[str, Any], {}))
 
 
 __all__ = [

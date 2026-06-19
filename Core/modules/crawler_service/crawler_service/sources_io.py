@@ -24,9 +24,7 @@ def load_sources(project_root: Path) -> list[dict[str, Any]]:
             data = yaml.safe_load(f) or {}
         sources = data.get("sources", [])
         for source in sources:
-            if "seed_urls" not in source:
-                source["seed_urls"] = []
-            elif not isinstance(source["seed_urls"], list):
+            if "seed_urls" not in source or not isinstance(source["seed_urls"], list):
                 source["seed_urls"] = []
         return sources if sources else _default_sources()
     except Exception:

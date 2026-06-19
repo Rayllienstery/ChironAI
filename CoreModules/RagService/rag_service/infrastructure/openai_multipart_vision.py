@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import contextlib
 import ipaddress
 import json
 import os
@@ -116,10 +117,8 @@ def http_image_url_to_data_url(url: str) -> tuple[str | None, str | None]:
         b64 = base64.b64encode(bytes(buf)).decode("ascii")
         return f"data:{ct};base64,{b64}", None
     finally:
-        try:
+        with contextlib.suppress(Exception):
             r.close()
-        except Exception:
-            pass
 
 
 def sanitize_openai_text_part(text: str, *, max_chars: int = 80_000) -> str:
@@ -201,10 +200,7 @@ def _promote_data_urls_in_plain_text(text: str) -> list[dict[str, Any]]:
             images_kept += 1
             pos = b
         else:
-            if images_kept >= VISION_MAX_IMAGES_PER_MESSAGE:
-                note = _NOTE_TOO_MANY
-            else:
-                note = err or _NOTE_INVALID
+            note = _NOTE_TOO_MANY if images_kept >= VISION_MAX_IMAGES_PER_MESSAGE else err or _NOTE_INVALID
             out.append({"type": "text", "text": note})
             pos = b if b > m.end() else m.end()
     return out

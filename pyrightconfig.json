@@ -1,14 +1,22 @@
 {
   "include": [
     "Core/application",
-    "Core/core/contracts",
-    "Core/core/shared",
+    "Core/core",
+    "Core/domain"
+  ],
+  "strict": [
+    "Core/core",
     "Core/domain"
   ],
   "exclude": [
     "**/__pycache__",
     ".venv",
     "venv"
+  ],
+  "extraPaths": [
+    "Core",
+    "CoreModules/ErrorManager",
+    "CoreModules/RagService"
   ],
   "pythonVersion": "3.10",
   "typeCheckingMode": "basic",

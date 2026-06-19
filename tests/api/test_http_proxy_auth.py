@@ -217,8 +217,8 @@ def test_non_v1_routes_remain_reachable_without_proxy_api_key(monkeypatch: pytes
 
     monkeypatch.setattr(
         rag_routes,
-        "check_stack_health",
-        lambda: SimpleNamespace(
+        "_check_app_stack_health",
+        lambda _app: SimpleNamespace(
             http_status=200,
             to_json_dict=lambda service: {"service": service, "status": "healthy"},
         ),

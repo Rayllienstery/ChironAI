@@ -62,6 +62,29 @@ def _sync_llm_extension_runtime(app: Flask) -> bool:
     return changed
 
 
+def _provider_health_component(app: Flask) -> str | None:
+    svc = get_extensions_service(app)
+    runtime = get_extensions_runtime(app, svc)
+    if svc is None or runtime is None:
+        return None
+
+    try:
+        rows = svc.provider_rows(runtime)
+    except Exception:
+        return "unhealthy"
+
+    for row in rows or []:
+        if str(row.get("provider_id") or "").strip() != "ollama":
+            continue
+        health = row.get("health") if isinstance(row.get("health"), dict) else {}
+        return "healthy" if bool(health.get("ok")) else "unhealthy"
+    return "unhealthy"
+
+
+def _check_app_stack_health(app: Flask):
+    return check_stack_health(provider_health_component=lambda: _provider_health_component(app))
+
+
 def create_app(
     webui_dir: str | None = None,
     system_prefix: str | None = None,
@@ -196,13 +219,13 @@ def create_app(
     @app.route("/health", methods=["GET"])
     def health() -> Response:
         """Health check endpoint for Ollama and Qdrant availability."""
-        result = check_stack_health()
+        result = _check_app_stack_health(app)
         return jsonify(result.to_json_dict(service="rag_proxy")), result.http_status
 
     @app.route("/ready", methods=["GET"])
     def ready() -> Response:
         """Readiness probe: dependency checks (Ollama provider + Qdrant)."""
-        result = check_stack_health()
+        result = _check_app_stack_health(app)
         return jsonify(result.to_json_dict(service="rag_proxy", probe="ready")), result.http_status
 
     return app

@@ -138,10 +138,7 @@ def iter_sse_from_ollama_stream_events(
             accumulator.ollama_done_reason = data.get("done_reason")
         elif kind == "error":
             err_source: Exception | str
-            if isinstance(data, BaseException):
-                err_source = data
-            else:
-                err_source = str(data)
+            err_source = data if isinstance(data, BaseException) else str(data)
             err_text = upstream_chat_error_message(
                 err_source,
                 trace if isinstance(trace, dict) else {},

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import queue
@@ -37,10 +38,8 @@ def _terminate_process(proc: subprocess.Popen[str]) -> None:
             proc.terminate()
             proc.wait(timeout=3)
     except Exception:
-        try:
+        with contextlib.suppress(Exception):
             proc.kill()
-        except Exception:
-            pass
 
 
 class ExtensionWorkerClient:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -81,10 +82,8 @@ def discover_runtime_extensions(
         except Exception as e:
             close = getattr(loaded.provider, "close", None)
             if callable(close):
-                try:
+                with contextlib.suppress(Exception):
                     close()
-                except Exception:
-                    pass
             failed.append(
                 FailedExtension(
                     extension_id=loaded.manifest.id,

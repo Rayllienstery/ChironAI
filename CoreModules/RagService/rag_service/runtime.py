@@ -6,6 +6,7 @@ reported via the extension-backed runtime hook when the main app has registered 
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 import time
@@ -223,10 +224,8 @@ class RagRuntime:
             q_err = str(e)
 
         q_container = False
-        try:
+        with contextlib.suppress(Exception):
             q_container = container_is_running(cfg.qdrant_container_name)
-        except Exception:
-            pass
 
         llm_component = {
             "running": bool(llm.get("running")),

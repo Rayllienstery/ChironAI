@@ -106,9 +106,7 @@ def register_settings_routes(
                 new_ids = set()
                 for c in new_list:
                     cid = c.get("id")
-                    if cid is None or (isinstance(cid, str) and cid.startswith("new-")):
-                        cid = None
-                    elif cid not in existing_ids:
+                    if cid is None or (isinstance(cid, str) and cid.startswith("new-")) or cid not in existing_ids:
                         cid = None
                     saved_id = repo.save_collection(
                         cid,

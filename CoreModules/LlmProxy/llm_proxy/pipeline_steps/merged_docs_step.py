@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
 from dataclasses import dataclass
 from typing import Any
@@ -77,10 +78,7 @@ def run_merged_docs_step(
 
     rag_sources_config = w.external_docs.load_rag_sources_config()
     body_rag_sources = body.get("rag_sources")
-    if isinstance(body_rag_sources, list):
-        body_rag_sources = [str(x) for x in body_rag_sources]
-    else:
-        body_rag_sources = None
+    body_rag_sources = [str(x) for x in body_rag_sources] if isinstance(body_rag_sources, list) else None
     resolved = w.external_docs.resolve_rag_sources_for_request(last_user, messages, body_rag_sources, rag_sources_config)
     if len(resolved) < 1:
         return MergedDocsStepResult(
@@ -99,10 +97,8 @@ def run_merged_docs_step(
         _ttl_days = w.get_framework_collection_ttl_days()
         _ttl_raw = _settings_repo.get_app_setting("framework_collection_ttl_days")
         if _ttl_raw is not None and str(_ttl_raw).strip() != "":
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 _ttl_days = int(_ttl_raw)
-            except (TypeError, ValueError):
-                pass
     except Exception:
         _settings_repo = None
         _ttl_days = 90
@@ -110,10 +106,8 @@ def run_merged_docs_step(
     if _settings_repo:
         for cfg in resolved:
             meta = None
-            try:
+            with contextlib.suppress(Exception):
                 meta = _settings_repo.get_collection_meta(cfg.collection_name)
-            except Exception:
-                pass
             if w.check_collection_freshness(meta, _ttl_days) != "fresh":
                 fid = (cfg.external_source_id or cfg.collection_name or "").strip().lower() or cfg.collection_name.lower()
                 resolved_needs_refresh.append((fid, cfg.collection_name))
@@ -157,10 +151,7 @@ def run_merged_docs_step(
                     ref = entry.get("ref") or "main"
                     if ref in ("latest", ""):
                         tag = w.external_docs.get_latest_release_tag(f"{owner}/{repo_name}")
-                        if tag:
-                            ref = tag
-                        else:
-                            ref = "main"
+                        ref = tag or "main"
                     w.external_docs.ingest_github_repo_markdown(
                         owner,
                         repo_name,

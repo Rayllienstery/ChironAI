@@ -252,9 +252,7 @@ def infer_metadata(
         language = "swift"
         domain = "framework_guide"
         product = "ios"
-        if source_id == "gh_alamofire":
-            technology = "networking"
-        elif source_id == "gh_moya":
+        if source_id == "gh_alamofire" or source_id == "gh_moya":
             technology = "networking"
         elif source_id in {"gh_kingfisher", "gh_sdwebimage"}:
             technology = "image_loading"

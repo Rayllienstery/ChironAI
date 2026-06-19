@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chironai"
-version = "0.2.0"
+version = "0.7.20"
 description = "Modular RAG platform (Ollama + Qdrant) with WebUI and crawl/index pipelines. Configured for Apple platforms, supports any domain."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -158,7 +158,7 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E9", "F", "I", "B"]
+select = ["E9", "F", "I", "B", "SIM"]
 ignore = ["B008", "B011", "B017", "B023", "B904", "B905", "B007"]
 
 [tool.ruff.lint.isort]
@@ -175,7 +175,7 @@ known-first-party = [
 
 # Domain layer must not depend on outer layers (application / api / infrastructure).
 [tool.importlinter]
-root_package = "domain"
+root_packages = ["domain", "application", "infrastructure"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
@@ -183,6 +183,18 @@ name = "domain_is_inner_layer"
 type = "forbidden"
 source_modules = ["domain"]
 forbidden_modules = ["application", "api", "infrastructure"]
+
+[[tool.importlinter.contracts]]
+name = "application_not_import_api"
+type = "forbidden"
+source_modules = ["application"]
+forbidden_modules = ["api"]
+
+[[tool.importlinter.contracts]]
+name = "infrastructure_not_import_api"
+type = "forbidden"
+source_modules = ["infrastructure"]
+forbidden_modules = ["api"]
 
 # Dead code scan: `python -m vulture` (reads paths/exclude from here; default --config pyproject.toml).
 [tool.vulture]

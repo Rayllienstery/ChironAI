@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
@@ -83,10 +84,8 @@ async def fetch_one_url(
         if not page:
             return CrawlResult(url, False, ""), []
 
-        try:
+        with contextlib.suppress(Exception):
             await asyncio.sleep(CRAWL_DOM_READY_WAIT_MS / 1000.0)
-        except Exception:
-            pass
 
         try:
             body = await page.evaluate("""() => {
@@ -229,9 +228,8 @@ async def run_async_crawl_playwright(
                             doc_only,
                             path_roots=path_roots,
                             excluded_substrings=excluded_eff,
-                        ):
-                            if next_url not in visited:
-                                queue.append((next_url, depth + 1))
+                        ) and next_url not in visited:
+                            queue.append((next_url, depth + 1))
         finally:
             await browser.close()
     return results

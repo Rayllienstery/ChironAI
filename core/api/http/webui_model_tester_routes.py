@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import time
 import uuid
@@ -246,15 +247,11 @@ def register_model_tester_routes(
                     return _error_response("model is required", 400)
                 options: dict[str, Any] = {}
                 if temperature is not None:
-                    try:
+                    with contextlib.suppress(TypeError, ValueError):
                         options["temperature"] = float(temperature)
-                    except (TypeError, ValueError):
-                        pass
                 if top_p is not None:
-                    try:
+                    with contextlib.suppress(TypeError, ValueError):
                         options["top_p"] = float(top_p)
-                    except (TypeError, ValueError):
-                        pass
                 svc = get_extensions_service(current_app)
                 runtime = get_extensions_runtime(current_app, svc)
                 if runtime is not None and provider_id:

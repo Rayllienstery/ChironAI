@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -28,35 +29,11 @@ class StackHealthResult:
         return out
 
 
-def _provider_health_component() -> str | None:
-    try:
-        from flask import current_app, has_app_context
-    except Exception:
-        return None
-    if not has_app_context():
-        return None
-
-    from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
-
-    svc = get_extensions_service(current_app)
-    runtime = get_extensions_runtime(current_app, svc)
-    if svc is None or runtime is None:
-        return None
-
-    try:
-        rows = svc.provider_rows(runtime)
-    except Exception:
-        return "unhealthy"
-
-    for row in rows or []:
-        if str(row.get("provider_id") or "").strip() != "ollama":
-            continue
-        health = row.get("health") if isinstance(row.get("health"), dict) else {}
-        return "healthy" if bool(health.get("ok")) else "unhealthy"
-    return "unhealthy"
-
-
-def check_stack_health(*, timeout_seconds: float = 3.0) -> StackHealthResult:
+def check_stack_health(
+    *,
+    timeout_seconds: float = 3.0,
+    provider_health_component: Callable[[], str | None] | None = None,
+) -> StackHealthResult:
     """
     Probe Ollama provider health (extension runtime) and Qdrant (/collections).
     Returns 200-style payload with http_status 200 or 503.
@@ -68,7 +45,9 @@ def check_stack_health(*, timeout_seconds: float = 3.0) -> StackHealthResult:
 
     qdrant_url = get_qdrant_url().rstrip("/")
 
-    components["ollama"] = _provider_health_component() or "unhealthy"
+    components["ollama"] = (
+        provider_health_component() if provider_health_component is not None else None
+    ) or "unhealthy"
     if components["ollama"] != "healthy":
         overall = "unhealthy"
 

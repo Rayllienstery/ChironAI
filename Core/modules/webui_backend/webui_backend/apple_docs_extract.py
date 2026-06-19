@@ -9,6 +9,7 @@ and can optionally incorporate hints from `initial_state`.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from dataclasses import dataclass, field
@@ -275,12 +276,10 @@ def _is_more_info_paragraph(text: str) -> bool:
     )
     if not any(lower.startswith(s) for s in starts):
         return False
-    if "http://" in normalized or "https://" in normalized:
-        return False
     # Filter ALL such paragraphs — they're references, not content.
     # No length limit: even long ones like "For more information, refer to Preparing widgets..."
     # should be filtered as they create false retrieval anchors.
-    return True
+    return "http://" not in normalized and "https://" not in normalized
 
 
 def _remove_more_info_sentences(text: str) -> str:
@@ -336,9 +335,7 @@ def _is_marketing_summary_paragraph(text: str) -> bool:
     if not text:
         return False
     lower = " ".join(text.split()).lower()
-    if "use widgetkit to build" in lower and "becomes part of the widget ecosystem" in lower:
-        return True
-    return False
+    return bool("use widgetkit to build" in lower and "becomes part of the widget ecosystem" in lower)
 
 
 def _normalize_planning_bridge(text: str) -> str:
@@ -875,22 +872,16 @@ def _extract_scope_from_h3_heading(heading: str) -> Optional[str]:
     
     for scope in specific_scopes:
         if scope in heading_lower or heading_lower == scope:
-            # Capitalize properly
-            if scope == "widgets and live activities":
-                return "Widgets and Live Activities"
-            elif scope == "live activities":
-                return "Live Activities"
-            elif scope == "controls":
-                # Do not add "Controls:" prefix — section heading is already ### Controls.
-                return None
-            elif scope == "widget extension setup":
-                return "Widgets"
-            elif scope == "smart stacks":
-                return "Smart Stacks"
-            elif scope == "privacy and visibility":
-                return "Widgets"
-            elif scope == "planning adoption":
-                return None  # Too generic
+            scope_labels = {
+                "widgets and live activities": "Widgets and Live Activities",
+                "live activities": "Live Activities",
+                "controls": None,
+                "widget extension setup": "Widgets",
+                "smart stacks": "Smart Stacks",
+                "privacy and visibility": "Widgets",
+                "planning adoption": None,
+            }
+            return scope_labels.get(scope)
     
     return None
 
@@ -1367,7 +1358,7 @@ def _find_availability_recursive(obj: Any, depth: int = 0) -> Optional[Dict[str,
 
         # Also check if this dict directly contains platform keys (iOS, macOS, etc.)
         platform_keys = {"iOS", "iPadOS", "macOS", "watchOS", "tvOS", "visionOS", "Mac Catalyst", "Swift"}
-        if any(k in platform_keys for k in obj.keys()):
+        if any(k in platform_keys for k in obj):
             result = {}
             for k, v in obj.items():
                 if k in platform_keys and v:
@@ -1543,9 +1534,7 @@ def _is_macro_compiler_signature(code_text: str) -> bool:
         return False
     # Heuristic: presence of @attached (or similar) strongly indicates a
     # compiler signature, not user-facing syntax.
-    if "@attached" in t:
-        return True
-    return False
+    return "@attached" in t
 
 
 def _infer_macro_syntax(page: "AppleDocPage") -> str:
@@ -1619,9 +1608,7 @@ def _paragraph_looks_like_code(text: str) -> bool:
     if (has_braces or has_parens) and has_swift_keyword:
         # Avoid normal prose that mentions "function" or "structure"
         lower = t.lower()
-        if lower.startswith(("the ", "this ", "when ", "for ", "by default,", "you can", "use ")):
-            return False
-        return True
+        return not lower.startswith(("the ", "this ", "when ", "for ", "by default,", "you can", "use "))
     return False
 
 
@@ -1721,11 +1708,8 @@ def build_apple_doc_page(raw: AppleDocRaw) -> AppleDocPage:
     # Combine blocks and tables, sort by document order for correct sequencing.
     all_elements = list(blocks) + list(table_elements)
     # Sort by document order (lxml provides getroottree() and getpath() for ordering)
-    try:
+    with contextlib.suppress(Exception):
         all_elements.sort(key=lambda el: el.getroottree().getpath(el))
-    except Exception:  # noqa: BLE001
-        # Fallback: keep original order if sorting fails
-        pass
 
     current_section: Optional[AppleDocSection] = None
 

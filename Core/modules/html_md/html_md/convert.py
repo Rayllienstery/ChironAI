@@ -222,10 +222,7 @@ def html_to_markdown(html: str, prefer_code_preservation: bool = True) -> str:
         md = html_to_markdown_html2text(html)
         if md and len(md.strip()) > 100:
             return md
-    if _HAS_LXML:
-        raw = html_to_markdown_dom(html)
-    else:
-        raw = html_to_markdown_regex(html)
+    raw = html_to_markdown_dom(html) if _HAS_LXML else html_to_markdown_regex(html)
     return re.sub(r"\n{3,}", "\n\n", raw.strip())
 
 

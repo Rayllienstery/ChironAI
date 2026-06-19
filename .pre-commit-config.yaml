@@ -1,0 +1,37 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: ruff check .
+        language: system
+        pass_filenames: false
+        types_or: [python, pyi]
+
+      - id: ruff-format-check
+        name: ruff format check
+        entry: ruff format --check .
+        language: system
+        pass_filenames: false
+        types_or: [python, pyi]
+
+      - id: coreui-format-check
+        name: CoreUI prettier check
+        entry: npm run format:check
+        language: system
+        pass_filenames: false
+        files: ^CoreModules/CoreUI/
+
+      - id: version-drift
+        name: version drift check
+        entry: python scripts/check_version_drift.py
+        language: system
+        pass_filenames: false
+        files: ^(Core/core/version\.py|pyproject\.toml|CHANGELOG\.md|scripts/check_version_drift\.py)$
+
+      - id: coreui-lockfile
+        name: CoreUI lockfile check
+        entry: npm run check:lockfile
+        language: system
+        pass_filenames: false
+        files: ^CoreModules/CoreUI/(package\.json|package-lock\.json)$

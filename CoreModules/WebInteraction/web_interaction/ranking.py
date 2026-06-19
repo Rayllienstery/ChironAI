@@ -61,10 +61,7 @@ def _domain_score(url: str) -> int:
 def _is_blocked(url: str) -> bool:
     h = _host(url)
     u = (url or "").lower()
-    for bad in _BLOCKLIST_SUBSTR:
-        if bad in h or bad in u:
-            return True
-    return False
+    return any(bad in h or bad in u for bad in _BLOCKLIST_SUBSTR)
 
 
 def rank_and_trim(snippets: list[Snippet], max_n: int) -> list[Snippet]:

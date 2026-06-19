@@ -61,12 +61,6 @@ def link_passes_filters(
             return False
         if any(sub in next_path.lower() for sub in excluded_substrings):
             return False
-        if not any(
-            next_path == (root or "").rstrip("/") or next_path.startswith((root or "").rstrip("/") + "/")
-            for root in path_roots
-            if (root or "").rstrip("/")
-        ):
-            return False
-        return True
+        return any(next_path == (root or "").rstrip("/") or next_path.startswith((root or "").rstrip("/") + "/") for root in path_roots if (root or "").rstrip("/"))
     except Exception:
         return False

@@ -56,7 +56,7 @@ def test_version_route_matches_contract_shape() -> None:
     data = response.get_json() or {}
 
     assert response.status_code == 200
-    assert VERSION_RESPONSE_KEYS <= set(data)
+    assert set(data) >= VERSION_RESPONSE_KEYS
     assert data["version"] == VERSION
     assert data["app_name"] == APP_NAME
     assert data["stage"] == APP_STAGE

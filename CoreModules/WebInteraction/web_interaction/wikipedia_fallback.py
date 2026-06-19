@@ -25,9 +25,7 @@ def wikipedia_question_eligible(user_message: str, trigger: str) -> bool:
         return False
     if len(t) > 280:
         return False
-    if t.count("\n") > 3:
-        return False
-    return True
+    return not t.count("\n") > 3
 
 
 def fetch_wikipedia_supplement(user_message: str) -> str:

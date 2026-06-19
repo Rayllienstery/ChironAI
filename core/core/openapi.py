@@ -1,4 +1,5 @@
 """OpenAPI and Swagger UI routes for Flask applications."""
+# pyright: reportUnusedFunction=false
 
 from __future__ import annotations
 
@@ -778,7 +779,7 @@ def build_openapi_spec(app: Flask) -> dict[str, Any]:
         if endpoint.split(".")[-1] in _INTERNAL_ENDPOINT_SUFFIXES:
             continue
         path = _openapi_path(rule.rule)
-        methods = sorted(method for method in rule.methods if method not in {"HEAD", "OPTIONS"})
+        methods = sorted(method for method in (rule.methods or ()) if method not in {"HEAD", "OPTIONS"})
         if not methods:
             continue
         path_item = paths.setdefault(path, {})
@@ -875,7 +876,7 @@ def register_openapi_routes(app: Flask, *, url_prefix: str = WEBUI_URL_PREFIX) -
             target = static_root.joinpath(filename)
             if not target.is_file():
                 abort(404)
-            return send_file(target)
+            return send_file(str(target))
         except ModuleNotFoundError:
             abort(503, description="flask-restx is not installed")
 

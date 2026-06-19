@@ -19,10 +19,7 @@ def _resolve_workspace_path(file_path: str) -> Path:
         raise ValueError("file_path is required")
     root = _workspace_root()
     candidate = Path(file_path)
-    if candidate.is_absolute():
-        resolved = candidate.resolve()
-    else:
-        resolved = (root / candidate).resolve()
+    resolved = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
     try:
         resolved.relative_to(root)
     except ValueError as exc:
@@ -579,9 +576,13 @@ def _tool_schema_accepts_content(tool: dict[str, object] | None) -> bool:
     # Some IDEs (including Zed in certain configurations) provide very loose schemas like:
     #   parameters: { "type": "object" }
     # but still accept `content`/`new_text` at runtime. Treat these as write-capable based on name.
-    if not props and not req_set:
-        if _is_edit_like_tool_name(tool_name) and "terminal" not in (tool_name or "").lower():
-            return True
+    if (
+        not props
+        and not req_set
+        and _is_edit_like_tool_name(tool_name)
+        and "terminal" not in (tool_name or "").lower()
+    ):
+        return True
 
     text_keys = ("content", "new_text", "replacement", "text", "new_content", "patch")
     if any(k in props or k in req_set for k in text_keys):
@@ -592,9 +593,7 @@ def _tool_schema_accepts_content(tool: dict[str, object] | None) -> bool:
         # Zed frequently provides partial schemas (e.g. edit_file without content field),
         # while still accepting content/new_text at runtime. For edit-like tools, prefer
         # attempting a tool call over hard-failing here.
-        if _is_edit_like_tool_name(tool_name) and "terminal" not in (tool_name or "").lower():
-            return True
-        return False
+        return bool(_is_edit_like_tool_name(tool_name) and "terminal" not in (tool_name or "").lower())
     items = paths_def.get("items")
     # If schema doesn't specify item type, assume object items (common in loose schemas).
     if items is None:
@@ -605,13 +604,15 @@ def _tool_schema_accepts_content(tool: dict[str, object] | None) -> bool:
     # items object with content field
     if isinstance(items, dict):
         item_props = items.get("properties")
-        if isinstance(item_props, dict):
-            if any(k in item_props for k in ("content", "new_text", "text", "replacement", "new_content", "patch")):
-                return True
+        if isinstance(item_props, dict) and any(
+            k in item_props for k in ("content", "new_text", "text", "replacement", "new_content", "patch")
+        ):
+            return True
         item_req = items.get("required")
-        if isinstance(item_req, list):
-            if any(str(x) in ("content", "new_text", "text", "replacement", "new_content", "patch") for x in item_req):
-                return True
+        if isinstance(item_req, list) and any(
+            str(x) in ("content", "new_text", "text", "replacement", "new_content", "patch") for x in item_req
+        ):
+            return True
     return False
 
 
@@ -630,9 +631,7 @@ def _tool_result_looks_like_unintended_deletion(tool_text: str) -> bool:
     if re.search(r"@@\\s+-\\d+,\\d+\\s+\\+\\d+,0\\s+@@", t):
         return True
     # If there are removed lines but no added lines in the diff body.
-    if re.search(r"^-[^\\n]", t, flags=re.MULTILINE) and not re.search(r"^\\+[^\\n]", t, flags=re.MULTILINE):
-        return True
-    return False
+    return bool(re.search(r"^-[^\\n]", t, flags=re.MULTILINE) and not re.search(r"^\\+[^\\n]", t, flags=re.MULTILINE))
 
 
 _TOOL_RESULT_FAILURE_MARKERS_STRICT = (
@@ -691,9 +690,7 @@ def _tool_content_indicates_successful_edit(tool_text: str) -> bool:
         for block in re.findall(r"```(?:[^\n`]*)\n([\s\S]*?)```", t, flags=re.IGNORECASE):
             if len((block or "").strip()) > 6:
                 return True
-    if "diff" in low and re.search(r"^\+[^\n]", t, flags=re.MULTILINE):
-        return True
-    return False
+    return bool("diff" in low and re.search(r"^\+[^\n]", t, flags=re.MULTILINE))
 
 
 def _prior_tool_messages_include_successful_edit(messages: list[object]) -> bool:
@@ -701,10 +698,7 @@ def _prior_tool_messages_include_successful_edit(messages: list[object]) -> bool
     contents = _collect_tool_result_contents_in_order(messages)
     if len(contents) < 2:
         return False
-    for c in contents[:-1]:
-        if _tool_content_indicates_successful_edit(c):
-            return True
-    return False
+    return any(_tool_content_indicates_successful_edit(c) for c in contents[:-1])
 
 
 def _get_tool_by_name(tools: list[object], name: str | None) -> dict[str, object] | None:
@@ -769,7 +763,7 @@ def _build_terminal_tool_arguments(
     params = fn.get("parameters") if isinstance(fn, dict) else None
     props = params.get("properties") if isinstance(params, dict) else None
     required = params.get("required") if isinstance(params, dict) else None
-    prop_keys = set(str(k) for k in props.keys()) if isinstance(props, dict) else set()
+    prop_keys = set(str(k) for k in props) if isinstance(props, dict) else set()
     req_keys = set(str(x) for x in required if isinstance(x, str)) if isinstance(required, list) else set()
     keys = req_keys or prop_keys or {"command"}
     cmd = _terminal_write_file_command(abs_path, content)
@@ -1089,7 +1083,7 @@ def _build_tool_arguments(
 
     # Strict native mode: only schema keys (+ required keys) are emitted.
     keys_to_emit: set[str] = set(required)
-    keys_to_emit.update(str(k) for k in properties.keys())
+    keys_to_emit.update(str(k) for k in properties)
     if not keys_to_emit:
         keys_to_emit = set(_default_tool_keys(selected_tool_name))
 
@@ -1270,7 +1264,7 @@ def _build_tool_json_instruction(
         if isinstance(params, dict) and isinstance(params.get("properties"), dict)
         else {}
     )
-    prop_names = [str(k) for k in properties.keys()]
+    prop_names = [str(k) for k in properties]
     req_names = [str(x) for x in required if isinstance(x, str)]
     fields = req_names if req_names else prop_names
     if not fields:

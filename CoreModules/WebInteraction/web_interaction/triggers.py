@@ -55,20 +55,14 @@ def wants_freshness_or_release(user_message: str) -> bool:
     # Standalone "current" (TODO: freshness keywords) — not "currently"
     if re.search(r"\bcurrent\b", user_message or "", re.IGNORECASE):
         return True
-    for p in _FRESHNESS_PHRASES_EN:
-        if p in q:
-            return True
-    return False
+    return any(p in q for p in _FRESHNESS_PHRASES_EN)
 
 
 def looks_like_framework_question(user_message: str) -> bool:
     q = _norm(user_message)
     if not q:
         return False
-    for tok in _FRAMEWORK_TOKENS:
-        if tok in q:
-            return True
-    return False
+    return any(tok in q for tok in _FRAMEWORK_TOKENS)
 
 
 WebSupplementTrigger = Literal["none", "keywords", "low_confidence_framework"]

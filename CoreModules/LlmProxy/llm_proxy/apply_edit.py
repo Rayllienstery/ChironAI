@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from flask import Response, jsonify, request
@@ -53,7 +54,7 @@ def run_apply_file_edit(w: LlmProxyWiring) -> Response | tuple[Response, int]:
         updated = _replace_text_range(original, range_data, new_text)
         if not dry_run:
             resolved.write_text(updated, encoding="utf-8")
-        try:
+        with contextlib.suppress(Exception):
             w.get_logs_repository().add_log(
                 session_id="proxy",
                 level="INFO",
@@ -66,8 +67,6 @@ def run_apply_file_edit(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                     "new_text_len": len(new_text),
                 },
             )
-        except Exception:
-            pass
 
         return jsonify(
             {
@@ -79,7 +78,7 @@ def run_apply_file_edit(w: LlmProxyWiring) -> Response | tuple[Response, int]:
             }
         )
     except ValueError as exc:
-        try:
+        with contextlib.suppress(Exception):
             w.get_logs_repository().add_log(
                 session_id="proxy",
                 level="ERROR",
@@ -87,8 +86,6 @@ def run_apply_file_edit(w: LlmProxyWiring) -> Response | tuple[Response, int]:
                 source="proxy.apply_edit",
                 metadata={"error": str(exc)},
             )
-        except Exception:
-            pass
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500

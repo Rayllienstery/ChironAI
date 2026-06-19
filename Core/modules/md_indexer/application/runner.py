@@ -67,10 +67,7 @@ def save_pipeline(name: str, pipeline: Pipeline | dict[str, Any]) -> None:
     d = _pipelines_dir()
     d.mkdir(parents=True, exist_ok=True)
     path = d / f"{name}.json"
-    if isinstance(pipeline, Pipeline):
-        data = pipeline.to_dict()
-    else:
-        data = pipeline
+    data = pipeline.to_dict() if isinstance(pipeline, Pipeline) else pipeline
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 

@@ -307,10 +307,7 @@ def apply_rerank(
         )
     raw = rerank_client.rerank(question, prompt_text) if rerank_client else None
     order = parse_rerank_order(raw) if raw else None
-    if order is not None:
-        ranked = reorder_hits_by_indices(candidates, order, hits)
-    else:
-        ranked = list(hits)
+    ranked = reorder_hits_by_indices(candidates, order, hits) if order is not None else list(hits)
     assign_rerank_scores(ranked)
     return ranked
 

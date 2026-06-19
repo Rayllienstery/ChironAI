@@ -143,7 +143,7 @@ def _relative_path(root: Path, path: Path) -> str:
 
 def load_test(root: Path, file_path: Path) -> dict[str, Any] | None:
     """Load a single test from a .md file. Returns None if unreadable."""
-    if not file_path.suffix.lower() == ".md":
+    if file_path.suffix.lower() != ".md":
         return None
     try:
         content = file_path.read_text(encoding="utf-8")

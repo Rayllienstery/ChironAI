@@ -299,10 +299,7 @@ def _content_head_excluded(body: str, head_chars: int, markers: list[str]) -> bo
     if not body or not markers:
         return False
     head = body[: max(0, head_chars)]
-    for m in markers:
-        if m and m in head:
-            return True
-    return False
+    return any(m and m in head for m in markers)
 
 
 def prepare_markdown_for_indexing(

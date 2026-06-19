@@ -315,15 +315,9 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
                         ollama_call["id"] = call_id
                         ollama_call["call_id"] = call_id
                     extra_content = c.get("extra_content")
-                    if isinstance(extra_content, dict):
-                        extra_out = dict(extra_content)
-                    else:
-                        extra_out = {}
+                    extra_out = dict(extra_content) if isinstance(extra_content, dict) else {}
                     google = extra_out.get("google")
-                    if isinstance(google, dict):
-                        google_out = dict(google)
-                    else:
-                        google_out = {}
+                    google_out = dict(google) if isinstance(google, dict) else {}
                     google_out.setdefault("thought_signature", thought_signature)
                     extra_out["google"] = google_out
                     ollama_call["extra_content"] = extra_out
@@ -350,10 +344,7 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
                 name = _sanitize_tool_name(m.get("tool_name"), fallback="")
             if not name:
                 tcid = _message_tool_call_id(m)
-                if tcid:
-                    name = _sanitize_tool_name(tool_call_id_to_name.get(tcid), fallback="tool")
-                else:
-                    name = "tool"
+                name = _sanitize_tool_name(tool_call_id_to_name.get(tcid), fallback="tool") if tcid else "tool"
             raw_c = m.get("content")
             content = raw_c if isinstance(raw_c, str) else json.dumps(raw_c, ensure_ascii=False)
             # Keep both aliases for broader backend compatibility (e.g. Gemini adapters expect `name`).
@@ -482,16 +473,10 @@ def ollama_message_to_openai_assistant(ollama_msg: dict[str, Any]) -> dict[str, 
                 "function": fn_out,
             }
             extra_content = c.get("extra_content")
-            if isinstance(extra_content, dict):
-                extra_out = dict(extra_content)
-            else:
-                extra_out = {}
+            extra_out = dict(extra_content) if isinstance(extra_content, dict) else {}
             if thought_signature:
                 google = extra_out.get("google")
-                if isinstance(google, dict):
-                    google_out = dict(google)
-                else:
-                    google_out = {}
+                google_out = dict(google) if isinstance(google, dict) else {}
                 google_out.setdefault("thought_signature", thought_signature)
                 extra_out["google"] = google_out
             if extra_out:

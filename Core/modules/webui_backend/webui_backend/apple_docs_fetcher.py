@@ -9,6 +9,7 @@ RAG-optimized markdown rendering.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
@@ -81,10 +82,8 @@ async def _fetch_apple_doc_raw_async(url: str) -> AppleDocRaw:
 
             await page.goto(url, wait_until="domcontentloaded", timeout=45000)
             # Wait for the main title to appear.
-            try:
+            with contextlib.suppress(Exception):
                 await page.wait_for_selector("main h1, article h1, h1", timeout=20000)
-            except Exception:
-                pass
             # Wait for some real content (paragraph/code/section) to appear.
             try:
                 await page.wait_for_selector(
@@ -214,9 +213,12 @@ async def _fetch_apple_doc_raw_async(url: str) -> AppleDocRaw:
             # Hard guards for known bad targets: better to fail than to index portal navigation or stubs.
             try:
                 path = (urlparse(url).path or "").rstrip("/")
-                if path.endswith("/documentation/swiftui/observable"):
-                    if body_html and sum(m in body_html for m in ("Stay Updated", "Explore Platforms")) >= 1:
-                        raise RuntimeError("Apple docs returned portal navigation page for swiftui/observable")
+                if (
+                    path.endswith("/documentation/swiftui/observable")
+                    and body_html
+                    and sum(m in body_html for m in ("Stay Updated", "Explore Platforms")) >= 1
+                ):
+                    raise RuntimeError("Apple docs returned portal navigation page for swiftui/observable")
                 if path.endswith("/documentation/swift/concurrency"):
                     # Reject near-empty landing pages (title-only stubs).
                     html = (body_html or "").strip()
@@ -226,10 +228,8 @@ async def _fetch_apple_doc_raw_async(url: str) -> AppleDocRaw:
             except Exception:
                 raise
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 await context.close()
-            except Exception:
-                pass
             await browser.close()
 
     main_html = f"<!DOCTYPE html><html><head></head><body>{body_html or ''}</body></html>"

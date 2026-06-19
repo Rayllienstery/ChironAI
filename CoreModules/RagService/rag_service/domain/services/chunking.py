@@ -78,15 +78,12 @@ def _source_chunk_acceptable(text: str, source_id: str) -> bool:
             return False
         if any(marker in full_lower for marker in _COMMUNITY_LIST_MARKERS):
             return False
-    if source_id == "hws_swift":
-        if any(marker in full_lower for marker in _HWS_FOOTER_MARKERS):
-            return False
-    if source_id == "objc_io_issues":
-        if any(marker in full_lower for marker in _OBJC_ARCHIVE_MARKERS):
-            return False
-    if source_id == "pointfree_collections":
-        if any(marker in full_lower for marker in _POINTFREE_FOOTER_MARKERS):
-            return False
+    if source_id == "hws_swift" and any(marker in full_lower for marker in _HWS_FOOTER_MARKERS):
+        return False
+    if source_id == "objc_io_issues" and any(marker in full_lower for marker in _OBJC_ARCHIVE_MARKERS):
+        return False
+    if source_id == "pointfree_collections" and any(marker in full_lower for marker in _POINTFREE_FOOTER_MARKERS):
+        return False
     if source_id.startswith("wwdc_sessions_"):
         stripped = (text or "").strip()
         if len(stripped) < 220 and _WWDC_HEADER_ONLY.match(stripped):
@@ -95,9 +92,7 @@ def _source_chunk_acceptable(text: str, source_id: str) -> bool:
             return False
     if source_id == "apple_documentation" and _is_low_value_conforms_chunk(full):
         return False
-    if "similar solutions" in lower and len((text or "").strip()) < 500:
-        return False
-    return True
+    return not ("similar solutions" in lower and len((text or "").strip()) < 500)
 
 
 def _is_low_value_conforms_chunk(text: str) -> bool:
@@ -135,9 +130,7 @@ def chunk_quality_ok(text: str, *, source_id: str | None = None) -> bool:
     total = sum(1 for c in text if not c.isspace())
     if total == 0:
         return False
-    if alpha / total < MIN_CHUNK_ALPHA_RATIO:
-        return False
-    return True
+    return not alpha / total < MIN_CHUNK_ALPHA_RATIO
 
 
 def _split_into_paragraphs(md: str) -> list[str]:

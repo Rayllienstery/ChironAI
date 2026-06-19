@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -562,16 +563,12 @@ def register_rag_qdrant_routes(
             settings_repo = get_settings_repository()
             ttl_raw = settings_repo.get_app_setting("framework_collection_ttl_days")
             if ttl_raw is not None and str(ttl_raw).strip() != "":
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     ttl_days = int(ttl_raw)
-                except (TypeError, ValueError):
-                    pass
             top_k_raw = settings_repo.get_app_setting("default_rag_top_k")
             if top_k_raw is not None and str(top_k_raw).strip() != "":
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     default_top_k = int(top_k_raw)
-                except (TypeError, ValueError):
-                    pass
         except Exception:  # safe: settings repository optional for RAG defaults
             pass
 
@@ -595,10 +592,7 @@ def register_rag_qdrant_routes(
             raw_collections = data.get("result", {}).get("collections", []) if isinstance(data, dict) else []
             names: list[str] = []
             for col in raw_collections:
-                if isinstance(col, dict):
-                    name = col.get("name")
-                else:
-                    name = str(col)
+                name = col.get("name") if isinstance(col, dict) else str(col)
                 if name:
                     names.append(name)
 
@@ -662,10 +656,8 @@ def register_rag_qdrant_routes(
                             f"rag_collection_index_meta:{name}"
                         )
                         if index_meta_raw:
-                            try:
+                            with contextlib.suppress(json.JSONDecodeError):
                                 item["index_meta"] = json.loads(index_meta_raw)
-                            except json.JSONDecodeError:
-                                pass
                     except Exception:  # safe: per-collection enrichment failure skips optional fields
                         pass
                     detailed.append(item)
@@ -736,15 +728,11 @@ def register_rag_qdrant_routes(
             body = request.get_json(force=True, silent=True) or {}
             settings_repo = get_settings_repository()
             if "ttl_days" in body:
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     settings_repo.set_app_setting("framework_collection_ttl_days", str(int(body["ttl_days"])))
-                except (TypeError, ValueError):
-                    pass
             if "default_rag_top_k" in body:
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     settings_repo.set_app_setting("default_rag_top_k", str(int(body.get("default_rag_top_k", 4))))
-                except (TypeError, ValueError):
-                    pass
             return jsonify({"status": "ok"})
         except Exception as e:
             error_log.error("webui_rag_routes.save_rag_collection_settings", exc_info=True)

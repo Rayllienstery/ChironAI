@@ -305,10 +305,7 @@ def crawl_source(host: CrawlHost, source: dict[str, Any], dry_run: bool = False)
     start_parsed = urlparse(start_url)
     start_path = (start_parsed.path or "").strip("/")
     start_segments = [s for s in start_path.split("/") if s]
-    if start_segments:
-        allowed_prefix = "/" + "/".join(start_segments[:2]) + "/"
-    else:
-        allowed_prefix = "/"
+    allowed_prefix = "/" + "/".join(start_segments[:2]) + "/" if start_segments else "/"
 
     doc_only = source.get("doc_only", "/documentation/" in (start_parsed.path or ""))
     effective_path_prefixes = source.get("path_prefixes") or host.runtime.framework_root_prefixes
@@ -408,12 +405,11 @@ def crawl_source(host: CrawlHost, source: dict[str, Any], dry_run: bool = False)
         md_stripped = md.strip() if md else ""
         if md_stripped and md_stripped.startswith("```") and md_stripped.endswith("```"):
             fence_count = md_stripped.count("```")
-            if fence_count == 2:
-                if not is_callback:
-                    host.log(
-                        f"WARNING: [source={source_id}] Markdown wrapped in single code block for {url}; "
-                        "this indicates fallback conversion issue"
-                    )
+            if fence_count == 2 and not is_callback:
+                host.log(
+                    f"WARNING: [source={source_id}] Markdown wrapped in single code block for {url}; "
+                    "this indicates fallback conversion issue"
+                )
 
         if not md:
             if not is_callback:

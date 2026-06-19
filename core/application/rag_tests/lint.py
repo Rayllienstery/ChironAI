@@ -35,9 +35,7 @@ def _looks_multi_concept(concept: str) -> bool:
     if any(sep in lowered for sep in MULTI_CONCEPT_SEPARATORS):
         return True
     # Very long concept with multiple spaces is unlikely to be a single atomic term.
-    if len(text) > 60 and " " in text:
-        return True
-    return False
+    return bool(len(text) > 60 and " " in text)
 
 
 def lint_expected_concepts(tests: Iterable[dict[str, Any]] | None = None) -> List[ConceptLintIssue]:

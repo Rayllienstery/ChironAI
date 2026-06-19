@@ -344,10 +344,7 @@ class OllamaProvider:
             except TimeoutError:
                 degraded_reason = degraded_reason or "tags_timeout"
                 stale = _cache_get(base_url, "tags", ttl_sec=365 * 24 * 3600.0) if base_url else None
-                if isinstance(stale, list):
-                    all_models = [dict(item) for item in stale if isinstance(item, dict)]
-                else:
-                    all_models = []
+                all_models = [dict(item) for item in stale if isinstance(item, dict)] if isinstance(stale, list) else []
             except Exception:
                 degraded_reason = degraded_reason or "tags_error"
                 all_models = []

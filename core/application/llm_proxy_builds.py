@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from typing import Any
@@ -159,30 +160,22 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
 
     t = build.get("temperature")
     if t is not None and str(t).strip() != "":
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             out["temperature"] = float(t)
-        except (TypeError, ValueError):
-            pass
     tp = build.get("top_p")
     if tp is not None and str(tp).strip() != "":
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             out["top_p"] = float(tp)
-        except (TypeError, ValueError):
-            pass
 
     ms = build.get("max_agent_steps")
     if ms is not None and str(ms).strip() != "":
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             out["max_agent_steps"] = int(ms)
-        except (TypeError, ValueError):
-            pass
 
     nc = build.get("num_ctx")
     if nc is not None and str(nc).strip() != "":
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             out["num_ctx"] = int(nc)
-        except (TypeError, ValueError):
-            pass
 
     np = build.get("num_predict")
     if np is None or str(np).strip() == "":

@@ -42,10 +42,7 @@ def enabled_capability_ids(capabilities: dict[str, Any]) -> set[str]:
         cap = str(key or "").strip()
         if not cap:
             continue
-        if isinstance(value, dict):
-            enabled = bool(value.get("enabled", True))
-        else:
-            enabled = bool(value)
+        enabled = bool(value.get("enabled", True)) if isinstance(value, dict) else bool(value)
         if enabled:
             out.add(cap)
     return out

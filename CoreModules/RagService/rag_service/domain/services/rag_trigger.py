@@ -257,9 +257,7 @@ def _is_greeting_skip(
     # Optional: require no technical tokens so "hello SwiftUI" does not skip. For a single-word
     # greeting like "HELLO", we skip regardless of CamelCase score.
     score, _, _ = compute_rag_trigger_score(q_raw, rag_required_keywords=keywords, trigger_threshold=trigger_threshold)
-    if score > 0 and len(q_raw.split()) > 1:
-        return False  # multi-word with technical signal → do not skip
-    return True
+    return not (score > 0 and len(q_raw.split()) > 1)
 
 
 def should_skip_rag_search(

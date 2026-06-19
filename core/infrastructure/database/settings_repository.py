@@ -37,7 +37,7 @@ class SettingsRepository:
             if not row:
                 return None
             # sqlite3.Row has no .get(); convert to dict for safe .get() and optional keys
-            row = {k: row[k] for k in row.keys()}
+            row = {k: row[k] for k in row}
 
             settings: dict[str, Any] = {
                 "id": row["id"],

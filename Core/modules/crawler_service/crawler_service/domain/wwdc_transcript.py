@@ -16,10 +16,7 @@ def parse_wwdc_event_year(event: str) -> int | None:
     suffix = event[4:]
     if not suffix.isdigit():
         return None
-    if len(suffix) == 2:
-        year = 2000 + int(suffix)
-    else:
-        year = int(suffix)
+    year = 2000 + int(suffix) if len(suffix) == 2 else int(suffix)
     return year
 
 

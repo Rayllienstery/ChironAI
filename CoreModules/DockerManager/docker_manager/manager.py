@@ -76,7 +76,7 @@ def _docker_executable() -> str:
     if found:
         return found
     if sys.platform == "win32":
-        pf = os.environ.get("ProgramFiles", r"C:\Program Files")
+        pf = os.environ.get("PROGRAMFILES", r"C:\Program Files")
         candidate = os.path.join(pf, "Docker", "Docker", "resources", "bin", "docker.exe")
         if os.path.isfile(candidate):
             return candidate
@@ -211,10 +211,7 @@ class DockerManager:
             if ready:
                 return {"ok": True, "message": "docker engine became ready", "status": self.status()}
             time.sleep(max(0.1, float(interval)))
-            if detail:
-                last_err = f"timeout waiting for docker info: {detail}"
-            else:
-                last_err = "timeout waiting for docker info"
+            last_err = f"timeout waiting for docker info: {detail}" if detail else "timeout waiting for docker info"
 
         return {"ok": False, "message": last_err, "status": self.status()}
 

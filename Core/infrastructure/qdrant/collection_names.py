@@ -21,10 +21,7 @@ def list_collection_names(*, timeout_sec: float = 5.0) -> list[str]:
         raw = data.get("result", {}).get("collections", []) if isinstance(data, dict) else []
         names: list[str] = []
         for col in raw:
-            if isinstance(col, dict):
-                name = col.get("name")
-            else:
-                name = str(col)
+            name = col.get("name") if isinstance(col, dict) else str(col)
             if name:
                 names.append(name)
         return names

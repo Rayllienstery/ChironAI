@@ -4,6 +4,7 @@ Repository for RAG test run history (persisted runs with results).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sqlite3
@@ -267,11 +268,7 @@ class RagTestRunsRepository:
                     framework = (t.get("framework") or "").strip()
                     difficulty = (t.get("difficulty") or "").strip() or "unknown"
                     status = (t.get("status") or "").upper()
-                    if framework.lower() in ("swiftui", "uikit"):
-                        domain = framework
-                    else:
-                        # Everything else falls under generic Swift domain
-                        domain = "Swift"
+                    domain = framework if framework.lower() in ("swiftui", "uikit") else "Swift"
                     key = domain
                     if key not in domain_agg:
                         domain_agg[key] = {
@@ -352,10 +349,8 @@ class RagTestRunsRepository:
             return None
         results = []
         if row["results"]:
-            try:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
                 results = [normalize_rag_test_result(t) for t in json.loads(row["results"])]
-            except (json.JSONDecodeError, TypeError):
-                pass
         return normalize_rag_test_run({
             "id": row["id"],
             "provider_id": row["provider_id"],

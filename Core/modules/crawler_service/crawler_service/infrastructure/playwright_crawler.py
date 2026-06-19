@@ -28,10 +28,7 @@ class PlaywrightCrawler:
         start_parsed = urlparse(start_url)
         start_path = (start_parsed.path or "").strip("/")
         start_segments = [s for s in start_path.split("/") if s]
-        if start_segments:
-            allowed_prefix = "/" + "/".join(start_segments[:2]) + "/"
-        else:
-            allowed_prefix = "/"
+        allowed_prefix = "/" + "/".join(start_segments[:2]) + "/" if start_segments else "/"
         doc_only = source.doc_only
         ex = source.extra or {}
         effective_path_prefixes = ex.get("path_prefixes") or runtime.framework_root_prefixes

@@ -35,10 +35,7 @@ def check_collection_freshness(
         return "no_record"
     try:
         # Support ISO format with or without Z
-        if raw.endswith("Z"):
-            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        else:
-            dt = datetime.fromisoformat(raw)
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00")) if raw.endswith("Z") else datetime.fromisoformat(raw)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
     except (ValueError, TypeError):

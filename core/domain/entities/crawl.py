@@ -8,7 +8,7 @@ No infrastructure dependencies.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional, cast
 
 
 @dataclass
@@ -20,8 +20,8 @@ class CrawlSource:
     max_depth: int = 2
     crawler: str = "playwright"
     doc_only: bool = True
-    seed_urls: List[str] = field(default_factory=list)
-    extra: Dict[str, Any] = field(default_factory=dict)
+    seed_urls: list[str] = field(default_factory=lambda: cast(list[str], []))
+    extra: dict[str, Any] = field(default_factory=lambda: cast(dict[str, Any], {}))
 
 
 @dataclass
@@ -31,7 +31,7 @@ class CrawlResult:
     url: str
     html: str
     source_id: str
-    extra: Dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=lambda: cast(dict[str, Any], {}))
 
 
 @dataclass
@@ -40,11 +40,11 @@ class IndexedPage:
 
     filename: str
     url: Optional[str]
-    chunk_hashes: List[str]
-    extra: Dict[str, Any] = field(default_factory=dict)
+    chunk_hashes: list[str]
+    extra: dict[str, Any] = field(default_factory=lambda: cast(dict[str, Any], {}))
 
 
-def crawl_source_from_dict(d: Dict[str, Any]) -> CrawlSource:
+def crawl_source_from_dict(d: dict[str, Any]) -> CrawlSource:
     """Build CrawlSource from a dictionary.
 
     Args:

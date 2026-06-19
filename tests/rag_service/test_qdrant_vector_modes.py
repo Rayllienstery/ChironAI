@@ -44,9 +44,11 @@ def test_collection_vector_mode_rejects_unnamed_schema() -> None:
     mock_resp = MagicMock()
     mock_resp.raise_for_status = MagicMock()
     mock_resp.json.return_value = _collection_get_response()
-    with patch("rag_service.infrastructure.qdrant_repository.httpx.get", return_value=mock_resp):
-        with pytest.raises(RetrievalError, match="named 'dense'"):
-            repo._collection_vector_mode()
+    with (
+        patch("rag_service.infrastructure.qdrant_repository.httpx.get", return_value=mock_resp),
+        pytest.raises(RetrievalError, match="named 'dense'"),
+    ):
+        repo._collection_vector_mode()
 
 
 def test_collection_vector_mode_raises_on_collection_error() -> None:
@@ -54,9 +56,8 @@ def test_collection_vector_mode_raises_on_collection_error() -> None:
     with patch(
         "rag_service.infrastructure.qdrant_repository.httpx.get",
         side_effect=httpx.RequestError("down"),
-    ):
-        with pytest.raises(RetrievalError, match="Failed to read Qdrant collection"):
-            repo._collection_vector_mode()
+    ), pytest.raises(RetrievalError, match="Failed to read Qdrant collection"):
+        repo._collection_vector_mode()
 
 
 def test_search_dense_only_uses_named_vector() -> None:
@@ -92,9 +93,8 @@ def test_search_dense_only_no_legacy_fallback_on_http_error() -> None:
     with patch(
         "rag_service.infrastructure.qdrant_repository.httpx.post",
         side_effect=http_err,
-    ):
-        with pytest.raises(RetrievalError, match="Qdrant search error"):
-            repo._search_dense_only("coll", [0.1], 2, None)
+    ), pytest.raises(RetrievalError, match="Qdrant search error"):
+        repo._search_dense_only("coll", [0.1], 2, None)
 
 
 def test_search_hybrid_falls_back_to_dense_on_query_http_error() -> None:

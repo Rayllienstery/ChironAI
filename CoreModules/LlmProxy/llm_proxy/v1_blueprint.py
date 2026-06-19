@@ -19,6 +19,8 @@ _CORE_MODULES_DIR = os.path.dirname(_LLM_PROXY_DIR)  # CoreModules/
 _ERROR_MANAGER_DIR = os.path.join(_CORE_MODULES_DIR, "ErrorManager")
 ensure_import_path("error_manager", _ERROR_MANAGER_DIR)
 
+import contextlib
+
 from error_manager.http import error_response as _error_response
 
 from config import get_v1_include_autocomplete_logical_model
@@ -112,9 +114,7 @@ def _post_body_is_openai_completions_shape(body: object) -> bool:
         return False
     if body.get("prompt") is not None:
         return True
-    if body.get("input"):
-        return True
-    return False
+    return bool(body.get("input"))
 
 
 _RESPONSES_HISTORY: dict[str, list[dict[str, Any]]] = {}
@@ -550,18 +550,14 @@ def _responses_tool_choice_to_chat(tool_choice: Any, available_function_names: s
         name = str(tool_choice.get("name") or "").strip()
         if name and name in available_function_names:
             return {"type": "function", "function": {"name": name}}
-    if t in {"local_shell", "shell"}:
-        if "shell" in available_function_names:
-            return {"type": "function", "function": {"name": "shell"}}
-    if t == "web_search":
-        if "web_search" in available_function_names:
-            return {"type": "function", "function": {"name": "web_search"}}
-    if t == "file_search":
-        if "file_search" in available_function_names:
-            return {"type": "function", "function": {"name": "file_search"}}
-    if t == "computer_use":
-        if "computer_use" in available_function_names:
-            return {"type": "function", "function": {"name": "computer_use"}}
+    if t in {"local_shell", "shell"} and "shell" in available_function_names:
+        return {"type": "function", "function": {"name": "shell"}}
+    if t == "web_search" and "web_search" in available_function_names:
+        return {"type": "function", "function": {"name": "web_search"}}
+    if t == "file_search" and "file_search" in available_function_names:
+        return {"type": "function", "function": {"name": "file_search"}}
+    if t == "computer_use" and "computer_use" in available_function_names:
+        return {"type": "function", "function": {"name": "computer_use"}}
     return None
 
 
@@ -890,7 +886,7 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
     def _handle_unexpected_exception(error: Exception):
         if isinstance(error, HTTPException):
             return error
-        try:
+        with contextlib.suppress(Exception):
             wiring.log_webui_error(
                 "rag_routes.v1_unhandled",
                 error,
@@ -901,8 +897,6 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
                     "endpoint": request.endpoint or "",
                 },
             )
-        except Exception:
-            pass
         return _error_response(error, status=500)
 
     @bp.before_request
@@ -1121,7 +1115,7 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
                     "reason": "all tools unsupported for function bridge",
                 },
             )
-            try:
+            with contextlib.suppress(Exception):
                 wiring.log_webui_error(
                     "rag_routes.responses_tools_normalization",
                     RuntimeError("all tools unsupported for function bridge"),
@@ -1131,8 +1125,6 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
                         "tools_types_dropped": diag.get("tools_types_dropped"),
                     },
                 )
-            except Exception:
-                pass
         result = run_chat_completions(wiring, body_override=oa_body)
         if isinstance(result, tuple):
             resp, code = result[0], result[1] if len(result) > 1 else 200

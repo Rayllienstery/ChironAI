@@ -179,11 +179,10 @@ class ExtensionBlocklistPolicy:
             match_rule = rule.get("match") if isinstance(rule.get("match"), dict) else rule
             source = str(rule.get("source") or self._blocklist_url)
             reason = str(rule.get("reason") or "Extension is blocked by emergency policy.")
-            if self._matches_value(match_rule.get("extension_id"), ext_id):
-                if self._matches_optional(match_rule.get("version"), selected_version) and self._matches_optional(
-                    match_rule.get("ref"), selected_ref
-                ):
-                    return ExtensionBlocklistMatch(True, reason, source, "extension_id")
+            if self._matches_value(match_rule.get("extension_id"), ext_id) and self._matches_optional(
+                match_rule.get("version"), selected_version
+            ) and self._matches_optional(match_rule.get("ref"), selected_ref):
+                return ExtensionBlocklistMatch(True, reason, source, "extension_id")
             if repo_id and self._matches_value(match_rule.get("repository_id"), repo_id):
                 return ExtensionBlocklistMatch(True, reason, source, "repository_id")
             if repo and self._matches_value(match_rule.get("repository"), repo):
@@ -221,10 +220,7 @@ class ExtensionBlocklistPolicy:
                 chunks.append(chunk)
             return b"".join(chunks).decode("utf-8")
         path = Path(parsed.path if parsed.scheme == "file" else url)
-        if not path.is_absolute():
-            path = (self._project_root / path).resolve()
-        else:
-            path = path.resolve()
+        path = (self._project_root / path).resolve() if not path.is_absolute() else path.resolve()
         # Guard against path traversal: blocklist must remain within project root.
         project_root_resolved = self._project_root.resolve()
         try:

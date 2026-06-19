@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.20] - 2026-06-18
+### Changed
+- Made strict API drift checking a required minimal quality gate step.
+
+## [0.7.19] - 2026-06-18
+### Changed
+- Enabled strict Pyright checks for core and domain code.
+- Added typed defaults and Pyright paths for strict domain/core analysis.
+
+## [0.7.18] - 2026-06-18
+### Changed
+- Enabled Ruff SIM rules and simplified existing Python code to satisfy them.
+
+## [0.7.17] - 2026-06-18
+### Changed
+- Expanded import-linter layer contracts for application and infrastructure boundaries.
+- Moved stack health provider checks out of the infrastructure layer.
+
+## [0.7.16] - 2026-06-18
+### Added
+- Added local pre-commit hooks for Ruff, CoreUI formatting, version drift, and lockfile checks.
+
+## [0.7.15] - 2026-06-18
+### Added
+- Added an automated version drift check to keep package, runtime, and changelog versions aligned.
+- Removed stale CoreUI extension-runtime exports that blocked the minimal quality gate.
+
+## [0.7.14] - 2026-06-18
+### Fixed
+- Synchronized the root package version with the canonical core version.
+
 ## [0.7.13] - 2026-06-17
 ### Fixed
 - Stopped appending output-budget error text to chat responses when finish_reason is already length, avoiding duplicate output-limit warnings in Cursor/Kilo clients.

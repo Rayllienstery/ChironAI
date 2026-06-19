@@ -31,7 +31,7 @@ def build_forced_think_value(
             ).strip().lower()
             return level if level in {"low", "medium", "high"} else "medium"
         return None
-    return True if active_build.get("chat_think") else False
+    return bool(active_build.get("chat_think"))
 
 
 def log_rag_error(stage: str, error: Exception) -> None:
@@ -122,9 +122,7 @@ def web_supplement_used_from_trace(trace: dict[str, Any]) -> bool:
     if internet.get("used") is True:
         return True
     ws = internet.get("web_supplement")
-    if isinstance(ws, dict) and ws.get("used") is True:
-        return True
-    return False
+    return bool(isinstance(ws, dict) and ws.get("used") is True)
 
 
 def rag_request_completed_payload(

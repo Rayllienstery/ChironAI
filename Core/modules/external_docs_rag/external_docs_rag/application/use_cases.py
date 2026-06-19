@@ -357,9 +357,7 @@ def resolve_rag_sources_for_request(
                     break
         return result
     for c in config:
-        if not c.trigger_keywords:
-            result.append(c)
-        elif any(kw.lower() in question_lower for kw in c.trigger_keywords):
+        if not c.trigger_keywords or any(kw.lower() in question_lower for kw in c.trigger_keywords):
             result.append(c)
     return result
 

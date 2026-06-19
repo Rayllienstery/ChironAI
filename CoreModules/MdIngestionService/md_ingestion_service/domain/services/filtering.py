@@ -34,14 +34,11 @@ def apply_filter(file: MarkdownFile, rule: FilterRule) -> bool:
     for pat in rule.exclude_patterns:
         if _matches(pat):
             return False
-    if rule.include_patterns:
-        if not any(_matches(p) for p in rule.include_patterns):
-            return False
+    if rule.include_patterns and not any(_matches(p) for p in rule.include_patterns):
+        return False
     if rule.min_size_chars > 0 and len(file.content) < rule.min_size_chars:
         return False
-    if rule.max_size_chars > 0 and len(file.content) > rule.max_size_chars:
-        return False
-    return True
+    return not (rule.max_size_chars > 0 and len(file.content) > rule.max_size_chars)
 
 
 def default_filter_rule() -> FilterRule:

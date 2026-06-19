@@ -258,9 +258,8 @@ def build_system_content(
     the user's task. When ``retrieval_skipped`` is True and context is empty, omit zero-hit RAG boilerplate.
     """
     reasoning_instruction = ""
-    if reasoning_level and model_name:
-        if any(kw in model_name.lower() for kw in REASONING_LEVEL_MODELS):
-            reasoning_instruction = f"\n\nReasoning: {reasoning_level}\n"
+    if reasoning_level and model_name and any(kw in model_name.lower() for kw in REASONING_LEVEL_MODELS):
+        reasoning_instruction = f"\n\nReasoning: {reasoning_level}\n"
 
     head = (prefix or "") + reasoning_instruction
     head = head.rstrip() + "\n\n" + _TASK_PRIORITY_BLOCK.strip() + "\n"

@@ -929,10 +929,7 @@ def _sse_tool_calls_payload(tool_calls: list[Any]) -> list[dict[str, object]]:
         if thought_signature:
             fn_payload["thought_signature"] = thought_signature
             google = extra_out.get("google")
-            if isinstance(google, dict):
-                google_out = dict(google)
-            else:
-                google_out = {}
+            google_out = dict(google) if isinstance(google, dict) else {}
             google_out.setdefault("thought_signature", thought_signature)
             extra_out["google"] = google_out
         if extra_out:

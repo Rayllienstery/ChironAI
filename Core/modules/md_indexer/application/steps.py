@@ -136,21 +136,12 @@ def step_delete_range_regex(md: str, params: dict[str, Any]) -> str:
             out_parts.append(text[pos:])
             break
         # From start of match (or end of match if not include_start) to end_regex or EOF
-        if include_start:
-            cut_start = m.start()
-        else:
-            cut_start = m.end()
+        cut_start = m.start() if include_start else m.end()
         out_parts.append(text[pos:cut_start])
         search_from = m.end()
         if end_rx:
             end_m = end_rx.search(text, search_from)
-            if end_m:
-                if include_end:
-                    pos = end_m.end()
-                else:
-                    pos = end_m.start()
-            else:
-                pos = len(text)
+            pos = (end_m.end() if include_end else end_m.start()) if end_m else len(text)
         else:
             pos = len(text)
     return _collapse_blank_lines("".join(out_parts))

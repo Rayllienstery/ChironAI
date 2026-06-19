@@ -19,7 +19,7 @@ def get_latest_changelog_content(project_root: Path) -> str:
     except Exception:
         return ""
 
-    content = []
+    content: list[str] = []
     found_first_version = False
     
     for line in lines:
