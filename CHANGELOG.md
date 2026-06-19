@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.31] - 2026-06-19
+### Added
+- Integration test for the full RAG pipeline using in-memory ports.
+
 ## [0.7.30] - 2026-06-19
 ### Added
 - Property-based tests for the markdown meta block parser using Hypothesis.
