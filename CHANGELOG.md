@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.36] - 2026-06-20
+### Added
+- Added a CoreUI coverage gate with a 70% line threshold to the full quality gate.
+
 ## [0.7.35] - 2026-06-20
 ### Added
 - Added CoreUI component tests for previously uncovered tabs and shared tab controls.

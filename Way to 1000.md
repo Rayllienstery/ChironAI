@@ -92,7 +92,7 @@ SMOKE          = .\build_and_run.bat      (cwd: repo root)
 - [x] **T4.2** Integration-набор полного RAG-pipeline · +4 · deps: T4.1
 - [x] **T4.3** Property-based тесты для парсеров · +2 · deps: T4.1
 - [x] **T5.1** Покрыть тестами вкладки CoreUI без тестов · +5 · deps: —
-- [ ] **T5.2** Порог покрытия CoreUI в CI (70%) · +3 · deps: T5.1
+- [x] **T5.2** Порог покрытия CoreUI в CI (70%) · +3 · deps: T5.1
 - [x] **T6.1** Linux parity + matrix Python + кэш + codecov · +8 · deps: —
 - [ ] **T8.1** SAST + secret-scanning + Dependabot + CSP · +6 · deps: —
 - [ ] **T9.1** Подпись манифестов + enforcement + тесты миграции · +6 · deps: —
@@ -715,7 +715,7 @@ messages, responses). Сохранить Flask-регистрацию контр
 
 **VERIFY:** `npm run test:coverage` pass (≥70%).
 **Критерии готовности:**
-- [ ] coverage threshold 70% для CoreUI в CI
+- [x] coverage threshold 70% для CoreUI в CI
 
 ---
 
