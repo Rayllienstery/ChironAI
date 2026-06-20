@@ -5,8 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any, Mapping
 
-from error_manager.exceptions import PipelineError
-
+from core.contracts.errors import PipelineError
 from rag_service.core.contracts import PipelineRunResult, PipelineTraceStep, StepDefinition
 from rag_service.core.registry import StepRegistry
 

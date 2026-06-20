@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from enum import Enum
 
+from core.contracts.rag_api import RAG_COLLECTION_APP_SETTING
+
 __all__ = [
     "RagConsumer",
     "RAG_COLLECTION_APP_SETTING",
@@ -15,10 +17,6 @@ class RagConsumer(str, Enum):
     """Logical RAG consumer in the monorepo (maps to app_settings keys)."""
 
     LLM_PROXY = "llm_proxy"
-
-
-# Stable keys used in infrastructure.database settings / app_settings.
-RAG_COLLECTION_APP_SETTING = "rag_collection"
 
 
 def app_setting_key_for_consumer(consumer: RagConsumer) -> str:

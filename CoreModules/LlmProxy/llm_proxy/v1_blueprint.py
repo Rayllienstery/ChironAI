@@ -4,20 +4,10 @@ from __future__ import annotations
 
 import contextlib
 import logging
-import os
 from typing import TYPE_CHECKING, Any
 
 from flask import Blueprint, Response, jsonify, request
 from werkzeug.exceptions import HTTPException
-
-from core.bootstrap.import_paths import ensure_import_path
-
-_LLM_PROXY_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # CoreModules/LlmProxy
-_CORE_MODULES_DIR = os.path.dirname(_LLM_PROXY_DIR)  # CoreModules/
-_ERROR_MANAGER_DIR = os.path.join(_CORE_MODULES_DIR, "ErrorManager")
-ensure_import_path("error_manager", _ERROR_MANAGER_DIR)
-
-from error_manager.http import error_response as _error_response
 
 from config import get_v1_include_autocomplete_logical_model
 from llm_proxy.anthropic_compat import (
@@ -68,6 +58,10 @@ def _request_proxy_api_key() -> str:
 
 def _openai_error_response(message: str, error_type: str, status: int):
     return jsonify({"error": {"type": error_type, "message": message}}), status
+
+
+def _internal_error_response(error: Exception, status: int = 500):
+    return jsonify({"error": {"code": "ERROR", "message": str(error)}}), status
 
 
 def _post_body_is_openai_completions_shape(body: object) -> bool:
@@ -129,7 +123,7 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
                     "endpoint": request.endpoint or "",
                 },
             )
-        return _error_response(error, status=500)
+        return _internal_error_response(error, status=500)
 
     @bp.before_request
     def _require_proxy_api_key():

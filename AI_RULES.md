@@ -42,6 +42,7 @@ Current root directory ownership:
 
 | Root folder | Owner | Classification |
 |-------------|-------|----------------|
+| `.agents/` | project support | agent metadata |
 | `.cursor/` | project support | editor metadata |
 | `.git/` | project support | VCS metadata |
 | `.github/` | project support | CI metadata |

@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any, Iterator
 
-from llm_interactor.contracts import (
+_CORE_DIR = Path(__file__).resolve().parents[3] / "Core"
+if str(_CORE_DIR) not in sys.path:
+    sys.path.insert(0, str(_CORE_DIR))
+
+from core.contracts.llm_runtime import (
     LLMRequest,
     LLMResponse,
     LLMStreamEvent,
@@ -14,7 +19,6 @@ from llm_interactor.contracts import (
     ProviderDescriptor,
     ProviderHealth,
 )
-
 from extensions_sandbox.client import ExtensionWorkerClient
 
 

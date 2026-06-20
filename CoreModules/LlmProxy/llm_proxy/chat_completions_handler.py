@@ -10,15 +10,11 @@ from typing import Any
 
 from flask import Response, jsonify, request
 
-try:
-    from chironai_rag.consumers import RAG_COLLECTION_APP_SETTING
-except ImportError:
-    RAG_COLLECTION_APP_SETTING = "rag_collection"
-
 from application.rag.proxy_settings_contract import (
     resolve_fetch_web_knowledge,
     resolve_rag_collection,
 )
+from core.contracts.rag_api import RAG_COLLECTION_APP_SETTING
 from llm_proxy import chat_completions_handler_prepare as _handler_prepare_module
 from llm_proxy.chat_completions_gemini_native import (
     _resolve_proxy_db_path_from_wiring,

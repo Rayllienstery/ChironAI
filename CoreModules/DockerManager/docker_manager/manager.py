@@ -10,10 +10,12 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Any, Iterator
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+
+from core.contracts.docker_runtime import DockerContainerSpec, DockerContainerState
 
 SPEC_HASH_LABEL = "chironai.docker_manager.spec_hash"
 MANAGED_LABEL = "chironai.docker_manager.managed"
@@ -32,40 +34,6 @@ class DockerCommandResult:
     @property
     def message(self) -> str:
         return (self.stderr or self.stdout or f"docker exited with {self.code}").strip()
-
-
-@dataclass(frozen=True)
-class DockerContainerSpec:
-    """Declarative container spec for extensions.
-
-    ports, volumes, extra_hosts, and command intentionally use Docker CLI-compatible
-    strings to keep the contract small and predictable:
-    - ports: ["11434:11434"]
-    - volumes: ["ollama_models:/root/.ollama"]
-    - extra_hosts: ["host.docker.internal:host-gateway"]
-    """
-
-    name: str
-    image: str
-    ports: list[str] = field(default_factory=list)
-    env: dict[str, str] = field(default_factory=dict)
-    volumes: list[str] = field(default_factory=list)
-    restart: str = "unless-stopped"
-    extra_hosts: list[str] = field(default_factory=list)
-    command: list[str] = field(default_factory=list)
-    labels: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class DockerContainerState:
-    exists: bool
-    running: bool = False
-    name: str = ""
-    image: str = ""
-    env: dict[str, str] = field(default_factory=dict)
-    ports: dict[str, Any] = field(default_factory=dict)
-    volumes: list[str] = field(default_factory=list)
-    labels: dict[str, str] = field(default_factory=dict)
 
 
 def _docker_executable() -> str:

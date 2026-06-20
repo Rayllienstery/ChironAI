@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
+RAG_COLLECTION_APP_SETTING = "rag_collection"
+
 # Request/response shapes for /v1/chat/completions (OpenAI-compatible subset)
 # Clients send:
 # {
@@ -120,4 +122,9 @@ def rag_file_apply_edit_shape() -> dict[str, Any]:
     }
 
 
-__all__ = ["rag_chat_request_shape", "rag_chat_response_shape", "rag_file_apply_edit_shape"]
+__all__ = [
+    "RAG_COLLECTION_APP_SETTING",
+    "rag_chat_request_shape",
+    "rag_chat_response_shape",
+    "rag_file_apply_edit_shape",
+]

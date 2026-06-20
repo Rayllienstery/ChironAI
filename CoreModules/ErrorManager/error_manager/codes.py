@@ -1,24 +1,33 @@
-"""String error code constants used by ChironError subclasses and HTTP responses."""
+"""Compatibility facade for canonical ChironAI error code constants."""
 
-# Generic
-ERROR = "ERROR"
-CHIRON_ERROR = "CHIRON_ERROR"
+from core.contracts.errors import (
+    AUTH_ERROR,
+    CHIRON_ERROR,
+    CRAWL_ERROR,
+    EMBEDDING_ERROR,
+    ERROR,
+    INDEXING_ERROR,
+    INGESTION_ERROR,
+    NOT_FOUND_ERROR,
+    PIPELINE_ERROR,
+    PROXY_ERROR,
+    RERANK_ERROR,
+    RETRIEVAL_ERROR,
+    VALIDATION_ERROR,
+)
 
-# RAG / retrieval pipeline
-RETRIEVAL_ERROR = "RETRIEVAL_ERROR"
-EMBEDDING_ERROR = "EMBEDDING_ERROR"
-RERANK_ERROR = "RERANK_ERROR"
-PIPELINE_ERROR = "PIPELINE_ERROR"
-
-# Ingestion / crawling
-INDEXING_ERROR = "INDEXING_ERROR"
-INGESTION_ERROR = "INGESTION_ERROR"
-CRAWL_ERROR = "CRAWL_ERROR"
-
-# Auth / proxy
-AUTH_ERROR = "AUTH_ERROR"
-PROXY_ERROR = "PROXY_ERROR"
-
-# Validation
-VALIDATION_ERROR = "VALIDATION_ERROR"
-NOT_FOUND_ERROR = "NOT_FOUND_ERROR"
+__all__ = [
+    "ERROR",
+    "CHIRON_ERROR",
+    "RETRIEVAL_ERROR",
+    "EMBEDDING_ERROR",
+    "RERANK_ERROR",
+    "PIPELINE_ERROR",
+    "INDEXING_ERROR",
+    "INGESTION_ERROR",
+    "CRAWL_ERROR",
+    "AUTH_ERROR",
+    "PROXY_ERROR",
+    "VALIDATION_ERROR",
+    "NOT_FOUND_ERROR",
+]

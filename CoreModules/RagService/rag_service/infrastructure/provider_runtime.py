@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Callable, Iterator
+from typing import Any, Literal
 
-from llm_interactor.contracts import LLMRequest
-
+from core.contracts.llm_runtime import LLMRequest
 from rag_service.domain.errors import EmbeddingError
 from rag_service.domain.services.retrieval import MAX_EMBED_TEXT_LENGTH
 
@@ -30,42 +29,18 @@ def _require_runtime(runtime_getter: Callable[[], Any | None] | None, runtime: A
         resolved = runtime_getter()
         if resolved is not None:
             return resolved
+    detail = ""
     try:
         from flask import current_app, has_app_context
 
         if has_app_context():
             app = current_app._get_current_object()
             wiring = getattr(app, "extensions", {}).get("llm_proxy_wiring")
-            manager = getattr(wiring, "extension_manager", None) if wiring is not None else None
-            wired_runtime = getattr(wiring, "llm_runtime", None) if wiring is not None else None
-            if wired_runtime is not None:
-                return wired_runtime
-            if manager is not None:
-                from api.http.llm_runtime_access import resolve_llm_runtime
-
-                resolved = resolve_llm_runtime(extension_manager=manager, sync_bootstrap=True)
-                if resolved is not None:
-                    return resolved
-            from api.http.llm_runtime_access import ensure_llm_runtime_for_app
-
-            resolved = ensure_llm_runtime_for_app(app)
-            if resolved is not None:
-                return resolved
-    except Exception:
-        pass
-    detail = ""
-    try:
-        from flask import current_app, has_app_context
-
-        if has_app_context():
-            from api.http.extensions_service_access import get_extensions_service
-
-            svc = get_extensions_service(current_app._get_current_object())
-            if svc is not None:
-                status = str(getattr(svc, "runtime_status", "") or "")
-                err = str(getattr(svc, "runtime_error", "") or "").strip()
-                if status or err:
-                    detail = f" (extensions status={status}" + (f", error={err}" if err else "") + ")"
+            svc = getattr(wiring, "extensions_service", None) if wiring is not None else None
+            status = str(getattr(svc, "runtime_status", "") or "")
+            err = str(getattr(svc, "runtime_error", "") or "").strip()
+            if status or err:
+                detail = f" (extensions status={status}" + (f", error={err}" if err else "") + ")"
     except Exception:
         pass
     raise EmbeddingError(_RUNTIME_UNAVAILABLE + detail)
@@ -243,9 +218,7 @@ class RuntimeResolvingChatClient:
     def _delegate(self) -> Any:
         runtime = self._resolved_runtime()
         if runtime is not None:
-            from llm_interactor import RuntimeBackedChatClient  # noqa: PLC0415
-
-            return RuntimeBackedChatClient(runtime, provider_id=self._provider_id)
+            return _RuntimeBackedChatClient(runtime, provider_id=self._provider_id)
         if self._fallback is not None:
             return self._fallback
         raise EmbeddingError(_RUNTIME_UNAVAILABLE)
@@ -282,6 +255,135 @@ class RuntimeResolvingChatClient:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._delegate(), name)
+
+
+class _RuntimeBackedChatClient:
+    """Adapter so existing RAG chat-client code can use the shared LLM runtime."""
+
+    def __init__(
+        self,
+        runtime: Any,
+        *,
+        provider_id: str,
+        upstream_url: str | None = None,
+        default_options: dict[str, Any] | None = None,
+        delegate: Any | None = None,
+    ) -> None:
+        self._runtime = runtime
+        self._provider_id = provider_id
+        self._url = upstream_url
+        self._default_options = dict(default_options or {})
+        self._delegate = delegate
+
+    def _options(self, options: dict[str, Any] | None) -> dict[str, Any] | None:
+        merged = dict(self._default_options)
+        merged.update(dict(options or {}))
+        return merged or None
+
+    def chat(
+        self,
+        messages: list[dict[str, Any]],
+        model: str,
+        stream: bool = False,
+        options: dict[str, Any] | None = None,
+        think: bool | str | None = None,
+    ) -> str:
+        if stream:
+            parts: list[str] = []
+            for kind, data in self.iter_chat_api_stream_events(
+                {
+                    "model": model,
+                    "messages": messages,
+                    "stream": True,
+                    "options": self._options(options) or {},
+                    "think": think,
+                }
+            ):
+                if kind in ("thinking_delta", "content_delta") and data:
+                    parts.append(str(data))
+            return "".join(parts)
+        resp = self._runtime.invoke(
+            LLMRequest(
+                provider_id=self._provider_id,
+                model=model,
+                operation="chat",
+                messages=messages,
+                stream=False,
+                options=self._options(options),
+                think=think,
+            )
+        )
+        return str(resp.text)
+
+    def stream_chat(
+        self,
+        messages: list[dict[str, Any]],
+        model: str,
+        options: dict[str, Any] | None = None,
+        think: bool | str | None = None,
+    ) -> Iterator[str]:
+        for kind, data in self.iter_chat_api_stream_events(
+            {
+                "model": model,
+                "messages": messages,
+                "stream": True,
+                "options": self._options(options) or {},
+                "think": think,
+            }
+        ):
+            if kind == "content_delta" and data:
+                yield str(data)
+
+    def chat_api(self, body: dict[str, Any]) -> dict[str, Any]:
+        resp = self._runtime.invoke(
+            LLMRequest(
+                provider_id=self._provider_id,
+                model=str(body.get("model") or ""),
+                operation="chat_api",
+                body=dict(body),
+                stream=bool(body.get("stream", False)),
+            )
+        )
+        return dict(resp.raw or {})
+
+    def chat_api_stream_final(self, body: dict[str, Any]) -> dict[str, Any]:
+        try:
+            fn = getattr(self._delegate, "chat_api_stream_final", None)
+            if callable(fn):
+                return fn(body)
+        except Exception:
+            pass
+        return self.chat_api({**body, "stream": False})
+
+    def iter_chat_api_stream_events(
+        self,
+        body: dict[str, Any],
+    ) -> Iterator[tuple[str, Any]]:
+        for event in self._runtime.stream_invoke(
+            LLMRequest(
+                provider_id=self._provider_id,
+                model=str(body.get("model") or ""),
+                operation="chat_api_stream_events",
+                body={**body, "stream": True},
+                stream=True,
+            )
+        ):
+            yield (str(event.type), event.data)
+
+    def iter_chat_api_stream_openai_parts(
+        self,
+        body: dict[str, Any],
+    ) -> Iterator[tuple[Literal["content", "error"], str]]:
+        for kind, data in self.iter_chat_api_stream_events(body):
+            if kind in ("thinking_delta", "content_delta"):
+                yield ("content", str(data))
+            elif kind == "error":
+                yield ("error", str(data))
+
+    def __getattr__(self, name: str) -> Any:
+        if self._delegate is not None:
+            return getattr(self._delegate, name)
+        raise AttributeError(name)
 
 
 __all__ = [

@@ -16,7 +16,8 @@ from urllib.parse import urlparse
 
 import requests
 
-from docker_manager import DockerContainerSpec, DockerManager
+from core.contracts.docker_runtime import DockerContainerSpec
+from docker_manager import DockerManager
 from rag_service.config import get_qdrant_url
 
 DEFAULT_LLM_PROVIDER_ID = (os.getenv("DEFAULT_LLM_PROVIDER_ID") or "ollama").strip() or "ollama"

@@ -8,21 +8,20 @@ requests around provider-runtime calls. Do not add provider HTTP ownership here.
 
 from __future__ import annotations
 
-from rag_service.infrastructure.openai_multipart_vision import (
+from llm_proxy.openai_multipart_vision import (
     VISION_MAX_DECODED_BYTES,
     openai_parts_to_flat_text,
     promote_inline_data_image_urls_in_content,
     sanitize_openai_text_part,
     sanitize_proxy_content_parts,
 )
-from rag_service.infrastructure.openai_ollama_tool_bridge import (
+from llm_proxy.openai_ollama_tool_bridge import (
     ollama_chat_tool_choice_payload_value,
     ollama_message_to_openai_assistant,
     ollama_tools_from_openai,
     openai_finish_reason_from_ollama,
     openai_tool_choice_means_none,
 )
-
 from llm_proxy.wire_format.gemini_model_id import is_gemini_family_model_name
 from llm_proxy.wire_format.model_brand import resolve_brand_key
 from llm_proxy.wire_format.model_capabilities import (

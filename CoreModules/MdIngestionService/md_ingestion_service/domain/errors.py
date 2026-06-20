@@ -6,6 +6,6 @@ This module keeps its original import path (``md_ingestion_service.domain.errors
 all existing callers.
 """
 
-from error_manager.exceptions import IngestionError  # noqa: F401
+from core.contracts.errors import IngestionError  # noqa: F401
 
 __all__ = ["IngestionError"]

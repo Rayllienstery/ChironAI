@@ -6,7 +6,7 @@ This module keeps its original import path (``rag_service.domain.errors``) worki
 existing callers.
 """
 
-from error_manager.exceptions import (  # noqa: F401
+from core.contracts.errors import (  # noqa: F401
     EmbeddingError,
     RerankError,
     RetrievalError,

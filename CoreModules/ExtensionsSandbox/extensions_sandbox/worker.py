@@ -10,9 +10,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from llm_interactor.contracts import LLMRequest, ProviderHostContext
+_CORE_DIR = Path(__file__).resolve().parents[3] / "Core"
+if str(_CORE_DIR) not in sys.path:
+    sys.path.insert(0, str(_CORE_DIR))
+
 from llm_interactor.manifest import manifest_from_dict
 
+from core.contracts.llm_runtime import LLMRequest, ProviderHostContext
 from extensions_sandbox.serialization import to_jsonable
 
 _PROTOCOL_OUT = sys.stdout

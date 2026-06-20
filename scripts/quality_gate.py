@@ -59,6 +59,7 @@ FULL_GATE_EXTRA: tuple[GateStep, ...] = (
             "fast",
             "--cov=domain",
             "--cov=application",
+            "--cov-report=xml",
             "--cov-fail-under=80",
         ),
         REPO_ROOT,

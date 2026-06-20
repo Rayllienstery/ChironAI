@@ -20,6 +20,7 @@ class RootEntry:
 
 ALLOWED_ROOT_DIRECTORIES: dict[str, RootEntry] = {
     ".cursor": RootEntry("project support", "editor metadata"),
+    ".agents": RootEntry("project support", "agent metadata"),
     ".git": RootEntry("project support", "VCS metadata"),
     ".github": RootEntry("project support", "CI metadata"),
     ".hypothesis": RootEntry("project support", "tool cache"),

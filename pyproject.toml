@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chironai"
-version = "0.7.31"
+version = "0.7.34"
 description = "Modular RAG platform (Ollama + Qdrant) with WebUI and crawl/index pipelines. Configured for Apple platforms, supports any domain."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -47,6 +47,10 @@ dev = [
   "pyright>=1.1.0",
   "pip-audit>=2.7.0",
   "hypothesis>=6.0",
+  "prometheus-client>=0.20",
+  "opentelemetry-api>=1.25",
+  "opentelemetry-sdk>=1.25",
+  "opentelemetry-instrumentation-flask>=0.46b0",
 ]
 
 [project.scripts]
@@ -58,7 +62,7 @@ Homepage = "https://github.com"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.7.31"
+version = "0.7.34"
 version_files = [
   "Core/core/version.py:VERSION",
   "pyproject.toml:version",
@@ -202,7 +206,25 @@ known-first-party = [
 
 # Domain layer must not depend on outer layers (application / api / infrastructure).
 [tool.importlinter]
-root_packages = ["domain", "application", "infrastructure"]
+root_packages = [
+  "domain",
+  "application",
+  "infrastructure",
+  "chironai_security",
+  "docker_manager",
+  "error_manager",
+  "extensions_host",
+  "extensions_sandbox",
+  "llm_interactor",
+  "llm_proxy",
+  "localization",
+  "logs_manager",
+  "md_ingestion_service",
+  "rag_service",
+  "chironai_rag",
+  "web_interaction",
+  "webui_backend",
+]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
@@ -222,6 +244,24 @@ name = "infrastructure_not_import_api"
 type = "forbidden"
 source_modules = ["infrastructure"]
 forbidden_modules = ["api"]
+
+[[tool.importlinter.contracts]]
+name = "modules_http_only"
+type = "forbidden"
+source_modules = [
+  "chironai_security",
+  "docker_manager",
+  "error_manager",
+  "extensions_host",
+  "extensions_sandbox",
+  "llm_interactor",
+  "localization",
+  "logs_manager",
+  "md_ingestion_service",
+  "web_interaction",
+]
+forbidden_modules = ["rag_service", "chironai_rag", "llm_proxy", "webui_backend"]
+allow_indirect_imports = true
 
 # Dead code scan: `python -m vulture` (reads paths/exclude from here; default --config pyproject.toml).
 [tool.vulture]

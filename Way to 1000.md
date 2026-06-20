@@ -87,16 +87,16 @@ SMOKE          = .\build_and_run.bat      (cwd: repo root)
 - [x] **T19.3** Расщепить chat_completions_handler + tool_helpers · +3 · deps: T19.1
 - [x] **T19.4** Расщепить rag_tests_routes + v1_blueprint · +2 · deps: T19.1
 - [x] **T1.1** Завершить миграцию root-level tails под Core/ · +4 · deps: T3.1
-- [ ] **T2.1** Убрать импорты реализаций между CoreModules · +3 · deps: T3.1
+- [x] **T2.1** Убрать импорты реализаций между CoreModules · +3 · deps: T3.1
 - [x] **T1.2** ADR для архитектурных решений (≥5) · +4 · deps: —
 - [x] **T4.2** Integration-набор полного RAG-pipeline · +4 · deps: T4.1
 - [x] **T4.3** Property-based тесты для парсеров · +2 · deps: T4.1
 - [ ] **T5.1** Покрыть тестами вкладки CoreUI без тестов · +5 · deps: —
 - [ ] **T5.2** Порог покрытия CoreUI в CI (70%) · +3 · deps: T5.1
-- [ ] **T6.1** Linux parity + matrix Python + кэш + codecov · +8 · deps: —
+- [x] **T6.1** Linux parity + matrix Python + кэш + codecov · +8 · deps: —
 - [ ] **T8.1** SAST + secret-scanning + Dependabot + CSP · +6 · deps: —
 - [ ] **T9.1** Подпись манифестов + enforcement + тесты миграции · +6 · deps: —
-- [ ] **T11.1** Расширить ARCHITECTURE.md (≥300 строк) · +5 · deps: —
+- [x] **T11.1** Расширить ARCHITECTURE.md (≥300 строк) · +5 · deps: —
 - [ ] **T11.2** README для каждого CoreModule · +4 · deps: —
 - [ ] **T11.3** CONTRIBUTING + onboarding · +3 · deps: T12.1
 - [ ] **T11.4** Авто-генерация API-reference из OpenAPI · +3 · deps: T16.1

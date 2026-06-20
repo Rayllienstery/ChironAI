@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.34] - 2026-06-20
+### Changed
+- Added shared Core contracts for Docker runtime, LLM runtime, and ChironAI errors while preserving existing module import facades.
+- Added an import-linter boundary to prevent CoreModules from importing RAG, LlmProxy, or WebUIBackend implementations directly.
+
+## [0.7.33] - 2026-06-19
+### Changed
+- Expanded `docs/ARCHITECTURE.md` to 313 lines with full layer rules, data flow diagrams, module responsibilities, high-risk zones, observability, and security posture.
+
+## [0.7.32] - 2026-06-19
+### Changed
+- Added Linux full quality gate, Python version matrix (3.10–3.13), pip caching, and Codecov upload in CI.
+- Coverage step now emits an XML report for Codecov.
+
 ## [0.7.31] - 2026-06-19
 ### Added
 - Integration test for the full RAG pipeline using in-memory ports.

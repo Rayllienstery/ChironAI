@@ -411,7 +411,7 @@ class ExtensionWorkerClient:
             if method not in allowed:
                 raise AttributeError(f"docker_runtime method not allowed: {method}")
             if method == "ensure_container" and args and isinstance(args[0], dict):
-                from docker_manager import DockerContainerSpec
+                from core.contracts.docker_runtime import DockerContainerSpec
 
                 args = [DockerContainerSpec(**args[0]), *args[1:]]
             return getattr(docker, method)(*args, **kwargs)
