@@ -91,7 +91,7 @@ SMOKE          = .\build_and_run.bat      (cwd: repo root)
 - [x] **T1.2** ADR для архитектурных решений (≥5) · +4 · deps: —
 - [x] **T4.2** Integration-набор полного RAG-pipeline · +4 · deps: T4.1
 - [x] **T4.3** Property-based тесты для парсеров · +2 · deps: T4.1
-- [ ] **T5.1** Покрыть тестами вкладки CoreUI без тестов · +5 · deps: —
+- [x] **T5.1** Покрыть тестами вкладки CoreUI без тестов · +5 · deps: —
 - [ ] **T5.2** Порог покрытия CoreUI в CI (70%) · +3 · deps: T5.1
 - [x] **T6.1** Linux parity + matrix Python + кэш + codecov · +8 · deps: —
 - [ ] **T8.1** SAST + secret-scanning + Dependabot + CSP · +6 · deps: —
@@ -694,7 +694,7 @@ messages, responses). Сохранить Flask-регистрацию контр
 
 **VERIFY:** `UI_TEST` pass; все целевые вкладки имеют `.test.*`.
 **Критерии готовности:**
-- [ ] 0 вкладок без тестов (кроме намеренно-тривиальных)
+- [x] 0 вкладок без тестов (кроме намеренно-тривиальных)
 
 ---
 

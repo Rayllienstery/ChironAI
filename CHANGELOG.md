@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.35] - 2026-06-20
+### Added
+- Added CoreUI component tests for previously uncovered tabs and shared tab controls.
+
 ## [0.7.34] - 2026-06-20
 ### Changed
 - Added shared Core contracts for Docker runtime, LLM runtime, and ChironAI errors while preserving existing module import facades.
