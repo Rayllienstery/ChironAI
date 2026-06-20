@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.37] - 2026-06-20
+### Added
+- Added advisory Bandit SAST with a documented baseline, gitleaks CI secret scanning, Dependabot configuration, and Flask security headers.
+
 ## [0.7.36] - 2026-06-20
 ### Added
 - Added a CoreUI coverage gate with a 70% line threshold to the full quality gate.

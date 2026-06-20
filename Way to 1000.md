@@ -94,7 +94,7 @@ SMOKE          = .\build_and_run.bat      (cwd: repo root)
 - [x] **T5.1** Покрыть тестами вкладки CoreUI без тестов · +5 · deps: —
 - [x] **T5.2** Порог покрытия CoreUI в CI (70%) · +3 · deps: T5.1
 - [x] **T6.1** Linux parity + matrix Python + кэш + codecov · +8 · deps: —
-- [ ] **T8.1** SAST + secret-scanning + Dependabot + CSP · +6 · deps: —
+- [x] **T8.1** SAST + secret-scanning + Dependabot + CSP · +6 · deps: —
 - [ ] **T9.1** Подпись манифестов + enforcement + тесты миграции · +6 · deps: —
 - [x] **T11.1** Расширить ARCHITECTURE.md (≥300 строк) · +5 · deps: —
 - [ ] **T11.2** README для каждого CoreModule · +4 · deps: —
@@ -765,10 +765,10 @@ messages, responses). Сохранить Flask-регистрацию контр
 **VERIFY:** `python -m bandit -r Core CoreModules -q` → advisory (не падает
 gate, но отчёт чистый или findings задокументированы).
 **Критерии готовности:**
-- [ ] bandit advisory
-- [ ] dependabot
-- [ ] CSP headers
-- [ ] gitleaks
+- [x] bandit advisory
+- [x] dependabot
+- [x] CSP headers
+- [x] gitleaks
 
 ---
 

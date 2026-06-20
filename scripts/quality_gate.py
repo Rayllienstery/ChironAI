@@ -86,6 +86,13 @@ FULL_GATE_EXTRA: tuple[GateStep, ...] = (
         required=False,
     ),
     GateStep(
+        "bandit",
+        _python_command("-m", "bandit", "-r", "Core", "CoreModules", "-q"),
+        REPO_ROOT,
+        120,
+        required=False,
+    ),
+    GateStep(
         "api-drift-check",
         _python_command("scripts/check_api_drift.py"),
         REPO_ROOT,

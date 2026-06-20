@@ -97,11 +97,13 @@ def create_app(
     """
     import time as _time
 
+    from api.http.security_headers import register_security_headers
     from api.http.startup_timing import process_start_offset_ms, record_phase
 
     _t_app_start = _time.perf_counter()
 
     app = Flask(__name__)
+    register_security_headers(app)
 
     _t_params_start = _time.perf_counter()
     params, deps = get_rag_answer_params(webui_dir=webui_dir)

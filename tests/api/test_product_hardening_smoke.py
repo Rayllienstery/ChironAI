@@ -112,6 +112,20 @@ def test_product_readonly_flows_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
     assert installed["extensions"][0]["id"] == "ollama-provider"
 
 
+def test_product_security_headers_are_applied(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = _create_hardened_app(monkeypatch)
+    response = app.test_client().get("/api/webui/version")
+
+    assert response.status_code == 200
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "SAMEORIGIN"
+    assert response.headers["Strict-Transport-Security"].startswith("max-age=31536000")
+    csp = response.headers["Content-Security-Policy"]
+    assert "default-src 'self'" in csp
+    assert "object-src 'none'" in csp
+    assert "frame-ancestors 'self'" in csp
+
+
 def test_product_destructive_docker_actions_require_exact_confirmation(monkeypatch: pytest.MonkeyPatch) -> None:
     app = _create_hardened_app(monkeypatch)
     client = app.test_client()
