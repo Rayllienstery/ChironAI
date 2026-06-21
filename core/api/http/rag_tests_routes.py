@@ -197,7 +197,7 @@ def _run_unified_proxy_chat(body: dict[str, Any]) -> Any:
 @rag_tests_bp.route("/rag-tests", methods=["GET"])
 def rag_tests_list() -> Any:
     """List all RAG tests, optionally filtered by platform, framework, difficulty."""
-    get_root, list_filters, load_all, load_one, _ = _get_rag_tests_module()
+    get_root, list_filters, load_all, _, _ = _get_rag_tests_module()
     if load_all is None:
         return jsonify({"error": "RAG tests module not available"}), 500
     root = get_root()

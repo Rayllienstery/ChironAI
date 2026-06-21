@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.50] - 2026-06-21
+### Fixed
+- Fixed Swagger tab rendering by serving a Swagger UI-compatible OpenAPI document.
+
+## [0.7.49] - 2026-06-21
+### Removed
+- Removed small unused Python cleanup tails from RAG test routes and shared tooling.
+
 ## [0.7.48] - 2026-06-21
 ### Fixed
 - Restored reliable Material Symbols icon rendering in CoreUI with a bundled self-hosted font.

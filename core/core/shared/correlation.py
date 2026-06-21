@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Callable
-from typing import Any, TypeVar
-
-T = TypeVar("T")
+from typing import Any
 
 _HEADER_NAMES = (
     "X-Correlation-Id",
@@ -56,27 +53,3 @@ def log_operation(
         operation,
         extra={"correlation_id": correlation_id, "operation": operation, **extra},
     )
-
-
-def safe_optional(
-    logger: logging.Logger,
-    *,
-    operation: str,
-    correlation_id: str,
-    fn: Callable[[], T],
-    default: T | None = None,
-    reason: str = "",
-) -> T | None:
-    """Run optional work; log and return default instead of raising."""
-    try:
-        return fn()
-    except Exception as exc:  # safe: optional dependency / cleanup path
-        log_operation(
-            logger,
-            logging.WARNING,
-            operation=operation,
-            correlation_id=correlation_id,
-            message=reason or f"optional step skipped: {exc}",
-            error=str(exc),
-        )
-        return default

@@ -53,7 +53,6 @@ DOCUMENTED_EXCEPTIONS: dict[str, str] = {
 }
 
 PRODUCTION_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx"}
-TEST_PATH_MARKERS = ("tests/", "test_", "_test.")
 
 
 @dataclass(frozen=True)

@@ -12,7 +12,7 @@ from api.http.rag_tests_routes import rag_tests_bp
 from api.http.webui_routes import webui_bp
 from api.http.webui_version_routes import register_version_routes
 from core.contracts.webui_api import VERSION_RESPONSE_KEYS, WEBUI_URL_PREFIX
-from core.openapi import build_openapi_spec, register_openapi_routes
+from core.openapi import build_openapi_spec, build_swagger_ui_spec, register_openapi_routes
 from core.version import APP_NAME, APP_STAGE, VERSION
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -124,6 +124,20 @@ def test_swagger_ui_route_returns_html() -> None:
     assert response.status_code == 200
     assert response.mimetype == "text/html"
     assert b"SwaggerUIBundle" in response.data
+    assert f"{WEBUI_URL_PREFIX}/swagger/openapi.json".encode() in response.data
+
+
+def test_swagger_ui_spec_keeps_public_openapi_contract_intact() -> None:
+    app = _openapi_contract_app()
+    public_spec = build_openapi_spec(app)
+    swagger_spec = build_swagger_ui_spec(app)
+
+    assert public_spec["openapi"] == "3.1.0"
+    assert public_spec["jsonSchemaDialect"] == "https://json-schema.org/draft/2020-12/schema"
+    assert swagger_spec["openapi"] == "3.0.3"
+    assert "jsonSchemaDialect" not in swagger_spec
+    assert set(swagger_spec["paths"]) == set(public_spec["paths"])
+    assert swagger_spec["info"] == public_spec["info"]
 
 
 def test_openapi_spec_covers_registered_flask_routes() -> None:
@@ -134,7 +148,7 @@ def test_openapi_spec_covers_registered_flask_routes() -> None:
 
     for rule in app.url_map.iter_rules():
         endpoint = str(rule.endpoint or "")
-        if endpoint in {"static", "openapi_json", "swagger_ui", "swagger_asset"}:
+        if endpoint in {"static", "openapi_json", "swagger_ui", "swagger_asset", "swagger_openapi_json"}:
             continue
         path = re.sub(r"<(?:[^:<>]+:)?([^<>]+)>", r"{\1}", rule.rule)
         if path not in spec_paths:

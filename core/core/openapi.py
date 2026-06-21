@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from importlib import resources
 from typing import Any
 
@@ -17,6 +18,7 @@ _INTERNAL_ENDPOINT_SUFFIXES = {
     "static",
     "swagger_ui",
     "swagger_asset",
+    "swagger_openapi_json",
     "openapi_json",
 }
 
@@ -817,6 +819,29 @@ def build_openapi_spec(app: Flask) -> dict[str, Any]:
     }
 
 
+def build_swagger_ui_spec(app: Flask) -> dict[str, Any]:
+    """Build the OpenAPI document variant accepted by the bundled Swagger UI."""
+    spec = deepcopy(build_openapi_spec(app))
+    spec["openapi"] = "3.0.3"
+    spec.pop("jsonSchemaDialect", None)
+    _normalize_json_schema_keywords(spec)
+    return spec
+
+
+def _normalize_json_schema_keywords(value: Any) -> None:
+    if isinstance(value, dict):
+        value.pop("$schema", None)
+        if "const" in value and "enum" not in value:
+            value["enum"] = [value.pop("const")]
+        else:
+            value.pop("const", None)
+        for child in value.values():
+            _normalize_json_schema_keywords(child)
+    elif isinstance(value, list):
+        for child in value:
+            _normalize_json_schema_keywords(child)
+
+
 _SWAGGER_HTML = """<!doctype html>
 <html lang="en">
 <head>
@@ -860,6 +885,7 @@ def register_openapi_routes(app: Flask, *, url_prefix: str = WEBUI_URL_PREFIX) -
 
     spec_path = f"{url_prefix.rstrip('/')}/openapi.json"
     swagger_path = f"{url_prefix.rstrip('/')}/swagger/"
+    swagger_spec_path = f"{url_prefix.rstrip('/')}/swagger/openapi.json"
     asset_path = f"{url_prefix.rstrip('/')}/swagger-assets/<path:filename>"
     asset_base = f"{url_prefix.rstrip('/')}/swagger-assets"
 
@@ -867,9 +893,13 @@ def register_openapi_routes(app: Flask, *, url_prefix: str = WEBUI_URL_PREFIX) -
     def openapi_json() -> Any:
         return jsonify(build_openapi_spec(current_app))
 
+    @app.get(swagger_spec_path, endpoint="swagger_openapi_json")
+    def swagger_openapi_json() -> Any:
+        return jsonify(build_swagger_ui_spec(current_app))
+
     @app.get(swagger_path, endpoint="swagger_ui")
     def swagger_ui() -> Response:
-        html = render_template_string(_SWAGGER_HTML, spec_url=spec_path, asset_base=asset_base)
+        html = render_template_string(_SWAGGER_HTML, spec_url=swagger_spec_path, asset_base=asset_base)
         return Response(html, mimetype="text/html; charset=utf-8")
 
     @app.get(asset_path, endpoint="swagger_asset")
@@ -886,4 +916,4 @@ def register_openapi_routes(app: Flask, *, url_prefix: str = WEBUI_URL_PREFIX) -
             abort(503, description="flask-restx is not installed")
 
 
-__all__ = ["build_openapi_spec", "register_openapi_routes"]
+__all__ = ["build_openapi_spec", "build_swagger_ui_spec", "register_openapi_routes"]
