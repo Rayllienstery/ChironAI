@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.40] - 2026-06-21
+### Added
+- Added structured request logging, OpenTelemetry Flask instrumentation, root health route modules, and Prometheus metrics export.
+
+## [0.7.39] - 2026-06-21
+### Changed
+- Expanded CoreModule README coverage with ownership, setup, entrypoint, testing, and dependency notes.
+
 ## [0.7.38] - 2026-06-20
 ### Added
 - Added extension manifest digest validation, capability enforcement, and manifest migration tests.

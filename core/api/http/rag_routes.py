@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from flask import Flask, Response, jsonify
+from flask import Flask, Response
 
 from core.bootstrap.import_paths import ensure_webui_composition_paths, ensure_webui_runtime_paths
 
@@ -97,13 +97,18 @@ def create_app(
     """
     import time as _time
 
+    from api.http.health_routes import register_health_routes
+    from api.http.metrics_routes import register_metrics_routes
     from api.http.security_headers import register_security_headers
     from api.http.startup_timing import process_start_offset_ms, record_phase
+    from infrastructure.observability import configure_flask_otel
 
     _t_app_start = _time.perf_counter()
 
     app = Flask(__name__)
     register_security_headers(app)
+    register_metrics_routes(app)
+    configure_flask_otel(app)
 
     _t_params_start = _time.perf_counter()
     params, deps = get_rag_answer_params(webui_dir=webui_dir)
@@ -160,6 +165,7 @@ def create_app(
     from core.openapi import register_openapi_routes
     app.register_blueprint(webui_bp)
     app.register_blueprint(rag_tests_bp)
+    register_health_routes(app, lambda: _check_app_stack_health(app))
     register_openapi_routes(app)
     _bp_ms = (_time.perf_counter() - _t_bp_start) * 1000
 
@@ -217,18 +223,6 @@ def create_app(
             headers={"Location": "/webui"},
             mimetype="text/html; charset=utf-8",
         )
-
-    @app.route("/health", methods=["GET"])
-    def health() -> Response:
-        """Health check endpoint for Ollama and Qdrant availability."""
-        result = _check_app_stack_health(app)
-        return jsonify(result.to_json_dict(service="rag_proxy")), result.http_status
-
-    @app.route("/ready", methods=["GET"])
-    def ready() -> Response:
-        """Readiness probe: dependency checks (Ollama provider + Qdrant)."""
-        result = _check_app_stack_health(app)
-        return jsonify(result.to_json_dict(service="rag_proxy", probe="ready")), result.http_status
 
     return app
 

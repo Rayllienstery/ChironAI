@@ -79,6 +79,47 @@ def test_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     assert comps.get("ollama") == "healthy"
     assert comps.get("qdrant") == "healthy"
     assert data.get("timestamp")
+    assert r.headers.get("X-Request-Id")
+
+
+@pytest.mark.fast
+@pytest.mark.api
+def test_metrics_endpoint_exports_prometheus_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
+    ok = MagicMock()
+    ok.ok = True
+    monkeypatch.setattr("infrastructure.stack_health.requests.get", lambda *_a, **_k: ok)
+
+    class _HealthyProviderExtensions:
+        runtime = object()
+
+        def provider_rows(self, _runtime: Any) -> list[dict[str, Any]]:
+            return [
+                {
+                    "provider_id": "ollama",
+                    "extension_id": "ollama-provider",
+                    "title": "Ollama",
+                    "health": {"ok": True, "status": "ok", "message": "", "details": {}},
+                }
+            ]
+
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    set_extensions_app_state(app, service=_HealthyProviderExtensions(), runtime=_HealthyProviderExtensions.runtime)
+    client = app.test_client()
+
+    health = client.get("/health", headers={"X-Request-Id": "req-metrics-1"})
+    assert health.status_code == 200
+    assert health.headers.get("X-Request-Id") == "req-metrics-1"
+
+    response = client.get("/metrics")
+    text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "text/plain" in response.content_type
+    assert "chironai_http_requests_total" in text
+    assert "chironai_http_request_duration_seconds" in text
+    assert 'endpoint="health"' in text
 
 
 @pytest.mark.fast

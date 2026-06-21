@@ -65,6 +65,10 @@ _OPERATION_DETAILS: dict[tuple[str, str], dict[str, str]] = {
         "summary": "Readiness probe for ChironAI stack",
         "description": "Returns readiness for required runtime dependencies (Ollama provider and Qdrant).",
     },
+    ("/metrics", "GET"): {
+        "summary": "Export Prometheus metrics",
+        "description": "Returns Prometheus text exposition for HTTP request counts, latency, and observability gauges.",
+    },
     ("/api/webui/version", "GET"): {
         "summary": "Get application version",
         "description": "Returns the canonical ChironAI version, release stage, display name, and latest changelog entry used by CoreUI startup.",
