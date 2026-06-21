@@ -27,5 +27,6 @@ python scripts/quality_gate.py --profile release --include-advisory
 
 - `scripts/audit_oversized_files.py --mode check` - line-count policy (800 production / 1200 tests).
 - `scripts/check_api_drift.py` - Flask routes, OpenAPI, and CoreUI `api.js` drift check.
+- `scripts/gen_api_docs.py --check` - generated Markdown API reference freshness check.
 - `scripts/validate_openapi.py` - generated OpenAPI 3.1 schema validation.
 - `reports/baseline/` - one-time and snapshot baseline outputs.

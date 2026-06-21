@@ -1756,6 +1756,15 @@ export interface paths {
       };
     };
   };
+  "/metrics": {
+    get: {
+      parameters: never;
+      requestBody: never;
+      responses: {
+        "200": components["schemas"]["GenericObject"];
+      };
+    };
+  };
   "/ready": {
     get: {
       parameters: never;

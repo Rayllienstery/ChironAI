@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.43] - 2026-06-21
+### Added
+- Added generated OpenAPI Markdown API reference tooling and release-gate freshness check.
+
+## [0.7.42] - 2026-06-21
+### Added
+- Added contributor workflow and onboarding documentation for branches, commits, quality gates, versioning, setup, and first PRs.
+
+## [0.7.41] - 2026-06-21
+### Added
+- Added CoreUI Storybook, bundle budget, accessibility tests, and Playwright smoke coverage for RAG and extension surfaces.
+
 ## [0.7.40] - 2026-06-21
 ### Added
 - Added structured request logging, OpenTelemetry Flask instrumentation, root health route modules, and Prometheus metrics export.

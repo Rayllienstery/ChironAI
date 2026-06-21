@@ -46,6 +46,9 @@ WebUI/dist/
 coverage/
 playwright-report/
 test-results/
+CoreModules/CoreUI/storybook-static/
+CoreModules/CoreUI/.storybook-cache/
+CoreModules/CoreUI/.storybook-home/
 
 # Virtual environments
 venv/

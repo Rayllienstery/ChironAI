@@ -43,6 +43,7 @@ MINIMAL_GATE: tuple[GateStep, ...] = (
     GateStep("pytest-fast", ("pytest", "-q", "-m", "fast", "--maxfail=1"), REPO_ROOT, 300),
     GateStep("pytest-collect", ("pytest", "--collect-only", "-q"), REPO_ROOT, 180),
     GateStep("coreui-build", _npm_command("run", "build"), COREUI_ROOT, 180),
+    GateStep("coreui-bundle-budget", _npm_command("run", "bundle:budget"), COREUI_ROOT, 30),
     GateStep("coreui-knip", _npm_command("run", "knip"), COREUI_ROOT, 120),
     GateStep("coreui-lockfile", _npm_command("run", "check:lockfile"), COREUI_ROOT, 30),
 )
@@ -148,6 +149,13 @@ RELEASE_GATE_EXTRA: tuple[GateStep, ...] = (
         _python_command("scripts/run_dependency_audit.py"),
         REPO_ROOT,
         240,
+    ),
+    GateStep(
+        "api-docs",
+        _python_command("scripts/gen_api_docs.py", "--check"),
+        REPO_ROOT,
+        60,
+        required=False,
     ),
     GateStep(
         "docker-build",
