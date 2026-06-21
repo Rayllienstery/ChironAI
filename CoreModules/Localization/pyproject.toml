@@ -11,3 +11,6 @@ requires-python = ">=3.10"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["localization*"]
+
+[tool.setuptools.package-data]
+localization = ["catalog/*/*.json"]

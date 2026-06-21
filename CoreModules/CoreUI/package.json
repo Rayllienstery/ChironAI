@@ -17,6 +17,7 @@
     "storybook": "node scripts/storybook_build.mjs",
     "storybook:dev": "storybook dev -p 6006 --no-open",
     "gen:types": "node scripts/gen_api_types.mjs",
+    "i18n-lint": "node scripts/i18n_lint.mjs",
     "lint": "eslint \"src/**/*.{js,jsx}\"",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css,json}\"",

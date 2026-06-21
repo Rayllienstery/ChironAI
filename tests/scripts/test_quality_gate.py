@@ -7,7 +7,7 @@ from scripts import quality_gate
 
 
 def test_quality_gate_profiles_are_registered() -> None:
-    assert set(quality_gate.PROFILES) == {"minimal", "full", "release", "strict-lint"}
+    assert set(quality_gate.PROFILES) == {"minimal", "full", "mutation", "release", "strict-lint"}
 
 
 def test_minimal_gate_has_required_steps_and_timeouts() -> None:
@@ -48,6 +48,26 @@ def test_release_gate_includes_advisory_trivy_image_scan() -> None:
     trivy = next(step for step in with_advisory if step.name == "trivy-image")
     assert trivy.required is False
     assert trivy.command == ("trivy", "image", "chironai:gate")
+
+
+def test_full_gate_includes_advisory_coreui_i18n_lint() -> None:
+    required = quality_gate.iter_steps("full")
+    with_advisory = quality_gate.iter_steps("full", include_advisory=True)
+
+    assert "coreui-i18n-lint" not in [step.name for step in required]
+    step = next(item for item in with_advisory if item.name == "coreui-i18n-lint")
+    assert step.required is False
+    assert step.command[-2:] == ("run", "i18n-lint")
+
+
+def test_mutation_gate_is_advisory() -> None:
+    assert quality_gate.iter_steps("mutation") == ()
+    steps = quality_gate.iter_steps("mutation", include_advisory=True)
+
+    assert len(steps) == 1
+    assert steps[0].name == "mutation-baseline"
+    assert steps[0].required is False
+    assert steps[0].command == ("mutmut", "run")
 
 
 def test_full_gate_requires_oversized_file_audit() -> None:

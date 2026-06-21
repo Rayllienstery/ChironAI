@@ -15,6 +15,8 @@ Start with these files:
 - `docs/legacy_map.md` for migration tails and known risks.
 - `docs/adr/` for accepted architectural decisions.
 - `docs/QUALITY_GATE_PROFILES.md` for local and CI gate profiles.
+- `docs/RUNBOOK.md` for diagnostics and recovery when startup, RAG, proxy, or
+  extension flows fail.
 
 Keep the vocabulary straight:
 
@@ -153,3 +155,27 @@ Use `.github/pull_request_template.md`. Include:
 - `docs/adr/0003-llm-proxy-compat.md` - compatibility promises.
 - `docs/adr/0004-modular-migration.md` - modular migration approach.
 - `docs/adr/0005-docker-contract.md` - Docker runtime contract.
+- `docs/adr/0006-operational-knowledge.md` - operational docs ownership.
+
+## 10. CoreModule Walkthrough
+
+Use this quick pass before changing a module:
+
+| Module | Entry flow | Key files | High-risk checks |
+|--------|------------|-----------|------------------|
+| `CoreModules/CoreUI` | Browser loads Vite build, then calls `/api/webui/*` over HTTP. | `src/App.jsx`, `src/services/api.js`, `src/components/`, `src/styles/` | Run `npm run build`; keep API client/types synced with OpenAPI; do not import backend internals. |
+| `CoreModules/LlmProxy` | `/v1/*` requests enter Flask blueprint and normalize to provider-backed chat. | `llm_proxy/v1_blueprint.py`, `chat_completions_handler.py`, `wire_format/` | Run `pytest tests/llm_proxy --maxfail=1`; preserve streaming/tool/vision compatibility. |
+| `CoreModules/RagService` | RAG use cases build context through embed, search, rerank, and chat provider runtime. | `rag_service/application/use_cases.py`, `infrastructure/qdrant_repository.py`, `runtime.py` | Run targeted RAG tests; keep dense/hybrid vector modes aligned with docs. |
+| `CoreModules/DockerManager` | Host and extensions request container lifecycle through the Docker runtime contract. | Docker runtime package, `Core/core/contracts/docker_runtime.py` | Extensions must not shell out to Docker; run extension Docker policy tests. |
+| `CoreModules/LogsManager` | Internal scripts read completed proxy journal rows from `logs/webui.db`. | `logs_manager/`, `CoreModules/LogsManager/README.md` | Read-only only; no `/api/webui` or CoreUI surface. |
+| `CoreModules/ExtensionsHost` | Host wires extension providers, capabilities, and runtime metadata. | `extensions_host/wiring.py`, extension manifests | Keep manifest capabilities explicit and iframe/schema UI self-contained. |
+| `CoreModules/ExtensionsSandbox` | Extension code runs in a constrained worker process. | `extensions_sandbox/` | Keep sandbox boundaries narrow; use security tests before relaxing access. |
+| `CoreModules/Security` | Audits extension code and shared security helpers. | `chironai_security/extension_audit.py` | Update tests when adding allowed/blocked patterns. |
+| `CoreModules/ErrorManager` | Shared error taxonomy and normalization. | `error_manager/` | Avoid leaking module-specific details into shared categories. |
+| `CoreModules/MdIngestionService` | Markdown ingestion and chunk preparation for indexing. | Module README and ingestion package | Verify parser/indexing tests for content changes. |
+| `CoreModules/WebInteraction` | Optional web snippets and trigger heuristics for proxy supplements. | Module README, web interaction package | Keep network access optional and gated by settings/env. |
+| `CoreModules/OllamaInteractor` | CLI boundary for Ollama HTTP calls. | `ollama_interactor/cli.py`, `ollama_http.py` | Host app should call it as a process boundary; app-owned Ollama UX belongs to the extension. |
+
+When in doubt, open the module README first, then inspect the caller at the
+host boundary. Most regressions come from skipping the boundary and importing a
+neighbor module's implementation directly.

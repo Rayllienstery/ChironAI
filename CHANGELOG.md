@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.46] - 2026-06-21
+### Added
+- Added advisory mutation-testing configuration for critical domain and RAG service logic.
+
+## [0.7.45] - 2026-06-21
+### Added
+- Added Russian localization, CoreUI language selection, and i18n lint coverage for catalog completeness.
+
 ## [0.7.44] - 2026-06-21
 ### Added
 - Added Ollama to Docker Compose and advisory Trivy image scanning to the release gate.

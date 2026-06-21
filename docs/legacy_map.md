@@ -1,6 +1,6 @@
 # Legacy Map
 
-Updated: 2026-06-16
+Updated: 2026-06-21
 
 Active cleanup roadmap: this document and [`QUALITY_GATE_PROFILES.md`](QUALITY_GATE_PROFILES.md).
 
@@ -30,6 +30,20 @@ Active cleanup roadmap: this document and [`QUALITY_GATE_PROFILES.md`](QUALITY_G
 | `extensions/bundled/*` | extensions + `extensions_backend` | Trusted bootstrap/offline mirrors only |
 
 No root-level runtime packages remain except documented project support (`docs/`, `tests/`, `rag_tests/` fixtures, `WebUI/` data).
+
+## Legacy tail exit criteria
+
+| Tail | Removal trigger | Verification |
+|------|-----------------|--------------|
+| `Core/api/http/webui_routes.py` | Remove only if Flask blueprint composition moves to `webui_backend` without changing `/api/webui` contracts. | `pytest tests/api`, `python scripts/check_api_drift.py --strict --strict-openapi` |
+| `Core/api/http/webui_*_routes.py` | Retire one route module only when its bounded context has a stable module-owned HTTP adapter. | Route-specific API tests plus OpenAPI drift check |
+| `Core/api/http/rag_tests_routes.py` | Move when RAG test orchestration becomes a module with its own public HTTP contract. | `pytest tests/api/test_http_rag_tests* tests/application` |
+| `Core/api/http/llm_proxy_wiring.py` | Remove only when LlmProxy can receive all dependencies through a stable host contract. | `pytest tests/llm_proxy tests/api/test_http_chat_completions.py` |
+| `Core/application/rag/proxy_settings_contract.py` | Remove after all callers use typed settings DTOs and compatibility migration is complete. | `pytest tests/application/test_proxy_settings_contract.py tests/config` |
+| `Core/application/rag/webui_retrieval_settings.py` | Remove when retrieval settings live behind a typed app-settings service. | `pytest tests/application tests/api/test_http_endpoints.py` |
+| `Core/infrastructure/qdrant/collection_names.py` | Remove when all collection listing goes through `RagRuntime`/RagService HTTP. | `pytest tests/rag_service tests/api` |
+| `CoreModules/LlmProxy/*` wire-format | Not a cleanup target; retire individual paths only through a compatibility deprecation. | `pytest tests/llm_proxy --maxfail=1` |
+| `extensions/bundled/*` | Keep mirrors small; refresh from canonical extension releases when bundled payloads drift. | Extension runtime tests and security audit |
 
 ## System Map
 

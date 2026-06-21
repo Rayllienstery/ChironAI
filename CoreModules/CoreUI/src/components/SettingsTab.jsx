@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getSettings, updateSettings } from '../services/api';
+import { SUPPORTED_LOCALES, getLocale, setLocale } from '../services/i18n';
 import '../styles/components/SettingsTab.css';
 import '../styles/components/DashboardTab.css';
 
@@ -32,13 +33,14 @@ function clampServiceStatusPollSec(raw) {
   return Math.min(SERVICE_STATUS_POLL_MAX, Math.max(SERVICE_STATUS_POLL_MIN, n));
 }
 
-function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppSettingsSaved }) {
+function SettingsTab({ themeMode, lightAccent, darkAccent, locale, onThemeChange, onLocaleChange, onAppSettingsSaved }) {
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [localThemeMode, setLocalThemeMode] = useState(themeMode || 'system');
   const [localLightAccent, setLocalLightAccent] = useState(lightAccent || 'purple');
   const [localDarkAccent, setLocalDarkAccent] = useState(darkAccent || 'cyan');
+  const [localLocale, setLocalLocale] = useState(locale || getLocale());
 
   useEffect(() => {
     loadSettings();
@@ -48,7 +50,8 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
     if (themeMode) setLocalThemeMode(themeMode);
     if (lightAccent) setLocalLightAccent(lightAccent);
     if (darkAccent) setLocalDarkAccent(darkAccent);
-  }, [themeMode, lightAccent, darkAccent]);
+    if (locale) setLocalLocale(locale);
+  }, [themeMode, lightAccent, darkAccent, locale]);
 
   const loadSettings = async () => {
     try {
@@ -81,6 +84,12 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
   const handleDarkAccentChange = (color) => {
     setLocalDarkAccent(color);
     handleSaveTheme(localThemeMode, localLightAccent, color);
+  };
+
+  const handleLocaleChange = (nextLocale) => {
+    setLocale(nextLocale);
+    setLocalLocale(getLocale());
+    onLocaleChange?.(getLocale());
   };
 
   const handleSaveTheme = async (mode, lightColor, darkColor) => {
@@ -233,6 +242,21 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, onThemeChange, onAppS
 
         <div className="settings-section">
           <h3>General</h3>
+
+          <div className="form-group">
+            <label htmlFor="coreui-locale-select">Interface language</label>
+            <select
+              id="coreui-locale-select"
+              value={localLocale}
+              onChange={(e) => handleLocaleChange(e.target.value)}
+            >
+              {SUPPORTED_LOCALES.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <div className="form-group">
             <label>Database Path</label>

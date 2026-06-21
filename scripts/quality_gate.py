@@ -100,6 +100,7 @@ FULL_GATE_EXTRA: tuple[GateStep, ...] = (
         60,
     ),
     GateStep("coreui-lint", _npm_command("run", "lint"), COREUI_ROOT, 120),
+    GateStep("coreui-i18n-lint", _npm_command("run", "i18n-lint"), COREUI_ROOT, 60, required=False),
     GateStep("coreui-test", _npm_command("run", "test", "--", "--run"), COREUI_ROOT, 180),
     GateStep("coreui-coverage", _npm_command("run", "test:coverage"), COREUI_ROOT, 180),
     GateStep("coreui-typecheck", _npm_command("run", "typecheck"), COREUI_ROOT, 120, required=True),
@@ -113,6 +114,10 @@ FULL_GATE: tuple[GateStep, ...] = MINIMAL_GATE + FULL_GATE_EXTRA
 
 STRICT_LINT_GATE: tuple[GateStep, ...] = (
     GateStep("ruff-strict", ("ruff", "check", ".", "--select", "E9,F,I,B,SIM"), REPO_ROOT, 180),
+)
+
+MUTATION_GATE: tuple[GateStep, ...] = (
+    GateStep("mutation-baseline", ("mutmut", "run"), REPO_ROOT, 1800, required=False),
 )
 
 def _docker_available() -> bool:
@@ -194,6 +199,7 @@ PROFILES: dict[str, tuple[GateStep, ...]] = {
     "full": FULL_GATE,
     "strict-lint": STRICT_LINT_GATE,
     "release": RELEASE_GATE,
+    "mutation": MUTATION_GATE,
 }
 
 

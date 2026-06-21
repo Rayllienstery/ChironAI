@@ -45,3 +45,54 @@ In-memory live traces (`api/http/proxy_trace.py`) are **not** covered. Use `rece
 - `response_preview`
 - `trace`, `trace_id`
 - `rag_steps`, `rag_context`
+
+## Proxy Journal Diagnostics
+
+Use LogsManager when a completed RAG Fusion proxy request failed, returned a
+surprising answer, or needs trace inspection after the live in-memory trace is
+gone.
+
+Fast path:
+
+```python
+from logs_manager import get_logs_manager
+
+mgr = get_logs_manager()
+row = mgr.get_latest_log()
+print(row["id"], row["metadata"].get("trace_id"))
+print(row["metadata"].get("response_preview"))
+```
+
+Find a specific recent prompt:
+
+```python
+row = mgr.find_latest_log_with_user_message("SwiftUI accessibility")
+trace = row["metadata"].get("trace") if row else None
+```
+
+Fields to inspect first:
+
+- `metadata.trace.request` - resolved model, provider, stream flag, and
+  compatibility path.
+- `metadata.trace.rag` or `metadata.rag_steps` - embed/search/rerank/context
+  sequence and step timings.
+- `metadata.rag_context` - retrieved chunks that were sent to the model.
+- `metadata.response_preview` - persisted answer preview, useful when the
+  client disconnected.
+
+Common interpretations:
+
+- Empty or missing `rag_context` usually points to retrieval/indexing rather
+  than LlmProxy wire-format.
+- Provider/runtime errors usually require checking the provider extension and
+  host runtime registration, not adding direct Ollama calls to core code.
+- A missing row means the request did not reach the completed journal path; use
+  live traces or backend logs instead.
+
+Guardrails:
+
+- Keep this module read-only.
+- Do not expose LogsManager through `/api/webui`; CoreUI already has supported
+  log and trace endpoints.
+- Do not use it for active streaming state. It reads persisted journal rows
+  only.

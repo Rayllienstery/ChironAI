@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chironai"
-version = "0.7.44"
+version = "0.7.46"
 description = "Modular RAG platform (Ollama + Qdrant) with WebUI and crawl/index pipelines. Configured for Apple platforms, supports any domain."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -47,6 +47,7 @@ dev = [
   "pyright>=1.1.0",
   "pip-audit>=2.7.0",
   "bandit>=1.8.0",
+  "mutmut>=3.6.0",
   "hypothesis>=6.0",
   "prometheus-client>=0.20",
   "opentelemetry-api>=1.25",
@@ -63,7 +64,7 @@ Homepage = "https://github.com"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.7.44"
+version = "0.7.46"
 version_files = [
   "Core/core/version.py:VERSION",
   "pyproject.toml:version",
@@ -294,4 +295,19 @@ ignore_decorators = [
   "@*.route",
   "@*.before_first_request",
 ]
+
+[tool.mutmut]
+source_paths = [
+  "Core/domain/services",
+  "CoreModules/RagService/rag_service/domain",
+]
+pytest_add_cli_args_test_selection = [
+  "tests/domain",
+  "tests/rag_service/test_retrieval.py",
+  "tests/rag_service/test_core_engine.py",
+  "tests/rag_service/test_rag_pipeline_integration.py",
+]
+mutate_only_covered_lines = true
+timeout_multiplier = 10.0
+timeout_constant = 1.0
 

@@ -10,7 +10,7 @@ import {
 import SidebarNav from "./components/SidebarNav";
 import ActionableError from "./components/ActionableError";
 import CoreUIButton from "./components/CoreUIButton";
-import { t } from "./services/i18n";
+import { getLocale, t } from "./services/i18n";
 
 class TabErrorBoundary extends Component {
   state = { hasError: false, error: null };
@@ -272,6 +272,7 @@ function App() {
   const [themeMode, setThemeMode] = useState("system");
   const [lightAccent, setLightAccent] = useState("purple");
   const [darkAccent, setDarkAccent] = useState("cyan");
+  const [locale, setLocaleState] = useState(getLocale());
   const [ragStatusInfo, setRagStatusInfo] = useState({
     running: null,
     url: null,
@@ -874,7 +875,9 @@ function App() {
             themeMode={themeMode}
             lightAccent={lightAccent}
             darkAccent={darkAccent}
+            locale={locale}
             onThemeChange={handleThemeChange}
+            onLocaleChange={setLocaleState}
             onAppSettingsSaved={(saved) =>
               setServiceStatusPollIntervalSec(
                 clampServiceStatusPollSec(saved.service_status_poll_interval_sec),

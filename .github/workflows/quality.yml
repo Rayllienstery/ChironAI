@@ -57,6 +57,11 @@ jobs:
         working-directory: CoreModules/CoreUI
         run: npm ci
 
+      - name: Run CoreUI i18n lint
+        working-directory: CoreModules/CoreUI
+        continue-on-error: true
+        run: npm run i18n-lint
+
       - name: Run minimal quality gate
         run: python scripts/quality_gate.py --profile minimal
 
@@ -89,6 +94,11 @@ jobs:
         working-directory: CoreModules/CoreUI
         run: npm ci
 
+      - name: Run CoreUI i18n lint
+        working-directory: CoreModules/CoreUI
+        continue-on-error: true
+        run: npm run i18n-lint
+
       - name: Run full quality gate
         run: python scripts/quality_gate.py --profile full
 
@@ -120,6 +130,11 @@ jobs:
       - name: Install CoreUI dependencies
         working-directory: CoreModules/CoreUI
         run: npm ci
+
+      - name: Run CoreUI i18n lint
+        working-directory: CoreModules/CoreUI
+        continue-on-error: true
+        run: npm run i18n-lint
 
       - name: Run full quality gate
         run: python scripts/quality_gate.py --profile full
@@ -161,6 +176,11 @@ jobs:
       - name: Install CoreUI dependencies
         working-directory: CoreModules/CoreUI
         run: npm ci
+
+      - name: Run CoreUI i18n lint
+        working-directory: CoreModules/CoreUI
+        continue-on-error: true
+        run: npm run i18n-lint
 
       - name: Run release quality gate
         run: python scripts/quality_gate.py --profile release
