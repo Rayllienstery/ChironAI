@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.48] - 2026-06-21
+### Fixed
+- Restored reliable Material Symbols icon rendering in CoreUI with a bundled self-hosted font.
+
+## [0.7.47] - 2026-06-21
+### Added
+- Added mypy to the release typing gate for critical core and domain packages.
+
 ## [0.7.46] - 2026-06-21
 ### Added
 - Added advisory mutation-testing configuration for critical domain and RAG service logic.

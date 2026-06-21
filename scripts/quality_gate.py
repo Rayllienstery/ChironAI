@@ -107,6 +107,7 @@ FULL_GATE_EXTRA: tuple[GateStep, ...] = (
 )
 
 RELEASE_TYPING_GATE: tuple[GateStep, ...] = (
+    GateStep("mypy", _python_command("-m", "mypy", "Core/domain", "Core/core"), REPO_ROOT, 180),
     GateStep("pyright", _python_command("-m", "pyright"), REPO_ROOT, 300),
 )
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chironai"
-version = "0.7.46"
+version = "0.7.48"
 description = "Modular RAG platform (Ollama + Qdrant) with WebUI and crawl/index pipelines. Configured for Apple platforms, supports any domain."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -44,6 +44,7 @@ dev = [
   "jsonschema>=4.0",
   "ruff>=0.8.0",
   "vulture>=2.14",
+  "mypy>=2.1.0",
   "pyright>=1.1.0",
   "pip-audit>=2.7.0",
   "bandit>=1.8.0",
@@ -64,7 +65,7 @@ Homepage = "https://github.com"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.7.46"
+version = "0.7.48"
 version_files = [
   "Core/core/version.py:VERSION",
   "pyproject.toml:version",
@@ -295,6 +296,28 @@ ignore_decorators = [
   "@*.route",
   "@*.before_first_request",
 ]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = false
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+  "tests.*",
+  "infrastructure.*",
+  "api.*",
+  "application.*",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+  "core.contracts.*",
+  "domain.*",
+]
+ignore_errors = false
 
 [tool.mutmut]
 source_paths = [

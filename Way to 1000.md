@@ -110,7 +110,7 @@ SMOKE          = .\build_and_run.bat      (cwd: repo root)
 - [x] **T18.1** Документирование tribal knowledge · +10 · deps: T1.2
 - [!] **T18.2** Второй контрибьютор (ЧЕЛОВЕК — не ИИ-задача) · +12 · deps: T18.1
 - [x] **T4.4** Мутационное тестирование критичных сервисов · +2 · deps: T4.2
-- [ ] **T7.3** mypy в release-gate + vulture к нулю · +2 · deps: T7.2
+- [x] **T7.3** mypy в release-gate + vulture к нулю · +2 · deps: T7.2
 
 ### Сводка по статусу
 
@@ -1071,8 +1071,8 @@ a11y-тесты pass; E2E smoke pass.
 **VERIFY:** `python -m mypy Core/domain Core/core` → exit 0; `PY_VULTURE` →
 0 undocumented findings.
 **Критерии готовности:**
-- [ ] mypy в release-gate
-- [ ] vulture чист
+- [x] mypy в release-gate
+- [x] vulture чист
 
 ---
 

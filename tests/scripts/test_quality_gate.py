@@ -40,6 +40,14 @@ def test_release_gate_keeps_startup_smoke_advisory() -> None:
     assert startup.timeout_seconds == 120
 
 
+def test_release_gate_requires_mypy_for_core_domain_typing() -> None:
+    mypy = next(step for step in quality_gate.iter_steps("release") if step.name == "mypy")
+
+    assert mypy.required is True
+    assert mypy.timeout_seconds == 180
+    assert mypy.command[-3:] == ("mypy", "Core/domain", "Core/core")
+
+
 def test_release_gate_includes_advisory_trivy_image_scan() -> None:
     required = quality_gate.iter_steps("release")
     with_advisory = quality_gate.iter_steps("release", include_advisory=True)
