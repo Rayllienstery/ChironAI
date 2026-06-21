@@ -102,7 +102,7 @@ SMOKE          = .\build_and_run.bat      (cwd: repo root)
 - [x] **T11.4** Авто-генерация API-reference из OpenAPI · +3 · deps: T16.1
 - [x] **T13.1** Storybook + bundle budget + a11y + E2E · +6 · deps: T5.1
 - [x] **T14.1** Структурированные логи + Prometheus + OTel + health · +6 · deps: —
-- [ ] **T21.1** Docker: trivy-скан + Ollama в compose · +3 · deps: —
+- [x] **T21.1** Docker: trivy-скан + Ollama в compose · +3 · deps: —
 
 ### Фаза 2 — P2 (стратегические, ≈+34 → 1000)
 

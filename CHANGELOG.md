@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.44] - 2026-06-21
+### Added
+- Added Ollama to Docker Compose and advisory Trivy image scanning to the release gate.
+
 ## [0.7.43] - 2026-06-21
 ### Added
 - Added generated OpenAPI Markdown API reference tooling and release-gate freshness check.

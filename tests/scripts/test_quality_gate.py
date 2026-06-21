@@ -22,6 +22,7 @@ def test_minimal_gate_has_required_steps_and_timeouts() -> None:
         "pytest-fast",
         "pytest-collect",
         "coreui-build",
+        "coreui-bundle-budget",
         "coreui-knip",
         "coreui-lockfile",
     ]
@@ -37,6 +38,16 @@ def test_release_gate_keeps_startup_smoke_advisory() -> None:
     startup = next(step for step in with_advisory if step.name == "startup-smoke-bat")
     assert startup.required is False
     assert startup.timeout_seconds == 120
+
+
+def test_release_gate_includes_advisory_trivy_image_scan() -> None:
+    required = quality_gate.iter_steps("release")
+    with_advisory = quality_gate.iter_steps("release", include_advisory=True)
+
+    assert "trivy-image" not in [step.name for step in required]
+    trivy = next(step for step in with_advisory if step.name == "trivy-image")
+    assert trivy.required is False
+    assert trivy.command == ("trivy", "image", "chironai:gate")
 
 
 def test_full_gate_requires_oversized_file_audit() -> None:

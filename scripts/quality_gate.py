@@ -165,6 +165,13 @@ RELEASE_GATE_EXTRA: tuple[GateStep, ...] = (
         required=_docker_available(),
     ),
     GateStep(
+        "trivy-image",
+        ("trivy", "image", "chironai:gate"),
+        REPO_ROOT,
+        300,
+        required=False,
+    ),
+    GateStep(
         "startup-smoke-sh",
         ("bash", str(REPO_ROOT / "scripts" / "startup_smoke.sh")),
         REPO_ROOT,

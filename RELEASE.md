@@ -40,3 +40,4 @@ npm run build
 ## Security (release profile)
 
 - [x] `pip-audit` / `npm audit` — no undocumented high/critical findings (`python scripts/run_dependency_audit.py`)
+- [x] Trivy image scan — advisory scan of `chironai:gate` in the release workflow

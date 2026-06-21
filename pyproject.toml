@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chironai"
-version = "0.7.43"
+version = "0.7.44"
 description = "Modular RAG platform (Ollama + Qdrant) with WebUI and crawl/index pipelines. Configured for Apple platforms, supports any domain."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -63,7 +63,7 @@ Homepage = "https://github.com"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.7.43"
+version = "0.7.44"
 version_files = [
   "Core/core/version.py:VERSION",
   "pyproject.toml:version",

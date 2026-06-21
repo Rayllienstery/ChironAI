@@ -165,6 +165,15 @@ jobs:
       - name: Run release quality gate
         run: python scripts/quality_gate.py --profile release
 
+      - name: Run Trivy image scan
+        uses: aquasecurity/trivy-action@0.28.0
+        continue-on-error: true
+        with:
+          image-ref: chironai:gate
+          format: table
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+
   linux-fast:
     runs-on: ubuntu-latest
     timeout-minutes: 20
