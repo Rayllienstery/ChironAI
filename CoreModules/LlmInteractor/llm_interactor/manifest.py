@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -47,7 +49,25 @@ class ExtensionManifest:
     settings_schema: dict[str, Any] = field(default_factory=dict)
     ui_schema: dict[str, Any] = field(default_factory=dict)
     models_policy: dict[str, Any] = field(default_factory=dict)
+    manifest_sha256: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def manifest_sha256(raw: dict[str, Any]) -> str:
+    """Return the canonical manifest digest, excluding the digest field itself."""
+
+    payload = {k: v for k, v in dict(raw or {}).items() if k != "manifest_sha256"}
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def validate_manifest_sha256(raw: dict[str, Any]) -> None:
+    expected = str(raw.get("manifest_sha256") or "").strip().lower()
+    if not expected:
+        return
+    actual = manifest_sha256(raw)
+    if expected != actual:
+        raise ValueError(f"manifest_sha256 mismatch: expected '{expected}', got '{actual}'")
 
 
 def _validate_ui_schema(schema: Any) -> None:
@@ -126,6 +146,7 @@ def manifest_from_dict(raw: dict[str, Any]) -> ExtensionManifest:
         settings_schema=dict(settings_schema or {}),
         ui_schema=dict(ui_schema or {}),
         models_policy=dict(raw.get("models_policy") or {}),
+        manifest_sha256=str(raw.get("manifest_sha256") or manifest_sha256(raw)).strip(),
         metadata={k: v for k, v in raw.items() if k not in {
             "id",
             "version",
@@ -140,5 +161,6 @@ def manifest_from_dict(raw: dict[str, Any]) -> ExtensionManifest:
             "settings_schema",
             "ui_schema",
             "models_policy",
+            "manifest_sha256",
         }},
     )

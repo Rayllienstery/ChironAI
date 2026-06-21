@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.38] - 2026-06-20
+### Added
+- Added extension manifest digest validation, capability enforcement, and manifest migration tests.
+
 ## [0.7.37] - 2026-06-20
 ### Added
 - Added advisory Bandit SAST with a documented baseline, gitleaks CI secret scanning, Dependabot configuration, and Flask security headers.

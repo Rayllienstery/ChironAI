@@ -31,6 +31,8 @@ _HIGH_RISK_CAPABILITIES = {
     "model_delete",
 }
 
+_SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -97,6 +99,13 @@ def validate_install_manifest(entry: dict[str, Any], manifest: Any, target_versi
     registry_compat = entry.get("compatibility")
     if isinstance(registry_compat, dict):
         validate_compatibility(dict(registry_compat))
+    expected_sha = str(entry.get("manifest_sha256") or "").strip().lower()
+    if expected_sha:
+        if not _SHA256_RE.match(expected_sha):
+            raise ValueError("registry manifest_sha256 must be a 64-character sha256 hex digest")
+        actual_sha = str(getattr(manifest, "manifest_sha256", "") or "").strip().lower()
+        if actual_sha and actual_sha != expected_sha:
+            raise ValueError(f"manifest_sha256 mismatch: expected '{expected_sha}', got '{actual_sha}'")
 
 
 def entry_with_version_payload(entry: dict[str, Any], version: dict[str, Any]) -> dict[str, Any]:

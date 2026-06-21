@@ -36,6 +36,19 @@ def test_validate_install_manifest_rejects_id_mismatch() -> None:
         validate_install_manifest(entry, manifest, "1.0.0")
 
 
+def test_validate_install_manifest_rejects_manifest_sha_mismatch() -> None:
+    entry = {"id": "sample-ext", "manifest_sha256": "a" * 64}
+    manifest = SimpleNamespace(
+        id="sample-ext",
+        version="1.0.0",
+        compatibility={},
+        manifest_sha256="b" * 64,
+    )
+
+    with pytest.raises(ValueError, match="manifest_sha256 mismatch"):
+        validate_install_manifest(entry, manifest, "1.0.0")
+
+
 def test_entry_with_version_payload_merges_release_fields() -> None:
     merged = entry_with_version_payload(
         {"id": "sample-ext"},

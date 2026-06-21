@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 
 from chironai_security import (
@@ -15,9 +15,15 @@ from chironai_security import (
 )
 
 from llm_interactor.contracts import LLMProvider, ProviderHostContext
-from llm_interactor.manifest import ExtensionManifest, manifest_from_dict
+from llm_interactor.manifest import (
+    EXTENSION_TYPE_LLM_PROVIDER,
+    ExtensionManifest,
+    manifest_from_dict,
+    validate_manifest_sha256,
+)
 
 MANIFEST_FILENAME = "chironai-extension.json"
+IMPLICIT_PROVIDER_CAPABILITIES = frozenset({"chat", "streaming", "model_listing", "health_check"})
 
 
 @dataclass(frozen=True)
@@ -52,7 +58,65 @@ def load_manifest_from_dir(source_dir: Path) -> ExtensionManifest:
     raw = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ValueError("manifest JSON must be an object")
+    validate_manifest_sha256(raw)
     return manifest_from_dict(raw)
+
+
+def _enabled_manifest_capabilities(manifest: ExtensionManifest) -> set[str]:
+    out: set[str] = set()
+    for key, value in dict(manifest.capabilities or {}).items():
+        cap = str(key or "").strip()
+        if not cap:
+            continue
+        enabled = bool(value.get("enabled", True)) if isinstance(value, dict) else bool(value)
+        if enabled:
+            out.add(cap)
+    return out
+
+
+def _provider_capability_ids(provider: LLMProvider) -> set[str]:
+    describe = getattr(provider, "describe", None)
+    if not callable(describe):
+        return set()
+    try:
+        descriptor = describe()
+    except Exception:
+        return set()
+    capabilities = getattr(descriptor, "capabilities", None)
+    if capabilities is None:
+        return set()
+    out: set[str] = set()
+    if is_dataclass(capabilities):
+        for item in fields(capabilities):
+            if item.name == "custom":
+                continue
+            if bool(getattr(capabilities, item.name, False)):
+                out.add(item.name)
+    elif isinstance(capabilities, dict):
+        for key, value in capabilities.items():
+            cap = str(key or "").strip()
+            enabled = bool(value.get("enabled", True)) if isinstance(value, dict) else bool(value)
+            if cap and enabled:
+                out.add(cap)
+    custom = getattr(capabilities, "custom", {}) if not isinstance(capabilities, dict) else capabilities.get("custom", {})
+    if isinstance(custom, dict):
+        for key, value in custom.items():
+            cap = str(key or "").strip()
+            enabled = bool(value.get("enabled", True)) if isinstance(value, dict) else bool(value)
+            if cap and enabled:
+                out.add(cap)
+    return out
+
+
+def validate_provider_capabilities(manifest: ExtensionManifest, provider: LLMProvider) -> None:
+    if manifest.type != EXTENSION_TYPE_LLM_PROVIDER:
+        return
+    manifest_caps = _enabled_manifest_capabilities(manifest)
+    provider_caps = _provider_capability_ids(provider)
+    undeclared = sorted(provider_caps - manifest_caps - IMPLICIT_PROVIDER_CAPABILITIES)
+    if undeclared:
+        names = ", ".join(undeclared[:8])
+        raise ValueError(f"provider capabilities not declared in manifest: {names}")
 
 
 def _backend_source_paths(source_dir: Path, entrypoint: str) -> list[Path]:
@@ -122,6 +186,7 @@ def _load_one_extension(
                 manifest=manifest,
                 host_context=host_context,
             )
+            validate_provider_capabilities(manifest, provider)
             return LoadedExtension(
                 manifest=manifest,
                 source_dir=source_dir,
@@ -134,6 +199,7 @@ def _load_one_extension(
             manifest=manifest,
             host_context=host_context,
         )
+        validate_provider_capabilities(manifest, provider)
         return LoadedExtension(manifest=manifest, source_dir=source_dir, provider=provider)
     except Exception as e:
         ext_id = source_dir.name

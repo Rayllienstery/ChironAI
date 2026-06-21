@@ -2,6 +2,7 @@
   "id": "ollama-provider",
   "version": "0.1.6",
   "api_version": "1",
+  "manifest_sha256": "23c2961ca5005797d27ae5e4ed48819b8a036f204930c554e274fd1f6b13df00",
   "type": "llm_provider",
   "title": "Ollama",
   "description": "Trusted local provider that exposes the existing Ollama runtime through LlmInteractor.",
