@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.51] - 2026-06-21
+### Fixed
+- Declared Storybook direct dev dependencies so CoreUI static dependency checks pass.
+
 ## [0.7.50] - 2026-06-21
 ### Fixed
 - Fixed Swagger tab rendering by serving a Swagger UI-compatible OpenAPI document.
