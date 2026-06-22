@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.56] - 2026-06-22
+### Changed
+- Documented current transitive dependency audit advisory exceptions.
+
+## [0.7.55] - 2026-06-22
+### Changed
+- Used the dedicated CoreUI test:run script in the release quality gate.
+
+## [0.7.54] - 2026-06-22
+### Changed
+- Tightened core contract and OpenAPI typing for the release pyright gate.
+
+## [0.7.53] - 2026-06-22
+### Changed
+- Allowed Docker CoreUI builds to reuse committed API types when Python is unavailable in the Node build stage.
+
+## [0.7.52] - 2026-06-22
+### Changed
+- Classified the mypy cache in root ownership guardrails and refreshed the generated API reference.
+
 ## [0.7.51] - 2026-06-21
 ### Fixed
 - Declared Storybook direct dev dependencies so CoreUI static dependency checks pass.

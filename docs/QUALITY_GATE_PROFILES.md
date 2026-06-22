@@ -14,7 +14,7 @@ python scripts/quality_gate.py --profile mutation --include-advisory
 | Profile | Purpose | Required steps |
 |---------|---------|----------------|
 | `minimal` | Every PR / local pre-push | `ruff`, version drift, API drift, OpenAPI schema validation, `pytest -m fast`, `pytest --collect-only`, CoreUI `build`, `knip`, lockfile check |
-| `full` | Main branch / nightly | `minimal` superset: `vulture`, full `pytest`, oversized-file audit, `lint-imports`, API drift-check (advisory), CoreUI `lint` + `test` + `typecheck` when configured |
+| `full` | Main branch / nightly | `minimal` superset: `vulture`, full `pytest`, oversized-file audit, `lint-imports`, API drift-check (advisory), CoreUI `lint` + `test:run` + `test:coverage` + `typecheck` when configured |
 | `strict-lint` | Incremental ruff expansion | `ruff` with import (`I`) and selected bugbear rules |
 | `mutation` | Advisory mutation baseline for critical domain/RAG services | No required steps by default; with `--include-advisory`, runs `mutmut run` using `[tool.mutmut]` |
 | `release` | Pre-tag / deploy candidate | `full` + `pyright`, `scripts/run_dependency_audit.py` (required), `docker build` (required when Docker available), `startup_smoke.sh` (required on Linux) |

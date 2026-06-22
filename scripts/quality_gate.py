@@ -101,7 +101,7 @@ FULL_GATE_EXTRA: tuple[GateStep, ...] = (
     ),
     GateStep("coreui-lint", _npm_command("run", "lint"), COREUI_ROOT, 120),
     GateStep("coreui-i18n-lint", _npm_command("run", "i18n-lint"), COREUI_ROOT, 60, required=False),
-    GateStep("coreui-test", _npm_command("run", "test", "--", "--run"), COREUI_ROOT, 180),
+    GateStep("coreui-test", _npm_command("run", "test:run"), COREUI_ROOT, 180),
     GateStep("coreui-coverage", _npm_command("run", "test:coverage"), COREUI_ROOT, 180),
     GateStep("coreui-typecheck", _npm_command("run", "typecheck"), COREUI_ROOT, 120, required=True),
 )

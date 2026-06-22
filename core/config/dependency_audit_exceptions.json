@@ -6,6 +6,11 @@
       "reason": "Transitive via requests/flask; pinned upgrade blocked until upstream releases compatible chain."
     },
     {
+      "id": "PYSEC-2026-215",
+      "package": "idna",
+      "reason": "Alias advisory for the documented idna transitive dependency finding; upgrade tracked with the requests/flask chain."
+    },
+    {
       "id": "CVE-2026-41182",
       "package": "langsmith",
       "reason": "Transitive telemetry dep from langchain stack; not used in production request path."
@@ -14,6 +19,16 @@
       "id": "CVE-2026-45134",
       "package": "langsmith",
       "reason": "Transitive telemetry dep from langchain stack; not used in production request path."
+    },
+    {
+      "id": "GHSA-f4xh-w4cj-qxq8",
+      "package": "langsmith",
+      "reason": "Transitive telemetry dep from langchain stack; not used in production request path."
+    },
+    {
+      "id": "GHSA-6v7p-g79w-8964",
+      "package": "msgpack",
+      "reason": "Transitive dependency from installed tooling/runtime stack; no direct project API accepts untrusted msgpack payloads."
     },
     {
       "id": "PYSEC-2026-196",

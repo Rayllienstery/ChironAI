@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -40,8 +40,19 @@ const generated = spawnSync('python', ['-c', pythonCode], {
   maxBuffer: 1024 * 1024 * 20,
 });
 
+if (generated.error) {
+  if (generated.error.code === 'ENOENT' && existsSync(outputPath)) {
+    console.warn(
+      `Python is unavailable; keeping existing ${path.relative(repoRoot, outputPath)} for this build.`,
+    );
+    process.exit(0);
+  }
+  process.stderr.write(generated.error.message || String(generated.error));
+  process.exit(1);
+}
+
 if (generated.status !== 0) {
-  process.stderr.write(generated.stderr || generated.stdout);
+  process.stderr.write(generated.stderr || generated.stdout || 'OpenAPI type generation failed.');
   process.exit(generated.status || 1);
 }
 

@@ -6,19 +6,31 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 
+def _str_list() -> list[str]:
+    return []
+
+
+def _str_dict() -> dict[str, str]:
+    return {}
+
+
+def _any_dict() -> dict[str, Any]:
+    return {}
+
+
 @dataclass(frozen=True)
 class DockerContainerSpec:
     """Declarative container spec for extension and service-owned containers."""
 
     name: str
     image: str
-    ports: list[str] = field(default_factory=list)
-    env: dict[str, str] = field(default_factory=dict)
-    volumes: list[str] = field(default_factory=list)
+    ports: list[str] = field(default_factory=_str_list)
+    env: dict[str, str] = field(default_factory=_str_dict)
+    volumes: list[str] = field(default_factory=_str_list)
     restart: str = "unless-stopped"
-    extra_hosts: list[str] = field(default_factory=list)
-    command: list[str] = field(default_factory=list)
-    labels: dict[str, str] = field(default_factory=dict)
+    extra_hosts: list[str] = field(default_factory=_str_list)
+    command: list[str] = field(default_factory=_str_list)
+    labels: dict[str, str] = field(default_factory=_str_dict)
 
 
 @dataclass(frozen=True)
@@ -27,10 +39,10 @@ class DockerContainerState:
     running: bool = False
     name: str = ""
     image: str = ""
-    env: dict[str, str] = field(default_factory=dict)
-    ports: dict[str, Any] = field(default_factory=dict)
-    volumes: list[str] = field(default_factory=list)
-    labels: dict[str, str] = field(default_factory=dict)
+    env: dict[str, str] = field(default_factory=_str_dict)
+    ports: dict[str, Any] = field(default_factory=_any_dict)
+    volumes: list[str] = field(default_factory=_str_list)
+    labels: dict[str, str] = field(default_factory=_str_dict)
 
 
 class DockerRuntime(Protocol):

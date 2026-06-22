@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 from copy import deepcopy
 from importlib import resources
-from typing import Any
+from typing import Any, cast
 
 from flask import Flask, Response, abort, current_app, jsonify, render_template_string, send_file
 
@@ -830,15 +830,16 @@ def build_swagger_ui_spec(app: Flask) -> dict[str, Any]:
 
 def _normalize_json_schema_keywords(value: Any) -> None:
     if isinstance(value, dict):
-        value.pop("$schema", None)
-        if "const" in value and "enum" not in value:
-            value["enum"] = [value.pop("const")]
+        mapping = cast(dict[str, Any], value)
+        mapping.pop("$schema", None)
+        if "const" in mapping and "enum" not in mapping:
+            mapping["enum"] = [mapping.pop("const")]
         else:
-            value.pop("const", None)
-        for child in value.values():
+            mapping.pop("const", None)
+        for child in mapping.values():
             _normalize_json_schema_keywords(child)
     elif isinstance(value, list):
-        for child in value:
+        for child in cast(list[Any], value):
             _normalize_json_schema_keywords(child)
 
 

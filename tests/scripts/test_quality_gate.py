@@ -68,6 +68,13 @@ def test_full_gate_includes_advisory_coreui_i18n_lint() -> None:
     assert step.command[-2:] == ("run", "i18n-lint")
 
 
+def test_full_gate_uses_coreui_test_run_script() -> None:
+    step = next(item for item in quality_gate.iter_steps("full") if item.name == "coreui-test")
+
+    assert step.required is True
+    assert step.command[-2:] == ("run", "test:run")
+
+
 def test_mutation_gate_is_advisory() -> None:
     assert quality_gate.iter_steps("mutation") == ()
     steps = quality_gate.iter_steps("mutation", include_advisory=True)

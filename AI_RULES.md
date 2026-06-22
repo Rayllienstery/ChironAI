@@ -49,6 +49,7 @@ Current root directory ownership:
 | `.hypothesis/` | project support | tool cache |
 | `.import_linter_cache/` | project support | tool cache |
 | `.kilo/` | project support | agent metadata |
+| `.mypy_cache/` | project support | tool cache |
 | `.ruff_cache/` | project support | tool cache |
 | `.tmp_openwebui_data/` | temporary | local runtime data |
 | `.tmp_test_local/` | temporary | local test data |

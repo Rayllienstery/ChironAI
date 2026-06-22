@@ -2,6 +2,31 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
+## Release candidate 0.7.56 notes
+
+Status: release-candidate ready on Windows local gates as of 2026-06-22.
+
+Highlights:
+
+- Release gate now passes end to end with `python scripts/quality_gate.py --profile release`.
+- CoreUI Docker builds can reuse committed API types when Python is unavailable in the Node build stage.
+- Core contracts and generated OpenAPI normalization are clean under pyright.
+- The release gate uses the dedicated CoreUI `test:run` script.
+- Current transitive dependency audit findings are documented in `Core/config/dependency_audit_exceptions.json`.
+
+Verification snapshot:
+
+- `python scripts/quality_gate.py --profile release` - passed.
+- `npm.cmd run e2e` from `CoreModules/CoreUI` - passed, 2 Playwright smoke tests.
+- Visual CoreUI screenshot sanity for Dashboard, RAG / Qdrant, and Extensions - passed.
+- `build_and_run.bat` startup smoke - reached `Server ready` at `http://127.0.0.1:8080/webui`; smoke processes were stopped afterward.
+
+Known release notes:
+
+- CoreUI lint still reports existing warnings but exits 0.
+- Dependency audit passes with documented exceptions for current transitive Python/npm advisories.
+- App stage remains `BETA`; do one human UI pass before tagging a public release.
+
 ## Quality gates
 
 ```bash
@@ -23,6 +48,7 @@ From `CoreModules/CoreUI`:
 ```bash
 npm run lint
 npm run test:run
+npm run e2e
 npm run build
 ```
 

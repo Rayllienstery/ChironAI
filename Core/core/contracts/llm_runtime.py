@@ -10,13 +10,21 @@ from typing import Any, Literal, Protocol
 from core.contracts.docker_runtime import DockerContainerSpec
 
 
+def _any_dict() -> dict[str, Any]:
+    return {}
+
+
+def _message_list() -> list[dict[str, Any]]:
+    return []
+
+
 @dataclass(frozen=True)
 class MessagePart:
     """Normalized chat content part."""
 
     type: str
     text: str | None = None
-    data: dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=_any_dict)
 
 
 @dataclass(frozen=True)
@@ -25,7 +33,7 @@ class ToolSpec:
 
     name: str
     description: str = ""
-    parameters: dict[str, Any] = field(default_factory=dict)
+    parameters: dict[str, Any] = field(default_factory=_any_dict)
 
 
 @dataclass(frozen=True)
@@ -43,7 +51,7 @@ class ProviderCapabilities:
     health_check: bool = True
     tab_ui: bool = False
     service_actions: bool = False
-    custom: dict[str, Any] = field(default_factory=dict)
+    custom: dict[str, Any] = field(default_factory=_any_dict)
 
 
 @dataclass(frozen=True)
@@ -55,7 +63,7 @@ class ModelDescriptor:
     label: str
     description: str = ""
     capabilities: ProviderCapabilities = field(default_factory=ProviderCapabilities)
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=_any_dict)
 
 
 @dataclass(frozen=True)
@@ -68,7 +76,7 @@ class ProviderDescriptor:
     description: str = ""
     icon: str = ""
     capabilities: ProviderCapabilities = field(default_factory=ProviderCapabilities)
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=_any_dict)
 
 
 @dataclass(frozen=True)
@@ -79,7 +87,7 @@ class ProviderHealth:
     ok: bool
     status: str = "unknown"
     message: str = ""
-    details: dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=_any_dict)
 
 
 @dataclass(frozen=True)
@@ -97,7 +105,7 @@ class LLMRequest:
         "generate",
         "raw_ollama",
     ] = "chat"
-    messages: list[dict[str, Any]] = field(default_factory=list)
+    messages: list[dict[str, Any]] = field(default_factory=_message_list)
     stream: bool = False
     options: dict[str, Any] | None = None
     think: bool | str | None = None
@@ -108,7 +116,7 @@ class LLMRequest:
     input_texts: list[str] | None = None
     rerank_query: str | None = None
     rerank_prompt: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=_any_dict)
 
 
 @dataclass(frozen=True)
@@ -119,7 +127,7 @@ class LLMResponse:
     model: str
     text: str = ""
     raw: dict[str, Any] | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=_any_dict)
 
 
 @dataclass(frozen=True)
@@ -140,7 +148,7 @@ class ProviderHostContext:
     get_settings_repository: Callable[[], Any]
     chat_client: Any | None = None
     docker_runtime: Any | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=_any_dict)
 
 
 class LLMProvider(Protocol):
