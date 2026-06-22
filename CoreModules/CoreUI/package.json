@@ -61,7 +61,7 @@
     "storybook": "^8.6.18",
     "typescript": "^5.8.2",
     "vite": "^5.0.8",
-    "vitest": "^3.0.9"
+    "vitest": "^4.1.9"
   },
   "knip": {
     "ignoreBinaries": [
