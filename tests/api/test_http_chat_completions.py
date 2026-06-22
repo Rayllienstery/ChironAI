@@ -617,7 +617,7 @@ def test_chat_completions_keeps_none_tool_choice_for_jsx(monkeypatch: pytest.Mon
             "messages": [
                 {
                     "role": "user",
-                    "content": "[@const.jsx](file:///C:/Users/Raylee/Desktop/const.jsx) add tabs",
+                    "content": "[@const.jsx](file:///C:/Users/Example/Desktop/const.jsx) add tabs",
                 }
             ],
             "tools": [{"type": "function", "function": {"name": "edit_file", "parameters": {"type": "object"}}}],
@@ -1268,7 +1268,7 @@ def test_chat_completions_after_tool_success_still_emits_tool_call_for_new_file_
     class FakeChatClient:
         def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return (
-                '{"file_path":"C:/Users/Raylee/Desktop/test.swift",'
+                '{"file_path":"C:/Users/Example/Desktop/test.swift",'
                 '"mode":"overwrite",'
                 '"new_text":"import Foundation\\nprint(\\"Hello\\")\\n"}'
             )
@@ -1319,7 +1319,7 @@ def test_chat_completions_after_tool_success_still_emits_tool_call_for_new_file_
         {"role": "tool", "tool_call_id": "call_1", "content": "1 clean."},
         {
             "role": "user",
-            "content": "Write Hello World in Swift 5 [@test.swift](file:///C:/Users/Raylee/Desktop/test.swift)",
+            "content": "Write Hello World in Swift 5 [@test.swift](file:///C:/Users/Example/Desktop/test.swift)",
         },
     ]
     r = client.post(
@@ -1700,7 +1700,7 @@ def test_chat_completions_does_not_choose_save_file_without_content_schema(
             [
                 {
                     "role": "user",
-                    "content": "Write Hello World in Swift 5 [@test.swift](file:///C:/Users/Raylee/Desktop/test.swift)",
+                    "content": "Write Hello World in Swift 5 [@test.swift](file:///C:/Users/Example/Desktop/test.swift)",
                 }
             ],
             "fake-model",
@@ -1717,7 +1717,7 @@ def test_chat_completions_does_not_choose_save_file_without_content_schema(
             "messages": [
                 {
                     "role": "user",
-                    "content": "Write Hello World in Swift 5 [@test.swift](file:///C:/Users/Raylee/Desktop/test.swift)",
+                    "content": "Write Hello World in Swift 5 [@test.swift](file:///C:/Users/Example/Desktop/test.swift)",
                 }
             ],
             "tools": [
@@ -1761,7 +1761,7 @@ def test_chat_completions_does_not_choose_save_file_without_content_schema(
     # Must not choose save_file without content support; should choose edit_file.
     assert tc["function"]["name"] == "edit_file"
     args = json.loads(tc["function"]["arguments"])
-    assert args.get("path") == "C:/Users/Raylee/Desktop/test.swift"
+    assert args.get("path") == "C:/Users/Example/Desktop/test.swift"
     assert "content" in args and "Hello" in args["content"]
 
 
@@ -1775,7 +1775,7 @@ def test_chat_completions_sanitizes_display_description(monkeypatch: pytest.Monk
         def chat(self, _messages, _model, stream=False, options=None):  # noqa
             return json.dumps(
                 {
-                    "file_path": "C:/Users/Raylee/AI/test.swift",
+                    "file_path": "C:/Users/Example/AI/test.swift",
                     "mode": "edit",
                     "new_text": "let array = [1, 2, 3]\nprint(array)\n",
                 }
@@ -1825,7 +1825,7 @@ def test_chat_completions_sanitizes_display_description(monkeypatch: pytest.Monk
             "messages": [
                 {
                     "role": "user",
-                    "content": "[@test.swift (1:3)](file:///C:/Users/Raylee/AI/test.swift#L1:3) shrink the array to 3 <context>\nThe following items were attached by the user.\n<files>\n```swift C:/Users/Raylee/AI/test.swift\nlet array=[1,2,3]\n```\n</files>\n</context>",
+                    "content": "[@test.swift (1:3)](file:///C:/Users/Example/AI/test.swift#L1:3) shrink the array to 3 <context>\nThe following items were attached by the user.\n<files>\n```swift C:/Users/Example/AI/test.swift\nlet array=[1,2,3]\n```\n</files>\n</context>",
                 }
             ],
             "tools": [
@@ -1873,7 +1873,7 @@ def test_trailing_noop_after_success_does_not_block_noop_counter(
 
     class FakeChatClient:
         def chat(self, _messages, _model, stream=False, options=None):  # noqa
-            return '{"file_path":"C:/Users/Raylee/AI/test.swift","mode":"edit","new_text":"noop\\n"}'
+            return '{"file_path":"C:/Users/Example/AI/test.swift","mode":"edit","new_text":"noop\\n"}'
 
         def stream_chat(self, _messages, _model):
             yield ""
@@ -1930,7 +1930,7 @@ def test_trailing_noop_after_success_does_not_block_noop_counter(
     msgs = [
         {
             "role": "user",
-            "content": "[@test.swift (1:5)](file:///C:/Users/Raylee/AI/test.swift#L1:5) expand the array",
+            "content": "[@test.swift (1:5)](file:///C:/Users/Example/AI/test.swift#L1:5) expand the array",
         },
         {
             "role": "assistant",
@@ -1952,7 +1952,7 @@ def test_trailing_noop_after_success_does_not_block_noop_counter(
         {"role": "tool", "tool_call_id": "c3", "content": "No edits were made."},
         {
             "role": "user",
-            "content": "[@test.swift (1:5)](file:///C:/Users/Raylee/AI/test.swift#L1:5) expand the array",
+            "content": "[@test.swift (1:5)](file:///C:/Users/Example/AI/test.swift#L1:5) expand the array",
         },
     ]
 
@@ -2019,14 +2019,14 @@ def test_chat_completions_text_tool_path_single_chat_no_full_file_retry(
             if self.chat_calls == 1:
                 return json.dumps(
                     {
-                        "file_path": "C:/Users/Raylee/AI/test.swift",
+                        "file_path": "C:/Users/Example/AI/test.swift",
                         "mode": "edit",
                         "new_text": partial,
                     }
                 )
             return json.dumps(
                 {
-                    "file_path": "C:/Users/Raylee/AI/test.swift",
+                    "file_path": "C:/Users/Example/AI/test.swift",
                     "mode": "edit",
                     "new_text": full,
                 }
@@ -2068,9 +2068,9 @@ def test_chat_completions_text_tool_path_single_chat_no_full_file_retry(
     monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
 
     user_content = (
-        "[@test.swift](file:///C:/Users/Raylee/AI/test.swift) foreach each element\n"
+        "[@test.swift](file:///C:/Users/Example/AI/test.swift) foreach each element\n"
         "<context>\nThe following items were attached by the user.\n<files>\n"
-        "```swift C:/Users/Raylee/AI/test.swift\n"
+        "```swift C:/Users/Example/AI/test.swift\n"
         "let array = [1, 2, 3]\n"
         "print(array)\n"
         "helper()\n"
@@ -2187,12 +2187,12 @@ def test_build_tool_arguments_drops_empty_body_strings_then_syncs() -> None:
             }
         },
         edit_payload={
-            "file_path": "C:/Users/Raylee/AI/test.swift",
+            "file_path": "C:/Users/Example/AI/test.swift",
             "mode": "edit",
             "new_text": "ONLYLINE\n",
             "content": "",
         },
-        user_query="[@test.swift](file:///C:/Users/Raylee/AI/test.swift) ok",
+        user_query="[@test.swift](file:///C:/Users/Example/AI/test.swift) ok",
     )
     assert args.get("content") == "ONLYLINE\n"
     assert args.get("new_text") == "ONLYLINE\n"

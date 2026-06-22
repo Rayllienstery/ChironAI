@@ -39,4 +39,16 @@ The hexagonal **`rag_service`** package ships with **`chironai_rag`** in **`Core
 2. Start the RAG proxy/server.
 3. Open the WebUI or use the CLI entry point.
 
+## Contributing
+
+See [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) for branch conventions, commit style, quality gates, and first-PR guidance.
+
+## Security
+
+If you discover a security vulnerability, please report it privately. See [`SECURITY.md`](SECURITY.md) for supported versions and reporting instructions.
+
+## License
+
+ChironAI is released under the [MIT License](LICENSE).
+
 If something doesn’t work, see [`DEPENDENCIES.md`](DEPENDENCIES.md) and [`docs/QUALITY_GATE_PROFILES.md`](docs/QUALITY_GATE_PROFILES.md).

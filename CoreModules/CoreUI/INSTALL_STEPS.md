@@ -31,7 +31,7 @@ npm run build
 Open `cmd.exe` and run:
 
 ```cmd
-cd C:\Users\Raylee\AI\webui_frontend
+cd C:\path\to\ChironAI\CoreModules\CoreUI
 npm ci
 npm run build
 ```
@@ -41,7 +41,7 @@ npm run build
 Start the Flask server:
 
 ```powershell
-cd C:\Users\Raylee\AI
+cd C:\path\to\ChironAI
 python -m webui_backend.rag_proxy
 ```
 

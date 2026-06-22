@@ -1,20 +1,36 @@
-## Summary
+## Description
 
-- 
+Briefly describe what this PR does and why.
 
-## Verification
+Fixes # (issue)
 
-- [ ] Relevant gate from `Way to 1000.md` passed.
-- [ ] `build_and_run.bat` was run for non-documentation changes, or the reason it could not run is documented.
+## Type of change
 
-## AI_RULES Checklist
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
+- [ ] Refactor / internal cleanup
+- [ ] Build / CI / deployment
 
-- [ ] WebUI API changes are synchronized across contracts, CoreUI client, Flask routes, and OpenAPI docs.
-- [ ] Added, changed, or removed HTTP endpoints include RESTX/OpenAPI docs, models, and spec coverage.
-- [ ] Removed UI/API surfaces are cleaned from imports, routes, clients, constants, tests, styles, showcase, and docs.
-- [ ] Domain import boundaries remain clean.
-- [ ] Config or environment changes are documented for users and deploys.
-- [ ] New long-lived monolith tails are documented in `docs/legacy_map.md`.
-- [ ] CoreUI changes reuse existing tokens, tab patterns, lazy loading, and showcase entries where relevant.
-- [ ] Extension changes provide required manifest, provider entry point, UI frame/title/icon/assets, and Docker runtime contracts.
-- [ ] Version was bumped and `CHANGELOG.md` was updated.
+## How has this been tested?
+
+Describe the tests you ran and how. For example:
+
+- `pytest -q`
+- `python scripts/quality_gate.py --profile minimal`
+- `npm run test:run` and `npm run build` from `CoreModules/CoreUI`
+- Manual smoke test of affected UI/backend surface
+
+## Checklist
+
+- [ ] I have read `docs/CONTRIBUTING.md` and `AI_RULES.md`.
+- [ ] My changes follow the repository's layer and module boundaries.
+- [ ] I have added or updated tests where appropriate.
+- [ ] I have updated `CHANGELOG.md` if the change is user-visible.
+- [ ] I have run the relevant quality gate before requesting review.
+- [ ] I have not committed secrets, `.env` files, or local runtime data.
+
+## Additional notes
+
+Add any other notes for reviewers here.

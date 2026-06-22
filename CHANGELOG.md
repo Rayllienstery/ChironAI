@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.57] - 2026-06-22
+### Changed
+- Prepared public open-source metadata and package licensing.
+
 ## [0.7.56] - 2026-06-22
 ### Changed
 - Documented current transitive dependency audit advisory exceptions.

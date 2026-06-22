@@ -7,7 +7,7 @@ from llm_proxy.tool_helpers import _workspace_doc_refactor_intent
 
 def test_workspace_doc_refactor_intent_matches_doc_split_scenario() -> None:
     msg = (
-        "[@notes.md (173:182)](file:///C:/Users/Raylee/AI/notes.md#L173:182)  Extract this to a new file backlog.md "
+        "[@notes.md (173:182)](file:///C:/Users/Example/AI/notes.md#L173:182)  Extract this to a new file backlog.md "
         "<context><selections></selections></context>"
     )
     assert _workspace_doc_refactor_intent(msg) is True

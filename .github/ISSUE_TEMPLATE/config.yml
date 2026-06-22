@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question or start a discussion
+    url: https://github.com/Rayllienstery/ChironAI/discussions
+    about: Use GitHub Discussions for questions, ideas, and general conversation.
+  - name: Security vulnerability
+    url: https://github.com/Rayllienstery/ChironAI/security/advisories/new
+    about: Please report security vulnerabilities privately through GitHub Security Advisories.
