@@ -18,14 +18,14 @@ Verification snapshot:
 
 - `python scripts/quality_gate.py --profile release` - passed.
 - `npm.cmd run e2e` from `CoreModules/CoreUI` - passed, 2 Playwright smoke tests.
-- Visual CoreUI screenshot sanity for Dashboard, RAG / Qdrant, and Extensions - passed.
+- Live CoreUI UI pass for Dashboard, Settings, RAG / Qdrant, Extensions, Testing, and Logs - passed.
 - `build_and_run.bat` startup smoke - reached `Server ready` at `http://127.0.0.1:8080/webui`; smoke processes were stopped afterward.
 
 Known release notes:
 
 - CoreUI lint still reports existing warnings but exits 0.
 - Dependency audit passes with documented exceptions for current transitive Python/npm advisories.
-- App stage remains `BETA`; do one human UI pass before tagging a public release.
+- App stage remains `BETA`; changing the product stage should be a separate release decision.
 
 ## Quality gates
 
