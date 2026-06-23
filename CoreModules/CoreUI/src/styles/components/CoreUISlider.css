@@ -1,0 +1,89 @@
+.coreui-slider-field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium-font);
+}
+
+.coreui-slider-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.coreui-slider-title > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coreui-slider-title > strong {
+  flex: 0 0 auto;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-large-font);
+  font-weight: 600;
+}
+
+.coreui-slider {
+  --coreui-slider-track-height: 6px;
+  --coreui-slider-thumb-size: 20px;
+  width: 100%;
+  min-width: 0;
+  height: var(--coreui-slider-thumb-size);
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.coreui-slider::-webkit-slider-runnable-track {
+  height: var(--coreui-slider-track-height);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 999px;
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.coreui-slider::-webkit-slider-thumb {
+  width: var(--coreui-slider-thumb-size);
+  height: var(--coreui-slider-thumb-size);
+  margin-top: calc((var(--coreui-slider-track-height) - var(--coreui-slider-thumb-size)) / 2 - 1px);
+  border: 2px solid var(--md-sys-color-surface);
+  border-radius: 999px;
+  background: var(--md-sys-color-primary);
+  box-shadow: var(--md-sys-elevation-level1);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.coreui-slider::-moz-range-track {
+  height: var(--coreui-slider-track-height);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 999px;
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.coreui-slider::-moz-range-thumb {
+  width: var(--coreui-slider-thumb-size);
+  height: var(--coreui-slider-thumb-size);
+  border: 2px solid var(--md-sys-color-surface);
+  border-radius: 999px;
+  background: var(--md-sys-color-primary);
+  box-shadow: var(--md-sys-elevation-level1);
+}
+
+.coreui-slider:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 3px;
+  border-radius: 999px;
+}
+
+.coreui-slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}

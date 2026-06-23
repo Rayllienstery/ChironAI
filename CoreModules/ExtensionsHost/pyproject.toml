@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chironai-extensions-host"
+version = "0.1.0"
+description = "Host/runtime bridge for ChironAI extension workers and provider runtime"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["extensions_host"]

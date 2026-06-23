@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chironai-html-md"
+version = "0.1.0"
+description = "HTML to Markdown conversion for ChironAI crawlers and ingest"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "lxml>=6.0.0",
+  "html2text",
+]
+
+[project.urls]
+Homepage = "https://github.com"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["html_md*"]

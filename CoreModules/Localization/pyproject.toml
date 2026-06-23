@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chironai-localization"
+version = "0.1.0"
+description = "Shared message catalog for ChironAI Python backend and CoreUI"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["localization*"]
+
+[tool.setuptools.package-data]
+localization = ["catalog/*/*.json"]

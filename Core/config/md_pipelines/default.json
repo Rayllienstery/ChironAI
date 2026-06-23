@@ -1,0 +1,120 @@
+{
+  "name": "default",
+  "steps": [
+    {
+      "id": "strip-meta",
+      "type": "strip_meta_block",
+      "params": {}
+    },
+    {
+      "id": "delete-boilerplate-exact",
+      "type": "delete_lines_exact",
+      "params": {
+        "case_sensitive": false,
+        "lines": [
+          "View in English",
+          "View in Russian",
+          "In English",
+          "In Russian",
+          "Table of Contents",
+          "Contents",
+          "Download video",
+          "Download Video",
+          "Download",
+          "Share",
+          "Add to favorites",
+          "Add to Favorites",
+          "Favorite",
+          "Up Next"
+        ]
+      }
+    },
+    {
+      "id": "delete-view-links",
+      "type": "delete_lines_containing",
+      "params": {
+        "case_sensitive": false,
+        "substrings": [
+          "view in english",
+          "view in russian"
+        ]
+      }
+    },
+    {
+      "id": "normalize-ws",
+      "type": "normalize_whitespace",
+      "params": {}
+    },
+    {
+      "id": "wrap-swift-indented-code",
+      "type": "wrap_indented_code",
+      "params": {
+        "language": "swift",
+        "min_block_lines": 2
+      }
+    },
+    {
+      "id": "strip-noise-sections",
+      "type": "strip_sections_by_heading",
+      "params": {
+        "headings": [
+          "conforms to",
+          "conforming types",
+          "inherited by",
+          "inherits from",
+          "relationships",
+          "mentioned in",
+          "similar solutions",
+          "about the swift knowledge base",
+          "explore the archive",
+          "mastodon",
+          "email",
+          "year 1",
+          "year 2"
+        ]
+      }
+    },
+    {
+      "id": "delete-community-footer",
+      "type": "delete_lines_containing",
+      "params": {
+        "case_sensitive": false,
+        "substrings": [
+          "sponsor the site",
+          "twitter.com/twostraws",
+          "buy our books",
+          "click here to visit the hacking with swift store"
+        ]
+      }
+    },
+    {
+      "id": "reject-low-signal",
+      "type": "reject_low_signal_body",
+      "params": {
+        "min_alpha_ratio": 0.12,
+        "min_chars": 120,
+        "min_words": 5
+      }
+    },
+    {
+      "id": "step-1777731539257-8cxg",
+      "type": "delete_sentences_starting_with",
+      "params": {
+        "prefixes": [
+          "Good morning",
+          "My name's",
+          "I'm an",
+          "Thanks a lot",
+          "I can't wait to see",
+          "Welcome to",
+          "My name",
+          "We are so thrilled",
+          "As you heard",
+          "Thank you",
+          "Please come",
+          "For more information"
+        ]
+      }
+    }
+  ]
+}

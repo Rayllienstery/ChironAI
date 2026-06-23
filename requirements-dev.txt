@@ -1,0 +1,25 @@
+# Development: editable installs (PEP 621 / pyproject.toml is the source of truth for versions).
+#   pip install -r requirements-dev.txt
+#
+# Installs:
+#   - chironai (Core: application, api, config, core, domain, infrastructure) + [dev]
+#   - all runtime CoreModules and modules used by WebUI / proxy / crawl entrypoints
+
+-e .[dev]
+-e CoreModules/OllamaInteractor
+-e CoreModules/LlmProxy
+-e CoreModules/LlmInteractor
+-e CoreModules/DockerManager
+-e CoreModules/WebInteraction
+-e CoreModules/LogsManager
+-e CoreModules/MdIngestionService
+-e CoreModules/RagService
+-e CoreModules/Security
+-e CoreModules/ExtensionsSandbox
+-e CoreModules/ExtensionsHost
+-e CoreModules/ErrorManager
+-e Core/modules/html_md
+-e Core/modules/crawler_service
+-e Core/modules/webui_backend
+-e Core/modules/extensions_backend
+-e Core/modules/external_docs_rag

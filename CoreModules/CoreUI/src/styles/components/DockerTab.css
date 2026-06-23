@@ -1,0 +1,309 @@
+.docker-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-lg);
+}
+
+.docker-tab__header,
+.docker-section__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-md);
+}
+
+.docker-tab__header h2,
+.docker-section__header h3 {
+  margin: 0;
+}
+
+.docker-tab__header p {
+  margin: 4px 0 0;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.docker-tab .coreui-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.docker-tab .material-symbols-outlined {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.docker-status-panel,
+.docker-section {
+  padding: var(--md-sys-spacing-lg);
+}
+
+.docker-status-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
+  gap: var(--md-sys-spacing-lg);
+  align-items: center;
+}
+
+.docker-status-main {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-md);
+  min-width: 0;
+}
+
+.docker-status-main div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.docker-status-main strong,
+.docker-status-main span {
+  overflow-wrap: anywhere;
+}
+
+.docker-status-main span,
+.docker-status-grid span {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.docker-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+  background: var(--md-sys-color-outline-variant);
+}
+
+.docker-status-grid div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.docker-status-grid strong {
+  overflow-wrap: anywhere;
+}
+
+.docker-view-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.docker-message {
+  padding: 10px 12px;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.docker-message--info {
+  background: var(--coreui-color-info-container);
+  color: var(--coreui-color-on-info-container);
+}
+
+.docker-message--error {
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+}
+
+.docker-table-wrap {
+  margin-top: var(--md-sys-spacing-md);
+  overflow-x: auto;
+}
+
+.docker-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.docker-table th,
+.docker-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.docker-table th {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.docker-table td {
+  overflow-wrap: anywhere;
+}
+
+.docker-table td:first-child,
+.docker-table td:nth-child(2) {
+  width: 22%;
+}
+
+.docker-table td:last-child,
+.docker-table th:last-child {
+  width: 60px;
+  text-align: center;
+}
+
+.docker-action-menu-root {
+  position: relative;
+  display: inline-block;
+}
+
+.docker-action-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.docker-action-menu-trigger:hover {
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface);
+}
+
+.docker-action-menu {
+  min-width: 160px;
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+  box-shadow: var(--md-sys-elevation-level2);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.docker-action-menu button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-large-font);
+  cursor: pointer;
+  border-radius: 4px;
+  text-align: left;
+}
+
+.docker-action-menu button:hover:not(:disabled) {
+  background: var(--md-sys-color-surface-variant);
+}
+
+.docker-action-menu button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.docker-action-menu button .material-symbols-outlined {
+  font-size: 20px;
+}
+
+.docker-action-menu-item--danger {
+  color: var(--md-sys-color-error) !important;
+}
+
+.docker-action-menu-item--danger:hover:not(:disabled) {
+  background: var(--md-sys-color-error-container) !important;
+  color: var(--md-sys-color-on-error-container) !important;
+}
+
+.docker-table td strong,
+.docker-table td span {
+  display: block;
+}
+
+.docker-table td span {
+  margin-top: 2px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.82rem;
+}
+
+.docker-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.docker-contracts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-md);
+}
+
+.docker-contract-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--md-sys-spacing-md);
+}
+
+.docker-contract-block {
+  min-width: 0;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+  padding: var(--md-sys-spacing-md);
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.docker-contract-block h4 {
+  margin: 0 0 6px;
+}
+
+.docker-contract-block p {
+  margin: 0 0 12px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.docker-contract-block code {
+  overflow-wrap: anywhere;
+}
+
+.docker-contract-block pre {
+  margin: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .docker-tab__header,
+  .docker-section__header,
+  .docker-status-main {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .docker-status-panel,
+  .docker-contract-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .docker-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "web-interaction"
+version = "0.1.0"
+description = "Free web supplement helpers for LLM Proxy (DuckDuckGo snippets, trigger heuristics)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["duckduckgo-search>=6.0", "requests", "html2text"]
+
+[tool.setuptools]
+packages = ["web_interaction"]

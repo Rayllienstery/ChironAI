@@ -1,0 +1,36 @@
+{
+  "id": "open-webui",
+  "version": "0.1.2",
+  "api_version": "1",
+  "manifest_sha256": "b4a55377198b7f38d1c72081a04e3d1e5547b48fff39a2d3860326b019e3e41e",
+  "type": "ui_extension",
+  "title": "Open WebUI",
+  "description": "Open WebUI service integration through ChironAI host capabilities.",
+  "icon": "icons/open-webui-light.svg",
+  "tab_ui": {
+    "id": "open-webui",
+    "title": "Open WebUI",
+    "icon": "icons/open-webui-light.svg",
+    "order": 60
+  },
+  "backend": {
+    "entrypoint": "backend.provider:create_provider"
+  },
+  "capabilities": {
+    "tab_ui": true,
+    "iframe_tab": false,
+    "service_actions": true
+  },
+  "compatibility": {
+    "app": "chironai",
+    "extension_api_version": "1"
+  },
+  "settings_schema": {
+    "title": "Open WebUI Settings",
+    "fields": []
+  },
+  "ui_schema": {},
+  "metadata": {
+    "service": "open-webui"
+  }
+}

@@ -1,0 +1,32 @@
+## RAG core configuration
+##
+## This file controls how much context is retrieved from Qdrant and how it is
+## presented to the model. All values can be overridden via environment
+## variables where the Python config layer supports it.
+##
+## Keys:
+## - context_chunk_chars: maximum characters taken from a single chunk.
+## - context_total_chars: global limit for concatenated context in one request.
+## - top_k: number of candidates per vector search.
+## - confidence_threshold: minimal score to treat RAG as “confirmed”.
+## - log_preview_chars: how many characters of answer/context to log.
+## - model_id: Deprecated placeholder; use OLLAMA_CHAT_MODEL / ollama.chat_model for default chat tag.
+## - reasoning_level_models: substrings of model names that support reasoning levels.
+
+rag:
+  ## Prompt name = stem of a template file (for example bundled ``system_rag_v1`` or ``WebUI/prompts/<name>.md``).
+  ## Override with env RAG_PROMPT. Use list_rag_prompt_names() to see available names.
+  prompt: "system_rag_v1"
+  context_chunk_chars: 1000
+  context_total_chars: 7000
+  top_k: 4
+  confidence_threshold: 0.75
+  log_preview_chars: 800
+  model_id: ""
+  reasoning_level_models:
+    - "gpt-oss"
+    - "gpt-oss-20b"
+    - "gpt-oss-120b"
+  ## Enable rerank in proxy (no DB required; uses config rerank model). Default false.
+  proxy_rerank_enabled: false
+

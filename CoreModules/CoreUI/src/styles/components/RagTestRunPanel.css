@@ -1,0 +1,163 @@
+.rag-test-run-panel {
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  padding: 12px 14px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  box-shadow: var(--md-sys-elevation-level3);
+  font: var(--md-sys-typescale-body-small-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.rag-test-run-panel--docked {
+  position: fixed;
+  bottom: var(--md-sys-spacing-md);
+  right: var(--md-sys-spacing-md);
+  z-index: 998;
+}
+
+.rag-test-run-panel-embed {
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.rag-test-run-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.rag-test-run-panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: var(--md-sys-typescale-title-small-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.rag-test-run-panel-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--md-sys-color-surface-tint-neutral);
+  border-top-color: var(--md-sys-color-primary);
+  animation: rag-test-run-spinner-spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes rag-test-run-spinner-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.rag-test-run-panel-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.rag-test-run-panel-btn {
+  padding: 4px 10px;
+  border-radius: var(--md-sys-shape-corner-small);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-tint-neutral);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-small-font);
+  cursor: pointer;
+}
+
+.rag-test-run-panel-btn:hover {
+  background: var(--md-sys-color-outline-variant);
+}
+
+.rag-test-run-panel-cancel {
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+  border-color: var(--md-sys-color-error);
+}
+
+.rag-test-run-panel-cancel:hover {
+  background: var(--md-sys-color-error);
+  color: var(--md-sys-color-on-error);
+}
+
+.rag-test-run-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rag-test-run-panel-count {
+  font-weight: 600;
+  color: var(--md-sys-color-primary);
+}
+
+.rag-test-run-panel-current {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--md-sys-color-on-surface-variant);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rag-test-run-panel-current-label {
+  color: var(--md-sys-color-on-surface-variant);
+  font-weight: 500;
+}
+
+.rag-test-run-panel-stats {
+  display: flex;
+  gap: 14px;
+}
+
+.rag-test-run-panel-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.rag-test-run-panel-stat-value {
+  font-weight: 600;
+}
+
+.rag-test-run-panel-stat.passed .rag-test-run-panel-stat-value {
+  color: var(--md-sys-color-primary);
+}
+
+.rag-test-run-panel-stat.failed .rag-test-run-panel-stat-value {
+  color: var(--md-sys-color-error);
+}
+
+.rag-test-run-panel-stat-label {
+  font-size: 0.75rem;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.rag-test-run-panel-bar-wrap {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--md-sys-color-surface-tint-neutral);
+  overflow: hidden;
+}
+
+.rag-test-run-panel-bar-fill {
+  height: 100%;
+  background: var(--md-sys-color-primary);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+
+.rag-test-run-panel-error {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--md-sys-color-error);
+}

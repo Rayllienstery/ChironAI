@@ -1,0 +1,748 @@
+.coreui-showcase {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.coreui-showcase-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 4px 0 8px;
+}
+
+.coreui-showcase-hero h1 {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-headline-large-font);
+  font-weight: 600;
+}
+
+.coreui-showcase-hero p {
+  max-width: 460px;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.coreui-showcase-kicker {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-label-medium-font);
+  text-transform: uppercase;
+}
+
+.coreui-showcase-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.coreui-showcase-section-header h2 {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-title-large-font);
+}
+
+.coreui-showcase-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.coreui-showcase-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 1.1fr);
+  gap: 18px;
+  padding: 16px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level1);
+}
+
+.coreui-showcase-preview {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 96px;
+  padding: 16px;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low);
+  overflow: hidden;
+}
+
+.coreui-showcase-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.coreui-showcase-meta h3 {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-title-medium-font);
+}
+
+.coreui-showcase-meta p {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.coreui-showcase-meta-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  min-width: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium-font);
+}
+
+.coreui-showcase-code-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.coreui-showcase-code-pill {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 3px 7px;
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  font: 500 11px/16px var(--coreui-font-family-mono);
+  overflow-wrap: anywhere;
+}
+
+.coreui-showcase-token-grid,
+.coreui-showcase-form-grid,
+.coreui-showcase-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.coreui-showcase-dependencies-preview {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.coreui-showcase-extension-loading-demo {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.coreui-showcase-extension-loading-demo .extensions-runtime-loading-shell {
+  min-height: 0;
+  padding-top: 0;
+  place-items: stretch;
+}
+
+.coreui-showcase-extension-loading-demo .extensions-runtime-loading-card {
+  width: 100%;
+  box-shadow: none;
+}
+
+.coreui-showcase-dependencies-preview .dependencies-update-panel {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.coreui-showcase-dependencies-preview .dependencies-update-row {
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+}
+
+.coreui-showcase-token {
+  display: grid;
+  grid-template-columns: 28px minmax(64px, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-medium-font);
+}
+
+.coreui-showcase-token .coreui-showcase-code-pill {
+  grid-column: 1 / -1;
+}
+
+.coreui-showcase-token--scrim .coreui-showcase-token-swatch {
+  box-shadow: inset 0 0 0 1px var(--coreui-border-subtle);
+}
+
+.coreui-showcase-token-swatch {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-extra-small);
+}
+
+.coreui-showcase-type-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.coreui-showcase-font-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.coreui-showcase-font-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface);
+}
+
+.coreui-showcase-font-card h4 {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-title-small-font);
+}
+
+.coreui-showcase-font-card p {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small-font);
+}
+
+.coreui-showcase-font-card-sample {
+  color: var(--md-sys-color-on-surface);
+  font-size: 1rem;
+}
+
+.coreui-showcase-font-card-sample--base {
+  font-family: var(--coreui-font-family-base);
+}
+
+.coreui-showcase-font-card-sample--mono {
+  font-family: var(--coreui-font-family-mono);
+}
+
+.coreui-showcase-font-card-sample--icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--coreui-font-family-icon);
+  font-size: 20px;
+}
+
+.coreui-showcase-type-headline {
+  font: var(--md-sys-typescale-headline-medium-font);
+}
+
+.coreui-showcase-type-title {
+  font: var(--md-sys-typescale-title-large-font);
+}
+
+.coreui-showcase-type-body {
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.coreui-showcase-type-label {
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-label-medium-font);
+  text-transform: uppercase;
+}
+
+.coreui-showcase-page-width-demo {
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.coreui-showcase-page-width-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: min(100%, var(--coreui-page-max-width));
+  min-height: 48px;
+  margin-inline: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--md-sys-color-primary);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-medium-font);
+}
+
+.coreui-showcase-surface-row,
+.coreui-showcase-button-row,
+.coreui-showcase-status-row,
+.coreui-showcase-control-row,
+.coreui-showcase-slider-row,
+.coreui-showcase-feedback-row,
+.coreui-showcase-standby-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+}
+
+.coreui-showcase-standby-row {
+  align-items: stretch;
+}
+
+.coreui-showcase-standby-row .standby-screen {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.coreui-showcase-panel-grid,
+.coreui-showcase-utility-stack,
+.coreui-showcase-mono-stack,
+.coreui-showcase-spacing-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.coreui-showcase-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.coreui-showcase-spacing-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.coreui-showcase-demo-card {
+  padding: 16px;
+  color: var(--md-sys-color-on-surface);
+}
+
+.coreui-showcase-demo-section {
+  padding: 16px;
+}
+
+.coreui-showcase-action-button-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+}
+
+.coreui-showcase-nav-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(100%, 260px);
+}
+
+.coreui-showcase-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-large-font);
+  text-align: left;
+}
+
+.coreui-showcase-nav-row-active {
+  border-color: var(--md-sys-color-primary);
+  background: var(--coreui-sidenav-active-bg);
+  color: var(--coreui-sidenav-active-fg);
+}
+
+.coreui-showcase-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium-font);
+}
+
+.coreui-showcase-modal-preview {
+  width: 100%;
+}
+
+.coreui-showcase-modal-scrim {
+  padding: 12px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--coreui-color-scrim);
+}
+
+.coreui-showcase-modal-card {
+  overflow: hidden;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--coreui-radius-modal);
+  background: var(--coreui-surface-modal);
+  box-shadow: var(--coreui-shadow-modal);
+}
+
+.coreui-showcase-modal-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container);
+}
+
+.coreui-showcase-modal-card-body {
+  padding: 12px;
+}
+
+.coreui-showcase-field input,
+.coreui-showcase-field textarea,
+.coreui-showcase-field select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background-color: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.coreui-showcase-field input,
+.coreui-showcase-field select {
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.coreui-showcase-field textarea {
+  min-height: 74px;
+  padding: 9px 10px;
+  resize: none;
+}
+
+.coreui-showcase-select-field {
+  min-width: 160px;
+}
+
+.coreui-showcase-check,
+.coreui-showcase-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-medium-font);
+}
+
+.coreui-showcase-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--md-sys-color-primary);
+}
+
+.coreui-showcase-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.coreui-showcase-switch > span {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--md-sys-color-primary);
+}
+
+.coreui-showcase-switch > span::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--md-sys-color-on-primary);
+}
+
+.coreui-showcase-data-table {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  overflow: hidden;
+}
+
+.coreui-showcase-data-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) 72px auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 10px;
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-small-font);
+}
+
+.coreui-showcase-data-row + .coreui-showcase-data-row {
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.coreui-showcase-icon-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface);
+}
+
+.coreui-showcase-icon-cell .material-symbols-outlined {
+  color: var(--md-sys-color-primary);
+  font-size: 22px;
+}
+
+.coreui-showcase-card-anatomy {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+.coreui-showcase-card-anatomy .app-card__header,
+.coreui-showcase-card-anatomy .app-card__body,
+.coreui-showcase-card-anatomy .app-card__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+}
+
+.coreui-showcase-card-anatomy .app-card__header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.coreui-showcase-card-anatomy .app-card__header h3 {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-title-medium-font);
+  font-weight: 600;
+}
+
+.coreui-showcase-card-anatomy .app-card__header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.coreui-showcase-card-anatomy .app-card__body {
+  gap: 12px;
+  background: var(--md-sys-color-surface);
+}
+
+.coreui-showcase-card-anatomy .app-card__body p {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.coreui-showcase-card-anatomy .app-card__footer {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.coreui-showcase-card-anatomy .coreui-showcase-kicker {
+  margin: 0;
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-label-small-font);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.coreui-showcase-card-variants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+}
+
+.coreui-showcase-model-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.coreui-showcase-docker-status,
+.coreui-showcase-docker-panel {
+  width: 100%;
+  padding: 14px;
+}
+
+.coreui-showcase-docker-card-wrap {
+  width: 100%;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.coreui-showcase-docker-card-wrap .coreui-docker-card {
+  max-width: 100%;
+}
+
+.coreui-showcase-docker-status {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.coreui-showcase-docker-panel .docker-section__header h3 {
+  font: var(--md-sys-typescale-title-small-font);
+}
+
+.coreui-showcase-docker-table {
+  min-width: 0;
+}
+
+.coreui-showcase-docker-table th:last-child,
+.coreui-showcase-docker-table td:last-child {
+  width: auto;
+}
+
+.coreui-showcase-docker-contract-grid {
+  grid-template-columns: 1fr;
+}
+
+.coreui-showcase-docker-contract-grid pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 860px) {
+  .coreui-showcase-hero,
+  .coreui-showcase-item {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .coreui-showcase-preview {
+    min-height: auto;
+  }
+}
+
+/* Notifications subtab */
+
+.coreui-showcase-notification-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.coreui-showcase-notification-demo-card {
+  width: 100% !important;
+  max-width: none !important;
+  animation: none !important;
+}
+
+.coreui-showcase-notification-action-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.coreui-showcase-notification-popover-preview {
+  width: 100%;
+  max-width: 340px;
+}
+
+.coreui-showcase-notification-popover-static {
+  position: static !important;
+  animation: none !important;
+  max-height: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.coreui-showcase-notification-labels-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.coreui-showcase-notification-label-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.coreui-showcase-notification-label-row .material-symbols-outlined {
+  font-size: 16px;
+  color: var(--md-sys-color-outline);
+}
+
+@media (max-width: 560px) {
+  .coreui-showcase-token-grid,
+  .coreui-showcase-font-grid,
+  .coreui-showcase-form-grid,
+  .coreui-showcase-icon-grid,
+  .coreui-showcase-card-grid,
+  .coreui-showcase-model-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .coreui-showcase-meta-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .coreui-showcase-data-row {
+    grid-template-columns: 1fr;
+  }
+}

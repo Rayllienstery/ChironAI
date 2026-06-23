@@ -1,0 +1,35 @@
+{
+  "id": "codex-launcher",
+  "version": "0.1.0",
+  "api_version": "1",
+  "manifest_sha256": "2fd9934599f27ecf58f8f4badc922352a67fbbea0878c719d85a41bd35fcc17a",
+  "type": "ui_extension",
+  "title": "Codex",
+  "description": "Configure and launch Codex against ChironAI LLM Proxy IDE builds.",
+  "icon": "icons/codex-light.svg",
+  "tab_ui": {
+    "id": "codex",
+    "title": "Codex",
+    "icon": "icons/codex-light.svg",
+    "order": 55
+  },
+  "backend": {
+    "entrypoint": "backend.provider:create_provider"
+  },
+  "capabilities": {
+    "tab_ui": true,
+    "service_actions": true
+  },
+  "compatibility": {
+    "app": "chironai",
+    "extension_api_version": "1"
+  },
+  "settings_schema": {
+    "title": "Codex Settings",
+    "fields": []
+  },
+  "ui_schema": {},
+  "metadata": {
+    "service": "codex-launcher"
+  }
+}

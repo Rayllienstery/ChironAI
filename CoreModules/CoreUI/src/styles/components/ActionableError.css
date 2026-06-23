@@ -1,0 +1,69 @@
+.coreui-actionable-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: var(--md-sys-shape-corner-medium, 8px);
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-error, #b3261e) 35%, transparent);
+  background: color-mix(in srgb, var(--md-sys-color-error-container, #f9dedc) 55%, var(--md-sys-color-surface, #fff));
+  color: var(--md-sys-color-on-error-container, #410e0b);
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.coreui-actionable-error__body {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 200px;
+}
+
+.coreui-actionable-error__icon {
+  flex-shrink: 0;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.coreui-actionable-error__text {
+  min-width: 0;
+  flex: 1;
+}
+
+.coreui-actionable-error__title {
+  display: block;
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  word-break: break-word;
+}
+
+.coreui-actionable-error__message {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.coreui-actionable-error__details {
+  margin-top: 8px;
+  font-size: 0.8rem;
+}
+
+.coreui-actionable-error__details summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.coreui-actionable-error__details pre {
+  margin: 6px 0 0;
+  padding: 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--md-sys-color-surface, #fff) 70%, transparent);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow: auto;
+  font-size: 0.75rem;
+}

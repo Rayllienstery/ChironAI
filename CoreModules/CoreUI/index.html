@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ChironAI</title>
+
+    <!-- Apply saved theme BEFORE first paint to avoid purple flash.
+         Reads from localStorage set by applyTheme() in App.jsx. -->
+    <script>
+      (function () {
+        try {
+          var t = JSON.parse(localStorage.getItem('chironai_theme') || '{}');
+          var mode = t.mode || 'system';
+          var light = t.lightAccent || 'purple';
+          var dark = t.darkAccent || 'cyan';
+          var actual =
+            mode === 'system'
+              ? window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+              : mode;
+          document.documentElement.classList.add('theme-' + actual);
+          document.documentElement.setAttribute(
+            'data-accent-color',
+            actual === 'dark' ? dark : light
+          );
+        } catch (e) {}
+      })();
+    </script>
+
+    <!-- Stand-by screen shown before React mounts -->
+    <style>
+      body { margin: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="app-loader" class="standby-screen standby-screen--preboot standby--md">
+      <div class="standby-card">
+        <div class="standby-loading-indicator" aria-hidden="true">
+          <span class="standby-loading-shape standby-loading-shape--one"></span>
+          <span class="standby-loading-shape standby-loading-shape--two"></span>
+          <span class="standby-loading-shape standby-loading-shape--three"></span>
+        </div>
+        <div class="standby-copy">
+          <div class="standby-brand">ChironAI</div>
+          <div class="standby-message">Stand by&hellip;</div>
+        </div>
+        <div class="standby-progress-stack">
+          <div class="standby-progress" role="progressbar" aria-label="Loading CoreUI">
+            <span class="standby-progress-fill standby-progress-fill--lead"></span>
+            <span class="standby-progress-fill standby-progress-fill--trail"></span>
+          </div>
+          <div class="standby-progress-meta">
+            <span class="standby-module-label">Loading module</span>
+            <span class="standby-module-name">CoreUI</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/preboot.js"></script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+

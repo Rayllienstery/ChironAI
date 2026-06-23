@@ -1,0 +1,138 @@
+{
+  "id": "ollama-provider",
+  "version": "0.1.6",
+  "api_version": "1",
+  "manifest_sha256": "23c2961ca5005797d27ae5e4ed48819b8a036f204930c554e274fd1f6b13df00",
+  "type": "llm_provider",
+  "title": "Ollama",
+  "description": "Trusted local provider that exposes the existing Ollama runtime through LlmInteractor.",
+  "icon": "icons/ollama-light.svg",
+  "tab_ui": {
+    "id": "ollama",
+    "title": "Ollama",
+    "icon": "icons/ollama-light.svg",
+    "order": 50,
+    "frame": {
+      "id": "ollama-runtime-frame",
+      "type": "declarative",
+      "chrome": "ollama-runtime",
+      "asset_scope": "extension"
+    }
+  },
+  "backend": {
+    "entrypoint": "backend.provider:create_provider"
+  },
+  "capabilities": {
+    "chat": true,
+    "embed": true,
+    "rerank": true,
+    "completions": false,
+    "streaming": true,
+    "tools": true,
+    "vision": true,
+    "model_listing": true,
+    "health_check": true,
+    "tab_ui": true,
+    "service_actions": true
+  },
+  "compatibility": {
+    "app": "chironai",
+    "extension_api_version": "1"
+  },
+  "settings_schema": {
+    "title": "Ollama Settings",
+    "fields": []
+  },
+  "ui_schema": {
+    "pages": [
+      {
+        "id": "ollama-overview",
+        "title": "Ollama",
+        "sections": [
+          {
+            "id": "service",
+            "title": "Service",
+            "components": [
+              { "type": "status", "key": "provider_health", "label": "Health" },
+              { "type": "text", "key": "base_url", "label": "Base URL" },
+              { "type": "text", "key": "default_model", "label": "Default model" },
+              { "type": "action", "key": "refresh", "label": "Refresh" },
+              { "type": "action", "key": "start_service", "label": "Start Ollama" },
+              { "type": "action", "key": "stop_service", "label": "Stop Ollama" }
+            ]
+          },
+          {
+            "id": "pull",
+            "title": "Pull model",
+            "components": [
+              { "type": "input", "key": "pull_model_name", "label": "Model name" },
+              {
+                "type": "action",
+                "key": "pull_model",
+                "label": "Pull",
+                "action_id": "pull_model",
+                "payload_keys": ["pull_model_name"]
+              }
+            ]
+          },
+          {
+            "id": "models",
+            "title": "Model actions",
+            "components": [
+              { "type": "select", "key": "selected_model", "label": "Selected model" },
+              {
+                "type": "action",
+                "key": "show_model",
+                "label": "Show details",
+                "action_id": "show_model",
+                "payload_keys": ["selected_model"]
+              },
+              {
+                "type": "action",
+                "key": "hide_model",
+                "label": "Hide model",
+                "action_id": "hide_model",
+                "payload_keys": ["selected_model"]
+              },
+              {
+                "type": "action",
+                "key": "unhide_model",
+                "label": "Unhide model",
+                "action_id": "unhide_model",
+                "payload_keys": ["selected_model"]
+              },
+              {
+                "type": "action",
+                "key": "delete_model",
+                "label": "Delete model",
+                "action_id": "delete_model",
+                "payload_keys": ["selected_model"]
+              },
+              {
+                "type": "table",
+                "key": "provider_models",
+                "label": "Installed models",
+                "columns": [
+                  { "key": "id", "label": "ID" },
+                  { "key": "size", "label": "Size" },
+                  { "key": "modified_at", "label": "Modified" },
+                  { "key": "hidden", "label": "Hidden" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "diagnostics",
+            "title": "Diagnostics",
+            "components": [
+              { "type": "diagnostics", "key": "provider_diagnostics", "label": "Diagnostics" }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "models_policy": {
+    "dynamic": true
+  }
+}

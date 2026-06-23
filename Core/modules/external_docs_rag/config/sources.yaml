@@ -1,0 +1,89 @@
+# External docs and multi-collection RAG config
+#
+# external_sources: list of sources to fetch and ingest (base_url + paths).
+#   Add any framework/repo: id, base_url (GitHub raw or other), paths (e.g. README.md).
+# rag_sources: list of RAG collections with top_k and trigger keywords.
+#   on_demand_fetch: when true, docs are fetched from the web when a trigger keyword
+#     appears and used immediately; no need to pre-run ingest.
+#   external_source_id: links to external_sources id for on-demand fetch.
+# github_repos: optional list for full-repo .md indexing (depth 3). Used when project_context
+#   or refresh triggers indexing: owner, repo, ref (optional), collection_name, framework_id.
+
+# Full-repo .md indexing (depth 3). When a framework is missing/stale, background job runs this.
+github_repos:
+  - owner: Alamofire
+    repo: Alamofire
+    ref: latest
+    collection_name: alamofire
+    framework_id: alamofire
+  - owner: pointfreeco
+    repo: swift-composable-architecture
+    ref: main
+    collection_name: tca
+    framework_id: tca
+  - owner: Rayllienstery
+    repo: TMArchitecture
+    ref: main
+    collection_name: tm_architecture
+    framework_id: tm_architecture
+
+external_sources:
+  - id: tm_architecture
+    base_url: https://raw.githubusercontent.com/Rayllienstery/TMArchitecture/main
+    paths:
+      - README.md
+      - ARCHITECTURE.md
+      - UNIT_TESTING.md
+      - PROJECT_CHECKLIST.md
+    collection_name: tm_architecture
+    top_k: 2
+
+  - id: tca
+    base_url: https://raw.githubusercontent.com/pointfreeco/swift-composable-architecture/main
+    paths:
+      - README.md
+      - Documentation/README.md
+    collection_name: tca
+    top_k: 2
+
+  - id: alamofire
+    base_url: https://raw.githubusercontent.com/Alamofire/Alamofire/master
+    paths:
+      - README.md
+      - Documentation/Usage.md
+    collection_name: alamofire
+    top_k: 2
+
+rag_sources:
+  - collection_name: tm_architecture
+    top_k: 2
+    trigger_keywords:
+      - TMArchitecture
+      - tm_architecture
+    label: Architecture
+    on_demand_fetch: true
+    external_source_id: tm_architecture
+
+  - collection_name: tca
+    top_k: 2
+    trigger_keywords:
+      - TCA
+      - The Composable Architecture
+      - Composable Architecture
+    label: TCA
+    on_demand_fetch: true
+    external_source_id: tca
+
+  - collection_name: alamofire
+    top_k: 2
+    trigger_keywords:
+      - Alamofire
+      - alamofire
+    label: Alamofire
+    on_demand_fetch: true
+    external_source_id: alamofire
+
+  - collection_name: webcrawl
+    top_k: 6
+    trigger_keywords: []
+    label: Main docs

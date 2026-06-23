@@ -1,0 +1,212 @@
+## Retrieval configuration
+##
+## This file controls how queries are processed, vector search is performed,
+## and results are reranked. These parameters directly affect RAG quality.
+##
+## Keys:
+## - max_embed_text_length: maximum characters sent to embedding model (model limit).
+## - top_k: default number of candidates per vector search.
+## - multi_chunk_top_k: top_k when query suggests multiple chunks needed.
+## - multi_chunk_final_k: final chunks returned for multi-chunk queries.
+## - rerank_max_candidates: how many candidates to send to rerank LLM.
+## - final_context_k: how many chunks actually go into the prompt.
+## - doc_type_preferred_for_qa: document types prioritized for Q&A.
+## - doc_type_weight: scoring weights for different document types.
+## - multi_chunk_keywords: keywords that trigger multi-chunk retrieval.
+## - retrieval_stop_words: words stripped from queries before embedding.
+## - skip_rag_greetings: exact-match phrases that skip RAG (e.g. hi, hello).
+## - rag_required_keywords: substrings that require RAG (project, Apple tech, code analysis).
+## - hybrid_sparse_enabled: index/search dense+sparse in Qdrant (default true; override in RAG / Models UI).
+## - query_expansion_enabled / max_variants / abbreviations: extra query strings merged with RRF.
+## - coverage_aware_selection: after rerank, pick chunks to cover extracted concepts (symbols + concept_aliases), not only top similarity.
+## - coverage_extra_terms: optional list of lowercase phrases; if a phrase appears as substring in the question, it becomes a coverage target.
+## - concept_expansion_enabled: second vector search after pass 1 using seeds + concept_expansion_map.
+## - concept_expansion_map: lowercase key -> space-separated related terms (e.g. Swift concurrency).
+## - concept_expansion_seed_hits: first N pass-1 hits scanned for API symbols as seeds.
+## - concept_expansion_max_terms: cap on expanded terms appended to the pass-2 embed query.
+## - concept_expansion_pass2_top_k: vector search top_k for pass 2.
+## - coverage_gate_enabled / coverage_gate_min_percent / coverage_gate_boost_final_k / coverage_gate_max_final_k:
+##   when heuristic target concepts exist and coverage_ratio < min_percent, widen final_k once from the rerank pool (no re-embed).
+## - coverage_retry_supplemental_search_enabled / coverage_retry_top_k / coverage_retry_max_missing_terms / coverage_retry_final_k:
+##   optional second embed+search using missing concept terms, merge into pool, rerank again, then finalize (0 = use coverage_gate_max_final_k).
+## - structured_rag_context_enabled: prepend Concepts / Evidence headings and [n] markers in the RAG context block.
+
+retrieval:
+  # Embedding query preprocessing
+  max_embed_text_length: 400
+  
+  # Vector search parameters
+  top_k: 8
+  multi_chunk_top_k: 16
+  multi_chunk_final_k: 8
+  
+  # Reranking parameters
+  rerank_max_candidates: 12
+  final_context_k: 4
+
+  # Prefer sets of chunks that cover distinct extracted concepts (API symbols + concept_aliases), then fill by rerank order
+  coverage_aware_selection: true
+  coverage_extra_terms: []
+
+  # Coverage gate: widen how many chunks are taken from the rerank pool when inferred concepts are under-covered
+  coverage_gate_enabled: false
+  coverage_gate_min_percent: 75
+  coverage_gate_boost_final_k: 2
+  coverage_gate_max_final_k: 12
+
+  # Supplemental search when still under-covered (extra embed+search + rerank; off by default)
+  coverage_retry_supplemental_search_enabled: false
+  coverage_retry_top_k: 6
+  coverage_retry_max_missing_terms: 8
+  coverage_retry_final_k: 0
+
+  # Structured RAG context (Concepts / Evidence / numbered snippets)
+  structured_rag_context_enabled: false
+
+  # Second retrieval pass: expand seeds via map, embed+search once, merge unique hits before rerank
+  concept_expansion_enabled: true
+  concept_expansion_seed_hits: 4
+  concept_expansion_max_terms: 16
+  concept_expansion_pass2_top_k: 8
+  concept_expansion_map:
+    actor: "Sendable nonisolated MainActor isolated global actor"
+    task: "async await cancellation TaskGroup Task"
+    sendable: "isolated concurrency actor @unchecked"
+    mainactor: "MainActor UI thread dispatchQueue"
+  
+  # Doc type preferences for QA
+  doc_type_preferred_for_qa:
+    - conceptual
+    - overview
+    - tutorial
+    - documentation
+    - howto
+  
+  doc_type_weight:
+    conceptual: 3
+    overview: 2
+    tutorial: 1
+    documentation: 1
+    howto: 1
+    release_notes: -2
+    news: -2
+  
+  # Doc scope (source type) preferences for QA: api_symbol, guide, tutorial, etc.
+  doc_scope_preferred_for_qa:
+    - api_symbol
+    - guide
+    - tutorial
+  doc_scope_weight:
+    api_symbol: 2
+    guide: 1
+    tutorial: 1
+    discussion: 0
+    articles: 0
+    books: 0
+    forums: -1
+  
+  # Keywords that suggest user needs more chunks
+  multi_chunk_keywords:
+    - compare
+    - comparison
+    - difference
+    - explain fully
+    - fully explain
+    - lifecycle
+    - all ways
+    - all options
+    - list all
+    - step by step
+    - overview of
+  
+  # Stop words for query preprocessing
+  retrieval_stop_words:
+    - please
+    - can you
+    - could you
+    - would you
+    - tell me
+    - explain
+    - show me
+    - give me
+    - how to
+    - how do
+    - what is
+    - what are
+  
+  # Exact-match greetings: skip RAG when normalized query equals one of these
+  skip_rag_greetings:
+    - hi
+    - hello
+    - hey
+    - good morning
+    - good evening
+  
+  # Greeting skip only when message is short (length <= this). "hello how does SwiftUI work" won't skip.
+  skip_rag_greeting_max_length: 30
+  
+  # RAG trigger: run RAG when score >= threshold. Score from keywords (+3), CamelCase (+2), code block (+4), etc.
+  rag_trigger_threshold: 2
+  rag_trigger_technical_phrases_strong:
+    - compile
+    - runtime
+    - API
+    - framework
+    - syntax
+    - deprecated
+    - migration
+    - error
+    - bug
+    - architecture
+  rag_trigger_technical_phrases_weak:
+    - how does
+    - best practice
+    - pattern
+    - algorithm
+    - refactor
+    - unit test
+    - dependency
+    - library
+    - integration test
+  
+  # RAG required: run RAG only when query contains at least one of these substrings
+  rag_required_keywords:
+    - swift
+    - swiftui
+    - uikit
+    - objective-c
+    - objc
+    - xcode
+    - ios
+    - macos
+    - combine
+    - cocoa
+    - appkit
+    - watchos
+    - tvos
+    - uiviewcontroller
+    - view model
+    - project
+    - codebase
+    - repository
+    - our code
+    - analyze
+    - review this code
+    - explain this code
+    - code snippet
+    - observation
+    - observable
+    - observation tracking
+  
+  # Hybrid dense + sparse (keyword-weighted hash sparse in Qdrant; RRF fusion at query time)
+  hybrid_sparse_enabled: true
+
+  # Query expansion: extra paraphrases before embedding (deterministic; merged with RRF dedupe)
+  query_expansion_enabled: true
+  query_expansion_max_variants: 3
+  # Map triggers (substring match, case-insensitive) -> extra phrase appended as a variant
+  query_expansion_abbreviations:
+    "MVVM": "Model View ViewModel"
+    "@Observable": "Observable macro Swift Observation"
+    "UIKit": "UIKit framework"
+    "SwiftUI": "SwiftUI framework"

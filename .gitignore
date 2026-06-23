@@ -1,0 +1,167 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.ruff_cache/
+
+# JavaScript / React / Vite (frontend)
+node_modules/
+**/node_modules/
+.npm/
+.pnpm-store/
+.pnpm-debug.log*
+CoreModules/CoreUI/dist/
+WebUI/dist/
+
+# Vite cache (custom cacheDir or tooling defaults)
+.vite/
+**/.vite/
+
+# ESLint / Stylelint / TypeScript incremental
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+
+# Frontend tests & E2E output
+coverage/
+coverage.xml
+playwright-report/
+test-results/
+CoreModules/CoreUI/storybook-static/
+CoreModules/CoreUI/.storybook-cache/
+CoreModules/CoreUI/.storybook-home/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.key
+*.pem
+secrets.yaml
+config.local.yaml
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Fetched/generated markdown files and documentation sources
+WebUI/rag_sources/
+WebUI/rag_sources_for_testing/
+Apple-Developer-Documentation-Offline-Archive-main/
+
+# Qdrant data
+qdrant_data/
+qdrant_storage/
+CoreModules/RagService/rag_service/data/*.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+.cache/
+reports/
+.tmp_test_local/
+tmp_test_runs/
+tmp-other-project/
+tmp-other-project
+pytest-basetemp/
+.pytest-basetemp/
+.pytest-tmp/
+pytest-cache-files-*/
+.import_linter_cache/
+.import_linter_cache
+.ruff_cache
+.pytest_cache
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Project-specific
+last_collection.txt
+WebUI/last_collection.txt
+tests/_tmp_*
+tests/*.tmp
+*.db
+*.sqlite
+*.sqlite3
+# SQLite sidecar files (WAL / shared memory / rollback journal)
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
+# DB dumps and local backups (tracked *.sql schemas/migrations stay visible)
+*.dump
+*.sql.dump
+*.sql.gz
+*.bak
+*.backup
+# DuckDB
+*.duckdb
+*.duckdb.wal
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+.npm-cache/
+.kilo/
+prompts/*
+!prompts/.gitkeep
+.tmp_openwebui_data/

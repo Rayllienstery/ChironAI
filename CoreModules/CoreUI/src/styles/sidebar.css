@@ -1,0 +1,599 @@
+/* Left navigation (Material Dashboard–inspired) */
+
+.coreui-sidebar {
+  position: fixed;
+  left: 0;
+  flex-shrink: 0;
+  width: var(--coreui-sidebar-width);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--coreui-shadow-sidebar);
+  border-right: 1px solid var(--md-sys-color-outline-variant);
+  transition:
+    width 0.22s ease,
+    background-color 0.22s ease,
+    border-color 0.22s ease;
+  will-change: width;
+  z-index: 2;
+}
+
+.coreui-sidebar--resizing {
+  transition: none;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar {
+  width: var(--coreui-sidebar-width-collapsed);
+  background: var(--coreui-sidenav-collapsed-bg);
+  border-right-color: var(--coreui-sidenav-rail-border);
+  box-shadow: var(--coreui-shadow-sidebar-strong);
+}
+
+.coreui-sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-sm);
+  padding: var(--md-sys-spacing-md) var(--md-sys-spacing-md);
+  min-height: 56px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__header {
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-xs);
+  border-bottom-color: var(--coreui-sidenav-rail-divider);
+}
+
+.coreui-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-sm);
+  min-width: 0;
+}
+
+.coreui-sidebar__logo {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--coreui-sidenav-active-bg);
+  color: var(--coreui-sidenav-active-fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: var(--md-sys-typescale-title-small-font);
+  flex-shrink: 0;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__logo {
+  background: var(--coreui-sidenav-rail-logo-bg);
+  color: var(--coreui-sidenav-rail-fg);
+}
+
+.coreui-sidebar__title {
+  font: var(--md-sys-typescale-title-medium-font);
+  color: var(--md-sys-color-on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__title {
+  display: none;
+}
+
+.coreui-sidebar__collapse {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.coreui-sidebar__collapse:hover {
+  background: var(--md-sys-color-surface-tint-neutral);
+  color: var(--md-sys-color-on-surface);
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__collapse {
+  color: var(--coreui-sidenav-rail-fg-muted);
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__collapse:hover {
+  background: var(--coreui-sidenav-rail-hover-strong);
+  color: var(--coreui-sidenav-rail-fg);
+}
+
+.coreui-sidebar__nav {
+  flex-shrink: 0;
+  padding: var(--md-sys-spacing-md) var(--md-sys-spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-sm);
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__nav {
+  align-items: center;
+  padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-xs);
+  gap: 6px;
+}
+
+.coreui-sidebar__section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.coreui-sidebar__section + .coreui-sidebar__section {
+  padding-top: var(--md-sys-spacing-xs);
+}
+
+.coreui-sidebar__section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px 2px;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-small-font);
+  letter-spacing: 0;
+  text-transform: uppercase;
+  opacity: 0.72;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.coreui-sidebar__section-title::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  min-width: 12px;
+  background: var(--md-sys-color-outline-variant);
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__section {
+  align-items: center;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__section + .coreui-sidebar__section {
+  width: 100%;
+  padding-top: 6px;
+  border-top: 1px solid var(--coreui-sidenav-rail-divider);
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__section-title {
+  display: none;
+}
+
+.coreui-sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-md);
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  padding: 10px 14px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  font: var(--md-sys-typescale-label-large-font);
+  color: var(--md-sys-color-on-surface-variant);
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.coreui-sidebar__link:hover {
+  background: var(--md-sys-color-surface-tint-neutral);
+  color: var(--md-sys-color-on-surface);
+}
+
+.coreui-sidebar__link--active {
+  background: var(--coreui-sidenav-active-bg);
+  color: var(--coreui-sidenav-active-fg);
+}
+
+.coreui-sidebar__link--active:hover {
+  background: var(--coreui-sidenav-active-bg);
+  color: var(--coreui-sidenav-active-fg);
+  opacity: 0.95;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__link {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+  color: var(--coreui-sidenav-rail-fg-muted);
+  border-radius: var(--md-sys-shape-corner-medium);
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__link:hover {
+  background: var(--coreui-sidenav-rail-hover);
+  color: var(--coreui-sidenav-rail-fg);
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__link--active {
+  background: var(--coreui-sidenav-collapsed-active-bg);
+  color: var(--coreui-sidenav-rail-fg);
+  box-shadow: inset 0 0 0 1px var(--coreui-sidenav-rail-active-outline);
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__link-label {
+  display: none;
+}
+
+.coreui-sidebar__link-label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.coreui-sidebar__link--rag {
+  position: relative;
+}
+
+.coreui-sidebar__link-rag-dot {
+  flex-shrink: 0;
+}
+
+/*
+ * Active nav pill (accent fill): status dot reads as a “hole” in the chip — neutral bg,
+ * not on-accent text color. Stopped stays error red.
+ */
+.theme-light .coreui-sidebar__link--active .coreui-sidebar__service-dot.running,
+.theme-light .coreui-sidebar__link--active .coreui-sidebar__service-dot.updating,
+.theme-light .coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.running,
+.theme-light .coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.updating {
+  background: var(--md-sys-color-surface);
+}
+
+.theme-dark .coreui-sidebar__link--active .coreui-sidebar__service-dot.running,
+.theme-dark .coreui-sidebar__link--active .coreui-sidebar__service-dot.updating,
+.theme-dark .coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.running,
+.theme-dark .coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.updating {
+  background: var(--md-sys-color-background);
+}
+
+.coreui-sidebar__link--active .coreui-sidebar__service-dot.stopped,
+.coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.stopped {
+  background: var(--md-sys-color-error);
+}
+
+.coreui-sidebar__link--active .coreui-sidebar__service-dot.updating,
+.coreui-sidebar__link--active .coreui-sidebar__link-rag-dot.updating {
+  animation: coreui-service-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__service-dot,
+.app.app--sidebar-collapsed .coreui-sidebar__link-rag-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+}
+
+.coreui-sidebar__icon {
+  font-size: 22px;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  line-height: 1;
+  overflow: hidden;
+  font-family: var(--coreui-font-family-icon);
+  font-style: normal;
+  font-weight: normal;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+}
+
+.coreui-sidebar__link--active .coreui-sidebar__icon {
+  color: inherit;
+}
+
+.coreui-sidebar__icon--image,
+.coreui-sidebar__icon--masked,
+.coreui-sidebar__icon--svg svg,
+.coreui-sidebar__icon--svg img {
+  width: 22px;
+  height: 22px;
+  display: block;
+  color: inherit;
+  object-fit: contain;
+}
+
+.coreui-sidebar__icon--masked {
+  background-color: currentColor;
+  mask-repeat: no-repeat;
+  WebkitMaskRepeat: no-repeat;
+  mask-position: center;
+  WebkitMaskPosition: center;
+  mask-size: contain;
+  WebkitMaskSize: contain;
+}
+
+.coreui-sidebar__icon--image,
+.coreui-sidebar__icon--masked,
+.coreui-sidebar__icon--svg {
+  font-family: inherit;
+  font-size: 0;
+}
+
+.coreui-sidebar__badge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-error);
+  font: var(--md-sys-typescale-label-small-font);
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.coreui-sidebar__activity {
+  margin-left: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--md-sys-color-primary) 24%, transparent);
+  border-top-color: var(--md-sys-color-primary);
+  flex-shrink: 0;
+  animation: coreui-sidebar-activity-spin 0.8s linear infinite;
+}
+
+.coreui-sidebar__activity--service {
+  margin-left: 0;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  margin: 0;
+  min-width: 14px;
+  height: 14px;
+  font-size: 9px;
+  padding: 0 3px;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__activity {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__activity--service {
+  margin: 0;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__link {
+  position: relative;
+}
+
+@keyframes coreui-sidebar-activity-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.coreui-sidebar__footer {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--md-sys-spacing-sm);
+  padding: var(--md-sys-spacing-md) var(--md-sys-spacing-sm)
+    var(--md-sys-spacing-lg);
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__footer {
+  align-items: center;
+  padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-xs)
+    var(--md-sys-spacing-md);
+}
+
+.coreui-sidebar__footer-btn {
+  width: 100%;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--md-sys-spacing-md);
+  padding: 10px 14px !important;
+  text-align: left;
+  border-radius: var(--md-sys-shape-corner-medium) !important;
+  cursor: pointer;
+  font: var(--md-sys-typescale-label-large-font) !important;
+  appearance: none;
+  box-sizing: border-box;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.coreui-sidebar__footer-btn--settings {
+  --app-card-bg: transparent !important;
+  color: var(--md-sys-color-on-surface) !important;
+  box-shadow: inset 0 0 0 1px var(--md-sys-color-primary) !important;
+  background: transparent !important;
+}
+
+.coreui-sidebar__footer-btn--settings:hover {
+  background: var(--md-sys-color-surface-tint-neutral) !important;
+}
+
+.coreui-sidebar__footer-btn--settings.coreui-sidebar__footer-btn--active {
+  box-shadow: inset 0 0 0 2px var(--md-sys-color-primary) !important;
+  color: var(--md-sys-color-primary) !important;
+}
+
+.coreui-sidebar__footer-btn--stop {
+  --app-card-bg: var(--coreui-sidenav-active-bg) !important;
+  color: var(--coreui-sidenav-active-fg) !important;
+  box-shadow: none !important;
+}
+
+.coreui-sidebar__footer-btn--stop:hover {
+  opacity: 0.92;
+}
+
+.coreui-sidebar__footer-icon {
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  line-height: 1;
+  font-family: var(--coreui-font-family-icon);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__footer-btn {
+  width: 44px;
+  height: 44px;
+  padding: 0 !important;
+  border-radius: var(--md-sys-shape-corner-full) !important;
+  justify-content: center;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__footer-label {
+  display: none;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__footer-btn--settings {
+  --app-card-bg: transparent !important;
+  color: var(--coreui-sidenav-rail-fg) !important;
+  box-shadow: inset 0 0 0 1px var(--coreui-sidenav-rail-active-outline-strong) !important;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__footer-btn--settings:hover {
+  background: var(--coreui-sidenav-rail-hover) !important;
+}
+
+.app.app--sidebar-collapsed
+  .coreui-sidebar__footer-btn--settings.coreui-sidebar__footer-btn--active {
+  box-shadow:
+    inset 0 0 0 2px var(--coreui-sidenav-rail-active-outline-stronger) !important;
+  color: var(--coreui-sidenav-rail-fg) !important;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__footer-btn--stop {
+  --app-card-bg: var(--coreui-sidenav-rail-stop-bg) !important;
+  color: var(--coreui-sidenav-rail-fg) !important;
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__footer-btn--stop:hover {
+  --app-card-bg: var(--coreui-sidenav-rail-stop-bg-hover) !important;
+  opacity: 1;
+}
+
+.coreui-sidebar__resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 3;
+}
+
+.coreui-sidebar__resize:hover {
+  background: var(--md-sys-color-primary-tint-25);
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__resize {
+  display: none;
+}
+
+body.coreui-resizing {
+  cursor: ew-resize;
+  user-select: none;
+}
+
+body.coreui-resizing * {
+  cursor: ew-resize !important;
+}
+
+/* Service status controls in sidebar */
+.coreui-sidebar__content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.coreui-sidebar__dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  flex-shrink: 0;
+  margin-top: auto;
+  padding-top: var(--md-sys-spacing-sm);
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--coreui-shadow-sidebar-dock);
+}
+
+.app.app--sidebar-collapsed .coreui-sidebar__dock {
+  background: var(--coreui-sidenav-collapsed-bg);
+  box-shadow: none;
+}
+
+.coreui-sidebar__service-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--md-sys-color-error);
+}
+
+.coreui-sidebar__service-dot.running {
+  background: var(--md-sys-color-primary);
+}
+
+.coreui-sidebar__service-dot.stopped {
+  background: var(--md-sys-color-error);
+}
+
+.coreui-sidebar__service-dot.updating {
+  background: var(--md-sys-color-tertiary);
+  animation: coreui-service-dot-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes coreui-service-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

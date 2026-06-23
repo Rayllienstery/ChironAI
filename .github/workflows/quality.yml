@@ -1,0 +1,231 @@
+name: Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  minimal:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    if: github.event_name == 'pull_request'
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            pyproject.toml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: CoreModules/CoreUI/package-lock.json
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Install CoreUI dependencies
+        working-directory: CoreModules/CoreUI
+        run: npm ci
+
+      - name: Run CoreUI i18n lint
+        working-directory: CoreModules/CoreUI
+        continue-on-error: true
+        run: npm run i18n-lint
+
+      - name: Run minimal quality gate
+        run: python scripts/quality_gate.py --profile minimal
+
+  full:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            pyproject.toml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: CoreModules/CoreUI/package-lock.json
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Install CoreUI dependencies
+        working-directory: CoreModules/CoreUI
+        run: npm ci
+
+      - name: Run CoreUI i18n lint
+        working-directory: CoreModules/CoreUI
+        continue-on-error: true
+        run: npm run i18n-lint
+
+      - name: Run full quality gate
+        run: python scripts/quality_gate.py --profile full
+
+  linux-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            pyproject.toml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: CoreModules/CoreUI/package-lock.json
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Install CoreUI dependencies
+        working-directory: CoreModules/CoreUI
+        run: npm ci
+
+      - name: Run CoreUI i18n lint
+        working-directory: CoreModules/CoreUI
+        continue-on-error: true
+        run: npm run i18n-lint
+
+      - name: Run full quality gate
+        run: python scripts/quality_gate.py --profile full
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            pyproject.toml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: CoreModules/CoreUI/package-lock.json
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Install CoreUI dependencies
+        working-directory: CoreModules/CoreUI
+        run: npm ci
+
+      - name: Run CoreUI i18n lint
+        working-directory: CoreModules/CoreUI
+        continue-on-error: true
+        run: npm run i18n-lint
+
+      - name: Run release quality gate
+        run: python scripts/quality_gate.py --profile release
+
+      - name: Run Trivy image scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: chironai:gate
+          format: table
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+
+  linux-fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            pyproject.toml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: CoreModules/CoreUI/package-lock.json
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Install CoreUI dependencies
+        working-directory: CoreModules/CoreUI
+        run: npm ci
+
+      - name: Linux startup smoke
+        run: bash scripts/startup_smoke.sh
+
+      - name: Docker build smoke
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: docker build -t chironai:gate .

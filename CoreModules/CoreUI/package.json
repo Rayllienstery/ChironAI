@@ -1,0 +1,71 @@
+{
+  "name": "webui-frontend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run gen:types && vite build",
+    "build:strict": "npm run build && npm run check:lockfile",
+    "build:stats": "vite build && node -e \"console.log('Bundle report: dist/stats.html')\"",
+    "bundle:budget": "node scripts/bundle_budget.mjs",
+    "check:lockfile": "git diff --exit-code HEAD -- package-lock.json",
+    "e2e": "playwright test",
+    "test": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:run": "vitest run",
+    "test:module-timings": "node scripts/test_module_timings.mjs",
+    "storybook": "node scripts/storybook_build.mjs",
+    "storybook:dev": "storybook dev -p 6006 --no-open",
+    "gen:types": "node scripts/gen_api_types.mjs",
+    "i18n-lint": "node scripts/i18n_lint.mjs",
+    "lint": "eslint \"src/**/*.{js,jsx}\"",
+    "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
+    "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "knip": "knip"
+  },
+  "dependencies": {
+    "@fontsource/material-symbols-outlined": "^5.2.45",
+    "dompurify": "^3.4.10",
+    "highlight.js": "^11.11.1",
+    "marked": "^11.1.1",
+    "marked-highlight": "^2.2.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "recharts": "^2.12.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.22.0",
+    "@playwright/test": "^1.61.0",
+    "@storybook/addon-essentials": "^8.6.14",
+    "@storybook/addon-interactions": "^8.6.14",
+    "@storybook/react": "^8.6.14",
+    "@storybook/react-vite": "^8.6.14",
+    "@storybook/test": "^8.6.14",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.2.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.2.1",
+    "@vitest/coverage-v8": "^3.2.6",
+    "axe-core": "^4.12.1",
+    "eslint": "^9.22.0",
+    "eslint-plugin-react": "^7.37.4",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^16.0.0",
+    "jsdom": "^26.0.0",
+    "knip": "^6.4.1",
+    "prettier": "^3.5.3",
+    "rollup-plugin-visualizer": "^7.0.1",
+    "storybook": "^8.6.18",
+    "typescript": "^5.8.2",
+    "vite": "^5.0.8",
+    "vitest": "^3.0.9"
+  },
+  "knip": {
+    "ignoreBinaries": [
+      "python"
+    ]
+  }
+}

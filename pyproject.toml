@@ -1,0 +1,336 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chironai"
+version = "0.7.61"
+description = "Modular RAG platform (Ollama + Qdrant) with WebUI and crawl/index pipelines. Configured for Apple platforms, supports any domain."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "ChironAI contributors" }]
+keywords = ["rag", "ollama", "qdrant", "flask"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  "flask",
+  "flask-restx>=1.3.0",
+  "requests>=2.33.0",
+  "urllib3>=2.7.0",
+  "werkzeug>=3.1.6",
+  "duckduckgo-search>=6.0",
+  "qdrant-client",
+  "langchain-text-splitters>=1.1.2",
+  "html2text",
+  "playwright",
+  "lxml>=6.1.0",
+  "waitress>=3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=9.0.3",
+  "pytest-cov>=4.0.0",
+  "commitizen>=3.0",
+  "import-linter>=2.0",
+  "jsonschema>=4.0",
+  "ruff>=0.8.0",
+  "vulture>=2.14",
+  "mypy>=2.1.0",
+  "pyright>=1.1.0",
+  "pip-audit>=2.7.0",
+  "bandit>=1.8.0",
+  "mutmut>=3.6.0",
+  "hypothesis>=6.0",
+  "prometheus-client>=0.20",
+  "opentelemetry-api>=1.25",
+  "opentelemetry-sdk>=1.25",
+  "opentelemetry-instrumentation-flask>=0.46b0",
+]
+
+[project.scripts]
+chironai = "api.cli.__main__:main"
+tmrag = "api.cli.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/Rayllienstery/ChironAI"
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.7.61"
+version_files = [
+  "Core/core/version.py:VERSION",
+  "pyproject.toml:version",
+]
+changelog_file = "CHANGELOG.md"
+tag_format = "v$version"
+update_changelog_on_bump = true
+
+# --- Editable install: root packages plus canonical shared modules (multi-root discovery)
+[tool.setuptools.packages.find]
+where = [
+  "Core",
+  "CoreModules/Security",
+  "CoreModules/ExtensionsSandbox",
+  "Core/modules/extensions_backend",
+  "Core/modules/webui_backend",
+]
+include = [
+  "application*",
+  "api*",
+  "config*",
+  "core*",
+  "chironai_security*",
+  "extensions_sandbox*",
+  "extensions_backend*",
+  "domain*",
+  "infrastructure*",
+  "webui_backend*",
+]
+exclude = ["tests*", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [
+    ".",
+    "Core",
+    "Core/modules/webui_backend",
+    "Core/modules/crawler_service",
+    "Core/modules/extensions_backend",
+    "Core/modules/html_md",
+    "Core/modules/prompts_manager",
+    "CoreModules/LlmInteractor",
+    "CoreModules/Security",
+    "CoreModules/ExtensionsSandbox",
+    "CoreModules/ExtensionsHost",
+    "CoreModules/DockerManager",
+    "CoreModules/LlmProxy",
+    "CoreModules/RagService",
+    "CoreModules/WebInteraction",
+    "CoreModules/LogsManager",
+    "CoreModules/MdIngestionService",
+    "CoreModules/ErrorManager",
+    "CoreModules/Localization",
+]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short -p no:cacheprovider"
+filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+    "fast: tests included in the local fast gate",
+    "slow: tests excluded from the local fast gate because they are intentionally long-running",
+    "api: Flask/API route and contract tests",
+    "application: application-layer tests",
+    "config: configuration resolution tests",
+    "domain: pure domain logic tests",
+    "docker: Docker manager and Docker ownership tests",
+    "extensions: extension runtime, registry, sandbox, and provider tests",
+    "infrastructure: infrastructure adapter/repository tests",
+    "integration: tests that exercise multiple layers or subprocess-style boundaries",
+    "llm_proxy: OpenAI-compatible proxy tests",
+    "scripts: repository script smoke tests",
+    "security: security and audit tests",
+    "service: standalone service/package tests",
+    "web_interaction: web interaction query/ranking/cache tests",
+    "webui: Web UI backend/helper tests",
+]
+
+[tool.coverage.run]
+omit = [
+  "Core/application/__init__.py",
+  "Core/application/crawl/__init__.py",
+  "Core/application/rag/__init__.py",
+  "Core/domain/__init__.py",
+  "Core/domain/entities/__init__.py",
+  "Core/domain/errors/__init__.py",
+  "Core/domain/ports/*",
+  "Core/domain/services/__init__.py",
+  "Core/domain/value_objects/__init__.py",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+src = [
+  "Core/application",
+  "Core/api",
+  "Core/config",
+  "Core/core",
+  "Core/domain",
+  "Core/infrastructure",
+  "tests",
+  "CoreModules/LlmInteractor/llm_interactor",
+  "CoreModules/Security/chironai_security",
+  "CoreModules/ExtensionsSandbox/extensions_sandbox",
+  "CoreModules/ExtensionsHost/extensions_host",
+  "CoreModules/DockerManager/docker_manager",
+  "CoreModules/LlmProxy/llm_proxy",
+  "CoreModules/RagService/chironai_rag",
+  "CoreModules/RagService/rag_service",
+  "CoreModules/WebInteraction/web_interaction",
+  "CoreModules/LogsManager/logs_manager",
+  "CoreModules/MdIngestionService/md_ingestion_service",
+  "Core/modules/webui_backend/webui_backend",
+  "Core/modules/crawler_service/crawler_service",
+  "Core/modules/extensions_backend/extensions_backend",
+  "Core/modules/html_md/html_md",
+  "Core/modules/prompts_manager/prompts_manager",
+]
+exclude = [
+  ".venv",
+  "venv",
+  "CoreModules/CoreUI",
+  "Core/modules/open_webui",
+]
+
+[tool.ruff.lint]
+select = ["E9", "F", "I", "B", "SIM"]
+ignore = ["B008", "B011", "B017", "B023", "B904", "B905", "B007"]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+  "api",
+  "application",
+  "config",
+  "core",
+  "domain",
+  "infrastructure",
+  "webui_backend",
+  "prompts_manager",
+]
+
+# Domain layer must not depend on outer layers (application / api / infrastructure).
+[tool.importlinter]
+root_packages = [
+  "domain",
+  "application",
+  "infrastructure",
+  "chironai_security",
+  "docker_manager",
+  "error_manager",
+  "extensions_host",
+  "extensions_sandbox",
+  "llm_interactor",
+  "llm_proxy",
+  "localization",
+  "logs_manager",
+  "md_ingestion_service",
+  "rag_service",
+  "chironai_rag",
+  "web_interaction",
+  "webui_backend",
+]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "domain_is_inner_layer"
+type = "forbidden"
+source_modules = ["domain"]
+forbidden_modules = ["application", "api", "infrastructure"]
+
+[[tool.importlinter.contracts]]
+name = "application_not_import_api"
+type = "forbidden"
+source_modules = ["application"]
+forbidden_modules = ["api"]
+
+[[tool.importlinter.contracts]]
+name = "infrastructure_not_import_api"
+type = "forbidden"
+source_modules = ["infrastructure"]
+forbidden_modules = ["api"]
+
+[[tool.importlinter.contracts]]
+name = "modules_http_only"
+type = "forbidden"
+source_modules = [
+  "chironai_security",
+  "docker_manager",
+  "error_manager",
+  "extensions_host",
+  "extensions_sandbox",
+  "llm_interactor",
+  "localization",
+  "logs_manager",
+  "md_ingestion_service",
+  "web_interaction",
+]
+forbidden_modules = ["rag_service", "chironai_rag", "llm_proxy", "webui_backend"]
+allow_indirect_imports = true
+
+# Dead code scan: `python -m vulture` (reads paths/exclude from here; default --config pyproject.toml).
+[tool.vulture]
+min_confidence = 80
+paths = [
+  "Core/application",
+  "Core/api",
+  "Core/config",
+  "Core/domain",
+  "Core/infrastructure",
+  "Core/core",
+  "CoreModules",
+  "Core/modules/webui_backend/webui_backend",
+  "Core/modules",
+  "Core/modules/html_md",
+  "Core/modules/prompts_manager/prompts_manager",
+  "scripts",
+  "tests",
+]
+exclude = [
+  "vendor",
+  "backups",
+  ".venv",
+  "venv",
+  "CoreModules/CoreUI",
+  "Core/modules/open_webui",
+]
+ignore_decorators = [
+  "@*.route",
+  "@*.before_first_request",
+]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = false
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+  "tests.*",
+  "infrastructure.*",
+  "api.*",
+  "application.*",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+  "core.contracts.*",
+  "domain.*",
+]
+ignore_errors = false
+
+[tool.mutmut]
+source_paths = [
+  "Core/domain/services",
+  "CoreModules/RagService/rag_service/domain",
+]
+pytest_add_cli_args_test_selection = [
+  "tests/domain",
+  "tests/rag_service/test_retrieval.py",
+  "tests/rag_service/test_core_engine.py",
+  "tests/rag_service/test_rag_pipeline_integration.py",
+]
+mutate_only_covered_lines = true
+timeout_multiplier = 10.0
+timeout_constant = 1.0
+

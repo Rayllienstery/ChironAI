@@ -1,0 +1,58 @@
+## Server and Qdrant configuration
+##
+## This file controls where the Flask RAG proxy listens and how it connects
+## to Qdrant. For remote access from Zed or other tools, adjust the host/port
+## and make sure your firewall rules are updated.
+##
+## Keys:
+## - server.host: bind address for rag_proxy (0.0.0.0 to accept LAN clients).
+## - server.port: TCP port for rag_proxy (default 8080).
+## - qdrant.url: base URL of Qdrant HTTP API.
+## - qdrant.collection_name: must match an existing Qdrant collection (see GET /collections).
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+## WebUI (Flask app for crawl/index UI)
+## - webui.port: port for tmrag start (default 5000).
+webui:
+  port: 5000
+
+## Main /v1/models: optional ChironAI-Autocomplete row when autocomplete Ollama model is configured (plus builds).
+## Set v1_include_autocomplete_logical_model to false to list only build ids (and hide autocomplete id).
+## Security: all Chiron OpenAI/Anthropic-compatible /v1* endpoints are protected by a WebUI-managed API key.
+## Generate/rotate/delete it in WebUI -> RAG Fusion Proxy -> Overview -> Security.
+## Clients must send Authorization: Bearer <key> or x-api-key: <key>; WebUI can reveal the current key for IDE setup.
+## Raw Ollama-compatible routes are extension-owned and are not registered by the core proxy.
+llm_proxy:
+  v1_include_autocomplete_logical_model: true
+
+## Extensions registry
+## - registry_url: GitHub-hosted registry used for development and release testing.
+## - local_fallback_url: local registry used when GitHub/network is unavailable.
+## - blocklist_url: GitHub-hosted emergency blocklist.
+## - local_blocklist_fallback_url: emergency blocklist cache used during offline startup.
+## - github_token: optional GitHub PAT for authenticated API calls (5000 req/h vs 60).
+##   Leave empty in committed config; set via CHIRONAI_GITHUB_TOKEN env var in production.
+## Override with CHIRONAI_EXTENSIONS_REGISTRY_URL,
+## CHIRONAI_EXTENSIONS_LOCAL_REGISTRY_FALLBACK,
+## CHIRONAI_EXTENSIONS_BLOCKLIST_URL,
+## CHIRONAI_EXTENSIONS_LOCAL_BLOCKLIST_FALLBACK,
+## CHIRONAI_GITHUB_TOKEN.
+extensions:
+  registry_url: "https://raw.githubusercontent.com/Rayllienstery/ChironAI-Extensions-Registry/main/extensions.json"
+  local_fallback_url: "extensions/registry/extensions.json"
+  blocklist_url: "https://raw.githubusercontent.com/Rayllienstery/ChironAI-Extensions-Registry/main/blocklist.json"
+  local_blocklist_fallback_url: "extensions/registry/blocklist.json"
+  github_token: ""
+
+## Logging (rag_proxy, RAG routes)
+## - logging.level: DEBUG | INFO | WARNING | ERROR (default INFO). Override with env LOG_LEVEL.
+## - File errors: logs/webui_errors.log (clean one-line or JSON Lines if LOG_FORMAT=json).
+logging:
+  level: INFO
+
+qdrant:
+  url: "http://localhost:6333"
+  collection_name: "Apple_Collection"

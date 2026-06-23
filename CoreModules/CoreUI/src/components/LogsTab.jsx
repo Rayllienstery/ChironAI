@@ -1,0 +1,583 @@
+import { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { getLogs, getProxyLogs, clearLogs, clearProxyLogs } from '../services/api';
+import { startLogPolling, stopLogPolling } from '../services/logs';
+import '../styles/components/LogsTab.css';
+import CoreUIButton from './CoreUIButton';
+import CoreUIPillTabs from './CoreUIPillTabs';
+import ProxyTracesTab from './ProxyTracesTab';
+import ProxyJournalTab from './ProxyJournalTab';
+import EmptyState from './EmptyState';
+import { useOptionalNotificationCenter } from './NotificationCenterContext';
+import { loadTrackedModule } from '../services/moduleTimings';
+
+const ProxyLogsAnalytics = lazy(() =>
+  loadTrackedModule('ProxyLogsAnalytics', () => import('./ProxyLogsAnalytics'), { source: 'logs tab' })
+);
+
+const PROXY_LOGS_ANALYTICS_LIMIT = 5000;
+const VIEW_MODE_TABS = [
+  { id: 'traces', label: 'Traces' },
+  { id: 'journal', label: 'RAG Fusion Journal' },
+  { id: 'logs', label: 'Logs' },
+  { id: 'proxy', label: 'Proxy Logs' },
+  { id: 'autocomplete', label: 'Autocomplete Logs' },
+];
+
+function getMetadata(log) {
+  if (!log || !log.metadata) return {};
+  if (typeof log.metadata === 'string') {
+    try {
+      return JSON.parse(log.metadata);
+    } catch {
+      return {};
+    }
+  }
+  return log.metadata;
+}
+
+function LogsAnalyticsFallback() {
+  return <div className="loading">Loading analytics...</div>;
+}
+
+function getDateRangeForProxyLogs(period, selectedDate) {
+  const now = new Date();
+  if (selectedDate) {
+    const d = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+    const from = new Date(d);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(d);
+    to.setHours(23, 59, 59, 999);
+    return { from: from.toISOString(), to: to.toISOString() };
+  }
+  switch (period) {
+    case 'day': {
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+      return { from: start.toISOString(), to: now.toISOString() };
+    }
+    case 'week': {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 6);
+      start.setHours(0, 0, 0, 0);
+      return { from: start.toISOString(), to: now.toISOString() };
+    }
+    case 'month': {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { from: start.toISOString(), to: now.toISOString() };
+    }
+    case 'year': {
+      const start = new Date(now.getFullYear(), 0, 1);
+      return { from: start.toISOString(), to: now.toISOString() };
+    }
+    default:
+      return {};
+  }
+}
+
+function getPeriodLabel(period, selectedDate) {
+  const formatDate = (date) => date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+  if (selectedDate) {
+    return formatDate(selectedDate);
+  }
+  const now = new Date();
+  switch (period) {
+    case 'day':
+      return formatDate(now);
+    case 'week': {
+      const weekStart = new Date(now);
+      weekStart.setDate(weekStart.getDate() - 6);
+      return `${formatDate(weekStart)} – ${formatDate(now)}`;
+    }
+    case 'month':
+      return now.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    case 'year':
+      return String(now.getFullYear());
+    default:
+      return 'All time';
+  }
+}
+
+function compareLogsNewestFirst(a, b) {
+  const timeA = a?.timestamp ? new Date(a.timestamp).getTime() : NaN;
+  const timeB = b?.timestamp ? new Date(b.timestamp).getTime() : NaN;
+  const safeTimeA = Number.isNaN(timeA) ? 0 : timeA;
+  const safeTimeB = Number.isNaN(timeB) ? 0 : timeB;
+  if (safeTimeA !== safeTimeB) {
+    return safeTimeB - safeTimeA;
+  }
+  return Number(b?.id || 0) - Number(a?.id || 0);
+}
+
+function sortLogsNewestFirst(items) {
+  return [...(items || [])].sort(compareLogsNewestFirst);
+}
+
+function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
+  const notifCtx = useOptionalNotificationCenter();
+  const persistNotification = notifCtx?.persistNotification;
+
+  const [viewMode, setViewMode] = useState(focusSubTab || 'traces'); // 'traces' | 'logs' | 'proxy' | 'autocomplete'
+  const [logs, setLogs] = useState([]);
+  const [levelFilter, setLevelFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState('day');
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [pipelineFilter, setPipelineFilter] = useState('mixed');
+
+  useEffect(() => {
+    if (!focusSubTab) return;
+    setViewMode(focusSubTab);
+    if (typeof onFocusSubTabConsumed === 'function') {
+      onFocusSubTabConsumed();
+    }
+  }, [focusSubTab, onFocusSubTabConsumed]);
+
+  const displayProxyLogs = useMemo(() => {
+    if (viewMode !== 'proxy') return logs;
+    if (pipelineFilter === 'mixed') return logs;
+    if (pipelineFilter === 'rag_fusion') {
+      return logs.filter((log) => getMetadata(log).proxy_backend === 'rag_fusion');
+    }
+    return logs;
+  }, [logs, viewMode, pipelineFilter]);
+
+  const loadLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      if (viewMode === 'proxy' || viewMode === 'autocomplete') {
+        const { from, to } = getDateRangeForProxyLogs(period, selectedDate);
+        const data = await getProxyLogs({
+          from: from || undefined,
+          to: to || undefined,
+          limit: PROXY_LOGS_ANALYTICS_LIMIT,
+          autocompleteOnly: viewMode === 'autocomplete',
+        });
+        const newLogs = data.logs || [];
+        setLogs(sortLogsNewestFirst(newLogs));
+      } else {
+        if (!sessionId) return;
+        const data = await getLogs(sessionId, {
+          level: levelFilter || undefined,
+          source: sourceFilter || undefined,
+          limit: 100,
+        });
+        const newLogs = data.logs || [];
+        setLogs(sortLogsNewestFirst(newLogs));
+      }
+    } catch (error) {
+      console.error('Failed to load logs:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [viewMode, period, selectedDate, sessionId, levelFilter, sourceFilter]);
+
+  const handleClearLogs = useCallback(async () => {
+    try {
+      if (viewMode === 'logs') {
+        if (!sessionId) return;
+        await clearLogs(sessionId);
+      } else if (viewMode === 'proxy') {
+        await clearProxyLogs({});
+      } else if (viewMode === 'autocomplete') {
+        await clearProxyLogs({ autocompleteOnly: true });
+      }
+      setLogs([]);
+      await loadLogs();
+    } catch (error) {
+      console.error('Failed to clear logs:', error);
+    }
+  }, [viewMode, sessionId, loadLogs]);
+
+  useEffect(() => {
+    if (viewMode === 'traces') return;
+    if (viewMode === 'logs' && !sessionId) return;
+
+    loadLogs();
+
+    if (viewMode === 'logs' && sessionId) {
+      startLogPolling(sessionId, (newLogs) => {
+        const batch = Array.isArray(newLogs) ? newLogs : [];
+        setLogs((prev) => {
+          const existingIds = new Set(prev.map((log) => log.id));
+          const uniqueNewLogs = batch.filter((log) => !existingIds.has(log.id));
+          if (uniqueNewLogs.length > 0 && persistNotification) {
+            const maxId = Math.max(...uniqueNewLogs.map((log) => Number(log.id) || 0));
+            const pn = persistNotification;
+            const n = uniqueNewLogs.length;
+            queueMicrotask(() => {
+              void pn({
+                kind: 'info',
+                source: 'system_log',
+                title: 'System log',
+                message: n === 1 ? '1 new log entry' : `${n} new log entries`,
+                aggregation_key: `system-log|batch|${maxId}`,
+              });
+            });
+          }
+          if (uniqueNewLogs.length === 0) return prev;
+          const updated = [...sortLogsNewestFirst(uniqueNewLogs), ...prev];
+          return updated.slice(0, 500);
+        });
+      }, 3000);
+      return () => stopLogPolling();
+    }
+    if (viewMode === 'proxy' || viewMode === 'autocomplete') {
+      const interval = setInterval(loadLogs, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [sessionId, levelFilter, viewMode, period, selectedDate, loadLogs, persistNotification]);
+
+  const buildTitle = (log) => {
+    const level = log.level || '';
+    const sourceRaw = log.source || '';
+    const type = log.error_type || '';
+    const msg = log.message || '';
+
+    // Try to extract a short error code like "WinError 10061"
+    let code = '';
+    const winMatch = msg.match(/WinError\s+\d+/);
+    if (winMatch) {
+      code = winMatch[0];
+    }
+
+    const mainSource =
+      sourceRaw === 'ollama'
+        ? 'ollama'
+        : (sourceRaw.split('.')[0] || 'unknown');
+
+    const parts = [];
+    if (code) {
+      parts.push(`[${code}]`);
+    }
+    parts.push(`Source: ${mainSource}`);
+    if (type || level) {
+      parts.push(`Type: ${type || level}`);
+    }
+    return parts.join(' | ');
+  };
+
+  const buildMessage = (log) => {
+    const msg = log.message || '';
+    const idx = msg.indexOf('message=');
+    if (idx === -1) {
+      return msg;
+    }
+    const extracted = msg.slice(idx + 'message='.length).trim();
+    return extracted;
+  };
+
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    try {
+      return new Date(timestamp).toLocaleString();
+    } catch {
+      return timestamp;
+    }
+  };
+
+  const truncateText = (value, maxLen) => {
+    const s = String(value ?? '');
+    if (s.length <= maxLen) return s;
+    return `${s.slice(0, Math.max(0, maxLen - 1))}…`;
+  };
+
+  const levelVisualVariant = (level) => {
+    const l = String(level || '').toLowerCase();
+    if (l === 'error') return 'error';
+    if (l === 'warning') return 'warning';
+    if (l === 'debug') return 'debug';
+    return 'info';
+  };
+
+  const renderProxyLog = (log) => {
+    // Safely parse metadata
+    let metadata = {};
+    try {
+      if (log.metadata) {
+        if (typeof log.metadata === 'string') {
+          metadata = JSON.parse(log.metadata);
+        } else {
+          metadata = log.metadata;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to parse metadata:', e);
+      metadata = {};
+    }
+    
+    const isAc = Boolean(metadata.is_autocomplete);
+    const backend = metadata.proxy_backend;
+    const ragContext = metadata.rag_context || {};
+    const chunksCount = ragContext.chunks_count || 0;
+    const maxScore = ragContext.max_score;
+    const chunksInfo = Array.isArray(ragContext.chunks_info) ? ragContext.chunks_info : [];
+    
+    return (
+      <div key={log.id} className="log-entry log-info proxy-log-entry">
+        <div className="log-header">
+          <div className="log-title">
+            <span className="log-icon">ℹ️</span>
+            <span className="log-summary">Proxy Request</span>
+            {isAc && (
+              <span className="proxy-log-ac-badge" title="ChironAI-Autocomplete logical model">
+                Autocomplete
+              </span>
+            )}
+            {backend === 'rag_fusion' && (
+              <span className="proxy-log-pipeline-badge proxy-log-pipeline-badge--rag" title="RAG Fusion (dumb) build">
+                RAG Fusion
+              </span>
+            )}
+          </div>
+          <span className="log-timestamp">{formatTimestamp(log.timestamp)}</span>
+        </div>
+        <div className="proxy-log-content">
+          <div className="proxy-log-section">
+            <strong>User Query:</strong>
+            <div className="proxy-log-text">{metadata.user_query || 'N/A'}</div>
+          </div>
+          <div className="proxy-log-section">
+            <strong>Response Preview:</strong>
+            <div className="proxy-log-text">{metadata.response_preview || 'N/A'}</div>
+          </div>
+          <div className="proxy-log-metrics">
+            <div className="proxy-log-metric">
+              <span className="metric-label">Model:</span>
+              <span className="metric-value">{metadata.model || 'N/A'}</span>
+            </div>
+            <div className="proxy-log-metric">
+              <span className="metric-label">Latency:</span>
+              <span className="metric-value">{metadata.latency_ms || 0}ms</span>
+            </div>
+            <div className="proxy-log-metric">
+              <span className="metric-label">Prompt Tokens:</span>
+              <span className="metric-value">{metadata.prompt_tokens || 0}</span>
+            </div>
+            <div className="proxy-log-metric">
+              <span className="metric-label">Completion Tokens:</span>
+              <span className="metric-value">{metadata.completion_tokens || 0}</span>
+            </div>
+            <div className="proxy-log-metric">
+              <span className="metric-label">Total Tokens:</span>
+              <span className="metric-value">{metadata.total_tokens || 0}</span>
+            </div>
+          </div>
+          {metadata.rag_steps && (
+            <div className="proxy-log-section proxy-log-rag-steps">
+              <strong>RAG steps (time)</strong>
+              <span className="proxy-log-rag-hint"> — this request only</span>
+              <div className="proxy-log-rag-steps-values">
+                embed {Number(metadata.rag_steps.embed_s ?? 0).toFixed(2)}s
+                {' | '}
+                search {Number(metadata.rag_steps.search_s ?? 0).toFixed(2)}s
+                {' | '}
+                rerank {Number(metadata.rag_steps.rerank_s ?? 0).toFixed(2)}s
+                {metadata.rag_steps.total_rag_s != null && (
+                  <> (total RAG {Number(metadata.rag_steps.total_rag_s).toFixed(2)}s)</>
+                )}
+              </div>
+            </div>
+          )}
+          {chunksCount > 0 && (
+            <div className="proxy-log-section">
+              <strong>RAG Context:</strong>
+              <div className="proxy-log-rag-info">
+                <div className="rag-metric">Chunks: {chunksCount}</div>
+                <div className="rag-metric">
+                  Max Score: {typeof maxScore === 'number' ? maxScore.toFixed(3) : (maxScore || 'N/A')}
+                </div>
+                <div className="rag-metric">Context Length: {ragContext.context_length || 0} chars</div>
+                {chunksInfo.length > 0 && (
+                  <div className="rag-chunks-preview">
+                    <strong>Top Chunks ({chunksInfo.length}):</strong>
+                    <div className="rag-chunks-list">
+                      {chunksInfo.map((chunk, idx) => {
+                        const chunkScore = chunk?.score;
+                        const docType = chunk?.doc_type || 'N/A';
+                        const url = chunk?.url || '';
+                        const textLength = chunk?.text_length || 0;
+                        const rerankScore = chunk?.rerank_score;
+                        return (
+                          <div key={idx} className="rag-chunk-item">
+                            <div className="chunk-header">
+                              <div className="chunk-left">
+                                <span className="chunk-index">#{idx + 1}</span>
+                                <span className="chunk-doc-type">{docType}</span>
+                              </div>
+                              <div className="chunk-right">
+                                <span className="chunk-score-badge">
+                                  <span className="score-label">Score:</span>
+                                  <span className="score-value">
+                                    {typeof chunkScore === 'number' ? chunkScore.toFixed(4) : (chunkScore || 'N/A')}
+                                  </span>
+                                </span>
+                                {textLength > 0 && (
+                                  <span className="chunk-length-badge">
+                                    <span className="score-label">Length:</span>
+                                    <span className="score-value">{textLength} chars</span>
+                                  </span>
+                                )}
+                                {typeof rerankScore === 'number' && (
+                                  <span className="chunk-rerank-badge">
+                                    <span className="score-label">Rerank:</span>
+                                    <span className="score-value">{rerankScore.toFixed(4)}</span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {url && (
+                              <div className="chunk-url-container">
+                                <span className="chunk-url" title={url}>
+                                  {url}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className={`logs-tab tab-view${viewMode === 'logs' ? ' logs-tab--fill-screen' : ''}`}>
+      <div className="logs-header">
+        <div className="logs-header-left">
+          <h2>Logs</h2>
+          <CoreUIPillTabs
+            tabs={VIEW_MODE_TABS}
+            value={viewMode}
+            onChange={setViewMode}
+            ariaLabel="Log source"
+          />
+        </div>
+        {viewMode !== 'traces' && viewMode !== 'journal' && (
+        <div className="logs-controls">
+          {viewMode === 'logs' && (
+            <>
+              <select
+                value={levelFilter}
+                onChange={(e) => setLevelFilter(e.target.value)}
+              >
+                <option value="">All Levels</option>
+                <option value="ERROR">ERROR</option>
+                <option value="WARNING">WARNING</option>
+                <option value="INFO">INFO</option>
+              </select>
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+              >
+                <option value="">All Sources</option>
+                <option value="ollama">Provider</option>
+                <option value="rag_routes.chat_completions">rag_routes</option>
+                <option value="webui_routes">webui_routes</option>
+              </select>
+            </>
+          )}
+          <CoreUIButton onClick={handleClearLogs} disabled={viewMode === 'logs' && !sessionId}>
+            Clear
+          </CoreUIButton>
+          <CoreUIButton variant="ghost" onClick={loadLogs}>
+            Refresh
+          </CoreUIButton>
+        </div>
+        )}
+      </div>
+
+      {(viewMode === 'proxy' || viewMode === 'autocomplete') && (
+        <Suspense fallback={<LogsAnalyticsFallback />}>
+          <ProxyLogsAnalytics
+            logs={displayProxyLogs}
+            period={period}
+            onPeriodChange={setPeriod}
+            selectedDate={selectedDate}
+            onDateSelect={setSelectedDate}
+            onDateReset={() => setSelectedDate(null)}
+            periodLabel={getPeriodLabel(period, selectedDate)}
+            variant={viewMode === 'autocomplete' ? 'autocomplete' : 'proxy'}
+            pipelineFilter={pipelineFilter}
+            onPipelineFilterChange={setPipelineFilter}
+            showPipelineFilter={viewMode === 'proxy'}
+          />
+        </Suspense>
+      )}
+
+      {viewMode === 'traces' && <ProxyTracesTab />}
+
+      {viewMode === 'journal' && <ProxyJournalTab />}
+
+      {viewMode !== 'traces' && viewMode !== 'journal' && (
+      <div className={`logs-content${viewMode === 'logs' ? ' logs-content--system-table' : ''}`}>
+        {viewMode === 'logs' && !sessionId ? (
+          <div className="loading">No session available. Session is loading or could not be created.</div>
+        ) : loading &&
+          (viewMode === 'proxy' || viewMode === 'autocomplete' ? displayProxyLogs : logs).length === 0 ? (
+          <div className="loading">
+            Loading{' '}
+            {viewMode === 'proxy' ? 'proxy ' : viewMode === 'autocomplete' ? 'autocomplete ' : ''}
+            logs...
+          </div>
+        ) : (viewMode === 'proxy' || viewMode === 'autocomplete' ? displayProxyLogs : logs).length === 0 ? (
+          <EmptyState className="empty-state">
+            No{' '}
+            {viewMode === 'proxy' ? 'proxy ' : viewMode === 'autocomplete' ? 'autocomplete ' : ''}
+            logs found
+          </EmptyState>
+        ) : viewMode === 'logs' ? (
+          <div className="logs-system-panel">
+            <table className="logs-table">
+              <thead>
+                <tr>
+                  <th className="logs-col-time">Time</th>
+                  <th className="logs-col-level">Level</th>
+                  <th className="logs-col-source">Source</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {logs.map((log) => {
+                  const levelRaw = (log.level || 'INFO').toString();
+                  const lv = levelVisualVariant(log.level);
+                  const msg = buildMessage(log);
+                  return (
+                    <tr
+                      key={log.id}
+                      className={`logs-table-row logs-table-row--${lv}`}
+                      title={buildTitle(log)}
+                    >
+                      <td className="logs-col-time">{formatTimestamp(log.timestamp)}</td>
+                      <td className="logs-col-level">
+                        <span className={`logs-level-chip logs-level-chip--${lv}`}>{levelRaw}</span>
+                      </td>
+                      <td className="logs-col-source" title={log.source || ''}>
+                        {truncateText(log.source || '—', 56)}
+                      </td>
+                      <td className="logs-col-message">
+                        <span className="logs-message-cell">{truncateText(msg, 600)}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          displayProxyLogs.map((log) => renderProxyLog(log))
+        )}
+      </div>
+      )}
+
+    </div>
+  );
+}
+
+export default LogsTab;
