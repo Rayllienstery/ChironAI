@@ -136,6 +136,10 @@ jobs:
         continue-on-error: true
         run: npm run i18n-lint
 
+      - name: Run CoreUI tests with coverage
+        working-directory: CoreModules/CoreUI
+        run: npm run test:coverage
+
       - name: Run full quality gate
         run: python scripts/quality_gate.py --profile full
 
@@ -143,7 +147,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.xml
+          files: ./coverage.xml,CoreModules/CoreUI/coverage/lcov.info
           fail_ci_if_error: false
           verbose: true
 
@@ -181,8 +185,20 @@ jobs:
         continue-on-error: true
         run: npm run i18n-lint
 
+      - name: Run CoreUI tests with coverage
+        working-directory: CoreModules/CoreUI
+        run: npm run test:coverage
+
       - name: Run release quality gate
         run: python scripts/quality_gate.py --profile release
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml,CoreModules/CoreUI/coverage/lcov.info
+          fail_ci_if_error: false
+          verbose: true
 
       - name: Run Trivy image scan
         uses: aquasecurity/trivy-action@v0.36.0
