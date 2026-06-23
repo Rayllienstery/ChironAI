@@ -1,5 +1,9 @@
 # ChironAI
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Version](https://img.shields.io/github/v/tag/Rayllienstery/ChironAI?label=version)](https://github.com/Rayllienstery/ChironAI/tags)
+[![CI](https://github.com/Rayllienstery/ChironAI/actions/workflows/ci.yml/badge.svg)](https://github.com/Rayllienstery/ChironAI/actions)
+
 ChironAI is a modular RAG (Retrieval-Augmented Generation) platform with a provider-runtime LLM proxy. Core code owns OpenAI/Anthropic-compatible proxy APIs and generic provider contracts; Ollama-specific service, model, and raw API behavior is owned by the bundled `ollama-provider` extension. Default configuration ships with Apple documentation sources (Swift, iOS, SwiftUI), but any domain can be configured through source and prompt settings.
 
 ## What it does
