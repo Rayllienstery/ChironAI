@@ -13,6 +13,7 @@ from application.codex_launcher import (
     codex_config_path,
     codex_home,
     codex_model_catalog_entry,
+    codex_status,
     ide_builds,
     proxy_key_status,
     reveal_existing_proxy_key,
@@ -190,3 +191,52 @@ def test_builds_storage_roundtrips_ide_mode() -> None:
     repo.set_app_setting(LLM_PROXY_BUILDS_APP_KEY, dump_builds_json(builds))
 
     assert json.loads(repo.get_app_setting(LLM_PROXY_BUILDS_APP_KEY))[0]["ide_mode"] is True
+
+
+def test_codex_status_runs_without_shell(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[Any, ...]] = []
+
+    def _fake_run(*args: Any, **kwargs: Any) -> Any:
+        calls.append((args, kwargs))
+        class _R:
+            returncode = 0
+            stdout = "1.0.0"
+            stderr = ""
+        return _R()
+
+    monkeypatch.setattr(codex_launcher.subprocess, "run", _fake_run)
+    monkeypatch.setattr(codex_launcher, "_find_openai_codex_path", lambda: "/usr/bin/codex")
+
+    status = codex_status()
+    assert status["installed"] is True
+    assert status["version"] == "1.0.0"
+    assert len(calls) == 1
+    assert calls[0][0] == (["/usr/bin/codex", "--version"],)
+    assert calls[0][1].get("shell") is False
+
+
+def test_npm_global_bin_runs_without_shell(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[Any, ...]] = []
+
+    def _fake_run(*args: Any, **kwargs: Any) -> Any:
+        calls.append((args, kwargs))
+        class _R:
+            returncode = 0
+            stdout = "C:\\Users\\test\\AppData\\Roaming\\npm\n"
+            stderr = ""
+        return _R()
+
+    monkeypatch.setattr(codex_launcher.subprocess, "run", _fake_run)
+    monkeypatch.setattr(codex_launcher.shutil, "which", lambda name, *args, **kwargs: "C:\\npm\\npm.exe")
+
+    result = codex_launcher._npm_global_bin()
+    assert result == "C:\\Users\\test\\AppData\\Roaming\\npm"
+    assert len(calls) == 1
+    assert calls[0][0] == (["C:\\npm\\npm.exe", "bin", "-g"],)
+    assert calls[0][1].get("shell") is False
+
+
+def test_npm_global_bin_returns_empty_when_npm_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(codex_launcher.shutil, "which", lambda name, *args, **kwargs: None)
+    assert codex_launcher._npm_global_bin() == ""
+

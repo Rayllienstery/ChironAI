@@ -6,6 +6,7 @@ import contextlib
 import json
 import logging
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -135,10 +136,13 @@ def get_cached_qdrant_collection_name_set_for_builds_diag() -> set[str]:
 
 
 def _get_gpu_metrics() -> dict[str, Any] | None:
+    nvidia_smi = shutil.which("nvidia-smi")
+    if not nvidia_smi:
+        return None
     try:
         result = subprocess.run(
             [
-                "nvidia-smi",
+                nvidia_smi,
                 "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu",
                 "--format=csv,noheader,nounits",
             ],

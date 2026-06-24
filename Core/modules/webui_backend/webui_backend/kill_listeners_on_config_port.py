@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 import sys
 
@@ -11,9 +12,12 @@ from config import get_server_port_candidate_ports
 
 def _kill_port(port: int) -> None:
     # Use netstat (27ms) instead of PowerShell Get-NetTCPConnection (1200ms+).
+    netstat_path = shutil.which("netstat")
+    if not netstat_path:
+        return
     try:
         result = subprocess.run(
-            ["netstat", "-ano", "-p", "TCP"],
+            [netstat_path, "-ano", "-p", "TCP"],
             capture_output=True,
             text=True,
             check=False,
@@ -32,9 +36,12 @@ def _kill_port(port: int) -> None:
         if m:
             pids.add(m.group(1))
 
+    taskkill_path = shutil.which("taskkill")
+    if not taskkill_path:
+        return
     for pid in pids:
         subprocess.run(
-            ["taskkill", "/F", "/PID", pid],
+            [taskkill_path, "/F", "/PID", pid],
             check=False,
             capture_output=True,
         )

@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.63] - 2026-06-24
+### Fixed
+- Removed `shell=True` from Codex launcher subprocess calls and switched to `shutil.which` for `npm`, `nvidia-smi`, `netstat`, and `taskkill`.
+- Default server bind host changed from `0.0.0.0` to `127.0.0.1`; `webui_backend.app` and `rag_proxy.py` now read host from `get_server_host()`.
+
+### Added
+- Tests guarding shell-less subprocess calls and `shutil.which` lookups in Codex launcher and WebUI port-killer.
+- Config tests for `get_server_host()` default and env override.
+
 ## [0.7.62] - 2026-06-24
 ### Fixed
 - Applied HTTP security headers to the main WebUI Flask entrypoint (`webui_backend.app`) and added a contract test guarding them.

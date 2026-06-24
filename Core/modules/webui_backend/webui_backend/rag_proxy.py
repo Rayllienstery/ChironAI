@@ -21,7 +21,7 @@ from flask import make_response, request, send_from_directory
 
 from api.http.rag_routes import create_app
 from api.http.startup_timing import process_start_offset_ms, record_phase
-from config import get_log_level, get_server_port, record_active_server_port
+from config import get_log_level, get_server_host, get_server_port, record_active_server_port
 from webui_backend.paths import coreui_dir, project_root, webui_data_dir
 
 logging.basicConfig(
@@ -185,7 +185,7 @@ if __name__ == "__main__":
         _logging.getLogger("waitress").setLevel(_logging.WARNING)
         _waitress_serve(
             app,
-            host="0.0.0.0",
+            host=get_server_host(),
             port=port,
             threads=8,           # handle up to 8 concurrent requests
             channel_timeout=120, # generous timeout for long LLM completions
@@ -193,4 +193,4 @@ if __name__ == "__main__":
         )
     except ImportError:
         # Fallback to Werkzeug dev server if waitress is not installed
-        app.run(host="0.0.0.0", port=port, threaded=True)
+        app.run(host=get_server_host(), port=port, threaded=True)

@@ -146,11 +146,11 @@ if __name__ == "__main__":
         sys.exit(0)
 
     if args.command == "start":
-        from config import get_webui_port
+        from config import get_server_host, get_webui_port
 
         logging.getLogger("werkzeug").setLevel(logging.WARNING)
         port = get_webui_port()
-        app.run(host="0.0.0.0", port=port, threaded=True)
+        app.run(host=get_server_host(), port=port, threaded=True)
         sys.exit(0)
 
     source_list = None if getattr(args, "crawl_all", False) else (args.sources if args.sources else None)

@@ -143,10 +143,13 @@ def _find_openai_codex_path() -> str:
 
 def _npm_global_bin() -> str:
     """Return the npm global bin directory, or empty string on failure."""
+    npm = shutil.which("npm")
+    if not npm:
+        return ""
     try:
         out = subprocess.run(
-            "npm bin -g",
-            capture_output=True, text=True, timeout=5, shell=True, check=False,
+            [npm, "bin", "-g"],
+            capture_output=True, text=True, timeout=5, shell=False, check=False,
         )
         return out.stdout.strip() if out.returncode == 0 else ""
     except Exception:
@@ -157,10 +160,8 @@ def codex_status() -> dict[str, Any]:
     path = _find_openai_codex_path()
     if not path:
         return {"installed": False, "path": "", "version": ""}
-    use_shell = sys.platform == "win32"
-    cmd: Any = f'"{path}" --version' if use_shell else [path, "--version"]
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=5, check=False, shell=use_shell)
+        out = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=5, check=False, shell=False)
         version = (out.stdout or out.stderr or "").strip()
         if out.returncode != 0:
             return {

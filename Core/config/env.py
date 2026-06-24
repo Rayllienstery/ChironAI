@@ -524,7 +524,7 @@ def get_default_rag_top_k() -> int:
 
 def get_server_host() -> str:
     """Return server bind host, allowing env override."""
-    return os.getenv("SERVER_HOST", SERVER_CONFIG.get("host", "0.0.0.0"))
+    return os.getenv("SERVER_HOST", SERVER_CONFIG.get("host", "127.0.0.1"))
 
 
 SERVER_PORT_APP_SETTING = "server_port"
