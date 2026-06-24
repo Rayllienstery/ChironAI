@@ -5,7 +5,18 @@
 [![CI](https://github.com/Rayllienstery/ChironAI/actions/workflows/quality.yml/badge.svg)](https://github.com/Rayllienstery/ChironAI/actions)
 [![codecov](https://codecov.io/gh/Rayllienstery/ChironAI/branch/master/graph/badge.svg?token=68700264-961c-4a53-a68d-c38a9f2e3ae1)](https://codecov.io/gh/Rayllienstery/ChironAI)
 
-ChironAI is a modular RAG (Retrieval-Augmented Generation) platform with a provider-runtime LLM proxy. Core code owns OpenAI/Anthropic-compatible proxy APIs and generic provider contracts; Ollama-specific service, model, and raw API behavior is owned by the bundled `ollama-provider` extension. Default configuration ships with Apple documentation sources (Swift, iOS, SwiftUI), but any domain can be configured through source and prompt settings.
+ChironAI lets you run a local/private RAG system over your own documentation, inspect how retrieval works, and extend the runtime through isolated provider modules.
+
+It is aimed at developers who want a debuggable RAG platform rather than a black-box chatbot.
+
+Under the hood, ChironAI is a modular RAG platform with a provider-runtime LLM proxy. Core code owns OpenAI/Anthropic-compatible proxy APIs and generic provider contracts; Ollama-specific behavior is owned by the bundled `ollama-provider` extension. Default configuration ships with Apple documentation sources (Swift, iOS, SwiftUI), but any domain can be configured through source and prompt settings.
+
+## Why ChironAI?
+
+- **Local-first RAG** with Docker-backed services.
+- **Transparent retrieval, reranking, prompting, and answer generation** — you can trace every step.
+- **Extension-based provider runtime** instead of hardcoded Ollama/OpenAI logic.
+- **Quality gates and architecture checks** designed for AI-assisted development.
 
 ## What it does
 - Crawls and indexes documentation sources into a Qdrant collection.
@@ -59,7 +70,7 @@ The hexagonal **`rag_service`** package ships with **`chironai_rag`** in **`Core
    - Manual: `npm run build` in `CoreModules/CoreUI`, then run `start_webui.bat` (Windows) or start the Flask app from the repo root.
 6. Open `http://127.0.0.1:8080/webui` (or the URL printed by the startup script).
 
-> **Beta security note:** The WebUI currently does not require authentication. Mutating routes such as extension install/remove/enable/disable are exposed to anyone who can reach the WebUI. Run ChironAI only on `localhost` or inside a trusted network until auth is added. See `SECURITY.md` for details.
+> **Beta note:** ChironAI is currently designed for local/trusted-network use. The WebUI does not yet include authentication, so do not expose it to the public internet. Public-facing auth is planned before production deployment. See `SECURITY.md` for details.
 
 ## Platform support
 
