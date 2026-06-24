@@ -123,6 +123,7 @@ last_collection.txt
 WebUI/last_collection.txt
 tests/_tmp_*
 tests/*.tmp
+PROJECT_EVALUATION.md
 *.db
 *.sqlite
 *.sqlite3

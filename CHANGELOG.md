@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.62] - 2026-06-24
+### Fixed
+- Applied HTTP security headers to the main WebUI Flask entrypoint (`webui_backend.app`) and added a contract test guarding them.
+
 ## [0.7.61] - 2026-06-23
 ### Changed
 - Cleaned up remaining planning-artifact references across docs, changelog, and config README.
