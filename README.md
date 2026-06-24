@@ -3,11 +3,15 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/github/v/tag/Rayllienstery/ChironAI?label=version)](https://github.com/Rayllienstery/ChironAI/tags)
 [![CI](https://github.com/Rayllienstery/ChironAI/actions/workflows/quality.yml/badge.svg)](https://github.com/Rayllienstery/ChironAI/actions)
-[![codecov](https://codecov.io/gh/Rayllienstery/ChironAI/branch/master/graph/badge.svg?token=68700264-961c-4a53-a68d-c38a9f2e3ae1)](https://codecov.io/gh/Rayllienstery/ChironAI)
+[![codecov](https://codecov.io/gh/Rayllienstery/ChironAI/branch/master/graph/badge.svg)](https://codecov.io/gh/Rayllienstery/ChironAI)
 
 ChironAI lets you run a local/private RAG system over your own documentation, inspect how retrieval works, and extend the runtime through isolated provider modules.
 
 It is aimed at developers who want a debuggable RAG platform rather than a black-box chatbot.
+
+ChironAI is published as a sanitized initial public release. The project was developed privately first, and the previous internal history was intentionally removed before publication to avoid exposing logs, local traces, or accidental sensitive data.
+
+The repository is provided as-is, primarily as a practical reference and reusable foundation for developers who want a transparent local RAG platform.
 
 Under the hood, ChironAI is a modular RAG platform with a provider-runtime LLM proxy. Core code owns OpenAI/Anthropic-compatible proxy APIs and generic provider contracts; Ollama-specific behavior is owned by the bundled `ollama-provider` extension. Default configuration ships with Apple documentation sources (Swift, iOS, SwiftUI), but any domain can be configured through source and prompt settings.
 
