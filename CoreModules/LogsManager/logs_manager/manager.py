@@ -13,9 +13,19 @@ from logs_manager.db import (
     user_message_contains,
 )
 
-_PROXY_JOURNAL_WHERE = (
-    "session_id = 'proxy' AND source = 'proxy' AND level = 'INFO'"
-)
+_LATEST_LOG_SQL = """
+    SELECT * FROM logs
+    WHERE session_id = 'proxy' AND source = 'proxy' AND level = 'INFO'
+    ORDER BY id DESC
+    LIMIT 1
+"""
+
+_RECENT_LOGS_SQL = """
+    SELECT * FROM logs
+    WHERE session_id = 'proxy' AND source = 'proxy' AND level = 'INFO'
+    ORDER BY id DESC
+    LIMIT ?
+"""
 
 
 class LogsManager:
@@ -28,14 +38,7 @@ class LogsManager:
         """Return the newest proxy journal row, or ``None`` if the journal is empty."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                f"""
-                SELECT * FROM logs
-                WHERE {_PROXY_JOURNAL_WHERE}
-                ORDER BY id DESC
-                LIMIT 1
-                """
-            ).fetchone()
+            row = conn.execute(_LATEST_LOG_SQL).fetchone()
         return row_to_log_dict(row) if row is not None else None
 
     def get_log_by_id(self, log_id: int) -> dict[str, Any] | None:
@@ -66,15 +69,7 @@ class LogsManager:
         limit = max(1, int(scan_limit))
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                f"""
-                SELECT * FROM logs
-                WHERE {_PROXY_JOURNAL_WHERE}
-                ORDER BY id DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
+            rows = conn.execute(_RECENT_LOGS_SQL, (limit,)).fetchall()
 
         for row in rows:
             log = row_to_log_dict(row)

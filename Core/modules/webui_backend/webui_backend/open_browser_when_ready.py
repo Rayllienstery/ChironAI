@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import threading
 import time
 import urllib.error
@@ -21,20 +22,29 @@ def _open_browser_enabled() -> bool:
     )
 
 
+def _safe_local_url(port: int, path: str) -> str:
+    """Return a local http URL; reject anything that does not look local."""
+    if not path.startswith("/"):
+        raise ValueError("path must start with /")
+    if "//" in path or re.search(r"[^a-zA-Z0-9_./-]", path):
+        raise ValueError("path contains invalid characters")
+    return f"http://127.0.0.1:{port}{path}"
+
+
 def open_browser_when_ready(*, timeout_sec: float = 120.0) -> None:
     """Spawn a daemon thread that opens /webui after /api/webui/version returns 200."""
     if not _open_browser_enabled():
         return
 
     port = get_server_port()
-    health_url = f"http://127.0.0.1:{port}/api/webui/version"
-    webui_url = f"http://127.0.0.1:{port}/webui"
+    health_url = _safe_local_url(port, "/api/webui/version")
+    webui_url = _safe_local_url(port, "/webui")
 
     def _worker() -> None:
         deadline = time.perf_counter() + timeout_sec
         while time.perf_counter() < deadline:
             try:
-                with urllib.request.urlopen(health_url, timeout=1.5) as resp:
+                with urllib.request.urlopen(health_url, timeout=1.5) as resp:  # nosec B310
                     if resp.status == 200:
                         print(f"Server ready — opening browser at {webui_url}", flush=True)
                         webbrowser.open(webui_url)

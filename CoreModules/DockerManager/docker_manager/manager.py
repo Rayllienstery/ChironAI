@@ -6,11 +6,12 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace as dataclass_replace
 from typing import Any, Iterator
 from urllib.error import URLError
 from urllib.request import Request, urlopen
@@ -293,7 +294,15 @@ class DockerManager:
         return self.inspect_container(container).running
 
     def ensure_container(self, spec: DockerContainerSpec) -> dict[str, Any]:
-        spec = self._normalize_spec(spec)
+        try:
+            spec = self._normalize_spec(spec)
+        except (TypeError, ValueError) as e:
+            return {
+                "ok": False,
+                "error": "Invalid container spec",
+                "details": _compact_error(str(e)),
+                "notification": str(e),
+            }
         status = self.status()
         if not status.get("engine_ready"):
             return {
@@ -302,7 +311,7 @@ class DockerManager:
                 "details": str(status.get("error") or "Docker CLI/Engine unavailable"),
             }
 
-        desired_hash = self._spec_hash(spec)
+        desired_hash = self._functional_hash(spec)
         state = self.inspect_container(spec.name)
         if self._image_inspect(spec.image) is None:
             pulled = self.pull_image(spec.image)
@@ -393,6 +402,8 @@ class DockerManager:
         base = str(url or "").rstrip("/")
         if not base:
             raise ValueError("url is required")
+        if not re.match(r"^https?://", base, re.IGNORECASE):
+            raise ValueError("url must use http:// or https:// scheme")
         suffix = str(path or "/")
         full_url = f"{base}{suffix if suffix.startswith('/') else '/' + suffix}"
         deadline = time.monotonic() + float(timeout)
@@ -400,7 +411,7 @@ class DockerManager:
         while time.monotonic() < deadline:
             try:
                 req = Request(full_url, method="GET")
-                with urlopen(req, timeout=min(3.0, max(0.5, float(interval)))) as resp:
+                with urlopen(req, timeout=min(3.0, max(0.5, float(interval)))) as resp:  # nosec B310
                     status = int(getattr(resp, "status", 200))
                     if status in ok_status:
                         return {"ok": True, "url": full_url, "status_code": status}
@@ -545,6 +556,25 @@ class DockerManager:
         }
         for key, value in sorted(labels.items()):
             args.extend(["--label", f"{key}={value}"])
+
+        # Container hardening flags (secure-by-default)
+        if spec.user:
+            args.extend(["--user", spec.user])
+        if spec.read_only_root_fs:
+            args.append("--read-only")
+        for cap in spec.cap_drop:
+            args.extend(["--cap-drop", cap])
+        for cap in spec.cap_add:
+            args.extend(["--cap-add", cap])
+        if spec.no_new_privileges:
+            args.extend(["--security-opt", "no-new-privileges:true"])
+        for opt in spec.security_opt:
+            args.extend(["--security-opt", opt])
+        if spec.seccomp_profile:
+            args.extend(["--security-opt", f"seccomp={spec.seccomp_profile}"])
+        for tmpfs in spec.tmpfs:
+            args.extend(["--tmpfs", tmpfs])
+
         args.append(spec.image)
         args.extend(spec.command)
         result = self.run(args, timeout=180.0)
@@ -558,7 +588,10 @@ class DockerManager:
             raise TypeError("spec must be a DockerContainerSpec")
         name = DockerManager._require_value(spec.name, "name")
         image = DockerManager._require_value(spec.image, "image")
-        return DockerContainerSpec(
+        if spec.privileged:
+            raise ValueError("privileged containers are not allowed in the Docker contract")
+
+        normalized = DockerContainerSpec(
             name=name,
             image=image,
             ports=[str(x).strip() for x in spec.ports if str(x).strip()],
@@ -568,7 +601,50 @@ class DockerManager:
             extra_hosts=[str(x).strip() for x in spec.extra_hosts if str(x).strip()],
             command=[str(x) for x in spec.command],
             labels={str(k).strip(): str(v) for k, v in spec.labels.items() if str(k).strip()},
+            user=str(spec.user or "").strip() or None,
+            read_only_root_fs=bool(spec.read_only_root_fs),
+            cap_drop=[str(x).strip() for x in spec.cap_drop if str(x).strip()],
+            cap_add=[str(x).strip() for x in spec.cap_add if str(x).strip()],
+            no_new_privileges=bool(spec.no_new_privileges),
+            seccomp_profile=str(spec.seccomp_profile or "").strip() or None,
+            security_opt=[str(x).strip() for x in spec.security_opt if str(x).strip()],
+            tmpfs=[str(x).strip() for x in spec.tmpfs if str(x).strip()],
+            privileged=False,
         )
+
+        # Security floor: always drop all capabilities unless the spec explicitly
+        # requests a different drop list. This prevents extensions from accidentally
+        # inheriting Docker's default capability set.
+        if not normalized.cap_drop:
+            normalized = dataclass_replace(normalized, cap_drop=["ALL"])
+        return normalized
+
+    @staticmethod
+    def _functional_fields(spec: DockerContainerSpec) -> dict[str, Any]:
+        """Return only the fields that require container recreation when changed.
+
+        Security context fields (user, cap_drop, read_only_root_fs, etc.) are
+        intentionally excluded so that existing containers keep running and new
+        containers receive the latest hardening defaults without forcing a
+        disruptive recreation of managed services.
+        """
+        return {
+            "name": spec.name,
+            "image": spec.image,
+            "ports": spec.ports,
+            "env": spec.env,
+            "volumes": spec.volumes,
+            "restart": spec.restart,
+            "extra_hosts": spec.extra_hosts,
+            "command": spec.command,
+            "labels": spec.labels,
+        }
+
+    @staticmethod
+    def _functional_hash(spec: DockerContainerSpec) -> str:
+        payload = DockerManager._functional_fields(spec)
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
     @staticmethod
     def _spec_hash(spec: DockerContainerSpec) -> str:

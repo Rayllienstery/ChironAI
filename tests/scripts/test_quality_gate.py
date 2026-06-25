@@ -16,6 +16,7 @@ def test_minimal_gate_has_required_steps_and_timeouts() -> None:
 
     assert names == [
         "ruff",
+        "bandit",
         "version-drift",
         "api-drift",
         "openapi-schema",

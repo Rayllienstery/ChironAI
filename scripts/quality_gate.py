@@ -37,6 +37,13 @@ def _python_command(*args: str) -> tuple[str, ...]:
 
 MINIMAL_GATE: tuple[GateStep, ...] = (
     GateStep("ruff", ("ruff", "check", "."), REPO_ROOT, 120),
+    GateStep(
+        "bandit",
+        _python_command("-m", "bandit", "-r", "Core", "CoreModules", "-q", "-ll"),
+        REPO_ROOT,
+        120,
+        required=True,
+    ),
     GateStep("version-drift", _python_command("scripts/check_version_drift.py"), REPO_ROOT, 30),
     GateStep("api-drift", _python_command("scripts/check_api_drift.py", "--strict", "--strict-openapi"), REPO_ROOT, 60),
     GateStep("openapi-schema", _python_command("scripts/validate_openapi.py"), REPO_ROOT, 60),
@@ -88,10 +95,10 @@ FULL_GATE_EXTRA: tuple[GateStep, ...] = (
     ),
     GateStep(
         "bandit",
-        _python_command("-m", "bandit", "-r", "Core", "CoreModules", "-q"),
+        _python_command("-m", "bandit", "-r", "Core", "CoreModules", "-q", "-ll"),
         REPO_ROOT,
         120,
-        required=False,
+        required=True,
     ),
     GateStep(
         "api-drift-check",

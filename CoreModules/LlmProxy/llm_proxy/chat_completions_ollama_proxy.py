@@ -224,6 +224,8 @@ def _qdrant_collection_names_cached(qdrant_url: str, *, timeout_s: float = 0.8) 
     url = str(qdrant_url or "").strip().rstrip("/")
     if not url:
         return set(), "qdrant_url_missing"
+    if not url.startswith(("http://", "https://")):
+        return set(), "qdrant_url_invalid_scheme"
     now = time.time()
     cached = _QDRANT_COLLECTION_NAMES_CACHE.get(url)
     if cached is not None:
@@ -231,7 +233,8 @@ def _qdrant_collection_names_cached(qdrant_url: str, *, timeout_s: float = 0.8) 
         if now - ts <= 5.0:
             return set(names), error
     try:
-        with urllib.request.urlopen(f"{url}/collections", timeout=timeout_s) as resp:
+        collections_url = f"{url}/collections"
+        with urllib.request.urlopen(collections_url, timeout=timeout_s) as resp:  # nosec B310
             raw = resp.read()
         data = json.loads(raw.decode("utf-8")) if raw else {}
         collections = ((data.get("result") or {}).get("collections") or [])

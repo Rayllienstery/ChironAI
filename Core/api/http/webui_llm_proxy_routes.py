@@ -56,6 +56,10 @@ from prompts_manager import rag_prompt_file_exists
 _WEBUI_LOG = logging.getLogger("webui")
 _ERROR_LOG = get_webui_error_logger()
 
+# Safelist of bind-all interfaces; used to present a localhost URL in the UI
+# when the server is bound to any interface. Not a listening socket itself.
+_ALL_INTERFACES = ("0.0.0.0", "::")  # nosec B104
+
 
 _SERVICE_STATUS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _SERVICE_STATUS_CACHE_LOCK = threading.Lock()
@@ -143,7 +147,7 @@ def register_llm_proxy_routes(
         """
         try:
             bind_host = get_server_host()
-            display_host = "127.0.0.1" if bind_host == "0.0.0.0" else bind_host
+            display_host = "127.0.0.1" if bind_host in _ALL_INTERFACES else bind_host
             port = get_active_server_port()
             base_url = f"http://{display_host}:{port}"
             payload: dict[str, Any] = {
@@ -303,7 +307,7 @@ def register_llm_proxy_routes(
             else:
                 enriched = _light_build_rows_for_webui(builds)
             sh = get_server_host()
-            dh = "127.0.0.1" if sh in ("0.0.0.0", "::", "") else sh
+            dh = "127.0.0.1" if sh in _ALL_INTERFACES or sh == "" else sh
             main_port = get_active_server_port()
             return jsonify(
                 {

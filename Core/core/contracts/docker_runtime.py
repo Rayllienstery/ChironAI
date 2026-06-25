@@ -32,6 +32,20 @@ class DockerContainerSpec:
     command: list[str] = field(default_factory=_str_list)
     labels: dict[str, str] = field(default_factory=_str_dict)
 
+    # Container hardening context (secure-by-default).
+    # Extensions may request only the minimum runtime privileges they need.
+    # DockerManager applies a security floor and may reject or warn about
+    # privileged / unconfined configurations.
+    user: str | None = None
+    read_only_root_fs: bool = True
+    cap_drop: list[str] = field(default_factory=lambda: ["ALL"])
+    cap_add: list[str] = field(default_factory=_str_list)
+    no_new_privileges: bool = True
+    seccomp_profile: str | None = None
+    security_opt: list[str] = field(default_factory=_str_list)
+    tmpfs: list[str] = field(default_factory=_str_list)
+    privileged: bool = False
+
 
 @dataclass(frozen=True)
 class DockerContainerState:

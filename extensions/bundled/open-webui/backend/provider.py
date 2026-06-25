@@ -215,6 +215,14 @@ class OpenWebUiExtension:
                 "chironai.extension": str(getattr(self._manifest, "id", "open-webui") or "open-webui"),
                 "chironai.provider": "open-webui",
             },
+            # Hardening: keep root for the official Open WebUI image, but
+            # restrict the runtime surface (read-only root FS, drop all caps,
+            # no new privileges, writable tmpfs for temporary files).
+            user="0:0",
+            read_only_root_fs=True,
+            cap_drop=["ALL"],
+            no_new_privileges=True,
+            tmpfs=["/tmp", "/var/tmp"],
         )
 
     def _runtime_config(self, cfg: OpenWebUiConfig) -> OpenWebUiConfig:

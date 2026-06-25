@@ -303,7 +303,7 @@ def test_check_image_update_unknown_and_not_local() -> None:
 
 
 def _inspect_payload(spec: DockerContainerSpec, *, running: bool, spec_hash: str | None = None) -> str:
-    labels = {"chironai.docker_manager.spec_hash": spec_hash or DockerManager._spec_hash(spec)}
+    labels = {"chironai.docker_manager.spec_hash": spec_hash or DockerManager._functional_hash(spec)}
     return json.dumps(
         {
             "Name": f"/{spec.name}",
@@ -503,6 +503,105 @@ def test_logs_returns_tail_or_error() -> None:
     assert ok["ok"] is True
     assert ok["logs"] == "hello"
     assert bad["ok"] is False
+
+
+def test_ensure_container_applies_default_hardening_flags() -> None:
+    spec = DockerContainerSpec(name="svc", image="example/service:latest")
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], **_: object) -> CompletedProcess[str]:
+        calls.append(args[1:])
+        if args[1:3] == ["version", "--format"]:
+            return _proc(args, out=json.dumps({"Client": {"Version": "1"}, "Server": {"Version": "1"}}))
+        if args[1:] == ["info"]:
+            return _proc(args)
+        if args[1:4] == ["image", "inspect", spec.image]:
+            return _proc(args, out=json.dumps({"Id": "local"}))
+        if args[1:3] == ["inspect", spec.name]:
+            return _proc(args, code=1, err="No such object")
+        if args[1:3] == ["run", "-d"]:
+            return _proc(args, out="container-id")
+        raise AssertionError(args)
+
+    with patch("docker_manager.manager.subprocess.run", side_effect=fake_run):
+        result = DockerManager(docker_exe="docker").ensure_container(spec)
+
+    run_args = next(call for call in calls if call[:2] == ["run", "-d"])
+    assert result["ok"] is True
+    assert "--read-only" in run_args
+    assert "--cap-drop" in run_args and "ALL" in run_args
+    assert "--security-opt" in run_args and "no-new-privileges:true" in run_args
+
+
+def test_ensure_container_applies_custom_security_context() -> None:
+    spec = DockerContainerSpec(
+        name="svc",
+        image="example/service:latest",
+        user="1000:1000",
+        cap_add=["NET_BIND_SERVICE"],
+        tmpfs=["/tmp", "/var/tmp"],
+        security_opt=["apparmor=docker-default"],
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], **_: object) -> CompletedProcess[str]:
+        calls.append(args[1:])
+        if args[1:3] == ["version", "--format"]:
+            return _proc(args, out=json.dumps({"Client": {"Version": "1"}, "Server": {"Version": "1"}}))
+        if args[1:] == ["info"]:
+            return _proc(args)
+        if args[1:4] == ["image", "inspect", spec.image]:
+            return _proc(args, out=json.dumps({"Id": "local"}))
+        if args[1:3] == ["inspect", spec.name]:
+            return _proc(args, code=1, err="No such object")
+        if args[1:3] == ["run", "-d"]:
+            return _proc(args, out="container-id")
+        raise AssertionError(args)
+
+    with patch("docker_manager.manager.subprocess.run", side_effect=fake_run):
+        result = DockerManager(docker_exe="docker").ensure_container(spec)
+
+    run_args = next(call for call in calls if call[:2] == ["run", "-d"])
+    assert result["ok"] is True
+    assert "--user" in run_args and "1000:1000" in run_args
+    assert "--cap-add" in run_args and "NET_BIND_SERVICE" in run_args
+    assert "--tmpfs" in run_args and "/tmp" in run_args
+    assert "--security-opt" in run_args and "apparmor=docker-default" in run_args
+
+
+def test_ensure_container_rejects_privileged_spec() -> None:
+    spec = DockerContainerSpec(name="svc", image="example/service:latest", privileged=True)
+    result = DockerManager(docker_exe="docker").ensure_container(spec)
+
+    assert result["ok"] is False
+    assert "privileged" in result["error"].lower() or "privileged" in result["details"].lower()
+    assert "notification" in result
+
+
+def test_ensure_container_allows_read_only_opt_out() -> None:
+    spec = DockerContainerSpec(name="svc", image="example/service:latest", read_only_root_fs=False)
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], **_: object) -> CompletedProcess[str]:
+        calls.append(args[1:])
+        if args[1:3] == ["version", "--format"]:
+            return _proc(args, out=json.dumps({"Client": {"Version": "1"}, "Server": {"Version": "1"}}))
+        if args[1:] == ["info"]:
+            return _proc(args)
+        if args[1:4] == ["image", "inspect", spec.image]:
+            return _proc(args, out=json.dumps({"Id": "local"}))
+        if args[1:3] == ["inspect", spec.name]:
+            return _proc(args, code=1, err="No such object")
+        if args[1:3] == ["run", "-d"]:
+            return _proc(args, out="container-id")
+        raise AssertionError(args)
+
+    with patch("docker_manager.manager.subprocess.run", side_effect=fake_run):
+        result = DockerManager(docker_exe="docker").ensure_container(spec)
+
+    run_args = next(call for call in calls if call[:2] == ["run", "-d"])
+    assert result["ok"] is True
+    assert "--read-only" not in run_args
 
 
 def test_events_stream_parses_json_and_terminates_process() -> None:

@@ -1130,6 +1130,15 @@ class OllamaProvider:
                 "chironai.extension": str(self._manifest.id),
                 "chironai.provider": self._provider_id,
             },
+            # Hardening: the official Ollama image is built for root and GPU
+            # runtimes may need it, so we keep root but restrict the runtime
+            # surface as much as possible (read-only root FS, drop all caps,
+            # no new privileges, writable tmpfs for temporary files).
+            user="0:0",
+            read_only_root_fs=True,
+            cap_drop=["ALL"],
+            no_new_privileges=True,
+            tmpfs=["/tmp"],
         )
 
     def _start_service_with_docker(self) -> dict[str, Any]:

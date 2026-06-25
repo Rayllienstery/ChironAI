@@ -123,16 +123,14 @@ class RagTestRunsRepository:
         params.extend([limit, offset])
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute(
-                f"""
-                SELECT id, provider_id, model, status, total, passed, failed, created_at, completed_at
-                FROM rag_test_runs
-                WHERE {where_sql}
-                ORDER BY created_at DESC
-                LIMIT ? OFFSET ?
-                """,
-                params,
+            query = (
+                "SELECT id, provider_id, model, status, total, passed, failed, created_at, completed_at\n"
+                "FROM rag_test_runs\n"
+                f"WHERE {where_sql}\n"  # nosec B608
+                "ORDER BY created_at DESC\n"
+                "LIMIT ? OFFSET ?"
             )
+            cursor = conn.execute(query, params)
             rows = cursor.fetchall()
         return [
             {
@@ -181,19 +179,17 @@ class RagTestRunsRepository:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             # Subquery to limit runs then aggregate
-            cursor = conn.execute(
-                f"""
-                SELECT id, provider_id, model, total, passed, failed
-                FROM (
-                    SELECT id, provider_id, model, total, passed, failed, created_at
-                    FROM rag_test_runs
-                    WHERE {where_sql}
-                    ORDER BY created_at DESC
-                    LIMIT ?
-                )
-                """,
-                params + [limit],
+            query = (
+                "SELECT id, provider_id, model, total, passed, failed\n"
+                "FROM (\n"
+                "    SELECT id, provider_id, model, total, passed, failed, created_at\n"
+                "    FROM rag_test_runs\n"
+                f"    WHERE {where_sql}\n"  # nosec B608
+                "    ORDER BY created_at DESC\n"
+                "    LIMIT ?\n"
+                ")"
             )
+            cursor = conn.execute(query, params + [limit])
             rows = cursor.fetchall()
         total_runs = len(rows)
         total_tests = sum(r["total"] for r in rows)
@@ -241,10 +237,8 @@ class RagTestRunsRepository:
                 conn.row_factory = sqlite3.Row
                 run_ids = [r["id"] for r in rows]
                 placeholders = ",".join("?" for _ in run_ids)
-                cursor = conn.execute(
-                    f"SELECT id, results FROM rag_test_runs WHERE id IN ({placeholders})",
-                    run_ids,
-                )
+                query = f"SELECT id, results FROM rag_test_runs WHERE id IN ({placeholders})"  # nosec B608
+                cursor = conn.execute(query, run_ids)
                 result_rows = cursor.fetchall()
                 results_by_id = {rr["id"]: rr["results"] for rr in result_rows}
 
@@ -397,10 +391,8 @@ class RagTestRunsRepository:
 
         where_sql = " AND ".join(f"({condition})" for condition in conditions)
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                f"DELETE FROM rag_test_runs WHERE {where_sql}",
-                params,
-            )
+            query = f"DELETE FROM rag_test_runs WHERE {where_sql}"  # nosec B608
+            cursor = conn.execute(query, params)
             conn.commit()
             return int(cursor.rowcount or 0)
 

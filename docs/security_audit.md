@@ -5,12 +5,12 @@ blocking gates.
 
 ## Bandit
 
-- Date: 2026-06-20
-- Command: `python -m bandit -r Core CoreModules -q`
-- Gate status: advisory in `scripts/quality_gate.py`
-- Current result: non-zero exit with existing findings
+- Date: 2026-06-24
+- Command: `python -m bandit -r Core CoreModules -q -ll`
+- Gate status: required in `scripts/quality_gate.py` (both `minimal` and `full` profiles)
+- Current result: zero MEDIUM/HIGH findings
 
-Summary from the initial baseline:
+Summary from the initial baseline (2026-06-20):
 
 | Severity | Count |
 | --- | ---: |
@@ -18,14 +18,19 @@ Summary from the initial baseline:
 | Medium | 15 |
 | High | 1 |
 
-Common finding groups:
+Common finding groups from the initial baseline:
 
 - Subprocess and URL opening calls in Docker/WebUI startup and runtime helpers.
 - Broad exception fallbacks in compatibility and runtime paths.
 - SQL-construction warnings in repository helpers that need case-by-case review.
 - Bind-all-interface defaults in local server startup configuration.
 
-Triage these findings before making Bandit a required gate.
+All MEDIUM/HIGH findings have been resolved: validated URL schemes before `urlopen`,
+removed `shell=True` from subprocess calls, changed the default bind host to
+`127.0.0.1`, applied security headers to the WebUI entrypoint, and annotated the
+remaining false-positive B104/B608 findings with `# nosec` comments explaining why
+they are safe. The `bandit` step now runs with `-ll` (MEDIUM/HIGH) and is required
+to pass in both the `minimal` and `full` quality gate profiles.
 
 ## Secret Scanning
 

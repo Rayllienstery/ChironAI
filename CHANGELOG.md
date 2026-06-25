@@ -2,18 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.7.63] - 2026-06-24
+## [0.8.0] - 2026-06-24 — Security
+### Security
+- Made Bandit MEDIUM/HIGH findings a required quality gate (`-ll`); fixed or annotated all such findings so the distribution now ships with zero MEDIUM/HIGH Bandit issues.
+- Validated URL schemes before `urlopen` in DockerManager, LlmProxy Qdrant client, and WebUI browser opener.
+- Annotated false-positive B104/B608 findings with `# nosec` comments explaining why they are safe.
+
 ### Fixed
 - Removed `shell=True` from Codex launcher subprocess calls and switched to `shutil.which` for `npm`, `nvidia-smi`, `netstat`, and `taskkill`.
 - Default server bind host changed from `0.0.0.0` to `127.0.0.1`; `webui_backend.app` and `rag_proxy.py` now read host from `get_server_host()`.
+- Applied HTTP security headers to the main WebUI Flask entrypoint (`webui_backend.app`).
 
 ### Added
-- Tests guarding shell-less subprocess calls and `shutil.which` lookups in Codex launcher and WebUI port-killer.
-- Config tests for `get_server_host()` default and env override.
-
-## [0.7.62] - 2026-06-24
-### Fixed
-- Applied HTTP security headers to the main WebUI Flask entrypoint (`webui_backend.app`) and added a contract test guarding them.
+- Tests guarding shell-less subprocess calls, `shutil.which` lookups, server host resolution, safe URL validation, and security headers.
 
 ## [0.7.61] - 2026-06-23
 ### Changed
