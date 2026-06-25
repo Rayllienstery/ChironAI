@@ -8,7 +8,6 @@ import threading
 import time
 from typing import Any, Callable
 
-import requests
 from error_manager.exceptions import ValidationError as _ValidationError
 from error_manager.http import error_response as _error_response
 from flask import Blueprint, current_app, jsonify, request
@@ -44,7 +43,6 @@ from application.llm_proxy_builds import (
 )
 from config import (
     get_active_server_port,
-    get_qdrant_url,
     get_server_host,
 )
 from infrastructure.database import (
@@ -63,7 +61,6 @@ _ALL_INTERFACES = ("0.0.0.0", "::")  # nosec B104
 
 _SERVICE_STATUS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _SERVICE_STATUS_CACHE_LOCK = threading.Lock()
-_LAST_QDRANT_WARN_AT: float = 0.0
 
 
 def _webui_routes_attr(name: str) -> Any:
@@ -92,38 +89,6 @@ def _get_cached_status(key: str, ttl_sec: float, compute: Callable[[], dict[str,
     with _SERVICE_STATUS_CACHE_LOCK:
         _SERVICE_STATUS_CACHE[key] = (now, payload)
     return payload
-
-
-def _qdrant_status_snapshot(timeout_sec: float) -> dict[str, Any]:
-    url = get_qdrant_url().rstrip("/")
-    status: dict[str, Any] = {"url": url, "running": False}
-    try:
-        resp = requests.get(f"{url}/collections", timeout=timeout_sec)
-        status["http_status"] = resp.status_code
-        if resp.ok:
-            data = resp.json() or {}
-            collections = data.get("result", {}).get("collections", [])
-            status["running"] = True
-            status["collections_count"] = len(collections)
-            try:
-                version_resp = requests.get(f"{url}/cluster", timeout=timeout_sec)
-                if version_resp.ok:
-                    vdata = version_resp.json() or {}
-                    status["version"] = (
-                        vdata.get("result", {})
-                        .get("status", {})
-                        .get("version")
-                    )
-            except Exception:
-                pass
-    except Exception as e:
-        status["error"] = str(e)
-        global _LAST_QDRANT_WARN_AT
-        now = time.time()
-        if now - _LAST_QDRANT_WARN_AT >= 30:
-            _LAST_QDRANT_WARN_AT = now
-            _WEBUI_LOG.warning("Failed to get Qdrant status: %s", e)
-    return status
 
 
 def register_llm_proxy_routes(

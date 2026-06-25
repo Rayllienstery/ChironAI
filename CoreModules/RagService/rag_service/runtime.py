@@ -217,16 +217,28 @@ class RagRuntime:
         q_running_http = False
         q_http_status: int | None = None
         q_err: str | None = None
-        try:
-            r = requests.get(f"{cfg.qdrant_http_url.rstrip('/')}/collections", timeout=3)
-            q_running_http = r.ok
-            q_http_status = r.status_code
-        except requests.RequestException as e:
-            q_err = str(e)
-
         q_container = False
-        with contextlib.suppress(Exception):
-            q_container = container_is_running(cfg.qdrant_container_name)
+        try:
+            from rag_service.qdrant_health_monitor import get_qdrant_health_monitor
+
+            monitor = get_qdrant_health_monitor(self._cfg)
+            if monitor.is_started:
+                snap = monitor.get_snapshot()
+                q_running_http = bool(snap.get("running"))
+                q_http_status = snap.get("http_status")
+                q_err = snap.get("error")
+                q_container = bool(snap.get("container_running"))
+            else:
+                raise RuntimeError("monitor not started")
+        except Exception:
+            try:
+                r = requests.get(f"{cfg.qdrant_http_url.rstrip('/')}/collections", timeout=3)
+                q_running_http = r.ok
+                q_http_status = r.status_code
+            except requests.RequestException as e:
+                q_err = str(e)
+            with contextlib.suppress(Exception):
+                q_container = container_is_running(cfg.qdrant_container_name)
 
         llm_component = {
             "running": bool(llm.get("running")),

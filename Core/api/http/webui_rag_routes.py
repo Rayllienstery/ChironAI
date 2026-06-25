@@ -44,12 +44,16 @@ from application.rag.proxy_settings_contract import (
 from config import get_default_rag_top_k, get_framework_collection_ttl_days, get_qdrant_url, get_retrieval_bool
 from infrastructure.database import get_settings_repository
 from infrastructure.qdrant.collection_names import list_collection_names
+from rag_service.qdrant_health_monitor import (
+    ensure_qdrant_health_monitor_started,
+    get_qdrant_health_monitor,
+    get_qdrant_health_snapshot,
+)
 
 _WEBUI_LOG = logging.getLogger("webui")
 
 _SERVICE_STATUS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _SERVICE_STATUS_CACHE_LOCK = threading.Lock()
-_LAST_QDRANT_WARN_AT: float = 0.0
 
 
 def _get_cached_status(key: str, ttl_sec: float, compute: Callable[[], dict[str, Any]]) -> dict[str, Any]:
@@ -85,35 +89,9 @@ def _collection_is_stale(last_refreshed_at: str | None, ttl_days: int) -> bool:
 
 
 def _qdrant_status_snapshot(timeout_sec: float) -> dict[str, Any]:
-    url = get_qdrant_url().rstrip("/")
-    status: dict[str, Any] = {"url": url, "running": False}
-    try:
-        resp = requests.get(f"{url}/collections", timeout=timeout_sec)
-        status["http_status"] = resp.status_code
-        if resp.ok:
-            data = resp.json() or {}
-            collections = data.get("result", {}).get("collections", [])
-            status["running"] = True
-            status["collections_count"] = len(collections)
-            try:
-                version_resp = requests.get(f"{url}/cluster", timeout=timeout_sec)
-                if version_resp.ok:
-                    vdata = version_resp.json() or {}
-                    status["version"] = (
-                        vdata.get("result", {})
-                        .get("status", {})
-                        .get("version")
-                    )
-            except Exception:  # safe: Qdrant cluster version probe is optional
-                pass
-    except Exception as e:
-        status["error"] = str(e)
-        global _LAST_QDRANT_WARN_AT
-        now = time.time()
-        if now - _LAST_QDRANT_WARN_AT >= 30:
-            _LAST_QDRANT_WARN_AT = now
-            _WEBUI_LOG.warning("Failed to get Qdrant status: %s", e)
-    return status
+    """Return cached Qdrant status from the background monitor (no per-request HTTP probe)."""
+    del timeout_sec
+    return get_qdrant_health_snapshot()
 
 
 def get_qdrant_collection_names_with_timeout(timeout_sec: float) -> list[str]:
@@ -525,23 +503,16 @@ def register_rag_qdrant_routes(
     error_log: Any,
     default_provider_row: Callable[[], dict[str, Any] | None],
 ) -> None:
+    ensure_qdrant_health_monitor_started()
+
     @bp.route("/rag/status", methods=["GET"])
     def rag_status() -> Any:
-        status = _get_cached_status(
-            "qdrant_status",
-            ttl_sec=2.0,
-            compute=lambda: _qdrant_status_snapshot(timeout_sec=0.6),
-        )
-        return jsonify(status)
+        return jsonify(get_qdrant_health_snapshot())
 
     @bp.route("/dashboard-metrics", methods=["GET"])
     def dashboard_metrics() -> Any:
         payload: dict[str, Any] = {"rag": {}, "ollama": {}, "gpu": None}
-        q = _get_cached_status(
-            "qdrant_status",
-            ttl_sec=2.0,
-            compute=lambda: _qdrant_status_snapshot(timeout_sec=0.6),
-        )
+        q = get_qdrant_health_snapshot()
         payload["rag"] = {
             "running": bool(q.get("running")),
             "collections_count": int(q.get("collections_count") or 0),
@@ -746,6 +717,7 @@ def register_rag_qdrant_routes(
     def rag_start() -> Any:
         try:
             ok, output, name = start_qdrant_service()
+            get_qdrant_health_monitor().request_immediate_probe()
             status = 200 if ok else 500
             return jsonify({"ok": ok, "output": output, "container": name}), status
         except Exception as e:
@@ -756,6 +728,7 @@ def register_rag_qdrant_routes(
     def rag_stop() -> Any:
         try:
             ok, output, name = stop_qdrant_service()
+            get_qdrant_health_monitor().request_immediate_probe()
             status = 200 if ok else 500
             return jsonify({"ok": ok, "output": output, "container": name}), status
         except Exception as e:
