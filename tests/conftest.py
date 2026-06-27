@@ -6,6 +6,7 @@ import os
 import shutil
 import sys
 import uuid
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -105,3 +106,16 @@ def _disable_extension_background_bootstrap_by_default(monkeypatch: pytest.Monke
     except Exception:
         return
     monkeypatch.setattr(ExtensionManager, "start_background_bootstrap", lambda self: None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_qdrant_health_monitor_between_tests() -> Iterator[None]:
+    """Prevent the global Qdrant health monitor from leaking state across tests."""
+    try:
+        from rag_service.qdrant_health_monitor import reset_qdrant_health_monitor_for_tests
+    except Exception:
+        yield
+        return
+    reset_qdrant_health_monitor_for_tests()
+    yield
+    reset_qdrant_health_monitor_for_tests()

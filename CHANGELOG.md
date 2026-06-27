@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.1] - 2026-06-26
+### Changed
+- Added explicit DockerContainerSpec hardening to ensure_qdrant_container (read-only root FS, drop all caps, no new privileges, container-local tmpfs) and asserted the fields in tests.
+
 ## [0.8.0] - 2026-06-24 — Security
 ### Security
 - Made Bandit MEDIUM/HIGH findings a required quality gate (`-ll`); fixed or annotated all such findings so the distribution now ships with zero MEDIUM/HIGH Bandit issues.

@@ -23,6 +23,22 @@ _REACTIVE_CONTAINER_ACTIONS = frozenset(
 _WARN_THROTTLE_SEC = 30.0
 
 
+def _coerce_bool(value: Any) -> bool | None:
+    return value if isinstance(value, bool) else None
+
+
+def _coerce_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    return None
+
+
+def _coerce_str(value: Any) -> str | None:
+    return value if isinstance(value, str) else None
+
+
 def probe_qdrant_status(
     *,
     url: str,
@@ -35,25 +51,32 @@ def probe_qdrant_status(
     status: dict[str, Any] = {"url": base, "running": False}
     if container_name:
         with contextlib.suppress(Exception):
-            status["container_running"] = container_is_running(container_name)
+            container_running = _coerce_bool(container_is_running(container_name))
+            if container_running is not None:
+                status["container_running"] = container_running
         status["container"] = container_name
     try:
         resp = requests.get(f"{base}/collections", timeout=timeout_sec)
-        status["http_status"] = resp.status_code
+        http_status = _coerce_int(resp.status_code)
+        if http_status is not None:
+            status["http_status"] = http_status
         if resp.ok:
-            data = resp.json() or {}
+            payload = resp.json()
+            data = payload if isinstance(payload, dict) else {}
             collections = data.get("result", {}).get("collections", [])
-            status["running"] = True
-            status["collections_count"] = len(collections)
+            if isinstance(collections, list):
+                status["running"] = True
+                status["collections_count"] = len(collections)
             try:
                 version_resp = requests.get(f"{base}/cluster", timeout=timeout_sec)
                 if version_resp.ok:
-                    vdata = version_resp.json() or {}
-                    status["version"] = (
-                        vdata.get("result", {})
-                        .get("status", {})
-                        .get("version")
+                    cluster_payload = version_resp.json()
+                    vdata = cluster_payload if isinstance(cluster_payload, dict) else {}
+                    version = _coerce_str(
+                        vdata.get("result", {}).get("status", {}).get("version")
                     )
+                    if version is not None:
+                        status["version"] = version
             except Exception:  # safe: cluster version probe is optional
                 pass
     except Exception as exc:

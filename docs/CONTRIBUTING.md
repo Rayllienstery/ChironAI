@@ -115,7 +115,12 @@ Before finishing a change, review `AI_RULES.md`:
 
 - Preserve unrelated work in the working tree.
 - Do not commit generated artifacts such as `CoreModules/CoreUI/dist/`,
-  `storybook-static/`, `coverage/`, `playwright-report/`, or `test-results/`.
+  `storybook-static/`, `coverage/`, `coverage.xml`, `playwright-report/`, or
+  `test-results/`.
+- Do not commit local runtime data: `logs/`, `tmp/`, `reports/`, `*.db`,
+  `WebUI/rag_sources/`, `WebUI/docs_cache/`, `__pycache__/`, `node_modules/`,
+  `.venv/`, or `*.egg-info/`. See `docs/REPO_TRACKED_AUDIT.md` for the full
+  tracked-files audit.
 - Prefer source-of-truth docs over duplicating architectural rules.
 - Keep compatibility imports and public HTTP behavior stable unless a task
   explicitly changes them.

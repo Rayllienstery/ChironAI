@@ -86,6 +86,7 @@ logs/
 *.log.*
 
 # Fetched/generated markdown files and documentation sources
+WebUI/docs_cache/
 WebUI/rag_sources/
 WebUI/rag_sources_for_testing/
 Apple-Developer-Documentation-Offline-Archive-main/
@@ -152,6 +153,7 @@ PROJECT_EVALUATION.md
 htmlcov/
 .pytest_cache/
 .tox/
+.hypothesis/
 
 # Jupyter Notebooks
 .ipynb_checkpoints
@@ -166,3 +168,4 @@ dmypy.json
 prompts/*
 !prompts/.gitkeep
 .tmp_openwebui_data/
+docs/REPO_TRACKED_AUDIT.md

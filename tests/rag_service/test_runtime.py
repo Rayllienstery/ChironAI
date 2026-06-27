@@ -119,4 +119,9 @@ def test_runtime_qdrant_uses_docker_manager_spec() -> None:
         f"{cfg.qdrant_host_grpc_port}:6334",
     ]
     assert docker.ensure_spec.volumes == ["qdrant_storage:/qdrant/storage"]
+    assert docker.ensure_spec.user == "0:0"
+    assert docker.ensure_spec.read_only_root_fs is True
+    assert docker.ensure_spec.cap_drop == ["ALL"]
+    assert docker.ensure_spec.no_new_privileges is True
+    assert docker.ensure_spec.tmpfs == ["/tmp"]
     assert docker.stopped == cfg.qdrant_container_name

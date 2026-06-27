@@ -11,7 +11,8 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import asdict, dataclass, replace as dataclass_replace
+from dataclasses import asdict, dataclass
+from dataclasses import replace as dataclass_replace
 from typing import Any, Iterator
 from urllib.error import URLError
 from urllib.request import Request, urlopen

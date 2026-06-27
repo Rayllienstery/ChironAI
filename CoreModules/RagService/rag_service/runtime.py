@@ -153,6 +153,11 @@ def docker_stop_container(name: str) -> tuple[bool, str]:
 
 
 def ensure_qdrant_container(cfg: RagRuntimeConfig) -> tuple[bool, str]:
+    # Hardening: Qdrant writes persistent data only to the named volume mounted
+    # at /qdrant/storage. Keep root (official image default) but restrict the
+    # runtime surface: read-only root FS, drop all capabilities, no new
+    # privileges, and a writable tmpfs for temporary files.
+    # The /tmp path is a container-local tmpfs mount, not a host temp dir.
     spec = DockerContainerSpec(
         name=cfg.qdrant_container_name,
         image=cfg.qdrant_image,
@@ -163,6 +168,11 @@ def ensure_qdrant_container(cfg: RagRuntimeConfig) -> tuple[bool, str]:
         volumes=["qdrant_storage:/qdrant/storage"],
         restart="unless-stopped",
         labels={"chironai.service": "qdrant"},
+        user="0:0",
+        read_only_root_fs=True,
+        cap_drop=["ALL"],
+        no_new_privileges=True,
+        tmpfs=["/tmp"],  # nosec B108
     )
     result = _docker_manager().ensure_container(spec)
     return bool(result.get("ok")), str(result.get("message") or result.get("details") or result.get("error") or "")

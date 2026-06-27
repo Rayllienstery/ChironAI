@@ -17,6 +17,11 @@ from chironai_rag.consumers import RAG_COLLECTION_APP_SETTING
 from error_manager.http import error_response as _error_response
 from flask import Blueprint, jsonify, request
 from rag_service.domain.services.rag_trigger import compute_rag_trigger_score
+from rag_service.qdrant_health_monitor import (
+    ensure_qdrant_health_monitor_started,
+    get_qdrant_health_monitor,
+    get_qdrant_health_snapshot,
+)
 
 from api.http.proxy_status import (
     get_latest_request_rag_steps,
@@ -44,11 +49,6 @@ from application.rag.proxy_settings_contract import (
 from config import get_default_rag_top_k, get_framework_collection_ttl_days, get_qdrant_url, get_retrieval_bool
 from infrastructure.database import get_settings_repository
 from infrastructure.qdrant.collection_names import list_collection_names
-from rag_service.qdrant_health_monitor import (
-    ensure_qdrant_health_monitor_started,
-    get_qdrant_health_monitor,
-    get_qdrant_health_snapshot,
-)
 
 _WEBUI_LOG = logging.getLogger("webui")
 
