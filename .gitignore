@@ -31,7 +31,7 @@ node_modules/
 .pnpm-store/
 .pnpm-debug.log*
 CoreModules/CoreUI/dist/
-WebUI/dist/
+/WebUI/dist/
 
 # Vite cache (custom cacheDir or tooling defaults)
 .vite/
@@ -86,9 +86,14 @@ logs/
 *.log.*
 
 # Fetched/generated markdown files and documentation sources
-WebUI/docs_cache/
-WebUI/rag_sources/
-WebUI/rag_sources_for_testing/
+/WebUI/
+/WebUI/docs_cache/
+/WebUI/rag_sources/
+/WebUI/rag_sources_for_testing/
+Core/data/webui/docs_cache/
+Core/data/webui/rag_sources/
+Core/data/webui/rag_sources_for_testing/
+Core/data/webui/.migrated_from_root_webui
 Apple-Developer-Documentation-Offline-Archive-main/
 
 # Qdrant data
@@ -121,7 +126,8 @@ Thumbs.db
 
 # Project-specific
 last_collection.txt
-WebUI/last_collection.txt
+/WebUI/last_collection.txt
+Core/data/webui/last_collection.txt
 tests/_tmp_*
 tests/*.tmp
 PROJECT_EVALUATION.md

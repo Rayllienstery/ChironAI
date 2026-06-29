@@ -66,7 +66,6 @@ def _wait_server(max_sec: float = 90) -> None:
 
 
 def main() -> int:
-    os.environ.setdefault("CHIRONAI_WEBUI_DIR", os.path.join(ROOT, "WebUI"))
     print(f"Using embed model: {EMBED_MODEL}")
     _wait_server()
 

@@ -1,4 +1,4 @@
-"""Load/save WebUI/rag_sources/*/meta.json and index bookkeeping (chunk_hashes)."""
+"""Load/save Core/data/webui/rag_sources/*/meta.json and index bookkeeping (chunk_hashes)."""
 
 from __future__ import annotations
 

@@ -92,7 +92,7 @@ def create_app(
 ) -> Flask:
     """
     Create Flask app with RAG routes.
-    webui_dir: directory containing last_collection.txt (e.g. WebUI).
+    webui_dir: directory containing last_collection.txt (e.g. Core/data/webui).
     system_prefix/suffix: optional overrides for RAG system prompt; if None use config (same as rag_client).
     """
     import time as _time

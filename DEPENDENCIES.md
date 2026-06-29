@@ -13,7 +13,7 @@ This document lists all files responsible for dependency management in the proje
 | `scripts/install_dependencies.bat` | **Windows:** run from `scripts\` - changes to repo root and calls `pip install -r requirements-dev.txt` once (`PIP_ONLY_BINARY=lxml` is set before install) |
 | `scripts/build_app.bat` | CoreUI build (`npm run build`); invoked from `build_and_run.bat` |
 | `scripts/sync_bundled_extensions.py` | Verify/sync bundled extensions with local repo clones (see `docs/EXTENSIONS_GITHUB_MIGRATION.md`) |
-| `scripts/audit_apple_ingest_filter.py` | **Manual offline audit:** chunk/stats for curated Apple Documentation pages; cwd = repo root, requires `WebUI/rag_sources/apple_documentation/` |
+| `scripts/audit_apple_ingest_filter.py` | **Manual offline audit:** chunk/stats for curated Apple Documentation pages; cwd = repo root, requires `Core/data/webui/rag_sources/apple_documentation/` |
 | `docker-compose.yml` | Infrastructure dependencies (Qdrant) |
 
 ### CoreModules

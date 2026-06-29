@@ -11,7 +11,7 @@ Active cleanup tracking: this document and [`QUALITY_GATE_PROFILES.md`](QUALITY_
 | 0 | Root ownership allowlist (`scripts/root_layout_guard.py`) |
 | 1 | Host layers under `Core/` with stable import names |
 | 2 | Host services under `Core/modules/` |
-| 3 | Prompt templates owned by `Core/modules/prompts_manager/` (`WebUI/prompts/` runtime store) |
+| 3 | Prompt templates owned by `Core/modules/prompts_manager/` (`Core/data/webui/prompts/` runtime store) |
 | 4 | Extension host bridge in `CoreModules/ExtensionsHost/`; marketplace in `extensions_backend` |
 | 5 | Legacy tails documented by owner; Qdrant listing + WebUI retrieval settings moved out of route composition |
 
@@ -29,7 +29,7 @@ Active cleanup tracking: this document and [`QUALITY_GATE_PROFILES.md`](QUALITY_
 | `CoreModules/LlmProxy/*` wire-format | LlmProxy | Intentional OpenAI/Anthropic compatibility surface |
 | `extensions/bundled/*` | extensions + `extensions_backend` | Trusted bootstrap/offline mirrors only |
 
-No root-level runtime packages remain except documented project support (`docs/`, `tests/`, `rag_tests/` fixtures, `WebUI/` data).
+No root-level runtime packages remain except documented project support (`docs/`, `tests/`, `rag_tests/` fixtures). WebUI runtime data lives under `Core/data/webui/`.
 
 ## Legacy tail exit criteria
 

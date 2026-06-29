@@ -8,14 +8,14 @@ It owns backend entrypoints and legacy helpers that are still being migrated out
 - Start the Web UI backend process used by `build_and_run.bat`.
 - Serve the CoreUI application and `/api/webui` HTTP routes through host composition.
 - Provide helper commands for local startup, shutdown, diagnostics, and ingestion compatibility.
-- Keep the root `WebUI/` directory as runtime data rather than frontend or backend source.
+- Keep host-owned WebUI runtime data under `Core/data/webui/` rather than the repository root.
 
 ## Setup
 
 - Install with `pip install -e CoreModules/WebUIBackend` when developing this package directly.
 - Normal repository startup uses `build_and_run.bat` from the root.
 - The package expects `Core/` and other CoreModules to be importable.
-- Runtime data such as logs and collections stays under the root `WebUI/` and `logs/` folders.
+- Runtime data such as logs and collections stays under `Core/data/webui/` and `logs/`.
 
 ## Entrypoints
 
@@ -43,4 +43,4 @@ It owns backend entrypoints and legacy helpers that are still being migrated out
 - Host composition under `Core/api/http`.
 - CoreUI built assets in `CoreModules/CoreUI/dist`.
 - RAG, extension, Docker, and settings services through host wiring.
-- Local runtime data under `WebUI/` and `logs/`.
+- Local runtime data under `Core/data/webui/` and `logs/`.

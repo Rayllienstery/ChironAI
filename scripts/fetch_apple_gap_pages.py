@@ -1,4 +1,4 @@
-"""Fetch missing Apple doc gap pages into WebUI/rag_sources/apple_documentation."""
+"""Fetch missing Apple doc gap pages into Core/data/webui/rag_sources/apple_documentation."""
 
 from __future__ import annotations
 
@@ -7,12 +7,15 @@ import json
 import os
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WEBUI = os.path.join(ROOT, "WebUI")
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "Core"))
 sys.path.insert(0, os.path.join(ROOT, "CoreModules", "WebUIBackend"))
 sys.path.insert(0, os.path.join(ROOT, "Core", "modules", "crawler_service"))
+
+from core.webui_data_paths import resolve_webui_data_dir  # noqa: E402
 
 from crawler_service.application.crawl_runner import page_filename_for_url  # noqa: E402
 
@@ -39,9 +42,9 @@ def _now_iso() -> str:
 
 
 def main() -> int:
-    os.environ.setdefault("CHIRONAI_WEBUI_DIR", WEBUI)
-    meta_path = os.path.join(WEBUI, "rag_sources", SOURCE_ID, "meta.json")
-    pages_dir = os.path.join(WEBUI, "rag_sources", SOURCE_ID, "pages")
+    webui_dir = resolve_webui_data_dir(Path(ROOT))
+    meta_path = webui_dir / "rag_sources" / SOURCE_ID / "meta.json"
+    pages_dir = webui_dir / "rag_sources" / SOURCE_ID / "pages"
     os.makedirs(pages_dir, exist_ok=True)
 
     with open(meta_path, "r", encoding="utf-8") as f:

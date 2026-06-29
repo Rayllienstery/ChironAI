@@ -42,7 +42,6 @@ ALLOWED_ROOT_DIRECTORIES: dict[str, RootEntry] = {
     "scripts": RootEntry("project support", "repo tooling"),
     "tests": RootEntry("project support", "test suite"),
     "tmp": RootEntry("temporary", "scratch and cloned dependency worktrees"),
-    "WebUI": RootEntry("runtime data", "runtime/data folder, not frontend source"),
 }
 
 
@@ -55,22 +54,24 @@ def _looks_like_python_runtime_package(path: Path) -> bool:
 def find_root_layout_violations(root: Path) -> list[str]:
     violations: list[str] = []
     existing_names = {entry.name for entry in root.iterdir() if entry.is_dir()}
+    legacy_tails = ("api", "application", "config", "core", "domain", "infrastructure", "modules", "prompts", "WebUI")
     for entry in sorted(root.iterdir(), key=lambda item: item.name.lower()):
         if not entry.is_dir():
             continue
         allowed = ALLOWED_ROOT_DIRECTORIES.get(entry.name)
-        if allowed is None:
+        if allowed is None and entry.name not in legacy_tails:
             message = f"{entry.name}: top-level directory is not classified in ALLOWED_ROOT_DIRECTORIES"
             if _looks_like_python_runtime_package(entry):
                 message += " and looks like a Python runtime package"
             violations.append(message)
-    legacy_tails = ("api", "application", "config", "core", "domain", "infrastructure", "modules", "prompts")
     for name in legacy_tails:
         if name in existing_names:
             if name == "modules":
                 violations.append(f"{name}: Phase 2 moved host-owned services under Core/modules/")
             elif name == "prompts":
                 violations.append(f"{name}: Phase 3 moved prompt templates under Core/modules/prompts_manager/")
+            elif name == "WebUI":
+                violations.append(f"{name}: Phase 4 moved WebUI runtime data under Core/data/webui/")
             else:
                 violations.append(f"{name}: Phase 1 moved this host runtime package under Core/")
     return violations

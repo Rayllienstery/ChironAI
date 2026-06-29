@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
+
+from core.webui_data_paths import resolve_webui_data_dir
 
 
 def project_root() -> Path:
@@ -13,10 +14,7 @@ def project_root() -> Path:
 
 def webui_data_dir() -> Path:
     """Return the runtime/data directory used by WebUI backend workflows."""
-    configured = (os.getenv("CHIRONAI_WEBUI_DIR") or "").strip()
-    if configured:
-        return Path(configured).expanduser().resolve()
-    return project_root() / "WebUI"
+    return resolve_webui_data_dir(project_root())
 
 
 def coreui_dir() -> Path:

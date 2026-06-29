@@ -48,7 +48,6 @@ def _module_env() -> dict[str, str]:
 def _crawl_env() -> dict[str, str]:
     env = os.environ.copy()
     env["CHIRONAI_PROJECT_ROOT"] = _root()
-    env["CHIRONAI_WEBUI_DIR"] = os.path.join(_root(), "WebUI")
     if importlib.util.find_spec("crawler_service") is not None:
         return env
     _p = os.pathsep.join(

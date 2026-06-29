@@ -69,7 +69,7 @@ def compute_source_stats(meta: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_crawler_sources_dir() -> str:
-    """Path to WebUI/rag_sources directory."""
+    """Path to Core/data/webui/rag_sources directory."""
     return str(webui_data_dir() / "rag_sources")
 
 
@@ -94,7 +94,7 @@ def load_source_meta(source_id: str) -> dict[str, Any] | None:
 
 
 def discover_crawler_sources() -> list[str]:
-    """Scan WebUI/rag_sources directory to find all source IDs."""
+    """Scan Core/data/webui/rag_sources directory to find all source IDs."""
     sources_dir = get_crawler_sources_dir()
     if not os.path.isdir(sources_dir):
         return []

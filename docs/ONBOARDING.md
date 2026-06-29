@@ -21,7 +21,7 @@ Start with these files:
 Keep the vocabulary straight:
 
 - `CoreUI` is the React/Vite app in `CoreModules/CoreUI/`.
-- `WebUI/` is runtime data, not the frontend source.
+- `Core/data/webui/` is host-owned runtime data, not the frontend source.
 - Web UI HTTP APIs live under `/api/webui`.
 - Open WebUI is a separate Docker product owned through the extension system.
 

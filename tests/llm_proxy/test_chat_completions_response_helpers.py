@@ -102,3 +102,61 @@ def test_upstream_chat_error_message_handles_plain_exception() -> None:
     msg = upstream_chat_error_message(RuntimeError("boom"), {}, model="tiny")
 
     assert msg == "[Error: upstream Ollama request failed: boom while calling model tiny.]"
+
+
+def test_upstream_chat_error_message_compacts_serialized_ollama_error() -> None:
+    raw = (
+        "upstream Ollama request failed: {'response': {'_content': "
+        "'b\\'{\"error\":\"model \\\\\\'High-worker\\\\\\' not found\"}\\'', "
+        "'status_code': 404, 'headers': {'_store': {'content-type': "
+        "['Content-Type', 'application/json; charset=utf-8']}}, 'cookies': "
+        f"{{'_policy': '{'x' * 2000}'}}"
+    )
+
+    msg = upstream_chat_error_message(RuntimeError(raw), {}, model="High-worker")
+
+    assert msg == (
+        "[Error: upstream Ollama returned 404: model 'High-worker' not found "
+        "while calling model High-worker.]"
+    )
+    assert len(msg) < 140
+
+
+def test_upstream_chat_error_message_wraps_response_none_with_payload_diagnostics() -> None:
+    raw = (
+        "upstream Ollama request failed: {'response': None, 'request': {'method': 'POST', "
+        "'url': 'http://localhost:11434/api/chat', 'headers': {'_store': {'content-length': "
+        "['Content-Length', '499741'], 'content-type': ['Content-Type', 'application/json']}}}}"
+    )
+
+    msg = upstream_chat_error_message(
+        RuntimeError(raw),
+        {
+            "ollama": {
+                "messages": [
+                    {"role": "system", "content_length_chars": 1184},
+                    {"role": "tool", "content_length_chars": 28200},
+                ]
+            }
+        },
+        model="kimi-k2.7-code:cloud",
+    )
+
+    assert "failed before receiving an HTTP response" in msg
+    assert "499741-byte request payload" in msg
+    assert "29384 message content chars" in msg
+    assert "large upstream context/tools are a strong suspect" in msg
+    assert "while calling model kimi-k2.7-code:cloud" in msg
+
+
+def test_upstream_chat_error_message_explains_extension_worker_timeout() -> None:
+    msg = upstream_chat_error_message(
+        RuntimeError("worker call timed out: request 8"),
+        {},
+        model="kimi-k2.7-code:cloud",
+    )
+
+    assert "Ollama provider extension worker timed out" in msg
+    assert "sandbox request 8" in msg
+    assert "restart the ollama-provider worker from Extensions" in msg
+    assert "while calling model kimi-k2.7-code:cloud" in msg

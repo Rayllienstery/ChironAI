@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 from pathlib import Path
+
+from core.webui_data_paths import resolve_webui_data_dir
 
 _MIGRATION_MARKER = ".migrated_from_root"
 
@@ -16,10 +17,7 @@ def project_root() -> Path:
 
 def webui_data_dir() -> Path:
     """Return the runtime/data directory used by WebUI workflows."""
-    configured = (os.getenv("CHIRONAI_WEBUI_DIR") or "").strip()
-    if configured:
-        return Path(configured).expanduser().resolve()
-    return project_root() / "WebUI"
+    return resolve_webui_data_dir(project_root())
 
 
 def legacy_prompts_dir() -> Path:
@@ -53,7 +51,7 @@ def _copy_tree_files(source: Path, destination: Path) -> None:
 
 
 def ensure_prompt_storage_migrated() -> None:
-    """Copy legacy root ``prompts/`` content into ``WebUI/prompts/`` once."""
+    """Copy legacy root ``prompts/`` content into ``Core/data/webui/prompts/`` once."""
     runtime = runtime_prompts_dir()
     marker = runtime / _MIGRATION_MARKER
     if marker.is_file():

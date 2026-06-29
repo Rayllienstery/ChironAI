@@ -28,7 +28,7 @@ Allowed ownership buckets:
 - **`extensions/`** - extension payloads managed through the extension
   contracts and extension-management backend.
 - **Project support/runtime data** - `docs/`, `tests/`, `scripts/`, `.github/`,
-  `WebUI/`, `logs/`, `tmp/`, and config files, when they are not importable
+  `Core/data/webui/`, `logs/`, `tmp/`, and config files, when they are not importable
   runtime packages.
 
 Root-level runtime packages are forbidden unless explicitly allowlisted as migration
@@ -65,7 +65,6 @@ Current root directory ownership:
 | `scripts/` | project support | repo tooling |
 | `tests/` | project support | test suite |
 | `tmp/` | temporary | scratch and cloned dependency worktrees |
-| `WebUI/` | runtime data | runtime/data folder, not frontend source |
 
 When deciding where code belongs:
 
@@ -90,12 +89,12 @@ are migration tails rather than permanent freelance packages.
 | Term | What it is |
 |------|------------|
 | **CoreUI** | React/Vite SPA under `CoreModules/CoreUI/`. Talks to the backend **only over HTTP**—no direct RAG, crawler, or ingestion calls. See `CoreModules/CoreUI/README.md`. |
-| **`WebUI/` folder** | Runtime/data directory (`rag_sources`, caches, logs, `last_collection.txt`). This is **not** the frontend and no longer contains Python entrypoints. |
+| **`Core/data/webui/`** | Host-owned runtime/data directory (`rag_sources`, caches, `last_collection.txt`). This is **not** the frontend and no longer lives at the repository root. |
 | **WebUIBackend** | Canonical Python backend package under `Core/modules/webui_backend/webui_backend/`; owns WebUI entrypoints plus legacy crawl/ingest helpers that have not yet been extracted further. |
 | **Web UI (HTTP API)** | REST under the `/api/webui` prefix for dashboard, settings, logs, etc. The canonical package is `webui_backend`; the remaining route-composition tail is in the host API layer (`Core/api/http/...`, import name `api.http...`). |
 | **Open WebUI** | A separate Docker product; status/start is owned by the `open-webui` extension through DockerManager host capabilities. Do not conflate with **CoreUI** (our React app) or call it “our WebUI” without qualification. |
 
-Ambiguous “WebUI” in conversation: clarify—**`WebUI/` data folder**, **WebUIBackend**, **`/api/webui` HTTP API**, **CoreUI**, or **Open WebUI**.
+Ambiguous “WebUI” in conversation: clarify—**`Core/data/webui/` data folder**, **WebUIBackend**, **`/api/webui` HTTP API**, **CoreUI**, or **Open WebUI**.
 
 ---
 

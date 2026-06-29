@@ -9,6 +9,15 @@ _REQUESTS_HTTP_ERROR_RE = re.compile(
     r"^(?P<status>\d{3})\s+.*?Error:\s*(?P<detail>.+?)\s+for url:\s*(?P<url>\S+)\s*$",
     re.IGNORECASE,
 )
+_OLLAMA_JSON_ERROR_RE = re.compile(r'"error"\s*:\s*"(?P<detail>(?:\\.|[^"\\])*)"', re.IGNORECASE)
+_SERIALIZED_RESPONSE_NONE_RE = re.compile(r"['\"]response['\"]\s*:\s*None")
+_STATUS_CODE_RE = re.compile(r"['\"]status_code['\"]\s*:\s*(?P<status>\d{3})")
+_CONTENT_LENGTH_RE = re.compile(
+    r"['\"]content-length['\"]\s*:\s*\[\s*['\"]Content-Length['\"]\s*,\s*['\"](?P<size>\d+)['\"]",
+    re.IGNORECASE,
+)
+_WORKER_CALL_TIMEOUT_RE = re.compile(r"\bworker call timed out:\s*request\s+(?P<id>\d+)\b", re.IGNORECASE)
+_UPSTREAM_ERROR_DETAIL_LIMIT = 500
 
 
 def reasoning_sse_delta(kind: str, data: Any, *, include_reasoning_content: bool) -> dict[str, Any]:
@@ -106,6 +115,86 @@ def _exception_from_requests_error_text(text: str) -> Exception | None:
     return err
 
 
+def _json_string_unescape(value: str) -> str:
+    try:
+        return str(value.encode("utf-8").decode("unicode_escape"))
+    except Exception:
+        return value
+
+
+def _compact_upstream_error_detail(text: str) -> str:
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    match = _OLLAMA_JSON_ERROR_RE.search(raw)
+    if match:
+        detail = _json_string_unescape(match.group("detail")).replace("\\'", "'").strip()
+        if detail:
+            return detail
+    if len(raw) <= _UPSTREAM_ERROR_DETAIL_LIMIT:
+        return raw
+    return raw[:_UPSTREAM_ERROR_DETAIL_LIMIT].rstrip() + "... [truncated]"
+
+
+def _status_code_from_error_text(text: str) -> str:
+    match = _STATUS_CODE_RE.search(str(text or ""))
+    return match.group("status") if match else ""
+
+
+def _content_length_from_error_text(text: str) -> int | None:
+    match = _CONTENT_LENGTH_RE.search(str(text or ""))
+    if not match:
+        return None
+    try:
+        return int(match.group("size"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _message_content_chars_from_trace(trace: dict[str, Any]) -> int | None:
+    ollama = trace.get("ollama") if isinstance(trace.get("ollama"), dict) else {}
+    messages = ollama.get("messages") if isinstance(ollama, dict) else None
+    if not isinstance(messages, list):
+        return None
+    total = 0
+    found = False
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        try:
+            total += int(message.get("content_length_chars") or 0)
+            found = True
+        except (TypeError, ValueError):
+            continue
+    return total if found else None
+
+
+def _no_http_response_upstream_detail(exc_text: str, trace: dict[str, Any]) -> str:
+    payload_size = _content_length_from_error_text(exc_text)
+    message_chars = _message_content_chars_from_trace(trace)
+    detail = "upstream Ollama request failed before receiving an HTTP response"
+    diagnostics = []
+    if payload_size:
+        diagnostics.append(f"{payload_size}-byte request payload")
+    if message_chars:
+        diagnostics.append(f"{message_chars} message content chars")
+    if diagnostics:
+        detail = f"{detail} ({', '.join(diagnostics)}; large upstream context/tools are a strong suspect)"
+    else:
+        detail = f"{detail} (likely transport timeout/reset)"
+    return detail
+
+
+def _worker_timeout_upstream_detail(exc_text: str) -> str:
+    match = _WORKER_CALL_TIMEOUT_RE.search(str(exc_text or ""))
+    if not match:
+        return ""
+    return (
+        "Ollama provider extension worker timed out before returning a chat response "
+        f"(sandbox request {match.group('id')}); restart the ollama-provider worker from Extensions and retry"
+    )
+
+
 def upstream_chat_error_message(
     exc: Exception | str,
     trace: dict[str, Any],
@@ -128,7 +217,20 @@ def upstream_chat_error_message(
         if url:
             parts.append(f"for {url}")
     else:
-        parts = [f"upstream Ollama request failed: {exc}"]
+        exc_text = str(exc)
+        status = _status_code_from_error_text(exc_text)
+        detail = _compact_upstream_error_detail(exc_text)
+        if status:
+            summary = f"upstream Ollama returned {status}"
+            if detail:
+                summary = f"{summary}: {detail}"
+            parts = [summary]
+        elif _SERIALIZED_RESPONSE_NONE_RE.search(exc_text):
+            parts = [_no_http_response_upstream_detail(exc_text, trace)]
+        elif worker_timeout := _worker_timeout_upstream_detail(exc_text):
+            parts = [worker_timeout]
+        else:
+            parts = [f"upstream Ollama request failed: {detail or type(exc).__name__}"]
 
     if model:
         parts.append(f"while calling model {model}")

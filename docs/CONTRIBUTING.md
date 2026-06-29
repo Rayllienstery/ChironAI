@@ -118,7 +118,7 @@ Before finishing a change, review `AI_RULES.md`:
   `storybook-static/`, `coverage/`, `coverage.xml`, `playwright-report/`, or
   `test-results/`.
 - Do not commit local runtime data: `logs/`, `tmp/`, `reports/`, `*.db`,
-  `WebUI/rag_sources/`, `WebUI/docs_cache/`, `__pycache__/`, `node_modules/`,
+  `Core/data/webui/rag_sources/`, `Core/data/webui/docs_cache/`, `__pycache__/`, `node_modules/`,
   `.venv/`, or `*.egg-info/`. See `docs/REPO_TRACKED_AUDIT.md` for the full
   tracked-files audit.
 - Prefer source-of-truth docs over duplicating architectural rules.

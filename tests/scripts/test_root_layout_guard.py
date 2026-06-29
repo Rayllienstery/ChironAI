@@ -24,9 +24,17 @@ def test_new_root_runtime_package_requires_classification(tmp_path: Path) -> Non
     ]
 
 
+def test_legacy_root_webui_is_reported_as_migration_tail(tmp_path: Path) -> None:
+    (tmp_path / "WebUI").mkdir()
+
+    violations = find_root_layout_violations(tmp_path)
+
+    assert violations == ["WebUI: Phase 4 moved WebUI runtime data under Core/data/webui/"]
+
+
 def test_ownership_table_mentions_migration_tails() -> None:
     table = render_ownership_table()
 
     assert "`Core/` | Core | application host container" in table
-    assert "`WebUI/` | runtime data | runtime/data folder, not frontend source" in table
+    assert "`logs/` | runtime data | local logs and databases" in table
     assert ALLOWED_ROOT_DIRECTORIES["CoreModules"].owner == "CoreModules"

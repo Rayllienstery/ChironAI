@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.4] - 2026-06-29
+### Fixed
+- Added a clearer LlmProxy diagnostic for Ollama provider extension worker timeouts.
+
+## [0.8.3] - 2026-06-29
+### Fixed
+- Added clearer LlmProxy diagnostics when upstream Ollama requests fail before returning an HTTP response.
+
+## [0.8.2] - 2026-06-28
+### Fixed
+- Compacted serialized upstream Ollama errors before returning them through LlmProxy chat streams.
+
 ## [0.8.1] - 2026-06-26
 ### Changed
 - Added explicit DockerContainerSpec hardening to ensure_qdrant_container (read-only root FS, drop all caps, no new privileges, container-local tmpfs) and asserted the fields in tests.

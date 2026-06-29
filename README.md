@@ -31,7 +31,7 @@ Under the hood, ChironAI is a modular RAG platform with a provider-runtime LLM p
 - Qdrant: vector database for embeddings and chunk storage.
 - LLM provider runtime: extension-backed chat, embeddings, and reranking.
 - `ollama-provider`: bundled extension for local Ollama ownership.
-- RAG prompts: bundled defaults in `Core/modules/prompts_manager/`; runtime edits in `WebUI/prompts/`.
+- RAG prompts: bundled defaults in `Core/modules/prompts_manager/`; runtime edits in `Core/data/webui/prompts/`.
 
 ## Configuration
 - Main RAG settings: config/rag.yaml.

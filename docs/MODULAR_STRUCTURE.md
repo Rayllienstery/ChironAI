@@ -42,7 +42,7 @@ extensions/            # Installed/bundled extension payloads
 docs/                  # Architecture and runbooks
 scripts/               # Repo scripts and maintenance tooling
 tests/                 # Test suite
-WebUI/                 # Runtime/data folder, not frontend source
+Core/data/webui/       # Host-owned WebUI runtime data (rag_sources, prompts, caches)
 logs/                  # Runtime logs
 tmp/                   # Temporary/dev-only material
 ```
@@ -51,7 +51,7 @@ During migration, some host-owned folders may still exist at the repository
 root. Treat those as migration tails, not as permanent architecture. Phase 1
 moved the main host packages into `Core/`; Phase 2 moved host-owned services
 into `Core/modules/`; Phase 3 moved prompt templates under
-`Core/modules/prompts_manager/` with runtime storage in `WebUI/prompts/`.
+`Core/modules/prompts_manager/` with runtime storage in `Core/data/webui/prompts/`.
 
 `scripts/root_layout_guard.py` is the automated root allowlist. Update that
 guardrail and this document together when a root folder is intentionally added,
@@ -95,7 +95,6 @@ intentional public boundary. Host-specific code goes under `Core/`.
 | `scripts/` | project support | repo tooling |
 | `tests/` | project support | test suite |
 | `tmp/` | temporary | scratch and cloned dependency worktrees |
-| `WebUI/` | runtime data | runtime/data folder, not frontend source |
 
 ## Current-to-Target Path Map
 

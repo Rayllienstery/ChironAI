@@ -17,7 +17,6 @@ def main() -> None:
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     env = os.environ.copy()
     env["CHIRONAI_PROJECT_ROOT"] = root
-    env["CHIRONAI_WEBUI_DIR"] = os.path.join(root, "WebUI")
     _p = os.pathsep.join(
         [
             root,

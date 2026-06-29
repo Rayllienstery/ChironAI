@@ -2,7 +2,7 @@
 
 ## Purpose
 
-- **Rag sources crawl** (default): Playwright BFS + WWDC transcript pipeline writing markdown under `WebUI/rag_sources` using helpers from `webui_backend`.
+- **Rag sources crawl** (default): Playwright BFS + WWDC transcript pipeline writing markdown under `Core/data/webui/rag_sources` using helpers from `webui_backend`.
 - **Port `CrawlRunner`**: `PlaywrightCrawler.crawl()` returns fetched pages without writing to disk (for future md_ingestion HTTP push).
 
 ## Install
@@ -27,7 +27,7 @@ chironai-crawl crawl [--dry-run] [--source SOURCE_ID] [--all]
 Environment (optional):
 
 - `CHIRONAI_PROJECT_ROOT` — repository root (default: cwd)
-- `CHIRONAI_WEBUI_DIR` — folder containing `rag_sources` and `apple_docs_*.py` (default: `<root>/WebUI`)
+- `CHIRONAI_WEBUI_DIR` — folder containing `rag_sources` (default: `<root>/Core/data/webui`)
 
 ## Dependencies
 

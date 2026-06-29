@@ -1,4 +1,4 @@
-"""CLI: crawl configured sources into WebUI/rag_sources."""
+"""CLI: crawl configured sources into Core/data/webui/rag_sources."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from crawler_service.application.crawl_runner import build_crawl_host, run_crawl
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="ChironAI crawl: update local markdown store under WebUI/rag_sources.",
+        description="ChironAI crawl: update local markdown store under Core/data/webui/rag_sources.",
     )
     parser.add_argument(
         "command",
@@ -45,7 +45,7 @@ def main() -> int:
         "--webui-dir",
         type=Path,
         default=None,
-        help="WebUI directory (default: CHIRONAI_WEBUI_DIR or <project-root>/WebUI).",
+        help="WebUI data directory (default: CHIRONAI_WEBUI_DIR or <project-root>/Core/data/webui).",
     )
     args = parser.parse_args()
 

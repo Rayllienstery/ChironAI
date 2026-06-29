@@ -422,7 +422,7 @@ def _resolve_workspace_relative_path_hint(path_hint: str) -> str:
             hint,
             f"CoreModules/CoreUI/src/{hint}",
             f"src/{hint}",
-            f"WebUI/{hint}",
+            f"Core/data/webui/{hint}",
         ]
         for rel in candidates:
             try:

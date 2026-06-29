@@ -1,4 +1,4 @@
-"""Orchestrate WWDC and Playwright crawls into WebUI/rag_sources."""
+"""Orchestrate WWDC and Playwright crawls into Core/data/webui/rag_sources."""
 
 from __future__ import annotations
 

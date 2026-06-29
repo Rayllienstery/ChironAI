@@ -2,7 +2,7 @@
 """
 Offline audit: run prepare_markdown_for_indexing + chunk stats on curated Apple Documentation pages.
 
-Expects repo root as cwd (or set CHIRON_ROOT). Reads WebUI/rag_sources/apple_documentation/meta.json + pages/.
+Expects repo root as cwd (or set CHIRON_ROOT). Reads Core/data/webui/rag_sources/apple_documentation/meta.json + pages/.
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
             "Offline audit: run prepare_markdown_for_indexing and chunk stats "
             "on curated Apple Documentation pages."
         ),
-        epilog="Expects repo root as cwd (or CHIRON_ROOT). Reads WebUI/rag_sources/apple_documentation/.",
+        epilog="Expects repo root as cwd (or CHIRON_ROOT). Reads Core/data/webui/rag_sources/apple_documentation/.",
     )
     parser.parse_args(argv)
 
@@ -82,8 +82,11 @@ def main(argv: list[str] | None = None) -> int:
 
     from config import get_indexing_int
 
-    meta_path = root / "WebUI" / "rag_sources" / "apple_documentation" / "meta.json"
-    pages_dir = root / "WebUI" / "rag_sources" / "apple_documentation" / "pages"
+    from core.webui_data_paths import resolve_webui_data_dir
+
+    webui_dir = resolve_webui_data_dir(root)
+    meta_path = webui_dir / "rag_sources" / "apple_documentation" / "meta.json"
+    pages_dir = webui_dir / "rag_sources" / "apple_documentation" / "pages"
     if not meta_path.is_file():
         print(f"meta.json not found: {meta_path}", file=sys.stderr)
         return 1

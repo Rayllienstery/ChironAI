@@ -7,11 +7,11 @@ Host-owned RAG system prompt templates for ChironAI.
 | Location | Purpose |
 |----------|---------|
 | `prompts_manager/bundled/*.md` | Shipped defaults (for example `system_rag_v1.md`) |
-| `WebUI/prompts/*.md` | Mutable runtime store (user edits via WebUI/API) |
-| `WebUI/prompts/.trash/` | Deleted prompts awaiting restore or purge |
+| `Core/data/webui/prompts/*.md` | Mutable runtime store (user edits via WebUI/API) |
+| `Core/data/webui/prompts/.trash/` | Deleted prompts awaiting restore or purge |
 
 On first access, any legacy root-level `prompts/` directory is copied into
-`WebUI/prompts/` once (marker: `WebUI/prompts/.migrated_from_root`).
+`Core/data/webui/prompts/` once (marker: `Core/data/webui/prompts/.migrated_from_root`).
 
 ## Configuration
 
