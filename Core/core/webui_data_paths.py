@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 from pathlib import Path
@@ -38,10 +39,8 @@ def resolve_webui_data_dir(repo_root: Path) -> Path:
                 continue
             shutil.move(str(item), str(dest))
         marker.write_text(f"legacy={legacy}\n", encoding="utf-8")
-        try:
+        with contextlib.suppress(OSError):
             legacy.rmdir()
-        except OSError:
-            pass
     return target
 
 

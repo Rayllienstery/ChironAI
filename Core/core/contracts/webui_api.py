@@ -124,6 +124,7 @@ class AppSettingsResponse(TypedDict, total=False):
     server_port_active: int
     server_port_source: Literal["env", "settings", "config", "default"]
     server_port_restart_required: bool
+    developer_mode: bool
 
 
 class CreateCollectionEmbeddingHistoryRow(TypedDict, total=False):

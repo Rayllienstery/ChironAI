@@ -33,7 +33,23 @@ function clampServiceStatusPollSec(raw) {
   return Math.min(SERVICE_STATUS_POLL_MAX, Math.max(SERVICE_STATUS_POLL_MIN, n));
 }
 
-function SettingsTab({ themeMode, lightAccent, darkAccent, locale, onThemeChange, onLocaleChange, onAppSettingsSaved }) {
+function parseDeveloperMode(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return value.toLowerCase() === 'true';
+  return false;
+}
+
+function SettingsTab({
+  themeMode,
+  lightAccent,
+  darkAccent,
+  locale,
+  developerMode,
+  onThemeChange,
+  onLocaleChange,
+  onDeveloperModeChange,
+  onAppSettingsSaved,
+}) {
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -41,6 +57,7 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, locale, onThemeChange
   const [localLightAccent, setLocalLightAccent] = useState(lightAccent || 'purple');
   const [localDarkAccent, setLocalDarkAccent] = useState(darkAccent || 'cyan');
   const [localLocale, setLocalLocale] = useState(locale || getLocale());
+  const [localDeveloperMode, setLocalDeveloperMode] = useState(Boolean(developerMode));
 
   useEffect(() => {
     loadSettings();
@@ -53,6 +70,10 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, locale, onThemeChange
     if (locale) setLocalLocale(locale);
   }, [themeMode, lightAccent, darkAccent, locale]);
 
+  useEffect(() => {
+    setLocalDeveloperMode(Boolean(developerMode));
+  }, [developerMode]);
+
   const loadSettings = async () => {
     try {
       const data = await getSettings();
@@ -60,6 +81,7 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, locale, onThemeChange
       if (data.theme_mode) setLocalThemeMode(data.theme_mode);
       if (data.theme_light_accent) setLocalLightAccent(data.theme_light_accent);
       if (data.theme_dark_accent) setLocalDarkAccent(data.theme_dark_accent);
+      setLocalDeveloperMode(parseDeveloperMode(data.developer_mode));
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
@@ -90,6 +112,20 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, locale, onThemeChange
     setLocale(nextLocale);
     setLocalLocale(getLocale());
     onLocaleChange?.(getLocale());
+  };
+
+  const handleDeveloperModeChange = async (nextDeveloperMode) => {
+    setLocalDeveloperMode(nextDeveloperMode);
+    onDeveloperModeChange?.(nextDeveloperMode);
+    try {
+      const saved = await updateSettings({ developer_mode: nextDeveloperMode });
+      setSettings((prev) => ({ ...prev, developer_mode: nextDeveloperMode }));
+      onAppSettingsSaved?.({ developer_mode: nextDeveloperMode, ...saved });
+    } catch (error) {
+      console.error('Failed to save developer mode:', error);
+      setLocalDeveloperMode((prev) => !prev);
+      onDeveloperModeChange?.(!nextDeveloperMode);
+    }
   };
 
   const handleSaveTheme = async (mode, lightColor, darkColor) => {
@@ -256,6 +292,26 @@ function SettingsTab({ themeMode, lightAccent, darkAccent, locale, onThemeChange
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="form-group form-group--switch">
+            <div className="coreui-switch-row">
+              <span className="coreui-switch-label">Developer Mode</span>
+              <label className="coreui-switch" htmlFor="coreui-developer-mode">
+                <input
+                  id="coreui-developer-mode"
+                  type="checkbox"
+                  checked={localDeveloperMode}
+                  onChange={(e) => handleDeveloperModeChange(e.target.checked)}
+                  aria-label="Developer Mode"
+                />
+                <span aria-hidden="true" />
+              </label>
+            </div>
+            <p className="settings-form-hint coreui-text-muted-sm">
+              Enables the Developer Tools section in the sidebar (Testing, CoreUI Showcase, Dev
+              Documentation, Swagger, Performance).
+            </p>
           </div>
 
           <div className="form-group">

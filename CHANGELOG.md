@@ -1,10 +1,23 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.5] - 2026-06-29
+### Added
+- Added a "Developer Mode" toggle in Settings that persists to app settings and defaults to off.
+- When Developer Mode is disabled, the "Developer Tools" sidebar section (Testing, CoreUI Showcase, Dev
+  Documentation, Swagger, Performance) is hidden and any active developer tab is switched back to Dashboard.
+- Added `scripts/startup_smoke_bat.ps1` for Windows startup smoke tests. It builds CoreUI, polls
+  `/api/webui/version`, and exits without stopping the application. If the server is already running,
+  it reuses the existing instance.
+
+### Changed
+- `scripts/quality_gate.py` now uses `scripts/startup_smoke_bat.ps1` for the advisory `startup-smoke-bat`
+  step instead of `build_and_run.bat`, so the smoke test no longer shuts down the app.
 
 ## [0.8.4] - 2026-06-29
 ### Fixed
 - Added a clearer LlmProxy diagnostic for Ollama provider extension worker timeouts.
+
 
 ## [0.8.3] - 2026-06-29
 ### Fixed

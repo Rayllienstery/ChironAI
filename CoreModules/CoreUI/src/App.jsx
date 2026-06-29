@@ -202,6 +202,13 @@ import "./styles/components/StandByScreen.css";
 const METRICS_HISTORY_LEN = 30;
 const SHELL_REQUEST_BOOT_DELAY_MS = 800;
 const PERFORMANCE_SHELL_REQUEST_DELAY_MS = 1500;
+const DEVELOPER_TOOL_TAB_IDS = [
+  "testing",
+  "coreui-showcase",
+  "dev-documentation",
+  "swagger",
+  "performance",
+];
 
 function scheduleIdleWork(callback, timeout = 3000) {
   if (typeof window === "undefined") return null;
@@ -272,7 +279,9 @@ function App() {
   const [themeMode, setThemeMode] = useState("system");
   const [lightAccent, setLightAccent] = useState("purple");
   const [darkAccent, setDarkAccent] = useState("cyan");
+  const [developerMode, setDeveloperMode] = useState(false);
   const [locale, setLocaleState] = useState(getLocale());
+
   const [ragStatusInfo, setRagStatusInfo] = useState({
     running: null,
     url: null,
@@ -387,7 +396,7 @@ function App() {
         // Non-critical
       }
       cancelSessionInit = initSession();
-      loadThemeSettings();
+      loadAppSettings();
     }, shellRequestDelayMs);
 
     // Listen for system theme changes
@@ -695,21 +704,25 @@ function App() {
     setLogsFocusSubTab(null);
   }, []);
 
-  const loadThemeSettings = async () => {
+  const loadAppSettings = async () => {
     try {
       const settings = await getSettings();
       const mode = settings.theme_mode || "system";
       const light = settings.theme_light_accent || "purple";
       const dark = settings.theme_dark_accent || "cyan";
+      const devMode =
+        settings.developer_mode === true ||
+        String(settings.developer_mode).toLowerCase() === "true";
       setThemeMode(mode);
       setLightAccent(light);
       setDarkAccent(dark);
+      setDeveloperMode(devMode);
       applyTheme(mode, light, dark);
       setServiceStatusPollIntervalSec(
         clampServiceStatusPollSec(settings.service_status_poll_interval_sec),
       );
     } catch (error) {
-      console.error("Failed to load theme settings:", error);
+      console.error("Failed to load app settings:", error);
     }
   };
 
@@ -751,7 +764,7 @@ function App() {
     applyTheme(mode, lightAccentColor, darkAccentColor);
   };
 
-  const tabs = [
+  const allTabs = [
     { id: "dashboard", label: t("nav.dashboard"), section: "Main" },
     { id: "docker", label: t("nav.docker"), section: "Main", iconUrl: DockerTabIcon },
     { id: "tokens-security", label: t("nav.tokens_security"), section: "Main" },
@@ -776,7 +789,16 @@ function App() {
     { id: "swagger", label: t("nav.swagger"), section: "Developer Tools" },
     { id: "performance", label: t("nav.performance"), section: "Developer Tools" },
   ];
+  const tabs = developerMode
+    ? allTabs
+    : allTabs.filter((tab) => tab.section !== "Developer Tools");
   const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || activeTab;
+
+  useEffect(() => {
+    if (!developerMode && DEVELOPER_TOOL_TAB_IDS.includes(activeTab)) {
+      setActiveTab("dashboard");
+    }
+  }, [developerMode, activeTab]);
 
   const renderTabContent = () => {
     const activeExtensionTab = extensionTabs.find((tab) => tab.id === activeTab);
@@ -876,8 +898,10 @@ function App() {
             lightAccent={lightAccent}
             darkAccent={darkAccent}
             locale={locale}
+            developerMode={developerMode}
             onThemeChange={handleThemeChange}
             onLocaleChange={setLocaleState}
+            onDeveloperModeChange={setDeveloperMode}
             onAppSettingsSaved={(saved) =>
               setServiceStatusPollIntervalSec(
                 clampServiceStatusPollSec(saved.service_status_poll_interval_sec),
@@ -885,6 +909,7 @@ function App() {
             }
           />
         );
+
       default:
         return null;
     }

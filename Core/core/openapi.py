@@ -483,6 +483,7 @@ def _components() -> dict[str, Any]:
                     "server_port_active": {"type": "integer"},
                     "server_port_source": {"type": "string"},
                     "server_port_restart_required": {"type": "boolean"},
+                    "developer_mode": {"type": "boolean"},
                 },
                 "additionalProperties": True,
             },

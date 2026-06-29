@@ -5,6 +5,7 @@
 interface components {
   schemas: {
     AppSettingsResponse: {
+      developer_mode?: boolean;
       rag_collection?: string;
       server_port?: number;
       server_port_active?: number;

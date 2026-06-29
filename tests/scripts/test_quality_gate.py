@@ -38,7 +38,8 @@ def test_release_gate_keeps_startup_smoke_advisory() -> None:
     assert "startup-smoke-bat" not in [step.name for step in required]
     startup = next(step for step in with_advisory if step.name == "startup-smoke-bat")
     assert startup.required is False
-    assert startup.timeout_seconds == 120
+    assert startup.timeout_seconds == 180
+
 
 
 def test_release_gate_requires_mypy_for_core_domain_typing() -> None:

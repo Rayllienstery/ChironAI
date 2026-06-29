@@ -81,7 +81,6 @@ def main(argv: list[str] | None = None) -> int:
     from rag_service.domain.services.chunking import chunk_quality_ok, split_markdown_into_chunks
 
     from config import get_indexing_int
-
     from core.webui_data_paths import resolve_webui_data_dir
 
     webui_dir = resolve_webui_data_dir(root)

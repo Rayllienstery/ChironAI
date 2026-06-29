@@ -193,9 +193,9 @@ RELEASE_GATE_EXTRA: tuple[GateStep, ...] = (
     ),
     GateStep(
         "startup-smoke-bat",
-        (str(REPO_ROOT / "build_and_run.bat"),),
+        ("powershell", "-ExecutionPolicy", "Bypass", "-File", str(REPO_ROOT / "scripts" / "startup_smoke_bat.ps1")),
         REPO_ROOT,
-        120,
+        180,
         required=False,
     ),
 )

@@ -196,7 +196,9 @@ Recovery:
 - Runtime DB: `logs/webui.db`
 - CoreUI frontend build: `CoreModules/CoreUI/dist/`
 - Startup smoke logs: `tmp/build_and_run_smoke.log` and
-  `tmp/build_and_run_smoke.err.log`
+  `tmp/build_and_run_smoke.err.log` (written by `scripts/startup_smoke_bat.ps1`)
+- Windows startup smoke script: `scripts/startup_smoke_bat.ps1` (starts the
+  server, polls `/api/webui/version`, and exits without stopping the app)
 - RAG test fixtures: `rag_tests/`
 - Proxy journal: persisted rows read by `CoreModules/LogsManager`
 
