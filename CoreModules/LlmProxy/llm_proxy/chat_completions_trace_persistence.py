@@ -27,6 +27,7 @@ def build_proxy_request_log_metadata(
     ollama_chat_stream: bool | None = None,
     sse_single_chunk: bool = False,
     extra_metadata: dict[str, Any] | None = None,
+    trace_chain_id: str = "",
 ) -> dict[str, Any]:
     """Build the metadata dict stored with proxy request logs."""
     metadata: dict[str, Any] = {
@@ -41,6 +42,8 @@ def build_proxy_request_log_metadata(
         "requested_model": requested_model,
         "proxy_backend": proxy_backend,
     }
+    if trace_chain_id:
+        metadata["trace_chain_id"] = trace_chain_id
     if include_rag_fields:
         metadata["rag_context"] = rag_context_data
         metadata["rag_steps"] = rag_timings

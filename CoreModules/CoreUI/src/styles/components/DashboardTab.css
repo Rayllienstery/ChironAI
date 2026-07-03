@@ -1484,7 +1484,7 @@ input.dashboard-card-field {
   font-size: 0.95em;
 }
 
-.proxy-journal-list-item-trace-count {
+.proxy-journal-list-item-step-count {
   display: inline-flex;
   align-items: center;
   margin-left: var(--md-sys-spacing-sm);
@@ -1494,6 +1494,25 @@ input.dashboard-card-field {
   color: var(--md-sys-color-on-surface-variant);
   font: var(--md-sys-typescale-label-small-font);
   white-space: nowrap;
+}
+
+.proxy-journal-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-md);
+  margin-top: var(--md-sys-spacing-md);
+  padding-top: var(--md-sys-spacing-md);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  flex-wrap: wrap;
+}
+
+.proxy-journal-pagination-summary {
+  font: var(--md-sys-typescale-label-medium-font);
+  color: var(--md-sys-color-on-surface-variant);
+  text-align: center;
+  flex: 1;
+  min-width: 12rem;
 }
 
 .proxy-journal-list-item-time {
@@ -1524,14 +1543,14 @@ input.dashboard-card-field {
 }
 
 .proxy-journal-list-item--active .proxy-journal-list-item-trace,
-.proxy-journal-list-item--active .proxy-journal-list-item-trace-count,
+.proxy-journal-list-item--active .proxy-journal-list-item-step-count,
 .proxy-journal-list-item--active .proxy-journal-list-item-stats,
 .proxy-journal-list-item--active .proxy-journal-list-item-time {
   color: var(--md-sys-color-on-primary-container);
   opacity: 0.9;
 }
 
-.proxy-journal-list-item--active .proxy-journal-list-item-trace-count {
+.proxy-journal-list-item--active .proxy-journal-list-item-step-count {
   background: color-mix(in srgb, var(--md-sys-color-on-primary-container) 12%, transparent);
 }
 

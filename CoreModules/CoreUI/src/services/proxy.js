@@ -167,9 +167,10 @@ export async function clearProxyTraces() {
 
 export async function getProxyJournal(options = {}) {
   const params = new URLSearchParams();
-  const { limit, since_id, from, to } = options;
+  const { limit, since_id, offset, from, to } = options;
   if (limit != null) params.set('limit', String(limit));
   if (since_id != null) params.set('since_id', String(since_id));
+  if (offset != null) params.set('offset', String(offset));
   if (from != null && from !== '') params.set('from', from);
   if (to != null && to !== '') params.set('to', to);
   const response = await fetch(`${API_BASE}/proxy-journal?${params}`);

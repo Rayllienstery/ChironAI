@@ -513,7 +513,9 @@ function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
 
       {viewMode === 'traces' && <ProxyTracesTab />}
 
-      {viewMode === 'journal' && <ProxyJournalTab />}
+      <div hidden={viewMode !== 'journal'}>
+        <ProxyJournalTab />
+      </div>
 
       {viewMode !== 'traces' && viewMode !== 'journal' && (
       <div className={`logs-content${viewMode === 'logs' ? ' logs-content--system-table' : ''}`}>

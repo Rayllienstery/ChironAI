@@ -73,6 +73,7 @@ def make_persist_proxy_request_log(
     private_build: bool,
     user_query: str,
     trace_id: str,
+    trace_chain_id: str,
     is_autocomplete: bool,
     requested_model: str,
     dumb_build_pipeline: bool,
@@ -129,13 +130,12 @@ def make_persist_proxy_request_log(
                 ollama_chat_stream=ollama_chat_stream,
                 sse_single_chunk=sse_single_chunk,
                 extra_metadata=extra_metadata,
+                trace_chain_id=trace_chain_id,
             )
-            logs_repo.add_log(
-                session_id="proxy",
-                level="INFO",
+            logs_repo.upsert_proxy_journal_log(
                 message=message,
-                source="proxy",
                 metadata=metadata,
+                trace_chain_id=trace_chain_id,
             )
         except Exception as e:
             _RAG_LOG.warning("Failed to log proxy %s request to database: %s", warn_label, e)

@@ -320,26 +320,44 @@ def register_observability_routes(bp: Blueprint, *, error_log: Any) -> None:
     def get_proxy_journal() -> Any:
         """Persisted proxy request rows only (session_id=proxy)."""
         try:
-            lim_raw = request.args.get("limit", "200")
+            lim_raw = request.args.get("limit", "50")
             limit = max(1, min(5000, int(lim_raw)))
         except (TypeError, ValueError):
-            limit = 200
-        since_id = request.args.get("since_id")
+            limit = 50
+        since_id_val = _parse_since_id_query(request.args.get("since_id"))
+        try:
+            off_raw = request.args.get("offset", "0")
+            offset = max(0, int(off_raw))
+        except (TypeError, ValueError):
+            offset = 0
         from_date = (request.args.get("from") or "").strip() or None
         to_date = (request.args.get("to") or "").strip() or None
         try:
             logs_repo = get_logs_repository()
-            logs = logs_repo.get_logs(
-                session_id="proxy",
-                level="INFO",
+            common_kwargs = {
+                "from_date": from_date,
+                "to_date": to_date,
+            }
+            if since_id_val is not None:
+                logs = logs_repo.get_logs(
+                    session_id="proxy",
+                    level="INFO",
+                    source="proxy",
+                    include_system=False,
+                    from_date=from_date,
+                    to_date=to_date,
+                    limit=limit,
+                    since_id=since_id_val,
+                    newest_first=True,
+                )
+                return jsonify({"ok": True, "logs": logs})
+            logs = logs_repo.get_proxy_journal_groups(
+                **common_kwargs,
                 limit=limit,
-                since_id=int(since_id) if since_id else None,
-                source="proxy",
-                include_system=False,
-                from_date=from_date,
-                to_date=to_date,
+                offset=offset,
             )
-            return jsonify({"ok": True, "logs": logs})
+            total = logs_repo.count_proxy_journal_groups(**common_kwargs)
+            return jsonify({"ok": True, "logs": logs, "total": total, "offset": offset, "limit": limit})
         except Exception as e:
             error_log.error("webui_observability_routes.get_proxy_journal", exc_info=True)
             return jsonify({"ok": False, "logs": [], "error": str(e)}), 500

@@ -210,3 +210,75 @@ def test_notifications_routes_use_observability_repository(monkeypatch: pytest.M
     assert calls["dismiss"] == ("s1", 7)
     assert cleared.status_code == 200
     assert cleared.get_json()["deleted"] == 1
+
+
+def test_proxy_journal_passes_offset_and_returns_total(monkeypatch: pytest.MonkeyPatch) -> None:
+    import api.http.webui_observability_routes as wr
+
+    last_kwargs: dict = {}
+    count_kwargs: dict = {}
+
+    class FakeRepo:
+        def get_proxy_journal_groups(self, **kwargs):
+            last_kwargs.clear()
+            last_kwargs.update(kwargs)
+            return [{"id": 3}, {"id": 2}]
+
+        def count_proxy_journal_groups(self, **kwargs):
+            count_kwargs.clear()
+            count_kwargs.update(kwargs)
+            return 42
+
+        def get_logs(self, **kwargs):
+            return []
+
+        def add_log(self, *args: Any, **kwargs: Any) -> int:
+            return 1
+
+    monkeypatch.setattr(wr, "get_logs_repository", lambda: FakeRepo())
+
+    client = _webui_blueprint_client()
+    r = client.get("/api/webui/proxy-journal?limit=50&offset=50")
+
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["total"] == 42
+    assert body["offset"] == 50
+    assert body["limit"] == 50
+    assert last_kwargs.get("offset") == 50
+
+
+def test_proxy_journal_since_id_skips_total_and_offset(monkeypatch: pytest.MonkeyPatch) -> None:
+    import api.http.webui_observability_routes as wr
+
+    last_kwargs: dict = {}
+    count_called = False
+
+    class FakeRepo:
+        def get_logs(self, **kwargs):
+            last_kwargs.clear()
+            last_kwargs.update(kwargs)
+            return [{"id": 8}]
+
+        def count_logs(self, **kwargs):
+            nonlocal count_called
+            count_called = True
+            return 0
+
+        def add_log(self, *args: Any, **kwargs: Any) -> int:
+            return 1
+
+    monkeypatch.setattr(wr, "get_logs_repository", lambda: FakeRepo())
+
+    client = _webui_blueprint_client()
+    r = client.get("/api/webui/proxy-journal?since_id=7&limit=25")
+
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body == {"ok": True, "logs": [{"id": 8}]}
+    assert last_kwargs.get("since_id") == 7
+    assert last_kwargs.get("newest_first") is True
+    assert "offset" not in last_kwargs or last_kwargs.get("offset", 0) == 0
+    assert count_called is False
+

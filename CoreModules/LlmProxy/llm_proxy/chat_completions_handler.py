@@ -666,6 +666,7 @@ def run_chat_completions(
         private_build=private_build,
         user_query=user_query,
         trace_id=trace_id,
+        trace_chain_id=trace_chain_id,
         is_autocomplete=is_autocomplete,
         requested_model=requested_model,
         dumb_build_pipeline=dumb_build_pipeline,

@@ -4,7 +4,7 @@ import '../styles/components/DashboardTab.css';
 import CoreUIButton from './CoreUIButton';
 import ProxyTraceDetailModal from './ProxyTraceDetailModal';
 
-const JOURNAL_LIMIT = 2000;
+const PAGE_SIZE = 50;
 const JOURNAL_POLL_MS = 3000;
 
 function getDateRangeForJournal(period, selectedDate) {
@@ -71,12 +71,10 @@ function hasImage(meta) {
 function formatLogMessage(msg, meta) {
   let text = meta?.user_query || '';
   if (!text && msg) {
-    // Strip "Proxy request (...): " or "Proxy request: "
     text = msg.replace(/^Proxy request\s*(\([^)]+\))?:\s*/, '');
   }
   if (!text) return '';
 
-  // Remove <environment_details>...</environment_details> tags and their content
   return text.replace(/<environment_details>[\s\S]*?<\/environment_details>/g, '').trim();
 }
 
@@ -89,82 +87,14 @@ function formatJournalTime(timestamp) {
   });
 }
 
-function compactJournalText(text) {
-  return String(text || '').replace(/\s+/g, ' ').trim();
-}
-
-function getJournalTraceId(row, meta = readMetadata(row)) {
-  return meta?.trace_id != null && String(meta.trace_id).trim() !== '' ? String(meta.trace_id) : '';
-}
-
-function getJournalTraceChainId(meta) {
-  const traceRequest = meta?.trace?.request;
-  if (traceRequest && typeof traceRequest === 'object') {
-    const chain = traceRequest.trace_chain_id || traceRequest.client_request_id || traceRequest.incoming_request_id;
-    if (chain != null && String(chain).trim() !== '') return String(chain);
-  }
-  const direct = meta?.trace_chain_id || meta?.client_request_id || meta?.incoming_request_id;
-  return direct != null && String(direct).trim() !== '' ? String(direct) : '';
-}
-
-function getJournalGroupSeed(row, meta = readMetadata(row)) {
-  const chain = getJournalTraceChainId(meta);
-  if (chain) return `chain:${chain}`;
-
-  const rawQuery = compactJournalText(meta?.user_query || '').toLocaleLowerCase();
-  if (!rawQuery) return `row:${row.id}`;
-
-  const backend = String(meta?.proxy_backend || '').trim().toLocaleLowerCase();
-  const model = String(meta?.requested_model || meta?.model || '').trim().toLocaleLowerCase();
-  return `query:${backend}:${model}:${rawQuery}`;
-}
-
-function getJournalGroupKey(row) {
-  return row?._journalGroup?.key || `row:${row?.id ?? ''}`;
-}
-
 function formatJournalValue(value, suffix = '') {
   if (value == null || value === '') return '-';
   return `${value}${suffix}`;
 }
 
-function buildJournalDisplayLogs(logRows) {
-  const sorted = [...logRows].sort((a, b) => a.id - b.id);
-  const bySeed = new Map();
-
-  for (const row of sorted) {
-    const meta = readMetadata(row);
-    const seed = getJournalGroupSeed(row, meta);
-    const current = bySeed.get(seed);
-
-    if (!current) {
-      bySeed.set(seed, {
-        key: `${seed}:${row.id}`,
-        seed,
-        rows: [{ ...row, metadata: meta }],
-      });
-      continue;
-    }
-
-    current.rows.push({ ...row, metadata: meta });
-  }
-
-  return [...bySeed.values()]
-    .map((group) => {
-      const latest = group.rows[group.rows.length - 1];
-      const traceIds = group.rows.map((row) => getJournalTraceId(row, row.metadata)).filter(Boolean);
-      return {
-        ...latest,
-        _journalGroup: {
-          key: group.key,
-          count: group.rows.length,
-          firstTimestamp: group.rows[0]?.timestamp || latest.timestamp,
-          lastTimestamp: latest.timestamp,
-          traceIds,
-        },
-      };
-    })
-    .sort((a, b) => b.id - a.id);
+function getAgentStepCount(meta) {
+  const count = Number(meta?.agent_step_count);
+  return Number.isFinite(count) && count > 0 ? count : 1;
 }
 
 /**
@@ -174,49 +104,69 @@ function buildJournalDisplayLogs(logRows) {
 export default function ProxyJournalTab() {
   const [period, setPeriod] = useState('week');
   const [selectedDate, setSelectedDate] = useState(null);
-  const [logs, setLogs] = useState([]);
+  const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
 
-  const loadJournal = useCallback(
-    async (opts = {}) => {
+  const dateRange = useMemo(
+    () => getDateRangeForJournal(period, selectedDate),
+    [period, selectedDate],
+  );
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE) || 1);
+  const pageStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const pageEnd = total === 0 ? 0 : Math.min(page * PAGE_SIZE, total);
+
+  const loadPage = useCallback(
+    async (targetPage, opts = {}) => {
       const silent = opts.silent === true;
       if (!silent) {
         setLoading(true);
         setErr(null);
       }
       try {
-        const { from, to } = getDateRangeForJournal(period, selectedDate);
+        const { from, to } = dateRange;
         const data = await getProxyJournal({
-          limit: JOURNAL_LIMIT,
+          limit: PAGE_SIZE,
+          offset: (targetPage - 1) * PAGE_SIZE,
           from: from || undefined,
           to: to || undefined,
         });
-        const rows = data.logs || [];
-        setLogs(rows.slice().reverse());
+        setRows(data.logs || []);
+        setTotal(typeof data.total === 'number' ? data.total : (data.logs || []).length);
+        setPage(targetPage);
       } catch (e) {
         if (!silent) {
           setErr(String(e.message || e));
-          setLogs([]);
+          setRows([]);
+          setTotal(0);
         }
       } finally {
         if (!silent) setLoading(false);
       }
     },
-    [period, selectedDate],
+    [dateRange],
   );
 
-  useEffect(() => {
-    loadJournal();
-  }, [loadJournal]);
+  const pollPageOne = useCallback(async () => {
+    if (page !== 1) return;
+    await loadPage(1, { silent: true });
+  }, [page, loadPage]);
 
   useEffect(() => {
+    void loadPage(1);
+  }, [loadPage]);
+
+  useEffect(() => {
+    if (page !== 1) return undefined;
     let cancelled = false;
     const poll = () => {
       if (cancelled || document.visibilityState !== 'visible') return;
-      loadJournal({ silent: true });
+      void pollPageOne();
     };
     poll();
     const t = setInterval(poll, JOURNAL_POLL_MS);
@@ -229,42 +179,25 @@ export default function ProxyJournalTab() {
       clearInterval(t);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [loadJournal]);
-
-  const displayLogs = useMemo(() => buildJournalDisplayLogs(logs), [logs]);
+  }, [page, pollPageOne]);
 
   useEffect(() => {
     if (selectedId == null) return;
-    if (displayLogs.some((r) => r.id === selectedId)) return;
-    const row = logs.find((r) => r.id === selectedId);
-    if (!row) return;
-    const rowKey = getJournalGroupSeed(row, readMetadata(row));
-    const tid = getJournalTraceId(row, readMetadata(row));
-    const next = displayLogs.find((r) => getJournalGroupKey(r).startsWith(`${rowKey}:`)) ||
-      (tid ? displayLogs.find((r) => r.metadata?.trace_id === tid) : null);
-    if (next) setSelectedId(next.id);
-  }, [selectedId, logs, displayLogs]);
-
-  useEffect(() => {
-    if (!detailModalOpen || selectedId == null) return;
-    const still =
-      displayLogs.some((r) => r.id === selectedId) || logs.some((r) => r.id === selectedId);
-    if (!still) {
-      setDetailModalOpen(false);
-      setSelectedId(null);
-    }
-  }, [detailModalOpen, selectedId, displayLogs, logs]);
+    if (rows.some((r) => r.id === selectedId)) return;
+    setDetailModalOpen(false);
+    setSelectedId(null);
+  }, [selectedId, rows]);
 
   const selectedLog = useMemo(
-    () => displayLogs.find((l) => l.id === selectedId) || logs.find((l) => l.id === selectedId) || null,
-    [displayLogs, logs, selectedId],
+    () => rows.find((l) => l.id === selectedId) || null,
+    [rows, selectedId],
   );
 
   const groupedLogs = useMemo(() => {
     const groups = [];
     let currentGroup = null;
 
-    for (const row of displayLogs) {
+    for (const row of rows) {
       const meta = readMetadata(row);
       const date = new Date(row.timestamp);
       const dateStr = date.toLocaleDateString(undefined, {
@@ -280,7 +213,7 @@ export default function ProxyJournalTab() {
       currentGroup.rows.push({ ...row, meta });
     }
     return groups;
-  }, [displayLogs]);
+  }, [rows]);
 
   const clearDb = async () => {
     const msg = 'Delete all persisted RAG Fusion Proxy journal entries from the database?';
@@ -289,7 +222,7 @@ export default function ProxyJournalTab() {
       await clearProxyJournal();
       setSelectedId(null);
       setDetailModalOpen(false);
-      await loadJournal();
+      await loadPage(1);
     } catch (e) {
       setErr(String(e.message || e));
     }
@@ -300,11 +233,18 @@ export default function ProxyJournalTab() {
     setDetailModalOpen(true);
   };
 
+  const goToPage = (nextPage) => {
+    const clamped = Math.min(Math.max(1, nextPage), totalPages);
+    if (clamped === page) return;
+    void loadPage(clamped);
+  };
+
   const journalHeadingId = 'rag-fusion-journal-heading';
   const blurb = (
     <>
-      Persisted proxy requests (SQLite, <code>session_id=proxy</code>). The list refreshes every few seconds while this
-      tab is open. Use the <strong>Traces</strong> subtab for the in-memory buffer. Click a row to open full detail.
+      Persisted proxy requests (SQLite, <code>session_id=proxy</code>), grouped by agent task (
+      <code>trace_chain_id</code>). Page 1 refreshes every few seconds while this tab is open. Use the{' '}
+      <strong>Traces</strong> subtab for the in-memory buffer. Click a row to open the latest step detail.
     </>
   );
 
@@ -320,7 +260,7 @@ export default function ProxyJournalTab() {
                 <span style={{ fontSize: 'var(--md-sys-typescale-label-medium-size)' }}>Fetching data...</span>
               </div>
             )}
-            <CoreUIButton variant="primary" onClick={() => loadJournal()} disabled={loading}>
+            <CoreUIButton variant="primary" onClick={() => loadPage(page)} disabled={loading}>
               Refresh
             </CoreUIButton>
             <CoreUIButton variant="primary" onClick={clearDb}>
@@ -368,57 +308,75 @@ export default function ProxyJournalTab() {
         </div>
 
         {loading && <p className="dashboard-card-muted">Loading…</p>}
-        {!loading && logs.length === 0 && <p className="dashboard-card-muted">No journal entries.</p>}
+        {!loading && rows.length === 0 && <p className="dashboard-card-muted">No journal entries.</p>}
         {!loading && groupedLogs.length > 0 && (
-          <div className="proxy-journal-groups" aria-busy={loading}>
-            {groupedLogs.map((group) => (
-              <div key={group.dateStr} className="proxy-journal-group">
-                <h3 className="proxy-journal-group-title">{group.dateStr}</h3>
-                <ul className="proxy-journal-list">
-                  {group.rows.map((row) => (
-                    <li key={getJournalGroupKey(row)}>
-                      <button
-                        type="button"
-                        onClick={() => openEntry(row.id)}
-                        className={`proxy-journal-list-item${
-                          detailModalOpen && selectedId === row.id ? ' proxy-journal-list-item--active' : ''
-                        }`}
-                      >
-                        <div className="proxy-journal-list-item-header">
-                          <span className="proxy-journal-list-item-msg">{formatLogMessage(row.message, row.meta)}</span>
-                          {hasImage(row.meta) && (
-                            <span className="material-symbols-outlined proxy-journal-list-item-image-icon">
-                              image
-                            </span>
-                          )}
-                        </div>
-                        <div className="proxy-journal-list-item-meta-row">
-                          <span className="proxy-journal-list-item-trace">
-                            trace id: <code>{row.meta?.trace_id ? String(row.meta.trace_id) : '-'}</code>
-                            {row._journalGroup?.count > 1 && (
-                              <span className="proxy-journal-list-item-trace-count">
-                                {row._journalGroup.count} traces
+          <>
+            <div className="proxy-journal-groups" aria-busy={loading}>
+              {groupedLogs.map((group) => (
+                <div key={group.dateStr} className="proxy-journal-group">
+                  <h3 className="proxy-journal-group-title">{group.dateStr}</h3>
+                  <ul className="proxy-journal-list">
+                    {group.rows.map((row) => (
+                      <li key={row.id}>
+                        <button
+                          type="button"
+                          onClick={() => openEntry(row.id)}
+                          className={`proxy-journal-list-item${
+                            detailModalOpen && selectedId === row.id ? ' proxy-journal-list-item--active' : ''
+                          }`}
+                        >
+                          <div className="proxy-journal-list-item-header">
+                            <span className="proxy-journal-list-item-msg">{formatLogMessage(row.message, row.meta)}</span>
+                            {hasImage(row.meta) && (
+                              <span className="material-symbols-outlined proxy-journal-list-item-image-icon">
+                                image
                               </span>
                             )}
-                          </span>
-                          <span className="proxy-journal-list-item-time">{formatJournalTime(row.timestamp)}</span>
-                        </div>
-                        <div className="proxy-journal-list-item-stats" aria-label="Proxy request stats">
-                          <span>
-                            Model: <code>{formatJournalValue(row.meta?.model)}</code>
-                          </span>
-                          <span>Latency: {formatJournalValue(row.meta?.latency_ms, ' ms')}</span>
-                          <span>Prompt tok.: {formatJournalValue(row.meta?.prompt_tokens)}</span>
-                          <span>Completion tok.: {formatJournalValue(row.meta?.completion_tokens)}</span>
-                          <span>Total tok.: {formatJournalValue(row.meta?.total_tokens)}</span>
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
+                          </div>
+                          <div className="proxy-journal-list-item-meta-row">
+                            <span className="proxy-journal-list-item-trace">
+                              trace id: <code>{row.meta?.trace_id ? String(row.meta.trace_id) : '-'}</code>
+                              {getAgentStepCount(row.meta) > 1 && (
+                                <span className="proxy-journal-list-item-step-count">
+                                  {getAgentStepCount(row.meta)} agent steps
+                                </span>
+                              )}
+                            </span>
+                            <span className="proxy-journal-list-item-time">{formatJournalTime(row.timestamp)}</span>
+                          </div>
+                          <div className="proxy-journal-list-item-stats" aria-label="Proxy request stats">
+                            <span>
+                              Model: <code>{formatJournalValue(row.meta?.model)}</code>
+                            </span>
+                            <span>Latency: {formatJournalValue(row.meta?.latency_ms, ' ms')}</span>
+                            <span>Prompt tok.: {formatJournalValue(row.meta?.prompt_tokens)}</span>
+                            <span>Completion tok.: {formatJournalValue(row.meta?.completion_tokens)}</span>
+                            <span>Total tok.: {formatJournalValue(row.meta?.total_tokens)}</span>
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            <div className="proxy-journal-pagination" aria-label="Journal pagination">
+              <CoreUIButton variant="primary" onClick={() => goToPage(page - 1)} disabled={loading || page <= 1}>
+                Previous
+              </CoreUIButton>
+              <span className="proxy-journal-pagination-summary">
+                Page {page} of {totalPages}
+                {total > 0 ? ` · ${pageStart}–${pageEnd} of ${total}` : ''}
+              </span>
+              <CoreUIButton
+                variant="primary"
+                onClick={() => goToPage(page + 1)}
+                disabled={loading || page >= totalPages}
+              >
+                Next
+              </CoreUIButton>
+            </div>
+          </>
         )}
       </section>
 
