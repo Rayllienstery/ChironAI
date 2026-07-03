@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import queue
 import subprocess
@@ -30,6 +31,8 @@ class ExtensionWorkerTimeout(TimeoutError):
 _HOST_CALL_TIMEOUTS: dict[tuple[str, str], float] = {
     ("docker_runtime", "inspect_container"): 1.5,
 }
+
+_log = logging.getLogger("chironai.extensions")
 
 
 def _terminate_process(proc: subprocess.Popen[str]) -> None:
@@ -197,6 +200,53 @@ class ExtensionWorkerClient:
             return []
         return sorted(str(key) for key, value in metadata.items() if callable(value))
 
+    def _extension_id(self) -> str:
+        manifest_id = getattr(self.manifest, "id", None)
+        if manifest_id:
+            return str(manifest_id)
+        data = self._manifest_dict(self.manifest)
+        if isinstance(data, dict) and data.get("id"):
+            return str(data["id"])
+        return self.source_dir.name
+
+    def _log_worker_restarting(
+        self,
+        *,
+        trigger: str,
+        reason: str = "",
+        method: str = "",
+        attempt: int = 0,
+        error: str = "",
+    ) -> None:
+        attempt_text = f"{attempt}/{self.MAX_AUTO_RESTARTS}" if attempt > 0 else "-"
+        _log.info(
+            "extension worker restarting: extension=%s trigger=%s reason=%s method=%s attempt=%s error=%s",
+            self._extension_id(),
+            trigger,
+            reason or "-",
+            method or "-",
+            attempt_text,
+            (error or self.error or "-")[:200],
+        )
+
+    def _log_worker_restarted(self, *, trigger: str) -> None:
+        _log.info(
+            "extension worker restarted: extension=%s trigger=%s pid=%s restart_count=%s",
+            self._extension_id(),
+            trigger,
+            self.pid or "not running",
+            self.restart_count,
+        )
+
+    def _log_worker_blocked(self, *, method: str = "", error: str = "") -> None:
+        _log.warning(
+            "extension worker blocked until manual restart: extension=%s method=%s failures=%s error=%s",
+            self._extension_id(),
+            method or "-",
+            self._consecutive_failures,
+            (error or self.error or "-")[:200],
+        )
+
     def call(self, method: str, params: dict[str, Any] | None = None, *, timeout_sec: float | None = None) -> Any:
         with self._lock:
             if self._blocked:
@@ -212,10 +262,17 @@ class ExtensionWorkerClient:
                     self._consecutive_failures = 0
                     return result
                 except (ExtensionWorkerTimeout, ExtensionWorkerError):
-                    if not self._should_auto_restart():
+                    if not self._should_auto_restart(method=method):
                         raise
                     attempt += 1
-                    self._restart_after_failure()
+                    self._log_worker_restarting(
+                        trigger="auto",
+                        reason=self.status,
+                        method=method,
+                        attempt=attempt,
+                        error=self.error,
+                    )
+                    self._restart_after_failure(trigger="auto")
                     if attempt > self.MAX_AUTO_RESTARTS:
                         raise
 
@@ -233,7 +290,7 @@ class ExtensionWorkerClient:
             self._write({"type": "request", "id": req_id, "method": method, "params": dict(params or {})})
             return self._wait_response(req_id, timeout_sec or self.timeout_sec)
 
-    def _should_auto_restart(self) -> bool:
+    def _should_auto_restart(self, *, method: str = "") -> bool:
         if self._closed or self._blocked or self._manual_stopped:
             return False
         if self.status not in {"crashed", "timeout", "protocol_error"}:
@@ -244,10 +301,11 @@ class ExtensionWorkerClient:
             self.status = "blocked"
             if not self.error:
                 self.error = "extension worker failed repeatedly and is blocked until manual restart"
+            self._log_worker_blocked(method=method, error=self.error)
             return False
         return True
 
-    def _restart_after_failure(self) -> None:
+    def _restart_after_failure(self, *, trigger: str = "auto") -> None:
         previous_error = self.error
         self._shutdown_process()
         self.status = "restarting"
@@ -257,6 +315,7 @@ class ExtensionWorkerClient:
             self.status = "ready"
             self.error = ""
             self._manual_stopped = False
+            self._log_worker_restarted(trigger=trigger)
         except Exception as e:
             self.status = "crashed"
             self.error = f"{type(e).__name__}: {e}" if str(e) else previous_error
@@ -450,6 +509,7 @@ class ExtensionWorkerClient:
             self._consecutive_failures = 0
             self.error = ""
             self.status = "restarting"
+            self._log_worker_restarting(trigger="manual", reason="manual")
             self._shutdown_process(send_shutdown=False)
             self._start_worker(increment_restart_count=True)
             try:
@@ -460,6 +520,7 @@ class ExtensionWorkerClient:
                 self._shutdown_process(send_shutdown=False)
                 raise
             self.status = "ready"
+            self._log_worker_restarted(trigger="manual")
 
     def _shutdown_process(self, *, send_shutdown: bool = False) -> None:
         proc = self._proc

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import time
 from typing import Any
 
@@ -10,11 +9,8 @@ from flask import Flask, Response, g, request
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Histogram, generate_latest
 
 from core.shared.correlation import resolve_correlation_id
-from infrastructure.logging.structured import configure_structured_logger
 from infrastructure.metrics import histogram as record_histogram
 from infrastructure.metrics import increment as record_increment
-
-_log = configure_structured_logger(logging.getLogger("chironai.http"))
 
 
 def _endpoint_label() -> str:
@@ -71,16 +67,6 @@ def register_metrics_routes(app: Flask) -> None:
         record_increment("http_requests_total", tags={"method": method, "endpoint": endpoint, "status": status})
         record_histogram("http_request_duration_seconds", duration, tags={"method": method, "endpoint": endpoint})
         response.headers.setdefault("X-Request-Id", str(getattr(g, "request_id", "")))
-        _log.info(
-            "http_request",
-            extra={
-                "component": "api.http",
-                "request_id": str(getattr(g, "request_id", "")),
-                "trace_id": request.headers.get("X-Trace-Id", str(getattr(g, "request_id", ""))),
-                "operation": endpoint,
-                "status": status,
-            },
-        )
         return response
 
     @app.get("/metrics")

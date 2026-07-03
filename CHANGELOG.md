@@ -1,6 +1,15 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.6] - 2026-07-03
+### Added
+- Extension sandbox workers now log auto and manual restarts to the terminal
+  (`chironai.extensions`), including block events after repeated failures.
+
+### Changed
+- Removed per-request `chironai.http` JSON access logs from the terminal to reduce
+  polling noise from CoreUI status endpoints while keeping Prometheus metrics.
+
 ## [0.8.5] - 2026-06-29
 ### Added
 - Added a "Developer Mode" toggle in Settings that persists to app settings and defaults to off.
