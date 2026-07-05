@@ -117,6 +117,35 @@ export async function getVersion() {
   return data;
 }
 
+export async function getHelpArticles() {
+  const response = await fetch(`${API_BASE}/help`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(extractApiError(data, 'Failed to list help articles'));
+  }
+  return data;
+}
+
+export async function getHelpArticle(slug) {
+  const normalized = encodeURIComponent(String(slug || '').trim());
+  const response = await fetch(`${API_BASE}/help/${normalized}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(extractApiError(data, 'Failed to load help article'));
+  }
+  return data;
+}
+
+export async function searchHelpArticles(query) {
+  const params = new URLSearchParams({ q: String(query || '').trim() });
+  const response = await fetch(`${API_BASE}/help/search?${params}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(extractApiError(data, 'Failed to search help'));
+  }
+  return data;
+}
+
 export async function getSession({ maxRetries = 3, baseDelayMs = 500, timeoutMs = 1500 } = {}) {
   let url = `${API_BASE}/sessions`;
   try {

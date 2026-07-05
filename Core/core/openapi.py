@@ -75,6 +75,18 @@ _OPERATION_DETAILS: dict[tuple[str, str], dict[str, str]] = {
         "summary": "Get application version",
         "description": "Returns the canonical ChironAI version, release stage, display name, and latest changelog entry used by CoreUI startup.",
     },
+    ("/api/webui/help", "GET"): {
+        "summary": "List help articles",
+        "description": "Returns the in-app help knowledge base index (slug, title, tags) for CoreUI Help.",
+    },
+    ("/api/webui/help/{slug}", "GET"): {
+        "summary": "Get help article",
+        "description": "Returns one bundled markdown help article by slug.",
+    },
+    ("/api/webui/help/search", "GET"): {
+        "summary": "Search help articles",
+        "description": "Searches help titles, tags, and bodies. Query parameter ``q`` is required.",
+    },
     ("/api/webui/sessions", "GET"): {
         "summary": "Create or resume CoreUI session",
         "description": "Returns a session id for browser-local CoreUI state. A supplied session_id query parameter is reused when valid.",

@@ -103,6 +103,7 @@ const LAZY_MODULES = {
   ExtensionRuntimeTab: () => import("./components/ExtensionRuntimeTab"),
   DockerTab: () => import("./components/DockerTab"),
   TokensSecurityTab: () => import("./components/TokensSecurityTab"),
+  HelpTab: () => import("./components/help/HelpTab"),
 };
 
 const TAB_MODULE_KEYS = {
@@ -121,6 +122,7 @@ const TAB_MODULE_KEYS = {
   swagger: "SwaggerTab",
   docker: "DockerTab",
   "tokens-security": "TokensSecurityTab",
+  help: "HelpTab",
 };
 
 const IDLE_PREFETCH_TAB_IDS = [
@@ -166,6 +168,7 @@ const SwaggerTab = lazyWithRetry("SwaggerTab", LAZY_MODULES.SwaggerTab);
 const ExtensionRuntimeTab = lazyWithRetry("ExtensionRuntimeTab", LAZY_MODULES.ExtensionRuntimeTab);
 const DockerTab = lazyWithRetry("DockerTab", LAZY_MODULES.DockerTab);
 const TokensSecurityTab = lazyWithRetry("TokensSecurityTab", LAZY_MODULES.TokensSecurityTab);
+const HelpTab = lazyWithRetry("HelpTab", LAZY_MODULES.HelpTab);
 
 import DockerTabIcon from "./assets/docker-mark.svg?url";
 import Card from "./components/Card";
@@ -282,6 +285,7 @@ function App() {
   const [darkAccent, setDarkAccent] = useState("cyan");
   const [developerMode, setDeveloperMode] = useState(false);
   const [locale, setLocaleState] = useState(getLocale());
+  const [helpInitialSlug, setHelpInitialSlug] = useState(null);
 
   const [ragStatusInfo, setRagStatusInfo] = useState({
     running: null,
@@ -791,6 +795,7 @@ function App() {
     { id: "tokens-security", label: t("nav.tokens_security"), section: "Main" },
     { id: "logs", label: t("nav.logs"), section: "Main" },
     { id: "dependencies", label: t("nav.dependencies"), section: "Main" },
+    { id: "help", label: t("nav.help"), section: "Main", icon: "help" },
     { id: "llm-proxy", label: t("nav.llm_proxy"), section: "Core Functionality" },
     { id: "rag-fusion-proxy", label: t("nav.rag_fusion_proxy"), section: "Core Functionality" },
     { id: "template-editor", label: t("nav.template_editor"), section: "Core Functionality" },
@@ -814,6 +819,19 @@ function App() {
     ? allTabs
     : allTabs.filter((tab) => tab.section !== "Developer Tools");
   const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || activeTab;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const slug = String(params.get("help") || "").trim().toLowerCase();
+    if (!slug) return;
+    setHelpInitialSlug(slug);
+    setActiveTab("help");
+    params.delete("help");
+    const query = params.toString();
+    const next = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash || ""}`;
+    window.history.replaceState({}, "", next);
+  }, []);
 
   useEffect(() => {
     if (!developerMode && DEVELOPER_TOOL_TAB_IDS.includes(activeTab)) {
@@ -910,6 +928,13 @@ function App() {
         );
       case "template-editor":
         return <TemplateEditorTab />;
+      case "help":
+        return (
+          <HelpTab
+            initialSlug={helpInitialSlug}
+            onInitialSlugConsumed={() => setHelpInitialSlug(null)}
+          />
+        );
       case "coreui-showcase":
         return <CoreUIShowcaseTab />;
       case "settings":

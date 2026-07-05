@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "articles": [
+    {
+      "id": "getting-started",
+      "title": "Getting Started",
+      "slug": "getting-started",
+      "tags": ["intro", "setup"],
+      "file": "getting-started.md"
+    },
+    {
+      "id": "builds",
+      "title": "LLM Proxy Builds",
+      "slug": "builds",
+      "tags": ["builds", "proxy", "models"],
+      "file": "builds.md"
+    },
+    {
+      "id": "rag-collections",
+      "title": "RAG Collections",
+      "slug": "rag-collections",
+      "tags": ["rag", "qdrant", "retrieval"],
+      "file": "rag-collections.md"
+    },
+    {
+      "id": "providers",
+      "title": "Providers",
+      "slug": "providers",
+      "tags": ["providers", "ollama", "extensions"],
+      "file": "providers.md"
+    },
+    {
+      "id": "extensions",
+      "title": "Extensions",
+      "slug": "extensions",
+      "tags": ["extensions", "providers"],
+      "file": "extensions.md"
+    },
+    {
+      "id": "indexing",
+      "title": "Indexing Content",
+      "slug": "indexing",
+      "tags": ["crawler", "indexing", "qdrant"],
+      "file": "indexing.md"
+    },
+    {
+      "id": "troubleshooting",
+      "title": "Troubleshooting",
+      "slug": "troubleshooting",
+      "tags": ["errors", "support"],
+      "file": "troubleshooting.md"
+    }
+  ]
+}

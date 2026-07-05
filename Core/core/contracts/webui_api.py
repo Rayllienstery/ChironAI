@@ -43,6 +43,47 @@ class VersionResponse(TypedDict, total=False):
 VERSION_RESPONSE_KEYS = frozenset({"version", "app_name", "stage", "changelog", "display_name"})
 
 
+# --- Help KB -----------------------------------------------------------------
+
+class HelpArticleIndexEntry(TypedDict):
+    """One row in GET /help ``articles`` array."""
+
+    id: str
+    slug: str
+    title: str
+    tags: list[str]
+    file: str
+
+
+class HelpListResponse(TypedDict):
+    """GET /help — in-app knowledge base index."""
+
+    articles: list[HelpArticleIndexEntry]
+
+
+class HelpArticleResponse(TypedDict):
+    """GET /help/{slug} — one markdown article."""
+
+    id: str
+    slug: str
+    title: str
+    tags: list[str]
+    content: str
+
+
+class HelpSearchResult(TypedDict):
+    slug: str
+    title: str
+    tags: list[str]
+    snippet: str
+
+
+class HelpSearchResponse(TypedDict, total=False):
+    query: str
+    results: list[HelpSearchResult]
+    error: str
+
+
 # --- Session -----------------------------------------------------------------
 
 class SessionResponse(TypedDict, total=False):
@@ -499,5 +540,10 @@ __all__ = [
     "DependencyJobDTO",
     "DependencyJobResponse",
     "DependencyProgressEntryDTO",
+    "HelpArticleIndexEntry",
+    "HelpArticleResponse",
+    "HelpListResponse",
+    "HelpSearchResponse",
+    "HelpSearchResult",
     "webui_abs_path",
 ]

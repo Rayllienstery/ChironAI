@@ -4,7 +4,7 @@
 
 - OpenAPI: `3.1.0`
 - Version: `0.8.9`
-- Paths: `127`
+- Paths: `130`
 
 Chiron AI BETA OpenAPI description generated from Flask routes.
 
@@ -1186,6 +1186,62 @@ Returns aggregate health for the local proxy host and required runtime services.
 - Operation ID: `health_get`
 - Flask endpoint: `health`
 - Request body: `-`
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | OK | application/json: GenericObject |
+
+### Help
+
+#### `GET /api/webui/help`
+
+**Summary:** List help articles
+
+Returns the in-app help knowledge base index (slug, title, tags) for CoreUI Help.
+
+- Operation ID: `webui_list_help_articles_get`
+- Flask endpoint: `webui.list_help_articles`
+- Request body: `-`
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | OK | application/json: GenericObject |
+
+#### `GET /api/webui/help/search`
+
+**Summary:** Search help articles
+
+Searches help titles, tags, and bodies. Query parameter ``q`` is required.
+
+- Operation ID: `webui_search_help_articles_get`
+- Flask endpoint: `webui.search_help_articles`
+- Request body: `-`
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | OK | application/json: GenericObject |
+
+#### `GET /api/webui/help/{slug}`
+
+**Summary:** Get help article
+
+Returns one bundled markdown help article by slug.
+
+- Operation ID: `webui_get_help_article_get`
+- Flask endpoint: `webui.get_help_article`
+- Request body: `-`
+
+Parameters:
+
+| Name | In | Required | Schema |
+|------|----|----------|--------|
+| slug | path | True | string |
 
 Responses:
 

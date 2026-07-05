@@ -917,6 +917,37 @@ export interface paths {
       };
     };
   };
+  "/api/webui/help": {
+    get: {
+      parameters: never;
+      requestBody: never;
+      responses: {
+        "200": components["schemas"]["GenericObject"];
+      };
+    };
+  };
+  "/api/webui/help/search": {
+    get: {
+      parameters: never;
+      requestBody: never;
+      responses: {
+        "200": components["schemas"]["GenericObject"];
+      };
+    };
+  };
+  "/api/webui/help/{slug}": {
+    get: {
+      parameters: {
+        path: {
+          slug: string;
+        };
+      };
+      requestBody: never;
+      responses: {
+        "200": components["schemas"]["GenericObject"];
+      };
+    };
+  };
   "/api/webui/llm-proxy/api-key": {
     delete: {
       parameters: never;

@@ -2,6 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 ## [0.8.9] - 2026-07-05
+### Added
+- Added in-app Help knowledge base: `/api/webui/help` routes, bundled markdown articles, CoreUI Help tab, search, and `?help=` deep links.
+
 ### Fixed
 - Mapped OpenCode `/v1/responses` `input_image` parts to OpenAI multipart `image_url` content so vision-capable Ollama models receive `images[]` on image turns.
 

@@ -7,6 +7,7 @@
   "nav.docker": "Docker",
   "nav.tokens_security": "Токены и безопасность",
   "nav.dependencies": "Зависимости",
+  "nav.help": "Справка",
   "nav.llm_proxy": "Сборки LLM Proxy",
   "nav.rag_fusion_proxy": "RAG Fusion Proxy",
   "nav.template_editor": "Редактор шаблонов",
