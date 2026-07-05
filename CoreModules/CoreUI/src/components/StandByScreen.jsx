@@ -1,3 +1,5 @@
+import M3LoadingIndicator from "./M3LoadingIndicator";
+
 /**
  * Renders a centered, branded standby/loading screen with a pulsing
  * animation and a label suitable for `aria-live` regions.
@@ -22,11 +24,11 @@ export default function StandByScreen({
   return (
     <div className={`standby-screen ${sizeClass}`} aria-live="polite">
       <div className="standby-card" role="status" aria-label={loadingLabel}>
-        <div className="standby-loading-indicator" aria-hidden="true">
-          <span className="standby-loading-shape standby-loading-shape--one" />
-          <span className="standby-loading-shape standby-loading-shape--two" />
-          <span className="standby-loading-shape standby-loading-shape--three" />
-        </div>
+        <M3LoadingIndicator
+          size={size}
+          className="standby-m3-loading-indicator"
+          aria-hidden="true"
+        />
 
         <div className="standby-copy">
           {brand && (
@@ -36,21 +38,9 @@ export default function StandByScreen({
           <span className="standby-message">{message}</span>
         </div>
 
-        <div className="standby-progress-stack">
-          <div
-            className="standby-progress"
-            role="progressbar"
-            aria-label={loadingLabel}
-            aria-valuetext={moduleName ? loadingLabel : submessage || message}
-          >
-            <span className="standby-progress-fill standby-progress-fill--lead" />
-            <span className="standby-progress-fill standby-progress-fill--trail" />
-          </div>
-
-          <div className="standby-progress-meta">
-            <span className="standby-module-label">Loading module</span>
-            <span className="standby-module-name">{moduleName || "CoreUI"}</span>
-          </div>
+        <div className="standby-module-meta">
+          <span className="standby-module-label">Loading module</span>
+          <span className="standby-module-name">{moduleName || "CoreUI"}</span>
         </div>
 
         {submessage && (

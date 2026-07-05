@@ -143,11 +143,14 @@ export function NotificationCenterProvider({ sessionId, children }) {
 
   const clearPersisted = useCallback(async () => {
     if (!sessionId) return;
+    // Optimistically empty the UI immediately; delete from DB in the background.
+    setPersisted([]);
     try {
       await clearCoreuiNotifications(sessionId);
-      await refreshPersisted();
     } catch (e) {
       console.error('NotificationCenter: clear failed', e);
+      // Refresh on failure to avoid losing notifications that arrived while clearing.
+      await refreshPersisted();
     }
   }, [sessionId, refreshPersisted]);
 

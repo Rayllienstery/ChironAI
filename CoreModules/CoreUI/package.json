@@ -26,6 +26,7 @@
     "knip": "knip"
   },
   "dependencies": {
+    "@alerix/m3-loading-indicator": "^1.0.5",
     "@fontsource/material-symbols-outlined": "^5.2.45",
     "dompurify": "^3.4.10",
     "highlight.js": "^11.11.1",

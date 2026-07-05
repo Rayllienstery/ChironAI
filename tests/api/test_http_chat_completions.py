@@ -2496,6 +2496,63 @@ def test_v1_responses_route_maps_to_chat_and_returns_response_json(
     assert msgs[0].get("content") == "Hi"
 
 
+def test_v1_responses_route_maps_input_image_to_chat_multipart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import llm_proxy.v1_blueprint as v1_blueprint
+    from flask import jsonify
+
+    import api.http.rag_routes as rag_routes
+
+    png_b64 = "aW1hZ2UtYnl0ZXM="
+    data_url = f"data:image/png;base64,{png_b64}"
+    captured: dict[str, Any] = {}
+
+    def fake_chat_completions(_wiring, body_override=None):
+        captured["body_override"] = body_override
+        return jsonify(
+            {
+                "id": "chatcmpl_test",
+                "object": "chat.completion",
+                "created": 123,
+                "model": "Hard-worker",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": "icon ok"}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            }
+        )
+
+    monkeypatch.setattr(v1_blueprint, "run_chat_completions", fake_chat_completions)
+
+    app = rag_routes.create_app()
+    r = app.test_client().post(
+        "/v1/responses",
+        json={
+            "model": "Hard-worker",
+            "input": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": "what is on the icon"},
+                        {"type": "input_image", "image_url": data_url},
+                    ],
+                }
+            ],
+        },
+    )
+    assert r.status_code == 200
+    msgs = (captured.get("body_override") or {}).get("messages") or []
+    assert len(msgs) == 1
+    content = msgs[0].get("content")
+    assert isinstance(content, list)
+    assert any(
+        isinstance(p, dict)
+        and p.get("type") == "image_url"
+        and (p.get("image_url") or {}).get("url") == data_url
+        for p in content
+    )
+
+
 def test_v1_responses_tools_normalizer_maps_local_shell_and_custom_to_function() -> None:
     import llm_proxy.v1_blueprint as v1_blueprint
 

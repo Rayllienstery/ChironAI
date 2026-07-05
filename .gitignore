@@ -131,6 +131,7 @@ Core/data/webui/last_collection.txt
 tests/_tmp_*
 tests/*.tmp
 PROJECT_EVALUATION.md
+Pre-Release.md
 *.db
 *.sqlite
 *.sqlite3

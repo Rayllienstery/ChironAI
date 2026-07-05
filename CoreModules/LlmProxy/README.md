@@ -29,9 +29,11 @@ and legacy `/v1/completions` are no longer registered by the core proxy.
 Ollama-native behavior belongs in `chironai-extension-ollama-provider`
 (`extensions/bundled/ollama-provider` is the trusted bootstrap/offline mirror).
 
-### Vision (multimodal images) on `POST /v1/chat/completions`
+### Vision (multimodal images) on `POST /v1/chat/completions` and `POST /v1/responses`
 
 OpenAI-style user messages may use multipart `content`: an array of `{ "type": "text", "text": "..." }` and `{ "type": "image_url", "image_url": { "url": "..." } }`. AI SDK/OpenCode-style image parts such as `{ "type": "file", "mediaType": "image/png", "data": "..." }` and `{ "type": "image", "mediaType": "image/png", "image": "..." }` are normalized to the same image path.
+
+**Client routing:** Kilo Code and other `openai-compatible` clients typically call **`POST /v1/chat/completions`**. OpenCode and other Responses API clients call **`POST /v1/responses`** with `input` items such as `{ "type": "input_text", "text": "..." }` and `{ "type": "input_image", "image_url": "data:image/...;base64,..." }` (or a nested `{ "url": "..." }` object). The proxy maps those `input_image` parts to the same OpenAI multipart `image_url` path before forwarding to Ollama.
 
 - **Supported toward Ollama:** `image_url.url` values that are **`data:image/...;base64,...`** data URLs. The proxy validates and forwards them as Ollama’s native **`images`** array on the same user message (base64 payload after `base64,`), with adjacent text in **`content`**.
 - **Inline paste in text (user turns):** before sanitisation, the proxy **promotes** any valid `data:image/...;base64,...` substring inside user string `content` or inside user `type: "text"` parts into proper `image_url` parts so they survive the pipeline and populate Ollama `images` (see `promote_inline_data_image_urls_in_content` in [`rag_service.infrastructure.openai_multipart_vision`](../RagService/rag_service/infrastructure/openai_multipart_vision.py)).
@@ -47,7 +49,15 @@ Proxy traces expose **`images_count`** per Ollama message when `images` is prese
 
 #### Troubleshooting: `ERROR: Cannot read "image.png" (this model does not support image input)`
 
-If you see that string inside the **user message** (as opposed to an HTTP error response), it means the **client** failed to attach/read the local image before sending the request. The proxy cannot read `image.png` from the user’s machine via a file path in text. To send an image through `POST /v1/chat/completions`, the client must include multipart `content` with an `image_url.url` that is a `data:image/...;base64,...` data URL.
+If you see that string inside the **user message** (as opposed to an HTTP error response), it means the **client** failed to attach/read the local image before sending the request. The proxy cannot read `image.png` from the user’s machine via a file path in text. To send an image through `POST /v1/chat/completions` or `POST /v1/responses`, the client must include a `data:image/...;base64,...` data URL (as `image_url` in chat/completions or `input_image.image_url` in responses).
+
+**OpenCode (`@ai-sdk/openai-compatible`):** custom models default to text-only unless you declare `modalities` in `~/.config/opencode/opencode.jsonc`. Without `"input": ["text", "image"]`, OpenCode strips attachments client-side before the proxy sees them. Regenerate a working config from current WebUI builds + proxy key:
+
+```bash
+python scripts/configure_opencode_chiron_vision.py
+```
+
+Then restart OpenCode and pick a build id (e.g. `Hard-worker`) under the `chiron` provider.
 
 #### Vision flags
 

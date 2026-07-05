@@ -58,6 +58,44 @@ html, body {
   gap: var(--md-sys-spacing-sm);
 }
 
+.app-version {
+  margin-left: auto;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.app-header-social-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--md-sys-color-on-surface-variant);
+  text-decoration: none;
+  border-radius: var(--md-sys-shape-corner-small);
+  transition: color 0.18s ease, background-color 0.18s ease;
+}
+
+.app-header-social-link:hover,
+.app-header-social-link:focus-visible {
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.app-header-social-link:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 1px;
+}
+
+.app-header-social-icon {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
 .app-card {
   background: var(--app-card-bg, var(--md-sys-color-surface)) !important;
   border: none !important;

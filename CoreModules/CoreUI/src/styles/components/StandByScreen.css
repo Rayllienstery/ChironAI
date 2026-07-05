@@ -39,11 +39,6 @@
   gap: 12px;
 }
 
-.standby--sm .standby-loading-indicator {
-  width: 48px;
-  height: 40px;
-}
-
 .standby--sm .standby-message {
   font: var(--md-sys-typescale-body-small-font);
 }
@@ -68,11 +63,6 @@
   width: min(100%, 460px);
   padding: 32px;
   gap: 22px;
-}
-
-.standby--lg .standby-loading-indicator {
-  width: 72px;
-  height: 56px;
 }
 
 .standby--lg .standby-message {
@@ -109,47 +99,9 @@
   user-select: none;
 }
 
-.standby-loading-indicator {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 64px;
-  height: 50px;
-  isolation: isolate;
-}
-
-.standby-loading-shape {
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: var(--md-sys-color-primary);
-  transform-origin: center;
-  animation:
-    standby-loading-orbit 1.65s cubic-bezier(0.2, 0, 0, 1) infinite,
-    standby-loading-morph 1.65s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-
-.standby-loading-shape--one {
-  --standby-shape-x: -18px;
-  --standby-shape-y: 1px;
-  animation-delay: 0s;
-}
-
-.standby-loading-shape--two {
-  --standby-shape-x: 0px;
-  --standby-shape-y: -4px;
-  width: 22px;
-  height: 22px;
-  background: var(--md-sys-color-secondary, var(--md-sys-color-primary));
-  animation-delay: -0.22s;
-}
-
-.standby-loading-shape--three {
-  --standby-shape-x: 18px;
-  --standby-shape-y: 1px;
-  background: var(--md-sys-color-tertiary, var(--md-sys-color-primary));
-  animation-delay: -0.44s;
+.standby-m3-loading-indicator {
+  display: block;
+  flex-shrink: 0;
 }
 
 .standby-copy {
@@ -178,46 +130,12 @@
   margin-top: -4px;
 }
 
-.standby-progress-stack {
-  display: grid;
-  width: min(100%, 280px);
-  gap: 12px;
-}
-
-.standby-progress {
-  position: relative;
-  width: 100%;
-  height: 8px;
-  overflow: hidden;
-  border-radius: var(--md-sys-shape-corner-full);
-  background: color-mix(in srgb, var(--md-sys-color-primary) 14%, var(--md-sys-color-surface-container-highest));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
-}
-
-.standby-progress-fill {
-  position: absolute;
-  inset-block: 0;
-  border-radius: inherit;
-  background: var(--md-sys-color-primary);
-  transform-origin: left center;
-}
-
-.standby-progress-fill--lead {
-  width: 44%;
-  animation: standby-progress-lead 1.9s cubic-bezier(0.2, 0, 0, 1) infinite;
-}
-
-.standby-progress-fill--trail {
-  width: 24%;
-  opacity: 0.72;
-  animation: standby-progress-trail 1.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-
-.standby-progress-meta {
+.standby-module-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  width: min(100%, 280px);
 }
 
 .standby-module-label {
@@ -238,68 +156,13 @@
   overflow-wrap: anywhere;
 }
 
-@keyframes standby-loading-orbit {
-  0% {
-    transform: translate(var(--standby-shape-x), var(--standby-shape-y)) scale(0.72) rotate(0deg);
-  }
-  38% {
-    transform: translate(calc(var(--standby-shape-x) * 0.18), calc(var(--standby-shape-y) - 8px)) scale(1.08) rotate(120deg);
-  }
-  68% {
-    transform: translate(calc(var(--standby-shape-x) * -0.72), calc(var(--standby-shape-y) + 5px)) scale(0.92) rotate(240deg);
-  }
-  100% {
-    transform: translate(var(--standby-shape-x), var(--standby-shape-y)) scale(0.72) rotate(360deg);
-  }
-}
-
-@keyframes standby-loading-morph {
-  0%,
-  100% {
-    border-radius: 999px;
-    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
-  }
-  32% {
-    border-radius: 7px;
-    clip-path: polygon(20% 0%, 80% 0%, 100% 50%, 80% 100%, 20% 100%, 0% 50%);
-  }
-  64% {
-    border-radius: 999px;
-    clip-path: polygon(50% 0%, 92% 25%, 92% 75%, 50% 100%, 8% 75%, 8% 25%);
-  }
-}
-
-@keyframes standby-progress-lead {
-  0% {
-    transform: translateX(-120%) scaleX(0.72);
-  }
-  48% {
-    transform: translateX(62%) scaleX(1);
-  }
-  100% {
-    transform: translateX(255%) scaleX(0.76);
-  }
-}
-
-@keyframes standby-progress-trail {
-  0% {
-    transform: translateX(-160%) scaleX(0.5);
-  }
-  58% {
-    transform: translateX(112%) scaleX(0.92);
-  }
-  100% {
-    transform: translateX(390%) scaleX(0.48);
-  }
-}
-
 @media (max-width: 520px) {
   .standby-card {
     width: min(100%, 320px);
     padding: 24px;
   }
 
-  .standby-progress-meta {
+  .standby-module-meta {
     align-items: stretch;
     flex-direction: column;
     gap: 8px;

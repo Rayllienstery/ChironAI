@@ -9,6 +9,8 @@ from typing import Any
 
 from flask import Response
 
+from llm_proxy.openai_multipart_vision import _part_to_image_url
+
 _RESPONSES_HISTORY: dict[str, list[dict[str, Any]]] = {}
 _RESPONSES_CHAIN_IDS: dict[str, str] = {}
 _RESPONSES_HISTORY_MAX = 200
@@ -74,6 +76,83 @@ def _responses_content_to_text(content: Any) -> str:
     return ""
 
 
+_NOTE_FILE_ID = "[Image omitted: Responses file_id references are not resolved by the proxy.]"
+
+
+def _responses_image_url_from_input_image(part: dict[str, Any]) -> str:
+    iu = part.get("image_url")
+    if isinstance(iu, str):
+        return iu.strip()
+    if isinstance(iu, dict):
+        return str(iu.get("url") or "").strip()
+    return ""
+
+
+def _responses_content_part_to_openai(part: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(part, dict):
+        return None
+    ptype = str(part.get("type") or "").strip()
+    if ptype in {"input_text", "output_text", "text"}:
+        text = part.get("text")
+        if isinstance(text, str) and text.strip():
+            return {"type": "text", "text": text}
+        return None
+    if ptype == "input_image":
+        url = _responses_image_url_from_input_image(part)
+        if url:
+            return {"type": "image_url", "image_url": {"url": url}}
+        file_id = str(part.get("file_id") or "").strip()
+        if file_id:
+            return {"type": "text", "text": _NOTE_FILE_ID}
+        return None
+    url = _part_to_image_url(part)
+    if url:
+        return {"type": "image_url", "image_url": {"url": url}}
+    return None
+
+
+def _responses_content_to_openai_user_content(content: Any) -> str | list[dict[str, Any]] | None:
+    """Map Responses API user content (text + input_image) to OpenAI chat content."""
+    if isinstance(content, str):
+        return content if content.strip() else None
+    if isinstance(content, list):
+        parts: list[dict[str, Any]] = []
+        for part in content:
+            converted = _responses_content_part_to_openai(part)
+            if converted is not None:
+                parts.append(converted)
+        if not parts:
+            return None
+        if any(p.get("type") == "image_url" for p in parts):
+            return parts
+        texts = [str(p.get("text") or "") for p in parts if p.get("type") == "text"]
+        merged = "".join(texts)
+        return merged if merged else None
+    return None
+
+
+def _responses_merge_image_into_last_user(
+    out: list[dict[str, Any]],
+    image_part: dict[str, Any],
+) -> None:
+    """Attach a standalone Responses image part to the latest user message when possible."""
+    if not out:
+        out.append({"role": "user", "content": [image_part]})
+        return
+    last = out[-1]
+    if str(last.get("role") or "").strip() != "user":
+        out.append({"role": "user", "content": [image_part]})
+        return
+    content = last.get("content")
+    if isinstance(content, list):
+        last["content"] = [*content, image_part]
+        return
+    if isinstance(content, str) and content.strip():
+        last["content"] = [{"type": "text", "text": content}, image_part]
+        return
+    last["content"] = [image_part]
+
+
 def _responses_input_to_openai_messages(raw_input: Any) -> list[dict[str, Any]]:
     if isinstance(raw_input, str):
         return [{"role": "user", "content": raw_input}]
@@ -131,19 +210,24 @@ def _responses_input_to_openai_messages(raw_input: Any) -> list[dict[str, Any]]:
                 msg["tool_name"] = tool_name
             out.append(msg)
             continue
+        if itype == "input_image":
+            image_part = _responses_content_part_to_openai(item)
+            if image_part is not None:
+                _responses_merge_image_into_last_user(out, image_part)
+            continue
         if itype == "message":
             role = str(item.get("role") or "user").strip() or "user"
             if role not in {"system", "user", "assistant", "tool"}:
                 role = "user"
-            text = _responses_content_to_text(item.get("content"))
-            if text:
-                out.append({"role": role, "content": text})
+            content = _responses_content_to_openai_user_content(item.get("content"))
+            if content is not None:
+                out.append({"role": role, "content": content})
             continue
         role = str(item.get("role") or "").strip()
         if role:
-            text = _responses_content_to_text(item.get("content"))
-            if text:
-                out.append({"role": role, "content": text})
+            content = _responses_content_to_openai_user_content(item.get("content"))
+            if content is not None:
+                out.append({"role": role, "content": content})
     return out
 
 
@@ -752,8 +836,11 @@ __all__ = [
     "_chat_message_to_responses_output_items",
     "_responses_chain_id_for_request",
     "_responses_chain_id_put",
+    "_responses_content_part_to_openai",
+    "_responses_content_to_openai_user_content",
     "_responses_content_to_text",
     "_responses_explicit_chain_id",
+    "_responses_merge_image_into_last_user",
     "_responses_history_put",
     "_responses_input_to_openai_messages",
     "_responses_normalize_tools",

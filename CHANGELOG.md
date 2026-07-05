@@ -1,6 +1,18 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.9] - 2026-07-05
+### Fixed
+- Mapped OpenCode `/v1/responses` `input_image` parts to OpenAI multipart `image_url` content so vision-capable Ollama models receive `images[]` on image turns.
+
+## [0.8.8] - 2026-07-03
+### Added
+- Added GitHub and LinkedIn social icon links to the right of the version text in the CoreUI header.
+
+## [0.8.7] - 2026-07-03
+### Added
+- Added current project version text to the right side of the CoreUI header GPU metrics bar.
+
 ## [0.8.6] - 2026-07-03
 ### Added
 - Extension sandbox workers now log auto and manual restarts to the terminal

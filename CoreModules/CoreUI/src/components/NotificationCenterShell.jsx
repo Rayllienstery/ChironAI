@@ -126,11 +126,9 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
   const [nowMs, setNowMs] = useState(Date.now());
   const [leavingPersistedIds, setLeavingPersistedIds] = useState(() => new Set());
   const [leavingLiveIds, setLeavingLiveIds] = useState(() => new Set());
-  const [leavingHistoryIds, setLeavingHistoryIds] = useState(() => new Set());
   const [clearLeaving, setClearLeaving] = useState(false);
   const [clearBatchIds, setClearBatchIds] = useState(() => []);
   const [clearBatchLiveIds, setClearBatchLiveIds] = useState(() => []);
-  const [historyLeaving, setHistoryLeaving] = useState(false);
   const rootRef = useRef(null);
   const scrollRef = useRef(null);
   const stickToBottomRef = useRef(true);
@@ -314,26 +312,7 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
   };
 
   const handleClearHistory = () => {
-    const ids = history.map((n) => n.id);
-    setLeavingHistoryIds((prev) => {
-      const next = new Set(prev);
-      ids.forEach((id) => next.add(id));
-      return next;
-    });
-    setHistoryLeaving(true);
-  };
-
-  const handleHistoryRowLeaveEnd = (id) => {
-    setLeavingHistoryIds((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  };
-
-  const handleHistoryPopoverLeaveEnd = () => {
-    setHistoryLeaving(false);
+    // Clear the UI immediately and delete from the DB in the background.
     void clearPersisted();
   };
 
@@ -363,22 +342,6 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
     return () => clearTimeout(timer);
   }, [clearLeaving]);
 
-  useEffect(() => {
-    if (!historyLeaving) return undefined;
-    const timer = setTimeout(() => handleHistoryPopoverLeaveEnd(), 500);
-    return () => clearTimeout(timer);
-  }, [historyLeaving]);
-
-  useEffect(() => {
-    if (leavingHistoryIds.size === 0) return undefined;
-    const timers = [];
-    leavingHistoryIds.forEach((id) => {
-      const timer = setTimeout(() => handleHistoryRowLeaveEnd(id), 600);
-      timers.push(timer);
-    });
-    return () => timers.forEach((t) => clearTimeout(t));
-  }, [leavingHistoryIds]);
-
   const extractRagRunId = (notification) => {
     const meta = notification?.metadata && typeof notification.metadata === 'object'
       ? notification.metadata
@@ -396,12 +359,11 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
 
   return (
     <div className="notification-center-root" ref={rootRef}>
-      {(menuOpen || historyLeaving) && (
+      {menuOpen && (
         <div
-          className={`notification-center-popover${historyLeaving ? ' notification-center-popover--leaving' : ''}`}
+          className="notification-center-popover"
           role="dialog"
           aria-label="Notification history"
-          onAnimationEnd={historyLeaving ? handleHistoryPopoverLeaveEnd : undefined}
         >
           <div className="notification-center-popover-header">
             <span className="notification-center-popover-title">History</span>
@@ -409,7 +371,7 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
               size="sm"
               variant="ghost"
               onClick={handleClearHistory}
-              disabled={historyLeaving}
+              disabled={history.length === 0}
             >
               Clear
             </CoreUIButton>
@@ -418,15 +380,12 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
             {history.length === 0 ? (
               <p className="notification-center-popover-empty">No entries yet.</p>
             ) : (
-              history.map((n) => {
-                const isRowLeaving = leavingHistoryIds.has(n.id);
-                return (
-                  <div
-                    key={n.id}
-                    className={`notification-center-popover-row notification-center-popover-row--${n.kind || 'event'}${isRowLeaving ? ' notification-center-popover-row--leaving' : ''}`}
-                    onAnimationEnd={isRowLeaving ? () => handleHistoryRowLeaveEnd(n.id) : undefined}
-                  >
-                    <div className="notification-center-popover-row-main">
+              history.map((n) => (
+                <div
+                  key={n.id}
+                  className={`notification-center-popover-row notification-center-popover-row--${n.kind || 'event'}`}
+                >
+                  <div className="notification-center-popover-row-main">
                     <div className="notification-center-popover-row-title">{notificationDisplayTitle(n)}</div>
                     {n.message ? (
                       <div className="notification-center-popover-row-msg"><FormattedMessage text={n.message} /></div>
@@ -435,8 +394,7 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
                   </div>
                   <ModuleFooter source={n.source} notification={n} />
                 </div>
-                );
-              })
+              ))
             )}
           </div>
         </div>

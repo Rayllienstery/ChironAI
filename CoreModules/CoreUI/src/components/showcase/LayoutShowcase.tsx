@@ -62,9 +62,9 @@ export default function LayoutShowcase() {
 
         <ShowcaseItem
           name="StandByScreen"
-          classes={[".standby-screen", ".standby-card", ".standby-loading-indicator", ".standby-loading-shape", ".standby-progress", ".standby-progress-meta", ".standby-module-name"]}
-          source={`${sourceRoot}/components/StandByScreen.jsx, ${sourceRoot}/styles/components/StandByScreen.css`}
-          description="Shared ChironAI stand-by loading view with a Material 3 tonal container, uncontained morphing loading indicator, indeterminate progress bar, and current module label."
+          classes={[".standby-screen", ".standby-card", ".standby-m3-loading-indicator", ".standby-module-meta", ".standby-module-name"]}
+          source={`${sourceRoot}/components/StandByScreen.jsx, ${sourceRoot}/components/M3LoadingIndicator.jsx, ${sourceRoot}/styles/components/StandByScreen.css`}
+          description="Shared ChironAI stand-by loading view with a Material 3 tonal container, contained expressive loading indicator, and current module label."
         >
           <div className="coreui-showcase-standby-row">
             <StandByScreen moduleName="Session Manager" size="md" />

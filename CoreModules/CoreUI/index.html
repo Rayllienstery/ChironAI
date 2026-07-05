@@ -37,24 +37,20 @@
   <body>
     <div id="app-loader" class="standby-screen standby-screen--preboot standby--md">
       <div class="standby-card">
-        <div class="standby-loading-indicator" aria-hidden="true">
-          <span class="standby-loading-shape standby-loading-shape--one"></span>
-          <span class="standby-loading-shape standby-loading-shape--two"></span>
-          <span class="standby-loading-shape standby-loading-shape--three"></span>
-        </div>
+        <canvas
+          id="standby-m3-canvas"
+          class="standby-m3-loading-indicator"
+          width="48"
+          height="48"
+          aria-hidden="true"
+        ></canvas>
         <div class="standby-copy">
           <div class="standby-brand">ChironAI</div>
           <div class="standby-message">Stand by&hellip;</div>
         </div>
-        <div class="standby-progress-stack">
-          <div class="standby-progress" role="progressbar" aria-label="Loading CoreUI">
-            <span class="standby-progress-fill standby-progress-fill--lead"></span>
-            <span class="standby-progress-fill standby-progress-fill--trail"></span>
-          </div>
-          <div class="standby-progress-meta">
-            <span class="standby-module-label">Loading module</span>
-            <span class="standby-module-name">CoreUI</span>
-          </div>
+        <div class="standby-module-meta">
+          <span class="standby-module-label">Loading module</span>
+          <span class="standby-module-name">CoreUI</span>
         </div>
       </div>
     </div>
