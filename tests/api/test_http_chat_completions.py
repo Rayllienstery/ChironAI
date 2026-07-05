@@ -4206,6 +4206,20 @@ def test_non_stream_logs_store_only_previews_for_reasoning_and_final_content(
             captured_log.update(kwargs)
             return 1
 
+        def upsert_proxy_journal_log(
+            self,
+            *,
+            message: str,
+            metadata: dict[str, Any],
+            trace_chain_id: str = "",
+        ) -> int:
+            captured_log.clear()
+            captured_log["message"] = message
+            captured_log["metadata"] = metadata
+            if trace_chain_id:
+                captured_log["trace_chain_id"] = trace_chain_id
+            return 1
+
     fake_params = SimpleNamespace(
         system_prefix="",
         system_suffix="",

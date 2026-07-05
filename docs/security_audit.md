@@ -5,10 +5,11 @@ blocking gates.
 
 ## Bandit
 
-- Date: 2026-06-24
+- Date: 2026-07-05
 - Command: `python -m bandit -r Core CoreModules -q -ll`
 - Gate status: required in `scripts/quality_gate.py` (both `minimal` and `full` profiles)
 - Current result: zero MEDIUM/HIGH findings
+- Notes: 2026-07-05 — annotated false-positive B608 in `logs_repository.py` proxy journal GROUP BY queries (parameterized WHERE via `_build_proxy_journal_where`).
 
 Summary from the initial baseline (2026-06-20):
 

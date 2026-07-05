@@ -367,7 +367,7 @@ class LogsRepository:
             JOIN logs l ON l.id = g.latest_id
             ORDER BY g.latest_id DESC
             LIMIT ? OFFSET ?
-        """
+        """  # nosec B608 -- where_clause from _build_proxy_journal_where; values are parameterized
         query_params = [*params, safe_limit, safe_offset]
 
         with sqlite3.connect(self.db_path) as conn:
@@ -405,7 +405,7 @@ class LogsRepository:
                 WHERE {where_clause}
             )
             SELECT COUNT(DISTINCT chain_key) FROM filtered
-        """
+        """  # nosec B608 -- where_clause from _build_proxy_journal_where; values are parameterized
         with sqlite3.connect(self.db_path) as conn:
             row = conn.execute(sql, params).fetchone()
             return int(row[0]) if row is not None else 0
