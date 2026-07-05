@@ -24,6 +24,7 @@ function createProps(overrides = {}) {
     buildModalHybrid: null,
     buildModalRerank: null,
     proxyDefaults: {},
+    ragCollections: [],
     ...overrides,
   };
 }
@@ -59,5 +60,20 @@ describe('LlmProxyWizardSteps', () => {
     render(<LlmProxyWizardSteps {...props} />);
     fireEvent.click(screen.getByRole('button', { name: PARAMETER_PREFABS[0].label }));
     expect(props.applyParameterPrefab).toHaveBeenCalledWith(PARAMETER_PREFABS[0]);
+  });
+
+  it('renders RAG collection dropdown on RAG step', () => {
+    render(
+      <LlmProxyWizardSteps
+        {...createProps({
+          wizardStep: 1,
+          draft: { ...emptyDraft(), rag_enabled: true },
+          ragCollections: [{ name: 'ios-docs', points_count: 42 }],
+        })}
+      />,
+    );
+    expect(screen.getByRole('combobox', { name: /rag collection override/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /ios-docs \(42 vectors\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /server default/i })).toBeInTheDocument();
   });
 });

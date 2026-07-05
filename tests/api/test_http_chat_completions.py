@@ -4280,6 +4280,257 @@ def test_non_stream_logs_store_only_previews_for_reasoning_and_final_content(
     assert "final_content" not in response
 
 
+def _build_rag_route_test_chat_client() -> Any:
+    class ChatClient:
+        def chat_api(self, _payload: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "message": {"role": "assistant", "content": "ok"},
+                "done_reason": "stop",
+            }
+
+        def chat(self, *_a: Any, **_k: Any) -> str:
+            return ""
+
+    return ChatClient()
+
+
+def _build_rag_route_fake_params(model_name: str = "fake-model") -> SimpleNamespace:
+    return SimpleNamespace(
+        system_prefix="",
+        system_suffix="",
+        context_chunk_chars=500,
+        context_total_chars=2000,
+        confidence_threshold=0.0,
+        model_name=model_name,
+        log_preview_chars=200,
+    )
+
+
+def test_build_rag_collection_uses_build_specific_qdrant_collection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    import api.http.rag_routes as rag_routes
+    from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
+
+    seen: dict[str, Any] = {}
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == LLM_PROXY_BUILDS_APP_KEY:
+                return json.dumps(
+                    [
+                        {
+                            "id": "Docs-worker",
+                            "backend": "dumb",
+                            "provider_id": "ollama",
+                            "model": "fake-model",
+                            "prompt_name": "system_senior_ios_assistant_v1",
+                            "rag_collection": "build-docs",
+                        }
+                    ]
+                )
+            if key == "proxy_settings":
+                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
+            if key == "proxy_model":
+                return "fallback-model"
+            if key == "rag_collection":
+                return ""
+            return _test_proxy_api_key_setting(key)
+
+    chat_client = _build_rag_route_test_chat_client()
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=chat_client,
+    )
+
+    def fake_get_rag_answer_params(*, webui_dir=None, collection_name=None, **_kwargs):
+        seen["collection_name"] = collection_name
+        return _build_rag_route_fake_params(), fake_deps
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", fake_get_rag_answer_params)
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda request, *_a, **_k: ([{"role": "user", "content": request.messages[-1]["content"]}], "fake-model"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "Docs-worker",
+            "messages": [{"role": "user", "content": "How do I use SwiftUI navigation?"}],
+        },
+    )
+    assert r.status_code == 200
+    assert seen.get("collection_name") == "build-docs"
+    trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
+    assert trace.get("request", {}).get("collection_source") == "proxy_settings.rag_collection"
+
+
+def test_build_rag_enabled_false_skips_rag_retrieval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    import api.http.rag_routes as rag_routes
+    from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
+
+    rag_calls = {"count": 0}
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == LLM_PROXY_BUILDS_APP_KEY:
+                return json.dumps(
+                    [
+                        {
+                            "id": "No-rag-worker",
+                            "backend": "dumb",
+                            "provider_id": "ollama",
+                            "model": "fake-model",
+                            "prompt_name": "system_senior_ios_assistant_v1",
+                            "rag_enabled": False,
+                            "rag_collection": "ignored-docs",
+                        }
+                    ]
+                )
+            if key == "proxy_settings":
+                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
+            if key == "proxy_model":
+                return "fallback-model"
+            return _test_proxy_api_key_setting(key)
+
+    chat_client = _build_rag_route_test_chat_client()
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=chat_client,
+    )
+
+    def fake_build_rag_context(*_args, **_kwargs):
+        rag_calls["count"] += 1
+        return (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        )
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", lambda **kwargs: (_build_rag_route_fake_params(), fake_deps))
+    monkeypatch.setattr(rag_routes, "build_rag_context", fake_build_rag_context)
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda request, *_a, **_k: ([{"role": "user", "content": request.messages[-1]["content"]}], "fake-model"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "No-rag-worker",
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+    )
+    assert r.status_code == 200
+    assert rag_calls["count"] == 0
+    trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
+    assert trace.get("request", {}).get("skip_rag_retrieval") is True
+
+
+def test_build_without_rag_collection_falls_back_to_app_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    import api.http.rag_routes as rag_routes
+    from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
+
+    seen: dict[str, Any] = {}
+
+    class Repo:
+        def get_app_setting(self, key: str):
+            if key == LLM_PROXY_BUILDS_APP_KEY:
+                return json.dumps(
+                    [
+                        {
+                            "id": "Default-worker",
+                            "backend": "dumb",
+                            "provider_id": "ollama",
+                            "model": "fake-model",
+                            "prompt_name": "system_senior_ios_assistant_v1",
+                        }
+                    ]
+                )
+            if key == "proxy_settings":
+                return json.dumps({"prompt_name": "system_senior_ios_assistant_v1"})
+            if key == "proxy_model":
+                return "fallback-model"
+            if key == "rag_collection":
+                return "global-docs"
+            return _test_proxy_api_key_setting(key)
+
+    chat_client = _build_rag_route_test_chat_client()
+    fake_deps = SimpleNamespace(
+        rag_repo=object(),
+        embed_provider=object(),
+        rerank_client=None,
+        chat_client=chat_client,
+    )
+
+    def fake_get_rag_answer_params(*, webui_dir=None, collection_name=None, **_kwargs):
+        seen["collection_name"] = collection_name
+        return _build_rag_route_fake_params(), fake_deps
+
+    monkeypatch.setattr(rag_routes, "get_settings_repository", lambda: Repo())
+    monkeypatch.setattr(rag_routes, "get_rag_answer_params", fake_get_rag_answer_params)
+    monkeypatch.setattr(
+        rag_routes,
+        "build_rag_context",
+        lambda *args, **kwargs: (
+            SimpleNamespace(context_text="", chunks_info=[], max_score=0.0),
+            {"embed_s": 0.0, "search_s": 0.0, "rerank_s": 0.0, "total_rag_s": 0.0},
+        ),
+    )
+    monkeypatch.setattr(
+        rag_routes,
+        "prepare_ollama_messages",
+        lambda request, *_a, **_k: ([{"role": "user", "content": request.messages[-1]["content"]}], "fake-model"),
+    )
+    monkeypatch.setattr(rag_routes, "get_proxy_rerank_enabled", lambda: False)
+
+    app = rag_routes.create_app()
+    client = app.test_client()
+    r = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "Default-worker",
+            "messages": [{"role": "user", "content": "Explain Combine publishers"}],
+        },
+    )
+    assert r.status_code == 200
+    assert seen.get("collection_name") == "global-docs"
+    trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
+    assert trace.get("request", {}).get("collection_source") == "app_settings.rag_collection"
+
+
 def test_model_build_num_predict_forwards_to_ollama_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

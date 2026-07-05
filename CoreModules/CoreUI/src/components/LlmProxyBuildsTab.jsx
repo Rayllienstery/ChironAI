@@ -81,6 +81,7 @@ function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
             parameterPrefabNote={parameterPrefabNote}
             applyParameterPrefab={tab.applyParameterPrefab}
             prompts={tab.prompts}
+            ragCollections={tab.ragCollections}
             matchingParameterPrefab={tab.matchingParameterPrefab}
             buildModalPipelineData={tab.buildModalPipelineData}
             buildModalHybrid={tab.buildModalHybrid}

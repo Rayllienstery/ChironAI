@@ -21,7 +21,11 @@ export default function LlmProxyWizardSteps({
   buildModalHybrid,
   buildModalRerank,
   proxyDefaults,
+  ragCollections = [],
 }) {
+  const collectionNames = (ragCollections || []).map((col) => String(col?.name || '').trim()).filter(Boolean);
+  const selectedRagCollection = String(draft?.rag_collection || '').trim();
+
   return (
             <div className="llm-proxy-wizard-content" key={wizardStep}>
             {/* ── Step 0: Basic Info ── */}
@@ -230,13 +234,34 @@ export default function LlmProxyWizardSteps({
 
                     <label className="coreui-form-field llm-proxy-section-gap-sm">
                       RAG collection override
-                      <input
-                        className="coreui-input"
-                        value={draft.rag_collection}
+                      <select
+                        className="coreui-select"
+                        value={selectedRagCollection}
                         onChange={(e) => setDraft({ ...draft, rag_collection: e.target.value })}
-                        placeholder="empty = server default"
-                      />
-                      <span className="llm-proxy-param-card-hint">Leave empty to use the server's default collection. Set a name to search a specific Qdrant collection for this build.</span>
+                        disabled={collectionNames.length === 0 && !selectedRagCollection}
+                      >
+                        <option value="">
+                          {collectionNames.length === 0
+                            ? '— No collections (server default) —'
+                            : 'Server default'}
+                        </option>
+                        {selectedRagCollection && !collectionNames.includes(selectedRagCollection) ? (
+                          <option value={selectedRagCollection}>
+                            {selectedRagCollection} (not listed in Qdrant)
+                          </option>
+                        ) : null}
+                        {ragCollections.map((col) => (
+                          <option key={col.name} value={col.name}>
+                            {col.name}
+                            {col.points_count != null ? ` (${col.points_count} vectors)` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="llm-proxy-param-card-hint">
+                        {collectionNames.length === 0
+                          ? 'No Qdrant collections found. Leave as server default or create a collection in Crawler / RAG.'
+                          : 'Leave as server default to use the global LLM Proxy collection binding, or pick a specific Qdrant collection for this build.'}
+                      </span>
                     </label>
 
                     <div className="coreui-form-grid-3">

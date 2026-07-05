@@ -5,6 +5,7 @@ import {
   getPipelinePreview,
   getPrompts,
   getProviderCatalog,
+  getRagCollections,
   getRagModelSettings,
   previewLlmProxyBuildModel,
   putLlmProxyBuilds,
@@ -34,6 +35,7 @@ export function useLlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
   const [saving, setSaving] = useState(false);
   const [providerCatalog, setProviderCatalog] = useState({ providers: [], models: [] });
   const [prompts, setPrompts] = useState([]);
+  const [ragCollections, setRagCollections] = useState([]);
   const [proxyDefaults, setProxyDefaults] = useState(null);
   const [draft, setDraft] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -94,10 +96,11 @@ export function useLlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
   }, []);
 
   const loadEditorDependencies = useCallback(async () => {
-    const [catalogResult, promptsResult, settingsResult] = await Promise.allSettled([
+    const [catalogResult, promptsResult, settingsResult, collectionsResult] = await Promise.allSettled([
       getProviderCatalog('chat'),
       getPrompts(),
       getModelSettings(),
+      getRagCollections().catch(() => ({ collections: [] })),
     ]);
 
     setProviderCatalog(
@@ -114,6 +117,11 @@ export function useLlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
         : [],
     );
     setProxyDefaults(settingsResult.status === 'fulfilled' ? settingsResult.value || null : null);
+    setRagCollections(
+      collectionsResult.status === 'fulfilled' && Array.isArray(collectionsResult.value?.collections)
+        ? collectionsResult.value.collections
+        : [],
+    );
   }, []);
 
   useEffect(() => {
@@ -375,6 +383,7 @@ export function useLlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
     saving,
     providerCatalog,
     prompts,
+    ragCollections,
     proxyDefaults,
     draft,
     setDraft,

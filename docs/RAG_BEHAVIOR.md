@@ -76,8 +76,9 @@ Contract table:
 - `rag_collection`:
   1. request `collection_name`
   2. app setting `rag_collection`
-  3. legacy `proxy_settings.rag_collection`
-  4. default wiring / caller fallback
+  3. LLM Proxy **build** `rag_collection` (merged into `proxy_settings` when the request `model` matches a build id)
+  4. legacy `proxy_settings.rag_collection` (persisted blob, pre-build UI)
+  5. default wiring / caller fallback
 - `rerank_for_rag`:
   1. `proxy_settings.rerank_for_rag` when key exists
   2. config/env fallback (`get_proxy_rerank_enabled`)
