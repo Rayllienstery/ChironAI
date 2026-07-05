@@ -76,4 +76,49 @@ describe('LlmProxyWizardSteps', () => {
     expect(screen.getByRole('option', { name: /ios-docs \(42 vectors\)/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /server default/i })).toBeInTheDocument();
   });
+
+  it('calls setDraft when RAG collection selection changes', () => {
+    const setDraft = vi.fn();
+    render(
+      <LlmProxyWizardSteps
+        {...createProps({
+          wizardStep: 1,
+          draft: { ...emptyDraft(), rag_enabled: true, rag_collection: '' },
+          ragCollections: [{ name: 'ios-docs' }, { name: 'api-docs' }],
+          setDraft,
+        })}
+      />,
+    );
+    fireEvent.change(screen.getByRole('combobox', { name: /rag collection override/i }), {
+      target: { value: 'api-docs' },
+    });
+    expect(setDraft).toHaveBeenCalledWith(expect.objectContaining({ rag_collection: 'api-docs' }));
+  });
+
+  it('shows stale collection option when edit value is not in Qdrant list', () => {
+    render(
+      <LlmProxyWizardSteps
+        {...createProps({
+          wizardStep: 1,
+          draft: { ...emptyDraft(), rag_enabled: true, rag_collection: 'legacy-coll' },
+          ragCollections: [{ name: 'ios-docs' }],
+        })}
+      />,
+    );
+    expect(screen.getByRole('option', { name: /legacy-coll \(not listed in Qdrant\)/i })).toBeInTheDocument();
+  });
+
+  it('shows empty-state hint when no Qdrant collections exist', () => {
+    render(
+      <LlmProxyWizardSteps
+        {...createProps({
+          wizardStep: 1,
+          draft: { ...emptyDraft(), rag_enabled: true },
+          ragCollections: [],
+        })}
+      />,
+    );
+    expect(screen.getByRole('option', { name: /no collections \(server default\)/i })).toBeInTheDocument();
+    expect(screen.getByText(/No Qdrant collections found/i)).toBeInTheDocument();
+  });
 });

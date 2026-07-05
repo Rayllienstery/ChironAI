@@ -48,6 +48,23 @@ def test_resolve_rag_collection_uses_app_then_legacy() -> None:
     assert source2 == "proxy_settings.rag_collection"
 
 
+def test_resolve_rag_collection_uses_build_overlay_in_proxy_settings() -> None:
+    from application.llm_proxy_builds import merge_build_into_proxy_settings
+
+    repo = _Repo({"rag_collection": ""})
+    proxy_settings = merge_build_into_proxy_settings(
+        {"prompt_name": "system_senior_ios_assistant_v1"},
+        {"rag_collection": "build-docs"},
+    )
+    value, source = resolve_rag_collection(
+        request_collection=None,
+        settings_repo=repo,
+        proxy_settings=proxy_settings,
+    )
+    assert value == "build-docs"
+    assert source == "proxy_settings.rag_collection"
+
+
 def test_resolve_proxy_rerank_enabled_prefers_proxy_settings() -> None:
     repo = _Repo({"proxy_settings": ""})
     enabled, source = resolve_proxy_rerank_enabled(

@@ -77,3 +77,22 @@ def test_resolve_skip_rag_retrieval_explicit_skip() -> None:
         proxy_settings={"rag_enabled": True},
     )
     assert result.skip_rag_retrieval is True
+
+
+def test_resolve_skip_rag_retrieval_build_rag_disabled() -> None:
+    result = resolve_skip_rag_retrieval(
+        body={},
+        last_user="Explain Swift concurrency",
+        tools=[],
+        selected_edit_tool_name=None,
+        tool_choice_effective="none",
+        use_native_tools=False,
+        force_rag=False,
+        fetch_web_knowledge=False,
+        request_collection=None,
+        post_tool_success_turn=False,
+        is_autocomplete=False,
+        dumb_build_pipeline=True,
+        proxy_settings={"rag_enabled": False, "rag_collection": "ignored-docs"},
+    )
+    assert result.skip_rag_retrieval is True

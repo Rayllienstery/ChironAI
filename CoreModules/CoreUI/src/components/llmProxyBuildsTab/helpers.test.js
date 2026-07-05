@@ -43,6 +43,7 @@ describe('llmProxyBuildsTab helpers', () => {
         provider_id: 'ollama',
         model: 'llama3',
         rag_enabled: false,
+        rag_collection: 'ios-docs',
         temperature: 0.7,
       });
       expect(draft.id).toBe('dev-build');
@@ -50,6 +51,7 @@ describe('llmProxyBuildsTab helpers', () => {
       expect(draft.provider_id).toBe('ollama');
       expect(draft.model).toBe('llama3');
       expect(draft.rag_enabled).toBe(false);
+      expect(draft.rag_collection).toBe('ios-docs');
       expect(draft.temperature).toBe('0.7');
     });
 
@@ -83,6 +85,16 @@ describe('llmProxyBuildsTab helpers', () => {
       const payload = draftToPayload(emptyDraft());
       expect(payload.temperature).toBeUndefined();
       expect(payload.num_ctx).toBeUndefined();
+    });
+
+    it('preserves rag_collection in payload', () => {
+      const payload = draftToPayload({ ...emptyDraft(), id: 'rag-build', rag_collection: 'ios-docs' });
+      expect(payload.rag_collection).toBe('ios-docs');
+    });
+
+    it('trims rag_collection in payload', () => {
+      const payload = draftToPayload({ ...emptyDraft(), id: 'rag-build', rag_collection: '  ios-docs  ' });
+      expect(payload.rag_collection).toBe('ios-docs');
     });
   });
 

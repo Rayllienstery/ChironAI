@@ -4,6 +4,7 @@ from application.llm_proxy_builds import (
     DEFAULT_NUM_PREDICT,
     build_ollama_options,
     find_build_by_id,
+    merge_build_into_proxy_settings,
     normalize_build,
     openai_client_capability_fields,
     openai_model_objects_for_builds,
@@ -124,3 +125,32 @@ def test_openai_client_capability_fields_returns_independent_payload() -> None:
 def test_find_build_by_id_trims_requested_model() -> None:
     assert find_build_by_id([_base_build()], " Hard-worker ") is not None
     assert find_build_by_id([_base_build()], "missing") is None
+
+
+def test_normalize_build_preserves_rag_collection() -> None:
+    normalized, errors = normalize_build({**_base_build(), "rag_collection": " ios-docs "})
+
+    assert errors == []
+    assert normalized is not None
+    assert normalized["rag_collection"] == "ios-docs"
+
+
+def test_merge_build_into_proxy_settings_overlays_rag_collection_and_enabled() -> None:
+    merged = merge_build_into_proxy_settings(
+        {"prompt_name": "base", "rag_collection": "global"},
+        {"rag_collection": "build-docs", "rag_enabled": False},
+    )
+
+    assert merged["rag_collection"] == "build-docs"
+    assert merged["rag_enabled"] is False
+    assert merged["prompt_name"] == "base"
+
+
+def test_merge_build_into_proxy_settings_keeps_base_when_build_field_missing() -> None:
+    merged = merge_build_into_proxy_settings(
+        {"rag_collection": "global", "rag_enabled": True},
+        {"rag_enabled": True},
+    )
+
+    assert merged["rag_collection"] == "global"
+    assert merged["rag_enabled"] is True
