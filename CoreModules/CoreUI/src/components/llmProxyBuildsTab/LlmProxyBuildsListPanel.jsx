@@ -1,6 +1,8 @@
 import React from 'react';
 import CoreUIButton from '../CoreUIButton';
 import CoreUIModal from '../CoreUIModal';
+import InfoButton from '../common/InfoButton.jsx';
+import { buildFieldHelpRef, buildSectionHelpRef } from './buildFieldHelp.js';
 
 export default function LlmProxyBuildsListPanel({
   urls,
@@ -60,8 +62,9 @@ export default function LlmProxyBuildsListPanel({
       </div>
 
       <section className="app-default-card">
-        <div className="dashboard-card-header">
+        <div className="dashboard-card-header llm-proxy-builds-card-header">
           <h3>Builds</h3>
+          <InfoButton helpRef="builds" label="LLM Proxy Builds" />
         </div>
         {builds.length === 0 && <p className="dashboard-card-muted">No builds yet. Create one to use as API model id.</p>}
         {builds.length > 0 && (
@@ -297,16 +300,25 @@ export default function LlmProxyBuildsListPanel({
 
                 return (
                   <div key={cat.label} className="llm-proxy-build-param-section">
-                    <div className="llm-proxy-build-param-section-title">{cat.label}</div>
-                    {visibleItems.map(p => (
+                    <div className="llm-proxy-build-param-section-title">
+                      <span>{cat.label}</span>
+                      {buildSectionHelpRef(cat.label) ? (
+                        <InfoButton helpRef={buildSectionHelpRef(cat.label)} label={cat.label} />
+                      ) : null}
+                    </div>
+                    {visibleItems.map((p) => {
+                      const helpRef = buildFieldHelpRef(p.key);
+                      return (
                       <div key={p.key} className="llm-proxy-build-param-item">
                         <div className="llm-proxy-build-param-label">
                           <span className="material-symbols-outlined" aria-hidden="true">{p.icon}</span>
                           <span>{p.label}</span>
+                          {helpRef ? <InfoButton helpRef={helpRef} label={p.label} /> : null}
                         </div>
                         <code className="llm-proxy-build-param-value">{p.val(detailModalBuild[p.key])}</code>
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                 );
               })}

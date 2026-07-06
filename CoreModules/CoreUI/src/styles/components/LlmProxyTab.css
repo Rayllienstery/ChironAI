@@ -285,7 +285,20 @@
   flex-direction: column;
 }
 
+.llm-proxy-builds-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-xs);
+}
+
+.llm-proxy-builds-card-header h3 {
+  margin: 0;
+}
+
 .llm-proxy-build-param-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-xs);
   font: var(--md-sys-typescale-label-small-font);
   color: var(--md-sys-color-primary);
   text-transform: uppercase;

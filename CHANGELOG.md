@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.11] - 2026-07-06
+### Added
+- Added contextual `InfoButton` help on LLM Proxy Builds list header and build detail modal fields, with field-to-article mapping.
+
 ## [0.8.10] - 2026-07-06
 ### Added
 - Added contextual Help panel drawer and `InfoButton` on LLM Proxy Build wizard fields, with anchor links into bundled help articles.
