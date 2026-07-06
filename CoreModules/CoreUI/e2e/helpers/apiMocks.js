@@ -29,7 +29,7 @@ function baseResponses(onboardingState, builds) {
       theme: 'system',
       onboarding_state: JSON.stringify(onboardingState),
     },
-    '/version': { version: '0.8.15', app_name: 'Chiron AI', app_stage: 'BETA' },
+    '/version': { version: '0.8.17', app_name: 'Chiron AI', app_stage: 'STABLE' },
     '/dashboard-metrics': {
       cpu_percent: 0,
       memory_percent: 0,

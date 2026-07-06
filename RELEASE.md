@@ -25,7 +25,7 @@ Known release notes:
 
 - CoreUI lint still reports existing warnings but exits 0.
 - Dependency audit passes with documented exceptions for current transitive Python/npm advisories.
-- App stage remains `BETA`; changing the product stage should be a separate release decision.
+- App stage is `STABLE` as of 0.8.17; security posture for unauthenticated local use is unchanged.
 
 ## Quality gates
 

@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.17] - 2026-07-06
+### Changed
+- Promoted `APP_STAGE` to `STABLE`, updated PyPI classifier, welcome notification fallback, and README security note.
+
 ## [0.8.16] - 2026-07-06
 ### Added
 - Added unit, hook, API, and Playwright coverage for Help deep-links, InfoButton drawer, builds contextual tour, and per-build RAG collection edit/save.

@@ -3,10 +3,10 @@
 > Generated from the live OpenAPI document. Do not edit by hand; run `python scripts/gen_api_docs.py`.
 
 - OpenAPI: `3.1.0`
-- Version: `0.8.10`
+- Version: `0.8.17`
 - Paths: `130`
 
-Chiron AI BETA OpenAPI description generated from Flask routes.
+Chiron AI STABLE OpenAPI description generated from Flask routes.
 
 ## Endpoints
 

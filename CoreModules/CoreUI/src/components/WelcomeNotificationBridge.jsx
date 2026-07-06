@@ -37,7 +37,7 @@ export default function WelcomeNotificationBridge() {
           .join('\n');
 
         await persistNotification({
-          title: data.display_name || `Chiron AI BETA ${data.version}`,
+          title: data.display_name || `${data.app_name || 'Chiron AI'} ${data.version}`.trim(),
           message: formatted || 'New version is here!',
           tone: 'info',
           source: 'system',
