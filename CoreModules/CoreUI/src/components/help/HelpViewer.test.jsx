@@ -47,8 +47,10 @@ describe('HelpViewer', () => {
     await waitFor(() => {
       expect(getHelpArticle).toHaveBeenCalledWith('getting-started');
     });
-    expect(screen.getByRole('heading', { level: 2, name: 'Getting Started' })).toBeInTheDocument();
-    expect(screen.getByText(/Body for getting-started/i)).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Getting Started' }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText(/Body for getting-started/i)).toBeInTheDocument();
   });
 
   it('switches articles from the navigation list', async () => {

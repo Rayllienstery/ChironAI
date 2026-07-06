@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.18] - 2026-07-06
+### Fixed
+- Fixed flaky `HelpViewer` unit test on Linux CI by awaiting article render after async load.
+
 ## [0.8.17] - 2026-07-06
 ### Added
 - Added Playwright release tab smoke for Dashboard, Settings, LLM Proxy Builds, and Logs sign-off.
