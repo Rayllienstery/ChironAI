@@ -5,22 +5,29 @@
       "id": "getting-started",
       "title": "Getting Started",
       "slug": "getting-started",
-      "tags": ["intro", "setup"],
+      "tags": ["intro", "setup", "onboarding"],
       "file": "getting-started.md"
     },
     {
       "id": "builds",
       "title": "LLM Proxy Builds",
       "slug": "builds",
-      "tags": ["builds", "proxy", "models"],
+      "tags": ["builds", "proxy", "models", "wizard"],
       "file": "builds.md"
     },
     {
       "id": "rag-collections",
       "title": "RAG Collections",
       "slug": "rag-collections",
-      "tags": ["rag", "qdrant", "retrieval"],
+      "tags": ["rag", "qdrant", "retrieval", "precedence"],
       "file": "rag-collections.md"
+    },
+    {
+      "id": "proxy-clients",
+      "title": "Proxy Clients & API",
+      "slug": "proxy-clients",
+      "tags": ["api", "cursor", "opencode", "auth"],
+      "file": "proxy-clients.md"
     },
     {
       "id": "providers",
@@ -33,21 +40,28 @@
       "id": "extensions",
       "title": "Extensions",
       "slug": "extensions",
-      "tags": ["extensions", "providers"],
+      "tags": ["extensions", "docker", "manifest"],
       "file": "extensions.md"
     },
     {
       "id": "indexing",
       "title": "Indexing Content",
       "slug": "indexing",
-      "tags": ["crawler", "indexing", "qdrant"],
+      "tags": ["crawler", "indexing", "qdrant", "ingestion"],
       "file": "indexing.md"
+    },
+    {
+      "id": "logs-debugging",
+      "title": "Logs & Debugging",
+      "slug": "logs-debugging",
+      "tags": ["logs", "traces", "journal", "debug"],
+      "file": "logs-debugging.md"
     },
     {
       "id": "troubleshooting",
       "title": "Troubleshooting",
       "slug": "troubleshooting",
-      "tags": ["errors", "support"],
+      "tags": ["errors", "support", "faq"],
       "file": "troubleshooting.md"
     }
   ]

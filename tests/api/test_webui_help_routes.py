@@ -28,7 +28,7 @@ def _client():
 def test_help_list_returns_index_entries() -> None:
     data = _client().get("/api/webui/help").get_json()
     assert isinstance(data.get("articles"), list)
-    assert len(data["articles"]) >= 7
+    assert len(data["articles"]) >= 9
     assert data["articles"][0]["slug"]
 
 
@@ -37,7 +37,7 @@ def test_help_get_article_by_slug() -> None:
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["slug"] == "getting-started"
-    assert "Welcome to ChironAI" in payload["content"]
+    assert "RAG platform" in payload["content"]
 
 
 def test_help_get_unknown_slug_returns_404() -> None:

@@ -9,7 +9,7 @@ export const HELP_SECTIONS = [
   {
     id: 'platform',
     label: 'Platform',
-    slugs: ['builds', 'rag-collections', 'providers'],
+    slugs: ['builds', 'rag-collections', 'proxy-clients', 'providers'],
   },
   {
     id: 'workflow',
@@ -19,7 +19,7 @@ export const HELP_SECTIONS = [
   {
     id: 'support',
     label: 'Support',
-    slugs: ['troubleshooting'],
+    slugs: ['logs-debugging', 'troubleshooting'],
   },
 ];
 
@@ -27,9 +27,11 @@ export const HELP_ARTICLE_ICONS = {
   'getting-started': 'flag',
   builds: 'hub',
   'rag-collections': 'library_books',
+  'proxy-clients': 'api',
   providers: 'cloud',
   extensions: 'extension',
   indexing: 'sync',
+  'logs-debugging': 'manage_search',
   troubleshooting: 'build_circle',
 };
 

@@ -18,10 +18,10 @@ def test_bundled_help_dir_points_at_repo_content() -> None:
     assert (help_root / "index.json").is_file()
 
 
-def test_load_help_index_returns_seven_articles() -> None:
+def test_load_help_index_returns_nine_articles() -> None:
     articles = load_help_index(bundled_help_dir(_ROOT))
     slugs = {row["slug"] for row in articles}
-    assert len(articles) == 7
+    assert len(articles) == 9
     assert "getting-started" in slugs
     assert "troubleshooting" in slugs
 
@@ -30,7 +30,7 @@ def test_load_help_article_returns_markdown_body() -> None:
     article = load_help_article(bundled_help_dir(_ROOT), "getting-started")
     assert article is not None
     assert article["slug"] == "getting-started"
-    assert "Welcome to ChironAI" in article["content"]
+    assert "RAG platform" in article["content"]
 
 
 def test_load_help_article_rejects_invalid_slug() -> None:
