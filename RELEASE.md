@@ -2,6 +2,30 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
+## Release candidate 0.8.17 notes
+
+Status: pre-tag ready on Windows local gates as of 2026-07-06.
+
+Highlights:
+
+- In-app Help KB, onboarding tours, InfoButton contextual help, per-build RAG collection UI.
+- `APP_STAGE` promoted to `STABLE`; quality gates `full` and `release` pass locally.
+- 1 050+ pytest, 186 vitest, 7 Playwright E2E tests.
+
+Verification snapshot (2026-07-06):
+
+- `python scripts/quality_gate.py --profile release` — passed.
+- `npm run e2e` from `CoreModules/CoreUI` — passed, 7 tests.
+- `python scripts/check_version_drift.py` — passed (0.8.17).
+- `python scripts/gen_api_docs.py --check` — passed.
+- `python scripts/audit_oversized_files.py --mode check` — passed.
+
+Before tag `v0.8.9`:
+
+- Manual CoreUI tab smoke (Dashboard, Settings, Builds, RAG, Extensions, Logs).
+- `build_and_run.bat` → `Server ready`.
+- CI `release` job green on tag push.
+
 ## Release candidate 0.7.56 notes
 
 Status: release-candidate ready on Windows local gates as of 2026-06-22.

@@ -6,6 +6,7 @@ The following versions of ChironAI currently receive security updates:
 
 | Version | Supported          |
 | ------- | ------------------ |
+| 0.8.x   | :white_check_mark: |
 | 0.7.x   | :white_check_mark: |
 | < 0.7.0 | :x:                |
 
@@ -31,5 +32,5 @@ We aim to acknowledge reports within 5 business days and will coordinate disclos
 
 ## Known Security Boundaries
 
-- Extension install/update/remove/enable/disable routes are part of the WebUI API surface. In the current beta these routes do **not** require authentication. Run ChironAI only on `localhost` or inside a trusted network, and treat any network that can reach the WebUI as having full extension-management access.
+- Extension install/update/remove/enable/disable routes are part of the WebUI API surface. These routes do **not** require authentication. Run ChironAI only on `localhost` or inside a trusted network, and treat any network that can reach the WebUI as having full extension-management access.
 - Dependency vulnerabilities are monitored via `pip-audit`, `npm audit`, and Trivy image scans documented in `RELEASE.md`.
