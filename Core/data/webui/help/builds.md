@@ -29,6 +29,9 @@ Use **Preview** on this step to send a minimal chat through the selected provide
 
 ### Step 1 — Parameters
 
+<a id="generation-params"></a>
+<a id="prompts"></a>
+
 Tune generation and proxy behaviour:
 
 - **Temperature, top_p, max_tokens** — passed to the provider adapter.
@@ -49,6 +52,9 @@ When a collection is set (here or inherited globally):
 The wizard shows a **pipeline preview** when available — use it to see effective collection and flag sources.
 
 ### Step 3 — Advanced / persistence
+
+<a id="web-interaction"></a>
+<a id="capabilities"></a>
 
 - **Ephemeral journal** — when enabled, completed requests are **not** written to RAG Fusion Journal (SQLite). Use for high-volume automation; keep off while debugging in **Logs**.
 - **Tool / skill hooks** — build-level toggles for agent features (when supported by provider + host).

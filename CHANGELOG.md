@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.10] - 2026-07-06
+### Added
+- Added contextual Help panel drawer and `InfoButton` on LLM Proxy Build wizard fields, with anchor links into bundled help articles.
+- Improved Help article markdown rendering: strip duplicate titles, auto heading ids, and M3 prose styling.
+
 ## [0.8.9] - 2026-07-05
 ### Added
 - Added in-app Help knowledge base: `/api/webui/help` routes, bundled markdown articles, CoreUI Help tab, search, and `?help=` deep links.

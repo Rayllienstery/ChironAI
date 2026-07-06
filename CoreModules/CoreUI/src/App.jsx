@@ -189,6 +189,7 @@ import {
 import { loadTrackedModule } from "./services/moduleTimings";
 import Sparkline from "./components/Sparkline";
 import { NotificationCenterProvider } from "./components/NotificationCenterContext";
+import { HelpPanelProvider } from "./components/help/HelpPanelContext.jsx";
 import NotificationCenterShell from "./components/NotificationCenterShell";
 import RagTestRunNotificationBridge from "./components/RagTestRunNotificationBridge";
 import ProxiesLiveNotificationBridge from "./components/ProxiesLiveNotificationBridge";
@@ -286,6 +287,16 @@ function App() {
   const [developerMode, setDeveloperMode] = useState(false);
   const [locale, setLocaleState] = useState(getLocale());
   const [helpInitialSlug, setHelpInitialSlug] = useState(null);
+
+  const handleOpenFullHelp = useCallback((slug, anchor = "") => {
+    const normalized = String(slug || "").trim().toLowerCase();
+    if (!normalized) return;
+    setHelpInitialSlug(normalized);
+    setActiveTab("help");
+    if (anchor && typeof window !== "undefined") {
+      window.location.hash = String(anchor).trim().toLowerCase();
+    }
+  }, []);
 
   const [ragStatusInfo, setRagStatusInfo] = useState({
     running: null,
@@ -979,6 +990,7 @@ function App() {
 
   return (
     <NotificationCenterProvider sessionId={sessionId}>
+      <HelpPanelProvider onOpenFullHelp={handleOpenFullHelp}>
     <div className="app">
       <SidebarNav
         tabs={tabs}
@@ -1114,6 +1126,7 @@ function App() {
       {sessionId && <WelcomeNotificationBridge />}
       {sessionId && <NotificationCenterShell onOpenRagRunDetails={openCompletedRagRunModal} />}
       </div>
+      </HelpPanelProvider>
     </NotificationCenterProvider>
   );
 }

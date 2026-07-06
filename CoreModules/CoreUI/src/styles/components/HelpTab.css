@@ -293,8 +293,15 @@
 .help-detail-pane {
   display: flex;
   flex-direction: column;
-  gap: var(--md-sys-spacing-md);
+  gap: var(--md-sys-spacing-lg);
   min-height: 320px;
+}
+
+.help-detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--md-sys-spacing-md);
+  padding-bottom: var(--md-sys-spacing-xs);
 }
 
 .help-detail-back {
@@ -322,12 +329,6 @@
   outline-offset: 2px;
 }
 
-.help-detail-header {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--md-sys-spacing-md);
-}
-
 .help-detail-header__icon-wrap {
   display: inline-flex;
   align-items: center;
@@ -350,6 +351,7 @@
 
 .help-detail-divider {
   height: 1px;
+  margin: 0 0 var(--md-sys-spacing-sm);
   background: var(--md-sys-color-outline-variant);
 }
 
@@ -360,9 +362,121 @@
   margin-top: var(--md-sys-spacing-xs);
 }
 
+/* Help article prose — M3 reading rhythm (overrides generic markdown-prose--preview) */
 .help-article-body {
   min-width: 0;
+  max-width: 52rem;
   font: var(--md-sys-typescale-body-medium-font);
+  line-height: 1.65;
+  color: var(--md-sys-color-on-surface);
+}
+
+.help-tab .help-article-body.markdown-prose--preview > *:first-child {
+  margin-top: 0;
+}
+
+.help-tab .help-article-body.markdown-prose--preview h2 {
+  margin: var(--md-sys-spacing-xl) 0 var(--md-sys-spacing-md);
+  padding-bottom: var(--md-sys-spacing-sm);
+  font: var(--md-sys-typescale-title-medium-font);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.help-tab .help-article-body.markdown-prose--preview h2:first-child {
+  margin-top: 0;
+}
+
+.help-tab .help-article-body.markdown-prose--preview h3 {
+  margin: var(--md-sys-spacing-lg) 0 var(--md-sys-spacing-sm);
+  font: var(--md-sys-typescale-title-small-font);
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.help-tab .help-article-body.markdown-prose--preview p {
+  margin: 0 0 var(--md-sys-spacing-md);
+}
+
+.help-tab .help-article-body.markdown-prose--preview ul,
+.help-tab .help-article-body.markdown-prose--preview ol {
+  margin: 0 0 var(--md-sys-spacing-lg);
+  padding-left: 1.5em;
+}
+
+.help-tab .help-article-body.markdown-prose--preview li {
+  margin: var(--md-sys-spacing-sm) 0;
+}
+
+.help-tab .help-article-body.markdown-prose--preview li > p {
+  margin: var(--md-sys-spacing-xs) 0;
+}
+
+.help-tab .help-article-body.markdown-prose--preview pre {
+  margin: var(--md-sys-spacing-md) 0 var(--md-sys-spacing-lg);
+  padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+  overflow-x: auto;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-low);
+  box-shadow: none;
+}
+
+.help-tab .help-article-body.markdown-prose--preview pre code {
+  display: block;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-family: var(--coreui-font-family-mono);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--md-sys-color-on-surface);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.help-tab .help-article-body.markdown-prose--preview :not(pre) > code {
+  padding: 0.15em 0.45em;
+  margin: 0 0.05em;
+  border-radius: var(--md-sys-shape-corner-small);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-high);
+  font-size: 0.875em;
+}
+
+.help-tab .help-article-body.markdown-prose--preview table {
+  display: block;
+  width: 100%;
+  margin: var(--md-sys-spacing-md) 0 var(--md-sys-spacing-lg);
+  overflow-x: auto;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+}
+
+.help-tab .help-article-body.markdown-prose--preview th,
+.help-tab .help-article-body.markdown-prose--preview td {
+  padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
+  vertical-align: top;
+  line-height: 1.5;
+}
+
+.help-tab .help-article-body.markdown-prose--preview th {
+  background: var(--md-sys-color-surface-container);
+  font: var(--md-sys-typescale-label-large-font);
+  font-weight: 600;
+}
+
+.help-tab .help-article-body.markdown-prose--preview blockquote {
+  margin: var(--md-sys-spacing-md) 0 var(--md-sys-spacing-lg);
+  padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
+}
+
+.help-tab .help-article-body.markdown-prose--preview hr {
+  margin: var(--md-sys-spacing-xl) 0;
 }
 
 .help-loading-card {

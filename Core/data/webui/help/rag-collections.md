@@ -67,6 +67,22 @@ Intent inference (`symbol`, `framework`, `section_hint`) can add Qdrant filters 
 
 Tune behaviour without code via `config/` retrieval dictionaries and `docs/RAG_BEHAVIOR.md` in the repository.
 
+<a id="limits"></a>
+
+## Context limits (build wizard)
+
+When you override RAG on a build, three fields control how much retrieved text reaches the model:
+
+| Field | Effect |
+|-------|--------|
+| **Context chunk chars** | Max characters per individual chunk injected into the prompt |
+| **Context total chars** | Total RAG context budget across all chunks |
+| **RAG top_k** | How many chunks to retrieve from Qdrant before trimming |
+
+Leave empty to inherit YAML / global proxy defaults. Lower budgets reduce latency and token cost; higher budgets improve recall on complex questions.
+
+<a id="retrieval"></a>
+
 ## Hybrid retrieval and rerank
 
 When enabled:

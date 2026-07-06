@@ -1,5 +1,6 @@
 import React from 'react';
 import CoreUIButton from '../CoreUIButton';
+import { FieldLabelWithHelp, InfoButton } from '../common/InfoButton.jsx';
 import { CUSTOM_PARAMETER_PREFAB_NOTE, PARAMETER_PREFABS } from './constants';
 
 export default function LlmProxyWizardSteps({
@@ -44,7 +45,9 @@ export default function LlmProxyWizardSteps({
                 </div>
 
                 <label className="coreui-form-field">
-                  Build id (API model name)
+                  <FieldLabelWithHelp helpRef="builds" helpLabel="Build id">
+                    Build id (API model name)
+                  </FieldLabelWithHelp>
                   <input
                     className="coreui-input"
                     value={draft.id}
@@ -78,7 +81,9 @@ export default function LlmProxyWizardSteps({
                 </div>
 
                 <label className="coreui-form-field">
-                  Provider
+                  <FieldLabelWithHelp helpRef="providers" helpLabel="Provider">
+                    Provider
+                  </FieldLabelWithHelp>
                   <select
                     className="coreui-select"
                     value={draft.provider_id}
@@ -97,7 +102,9 @@ export default function LlmProxyWizardSteps({
                 </label>
 
                 <label className="coreui-form-field">
-                  Model
+                  <FieldLabelWithHelp helpRef="providers" helpLabel="Model">
+                    Model
+                  </FieldLabelWithHelp>
                   <select
                     className="coreui-select"
                     value={draft.model}
@@ -195,6 +202,7 @@ export default function LlmProxyWizardSteps({
                     <span className="llm-proxy-toggle-label">
                       <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">search</span>
                       Enable RAG for this build
+                      <InfoButton helpRef="rag-collections" label="Enable RAG for this build" />
                     </span>
                     <label className="coreui-switch">
                       <input
@@ -233,7 +241,9 @@ export default function LlmProxyWizardSteps({
                     </div>
 
                     <label className="coreui-form-field llm-proxy-section-gap-sm">
-                      RAG collection override
+                      <FieldLabelWithHelp helpRef="rag-collections" helpLabel="RAG collection override">
+                        RAG collection override
+                      </FieldLabelWithHelp>
                       <select
                         className="coreui-select"
                         value={selectedRagCollection}
@@ -266,7 +276,9 @@ export default function LlmProxyWizardSteps({
 
                     <div className="coreui-form-grid-3">
                       <label className="coreui-form-field">
-                        Context chunk chars
+                        <FieldLabelWithHelp helpRef="rag-collections#limits" helpLabel="Context chunk chars">
+                          Context chunk chars
+                        </FieldLabelWithHelp>
                         <input
                           className="coreui-input"
                           inputMode="numeric"
@@ -277,7 +289,9 @@ export default function LlmProxyWizardSteps({
                         <span className="llm-proxy-param-card-hint">Max characters per retrieved chunk sent to the model.</span>
                       </label>
                       <label className="coreui-form-field">
-                        Context total chars
+                        <FieldLabelWithHelp helpRef="rag-collections#limits" helpLabel="Context total chars">
+                          Context total chars
+                        </FieldLabelWithHelp>
                         <input
                           className="coreui-input"
                           inputMode="numeric"
@@ -288,7 +302,9 @@ export default function LlmProxyWizardSteps({
                         <span className="llm-proxy-param-card-hint">Total RAG context budget across all chunks.</span>
                       </label>
                       <label className="coreui-form-field">
-                        RAG top_k
+                        <FieldLabelWithHelp helpRef="rag-collections#limits" helpLabel="RAG top_k">
+                          RAG top_k
+                        </FieldLabelWithHelp>
                         <input
                           className="coreui-input"
                           inputMode="numeric"
@@ -443,7 +459,9 @@ export default function LlmProxyWizardSteps({
 
                 {draft.use_prompt_template !== false && (
                   <label className="coreui-form-field">
-                    Prompt template
+                    <FieldLabelWithHelp helpRef="builds#prompts" helpLabel="Prompt template">
+                      Prompt template
+                    </FieldLabelWithHelp>
                     <select
                       className="coreui-select"
                       value={draft.prompt_name}
@@ -468,6 +486,7 @@ export default function LlmProxyWizardSteps({
                   <h3 className="llm-proxy-info-card-title">
                     <span className="llm-proxy-info-card-title-icon material-symbols-outlined" aria-hidden="true">tune</span>
                     Fine-tune the model
+                    <InfoButton helpRef="builds#generation-params" label="Generation parameters" />
                   </h3>
                   <div className="llm-proxy-info-card-body">
                     These parameters control how the LLM generates text. Leave a field empty to inherit the server's
@@ -621,6 +640,7 @@ export default function LlmProxyWizardSteps({
                   <h3 className="llm-proxy-info-card-title">
                     <span className="llm-proxy-info-card-title-icon material-symbols-outlined" aria-hidden="true">language</span>
                     Web Knowledge — fresh info beyond your docs
+                    <InfoButton helpRef="builds#web-interaction" label="Web Knowledge" />
                   </h3>
                   <div className="llm-proxy-info-card-body">
                     Your RAG database contains <em>your</em> indexed documents, but what about the latest library release,
@@ -726,6 +746,7 @@ export default function LlmProxyWizardSteps({
                         <span className="llm-proxy-toggle-label">
                           <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">cloud_download</span>
                           Fetch web knowledge (GitHub docs)
+                          <InfoButton helpRef="builds#capabilities" label="Fetch web knowledge" />
                         </span>
                         <label className="coreui-switch">
                           <input
