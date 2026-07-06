@@ -1,21 +1,9 @@
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import CoreUIButton from '../CoreUIButton';
 import { SUPPORTED_LOCALES, t } from '../../services/i18n';
 import { releaseBodyScrollLock } from './tourUiLock.js';
+import { computeTourCardStyle, measureTourTarget } from './tourEnginePlacement.js';
 import '../../styles/components/TourEngine.css';
-
-function measureTarget(selector) {
-  if (!selector || typeof document === 'undefined') return null;
-  const element = document.querySelector(selector);
-  if (!element) return null;
-  const rect = element.getBoundingClientRect();
-  return {
-    top: rect.top,
-    left: rect.left,
-    width: rect.width,
-    height: rect.height,
-  };
-}
 
 function TourLanguagePicker({ value, onChange }) {
   return (
@@ -44,7 +32,7 @@ function TourLanguagePicker({ value, onChange }) {
 }
 
 /**
- * Lightweight spotlight tour engine with M3 tooltip card.
+ * Lightweight spotlight tour engine aligned with CoreUI modal surfaces.
  */
 export default function TourEngine({
   open,
@@ -59,15 +47,21 @@ export default function TourEngine({
 }) {
   const step = steps[stepIndex] || null;
   const [spotlight, setSpotlight] = useState(null);
+  const [cardStyle, setCardStyle] = useState(() => computeTourCardStyle(null));
   const isOverlayVisible = Boolean(open && step);
 
   useLayoutEffect(() => {
     if (!isOverlayVisible || !step || step.kind === 'language') {
       setSpotlight(null);
+      setCardStyle(computeTourCardStyle(null));
       return undefined;
     }
 
-    const update = () => setSpotlight(measureTarget(step.target));
+    const update = () => {
+      const nextSpotlight = measureTourTarget(step.target);
+      setSpotlight(nextSpotlight);
+      setCardStyle(computeTourCardStyle(nextSpotlight));
+    };
     update();
 
     window.addEventListener('resize', update);
@@ -96,16 +90,6 @@ export default function TourEngine({
   const isLast = stepIndex >= steps.length - 1;
   const isFirst = stepIndex === 0;
   const isLanguageStep = step.kind === 'language';
-  const tooltipStyle = spotlight
-    ? {
-        top: Math.min(window.innerHeight - 16, spotlight.top + spotlight.height + 12),
-        left: Math.min(window.innerWidth - 16, Math.max(16, spotlight.left)),
-      }
-    : {
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-      };
 
   return (
     <div className="tour-engine" role="presentation">
@@ -118,35 +102,38 @@ export default function TourEngine({
             left: spotlight.left - 4,
             width: spotlight.width + 8,
             height: spotlight.height + 8,
+            borderRadius: spotlight.borderRadius,
           }}
           aria-hidden="true"
         />
       ) : null}
       <div
-        className={`tour-engine__card${spotlight ? '' : ' tour-engine__card--centered'}`}
-        style={tooltipStyle}
+        className="tour-engine__card"
+        style={cardStyle}
         role="dialog"
         aria-modal="true"
         aria-labelledby="tour-engine-title"
         aria-describedby="tour-engine-body"
       >
-        <p className="tour-engine__progress" aria-live="polite">
-          {t('onboarding.tour.progress', { current: stepIndex + 1, total: steps.length })}
-        </p>
-        <h2 id="tour-engine-title" className="tour-engine__title">
-          {step.title}
-        </h2>
+        <header className="tour-engine__card-header">
+          <p className="tour-engine__progress" aria-live="polite">
+            {t('onboarding.tour.progress', { current: stepIndex + 1, total: steps.length })}
+          </p>
+          <h2 id="tour-engine-title" className="tour-engine__title">
+            {step.title}
+          </h2>
+        </header>
         <p id="tour-engine-body" className="tour-engine__body">
           {step.body}
         </p>
         {isLanguageStep ? (
           <TourLanguagePicker value={localeValue} onChange={onLocaleChange} />
         ) : null}
-        <div className="tour-engine__actions">
+        <footer className="tour-engine__footer">
           <CoreUIButton type="button" variant="ghost" onClick={onSkip}>
             {t('onboarding.tour.skip')}
           </CoreUIButton>
-          <div className="tour-engine__actions-main">
+          <div className="tour-engine__footer-main">
             {!isFirst ? (
               <CoreUIButton type="button" variant="default" onClick={onBack}>
                 {t('onboarding.tour.back')}
@@ -160,7 +147,7 @@ export default function TourEngine({
               {isLast ? t('onboarding.tour.finish') : t('onboarding.tour.next')}
             </CoreUIButton>
           </div>
-        </div>
+        </footer>
       </div>
     </div>
   );

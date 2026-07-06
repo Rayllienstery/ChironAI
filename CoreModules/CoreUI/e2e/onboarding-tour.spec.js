@@ -7,9 +7,9 @@ test.describe('onboarding tour', () => {
     await installApiMocks(page, { onboarding: 'fresh' });
     await page.goto('/');
 
-    const tourDialog = page.getByRole('dialog', { name: 'Welcome to ChironAI' });
+    const tourDialog = page.getByRole('dialog', { name: 'Choose your language' });
     await expect(tourDialog).toBeVisible();
-    await expect(tourDialog.getByText(/Step 1 of 5/i)).toBeVisible();
+    await expect(tourDialog.getByText(/Step 1 of 7/i)).toBeVisible();
 
     await page.getByRole('button', { name: 'Skip tour' }).click();
     await expect(tourDialog).toBeHidden();
@@ -23,14 +23,14 @@ test.describe('onboarding tour', () => {
     await installApiMocks(page, { onboarding: 'completed', mutableOnboarding: true });
     await page.goto('/');
 
-    await expect(page.getByRole('dialog', { name: 'Welcome to ChironAI' })).toBeHidden();
+    await expect(page.getByRole('dialog', { name: 'Choose your language' })).toBeHidden();
 
     await page.locator('[data-tour="settings"]').click();
     await expect(page.getByRole('button', { name: 'Restart tour' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Restart tour' }).click();
 
-    await expect(page.getByRole('dialog', { name: 'Welcome to ChironAI' })).toBeVisible({
+    await expect(page.getByRole('dialog', { name: 'Choose your language' })).toBeVisible({
       timeout: 15_000,
     });
   });

@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import CoreUIBadge from '../CoreUIBadge';
 import CoreUIButton from '../CoreUIButton';
+import CoreUIPillTabs from '../CoreUIPillTabs';
 import ActionableError from '../ActionableError';
-import EmptyState from '../EmptyState';
+import InfoButton from '../common/InfoButton.jsx';
 import { resolveProvidersTourSteps } from '../onboarding/contextualTours.js';
 import { useContextualTour } from '../onboarding/useContextualTour.js';
 import {
@@ -15,6 +16,10 @@ import {
 } from '../../services/providers.js';
 import { getExtensionProviders } from '../../services/api.js';
 import { t } from '../../services/i18n';
+import '../../styles/components/DashboardTab.css';
+import '../../styles/components/SettingsTab.css';
+import '../../styles/components/LlmProxyTab.css';
+import '../../styles/components/ExtensionsTab.css';
 import '../../styles/components/ProvidersTab.css';
 
 const EMPTY_FORM = {
@@ -38,7 +43,188 @@ function formatManualModels(models) {
   return Array.isArray(models) ? models.join('\n') : '';
 }
 
+function kvRow(label, value, key) {
+  return (
+    <div className="dashboard-kv-row" key={key}>
+      <span className="dashboard-kv-label">{label}</span>
+      <span className="dashboard-kv-value">{value}</span>
+    </div>
+  );
+}
+
+function CustomProviderRow({
+  provider,
+  testResult,
+  testing,
+  onTest,
+  onEdit,
+  onDelete,
+}) {
+  const hasKeyIssue = !provider.api_key_configured;
+  return (
+    <article
+      className={`llm-proxy-build-row providers-provider-row${hasKeyIssue ? ' llm-proxy-build-row--has-issues' : ''}`}
+      data-provider-id={provider.id}
+    >
+      <div className="llm-proxy-build-row-header">
+        <div className="llm-proxy-build-main">
+          <div className="llm-proxy-build-title">
+            <span
+              className={`llm-proxy-build-issue-icon material-symbols-outlined${hasKeyIssue ? ' llm-proxy-build-issue-icon--on' : ''}`}
+              aria-hidden="true"
+            >
+              {hasKeyIssue ? 'error' : 'cloud'}
+            </span>
+            <code title={provider.id}>{provider.display_name || provider.id}</code>
+            {provider.display_name && provider.display_name !== provider.id ? (
+              <span className="llm-proxy-build-display-name">{provider.id}</span>
+            ) : null}
+            <CoreUIBadge tone={provider.enabled ? 'success' : 'neutral'}>
+              {provider.enabled ? t('providers.enabled') : t('providers.disabled')}
+            </CoreUIBadge>
+          </div>
+          <div className="llm-proxy-build-basic-info">
+            <span className="llm-proxy-build-basic-item">
+              <span className="material-symbols-outlined" aria-hidden="true">link</span>
+              <code>{provider.base_url}</code>
+            </span>
+            <span className="llm-proxy-build-basic-item">
+              <span className="material-symbols-outlined" aria-hidden="true">key</span>
+              {provider.api_key_configured
+                ? (provider.api_key_masked || t('providers.key_configured'))
+                : t('providers.key_missing')}
+            </span>
+            {Array.isArray(provider.manual_models) && provider.manual_models.length > 0 ? (
+              <span className="llm-proxy-build-basic-item">
+                <span className="material-symbols-outlined" aria-hidden="true">smart_toy</span>
+                {provider.manual_models.length} {t('providers.models')}
+              </span>
+            ) : null}
+          </div>
+          {testResult ? (
+            <p
+              className={`providers-provider-row__test-result ${
+                testResult.ok ? 'providers-provider-row__test-result--ok' : 'providers-provider-row__test-result--error'
+              }`}
+            >
+              {testResult.ok
+                ? t('providers.test_ok', { count: testResult.model_count || 0 })
+                : testResult.message || t('providers.test_failed')}
+            </p>
+          ) : null}
+        </div>
+        <div className="llm-proxy-build-actions">
+          <CoreUIButton
+            variant="secondary"
+            type="button"
+            data-tour="providers-test-btn"
+            disabled={testing}
+            onClick={() => onTest(provider.id)}
+          >
+            {testing ? t('providers.testing') : t('providers.test')}
+          </CoreUIButton>
+          <CoreUIButton variant="secondary" type="button" onClick={() => onEdit(provider)}>
+            {t('providers.edit')}
+          </CoreUIButton>
+          <CoreUIButton variant="secondary" type="button" onClick={() => onDelete(provider.id)}>
+            {t('providers.delete')}
+          </CoreUIButton>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ProviderForm({ form, editingId, editingProvider, saving, formError, onChange, onSave, onCancel }) {
+  return (
+    <section className="app-default-card providers-form-card" data-tour="providers-form">
+      <div className="dashboard-card-header">
+        <h3>{editingId ? t('providers.edit') : t('providers.add')}</h3>
+      </div>
+      <div className="providers-form-grid">
+        <label className="coreui-form-field">
+          <span>{t('providers.form.id')}</span>
+          <input
+            className="coreui-select"
+            value={form.id}
+            disabled={Boolean(editingId)}
+            onChange={(event) => onChange({ id: event.target.value })}
+            placeholder="my-openai-gateway"
+            autoComplete="off"
+          />
+        </label>
+        <label className="coreui-form-field">
+          <span>{t('providers.form.display_name')}</span>
+          <input
+            className="coreui-select"
+            value={form.display_name}
+            onChange={(event) => onChange({ display_name: event.target.value })}
+            autoComplete="off"
+          />
+        </label>
+        <label className="coreui-form-field providers-form-grid__wide">
+          <span>{t('providers.form.base_url')}</span>
+          <input
+            className="coreui-select"
+            value={form.base_url}
+            onChange={(event) => onChange({ base_url: event.target.value })}
+            placeholder="https://api.openai.com"
+            autoComplete="off"
+          />
+        </label>
+        <label className="coreui-form-field providers-form-grid__wide">
+          <span>{t('providers.form.api_key')}</span>
+          <input
+            className="coreui-select"
+            type="password"
+            value={form.api_key}
+            onChange={(event) => onChange({ api_key: event.target.value })}
+            placeholder={editingProvider?.api_key_configured ? t('providers.form.api_key_unchanged') : ''}
+            autoComplete="new-password"
+          />
+        </label>
+        <label className="coreui-form-field">
+          <span>{t('providers.form.organization')}</span>
+          <input
+            className="coreui-select"
+            value={form.organization}
+            onChange={(event) => onChange({ organization: event.target.value })}
+            autoComplete="off"
+          />
+        </label>
+        <label className="coreui-form-field providers-form-grid__wide">
+          <span>{t('providers.form.manual_models')}</span>
+          <textarea
+            className="coreui-select providers-form-textarea"
+            value={form.manual_models}
+            onChange={(event) => onChange({ manual_models: event.target.value })}
+            placeholder="gpt-4o-mini"
+          />
+        </label>
+        <label className="coreui-form-field providers-form-checkbox">
+          <input
+            type="checkbox"
+            checked={form.enabled}
+            onChange={(event) => onChange({ enabled: event.target.checked })}
+          />
+          <span>{t('providers.form.enabled')}</span>
+        </label>
+      </div>
+      {formError ? <ActionableError error={formError} title={t('providers.form.error')} /> : null}
+      <div className="dashboard-card-actions providers-form-actions">
+        <CoreUIButton variant="primary" type="button" disabled={saving} onClick={onSave}>
+          {saving ? t('providers.saving') : t('providers.save')}
+        </CoreUIButton>
+        <CoreUIButton variant="secondary" type="button" disabled={saving} onClick={onCancel}>
+          {t('providers.cancel')}
+        </CoreUIButton>
+      </div>
+    </section>
+  );
+}
+
 export default function ProvidersTab({ onNavigate }) {
+  const [subTab, setSubTab] = useState('custom');
   const [customProviders, setCustomProviders] = useState([]);
   const [extensionProviders, setExtensionProviders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +236,14 @@ export default function ProvidersTab({ onNavigate }) {
   const [formError, setFormError] = useState(null);
   const [testingId, setTestingId] = useState(null);
   const [testResults, setTestResults] = useState({});
+
+  const subTabs = useMemo(
+    () => [
+      { id: 'custom', label: t('providers.subtab.custom') },
+      { id: 'extensions', label: t('providers.subtab.extensions') },
+    ],
+    [],
+  );
 
   const providersTourSteps = useMemo(() => resolveProvidersTourSteps(), []);
   useContextualTour('providers', providersTourSteps, !loading);
@@ -86,6 +280,7 @@ export default function ProvidersTab({ onNavigate }) {
     setForm(EMPTY_FORM);
     setFormError(null);
     setFormOpen(true);
+    setSubTab('custom');
   };
 
   const openEditForm = (provider) => {
@@ -101,6 +296,7 @@ export default function ProvidersTab({ onNavigate }) {
     });
     setFormError(null);
     setFormOpen(true);
+    setSubTab('custom');
   };
 
   const closeForm = () => {
@@ -108,6 +304,10 @@ export default function ProvidersTab({ onNavigate }) {
     setEditingId(null);
     setForm(EMPTY_FORM);
     setFormError(null);
+  };
+
+  const handleFormChange = (patch) => {
+    setForm((prev) => ({ ...prev, ...patch }));
   };
 
   const handleSave = async () => {
@@ -169,222 +369,149 @@ export default function ProvidersTab({ onNavigate }) {
 
   if (loading) {
     return (
-      <div className="providers-tab app-main">
-        <p>{t('providers.loading')}</p>
+      <div className="settings-tab settings-tab--fullwidth llm-proxy-tab providers-tab tab-view">
+        <p className="settings-intro">{t('providers.loading')}</p>
       </div>
     );
   }
 
   return (
-    <div className="providers-tab app-main">
-      <header className="providers-tab__header" data-tour="providers-header">
-        <h1>{t('nav.providers')}</h1>
-        <p>{t('providers.intro')}</p>
-      </header>
+    <div className="settings-tab settings-tab--fullwidth llm-proxy-tab providers-tab tab-view">
+      <div className="llm-proxy-header" data-tour="providers-header">
+        <div className="llm-proxy-header-row llm-proxy-builds-card-header">
+          <h2>{t('nav.providers')}</h2>
+          <InfoButton helpRef="providers" label={t('nav.providers')} />
+        </div>
+        <CoreUIPillTabs
+          tabs={subTabs}
+          value={subTab}
+          onChange={setSubTab}
+          ariaLabel={t('nav.providers')}
+        />
+      </div>
+
+      <p className="settings-intro">{t('providers.intro')}</p>
 
       {error ? (
         <ActionableError error={error} title={t('providers.load_error')} onRetry={loadData} />
       ) : null}
 
-      <section className="providers-tab__section" data-tour="providers-custom-list">
-        <div className="providers-tab__section-header">
-          <h2>{t('providers.custom_title')}</h2>
-          <CoreUIButton
-            variant="primary"
-            type="button"
-            data-tour="providers-add-btn"
-            onClick={openCreateForm}
-          >
-            {t('providers.add')}
-          </CoreUIButton>
-        </div>
-
-        {formOpen ? (
-          <div className="providers-tab__form" data-tour="providers-form">
-            <label>
-              {t('providers.form.id')}
-              <input
-                value={form.id}
-                disabled={Boolean(editingId)}
-                onChange={(event) => setForm((prev) => ({ ...prev, id: event.target.value }))}
-                placeholder="my-openai-gateway"
-                autoComplete="off"
-              />
-            </label>
-            <label>
-              {t('providers.form.display_name')}
-              <input
-                value={form.display_name}
-                onChange={(event) => setForm((prev) => ({ ...prev, display_name: event.target.value }))}
-                autoComplete="off"
-              />
-            </label>
-            <label>
-              {t('providers.form.base_url')}
-              <input
-                value={form.base_url}
-                onChange={(event) => setForm((prev) => ({ ...prev, base_url: event.target.value }))}
-                placeholder="https://api.openai.com"
-                autoComplete="off"
-              />
-            </label>
-            <label>
-              {t('providers.form.api_key')}
-              <input
-                type="password"
-                value={form.api_key}
-                onChange={(event) => setForm((prev) => ({ ...prev, api_key: event.target.value }))}
-                placeholder={editingProvider?.api_key_configured ? t('providers.form.api_key_unchanged') : ''}
-                autoComplete="new-password"
-              />
-            </label>
-            <label>
-              {t('providers.form.organization')}
-              <input
-                value={form.organization}
-                onChange={(event) => setForm((prev) => ({ ...prev, organization: event.target.value }))}
-                autoComplete="off"
-              />
-            </label>
-            <label>
-              {t('providers.form.manual_models')}
-              <textarea
-                value={form.manual_models}
-                onChange={(event) => setForm((prev) => ({ ...prev, manual_models: event.target.value }))}
-                placeholder="gpt-4o-mini"
-              />
-            </label>
-            <label>
-              <span>{t('providers.form.enabled')}</span>
-              <input
-                type="checkbox"
-                checked={form.enabled}
-                onChange={(event) => setForm((prev) => ({ ...prev, enabled: event.target.checked }))}
-              />
-            </label>
-            {formError ? <ActionableError error={formError} title={t('providers.form.error')} /> : null}
-            <div className="providers-tab__form-actions">
-              <CoreUIButton variant="primary" type="button" disabled={saving} onClick={handleSave}>
-                {saving ? t('providers.saving') : t('providers.save')}
-              </CoreUIButton>
-              <CoreUIButton variant="secondary" type="button" disabled={saving} onClick={closeForm}>
-                {t('providers.cancel')}
+      <div className="settings-form">
+        <section className="app-default-card llm-proxy-status-card" aria-labelledby="providers-overview-heading">
+          <div className="dashboard-card-header">
+            <h3 id="providers-overview-heading">{t('providers.overview_title')}</h3>
+            <div className="dashboard-card-actions">
+              <CoreUIButton variant="primary" type="button" onClick={loadData}>
+                {t('providers.refresh')}
               </CoreUIButton>
             </div>
           </div>
+          {kvRow(t('providers.overview_custom'), customProviders.length, 'custom-count')}
+          {kvRow(t('providers.overview_extensions'), extensionProviders.length, 'ext-count')}
+        </section>
+
+        {subTab === 'custom' ? (
+          <>
+            <div className="dashboard-card-actions llm-proxy-section-gap">
+              <CoreUIButton
+                variant="primary"
+                type="button"
+                data-tour="providers-add-btn"
+                onClick={openCreateForm}
+                disabled={formOpen && !editingId}
+              >
+                {t('providers.add')}
+              </CoreUIButton>
+            </div>
+
+            {formOpen ? (
+              <ProviderForm
+                form={form}
+                editingId={editingId}
+                editingProvider={editingProvider}
+                saving={saving}
+                formError={formError}
+                onChange={handleFormChange}
+                onSave={handleSave}
+                onCancel={closeForm}
+              />
+            ) : null}
+
+            <section className="app-default-card" data-tour="providers-custom-list">
+              <div className="dashboard-card-header llm-proxy-builds-card-header">
+                <h3>{t('providers.custom_title')}</h3>
+                <CoreUIBadge tone="info">{customProviders.length}</CoreUIBadge>
+              </div>
+              {customProviders.length === 0 ? (
+                <p className="dashboard-card-muted">{t('providers.empty_description')}</p>
+              ) : (
+                <div className="llm-proxy-builds-list" role="list" aria-label={t('providers.custom_title')}>
+                  {customProviders.map((provider) => (
+                    <CustomProviderRow
+                      key={provider.id}
+                      provider={provider}
+                      testResult={testResults[provider.id]}
+                      testing={testingId === provider.id}
+                      onTest={handleTest}
+                      onEdit={openEditForm}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
         ) : null}
 
-        {customProviders.length === 0 ? (
-          <EmptyState>
-            <strong>{t('providers.empty_title')}</strong>
-            <p>{t('providers.empty_description')}</p>
-          </EmptyState>
-        ) : (
-          <div className="providers-tab__table-wrap">
-            <table className="providers-tab__table">
-              <thead>
-                <tr>
-                  <th>{t('providers.table.id')}</th>
-                  <th>{t('providers.table.base_url')}</th>
-                  <th>{t('providers.table.status')}</th>
-                  <th>{t('providers.table.actions')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {customProviders.map((provider) => {
-                  const testResult = testResults[provider.id];
-                  return (
-                    <tr key={provider.id}>
-                      <td>
-                        <strong>{provider.display_name || provider.id}</strong>
-                        <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>{provider.id}</div>
-                      </td>
-                      <td>{provider.base_url}</td>
-                      <td>
-                        <CoreUIBadge tone={provider.enabled ? 'success' : 'neutral'}>
-                          {provider.enabled ? t('providers.enabled') : t('providers.disabled')}
+        {subTab === 'extensions' ? (
+          <section className="app-default-card extensions-view" data-tour="providers-extensions">
+            <div className="extensions-view__header">
+              <h3>{t('providers.extensions_title')}</h3>
+              <div className="extensions-view__header-badges">
+                <CoreUIBadge tone="info">{extensionProviders.length}</CoreUIBadge>
+                {onNavigate ? (
+                  <CoreUIButton variant="secondary" type="button" onClick={() => onNavigate('extensions')}>
+                    {t('providers.open_extensions')}
+                  </CoreUIButton>
+                ) : null}
+              </div>
+            </div>
+            <p className="settings-form-hint">{t('providers.extensions_hint')}</p>
+            <div className="extensions-cards">
+              {extensionProviders.map((row) => (
+                <article
+                  key={row.provider_id || row.id}
+                  className="coreui-card-shell coreui-p-md extensions-card extensions-card--horizontal provider-card"
+                >
+                  <div className="extensions-card__main">
+                    <div className="extensions-card__identity">
+                      <span className="material-symbols-outlined extensions-card__icon" aria-hidden="true">
+                        hub
+                      </span>
+                      <div className="extensions-card__copy">
+                        <h4>{row.title || row.provider_id || row.id}</h4>
+                        <p>{row.description || row.provider_id || row.id}</p>
+                      </div>
+                    </div>
+                    <div className="extensions-card__meta-row" aria-label={t('providers.extensions_title')}>
+                      <CoreUIBadge tone="neutral">{row.provider_id || row.id}</CoreUIBadge>
+                      {row.extension_id ? <CoreUIBadge tone="neutral">{row.extension_id}</CoreUIBadge> : null}
+                      {Array.isArray(row.models) && row.models.length > 0 ? (
+                        <CoreUIBadge tone="info">
+                          {row.models.length} {t('providers.models')}
                         </CoreUIBadge>
-                        {provider.api_key_configured ? (
-                          <div style={{ fontSize: '0.75rem', marginTop: 4 }}>
-                            {provider.api_key_masked || t('providers.key_configured')}
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: '0.75rem', marginTop: 4, color: 'var(--md-sys-color-error)' }}>
-                            {t('providers.key_missing')}
-                          </div>
-                        )}
-                        {testResult ? (
-                          <div
-                            className={`providers-tab__test-result ${
-                              testResult.ok ? 'providers-tab__test-result--ok' : 'providers-tab__test-result--error'
-                            }`}
-                          >
-                            {testResult.ok
-                              ? t('providers.test_ok', { count: testResult.model_count || 0 })
-                              : testResult.message || t('providers.test_failed')}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td>
-                        <div className="providers-tab__actions">
-                          <CoreUIButton
-                            variant="secondary"
-                            type="button"
-                            disabled={testingId === provider.id}
-                            onClick={() => handleTest(provider.id)}
-                          >
-                            {testingId === provider.id ? t('providers.testing') : t('providers.test')}
-                          </CoreUIButton>
-                          <CoreUIButton variant="secondary" type="button" onClick={() => openEditForm(provider)}>
-                            {t('providers.edit')}
-                          </CoreUIButton>
-                          <CoreUIButton variant="secondary" type="button" onClick={() => handleDelete(provider.id)}>
-                            {t('providers.delete')}
-                          </CoreUIButton>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className="providers-tab__section" data-tour="providers-extensions">
-        <div className="providers-tab__section-header">
-          <h2>{t('providers.extensions_title')}</h2>
-          {onNavigate ? (
-            <CoreUIButton variant="secondary" type="button" onClick={() => onNavigate('extensions')}>
-              {t('providers.open_extensions')}
-            </CoreUIButton>
-          ) : null}
-        </div>
-        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--md-sys-color-on-surface-variant)' }}>
-          {t('providers.extensions_hint')}
-        </p>
-        {extensionProviders.length === 0 ? (
-          <EmptyState>
-            <strong>{t('providers.extensions_empty_title')}</strong>
-            <p>{t('providers.extensions_empty_description')}</p>
-          </EmptyState>
-        ) : (
-          <div className="providers-tab__extension-list">
-            {extensionProviders.map((row) => (
-              <article key={row.provider_id || row.id} className="providers-tab__extension-card">
-                <h3>{row.title || row.provider_id || row.id}</h3>
-                <p>
-                  {row.provider_id || row.id}
-                  {Array.isArray(row.models) && row.models.length > 0
-                    ? ` · ${row.models.length} ${t('providers.models')}`
-                    : ''}
-                </p>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+                      ) : null}
+                    </div>
+                  </div>
+                </article>
+              ))}
+              {extensionProviders.length === 0 ? (
+                <div className="extensions-empty">{t('providers.extensions_empty_description')}</div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+      </div>
     </div>
   );
 }

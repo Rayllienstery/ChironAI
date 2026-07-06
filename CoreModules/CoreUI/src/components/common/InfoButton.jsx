@@ -1,5 +1,6 @@
 import CoreUIButton from '../CoreUIButton';
 import { useHelpPanel } from '../help/HelpPanelContext.jsx';
+import '../../styles/components/HelpPanel.css';
 
 /**
  * Compact info icon that opens contextual help in the Help panel drawer.

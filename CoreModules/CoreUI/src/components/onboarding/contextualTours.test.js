@@ -19,7 +19,7 @@ describe('contextualTours', () => {
     const goToRagStep = vi.fn();
     const steps = createBuildsTourSteps({ goToBasicStep, goToRagStep });
 
-    steps[2].onEnter?.();
+    steps[3].onEnter?.();
     expect(goToRagStep).toHaveBeenCalled();
 
     steps[1].onEnter?.();

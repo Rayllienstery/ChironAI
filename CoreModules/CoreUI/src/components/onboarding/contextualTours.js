@@ -24,6 +24,12 @@ const BUILDS_TOUR_STEP_DEFS = [
     target: '[data-tour="build-wizard-id"]',
   },
   {
+    id: 'build-provider',
+    titleKey: 'onboarding.tour.builds.provider.title',
+    bodyKey: 'onboarding.tour.builds.provider.body',
+    target: '[data-tour="build-wizard-provider"]',
+  },
+  {
     id: 'rag-collection',
     titleKey: 'onboarding.tour.builds.rag.title',
     bodyKey: 'onboarding.tour.builds.rag.body',
@@ -41,6 +47,7 @@ export function createBuildsTourSteps({ goToBasicStep, goToRagStep } = {}) {
   const onEnterById = {
     'build-wizard': goToBasicStep,
     'build-id': goToBasicStep,
+    'build-provider': goToBasicStep,
     'rag-collection': goToRagStep,
   };
   return resolveTourSteps(BUILDS_TOUR_STEP_DEFS).map((step) => ({

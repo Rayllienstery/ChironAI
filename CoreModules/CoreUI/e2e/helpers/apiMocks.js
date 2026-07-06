@@ -6,6 +6,7 @@ const DEFAULT_ONBOARDING_STATE = {
     extensions: false,
     prompts: false,
     crawler: false,
+    providers: false,
     logs: false,
   },
 };
@@ -18,6 +19,7 @@ const COMPLETED_ONBOARDING_STATE = {
     extensions: true,
     prompts: true,
     crawler: true,
+    providers: true,
     logs: false,
   },
 };
@@ -29,7 +31,7 @@ function baseResponses(onboardingState, builds) {
       theme: 'system',
       onboarding_state: JSON.stringify(onboardingState),
     },
-    '/version': { version: '0.8.17', app_name: 'Chiron AI', app_stage: 'STABLE' },
+    '/version': { version: '0.8.19', app_name: 'Chiron AI', app_stage: 'STABLE' },
     '/dashboard-metrics': {
       cpu_percent: 0,
       memory_percent: 0,
@@ -61,8 +63,25 @@ function baseResponses(onboardingState, builds) {
       advanced_retrieval: {},
     },
     '/providers/catalog': {
-      providers: [{ provider_id: 'ollama', title: 'Ollama' }],
-      models: [{ provider_id: 'ollama', id: 'llama3', name: 'Llama 3' }],
+      providers: [
+        { provider_id: 'ollama', title: 'Ollama' },
+        { provider_id: 'my-gateway', title: 'My Gateway' },
+      ],
+      models: [
+        { provider_id: 'ollama', id: 'llama3', name: 'Llama 3' },
+        { provider_id: 'my-gateway', id: 'gpt-4o-mini', name: 'gpt-4o-mini' },
+      ],
+    },
+    '/providers/custom': {
+      providers: [
+        {
+          id: 'my-gateway',
+          display_name: 'My Gateway',
+          base_url: 'https://api.example.com/v1',
+          enabled: true,
+          api_key_configured: true,
+        },
+      ],
     },
     '/provider-catalog': {
       providers: [{ provider_id: 'ollama', title: 'Ollama' }],
@@ -173,7 +192,25 @@ export async function installApiMocks(page, options = {}) {
       return;
     }
 
-    if (request.method() === 'POST' || request.method() === 'PATCH' || request.method() === 'DELETE') {
+    if (path.match(/^\/providers\/custom\/[^/]+\/test$/) && request.method() === 'POST') {
+      await route.fulfill({
+        json: {
+          ok: true,
+          status: 'ok',
+          message: '',
+          model_count: 1,
+          models: [{ id: 'gpt-4o-mini', label: 'gpt-4o-mini' }],
+        },
+      });
+      return;
+    }
+
+    if (path.startsWith('/providers/custom/') && request.method() === 'DELETE') {
+      await route.fulfill({ json: { ok: true } });
+      return;
+    }
+
+    if (request.method() === 'POST' || request.method() === 'PATCH' || request.method() === 'PUT') {
       await route.fulfill({ json: { ok: true } });
       return;
     }

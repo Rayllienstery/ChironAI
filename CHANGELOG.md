@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.20] - 2026-07-06
+### Added
+- Added ADR 0007 (builtin custom OpenAI-compatible upstream providers), application unit tests, Providers tab component test, and Playwright providers contextual tour.
+- Extended builds contextual tour with a provider/model step referencing the Providers tab.
+
+### Fixed
+- Fixed Playwright first-run onboarding E2E for the 7-step tour (language picker + Providers step).
+
 ## [0.8.19] - 2026-07-06
 ### Added
 - Added **Providers** CoreUI tab with CRUD for custom OpenAI-compatible upstream APIs, connection testing, and extension provider summary.

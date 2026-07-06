@@ -87,6 +87,7 @@ export default function LlmProxyWizardSteps({
                   </FieldLabelWithHelp>
                   <select
                     className="coreui-select"
+                    data-tour="build-wizard-provider"
                     value={draft.provider_id}
                     onChange={(e) => {
                       const providerId = e.target.value;

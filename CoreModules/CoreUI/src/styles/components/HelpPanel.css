@@ -1,7 +1,8 @@
 .help-panel-root {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  /* Above .coreui-modal-overlay (9999) so field help works inside modals */
+  z-index: 10050;
   display: flex;
   justify-content: flex-end;
   pointer-events: none;
@@ -118,12 +119,25 @@
   gap: var(--md-sys-spacing-xs);
 }
 
-.info-button {
+.coreui-btn.info-button {
   width: 28px;
   height: 28px;
   min-width: 28px;
+  min-height: 28px;
   padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
   color: var(--md-sys-color-primary);
+}
+
+.coreui-btn.info-button:hover:not(:disabled) {
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.coreui-btn.info-button:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
 }
 
 .info-button__icon {
