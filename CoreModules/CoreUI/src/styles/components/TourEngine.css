@@ -1,0 +1,71 @@
+.tour-engine {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  pointer-events: none;
+}
+
+.tour-engine__scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--md-sys-color-scrim) 48%, transparent);
+  pointer-events: auto;
+}
+
+.tour-engine__spotlight {
+  position: fixed;
+  border-radius: var(--md-sys-shape-corner-medium);
+  box-shadow: 0 0 0 9999px color-mix(in srgb, var(--md-sys-color-scrim) 48%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.tour-engine__card {
+  position: fixed;
+  z-index: 2;
+  width: min(24rem, calc(100vw - 2rem));
+  padding: var(--md-sys-spacing-lg);
+  border-radius: var(--md-sys-shape-corner-large);
+  background: var(--md-sys-color-surface-container-high);
+  box-shadow: var(--md-sys-elevation-level3);
+  pointer-events: auto;
+}
+
+.tour-engine__card--centered {
+  transform: translate(-50%, -50%);
+}
+
+.tour-engine__progress {
+  margin: 0 0 var(--md-sys-spacing-xs);
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-label-medium-font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tour-engine__title {
+  margin: 0 0 var(--md-sys-spacing-sm);
+  font: var(--md-sys-typescale-title-medium-font);
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.tour-engine__body {
+  margin: 0 0 var(--md-sys-spacing-lg);
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-medium-font);
+  line-height: 1.55;
+}
+
+.tour-engine__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-sm);
+}
+
+.tour-engine__actions-main {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-sm);
+}

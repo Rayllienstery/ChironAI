@@ -335,6 +335,7 @@ function SidebarNav({
                 key={tab.id}
                 type="button"
                 className={`coreui-sidebar__link${active ? " coreui-sidebar__link--active" : ""}${isRag ? " coreui-sidebar__link--rag" : ""}`}
+                data-tour={tab.id}
                 onClick={() => onTabChange(tab.id)}
                 onMouseEnter={() => prefetchTab(tab.id)}
                 onFocus={() => prefetchTab(tab.id)}
@@ -417,6 +418,7 @@ function SidebarNav({
                   as="button"
                   type="button"
                   className={`coreui-sidebar__footer-btn coreui-sidebar__footer-btn--settings${settingsActive ? " coreui-sidebar__footer-btn--active" : ""}`}
+                  data-tour="settings"
                   onClick={onSettings}
                   title="Settings"
                   aria-current={settingsActive ? "page" : undefined}

@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.12] - 2026-07-06
+### Added
+- Added custom first-run product tour (M3 spotlight engine), onboarding state persistence, and a Settings action to restart the tour.
+
 ## [0.8.11] - 2026-07-06
 ### Added
 - Added contextual `InfoButton` help on LLM Proxy Builds list header and build detail modal fields, with field-to-article mapping.

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { getSettings, updateSettings } from '../services/api';
 import { SUPPORTED_LOCALES, getLocale, setLocale } from '../services/i18n';
+import CoreUIButton from './CoreUIButton';
+import { restartFirstRunTour } from './onboarding/OnboardingHost.jsx';
 import '../styles/components/SettingsTab.css';
 import '../styles/components/DashboardTab.css';
 
@@ -312,6 +314,16 @@ function SettingsTab({
               Enables the Developer Tools section in the sidebar (Testing, CoreUI Showcase, Dev
               Documentation, Swagger, Performance).
             </p>
+          </div>
+
+          <div className="form-group">
+            <label>Product tour</label>
+            <p className="settings-form-hint coreui-text-muted-sm">
+              Replay the first-run walkthrough of Dashboard, Builds, Help, and Settings.
+            </p>
+            <CoreUIButton type="button" variant="default" onClick={restartFirstRunTour}>
+              Restart tour
+            </CoreUIButton>
           </div>
 
           <div className="form-group">
