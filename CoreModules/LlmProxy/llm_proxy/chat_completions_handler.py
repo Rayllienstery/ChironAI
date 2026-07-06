@@ -240,6 +240,20 @@ def run_chat_completions(
         if _rl_b and not body.get("reasoning_level") and not body.get("reasoning"):
             body["reasoning_level"] = _rl_b
 
+    if active_build and dumb_build_pipeline:
+        _build_provider_id = str(active_build.get("provider_id") or "").strip()
+        if _build_provider_id:
+            try:
+                from rag_service.infrastructure.provider_runtime import chat_client_for_provider_id
+
+                chat_client = chat_client_for_provider_id(chat_client, _build_provider_id)
+            except Exception as exc:
+                _RAG_LOG.warning(
+                    "Failed to scope chat client to build provider %s: %s",
+                    _build_provider_id,
+                    exc,
+                )
+
     build_sse_streaming = True
     if dumb_build_pipeline and active_build:
         build_sse_streaming = active_build.get("sse_streaming", True) is not False

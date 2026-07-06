@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+﻿import React, { useMemo, useState } from "react";
 import {
   CreateCollectionModal,
   CreatePipelineModal,
@@ -17,7 +17,7 @@ import MdPipelineSection from "./crawlerTab/MdPipelineSection";
 import { useCreateCollectionFlow } from "./crawlerTab/useCreateCollectionFlow";
 import { useCrawlerSection } from "./crawlerTab/useCrawlerSection";
 import { useMdPipelineSection } from "./crawlerTab/useMdPipelineSection";
-import { CRAWLER_TOUR_STEPS } from "./onboarding/contextualTours.js";
+import { resolveCrawlerTourSteps } from "./onboarding/contextualTours.js";
 import { useContextualTour } from "./onboarding/useContextualTour.js";
 
 function CrawlerTab() {
@@ -34,7 +34,8 @@ function CrawlerTab() {
   });
   const mdPipeline = useMdPipelineSection({ activeSection });
 
-  useContextualTour("crawler", CRAWLER_TOUR_STEPS, !crawler.loading);
+  const crawlerTourSteps = useMemo(() => resolveCrawlerTourSteps(), []);
+  useContextualTour("crawler", crawlerTourSteps, !crawler.loading);
 
   return (
     <div className="crawler-tab tab-view">

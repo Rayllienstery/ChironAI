@@ -27,6 +27,13 @@ class ProviderRegistry:
             raise ValueError(f"duplicate provider id: {desc.id}")
         self._providers[desc.id] = provider
 
+    def unregister(self, provider_id: str) -> None:
+        self._providers.pop(str(provider_id or "").strip(), None)
+
+    def replace(self, provider: LLMProvider) -> None:
+        desc = provider.describe()
+        self._providers[desc.id] = provider
+
     def get(self, provider_id: str) -> LLMProvider | None:
         return self._providers.get(provider_id)
 

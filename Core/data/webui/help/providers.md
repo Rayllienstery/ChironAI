@@ -2,11 +2,25 @@
 
 Providers are pluggable backends that supply **models** and **credentials** to ChironAI. The WebUI never calls Ollama or cloud APIs directly from the browser — everything goes through server-side **provider runtime** + **LLM Proxy** wiring.
 
+## Providers tab (CoreUI)
+
+Open **Providers** in the **Core Functionality** sidebar section to:
+
+| Area | What you can do |
+|------|-----------------|
+| **Custom OpenAI-compatible** | Add upstream gateways with base URL + API key, optional manual model ids, test connection, enable/disable |
+| **Extension providers** | Read-only summary of providers registered by extensions (for example `ollama-provider`) with a link to **Extensions** |
+
+Custom providers are stored server-side in app settings (`custom_openai_providers`). API keys are masked in API responses and never sent to the browser after save.
+
+After create/update/delete, the host re-syncs the LLM runtime registry so the provider appears in **LLM Proxy Builds** → **Provider** dropdown without restarting the server.
+
 ## Provider types
 
 | Type | Typical example | How it appears |
 |------|-----------------|----------------|
-| Extension LLM provider | `ollama-provider` | **Extensions** tab, provider catalog |
+| Custom OpenAI-compatible | LiteLLM, OpenRouter, self-hosted vLLM | **Providers** tab → custom list + build wizard |
+| Extension LLM provider | `ollama-provider` | **Extensions** tab, **Providers** tab summary, provider catalog |
 | Bundled / host wiring | Internal adapters | **Dependencies**, build wizard provider list |
 | Cloud via extension | Custom API gateways | Extension manifest + Docker service |
 

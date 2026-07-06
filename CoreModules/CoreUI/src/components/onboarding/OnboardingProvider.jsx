@@ -4,10 +4,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import TourEngine from './TourEngine.jsx';
-import { FIRST_RUN_TOUR_STEPS } from './firstRunTour.js';
+import { resolveFirstRunTourSteps } from './firstRunTour.js';
 import {
   markFirstRunCompleted,
   markTourCompleted,
@@ -19,10 +20,28 @@ import {
   writeOnboardingStateToStorage,
 } from './onboardingState.js';
 import { getSettings } from '../../services/api.js';
+import { setLocale } from '../../services/i18n';
+import { releaseBodyScrollLock } from './tourUiLock.js';
 
 const OnboardingContext = createContext(null);
 
 const FIRST_RUN_KEY = '__first_run__';
+const DEFAULT_TOUR_LOCALE = 'en';
+const CONTEXTUAL_TOUR_COOLDOWN_MS = 1500;
+
+function mergeRemoteOnboardingState(localState, remoteState) {
+  if (!remoteState) return localState;
+  if (localState.firstRunCompleted && !remoteState.firstRunCompleted) {
+    return localState;
+  }
+  return {
+    ...remoteState,
+    tours: {
+      ...remoteState.tours,
+      ...localState.tours,
+    },
+  };
+}
 
 /**
  * @typedef {Object} OnboardingApi
@@ -30,13 +49,47 @@ const FIRST_RUN_KEY = '__first_run__';
  * @property {boolean} isTourActive
  */
 
-export function OnboardingProvider({ children, onNavigate }) {
+export function OnboardingProvider({ children, onNavigate, onLocaleChange }) {
   const [tour, setTour] = useState({
     open: false,
     steps: [],
     stepIndex: 0,
     tourKey: '',
   });
+  const [tourLocale, setTourLocale] = useState(DEFAULT_TOUR_LOCALE);
+  const contextualTourCooldownRef = useRef(false);
+  const contextualTourCooldownTimerRef = useRef(null);
+  const tourRef = useRef(tour);
+
+  useEffect(() => {
+    tourRef.current = tour;
+  }, [tour]);
+
+  const applyTourLocale = useCallback(
+    (nextLocale) => {
+      const normalized = nextLocale === 'uk' ? 'uk' : DEFAULT_TOUR_LOCALE;
+      setTourLocale(normalized);
+      setLocale(normalized);
+      onLocaleChange?.(normalized);
+      setTour((current) => {
+        if (!current.open || current.tourKey !== FIRST_RUN_KEY) {
+          return current;
+        }
+        return { ...current, steps: resolveFirstRunTourSteps() };
+      });
+    },
+    [onLocaleChange],
+  );
+
+  const openFirstRunTour = useCallback(() => {
+    applyTourLocale(DEFAULT_TOUR_LOCALE);
+    setTour({
+      open: true,
+      steps: resolveFirstRunTourSteps(),
+      stepIndex: 0,
+      tourKey: FIRST_RUN_KEY,
+    });
+  }, [applyTourLocale]);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,42 +100,63 @@ export function OnboardingProvider({ children, onNavigate }) {
         const remote = await getSettings();
         const fromSettings = parseOnboardingStateFromSettings(remote);
         if (fromSettings) {
-          state = writeOnboardingStateToStorage(fromSettings);
+          state = writeOnboardingStateToStorage(
+            mergeRemoteOnboardingState(readOnboardingStateFromStorage(), fromSettings),
+          );
         }
       } catch {
         /* server not ready */
       }
-      if (!cancelled && !state.firstRunCompleted) {
-        setTour({
-          open: true,
-          steps: FIRST_RUN_TOUR_STEPS,
-          stepIndex: 0,
-          tourKey: FIRST_RUN_KEY,
-        });
+      const latest = readOnboardingStateFromStorage();
+      if (!cancelled && !latest.firstRunCompleted) {
+        openFirstRunTour();
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [openFirstRunTour]);
 
   const closeTour = useCallback(() => {
+    releaseBodyScrollLock();
     setTour({ open: false, steps: [], stepIndex: 0, tourKey: '' });
   }, []);
 
-  const completeTour = useCallback((tourKey) => {
-    if (tourKey === FIRST_RUN_KEY) {
-      markFirstRunCompleted();
-    } else if (tourKey) {
-      markTourCompleted(tourKey);
+  const startContextualTourCooldown = useCallback(() => {
+    contextualTourCooldownRef.current = true;
+    if (contextualTourCooldownTimerRef.current) {
+      window.clearTimeout(contextualTourCooldownTimerRef.current);
     }
-    closeTour();
-  }, [closeTour]);
+    contextualTourCooldownTimerRef.current = window.setTimeout(() => {
+      contextualTourCooldownRef.current = false;
+      contextualTourCooldownTimerRef.current = null;
+    }, CONTEXTUAL_TOUR_COOLDOWN_MS);
+  }, []);
+
+  const completeTour = useCallback((tourKey) => {
+    try {
+      if (tourKey === FIRST_RUN_KEY) {
+        markFirstRunCompleted();
+        startContextualTourCooldown();
+      } else if (tourKey) {
+        markTourCompleted(tourKey);
+      }
+    } finally {
+      closeTour();
+    }
+  }, [closeTour, startContextualTourCooldown]);
 
   const maybeStartContextualTour = useCallback((tourKey, steps, options = {}) => {
     const { ready = true } = options;
-    if (!ready || tour.open || !tourKey || !Array.isArray(steps) || steps.length === 0) {
+    if (
+      !ready
+      || tour.open
+      || contextualTourCooldownRef.current
+      || !tourKey
+      || !Array.isArray(steps)
+      || steps.length === 0
+    ) {
       return false;
     }
     const state = readOnboardingStateFromStorage();
@@ -129,12 +203,18 @@ export function OnboardingProvider({ children, onNavigate }) {
   }, []);
 
   const handleSkip = useCallback(() => {
-    completeTour(tour.tourKey);
-  }, [completeTour, tour.tourKey]);
+    completeTour(tourRef.current.tourKey);
+  }, [completeTour]);
 
   const handleFinish = useCallback(() => {
-    completeTour(tour.tourKey);
-  }, [completeTour, tour.tourKey]);
+    completeTour(tourRef.current.tourKey);
+  }, [completeTour]);
+
+  useEffect(() => () => {
+    if (contextualTourCooldownTimerRef.current) {
+      window.clearTimeout(contextualTourCooldownTimerRef.current);
+    }
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -151,6 +231,8 @@ export function OnboardingProvider({ children, onNavigate }) {
         open={tour.open}
         steps={tour.steps}
         stepIndex={tour.stepIndex}
+        localeValue={tourLocale}
+        onLocaleChange={applyTourLocale}
         onBack={handleBack}
         onNext={handleNext}
         onSkip={handleSkip}
@@ -171,5 +253,6 @@ export function useOnboarding() {
 
 export function restartFirstRunTour() {
   resetFirstRunTour();
+  setLocale(DEFAULT_TOUR_LOCALE);
   window.location.reload();
 }

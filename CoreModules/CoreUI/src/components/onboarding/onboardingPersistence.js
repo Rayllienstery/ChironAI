@@ -33,11 +33,15 @@ export function markFirstRunCompleted() {
 }
 
 function syncOnboardingState(state) {
-  void updateSettings({
-    [ONBOARDING_SETTINGS_KEY]: serializeOnboardingStateForSettings(state),
-  }).catch(() => {
+  try {
+    void updateSettings({
+      [ONBOARDING_SETTINGS_KEY]: serializeOnboardingStateForSettings(state),
+    }).catch(() => {
+      /* localStorage remains the fallback */
+    });
+  } catch {
     /* localStorage remains the fallback */
-  });
+  }
 }
 
 export function resetFirstRunTour() {

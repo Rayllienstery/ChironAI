@@ -104,6 +104,7 @@ const LAZY_MODULES = {
   DockerTab: () => import("./components/DockerTab"),
   TokensSecurityTab: () => import("./components/TokensSecurityTab"),
   HelpTab: () => import("./components/help/HelpTab"),
+  ProvidersTab: () => import("./components/providers/ProvidersTab"),
 };
 
 const TAB_MODULE_KEYS = {
@@ -123,11 +124,13 @@ const TAB_MODULE_KEYS = {
   docker: "DockerTab",
   "tokens-security": "TokensSecurityTab",
   help: "HelpTab",
+  providers: "ProvidersTab",
 };
 
 const IDLE_PREFETCH_TAB_IDS = [
   "logs",
   "llm-proxy",
+  "providers",
   "rag-fusion-proxy",
   "rag",
   "crawler",
@@ -169,6 +172,7 @@ const ExtensionRuntimeTab = lazyWithRetry("ExtensionRuntimeTab", LAZY_MODULES.Ex
 const DockerTab = lazyWithRetry("DockerTab", LAZY_MODULES.DockerTab);
 const TokensSecurityTab = lazyWithRetry("TokensSecurityTab", LAZY_MODULES.TokensSecurityTab);
 const HelpTab = lazyWithRetry("HelpTab", LAZY_MODULES.HelpTab);
+const ProvidersTab = lazyWithRetry("ProvidersTab", LAZY_MODULES.ProvidersTab);
 
 import DockerTabIcon from "./assets/docker-mark.svg?url";
 import Card from "./components/Card";
@@ -188,6 +192,7 @@ import {
 } from "./services/api";
 import { loadTrackedModule } from "./services/moduleTimings";
 import Sparkline from "./components/Sparkline";
+import SupportUkraineBanner from "./components/SupportUkraineBanner.jsx";
 import { NotificationCenterProvider } from "./components/NotificationCenterContext";
 import { HelpPanelProvider } from "./components/help/HelpPanelContext.jsx";
 import { OnboardingProvider } from "./components/onboarding/OnboardingProvider.jsx";
@@ -809,6 +814,7 @@ function App() {
     { id: "dependencies", label: t("nav.dependencies"), section: "Main" },
     { id: "help", label: t("nav.help"), section: "Main", icon: "help" },
     { id: "llm-proxy", label: t("nav.llm_proxy"), section: "Core Functionality" },
+    { id: "providers", label: t("nav.providers"), section: "Core Functionality" },
     { id: "rag-fusion-proxy", label: t("nav.rag_fusion_proxy"), section: "Core Functionality" },
     { id: "template-editor", label: t("nav.template_editor"), section: "Core Functionality" },
     { id: "rag", label: t("nav.rag"), section: "RAG" },
@@ -938,6 +944,8 @@ function App() {
             onFocusSubTabConsumed={consumeLlmProxyBuildsFocusSubTab}
           />
         );
+      case "providers":
+        return <ProvidersTab onNavigate={setActiveTab} />;
       case "template-editor":
         return <TemplateEditorTab />;
       case "help":
@@ -952,6 +960,7 @@ function App() {
       case "settings":
         return (
           <SettingsTab
+            key={locale}
             themeMode={themeMode}
             lightAccent={lightAccent}
             darkAccent={darkAccent}
@@ -992,7 +1001,7 @@ function App() {
   return (
     <NotificationCenterProvider sessionId={sessionId}>
       <HelpPanelProvider onOpenFullHelp={handleOpenFullHelp}>
-      <OnboardingProvider onNavigate={setActiveTab}>
+      <OnboardingProvider onNavigate={setActiveTab} onLocaleChange={setLocaleState}>
       <div className="app">
       <SidebarNav
         tabs={tabs}
@@ -1044,12 +1053,14 @@ function App() {
                 </Card>
               </>
             )}
-            {appVersion && (
-              <span className="app-version" title={`Chiron AI ${appVersion}`}>
-                v{appVersion}
-              </span>
-            )}
-            <a
+            <div className="app-header-end">
+              <SupportUkraineBanner compact />
+              {appVersion && (
+                <span className="app-version" title={`Chiron AI ${appVersion}`}>
+                  v{appVersion}
+                </span>
+              )}
+              <a
               className="app-header-social-link"
               href="https://github.com/Rayllienstery/ChironAI"
               target="_blank"
@@ -1081,6 +1092,7 @@ function App() {
                 <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
               </svg>
             </a>
+            </div>
 
           </div>
           )}

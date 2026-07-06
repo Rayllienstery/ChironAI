@@ -1,26 +1,26 @@
 import { useState, useEffect } from 'react';
 import { getSettings, updateSettings } from '../services/api';
-import { SUPPORTED_LOCALES, getLocale, setLocale } from '../services/i18n';
+import { getLocale, setLocale, SUPPORTED_LOCALES, t } from '../services/i18n';
 import CoreUIButton from './CoreUIButton';
 import { restartFirstRunTour } from './onboarding/OnboardingProvider.jsx';
 import '../styles/components/SettingsTab.css';
 import '../styles/components/DashboardTab.css';
 
 const ACCENT_COLORS = [
-  { id: 'purple', name: 'Purple', light: '#6750A4', dark: '#D0BCFF' },
-  { id: 'blue', name: 'Blue', light: '#005AC1', dark: '#ABC7FF' },
-  { id: 'dark-green', name: 'Green', light: '#2E7D32', dark: '#81C784' },
-  { id: 'cyan', name: 'Cyan', light: '#006780', dark: '#5DD4FC' },
-  { id: 'teal', name: 'Teal', light: '#006A60', dark: '#82D5C8' },
-  { id: 'orange', name: 'Orange', light: '#8B5000', dark: '#FFB873' },
-  { id: 'red', name: 'Red', light: '#BA1A1A', dark: '#FFB4AB' },
-  { id: 'pink', name: 'Pink', light: '#984061', dark: '#FFB0C8' },
-  { id: 'indigo', name: 'Indigo', light: '#3D5AA9', dark: '#B8C4FF' },
-  { id: 'amber', name: 'Amber', light: '#7D5700', dark: '#F2C029' },
-  { id: 'slate', name: 'Slate', light: '#4A6572', dark: '#B0C9D6' },
-  { id: 'lime', name: 'Lime', light: '#4A6B00', dark: '#C6E063' },
-  { id: 'violet', name: 'Violet', light: '#5B3F94', dark: '#CBBEFF' },
-  { id: 'coral', name: 'Coral', light: '#9E4242', dark: '#FFB3B0' },
+  { id: 'purple', light: '#6750A4', dark: '#D0BCFF' },
+  { id: 'blue', light: '#005AC1', dark: '#ABC7FF' },
+  { id: 'dark-green', light: '#2E7D32', dark: '#81C784' },
+  { id: 'cyan', light: '#006780', dark: '#5DD4FC' },
+  { id: 'teal', light: '#006A60', dark: '#82D5C8' },
+  { id: 'orange', light: '#8B5000', dark: '#FFB873' },
+  { id: 'red', light: '#BA1A1A', dark: '#FFB4AB' },
+  { id: 'pink', light: '#984061', dark: '#FFB0C8' },
+  { id: 'indigo', light: '#3D5AA9', dark: '#B8C4FF' },
+  { id: 'amber', light: '#7D5700', dark: '#F2C029' },
+  { id: 'slate', light: '#4A6572', dark: '#B0C9D6' },
+  { id: 'lime', light: '#4A6B00', dark: '#C6E063' },
+  { id: 'violet', light: '#5B3F94', dark: '#CBBEFF' },
+  { id: 'coral', light: '#9E4242', dark: '#FFB3B0' },
 ];
 
 const SERVICE_STATUS_POLL_DEFAULT = 5;
@@ -163,7 +163,7 @@ function SettingsTab({
           serverPort < SERVER_PORT_MIN ||
           serverPort > SERVER_PORT_MAX
         ) {
-          alert(`Server port must be between ${SERVER_PORT_MIN} and ${SERVER_PORT_MAX}`);
+          alert(t('settings.server_port.invalid', { min: SERVER_PORT_MIN, max: SERVER_PORT_MAX }));
           return;
         }
         payload.server_port = serverPort;
@@ -177,36 +177,62 @@ function SettingsTab({
         service_status_poll_interval_sec: pollSec,
         server_port: payload.server_port ?? prev.server_port,
       }));
-      alert('Settings saved successfully');
+      alert(t('settings.save_success'));
       if (typeof onAppSettingsSaved === 'function') {
         onAppSettingsSaved(payload);
       }
     } catch (error) {
       console.error('Failed to save settings:', error);
-      alert('Failed to save settings');
+      alert(t('settings.save_failed'));
     } finally {
       setSaving(false);
     }
   };
 
   if (loading) {
-    return <div className="loading">Loading settings...</div>;
+    return <div className="loading">{t('settings.loading')}</div>;
   }
+
+  const localeOptions = SUPPORTED_LOCALES;
 
   const serverPortSource = settings.server_port_source || 'config';
   const serverPortEnvOverride = serverPortSource === 'env';
   const serverPortRestartRequired = Boolean(settings.server_port_restart_required);
 
   return (
-    <div className="settings-tab tab-view">
-      <h2>Settings</h2>
+    <div className="settings-tab tab-view" data-tour="settings">
+      <h2>{t('settings.title')}</h2>
 
       <div className="settings-form">
+        <div className="settings-section" data-tour="settings-language">
+          <h3>{t('settings.language.title')}</h3>
+          <p className="settings-form-hint coreui-text-muted-sm">{t('settings.language.hint')}</p>
+          <div className="form-group">
+            <div className="locale-picker" role="radiogroup" aria-label={t('settings.language.title')}>
+              {localeOptions.map((item) => (
+                <label
+                  key={item.id}
+                  className={`locale-picker__option ${localLocale === item.id ? 'locale-picker__option--active' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="coreui-locale"
+                    value={item.id}
+                    checked={localLocale === item.id}
+                    onChange={() => handleLocaleChange(item.id)}
+                  />
+                  <span>{item.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
         <div className="settings-section">
-          <h3>Theme</h3>
+          <h3>{t('settings.theme.title')}</h3>
 
           <div className="form-group">
-            <label>Theme Mode</label>
+            <label>{t('settings.theme.mode_label')}</label>
             <div className="radio-group">
               <label className="radio-option">
                 <input
@@ -216,7 +242,7 @@ function SettingsTab({
                   checked={localThemeMode === 'system'}
                   onChange={(e) => handleThemeModeChange(e.target.value)}
                 />
-                <span>System</span>
+                <span>{t('settings.theme.mode.system')}</span>
               </label>
               <label className="radio-option">
                 <input
@@ -226,7 +252,7 @@ function SettingsTab({
                   checked={localThemeMode === 'light'}
                   onChange={(e) => handleThemeModeChange(e.target.value)}
                 />
-                <span>Light</span>
+                <span>{t('settings.theme.mode.light')}</span>
               </label>
               <label className="radio-option">
                 <input
@@ -236,14 +262,14 @@ function SettingsTab({
                   checked={localThemeMode === 'dark'}
                   onChange={(e) => handleThemeModeChange(e.target.value)}
                 />
-                <span>Dark</span>
+                <span>{t('settings.theme.mode.dark')}</span>
               </label>
             </div>
           </div>
 
           {(localThemeMode === 'light' || localThemeMode === 'system') && (
             <div className="form-group">
-              <label>Light Theme Accent Color</label>
+              <label>{t('settings.theme.light_accent')}</label>
               <div className="color-picker">
                 {ACCENT_COLORS.map((color) => (
                   <button
@@ -252,7 +278,7 @@ function SettingsTab({
                     className={`color-option ${localLightAccent === color.id ? 'active' : ''}`}
                     style={{ '--color-preview': color.light }}
                     onClick={() => handleLightAccentChange(color.id)}
-                    title={color.name}
+                    title={t(`settings.theme.accent.${color.id}`)}
                   ></button>
                 ))}
               </div>
@@ -261,7 +287,7 @@ function SettingsTab({
 
           {(localThemeMode === 'dark' || localThemeMode === 'system') && (
             <div className="form-group">
-              <label>Dark Theme Accent Color</label>
+              <label>{t('settings.theme.dark_accent')}</label>
               <div className="color-picker">
                 {ACCENT_COLORS.map((color) => (
                   <button
@@ -270,7 +296,7 @@ function SettingsTab({
                     className={`color-option ${localDarkAccent === color.id ? 'active' : ''}`}
                     style={{ '--color-preview': color.dark }}
                     onClick={() => handleDarkAccentChange(color.id)}
-                    title={color.name}
+                    title={t(`settings.theme.accent.${color.id}`)}
                   ></button>
                 ))}
               </div>
@@ -279,71 +305,58 @@ function SettingsTab({
         </div>
 
         <div className="settings-section">
-          <h3>General</h3>
-
-          <div className="form-group">
-            <label htmlFor="coreui-locale-select">Interface language</label>
-            <select
-              id="coreui-locale-select"
-              value={localLocale}
-              onChange={(e) => handleLocaleChange(e.target.value)}
-            >
-              {SUPPORTED_LOCALES.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <h3>{t('settings.general.title')}</h3>
 
           <div className="form-group form-group--switch">
             <div className="coreui-switch-row">
-              <span className="coreui-switch-label">Developer Mode</span>
+              <span className="coreui-switch-label">{t('settings.developer_mode.label')}</span>
               <label className="coreui-switch" htmlFor="coreui-developer-mode">
                 <input
                   id="coreui-developer-mode"
                   type="checkbox"
                   checked={localDeveloperMode}
                   onChange={(e) => handleDeveloperModeChange(e.target.checked)}
-                  aria-label="Developer Mode"
+                  aria-label={t('settings.developer_mode.label')}
                 />
                 <span aria-hidden="true" />
               </label>
             </div>
             <p className="settings-form-hint coreui-text-muted-sm">
-              Enables the Developer Tools section in the sidebar (Testing, CoreUI Showcase, Dev
-              Documentation, Swagger, Performance).
+              {t('settings.developer_mode.hint')}
             </p>
           </div>
 
           <div className="form-group">
-            <label>Product tour</label>
-            <p className="settings-form-hint coreui-text-muted-sm">
-              Replay the first-run walkthrough of Dashboard, Builds, Help, and Settings.
-            </p>
+            <label>{t('settings.tour.label')}</label>
+            <p className="settings-form-hint coreui-text-muted-sm">{t('settings.tour.hint')}</p>
             <CoreUIButton type="button" variant="default" onClick={restartFirstRunTour}>
-              Restart tour
+              {t('settings.tour.restart')}
             </CoreUIButton>
           </div>
 
           <div className="form-group">
-            <label>Database Path</label>
+            <label>{t('settings.db_path.label')}</label>
             <input
               type="text"
               value={settings.db_path || 'logs/webui.db'}
               onChange={(e) => handleChange('db_path', e.target.value)}
-              placeholder="logs/webui.db"
+              placeholder={t('settings.db_path.placeholder')}
             />
           </div>
 
           <div className="form-group">
-            <label>Server Port</label>
+            <label>{t('settings.server_port.label')}</label>
             <p className="settings-form-hint coreui-text-muted-sm">
               {serverPortEnvOverride
-                ? `SERVER_PORT is set, so this process uses ${settings.server_port_active || settings.server_port}.`
+                ? t('settings.server_port.hint_env', {
+                    port: settings.server_port_active || settings.server_port,
+                  })
                 : serverPortRestartRequired
-                  ? `Restart the app to switch from ${settings.server_port_active} to ${settings.server_port}.`
-                  : 'Changing the server port takes effect after restarting the app.'}
+                  ? t('settings.server_port.hint_switch', {
+                      active: settings.server_port_active,
+                      next: settings.server_port,
+                    })
+                  : t('settings.server_port.hint_restart')}
             </p>
             <input
               type="number"
@@ -362,7 +375,7 @@ function SettingsTab({
           </div>
 
           <div className="form-group">
-            <label>Log Auto-Update Interval (ms)</label>
+            <label>{t('settings.log_poll.label')}</label>
             <input
               type="number"
               value={settings.log_poll_interval || 3000}
@@ -373,11 +386,8 @@ function SettingsTab({
           </div>
 
           <div className="form-group">
-            <label>Service status poll interval (seconds)</label>
-            <p className="settings-form-hint coreui-text-muted-sm">
-              How often the app refreshes extension, provider, and RAG/Qdrant status (sidebar dots
-              and polling).
-            </p>
+            <label>{t('settings.service_poll.label')}</label>
+            <p className="settings-form-hint coreui-text-muted-sm">{t('settings.service_poll.hint')}</p>
             <input
               type="number"
               value={
@@ -399,7 +409,7 @@ function SettingsTab({
           </div>
 
           <button className="save-button" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving...' : 'Save Settings'}
+            {saving ? t('settings.saving') : t('settings.save')}
           </button>
         </div>
       </div>

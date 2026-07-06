@@ -1,8 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { getLocale, setLocale, t } from './i18n.js';
 import enCommon from '../../../Localization/localization/catalog/en/common.json';
-import enXaCommon from '../../../Localization/localization/catalog/en-XA/common.json';
-import ruCommon from '../../../Localization/localization/catalog/ru/common.json';
+import ukCommon from '../../../Localization/localization/catalog/uk/common.json';
 
 describe('i18n locale API', () => {
   beforeEach(() => {
@@ -11,10 +10,15 @@ describe('i18n locale API', () => {
 
   it('getLocale returns the active locale', () => {
     expect(getLocale()).toBe('en');
+    setLocale('uk');
+    expect(getLocale()).toBe('uk');
+  });
+
+  it('migrates removed pseudo and legacy locale codes', () => {
     setLocale('en-XA');
-    expect(getLocale()).toBe('en-XA');
+    expect(getLocale()).toBe('en');
     setLocale('ru');
-    expect(getLocale()).toBe('ru');
+    expect(getLocale()).toBe('uk');
   });
 
   it('setLocale falls back to en for unknown locales', () => {
@@ -27,13 +31,9 @@ describe('i18n locale API', () => {
     expect(t('crawler.empty_sources')).toMatch(/crawl sources/i);
   });
 
-  it('en and en-XA catalogs share message ids', () => {
-    expect(Object.keys(enXaCommon).sort()).toEqual(Object.keys(enCommon).sort());
-  });
-
-  it('ru catalog resolves translated strings and shares message ids', () => {
-    setLocale('ru');
-    expect(t('nav.settings')).toBe('Настройки');
-    expect(Object.keys(ruCommon).sort()).toEqual(Object.keys(enCommon).sort());
+  it('uk catalog resolves translated strings and shares message ids', () => {
+    setLocale('uk');
+    expect(t('nav.settings')).toBe('Налаштування');
+    expect(Object.keys(ukCommon).sort()).toEqual(Object.keys(enCommon).sort());
   });
 });

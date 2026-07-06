@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import SettingsTab from './SettingsTab.jsx';
+import { setLocale } from '../services/i18n.js';
 
 vi.mock('../services/api.js', () => ({
   getSettings: vi.fn().mockResolvedValue({ theme_mode: 'system', developer_mode: false }),
@@ -11,6 +12,7 @@ describe('SettingsTab smoke', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    setLocale('en');
   });
 
   it('renders Settings heading', async () => {
@@ -28,7 +30,7 @@ describe('SettingsTab smoke', () => {
       />,
     );
     await waitFor(() => {
-      expect(screen.getByRole('heading', { level: 2, name: /Settings/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 2, name: /settings/i })).toBeInTheDocument();
     });
   });
 
@@ -50,11 +52,11 @@ describe('SettingsTab smoke', () => {
       />,
     );
 
-    const select = await screen.findByLabelText(/interface language/i);
-    fireEvent.change(select, { target: { value: 'ru' } });
+    const ukrainianOption = await screen.findByRole('radio', { name: /українська/i });
+    fireEvent.click(ukrainianOption);
 
-    expect(localStorage.getItem('chironai_locale')).toBe('ru');
-    expect(onLocaleChange).toHaveBeenCalledWith('ru');
+    expect(localStorage.getItem('chironai_locale')).toBe('uk');
+    expect(onLocaleChange).toHaveBeenCalledWith('uk');
   });
 
   it('toggles Developer Mode and persists it through the API', async () => {

@@ -84,6 +84,39 @@ class HelpSearchResponse(TypedDict, total=False):
     error: str
 
 
+# --- Custom upstream providers -----------------------------------------------
+
+class CustomOpenAiProviderPublic(TypedDict, total=False):
+    """One row in GET/POST/PUT ``/providers/custom`` responses."""
+
+    id: str
+    display_name: str
+    base_url: str
+    enabled: bool
+    default_headers: dict[str, str]
+    organization: str
+    manual_models: list[str]
+    api_key_configured: bool
+    api_key_masked: str | None
+    kind: Literal["openai_compatible"]
+
+
+class CustomOpenAiProvidersListResponse(TypedDict):
+    """GET /providers/custom."""
+
+    providers: list[CustomOpenAiProviderPublic]
+
+
+class CustomOpenAiProviderTestResponse(TypedDict, total=False):
+    """POST /providers/custom/{id}/test."""
+
+    ok: bool
+    status: str
+    message: str
+    model_count: int
+    models: list[dict[str, str]]
+
+
 # --- Session -----------------------------------------------------------------
 
 class SessionResponse(TypedDict, total=False):

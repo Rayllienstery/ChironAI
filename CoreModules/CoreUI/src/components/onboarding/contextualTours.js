@@ -1,78 +1,141 @@
 /** Contextual feature tours (after first-run). */
 
-export function createBuildsTourSteps({ goToBasicStep, goToRagStep } = {}) {
-  return [
-    {
-      id: 'build-wizard',
-      title: 'Create or edit a build',
-      body: 'This wizard defines a stable API model id plus provider, RAG collection, privacy, and generation parameters.',
-      target: '[data-tour="build-wizard"]',
-      onEnter: goToBasicStep,
-    },
-    {
-      id: 'build-id',
-      title: 'Build id',
-      body: 'The id becomes the OpenAI `model` string clients send. Pick something short, unique, and lowercase.',
-      target: '[data-tour="build-wizard-id"]',
-      onEnter: goToBasicStep,
-    },
-    {
-      id: 'rag-collection',
-      title: 'Per-build RAG collection',
-      body: 'Override the global Qdrant collection for this build only. Leave empty to inherit the server default.',
-      target: '[data-tour="build-wizard-rag"]',
-      onEnter: goToRagStep,
-    },
-    {
-      id: 'save-build',
-      title: 'Save the build',
-      body: 'When finished, save here. The build appears in GET /v1/models for external clients.',
-      target: '[data-tour="build-wizard-save"]',
-    },
-  ];
+import { t } from '../../services/i18n';
+
+function resolveTourSteps(defs) {
+  return defs.map((def) => ({
+    ...def,
+    title: t(def.titleKey),
+    body: t(def.bodyKey),
+  }));
 }
 
-export const EXTENSIONS_TOUR_STEPS = [
+const BUILDS_TOUR_STEP_DEFS = [
+  {
+    id: 'build-wizard',
+    titleKey: 'onboarding.tour.builds.wizard.title',
+    bodyKey: 'onboarding.tour.builds.wizard.body',
+    target: '[data-tour="build-wizard"]',
+  },
+  {
+    id: 'build-id',
+    titleKey: 'onboarding.tour.builds.id.title',
+    bodyKey: 'onboarding.tour.builds.id.body',
+    target: '[data-tour="build-wizard-id"]',
+  },
+  {
+    id: 'rag-collection',
+    titleKey: 'onboarding.tour.builds.rag.title',
+    bodyKey: 'onboarding.tour.builds.rag.body',
+    target: '[data-tour="build-wizard-rag"]',
+  },
+  {
+    id: 'save-build',
+    titleKey: 'onboarding.tour.builds.save.title',
+    bodyKey: 'onboarding.tour.builds.save.body',
+    target: '[data-tour="build-wizard-save"]',
+  },
+];
+
+export function createBuildsTourSteps({ goToBasicStep, goToRagStep } = {}) {
+  const onEnterById = {
+    'build-wizard': goToBasicStep,
+    'build-id': goToBasicStep,
+    'rag-collection': goToRagStep,
+  };
+  return resolveTourSteps(BUILDS_TOUR_STEP_DEFS).map((step) => ({
+    ...step,
+    onEnter: onEnterById[step.id],
+  }));
+}
+
+const EXTENSIONS_TOUR_STEP_DEFS = [
   {
     id: 'extensions-intro',
-    title: 'Extensions',
-    body: 'Extensions add LLM providers, Docker services, and extra CoreUI tabs. Install from Registry or enable bundled ones.',
+    titleKey: 'onboarding.tour.extensions.intro.title',
+    bodyKey: 'onboarding.tour.extensions.intro.body',
     target: '[data-tour="extensions-header"]',
   },
   {
     id: 'extensions-views',
-    title: 'Installed vs Registry',
-    body: 'Use Installed to manage running extensions. Open Registry to browse available packages and install new capabilities.',
+    titleKey: 'onboarding.tour.extensions.views.title',
+    bodyKey: 'onboarding.tour.extensions.views.body',
     target: '[data-tour="extensions-views"]',
   },
 ];
 
-export const PROMPTS_TOUR_STEPS = [
+export function resolveExtensionsTourSteps() {
+  return resolveTourSteps(EXTENSIONS_TOUR_STEP_DEFS);
+}
+
+const PROMPTS_TOUR_STEP_DEFS = [
   {
     id: 'prompts-new',
-    title: 'Prompt templates',
-    body: 'Templates become system prompts for builds. Create reusable instructions for coding, review, or support workflows.',
+    titleKey: 'onboarding.tour.prompts.new.title',
+    bodyKey: 'onboarding.tour.prompts.new.body',
     target: '[data-tour="template-new-btn"]',
   },
   {
     id: 'prompts-editor',
-    title: 'Structured editor',
-    body: 'Edit title, description, and body sections—or switch to raw mode. Use the in-editor assistant for linting and structure hints.',
+    titleKey: 'onboarding.tour.prompts.editor.title',
+    bodyKey: 'onboarding.tour.prompts.editor.body',
     target: '[data-tour="template-editor-panel"]',
   },
 ];
 
-export const CRAWLER_TOUR_STEPS = [
+export function resolvePromptsTourSteps() {
+  return resolveTourSteps(PROMPTS_TOUR_STEP_DEFS);
+}
+
+const PROVIDERS_TOUR_STEP_DEFS = [
+  {
+    id: 'providers-intro',
+    titleKey: 'onboarding.tour.providers.intro.title',
+    bodyKey: 'onboarding.tour.providers.intro.body',
+    target: '[data-tour="providers-header"]',
+  },
+  {
+    id: 'providers-custom',
+    titleKey: 'onboarding.tour.providers.custom.title',
+    bodyKey: 'onboarding.tour.providers.custom.body',
+    target: '[data-tour="providers-custom-list"]',
+  },
+  {
+    id: 'providers-extensions',
+    titleKey: 'onboarding.tour.providers.extensions.title',
+    bodyKey: 'onboarding.tour.providers.extensions.body',
+    target: '[data-tour="providers-extensions"]',
+  },
+];
+
+export function resolveProvidersTourSteps() {
+  return resolveTourSteps(PROVIDERS_TOUR_STEP_DEFS);
+}
+
+const CRAWLER_TOUR_STEP_DEFS = [
   {
     id: 'crawler-intro',
-    title: 'Indexer / Crawler',
-    body: 'Ingest documentation and source into markdown stores, then embed chunks into Qdrant collections for RAG.',
+    titleKey: 'onboarding.tour.crawler.intro.title',
+    bodyKey: 'onboarding.tour.crawler.intro.body',
     target: '[data-tour="crawler-header"]',
   },
   {
     id: 'crawler-sources',
-    title: 'Sources & pipelines',
-    body: 'Configure crawl sources, run indexing jobs, and monitor progress before testing retrieval in RAG or Model Tester.',
+    titleKey: 'onboarding.tour.crawler.sources.title',
+    bodyKey: 'onboarding.tour.crawler.sources.body',
     target: '[data-tour="crawler-sources"]',
   },
 ];
+
+export function resolveCrawlerTourSteps() {
+  return resolveTourSteps(CRAWLER_TOUR_STEP_DEFS);
+}
+
+/** @deprecated Use resolve*TourSteps() — kept for tests that assert step metadata. */
+export const EXTENSIONS_TOUR_STEPS = EXTENSIONS_TOUR_STEP_DEFS;
+/** @deprecated Use resolve*TourSteps() */
+export const PROMPTS_TOUR_STEPS = PROMPTS_TOUR_STEP_DEFS;
+/** @deprecated Use resolve*TourSteps() */
+export const PROVIDERS_TOUR_STEPS = PROVIDERS_TOUR_STEP_DEFS;
+/** @deprecated Use resolve*TourSteps() */
+export const CRAWLER_TOUR_STEPS = CRAWLER_TOUR_STEP_DEFS;

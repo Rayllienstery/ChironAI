@@ -5,6 +5,7 @@ import { createDefaultOnboardingState, writeOnboardingStateToStorage } from './o
 
 vi.mock('../../services/api.js', () => ({
   getSettings: vi.fn().mockResolvedValue({}),
+  updateSettings: vi.fn().mockResolvedValue({ status: 'ok' }),
 }));
 
 function ContextualStarter() {
@@ -36,7 +37,27 @@ describe('OnboardingProvider', () => {
       </OnboardingProvider>,
     );
 
-    expect(await screen.findByRole('dialog', { name: 'Welcome to ChironAI' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Choose your language' })).toBeInTheDocument();
+  });
+
+  it('unlocks the page after skipping the first-run tour', async () => {
+    writeOnboardingStateToStorage(createDefaultOnboardingState());
+
+    render(
+      <OnboardingProvider>
+        <div />
+      </OnboardingProvider>,
+    );
+
+    const dialog = await screen.findByRole('dialog', { name: 'Choose your language' });
+    expect(document.body.style.overflow).toBe('hidden');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
+
+    await waitFor(() => {
+      expect(dialog).not.toBeInTheDocument();
+    });
+    expect(document.body.style.overflow).toBe('');
   });
 
   it('starts a contextual tour after first-run completion', async () => {

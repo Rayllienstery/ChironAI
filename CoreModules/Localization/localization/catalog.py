@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 
 _CATALOG_DIR = Path(__file__).resolve().parent / "catalog"
-SUPPORTED_LOCALES = ("en", "en-XA", "ru")
+SUPPORTED_LOCALES = ("en", "uk")
 
 
 def available_locales() -> tuple[str, ...]:

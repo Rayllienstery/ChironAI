@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.19] - 2026-07-06
+### Added
+- Added **Providers** CoreUI tab with CRUD for custom OpenAI-compatible upstream APIs, connection testing, and extension provider summary.
+- Added WebUI routes `GET/POST /providers/custom`, `PUT/DELETE /providers/custom/{id}`, and `POST .../test`; host sync registers custom providers into the LLM runtime registry.
+- Wired per-build `provider_id` routing in LLM Proxy chat completions and expanded onboarding (first-run + contextual Providers tour).
+
 ## [0.8.18] - 2026-07-06
 ### Fixed
 - Fixed flaky `HelpViewer` unit test on Linux CI by awaiting article render after async load.

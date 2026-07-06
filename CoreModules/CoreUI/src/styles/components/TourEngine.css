@@ -26,8 +26,8 @@
   width: min(24rem, calc(100vw - 2rem));
   padding: var(--md-sys-spacing-lg);
   border-radius: var(--md-sys-shape-corner-large);
-  background: var(--md-sys-color-surface-container-high);
-  box-shadow: var(--md-sys-elevation-level3);
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level1);
   pointer-events: auto;
 }
 
@@ -68,4 +68,44 @@
   display: flex;
   align-items: center;
   gap: var(--md-sys-spacing-sm);
+}
+
+.tour-engine__locale-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-sys-spacing-sm);
+  margin: 0 0 var(--md-sys-spacing-lg);
+}
+
+.tour-engine__locale-option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 999px;
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface);
+  cursor: pointer;
+  font: var(--md-sys-typescale-label-large-font);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.tour-engine__locale-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tour-engine__locale-option:hover {
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.tour-engine__locale-option--active {
+  background: var(--md-sys-color-primary-container);
+  border-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary-container);
+  font-weight: 600;
 }

@@ -1282,6 +1282,63 @@ export interface paths {
       };
     };
   };
+  "/api/webui/providers/custom": {
+    get: {
+      parameters: never;
+      requestBody: never;
+      responses: {
+        "200": components["schemas"]["GenericObject"];
+      };
+    };
+    post: {
+      parameters: never;
+      requestBody: components["schemas"]["GenericObject"];
+      responses: {
+        "200": components["schemas"]["GenericObject"];
+        "400": components["schemas"]["ErrorResponse"];
+      };
+    };
+  };
+  "/api/webui/providers/custom/{provider_id}": {
+    delete: {
+      parameters: {
+        path: {
+          provider_id: string;
+        };
+      };
+      requestBody: components["schemas"]["GenericObject"];
+      responses: {
+        "200": components["schemas"]["GenericObject"];
+        "400": components["schemas"]["ErrorResponse"];
+      };
+    };
+    put: {
+      parameters: {
+        path: {
+          provider_id: string;
+        };
+      };
+      requestBody: components["schemas"]["GenericObject"];
+      responses: {
+        "200": components["schemas"]["GenericObject"];
+        "400": components["schemas"]["ErrorResponse"];
+      };
+    };
+  };
+  "/api/webui/providers/custom/{provider_id}/test": {
+    post: {
+      parameters: {
+        path: {
+          provider_id: string;
+        };
+      };
+      requestBody: components["schemas"]["GenericObject"];
+      responses: {
+        "200": components["schemas"]["GenericObject"];
+        "400": components["schemas"]["ErrorResponse"];
+      };
+    };
+  };
   "/api/webui/proxy-journal": {
     delete: {
       parameters: never;

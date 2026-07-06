@@ -184,6 +184,37 @@ class RuntimeBackedRerankClient:
             return None
 
 
+class _ProviderScopedChatClient:
+    """Thin wrapper that overrides ``_provider_id`` for an existing chat client."""
+
+    __slots__ = ("_inner", "_provider_id")
+
+    def __init__(self, inner: Any, provider_id: str) -> None:
+        self._inner = inner
+        self._provider_id = provider_id
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+def chat_client_for_provider_id(chat_client: Any, provider_id: str) -> Any:
+    pid = str(provider_id or "").strip()
+    if not pid:
+        return chat_client
+    current = str(getattr(chat_client, "_provider_id", "") or "").strip()
+    if current == pid:
+        return chat_client
+    if isinstance(chat_client, RuntimeResolvingChatClient):
+        return RuntimeResolvingChatClient(
+            runtime_getter=chat_client._runtime_getter,
+            runtime=chat_client._runtime,
+            provider_id=pid,
+            model=chat_client._model,
+            fallback=chat_client._fallback,
+        )
+    return _ProviderScopedChatClient(chat_client, pid)
+
+
 class RuntimeResolvingChatClient:
     """Lazy chat client that resolves RuntimeBackedChatClient when the runtime is ready."""
 
@@ -390,4 +421,5 @@ __all__ = [
     "RuntimeBackedEmbeddingProvider",
     "RuntimeBackedRerankClient",
     "RuntimeResolvingChatClient",
+    "chat_client_for_provider_id",
 ]

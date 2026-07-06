@@ -4,25 +4,28 @@
  */
 
 import enCommon from '../../../Localization/localization/catalog/en/common.json';
-import enXaCommon from '../../../Localization/localization/catalog/en-XA/common.json';
-import ruCommon from '../../../Localization/localization/catalog/ru/common.json';
+import ukCommon from '../../../Localization/localization/catalog/uk/common.json';
 
 const DEFAULT_LOCALE = 'en';
 const LOCALE_STORAGE_KEY = 'chironai_locale';
 const catalogs = {
   en: enCommon,
-  'en-XA': enXaCommon,
-  ru: ruCommon,
+  uk: ukCommon,
 };
 export const SUPPORTED_LOCALES = [
   { id: 'en', label: 'English' },
-  { id: 'ru', label: 'Русский' },
-  { id: 'en-XA', label: 'Pseudo English' },
+  { id: 'uk', label: 'Українська' },
 ];
+
+function normalizeLocale(locale) {
+  const value = String(locale || '').trim();
+  if (value === 'ru' || value === 'en-XA') return value === 'ru' ? 'uk' : 'en';
+  return value;
+}
 
 function storedLocale() {
   try {
-    return localStorage.getItem(LOCALE_STORAGE_KEY) || DEFAULT_LOCALE;
+    return normalizeLocale(localStorage.getItem(LOCALE_STORAGE_KEY) || DEFAULT_LOCALE);
   } catch {
     return DEFAULT_LOCALE;
   }
@@ -31,7 +34,8 @@ function storedLocale() {
 let activeLocale = storedLocale() in catalogs ? storedLocale() : DEFAULT_LOCALE;
 
 export function setLocale(locale) {
-  activeLocale = locale in catalogs ? locale : DEFAULT_LOCALE;
+  const normalized = normalizeLocale(locale);
+  activeLocale = normalized in catalogs ? normalized : DEFAULT_LOCALE;
   try {
     localStorage.setItem(LOCALE_STORAGE_KEY, activeLocale);
   } catch {

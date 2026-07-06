@@ -159,6 +159,11 @@ class ExtensionManagementService:
     def provider_catalog(self, *, runtime: Any | None = None, capability: str | None = None) -> dict[str, Any]:
         return self._manager.provider_catalog(runtime=runtime, capability=capability)
 
+    def invalidate_provider_rows_cache(self) -> None:
+        invalidate = getattr(self._manager, "invalidate_provider_rows_cache", None)
+        if callable(invalidate):
+            invalidate()
+
     def extension_tabs(self, *, runtime: Any | None = None) -> list[dict[str, Any]]:
         return self._manager.extension_tabs(runtime=runtime)
 

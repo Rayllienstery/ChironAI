@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 import CoreUIButton from '../CoreUIButton';
+import { SUPPORTED_LOCALES, t } from '../../services/i18n';
+import { releaseBodyScrollLock } from './tourUiLock.js';
 import '../../styles/components/TourEngine.css';
 
 function measureTarget(selector) {
@@ -15,6 +17,32 @@ function measureTarget(selector) {
   };
 }
 
+function TourLanguagePicker({ value, onChange }) {
+  return (
+    <div
+      className="tour-engine__locale-picker"
+      role="radiogroup"
+      aria-label={t('onboarding.language.title')}
+    >
+      {SUPPORTED_LOCALES.map((item) => (
+        <label
+          key={item.id}
+          className={`tour-engine__locale-option ${value === item.id ? 'tour-engine__locale-option--active' : ''}`}
+        >
+          <input
+            type="radio"
+            name="tour-locale"
+            value={item.id}
+            checked={value === item.id}
+            onChange={() => onChange(item.id)}
+          />
+          <span>{item.label}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 /**
  * Lightweight spotlight tour engine with M3 tooltip card.
  */
@@ -22,6 +50,8 @@ export default function TourEngine({
   open,
   steps = [],
   stepIndex = 0,
+  localeValue = 'en',
+  onLocaleChange,
   onBack,
   onNext,
   onSkip,
@@ -29,9 +59,10 @@ export default function TourEngine({
 }) {
   const step = steps[stepIndex] || null;
   const [spotlight, setSpotlight] = useState(null);
+  const isOverlayVisible = Boolean(open && step);
 
   useLayoutEffect(() => {
-    if (!open || !step) {
+    if (!isOverlayVisible || !step || step.kind === 'language') {
       setSpotlight(null);
       return undefined;
     }
@@ -45,21 +76,26 @@ export default function TourEngine({
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
     };
-  }, [open, step, stepIndex]);
+  }, [isOverlayVisible, step, stepIndex]);
 
-  useEffect(() => {
-    if (!open) return undefined;
+  useLayoutEffect(() => {
+    if (!isOverlayVisible) {
+      releaseBodyScrollLock();
+      return undefined;
+    }
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previous;
+      releaseBodyScrollLock();
     };
-  }, [open]);
+  }, [isOverlayVisible]);
 
-  if (!open || !step) return null;
+  if (!isOverlayVisible) return null;
 
   const isLast = stepIndex >= steps.length - 1;
   const isFirst = stepIndex === 0;
+  const isLanguageStep = step.kind === 'language';
   const tooltipStyle = spotlight
     ? {
         top: Math.min(window.innerHeight - 16, spotlight.top + spotlight.height + 12),
@@ -73,7 +109,7 @@ export default function TourEngine({
 
   return (
     <div className="tour-engine" role="presentation">
-      <div className="tour-engine__scrim" aria-hidden="true" />
+      {!spotlight ? <div className="tour-engine__scrim" aria-hidden="true" /> : null}
       {spotlight ? (
         <div
           className="tour-engine__spotlight"
@@ -95,7 +131,7 @@ export default function TourEngine({
         aria-describedby="tour-engine-body"
       >
         <p className="tour-engine__progress" aria-live="polite">
-          Step {stepIndex + 1} of {steps.length}
+          {t('onboarding.tour.progress', { current: stepIndex + 1, total: steps.length })}
         </p>
         <h2 id="tour-engine-title" className="tour-engine__title">
           {step.title}
@@ -103,14 +139,17 @@ export default function TourEngine({
         <p id="tour-engine-body" className="tour-engine__body">
           {step.body}
         </p>
+        {isLanguageStep ? (
+          <TourLanguagePicker value={localeValue} onChange={onLocaleChange} />
+        ) : null}
         <div className="tour-engine__actions">
           <CoreUIButton type="button" variant="ghost" onClick={onSkip}>
-            Skip tour
+            {t('onboarding.tour.skip')}
           </CoreUIButton>
           <div className="tour-engine__actions-main">
             {!isFirst ? (
               <CoreUIButton type="button" variant="default" onClick={onBack}>
-                Back
+                {t('onboarding.tour.back')}
               </CoreUIButton>
             ) : null}
             <CoreUIButton
@@ -118,7 +157,7 @@ export default function TourEngine({
               variant="primary"
               onClick={isLast ? onFinish : onNext}
             >
-              {isLast ? 'Finish' : 'Next'}
+              {isLast ? t('onboarding.tour.finish') : t('onboarding.tour.next')}
             </CoreUIButton>
           </div>
         </div>

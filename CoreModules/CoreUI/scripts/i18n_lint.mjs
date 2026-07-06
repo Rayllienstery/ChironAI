@@ -6,7 +6,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(root, '..', '..');
 const catalogRoot = path.join(repoRoot, 'CoreModules', 'Localization', 'localization', 'catalog');
 const sourceLocale = 'en';
-const locales = ['en', 'en-XA', 'ru'];
+const locales = ['en', 'uk'];
 const allowIdentical = new Set([
   'app.title',
   'nav.docker',

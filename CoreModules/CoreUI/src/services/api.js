@@ -74,6 +74,14 @@ export {
 } from './extensions.js';
 
 export {
+  listCustomProviders,
+  createCustomProvider,
+  updateCustomProvider,
+  deleteCustomProvider,
+  testCustomProvider,
+} from './providers.js';
+
+export {
   getRagStatus,
   getRagCollections,
   getRagTriggerSettings,

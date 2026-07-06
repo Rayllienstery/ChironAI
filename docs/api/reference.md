@@ -3,8 +3,8 @@
 > Generated from the live OpenAPI document. Do not edit by hand; run `python scripts/gen_api_docs.py`.
 
 - OpenAPI: `3.1.0`
-- Version: `0.8.18`
-- Paths: `130`
+- Version: `0.8.19`
+- Paths: `133`
 
 Chiron AI STABLE OpenAPI description generated from Flask routes.
 
@@ -2052,6 +2052,108 @@ Responses:
 | Status | Description | Schema |
 |--------|-------------|--------|
 | 200 | Provider catalog. | application/json: GenericObject |
+
+#### `GET /api/webui/providers/custom`
+
+**Summary:** Get providers custom
+
+Registered Flask endpoint `webui.list_custom_providers` for `GET /api/webui/providers/custom`. Payload shape is currently described generically until the route is promoted into core contracts.
+
+- Operation ID: `webui_list_custom_providers_get`
+- Flask endpoint: `webui.list_custom_providers`
+- Request body: `-`
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | OK | application/json: GenericObject |
+
+#### `POST /api/webui/providers/custom`
+
+**Summary:** Create providers custom
+
+Registered Flask endpoint `webui.create_custom_provider` for `POST /api/webui/providers/custom`. Payload shape is currently described generically until the route is promoted into core contracts.
+
+- Operation ID: `webui_create_custom_provider_post`
+- Flask endpoint: `webui.create_custom_provider`
+- Request body: `application/json: GenericObject`
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | OK | application/json: GenericObject |
+| 400 | Bad request | application/json: ErrorResponse |
+
+#### `DELETE /api/webui/providers/custom/{provider_id}`
+
+**Summary:** Delete providers custom provider id
+
+Registered Flask endpoint `webui.delete_custom_provider_route` for `DELETE /api/webui/providers/custom/{provider_id}`. Payload shape is currently described generically until the route is promoted into core contracts.
+
+- Operation ID: `webui_delete_custom_provider_route_delete`
+- Flask endpoint: `webui.delete_custom_provider_route`
+- Request body: `application/json: GenericObject`
+
+Parameters:
+
+| Name | In | Required | Schema |
+|------|----|----------|--------|
+| provider_id | path | True | string |
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | OK | application/json: GenericObject |
+| 400 | Bad request | application/json: ErrorResponse |
+
+#### `PUT /api/webui/providers/custom/{provider_id}`
+
+**Summary:** Update providers custom provider id
+
+Registered Flask endpoint `webui.update_custom_provider` for `PUT /api/webui/providers/custom/{provider_id}`. Payload shape is currently described generically until the route is promoted into core contracts.
+
+- Operation ID: `webui_update_custom_provider_put`
+- Flask endpoint: `webui.update_custom_provider`
+- Request body: `application/json: GenericObject`
+
+Parameters:
+
+| Name | In | Required | Schema |
+|------|----|----------|--------|
+| provider_id | path | True | string |
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | OK | application/json: GenericObject |
+| 400 | Bad request | application/json: ErrorResponse |
+
+#### `POST /api/webui/providers/custom/{provider_id}/test`
+
+**Summary:** Create providers custom provider id test
+
+Registered Flask endpoint `webui.test_custom_provider` for `POST /api/webui/providers/custom/{provider_id}/test`. Payload shape is currently described generically until the route is promoted into core contracts.
+
+- Operation ID: `webui_test_custom_provider_post`
+- Flask endpoint: `webui.test_custom_provider`
+- Request body: `application/json: GenericObject`
+
+Parameters:
+
+| Name | In | Required | Schema |
+|------|----|----------|--------|
+| provider_id | path | True | string |
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | OK | application/json: GenericObject |
+| 400 | Bad request | application/json: ErrorResponse |
 
 ### Proxy Journal
 

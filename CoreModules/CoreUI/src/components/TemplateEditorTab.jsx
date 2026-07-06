@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import {
   getPrompts,
   getPromptContent,
@@ -13,7 +13,7 @@ import {
 } from '../services/api';
 import TemplateEditorHelpModal from './TemplateEditorHelpModal';
 import TemplateEditorPanel from './TemplateEditorPanel';
-import { PROMPTS_TOUR_STEPS } from './onboarding/contextualTours.js';
+import { resolvePromptsTourSteps } from './onboarding/contextualTours.js';
 import { useContextualTour } from './onboarding/useContextualTour.js';
 import '../styles/components/TemplateEditorTab.css';
 
@@ -43,7 +43,8 @@ function TemplateEditorTab() {
   const [helpModalTab, setHelpModalTab] = useState('tips'); // 'tips', 'linter', 'structure'
   const [linterWarnings, setLinterWarnings] = useState([]);
 
-  useContextualTour('prompts', PROMPTS_TOUR_STEPS, !isLoading && viewMode === 'templates');
+  const promptsTourSteps = useMemo(() => resolvePromptsTourSteps(), []);
+  useContextualTour('prompts', promptsTourSteps, !isLoading && viewMode === 'templates');
 
   const promptTips = [
     "Be specific and concrete: Instead of 'make it better', specify what exactly needs improvement (performance, readability, error handling).",

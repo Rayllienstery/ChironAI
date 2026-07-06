@@ -5,7 +5,7 @@ import CoreUIButton from "./CoreUIButton";
 import CoreUIDockerCard from "./CoreUIDockerCard";
 import CoreUIPillTabs from "./CoreUIPillTabs";
 import { useOptionalNotificationCenter } from "./NotificationCenterContext";
-import { EXTENSIONS_TOUR_STEPS } from "./onboarding/contextualTours.js";
+import { resolveExtensionsTourSteps } from "./onboarding/contextualTours.js";
 import { useContextualTour } from "./onboarding/useContextualTour.js";
 import {
   checkDockerImageUpdate,
@@ -561,7 +561,8 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
   const [manualRef, setManualRef] = useState("");
   const persistExtensionNotification = notificationCenter?.persistNotification;
 
-  useContextualTour("extensions", EXTENSIONS_TOUR_STEPS, !loading);
+  const extensionsTourSteps = useMemo(() => resolveExtensionsTourSteps(), []);
+  useContextualTour("extensions", extensionsTourSteps, !loading);
 
   const loadRegistry = useCallback(async ({ forceRefresh = false, notifyOnError = false } = {}) => {
     setRegistryLoading(true);

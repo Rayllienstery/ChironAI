@@ -14,28 +14,16 @@ def test_t_returns_message_id_when_missing() -> None:
     assert t("missing.id") == "missing.id"
 
 
-def test_load_catalog_en_xa_pseudo_locale() -> None:
-    catalog = load_catalog("en-XA")
-    assert catalog["app.title"].startswith("[!!")
-    assert "ÇĥïŕöñÅÏ" in catalog["app.title"]
-
-
-def test_t_en_xa_nav_labels_longer_than_en() -> None:
-    en_label = t("nav.dashboard", locale="en")
-    xa_label = t("nav.dashboard", locale="en-XA")
-    assert len(xa_label) > len(en_label)
-
-
-def test_en_xa_catalog_has_same_keys_as_en() -> None:
+def test_uk_catalog_has_same_keys_as_en() -> None:
     en_keys = set(load_catalog("en").keys())
-    xa_keys = set(load_catalog("en-XA").keys())
-    assert en_keys == xa_keys
+    uk_keys = set(load_catalog("uk").keys())
+    assert en_keys == uk_keys
 
 
 def test_supported_locales_are_registered_and_complete() -> None:
     en_keys = set(load_catalog("en").keys())
 
-    assert "ru" in SUPPORTED_LOCALES
+    assert SUPPORTED_LOCALES == ("en", "uk")
     assert set(available_locales()) == set(SUPPORTED_LOCALES)
     for locale in SUPPORTED_LOCALES:
         catalog = load_catalog(locale)
@@ -43,5 +31,5 @@ def test_supported_locales_are_registered_and_complete() -> None:
         assert all(str(value).strip() for value in catalog.values())
 
 
-def test_t_resolves_ru_catalog() -> None:
-    assert t("nav.settings", locale="ru") == "Настройки"
+def test_t_resolves_uk_catalog() -> None:
+    assert t("nav.settings", locale="uk") == "Налаштування"

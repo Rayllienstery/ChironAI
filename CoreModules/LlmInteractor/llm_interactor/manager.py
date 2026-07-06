@@ -306,6 +306,12 @@ class ExtensionManager(ExtensionTabMixin):
             default_provider_id=self._default_provider_id,
             on_security_blocked=self._disable_security_blocked_extensions,
         )
+        try:
+            from application.host_provider_sync import sync_custom_openai_providers
+
+            sync_custom_openai_providers(bootstrap.registry, self._settings_repo)
+        except Exception as exc:
+            _log.warning("custom OpenAI provider sync failed: %s", exc)
         _discover_ms = (_time.perf_counter() - _t_discover) * 1000
         previous_loaded = self._loaded
         runtime = bootstrap.runtime
@@ -571,6 +577,10 @@ class ExtensionManager(ExtensionTabMixin):
             runtime = self.runtime
         rows = self.provider_rows(runtime)
         return build_provider_catalog(rows, capability=capability)
+
+    def invalidate_provider_rows_cache(self) -> None:
+        with self._lock:
+            self._provider_rows_cache = []
 
     def _find_loaded_extension(self, extension_id: str) -> LoadedExtension | None:
         ext_id = str(extension_id or "").strip()

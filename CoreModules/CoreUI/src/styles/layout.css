@@ -58,8 +58,15 @@ html, body {
   gap: var(--md-sys-spacing-sm);
 }
 
-.app-version {
+.app-header-end {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--md-sys-spacing-sm);
   margin-left: auto;
+}
+
+.app-version {
   color: var(--md-sys-color-on-surface-variant);
   font-size: 12px;
   font-weight: 500;

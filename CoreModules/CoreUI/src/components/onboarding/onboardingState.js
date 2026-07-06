@@ -12,6 +12,7 @@ export function createDefaultOnboardingState() {
       extensions: false,
       prompts: false,
       crawler: false,
+      providers: false,
       logs: false,
     },
   };
