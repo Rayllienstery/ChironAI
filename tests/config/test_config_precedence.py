@@ -56,11 +56,24 @@ def test_get_qdrant_url_env_overrides_yaml(monkeypatch: pytest.MonkeyPatch) -> N
     assert cfg.get_qdrant_url() == "http://env:6333"
 
 
+def test_bundled_server_yaml_host_defaults_to_localhost() -> None:
+    import config.loader as loader
+
+    assert loader.SERVER_CONFIG.get("host") == "127.0.0.1"
+
+
 def test_get_server_host_defaults_to_localhost(monkeypatch: pytest.MonkeyPatch) -> None:
     import config as cfg
 
     monkeypatch.delenv("SERVER_HOST", raising=False)
     monkeypatch.setitem(cfg.SERVER_CONFIG, "host", "127.0.0.1")
+    assert cfg.get_server_host() == "127.0.0.1"
+
+
+def test_get_server_host_reads_bundled_yaml_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    import config as cfg
+
+    monkeypatch.delenv("SERVER_HOST", raising=False)
     assert cfg.get_server_host() == "127.0.0.1"
 
 

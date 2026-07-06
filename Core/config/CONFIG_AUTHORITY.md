@@ -45,6 +45,7 @@ precedence documented here.
 | Family | Getter / API | Env override(s) | YAML source | App settings | Notes |
 |--------|----------------|-----------------|-------------|--------------|-------|
 | Server port | `get_server_port_metadata()` | `SERVER_PORT` | `server.yaml` → `server.port` | `server_port`, `server_port_last_active` | Env beats settings beats YAML; invalid saved port ignored. |
+| Server host | `get_server_host()` | `SERVER_HOST` | `server.yaml` → `server.host` | — | Default `127.0.0.1` in bundled YAML; env overrides YAML. |
 | Qdrant URL | `get_qdrant_url()` | `QDRANT_URL` | `server.yaml` → `qdrant.url` | `rag_collection` (collection name, not URL) | |
 | Qdrant collection | `get_qdrant_collection_name()` / app setting | `QDRANT_COLLECTION_NAME` | `server.yaml` → `qdrant.collection_name` | `rag_collection` | |
 | Default chat model | `get_default_chat_model()` (`get_ollama_chat_model()` in config layer) | `OLLAMA_CHAT_MODEL` | `ollama.chat_model` | — | Empty env string is valid (clears model). |

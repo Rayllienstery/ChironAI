@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.21] - 2026-07-06
+### Changed
+- Default server bind host in `server.yaml` is now `127.0.0.1` (was `0.0.0.0`), aligning bundled config with `get_server_host()` fallback and CHANGELOG 0.8.0. Set `SERVER_HOST=0.0.0.0` or edit `server.yaml` for LAN access.
+
+### Added
+- ADR 0008 documents the WebUI auth model: local-only by default; built-in auth deferred until LAN exposure is required.
+
 ## [0.8.20] - 2026-07-06
 ### Added
 - Added ADR 0007 (builtin custom OpenAI-compatible upstream providers), application unit tests, Providers tab component test, and Playwright providers contextual tour.

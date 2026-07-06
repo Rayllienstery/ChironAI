@@ -29,6 +29,19 @@ We aim to acknowledge reports within 5 business days and will coordinate disclos
 - Keep `.env` files and any generated API keys out of version control (see `.gitignore`).
 - Rotate proxy API keys after installation or suspected compromise.
 - Run extension code only from trusted sources; the extension sandbox and security audit are defense-in-depth, not a guarantee.
+- **Default bind:** `server.yaml` sets `server.host` to `127.0.0.1`. For LAN access, set `SERVER_HOST=0.0.0.0` or edit `server.yaml` only on trusted networks.
+
+## Authentication model (ADR 0008)
+
+ChironAI **0.8.x** does not ship WebUI login. Security relies on **network placement**:
+
+| Surface | Auth today | Mitigation |
+|---------|------------|------------|
+| `/api/webui/*` | None | Bind `127.0.0.1`; firewall; reverse proxy with auth for remote |
+| `/v1/*` (LLM Proxy) | API key (`Authorization: Bearer` or `x-api-key`) | Rotate keys; do not expose WebUI api-key reveal routes to untrusted clients |
+| Extension management | None (WebUI API) | Same as WebUI — localhost or trusted LAN only |
+
+Built-in WebUI authentication is **deferred** until a prioritized LAN/multi-user requirement. See [`docs/adr/0008-webui-auth-model.md`](docs/adr/0008-webui-auth-model.md).
 
 ## Known Security Boundaries
 

@@ -151,7 +151,7 @@ Controls Ollama endpoints and models:
 
 ### server.yaml
 Controls server and Qdrant connection:
-- `server.host`: Flask bind address (default: "0.0.0.0")
+- `server.host`: Flask bind address (default: "127.0.0.1"; set `0.0.0.0` or `SERVER_HOST` for LAN)
 - `server.port`: Flask port (default: 8080)
 - `qdrant.url`: Qdrant HTTP API URL (default: "http://localhost:6333")
 - `qdrant.collection_name`: Collection name — must exist in Qdrant (env `QDRANT_COLLECTION_NAME` overrides)
