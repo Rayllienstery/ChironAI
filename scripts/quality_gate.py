@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import subprocess
 import sys
@@ -210,6 +211,40 @@ PROFILES: dict[str, tuple[GateStep, ...]] = {
     "mutation": MUTATION_GATE,
 }
 
+PROFILE_PYTHON_MODULES: dict[str, tuple[str, ...]] = {
+    "minimal": ("pytest",),
+    "strict-lint": ("pytest",),
+    "mutation": ("pytest",),
+    "full": ("pytest", "bandit", "vulture"),
+    "release": ("pytest", "bandit", "vulture", "mypy", "pyright"),
+}
+
+
+def _missing_python_modules(modules: tuple[str, ...]) -> list[str]:
+    missing: list[str] = []
+    for name in modules:
+        if importlib.util.find_spec(name) is None:
+            missing.append(name)
+    return missing
+
+
+def _print_python_context() -> None:
+    print(f"Python: {sys.executable} ({sys.version.split()[0]})")
+
+
+def _preflight(profile: str) -> int | None:
+    missing = _missing_python_modules(PROFILE_PYTHON_MODULES.get(profile, ()))
+    _print_python_context()
+    if not missing:
+        return None
+    print("ERROR: missing Python packages for this quality gate profile:")
+    for name in missing:
+        print(f"  - {name}")
+    print("\nInstall dev dependencies from the repository root:")
+    print("  python -m pip install -r requirements-dev.txt")
+    print("\nIf multiple Python versions are installed, use the same interpreter that has dev deps.")
+    return 1
+
 
 def iter_steps(profile: str, *, include_advisory: bool = False) -> tuple[GateStep, ...]:
     steps = PROFILES[profile]
@@ -246,7 +281,8 @@ def run_step(step: GateStep) -> bool:
     if completed.returncode == 0:
         print(f"PASS: {step.name}")
         return True
-    print(f"FAIL: {step.name} exited with {completed.returncode}")
+    status = "FAIL" if step.required else "ADVISORY FAIL"
+    print(f"{status}: {step.name} exited with {completed.returncode}")
     return False
 
 
@@ -273,6 +309,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{step.name}\t{step.kind}\t{step.timeout_seconds}s\t{step.cwd}\t{format_command(step)}")
         return 0
 
+    preflight_error = _preflight(args.profile)
+    if preflight_error is not None:
+        return preflight_error
+
     failed_required: list[str] = []
     failed_advisory: list[str] = []
     for step in steps:
@@ -285,11 +325,15 @@ def main(argv: list[str] | None = None) -> int:
             failed_advisory.append(step.name)
 
     if failed_advisory:
-        print("\nAdvisory failures: " + ", ".join(failed_advisory))
+        print("\nAdvisory failures (non-blocking): " + ", ".join(failed_advisory))
     if failed_required:
         print("\nRequired failures: " + ", ".join(failed_required))
+        _print_python_context()
         return 1
-    print("\nQuality gate passed.")
+    if failed_advisory:
+        print("\nQuality gate passed (required steps only; see advisory failures above).")
+    else:
+        print("\nQuality gate passed.")
     return 0
 
 
