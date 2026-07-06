@@ -17,6 +17,8 @@ import MdPipelineSection from "./crawlerTab/MdPipelineSection";
 import { useCreateCollectionFlow } from "./crawlerTab/useCreateCollectionFlow";
 import { useCrawlerSection } from "./crawlerTab/useCrawlerSection";
 import { useMdPipelineSection } from "./crawlerTab/useMdPipelineSection";
+import { CRAWLER_TOUR_STEPS } from "./onboarding/contextualTours.js";
+import { useContextualTour } from "./onboarding/useContextualTour.js";
 
 function CrawlerTab() {
   const nc = useOptionalNotificationCenter();
@@ -31,6 +33,8 @@ function CrawlerTab() {
     loadCollections: crawler.loadCollections,
   });
   const mdPipeline = useMdPipelineSection({ activeSection });
+
+  useContextualTour("crawler", CRAWLER_TOUR_STEPS, !crawler.loading);
 
   return (
     <div className="crawler-tab tab-view">

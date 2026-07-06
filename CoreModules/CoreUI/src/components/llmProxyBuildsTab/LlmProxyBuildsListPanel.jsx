@@ -56,7 +56,7 @@ export default function LlmProxyBuildsListPanel({
         <CoreUIButton variant="primary" onClick={load} disabled={saving}>
           Refresh
         </CoreUIButton>
-        <CoreUIButton variant="primary" onClick={openNew} disabled={saving || draft}>
+        <CoreUIButton variant="primary" onClick={openNew} disabled={saving || draft} data-tour="build-new-btn">
           New build
         </CoreUIButton>
       </div>

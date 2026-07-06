@@ -295,7 +295,7 @@ export default function TemplateEditorPanel(props) {
   if (mode === 'selected') {
     return (
       <>
-        <div className="template-editor-header">
+        <div className="template-editor-header" data-tour="template-editor-panel">
           <h2>
             {renamePromptName === selectedPromptName ? (
               <input

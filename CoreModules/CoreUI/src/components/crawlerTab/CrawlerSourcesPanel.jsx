@@ -27,7 +27,7 @@ export default function CrawlerSourcesPanel({
     );
   }
   return (
-            <div className="crawler-sources">
+            <div className="crawler-sources" data-tour="crawler-sources">
               <div className="sources-header">
                 <h3>Crawl Sources</h3>
               </div>

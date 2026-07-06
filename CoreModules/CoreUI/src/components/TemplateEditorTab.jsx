@@ -13,6 +13,8 @@ import {
 } from '../services/api';
 import TemplateEditorHelpModal from './TemplateEditorHelpModal';
 import TemplateEditorPanel from './TemplateEditorPanel';
+import { PROMPTS_TOUR_STEPS } from './onboarding/contextualTours.js';
+import { useContextualTour } from './onboarding/useContextualTour.js';
 import '../styles/components/TemplateEditorTab.css';
 
 function TemplateEditorTab() {
@@ -40,6 +42,8 @@ function TemplateEditorTab() {
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [helpModalTab, setHelpModalTab] = useState('tips'); // 'tips', 'linter', 'structure'
   const [linterWarnings, setLinterWarnings] = useState([]);
+
+  useContextualTour('prompts', PROMPTS_TOUR_STEPS, !isLoading && viewMode === 'templates');
 
   const promptTips = [
     "Be specific and concrete: Instead of 'make it better', specify what exactly needs improvement (performance, readability, error handling).",
@@ -741,6 +745,7 @@ function TemplateEditorTab() {
                 <button
                   type="button"
                   className="template-button primary"
+                  data-tour="template-new-btn"
                   onClick={handleCreateNew}
                   disabled={isLoading || isSaving}
                   title="Create new template"

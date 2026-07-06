@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.13] - 2026-07-06
+### Added
+- Added contextual onboarding tours for LLM Proxy build wizard, Extensions, Prompt templates, and Crawler/Indexer with persisted per-feature completion state.
+
 ## [0.8.12] - 2026-07-06
 ### Added
 - Added custom first-run product tour (M3 spotlight engine), onboarding state persistence, and a Settings action to restart the tour.

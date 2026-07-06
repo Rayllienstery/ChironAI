@@ -190,7 +190,7 @@ import { loadTrackedModule } from "./services/moduleTimings";
 import Sparkline from "./components/Sparkline";
 import { NotificationCenterProvider } from "./components/NotificationCenterContext";
 import { HelpPanelProvider } from "./components/help/HelpPanelContext.jsx";
-import OnboardingHost from "./components/onboarding/OnboardingHost.jsx";
+import { OnboardingProvider } from "./components/onboarding/OnboardingProvider.jsx";
 import NotificationCenterShell from "./components/NotificationCenterShell";
 import RagTestRunNotificationBridge from "./components/RagTestRunNotificationBridge";
 import ProxiesLiveNotificationBridge from "./components/ProxiesLiveNotificationBridge";
@@ -992,7 +992,8 @@ function App() {
   return (
     <NotificationCenterProvider sessionId={sessionId}>
       <HelpPanelProvider onOpenFullHelp={handleOpenFullHelp}>
-    <div className="app">
+      <OnboardingProvider onNavigate={setActiveTab}>
+      <div className="app">
       <SidebarNav
         tabs={tabs}
         activeTab={activeTab}
@@ -1126,8 +1127,8 @@ function App() {
       {sessionId && <ExtensionSecurityNotificationBridge />}
       {sessionId && <WelcomeNotificationBridge />}
       {sessionId && <NotificationCenterShell onOpenRagRunDetails={openCompletedRagRunModal} />}
-      {sessionId ? <OnboardingHost onNavigate={setActiveTab} /> : null}
       </div>
+      </OnboardingProvider>
       </HelpPanelProvider>
     </NotificationCenterProvider>
   );

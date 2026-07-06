@@ -38,7 +38,7 @@ export default function LlmProxyBuildWizardModal(props) {
             )}
           </div>
           <div className="llm-proxy-wizard-nav-center">
-            <CoreUIButton variant="primary" disabled={saving} onClick={saveForm}>
+            <CoreUIButton variant="primary" disabled={saving} onClick={saveForm} data-tour="build-wizard-save">
               <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">save</span>
               {saving ? 'Saving...' : 'Save build'}
             </CoreUIButton>
@@ -85,7 +85,7 @@ export default function LlmProxyBuildWizardModal(props) {
           </button>
         ))}
       </div>
-      <div className="llm-proxy-wizard-content-wrapper">
+      <div className="llm-proxy-wizard-content-wrapper" data-tour="build-wizard">
         <LlmProxyWizardSteps {...props} />
       </div>
     </CoreUIModal>

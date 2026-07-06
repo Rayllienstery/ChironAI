@@ -19,7 +19,7 @@ export default function CrawlerTabHeader({
 }) {
   return (
     <div className="crawler-header">
-      <h2>Crawler / Indexer</h2>
+      <h2 data-tour="crawler-header">Crawler / Indexer</h2>
       <div className="crawler-header-tabs-and-actions">
           <CoreUIPillTabs
             tabs={SECTION_TABS}

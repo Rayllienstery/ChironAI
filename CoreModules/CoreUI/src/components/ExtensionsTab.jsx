@@ -5,6 +5,8 @@ import CoreUIButton from "./CoreUIButton";
 import CoreUIDockerCard from "./CoreUIDockerCard";
 import CoreUIPillTabs from "./CoreUIPillTabs";
 import { useOptionalNotificationCenter } from "./NotificationCenterContext";
+import { EXTENSIONS_TOUR_STEPS } from "./onboarding/contextualTours.js";
+import { useContextualTour } from "./onboarding/useContextualTour.js";
 import {
   checkDockerImageUpdate,
   disableExtension,
@@ -559,6 +561,8 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
   const [manualRef, setManualRef] = useState("");
   const persistExtensionNotification = notificationCenter?.persistNotification;
 
+  useContextualTour("extensions", EXTENSIONS_TOUR_STEPS, !loading);
+
   const loadRegistry = useCallback(async ({ forceRefresh = false, notifyOnError = false } = {}) => {
     setRegistryLoading(true);
     try {
@@ -1003,7 +1007,7 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
 
   return (
     <div className="extensions-tab tab-view">
-      <div className="extensions-tab__header">
+      <div className="extensions-tab__header" data-tour="extensions-header">
         <div>
           <h2>Extensions</h2>
           <p>Trusted registry, installed providers, and declarative CoreUI schemas.</p>
@@ -1024,6 +1028,7 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
         </div>
       </div>
 
+      <div data-tour="extensions-views">
       <CoreUIPillTabs
         tabs={viewTabs}
         value={activeView}
@@ -1036,6 +1041,7 @@ export default function ExtensionsTab({ onErrorStateChange, onExtensionSurfaceCh
           </span>
         )}
       />
+      </div>
 
       {error ? <div className="coreui-panel-note coreui-panel-note--error">{error}</div> : null}
       {dockerUpdateProgress ? (

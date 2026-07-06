@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import LlmProxyAutocompletePanel from './LlmProxyAutocompletePanel';
 import CoreUIPillTabs from './CoreUIPillTabs';
 import '../styles/components/DashboardTab.css';
@@ -9,10 +9,20 @@ import { CUSTOM_PARAMETER_PREFAB_NOTE } from './llmProxyBuildsTab/constants';
 import LlmProxyBuildWizardModal from './llmProxyBuildsTab/LlmProxyBuildWizardModal';
 import LlmProxyBuildsListPanel from './llmProxyBuildsTab/LlmProxyBuildsListPanel';
 import { useLlmProxyBuildsTab } from './llmProxyBuildsTab/useLlmProxyBuildsTab';
+import { createBuildsTourSteps } from './onboarding/contextualTours.js';
+import { useContextualTour } from './onboarding/useContextualTour.js';
 
 function LlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed }) {
   const tab = useLlmProxyBuildsTab({ focusSubTab, onFocusSubTabConsumed });
   const parameterPrefabNote = tab.matchingParameterPrefab || CUSTOM_PARAMETER_PREFAB_NOTE;
+  const buildsTourSteps = useMemo(
+    () => createBuildsTourSteps({
+      goToBasicStep: () => tab.setWizardStep(0),
+      goToRagStep: () => tab.setWizardStep(1),
+    }),
+    [tab.setWizardStep],
+  );
+  useContextualTour('builds', buildsTourSteps, Boolean(tab.draft) && !tab.loading);
 
   if (tab.loading) {
     return (

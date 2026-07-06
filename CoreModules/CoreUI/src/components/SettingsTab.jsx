@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { getSettings, updateSettings } from '../services/api';
 import { SUPPORTED_LOCALES, getLocale, setLocale } from '../services/i18n';
 import CoreUIButton from './CoreUIButton';
-import { restartFirstRunTour } from './onboarding/OnboardingHost.jsx';
+import { restartFirstRunTour } from './onboarding/OnboardingProvider.jsx';
 import '../styles/components/SettingsTab.css';
 import '../styles/components/DashboardTab.css';
 

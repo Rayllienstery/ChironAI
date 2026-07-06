@@ -50,6 +50,7 @@ export default function LlmProxyWizardSteps({
                   </FieldLabelWithHelp>
                   <input
                     className="coreui-input"
+                    data-tour="build-wizard-id"
                     value={draft.id}
                     onChange={(e) => setDraft({ ...draft, id: e.target.value })}
                     disabled={!!editingId}
@@ -246,6 +247,7 @@ export default function LlmProxyWizardSteps({
                       </FieldLabelWithHelp>
                       <select
                         className="coreui-select"
+                        data-tour="build-wizard-rag"
                         value={selectedRagCollection}
                         onChange={(e) => setDraft({ ...draft, rag_collection: e.target.value })}
                         disabled={collectionNames.length === 0 && !selectedRagCollection}
