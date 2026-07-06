@@ -1,6 +1,6 @@
 /** Contextual help slugs for LLM Proxy build fields (InfoButton / HelpPanel). */
 
-export const BUILD_FIELD_HELP_REF = {
+const BUILD_FIELD_HELP_REF = {
   provider_id: 'providers',
   model: 'providers',
   rag_enabled: 'rag-collections',
@@ -26,7 +26,7 @@ export const BUILD_FIELD_HELP_REF = {
   chat_think: 'builds#generation-params',
 };
 
-export const BUILD_SECTION_HELP_REF = {
+const BUILD_SECTION_HELP_REF = {
   Basic: 'builds',
   RAG: 'rag-collections',
   Parameters: 'builds#generation-params',

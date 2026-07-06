@@ -60,6 +60,7 @@ from api.http.webui_crawler_routes import register_crawler_routes
 from api.http.webui_dependencies_routes import register_dependencies_routes
 from api.http.webui_docker_routes import register_docker_routes
 from api.http.webui_extensions_routes import register_extension_routes
+from api.http.webui_help_routes import register_help_routes
 from api.http.webui_llm_proxy_routes import register_llm_proxy_routes
 from api.http.webui_model_tester_routes import register_model_tester_routes
 from api.http.webui_observability_routes import register_observability_routes
@@ -91,7 +92,6 @@ from api.http.webui_server_routes import register_server_routes
 from api.http.webui_session_routes import register_session_routes
 from api.http.webui_settings_routes import register_settings_routes
 from api.http.webui_testing_routes import register_testing_routes
-from api.http.webui_help_routes import register_help_routes
 from api.http.webui_version_routes import register_version_routes
 from application.llm_proxy_builds import LLM_PROXY_BUILDS_APP_KEY
 

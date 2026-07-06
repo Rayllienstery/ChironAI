@@ -23,7 +23,7 @@ export const HELP_SECTIONS = [
   },
 ];
 
-export const HELP_ARTICLE_ICONS = {
+const HELP_ARTICLE_ICONS = {
   'getting-started': 'flag',
   builds: 'hub',
   'rag-collections': 'library_books',

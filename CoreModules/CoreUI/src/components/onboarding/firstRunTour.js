@@ -1,7 +1,5 @@
 /** First-run product tour — custom M3 engine (no @reactour/tour dependency). */
 
-export const FIRST_RUN_TOUR_ID = 'first-run';
-
 export const FIRST_RUN_TOUR_STEPS = [
   {
     id: 'welcome',

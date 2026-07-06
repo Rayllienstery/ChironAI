@@ -231,3 +231,64 @@ def test_llm_proxy_builds_put_roundtrips_ide_mode(monkeypatch: pytest.MonkeyPatc
     assert data["builds"][0]["ide_mode"] is True
     stored = json.loads(fake_settings.get_app_setting(wr.LLM_PROXY_BUILDS_APP_KEY) or "[]")
     assert stored[0]["ide_mode"] is True
+
+
+def test_llm_proxy_builds_put_roundtrips_rag_collection(monkeypatch: pytest.MonkeyPatch) -> None:
+    import api.http.webui_routes as wr
+
+    class FakeSettings:
+        def __init__(self) -> None:
+            self.data: dict[str, str] = {}
+
+        def get_app_setting(self, key: str) -> str | None:
+            return self.data.get(key)
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            self.data[key] = value
+
+    fake_settings = FakeSettings()
+
+    def light_enrich(builds: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [{**item, "issues": [], "healthy": True} for item in builds]
+
+    monkeypatch.setattr(wr, "get_settings_repository", lambda: fake_settings)
+    monkeypatch.setattr(wr, "_enrich_builds_with_diagnostics", light_enrich)
+
+    from api.http.rag_routes import create_app
+
+    app = create_app()
+    client = app.test_client()
+    body = {
+        "builds": [
+            {
+                "id": "rag-worker",
+                "backend": "dumb",
+                "provider_id": "ollama",
+                "model": "llama3",
+                "prompt_name": "system_senior_ios_assistant_v1",
+                "rag_enabled": True,
+                "rag_collection": "ios-docs",
+            }
+        ]
+    }
+
+    put = client.put("/api/webui/llm-proxy/builds", json=body)
+    assert put.status_code == 200
+    assert put.get_json()["builds"][0]["rag_collection"] == "ios-docs"
+
+    stored = json.loads(fake_settings.get_app_setting(wr.LLM_PROXY_BUILDS_APP_KEY) or "[]")
+    assert stored[0]["rag_collection"] == "ios-docs"
+
+    edit = {
+        "builds": [
+            {
+                **body["builds"][0],
+                "rag_collection": "api-docs",
+            }
+        ]
+    }
+    put_edit = client.put("/api/webui/llm-proxy/builds", json=edit)
+    assert put_edit.status_code == 200
+    assert put_edit.get_json()["builds"][0]["rag_collection"] == "api-docs"
+    stored_after = json.loads(fake_settings.get_app_setting(wr.LLM_PROXY_BUILDS_APP_KEY) or "[]")
+    assert stored_after[0]["rag_collection"] == "api-docs"

@@ -22,14 +22,14 @@ const COMPLETED_ONBOARDING_STATE = {
   },
 };
 
-function baseResponses(onboardingState) {
+function baseResponses(onboardingState, builds) {
   return {
     '/sessions': { id: 'e2e-session' },
     '/settings': {
       theme: 'system',
       onboarding_state: JSON.stringify(onboardingState),
     },
-    '/version': { version: '0.8.13', app_name: 'Chiron AI', app_stage: 'BETA' },
+    '/version': { version: '0.8.15', app_name: 'Chiron AI', app_stage: 'BETA' },
     '/dashboard-metrics': {
       cpu_percent: 0,
       memory_percent: 0,
@@ -42,7 +42,12 @@ function baseResponses(onboardingState) {
       collections_count: 2,
       version: 'e2e',
     },
-    '/rag/collections': { collections: [{ name: 'docs' }] },
+    '/rag/collections': {
+      collections: [
+        { name: 'docs', points_count: 10 },
+        { name: 'api-docs', points_count: 5 },
+      ],
+    },
     '/rag/keyword-collections': { collections: [] },
     '/rag/trigger-settings': { threshold: 5 },
     '/rag/framework-settings': { framework_ttl_seconds: 300 },
@@ -55,7 +60,18 @@ function baseResponses(onboardingState) {
       rerank_for_rag: false,
       advanced_retrieval: {},
     },
-    '/provider-catalog': { providers: [], models: [] },
+    '/providers/catalog': {
+      providers: [{ provider_id: 'ollama', title: 'Ollama' }],
+      models: [{ provider_id: 'ollama', id: 'llama3', name: 'Llama 3' }],
+    },
+    '/provider-catalog': {
+      providers: [{ provider_id: 'ollama', title: 'Ollama' }],
+      models: [{ provider_id: 'ollama', id: 'llama3', name: 'Llama 3' }],
+    },
+    '/prompts': { prompts: [] },
+    '/model-settings': {},
+    '/pipeline-preview': { steps: [] },
+    '/llm-proxy/builds': { builds, openai_models_urls: { main: 'http://127.0.0.1:5000/v1/models' } },
     '/extensions/registry': {
       extensions: [
         {
@@ -92,7 +108,10 @@ function baseResponses(onboardingState) {
     '/notifications': { notifications: [] },
     '/performance/startup': { modules: [] },
     '/help': {
-      articles: [{ slug: 'getting-started', title: 'Getting Started', tags: ['intro'] }],
+      articles: [
+        { slug: 'getting-started', title: 'Getting Started', tags: ['intro'] },
+        { slug: 'builds', title: 'LLM Proxy Builds', tags: ['builds'] },
+      ],
     },
   };
 }
@@ -102,18 +121,19 @@ function baseResponses(onboardingState) {
  * @param {{ onboarding?: 'fresh' | 'completed' | object, mutableOnboarding?: boolean }} [options]
  */
 export async function installApiMocks(page, options = {}) {
-  const { onboarding = 'fresh', mutableOnboarding = false } = options;
+  const { onboarding = 'fresh', mutableOnboarding = false, builds = [] } = options;
   let onboardingState = onboarding === 'completed'
     ? structuredClone(COMPLETED_ONBOARDING_STATE)
     : onboarding === 'fresh'
       ? structuredClone(DEFAULT_ONBOARDING_STATE)
       : structuredClone(onboarding);
+  let buildsStore = structuredClone(builds);
 
   await page.route('**/api/webui/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname.replace('/api/webui', '');
-    const responses = baseResponses(onboardingState);
+    const responses = baseResponses(onboardingState, buildsStore);
 
     if (path === '/settings' && request.method() === 'POST') {
       let body = {};
@@ -139,20 +159,41 @@ export async function installApiMocks(page, options = {}) {
       return;
     }
 
+    if (path === '/llm-proxy/builds' && request.method() === 'PUT') {
+      let body = {};
+      try {
+        body = request.postDataJSON() ?? {};
+      } catch {
+        body = {};
+      }
+      buildsStore = Array.isArray(body.builds) ? body.builds : [];
+      await route.fulfill({ json: { builds: buildsStore, openai_models_urls: responses['/llm-proxy/builds'].openai_models_urls } });
+      return;
+    }
+
     if (request.method() === 'POST' || request.method() === 'PATCH' || request.method() === 'DELETE') {
       await route.fulfill({ json: { ok: true } });
       return;
     }
 
     if (path.startsWith('/help/')) {
+      const slug = path.replace('/help/', '').split('/')[0] || 'getting-started';
       await route.fulfill({
         json: {
-          slug: 'getting-started',
-          title: 'Getting Started',
-          content: '# Getting Started\n\nE2E help body.',
-          tags: ['intro'],
+          slug,
+          title: slug === 'builds' ? 'LLM Proxy Builds' : 'Getting Started',
+          content:
+            slug === 'builds'
+              ? '# LLM Proxy Builds\n\nE2E builds help body.'
+              : '# Getting Started\n\nE2E help body.',
+          tags: slug === 'builds' ? ['builds'] : ['intro'],
         },
       });
+      return;
+    }
+
+    if (path === '/llm-proxy/builds') {
+      await route.fulfill({ json: responses['/llm-proxy/builds'] });
       return;
     }
 

@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import LlmProxyBuildWizardModal from './LlmProxyBuildWizardModal';
 import { CUSTOM_PARAMETER_PREFAB_NOTE } from './constants';
 import { emptyDraft } from './helpers';
+import { renderWithProviders } from '../../test/renderWithProviders.jsx';
 
 function createProps(overrides = {}) {
   return {
@@ -36,12 +37,12 @@ function createProps(overrides = {}) {
 
 describe('LlmProxyBuildWizardModal', () => {
   it('renders nothing when draft is null', () => {
-    const { container } = render(<LlmProxyBuildWizardModal {...createProps({ draft: null })} />);
+    const { container } = renderWithProviders(<LlmProxyBuildWizardModal {...createProps({ draft: null })} />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it('renders create build modal with wizard navigation buttons', () => {
-    render(<LlmProxyBuildWizardModal {...createProps()} />);
+    renderWithProviders(<LlmProxyBuildWizardModal {...createProps()} />);
     expect(screen.getByText('Create new build')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /save build/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /next/i })).toBeInTheDocument();
@@ -49,19 +50,19 @@ describe('LlmProxyBuildWizardModal', () => {
   });
 
   it('shows edit title when editing an existing build', () => {
-    render(<LlmProxyBuildWizardModal {...createProps({ editingId: 'dev-build' })} />);
+    renderWithProviders(<LlmProxyBuildWizardModal {...createProps({ editingId: 'dev-build' })} />);
     expect(screen.getByText('Edit build: dev-build')).toBeInTheDocument();
   });
 
   it('shows Back button after advancing wizard step', () => {
-    render(<LlmProxyBuildWizardModal {...createProps({ wizardStep: 1 })} />);
+    renderWithProviders(<LlmProxyBuildWizardModal {...createProps({ wizardStep: 1 })} />);
     expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument();
   });
 
   it('advances wizard step when Next is clicked', () => {
     const setWizardStep = vi.fn();
     const setWizardDirection = vi.fn();
-    render(
+    renderWithProviders(
       <LlmProxyBuildWizardModal
         {...createProps({ wizardStep: 0, setWizardStep, setWizardDirection })}
       />,

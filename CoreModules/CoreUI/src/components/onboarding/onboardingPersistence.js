@@ -32,7 +32,7 @@ export function markFirstRunCompleted() {
   return next;
 }
 
-export function syncOnboardingState(state) {
+function syncOnboardingState(state) {
   void updateSettings({
     [ONBOARDING_SETTINGS_KEY]: serializeOnboardingStateForSettings(state),
   }).catch(() => {

@@ -247,6 +247,7 @@ export default function LlmProxyWizardSteps({
                       </FieldLabelWithHelp>
                       <select
                         className="coreui-select"
+                        data-testid="build-wizard-rag"
                         data-tour="build-wizard-rag"
                         value={selectedRagCollection}
                         onChange={(e) => setDraft({ ...draft, rag_collection: e.target.value })}

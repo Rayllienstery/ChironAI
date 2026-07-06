@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.16] - 2026-07-06
+### Added
+- Added unit, hook, API, and Playwright coverage for Help deep-links, InfoButton drawer, builds contextual tour, and per-build RAG collection edit/save.
+
+## [0.8.15] - 2026-07-06
+### Fixed
+- Fixed CoreUI unit tests for onboarding and Help panel providers; resolved knip unused exports, ruff import order, and oversized-file audit for the build wizard.
+
 ## [0.8.14] - 2026-07-06
 ### Added
 - Added Playwright E2E coverage for first-run onboarding skip and Settings tour restart, with shared WebUI API mocks.

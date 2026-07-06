@@ -51,6 +51,7 @@ DOCUMENTED_EXCEPTIONS: dict[str, str] = {
     "Core/api/http/webui_crawler_indexing_runtime_core.py": "Phase 3 crawler split; 804 lines acceptable",
     "CoreModules/LlmProxy/llm_proxy/chat_completions_gemini_native.py": "Gemini path; provider-specific module",
     "CoreModules/LlmProxy/llm_proxy/v1_responses.py": "OpenAI /v1/responses compat layer; vision mapping added in 0.8.9",
+    "CoreModules/CoreUI/src/components/llmProxyBuildsTab/LlmProxyWizardSteps.jsx": "Build wizard steps; InfoButton hooks added in 0.8.10",
 }
 
 PRODUCTION_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx"}

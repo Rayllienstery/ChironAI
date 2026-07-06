@@ -10,6 +10,8 @@ const getRagCollections = vi.fn();
 const getPipelinePreview = vi.fn();
 const getRagModelSettings = vi.fn();
 
+const putLlmProxyBuilds = vi.fn();
+
 vi.mock('../../services/api', () => ({
   getLlmProxyBuilds: (...args) => getLlmProxyBuilds(...args),
   getProviderCatalog: (...args) => getProviderCatalog(...args),
@@ -19,7 +21,7 @@ vi.mock('../../services/api', () => ({
   getPipelinePreview: (...args) => getPipelinePreview(...args),
   getRagModelSettings: (...args) => getRagModelSettings(...args),
   previewLlmProxyBuildModel: vi.fn(),
-  putLlmProxyBuilds: vi.fn(),
+  putLlmProxyBuilds: (...args) => putLlmProxyBuilds(...args),
 }));
 
 describe('useLlmProxyBuildsTab', () => {
@@ -32,6 +34,7 @@ describe('useLlmProxyBuildsTab', () => {
     getRagCollections.mockResolvedValue({ collections: [{ name: 'ios-docs', points_count: 12 }] });
     getPipelinePreview.mockResolvedValue(null);
     getRagModelSettings.mockResolvedValue({});
+    putLlmProxyBuilds.mockImplementation(async (builds) => ({ builds }));
   });
 
   it('loads Qdrant collections when build editor opens', async () => {
@@ -73,6 +76,55 @@ describe('useLlmProxyBuildsTab', () => {
     await waitFor(() => {
       expect(result.current.editingId).toBe('docs-worker');
       expect(result.current.draft?.rag_collection).toBe('ios-docs');
+    });
+  });
+
+  it('saveForm persists an edited rag_collection via PUT', async () => {
+    getLlmProxyBuilds.mockResolvedValue({
+      builds: [
+        {
+          id: 'docs-worker',
+          backend: 'dumb',
+          provider_id: 'ollama',
+          model: 'llama3',
+          rag_collection: '',
+        },
+      ],
+      openai_models_urls: {},
+    });
+
+    const { result } = renderHook(() => useLlmProxyBuildsTab({}));
+
+    await waitFor(() => {
+      expect(getLlmProxyBuilds).toHaveBeenCalled();
+    });
+
+    act(() => {
+      result.current.openEdit({
+        id: 'docs-worker',
+        backend: 'dumb',
+        provider_id: 'ollama',
+        model: 'llama3',
+        rag_collection: '',
+      });
+    });
+
+    act(() => {
+      result.current.setDraft({ ...result.current.draft, rag_collection: 'api-docs' });
+    });
+
+    await act(async () => {
+      await result.current.saveForm();
+    });
+
+    expect(putLlmProxyBuilds).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: 'docs-worker',
+        rag_collection: 'api-docs',
+      }),
+    ]);
+    await waitFor(() => {
+      expect(result.current.draft).toBeNull();
     });
   });
 });

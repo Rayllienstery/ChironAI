@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import LlmProxyWizardSteps from './LlmProxyWizardSteps';
 import { CUSTOM_PARAMETER_PREFAB_NOTE, PARAMETER_PREFABS } from './constants';
 import { emptyDraft } from './helpers';
+import { renderWithProviders } from '../../test/renderWithProviders.jsx';
 
 function createProps(overrides = {}) {
   return {
@@ -31,25 +32,25 @@ function createProps(overrides = {}) {
 
 describe('LlmProxyWizardSteps', () => {
   it('renders basic info step with Check model button', () => {
-    render(<LlmProxyWizardSteps {...createProps()} />);
+    renderWithProviders(<LlmProxyWizardSteps {...createProps()} />);
     expect(screen.getByRole('button', { name: /check model/i })).toBeInTheDocument();
     expect(screen.getByText(/name your build/i)).toBeInTheDocument();
   });
 
   it('calls runPreview when Check model is clicked', () => {
     const props = createProps();
-    render(<LlmProxyWizardSteps {...props} />);
+    renderWithProviders(<LlmProxyWizardSteps {...props} />);
     fireEvent.click(screen.getByRole('button', { name: /check model/i }));
     expect(props.runPreview).toHaveBeenCalledOnce();
   });
 
   it('shows preview message on basic info step', () => {
-    render(<LlmProxyWizardSteps {...createProps({ previewMsg: 'Model reachable' })} />);
+    renderWithProviders(<LlmProxyWizardSteps {...createProps({ previewMsg: 'Model reachable' })} />);
     expect(screen.getByText('Model reachable')).toBeInTheDocument();
   });
 
   it('renders parameter prefab buttons on parameters step', () => {
-    render(<LlmProxyWizardSteps {...createProps({ wizardStep: 4 })} />);
+    renderWithProviders(<LlmProxyWizardSteps {...createProps({ wizardStep: 4 })} />);
     for (const prefab of PARAMETER_PREFABS) {
       expect(screen.getByRole('button', { name: prefab.label })).toBeInTheDocument();
     }
@@ -57,13 +58,13 @@ describe('LlmProxyWizardSteps', () => {
 
   it('calls applyParameterPrefab when a prefab button is clicked', () => {
     const props = createProps({ wizardStep: 4 });
-    render(<LlmProxyWizardSteps {...props} />);
+    renderWithProviders(<LlmProxyWizardSteps {...props} />);
     fireEvent.click(screen.getByRole('button', { name: PARAMETER_PREFABS[0].label }));
     expect(props.applyParameterPrefab).toHaveBeenCalledWith(PARAMETER_PREFABS[0]);
   });
 
   it('renders RAG collection dropdown on RAG step', () => {
-    render(
+    renderWithProviders(
       <LlmProxyWizardSteps
         {...createProps({
           wizardStep: 1,
@@ -72,14 +73,14 @@ describe('LlmProxyWizardSteps', () => {
         })}
       />,
     );
-    expect(screen.getByRole('combobox', { name: /rag collection override/i })).toBeInTheDocument();
+    expect(screen.getByTestId('build-wizard-rag')).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /ios-docs \(42 vectors\)/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /server default/i })).toBeInTheDocument();
   });
 
   it('calls setDraft when RAG collection selection changes', () => {
     const setDraft = vi.fn();
-    render(
+    renderWithProviders(
       <LlmProxyWizardSteps
         {...createProps({
           wizardStep: 1,
@@ -89,14 +90,14 @@ describe('LlmProxyWizardSteps', () => {
         })}
       />,
     );
-    fireEvent.change(screen.getByRole('combobox', { name: /rag collection override/i }), {
+    fireEvent.change(screen.getByTestId('build-wizard-rag'), {
       target: { value: 'api-docs' },
     });
     expect(setDraft).toHaveBeenCalledWith(expect.objectContaining({ rag_collection: 'api-docs' }));
   });
 
   it('shows stale collection option when edit value is not in Qdrant list', () => {
-    render(
+    renderWithProviders(
       <LlmProxyWizardSteps
         {...createProps({
           wizardStep: 1,
@@ -109,7 +110,7 @@ describe('LlmProxyWizardSteps', () => {
   });
 
   it('shows empty-state hint when no Qdrant collections exist', () => {
-    render(
+    renderWithProviders(
       <LlmProxyWizardSteps
         {...createProps({
           wizardStep: 1,

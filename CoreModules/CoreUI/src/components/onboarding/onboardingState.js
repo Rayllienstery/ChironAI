@@ -1,7 +1,7 @@
 const STORAGE_KEY = 'chironai_onboarding_v1';
 const SETTINGS_KEY = 'onboarding_state';
 
-export const ONBOARDING_STATE_VERSION = 1;
+const ONBOARDING_STATE_VERSION = 1;
 
 export function createDefaultOnboardingState() {
   return {

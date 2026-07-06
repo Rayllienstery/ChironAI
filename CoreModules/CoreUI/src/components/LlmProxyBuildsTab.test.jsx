@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import LlmProxyBuildsTab from './LlmProxyBuildsTab.jsx';
+import { renderWithProviders } from '../test/renderWithProviders.jsx';
 
 vi.mock('../services/api.js', () => ({
   getLlmProxyBuilds: vi.fn().mockResolvedValue({ builds: [], openai_models_urls: {} }),
@@ -19,14 +20,14 @@ describe('LlmProxyBuildsTab smoke', () => {
   });
 
   it('renders LLM Proxy heading', async () => {
-    render(<LlmProxyBuildsTab />);
+    renderWithProviders(<LlmProxyBuildsTab />);
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 2, name: /LLM Proxy/i })).toBeInTheDocument();
     });
   });
 
   it('opens new build wizard without crashing', async () => {
-    render(<LlmProxyBuildsTab />);
+    renderWithProviders(<LlmProxyBuildsTab />);
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /new build/i })).toBeInTheDocument();
     });
@@ -39,7 +40,7 @@ describe('LlmProxyBuildsTab smoke', () => {
   });
 
   it('navigates wizard to parameters step and renders prefab buttons', async () => {
-    render(<LlmProxyBuildsTab />);
+    renderWithProviders(<LlmProxyBuildsTab />);
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /new build/i })).toBeInTheDocument();
     });
