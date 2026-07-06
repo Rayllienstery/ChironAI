@@ -15,7 +15,7 @@ Highlights:
 Verification snapshot (2026-07-06):
 
 - `python scripts/quality_gate.py --profile release` — passed.
-- `npm run e2e` from `CoreModules/CoreUI` — passed, 7 tests.
+- `npm run e2e` from `CoreModules/CoreUI` — passed, 11 tests.
 - `python scripts/check_version_drift.py` — passed (0.8.17).
 - `python scripts/gen_api_docs.py --check` — passed.
 - `python scripts/audit_oversized_files.py --mode check` — passed.

@@ -72,6 +72,8 @@ function baseResponses(onboardingState, builds) {
     '/model-settings': {},
     '/pipeline-preview': { steps: [] },
     '/llm-proxy/builds': { builds, openai_models_urls: { main: 'http://127.0.0.1:5000/v1/models' } },
+    '/llm-proxy/status': { running: true, base_url: 'http://127.0.0.1:8080' },
+    '/logs': { logs: [], total: 0 },
     '/extensions/registry': {
       extensions: [
         {
@@ -194,6 +196,11 @@ export async function installApiMocks(page, options = {}) {
 
     if (path === '/llm-proxy/builds') {
       await route.fulfill({ json: responses['/llm-proxy/builds'] });
+      return;
+    }
+
+    if (path === '/logs') {
+      await route.fulfill({ json: responses['/logs'] });
       return;
     }
 
