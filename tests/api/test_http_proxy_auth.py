@@ -87,6 +87,51 @@ def test_v1_models_accepts_x_api_key_proxy_api_key() -> None:
 
 @pytest.mark.fast
 @pytest.mark.api
+def test_webui_generate_proxy_api_key_rejects_non_loopback_client() -> None:
+    from api.http.rag_routes import create_app
+
+    r = create_app().test_client().post(
+        "/api/webui/llm-proxy/api-key/generate",
+        environ_base={"REMOTE_ADDR": "192.168.1.50"},
+    )
+    assert r.status_code == 403
+    error = (r.get_json() or {}).get("error") or {}
+    assert "local machine" in (error.get("message") or "")
+
+
+@pytest.mark.fast
+@pytest.mark.api
+def test_webui_reveal_proxy_api_key_rejects_non_loopback_client() -> None:
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
+    generated = client.post("/api/webui/llm-proxy/api-key/generate").get_json() or {}
+    assert generated.get("key")
+
+    r = client.post(
+        "/api/webui/llm-proxy/api-key/reveal",
+        environ_base={"REMOTE_ADDR": "10.0.0.8"},
+    )
+    assert r.status_code == 403
+
+
+@pytest.mark.fast
+@pytest.mark.api
+def test_webui_delete_proxy_api_key_rejects_non_loopback_client() -> None:
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
+    client.post("/api/webui/llm-proxy/api-key/generate")
+
+    r = client.delete(
+        "/api/webui/llm-proxy/api-key",
+        environ_base={"REMOTE_ADDR": "172.16.0.2"},
+    )
+    assert r.status_code == 403
+
+
+@pytest.mark.fast
+@pytest.mark.api
 def test_webui_reveal_proxy_api_key_returns_404_for_hash_only_legacy_key() -> None:
     from api.http.rag_routes import create_app
 

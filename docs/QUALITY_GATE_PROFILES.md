@@ -11,22 +11,83 @@ python scripts/quality_gate.py --profile mutation --include-advisory
 
 ## Profiles
 
-| Profile | Purpose | Required steps |
-|---------|---------|----------------|
-| `minimal` | Every PR / local pre-push | `ruff`, version drift, API drift, OpenAPI schema validation, `pytest -m fast`, `pytest --collect-only`, CoreUI `build`, `knip`, lockfile check |
-| `full` | Main branch / nightly | `minimal` superset: `vulture`, full `pytest`, oversized-file audit, `lint-imports`, API drift-check (advisory), CoreUI `lint` + `test:run` + `test:coverage` + `typecheck` when configured |
+| Profile | Purpose | Steps |
+|---------|---------|-------|
+| `minimal` | Every PR / local pre-push | See [minimal](#minimal) below |
+| `full` | Main branch / nightly | `minimal` + [full extras](#full-extras) |
 | `strict-lint` | Incremental ruff expansion | `ruff` with import (`I`) and selected bugbear rules |
-| `mutation` | Advisory mutation baseline for critical domain/RAG services | No required steps by default; with `--include-advisory`, runs `mutmut run` using `[tool.mutmut]` |
-| `release` | Pre-tag / deploy candidate | `full` + `pyright`, `scripts/run_dependency_audit.py` (required), `docker build` (required when Docker available), `startup_smoke.sh` (required on Linux) |
+| `mutation` | Advisory mutation baseline | `mutmut run` (advisory unless promoted) |
+| `release` | Pre-tag / deploy candidate | `full` + [release extras](#release-extras) |
+
+### minimal
+
+| Step | Required |
+|------|----------|
+| `ruff check .` | yes |
+| `bandit -r Core CoreModules` | yes |
+| `scripts/check_version_drift.py` | yes |
+| `scripts/check_api_drift.py --strict --strict-openapi` | yes |
+| `scripts/validate_openapi.py` | yes |
+| `pytest -m fast` | yes |
+| `pytest --collect-only` | yes |
+| CoreUI `npm run build` | yes |
+| CoreUI `npm run bundle:budget` | yes |
+| CoreUI `npm run knip` | yes |
+| CoreUI `npm run check:lockfile` | yes |
+
+### full extras
+
+Everything in `minimal`, plus:
+
+| Step | Required |
+|------|----------|
+| `vulture` | yes |
+| `pytest` (full suite) | yes |
+| `pytest -m fast` with `--cov=domain --cov=application --cov-fail-under=80` | yes |
+| `scripts/audit_oversized_files.py --mode check` | yes |
+| `scripts/audit_silent_exceptions.py --mode check` | advisory |
+| `lint-imports` | advisory |
+| `bandit` (second pass in full profile) | yes |
+| `scripts/check_api_drift.py` (non-strict) | yes |
+| CoreUI `npm run lint` | yes |
+| CoreUI `npm run i18n-lint` | advisory |
+| CoreUI `npm run test:run` | yes |
+| CoreUI `npm run test:coverage` | yes |
+| CoreUI `npm run typecheck` | yes |
+
+### release extras
+
+Everything in `full`, plus:
+
+| Step | Required | Notes |
+|------|----------|-------|
+| `mypy Core/domain Core/core` | yes | |
+| `pyright` | yes | |
+| `scripts/run_dependency_audit.py` | yes | |
+| `scripts/gen_api_docs.py --check` | advisory | Promote before tag when API docs changed |
+| `docker build -t chironai:gate .` | yes when Docker available | Skipped if `docker` missing |
+| `trivy image chironai:gate` | advisory | With `--include-advisory` |
+| `scripts/startup_smoke.sh` | yes on Linux/WSL | Skipped on native Windows |
+| `scripts/startup_smoke_bat.ps1` | advisory | Windows smoke helper |
+
+## Platform parity
+
+| Step | Windows (local) | Linux CI (`release` job) |
+|------|-----------------|--------------------------|
+| `pytest` / CoreUI tests | yes | yes |
+| `mypy` / `pyright` | yes | yes |
+| `docker build` | when Docker Desktop available | yes |
+| `startup_smoke.sh` | skipped (`os.name == nt`) | required when `bash` available |
+| `startup_smoke_bat.ps1` | advisory with `--include-advisory` | skipped |
+| `mutmut` | advisory; prefer WSL/CI Linux | advisory |
 
 ## Advisory vs required
 
 - **Required** failures block the gate (`exit 1`).
-- **Advisory** failures are printed but do not fail `minimal` / `full` until promoted.
+- **Advisory** failures are printed but do not fail the profile unless promoted.
+- Pass `--include-advisory` to execute advisory steps and count their failures on `full` / `release` / `mutation`.
 - The oversized-file audit is required in `full`; generated files and documented baseline exceptions are excluded from hard failure.
-- Mutation testing is advisory and expected to run on Linux/WSL. Native Windows
-  `mutmut` currently exits before running; use WSL or CI Linux for baseline
-  score collection.
+- Mutation testing is advisory and expected to run on Linux/WSL. Native Windows `mutmut` may exit early; use WSL or CI Linux for baseline score collection.
 
 ## Mutation baseline
 
@@ -56,3 +117,5 @@ this section with the surviving/killed mutation counts.
 - `mutmut run` - advisory mutation baseline for `Core/domain/services` and
   `CoreModules/RagService/rag_service/domain`.
 - `reports/baseline/` - one-time and snapshot baseline outputs.
+
+Source of truth: `scripts/quality_gate.py` (`MINIMAL_GATE`, `FULL_GATE_EXTRA`, `RELEASE_TYPING_GATE`, `RELEASE_GATE_EXTRA`).

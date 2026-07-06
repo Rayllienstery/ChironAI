@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.22] - 2026-07-06
+### Added
+- Loopback-only guard for WebUI proxy API key generate/reveal/delete routes; unit and API tests for non-local clients.
+- Synced `docs/QUALITY_GATE_PROFILES.md` with `scripts/quality_gate.py` release/full/minimal step tables and Windows vs Linux parity.
+
+### Changed
+- `SECURITY.md` documents loopback requirement for sensitive `/api/webui/llm-proxy/api-key/*` mutation routes.
+
 ## [0.8.21] - 2026-07-06
 ### Changed
 - Default server bind host in `server.yaml` is now `127.0.0.1` (was `0.0.0.0`), aligning bundled config with `get_server_host()` fallback and CHANGELOG 0.8.0. Set `SERVER_HOST=0.0.0.0` or edit `server.yaml` for LAN access.

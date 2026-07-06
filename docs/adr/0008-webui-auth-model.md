@@ -22,7 +22,8 @@ Adopt **local-only by default** (option 1) for the STABLE line:
 1. **Default bind** — `server.yaml` → `server.host: 127.0.0.1`. Override via `SERVER_HOST` or YAML for trusted LAN.
 2. **No built-in WebUI auth in 0.8.x** — operators who bind `0.0.0.0` or expose the port must use firewall rules, VPN, or an authenticating reverse proxy.
 3. **LLM Proxy `/v1/*`** remains API-key gated independently of WebUI auth.
-4. **Future work** — built-in auth (P1.1.2) is deferred until a concrete LAN/multi-user requirement is prioritized; P1.20 (unauthenticated api-key reveal routes) is mitigated by local bind + documentation until then.
+4. **Future work** — built-in auth (P1.1.2) is deferred until a concrete LAN/multi-user requirement is prioritized.
+5. **P1.20 mitigation (0.8.22)** — `POST/DELETE` on `/api/webui/llm-proxy/api-key/*` mutation routes require a loopback client (`127.0.0.1` / `::1`) even when `SERVER_HOST=0.0.0.0`.
 
 ## Consequences
 

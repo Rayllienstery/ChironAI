@@ -20,6 +20,10 @@ from llm_proxy.api_key import (
 )
 
 from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
+from api.http.webui_trusted_client import (
+    is_loopback_client_request,
+    loopback_client_required_response,
+)
 from api.http.webui_provider_helpers import (
     default_llm_provider_id as _default_llm_provider_id,
 )
@@ -125,6 +129,11 @@ def register_llm_proxy_routes(
             error_log.error("webui_llm_proxy_routes.llm_proxy_status", exc_info=True)
             return _error_response(e)
 
+    def _require_loopback_for_api_key_management() -> Any | None:
+        if is_loopback_client_request(request):
+            return None
+        return loopback_client_required_response()
+
     @bp.route("/llm-proxy/api-key", methods=["GET"])
     def llm_proxy_api_key_status() -> Any:
         """Return public metadata for the WebUI-managed Chiron /v1 API key.
@@ -146,6 +155,9 @@ def register_llm_proxy_routes(
             A JSON response containing the new plaintext key and its metadata.
         """
         try:
+            denied = _require_loopback_for_api_key_management()
+            if denied is not None:
+                return denied
             settings_repo = _settings_repository()
             plaintext, record = generate_proxy_api_key_record(settings_repo)
             store_proxy_api_key_record(settings_repo, record)
@@ -166,6 +178,9 @@ def register_llm_proxy_routes(
             A JSON response containing the plaintext key and its metadata.
         """
         try:
+            denied = _require_loopback_for_api_key_management()
+            if denied is not None:
+                return denied
             settings_repo = _settings_repository()
             plaintext = reveal_proxy_api_key(settings_repo)
             if not plaintext:
@@ -183,6 +198,9 @@ def register_llm_proxy_routes(
             A JSON response containing the updated API key status.
         """
         try:
+            denied = _require_loopback_for_api_key_management()
+            if denied is not None:
+                return denied
             settings_repo = _settings_repository()
             delete_proxy_api_key_record(settings_repo)
             return jsonify(proxy_api_key_status(settings_repo))

@@ -38,7 +38,11 @@ ChironAI **0.8.x** does not ship WebUI login. Security relies on **network place
 | Surface | Auth today | Mitigation |
 |---------|------------|------------|
 | `/api/webui/*` | None | Bind `127.0.0.1`; firewall; reverse proxy with auth for remote |
-| `/v1/*` (LLM Proxy) | API key (`Authorization: Bearer` or `x-api-key`) | Rotate keys; do not expose WebUI api-key reveal routes to untrusted clients |
+| `/v1/*` (LLM Proxy) | API key (`Authorization: Bearer` or `x-api-key`) | Rotate keys; use loopback-only WebUI routes to manage keys |
+| `/api/webui/llm-proxy/api-key/generate` | Loopback client only | `POST` from `127.0.0.1` / `::1`; remote LAN clients get `403` |
+| `/api/webui/llm-proxy/api-key/reveal` | Loopback client only | Same; mitigates LAN key theft when `SERVER_HOST=0.0.0.0` |
+| `/api/webui/llm-proxy/api-key` `DELETE` | Loopback client only | Same |
+| `/api/webui/llm-proxy/api-key` `GET` | None (metadata only) | Does not return plaintext key |
 | Extension management | None (WebUI API) | Same as WebUI — localhost or trusted LAN only |
 
 Built-in WebUI authentication is **deferred** until a prioritized LAN/multi-user requirement. See [`docs/adr/0008-webui-auth-model.md`](docs/adr/0008-webui-auth-model.md).
