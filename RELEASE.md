@@ -2,7 +2,7 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
-## Release candidate 0.8.17 notes
+## Release candidate 0.8.9 notes
 
 Status: pre-tag ready on Windows local gates as of 2026-07-06.
 
@@ -16,7 +16,7 @@ Verification snapshot (2026-07-06):
 
 - `python scripts/quality_gate.py --profile release` — passed.
 - `npm run e2e` from `CoreModules/CoreUI` — passed, 11 tests.
-- `python scripts/check_version_drift.py` — passed (0.8.17).
+- `python scripts/check_version_drift.py` — passed (0.8.9).
 - `python scripts/gen_api_docs.py --check` — passed.
 - `python scripts/audit_oversized_files.py --mode check` — passed.
 
@@ -49,7 +49,7 @@ Known release notes:
 
 - CoreUI lint still reports existing warnings but exits 0.
 - Dependency audit passes with documented exceptions for current transitive Python/npm advisories.
-- App stage is `STABLE` as of 0.8.17; security posture for unauthenticated local use is unchanged.
+- App stage is `STABLE` as of 0.8.9; security posture for unauthenticated local use is unchanged.
 
 ## Quality gates
 

@@ -1,45 +1,19 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-## [0.8.17] - 2026-07-06
+## [0.8.9] - 2026-07-06
+### Added
+- Added in-app Help knowledge base with search, `?help=` deep links, contextual InfoButton, and Help panel drawer.
+- Added custom onboarding tours (first-run and contextual) with persisted state and Settings restart.
+- Added per-build RAG collection override in the LLM Proxy build wizard.
+- Added Playwright release tab smoke and expanded Help/onboarding test coverage.
+
 ### Changed
-- Promoted `APP_STAGE` to `STABLE`, updated PyPI classifier, welcome notification fallback, and README security note.
-
-## [0.8.16] - 2026-07-06
-### Added
-- Added unit, hook, API, and Playwright coverage for Help deep-links, InfoButton drawer, builds contextual tour, and per-build RAG collection edit/save.
-
-## [0.8.15] - 2026-07-06
-### Fixed
-- Fixed CoreUI unit tests for onboarding and Help panel providers; resolved knip unused exports, ruff import order, and oversized-file audit for the build wizard.
-
-## [0.8.14] - 2026-07-06
-### Added
-- Added Playwright E2E coverage for first-run onboarding skip and Settings tour restart, with shared WebUI API mocks.
-
-## [0.8.13] - 2026-07-06
-### Added
-- Added contextual onboarding tours for LLM Proxy build wizard, Extensions, Prompt templates, and Crawler/Indexer with persisted per-feature completion state.
-
-## [0.8.12] - 2026-07-06
-### Added
-- Added custom first-run product tour (M3 spotlight engine), onboarding state persistence, and a Settings action to restart the tour.
-
-## [0.8.11] - 2026-07-06
-### Added
-- Added contextual `InfoButton` help on LLM Proxy Builds list header and build detail modal fields, with field-to-article mapping.
-
-## [0.8.10] - 2026-07-06
-### Added
-- Added contextual Help panel drawer and `InfoButton` on LLM Proxy Build wizard fields, with anchor links into bundled help articles.
-- Improved Help article markdown rendering: strip duplicate titles, auto heading ids, and M3 prose styling.
-
-## [0.8.9] - 2026-07-05
-### Added
-- Added in-app Help knowledge base: `/api/webui/help` routes, bundled markdown articles, CoreUI Help tab, search, and `?help=` deep links.
+- Promoted `APP_STAGE` to `STABLE`, updated PyPI classifier, README security note, and `SECURITY.md` supported versions.
 
 ### Fixed
-- Mapped OpenCode `/v1/responses` `input_image` parts to OpenAI multipart `image_url` content so vision-capable Ollama models receive `images[]` on image turns.
+- Mapped OpenCode `/v1/responses` `input_image` parts to OpenAI multipart `image_url` content for vision-capable Ollama models.
+- Fixed CoreUI provider test setup and full quality-gate blockers for Help and onboarding.
 
 ## [0.8.8] - 2026-07-03
 ### Added
