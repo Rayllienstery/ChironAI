@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.14] - 2026-07-06
+### Added
+- Added Playwright E2E coverage for first-run onboarding skip and Settings tour restart, with shared WebUI API mocks.
+
 ## [0.8.13] - 2026-07-06
 ### Added
 - Added contextual onboarding tours for LLM Proxy build wizard, Extensions, Prompt templates, and Crawler/Indexer with persisted per-feature completion state.
