@@ -242,7 +242,6 @@ function AppLoadingState({ moduleName }) {
   return (
     <StandByScreen
       moduleName={moduleName}
-      icon="progress_activity"
       size="md"
     />
   );

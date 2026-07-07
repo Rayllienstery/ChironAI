@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.31] - 2026-07-07
+### Fixed
+- Remove unused `icon` prop from `StandByScreen` usage in `App.jsx` (P2.10a).
+
 ## [0.8.30] - 2026-07-07
 ### Added
 - `macos-fast` CI job on `macos-latest`: `pytest -m fast`, CoreUI build, and CoreUI unit tests (P1.8/P2.20).
