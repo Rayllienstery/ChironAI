@@ -22,11 +22,16 @@ RUN apt-get update \
 COPY pyproject.toml README.md ./
 COPY Core ./Core
 COPY CoreModules/Security ./CoreModules/Security
+COPY CoreModules/DockerManager ./CoreModules/DockerManager
+COPY CoreModules/ExtensionsHost ./CoreModules/ExtensionsHost
 COPY CoreModules/ExtensionsSandbox ./CoreModules/ExtensionsSandbox
+COPY CoreModules/LogsManager ./CoreModules/LogsManager
+COPY CoreModules/MdIngestionService ./CoreModules/MdIngestionService
 COPY CoreModules/RagService ./CoreModules/RagService
 COPY CoreModules/LlmProxy ./CoreModules/LlmProxy
 COPY CoreModules/LlmInteractor ./CoreModules/LlmInteractor
 COPY CoreModules/ErrorManager ./CoreModules/ErrorManager
+COPY CoreModules/WebInteraction ./CoreModules/WebInteraction
 COPY --from=coreui-build /build/CoreModules/CoreUI/dist ./CoreModules/CoreUI/dist
 
 RUN pip install --upgrade pip \
@@ -34,13 +39,19 @@ RUN pip install --upgrade pip \
     && pip install ./Core/modules/html_md \
     && pip install ./Core/modules/webui_backend \
     && pip install ./Core/modules/crawler_service \
+    && pip install ./Core/modules/external_docs_rag \
     && pip install ./Core/modules/extensions_backend \
     && pip install ./CoreModules/Security \
+    && pip install ./CoreModules/DockerManager \
+    && pip install ./CoreModules/ExtensionsHost \
     && pip install ./CoreModules/ExtensionsSandbox \
+    && pip install ./CoreModules/LogsManager \
+    && pip install ./CoreModules/MdIngestionService \
     && pip install ./CoreModules/RagService \
     && pip install ./CoreModules/LlmProxy \
     && pip install ./CoreModules/LlmInteractor \
-    && pip install ./CoreModules/ErrorManager
+    && pip install ./CoreModules/ErrorManager \
+    && pip install ./CoreModules/WebInteraction
 
 ARG APP_UID=10001
 ARG APP_GID=10001
@@ -54,6 +65,6 @@ ENV HOME=/home/app
 
 EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:${WEBUI_PORT:-5000}/health || exit 1
+  CMD curl -fsS http://127.0.0.1:${SERVER_PORT:-5000}/live || exit 1
 
-CMD ["python", "-m", "webui_backend.app", "start"]
+CMD ["python", "-m", "webui_backend.rag_proxy"]

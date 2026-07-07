@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from flask import Blueprint
+from flask import Blueprint, jsonify
 
 from core.bootstrap.import_paths import ensure_webui_composition_paths
 from core.contracts.webui_api import WEBUI_URL_PREFIX
@@ -109,6 +109,11 @@ def get_effective_rag_trigger_threshold() -> int:
 
 
 webui_bp = Blueprint("webui", __name__, url_prefix=WEBUI_URL_PREFIX)
+
+
+@webui_bp.get("/health")
+def webui_health():
+    return jsonify({"status": "ok"}), 200
 
 
 register_prompt_routes(webui_bp, prompts_dir=PROMPTS_DIR, trash_dir=TRASH_DIR, error_log=_ERROR_LOG)

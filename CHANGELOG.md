@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.25] - 2026-07-07
+### Fixed
+- Docker runtime startup: honor `CHIRONAI_REPO_ROOT` during import-path bootstrap so extension directories resolve under `/app` instead of the read-only site-packages tree.
+- Docker image installs `external_docs_rag` and discovers `llm_proxy` / `md_ingestion_service` subpackages; includes `infrastructure.database` `schema.sql` and runtime `prometheus-client` dependency.
+
+### Changed
+- Container liveness probes use `/live`; `/health` remains the readiness check with dependency status (Ollama/Qdrant).
+
 ## [0.8.24] - 2026-07-07
 ### Changed
 - Docker runtime hardening: run the app as a non-root user, pin `node` and `python` base images by digest, and harden `docker-compose.yml` with `read_only`, `cap_drop`, and a port-aware healthcheck.

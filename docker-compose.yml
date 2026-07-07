@@ -6,7 +6,9 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:6333/readyz"]
+      # The upstream qdrant image is intentionally slim and does not include curl/wget.
+      # Keep this as a lightweight container-level check so `depends_on: service_healthy` works.
+      test: ["CMD", "/qdrant/qdrant", "--version"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -38,6 +40,11 @@ services:
       - ALL
     environment:
       WEBUI_PORT: "${WEBUI_PORT:-5000}"
+      SERVER_HOST: "0.0.0.0"
+      SERVER_PORT: "${WEBUI_PORT:-5000}"
+      WEBUI_DB_PATH: /app/logs/webui.db
+      CHIRONAI_REPO_ROOT: /app
+      CHIRONAI_WEBUI_DIR: /app/Core/data/webui
       QDRANT_URL: http://qdrant:6333
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_CHAT_URL: http://ollama:11434/api/chat
@@ -53,7 +60,7 @@ services:
       ollama:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${WEBUI_PORT:-5000}/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${WEBUI_PORT:-5000}/live || exit 1"]
       interval: 20s
       timeout: 5s
       retries: 5

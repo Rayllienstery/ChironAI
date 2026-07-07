@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chironai"
-version = "0.8.24"
+version = "0.8.25"
 description = "Modular RAG platform (Ollama + Qdrant) with WebUI and crawl/index pipelines. Configured for Apple platforms, supports any domain."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -32,6 +32,7 @@ dependencies = [
   "html2text",
   "playwright",
   "lxml>=6.1.0",
+  "prometheus-client>=0.20",
   "waitress>=3.0.0",
 ]
 
@@ -65,7 +66,7 @@ Homepage = "https://github.com/Rayllienstery/ChironAI"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.8.24"
+version = "0.8.25"
 version_files = [
   "Core/core/version.py:VERSION",
   "pyproject.toml:version",
@@ -81,6 +82,7 @@ where = [
   "CoreModules/Security",
   "CoreModules/ExtensionsSandbox",
   "Core/modules/extensions_backend",
+  "Core/modules/prompts_manager",
   "Core/modules/webui_backend",
 ]
 include = [
@@ -88,6 +90,7 @@ include = [
   "api*",
   "config*",
   "core*",
+  "prompts_manager*",
   "chironai_security*",
   "extensions_sandbox*",
   "extensions_backend*",
@@ -96,6 +99,9 @@ include = [
   "webui_backend*",
 ]
 exclude = ["tests*", "tests"]
+
+[tool.setuptools.package-data]
+"infrastructure.database" = ["schema.sql"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

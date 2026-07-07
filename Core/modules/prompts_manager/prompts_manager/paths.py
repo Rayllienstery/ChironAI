@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -11,7 +12,21 @@ _MIGRATION_MARKER = ".migrated_from_root"
 
 
 def project_root() -> Path:
-    """Return the repository root."""
+    """Return the repository root.
+
+    This code runs both from a source checkout and from an installed wheel.
+    Prefer an explicit env override, then fall back to discovering the repo root
+    from the current working directory.
+    """
+    override = (os.getenv("CHIRONAI_REPO_ROOT") or os.getenv("REPO_ROOT") or "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+
+    cwd = Path.cwd().resolve()
+    for candidate in (cwd, *cwd.parents):
+        if (candidate / "pyproject.toml").is_file() and (candidate / "Core").is_dir():
+            return candidate
+
     return Path(__file__).resolve().parents[4]
 
 

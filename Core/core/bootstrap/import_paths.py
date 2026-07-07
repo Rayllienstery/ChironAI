@@ -18,7 +18,10 @@ def _core_root_from_repo(root: str | Path) -> Path:
 
 def ensure_repo_root_on_path(root: str | Path | None = None) -> str:
     """Ensure repository and Core roots are on sys.path; return repository root."""
-    resolved = str(Path(root).resolve() if root is not None else _repo_root_from_here())
+    if root is None:
+        env_root = (os.getenv("CHIRONAI_REPO_ROOT") or os.getenv("REPO_ROOT") or "").strip()
+        root = env_root or _repo_root_from_here()
+    resolved = str(Path(root).resolve())
     core_root = str(_core_root_from_repo(resolved))
     for path in (resolved, core_root):
         if os.path.isdir(path) and path not in sys.path:
