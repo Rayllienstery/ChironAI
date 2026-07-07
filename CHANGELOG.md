@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.50] - 2026-07-07
+### Added
+- P2.1 route coverage: indexer-tester, chat, indexing runtime, crawler helper tests.
+- P2.2 `@axe-core/playwright` e2e smoke on Dashboard, RAG, Extensions, Crawler tabs.
+### Changed
+- P2.6: mutation baseline CI artifact upload + score tracker file.
+
 ## [0.8.49] - 2026-07-07
 ### Changed
 - Close P1.10/P1.4: MD pipeline step i18n, uk catalog sync, Dashboard chrome i18n, CSP risk acceptance documented.

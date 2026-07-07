@@ -119,10 +119,10 @@ Baseline status on **2026-07-07**:
 | Environment | `mutmut run` | Baseline capture |
 |-------------|--------------|------------------|
 | Native Windows | **Unsupported** (mutmut 3.6+) | Use WSL Linux distro or CI |
-| Linux CI (`linux-fast` on `v*` tags) | Advisory via `scripts/capture_mutation_baseline.sh` | `reports/baseline/mutation-baseline.txt` (artifact in job log; commit optional) |
+| Linux CI (`linux-fast` on `v*` tags) | Advisory via `scripts/capture_mutation_baseline.sh` | `reports/baseline/mutation-baseline.txt` artifact + `mutation-baseline-score.txt` tracker |
 | Local Linux / WSL | `python scripts/quality_gate.py --profile mutation --include-advisory` | Same script |
 
-Promotion: when the first tag CI run produces `mutation-baseline.txt`, record killed/survived counts in this section. Until then, mutation testing remains **advisory** and non-blocking.
+Promotion: when the first tag CI run produces `mutation-baseline.txt`, copy killed/survived counts into `reports/baseline/mutation-baseline-score.txt`. Until then, mutation testing remains **advisory** and non-blocking.
 
 Previous note (2026-06-21): configured on Windows workstation but no numeric score; WSL default distro was `docker-desktop` without bash. Use a full Linux distro or CI.
 

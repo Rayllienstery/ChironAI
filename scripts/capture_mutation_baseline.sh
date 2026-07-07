@@ -20,6 +20,9 @@ mkdir -p "$OUT_DIR"
   echo ""
   echo "## mutmut results"
   mutmut results
+  echo ""
+  echo "## mutmut score_summary"
+  mutmut results 2>&1 | grep -Ei 'killed|survived|timeout|skipped' || true
 } | tee "$OUT_FILE"
 
 echo "Wrote $OUT_FILE"
