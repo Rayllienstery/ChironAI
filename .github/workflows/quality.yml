@@ -66,6 +66,11 @@ jobs:
       - name: Run minimal quality gate
         run: python scripts/quality_gate.py --profile minimal
 
+      - name: Build CoreUI Storybook (advisory)
+        continue-on-error: true
+        working-directory: CoreModules/CoreUI
+        run: npm run storybook
+
   full:
     runs-on: windows-latest
     timeout-minutes: 45

@@ -24,6 +24,7 @@ EXCLUDE_DIR_NAMES = {
     "node_modules",
     "dist",
     "build",
+    "storybook-static",
     "__pycache__",
     ".pytest_cache",
     "vendor",
@@ -52,6 +53,7 @@ DOCUMENTED_EXCEPTIONS: dict[str, str] = {
     "CoreModules/LlmProxy/llm_proxy/chat_completions_gemini_native.py": "Gemini path; provider-specific module",
     "CoreModules/LlmProxy/llm_proxy/v1_responses.py": "OpenAI /v1/responses compat layer; vision mapping added in 0.8.9",
     "CoreModules/CoreUI/src/components/llmProxyBuildsTab/LlmProxyWizardSteps.jsx": "Build wizard steps; InfoButton hooks added in 0.8.10",
+    "CoreModules/LlmProxy/llm_proxy/chat_completions_handler.py": "OpenAI chat completions handler; split deferred with provider paths",
 }
 
 PRODUCTION_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx"}

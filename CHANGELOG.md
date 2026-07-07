@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.51] - 2026-07-07
+### Changed
+- P2.7: oversized-file audit excludes `storybook-static`; document `chat_completions_handler.py`.
+- P2.8: advisory Storybook build on PR minimal CI job.
+
 ## [0.8.50] - 2026-07-07
 ### Added
 - P2.1 route coverage: indexer-tester, chat, indexing runtime, crawler helper tests.
