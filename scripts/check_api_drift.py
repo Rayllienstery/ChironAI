@@ -15,7 +15,7 @@ WEBUI_PREFIX = "/api/webui"
 V1_PREFIX = "/v1"
 
 ROUTE_DECORATOR_RE = re.compile(
-    r"""@(?:\w+\.)?route\(\s*['"]([^'"]+)['"]""",
+    r"""@(?:\w+\.)?(?:route|get|post|put|patch|delete)\(\s*['"]([^'"]+)['"]""",
 )
 API_JS_FETCH_RE = re.compile(
     r"""fetch\(\s*[`'"]\$\{API_BASE\}(/[^`'"]+)[`'"]""",

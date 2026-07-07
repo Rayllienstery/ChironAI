@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-from unittest.mock import MagicMock
-
 from application.custom_openai_providers import upsert_custom_openai_provider
 from application.host_provider_sync import sync_custom_openai_providers
 from application.openai_compatible_provider import OpenAICompatibleProvider

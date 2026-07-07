@@ -20,10 +20,6 @@ from llm_proxy.api_key import (
 )
 
 from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
-from api.http.webui_trusted_client import (
-    is_loopback_client_request,
-    loopback_client_required_response,
-)
 from api.http.webui_provider_helpers import (
     default_llm_provider_id as _default_llm_provider_id,
 )
@@ -35,6 +31,10 @@ from api.http.webui_provider_helpers import (
 )
 from api.http.webui_rag_routes import (
     get_cached_qdrant_collection_name_set_for_builds_diag as _get_cached_qdrant_collection_name_set_for_builds_diag,
+)
+from api.http.webui_trusted_client import (
+    is_loopback_client_request,
+    loopback_client_required_response,
 )
 from application.llm_proxy_builds import (
     LLM_PROXY_BUILDS_APP_KEY,

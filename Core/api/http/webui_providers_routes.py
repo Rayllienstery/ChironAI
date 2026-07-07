@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 from flask import Blueprint, current_app, jsonify, request
 
+from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
 from application.custom_openai_providers import (
     delete_custom_openai_provider,
     get_custom_openai_provider_record,
@@ -13,9 +14,8 @@ from application.custom_openai_providers import (
     upsert_custom_openai_provider,
     validate_provider_id,
 )
-from application.openai_compatible_provider import OpenAICompatibleProvider
 from application.host_provider_sync import sync_custom_openai_providers
-from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
+from application.openai_compatible_provider import OpenAICompatibleProvider
 
 
 def register_providers_routes(

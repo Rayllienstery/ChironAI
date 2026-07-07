@@ -2,7 +2,7 @@
 
 import { t } from '../../services/i18n';
 
-export const FIRST_RUN_TOUR_STEP_DEFS = [
+const FIRST_RUN_TOUR_STEP_DEFS = [
   { id: 'language', kind: 'language' },
   {
     id: 'welcome',
