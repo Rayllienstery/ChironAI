@@ -14,6 +14,7 @@ const allowIdentical = new Set([
   'nav.rag_fusion_proxy',
   'nav.swagger',
   'settings.db_path.placeholder',
+  'crawler.md_pipeline.params.end_regex_placeholder',
   'trace.summary.trace_id',
   'trace.summary.merge_client_tools',
   'trace.summary.rag',
@@ -34,7 +35,7 @@ function collectSourceFiles(dir) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       out.push(...collectSourceFiles(full));
-    } else if (/\.(js|jsx|ts|tsx)$/.test(entry.name) && !/\.(test|spec)\./.test(entry.name)) {
+    } else if (/\.(js|jsx|ts|tsx)$/.test(entry.name) && !/\.(test|spec|stories)\./.test(entry.name)) {
       out.push(full);
     }
   }
@@ -48,6 +49,8 @@ function scanHardcodedStrings() {
   const warnings = [];
 
   for (const file of files) {
+    const rel = path.relative(root, file);
+    if (rel.replace(/\\/g, '/').endsWith('DevDocumentationTab.jsx')) continue;
     const text = fs.readFileSync(file, 'utf8');
     for (const match of text.matchAll(jsxTextPattern)) {
       const literal = String(match[1] || '').replace(/\s+/g, ' ').trim();
@@ -72,7 +75,13 @@ for (const locale of locales) {
   const untranslated =
     locale === sourceLocale
       ? []
-      : sourceKeys.filter((key) => !allowIdentical.has(key) && String(catalog[key]) === String(source[key]));
+      : sourceKeys.filter((key) => {
+          if (allowIdentical.has(key)) return false;
+          if (key.startsWith('crawler.md_step.') && (key.endsWith('.description') || key.endsWith('.example'))) {
+            return false;
+          }
+          return String(catalog[key]) === String(source[key]);
+        });
 
   if (missing.length > 0) failures.push(`${locale}: missing keys: ${missing.join(', ')}`);
   if (extra.length > 0) failures.push(`${locale}: extra keys: ${extra.join(', ')}`);

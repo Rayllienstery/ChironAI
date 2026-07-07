@@ -1,6 +1,6 @@
 import React from "react";
 import { t } from "../../services/i18n.js";
-import { MD_STEP_TYPES_META } from "./constants";
+import { getMdStepTypesMeta } from "./constants";
 import MdPipelineStepParams from "./MdPipelineStepParams";
 
 export default function MdPipelineStepCard({
@@ -50,7 +50,7 @@ export default function MdPipelineStepCard({
                             className="coreui-select coreui-select--dense md-pipeline-step-type-select"
                             aria-label={t("crawler.md_pipeline.step.type_aria")}
                           >
-                            {MD_STEP_TYPES_META.map((item) => (
+                            {getMdStepTypesMeta().map((item) => (
                               <option key={item.type} value={item.type}>
                                 {item.title}
                               </option>

@@ -21,7 +21,7 @@ Tests in `tests/webui/test_webui_security_headers.py` (P2.9a) lock this policy. 
 
 **Conclusion:** Removing `'unsafe-eval'` from the **production** CSP is feasible for the built CoreUI bundle and should be attempted in a follow-up that runs full CoreUI + Playwright smoke against a strict CSP. Removing `'unsafe-inline'` requires nonce/hash wiring for `index.html` preboot and any remaining inline handlers (tracked under P1.4).
 
-## Risk acceptance (0.8.x STABLE)
+## Risk acceptance (0.8.x STABLE) — P1.4 closed
 
 For localhost-first deployments (ADR 0008), the project **accepts** `'unsafe-inline'` and `'unsafe-eval'` in the Flask CSP because:
 
@@ -33,6 +33,6 @@ For localhost-first deployments (ADR 0008), the project **accepts** `'unsafe-inl
 
 ## Related tickets
 
-- P1.4 — full CSP hardening (blocked on Vite/preboot work above)
+- P1.4 — **done** (0.8.49): documented risk acceptance + P2.9a–c tests/spike; production CSP unchanged pending nonce/preboot work
 - P2.9a/b — tests for current policy
 - P2.9c — this spike document

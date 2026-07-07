@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import CoreUISubtabs from './CoreUISubtabs';
 import CoreUIModal from './CoreUIModal';
 import CoreUIButton from './CoreUIButton';
@@ -8,17 +8,8 @@ import { t } from '../services/i18n.js';
 import '../styles/components/DashboardTab.css';
 import '../styles/components/SettingsTab.css';
 
-const INFO_TABS = [
-  { id: 'intro', label: 'Intro' },
-  { id: 'features', label: 'Features' },
-  { id: 'quick-start', label: 'Quick Start' },
-  { id: 'credits', label: 'Credits' },
-];
-
-const PROXY_KEY_MODAL_TABS = [
-  { id: 'api-key', label: 'API Key' },
-  { id: 'how-to-use', label: 'How to use' },
-];
+const INFO_TAB_IDS = ['intro', 'features', 'quick-start', 'credits'];
+const PROXY_KEY_MODAL_TAB_IDS = ['api-key', 'how-to-use'];
 
 function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOpenLlmProxySecurity }) {
   const [infoSubTab, setInfoSubTab] = useState('intro');
@@ -26,6 +17,15 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
   const [proxyKeyModalTab, setProxyKeyModalTab] = useState('api-key');
   const [proxyStatus, setProxyStatus] = useState(null);
   const webuiOrigin = typeof window !== 'undefined' ? window.location.origin : 'the configured server URL';
+
+  const infoTabs = useMemo(
+    () => INFO_TAB_IDS.map((id) => ({ id, label: t(`dashboard.tab.${id}`) })),
+    [],
+  );
+  const proxyKeyModalTabs = useMemo(
+    () => PROXY_KEY_MODAL_TAB_IDS.map((id) => ({ id, label: t(`dashboard.proxy_modal.tab.${id}`) })),
+    [],
+  );
 
   useEffect(() => {
     if (showProxyKeyModal) {
@@ -42,16 +42,16 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
   return (
     <div className="dashboard-tab tab-view">
       <div className="dashboard-layout">
-        <section className="dashboard-info-card" aria-label="About ChironAI">
+        <section className="dashboard-info-card" aria-label={t('dashboard.about_aria')}>
           <div className="dashboard-info-card-header">
-            <h2 className="dashboard-info-card-title">ChironAI</h2>
+            <h2 className="dashboard-info-card-title">{t('app.title')}</h2>
             <p className="dashboard-info-card-subtitle">{t('app.subtitle')}</p>
           </div>
           <CoreUISubtabs
-            tabs={INFO_TABS}
+            tabs={infoTabs}
             value={infoSubTab}
             onChange={(id) => setInfoSubTab(id)}
-            ariaLabel="About sections"
+            ariaLabel={t('dashboard.about_sections_aria')}
             className="dashboard-info-subtabs"
           />
           <div className="dashboard-info-panel" role="tabpanel">
@@ -59,44 +59,31 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
               <>
                 <div className="dashboard-section-inner notice-section">
                   <div className="notice-content">
-                    <h3>Modular RAG Platform</h3>
+                    <h3>{t('dashboard.intro.tagline')}</h3>
                     <p>
-                      <strong>ChironAI is a modular RAG platform</strong> for local LLMs, built with a domain-agnostic architecture.
-                      It is configured by default for Apple ecosystem development (iOS, macOS, Swift, SwiftUI, UIKit, Observation, etc.)
-                      but supports any knowledge domain through source and prompt configuration.
+                      <strong>{t('dashboard.intro.lead')}</strong>{' '}
+                      {t('dashboard.intro.p1')}
                     </p>
-                    <p>
-                      The platform solves documentation-driven development challenges by providing accurate, up-to-date knowledge
-                      through RAG, ensuring code quality and architectural compliance. Switch domains by changing indexing sources
-                      and system prompts—no core changes required.
-                    </p>
+                    <p>{t('dashboard.intro.p2')}</p>
                   </div>
                 </div>
                 <div className="dashboard-section-inner">
-                  <h3>What is ChironAI?</h3>
-                  <p>
-                    ChironAI is a local, model-agnostic RAG (Retrieval-Augmented Generation) layer designed for developers.
-                    It works with any LLM (local or cloud) and provides accurate, up-to-date knowledge
-                    through a modular fetcher/crawler and RAG system.
-                  </p>
-                  <p>
-                    The system delivers predictable, engineering-focused results with strict response structure (RAG facts
-                    → implementation → summary), adherence to architecture (Clean/MVVM), Swift 6 strict concurrency,
-                    Observation, UI rules, and controlled variability (minimal randomness in generation).
-                  </p>
+                  <h3>{t('dashboard.what_is.title')}</h3>
+                  <p>{t('dashboard.what_is.p1')}</p>
+                  <p>{t('dashboard.what_is.p2')}</p>
                   <button
                     type="button"
                     className="dashboard-primary-btn"
                     onClick={() => setShowProxyKeyModal(true)}
                   >
-                    Quick start
+                    {t('dashboard.quick_start_btn')}
                   </button>
                 </div>
               </>
             )}
             {infoSubTab === 'features' && (
               <div className="dashboard-section-inner">
-                <h3>Key Features</h3>
+                <h3>{t('dashboard.features.title')}</h3>
                 <div className="features-grid">
                   <div className="feature-card">
                     <h4>Model Agnostic</h4>
@@ -171,10 +158,8 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
             )}
             {infoSubTab === 'quick-start' && (
               <div className="dashboard-section-inner">
-                <h3>Quick Start</h3>
-                <p className="quick-start-intro">
-                  Get ChironAI running in 5 steps. Requires Python 3.10+, Docker Desktop (Windows), and a configured LLM provider.
-                </p>
+                <h3>{t('dashboard.quick_start.title')}</h3>
+                <p className="quick-start-intro">{t('dashboard.quick_start.intro')}</p>
 
                 <div className="quick-start-grid">
                   <div className="quick-start-card">
@@ -292,11 +277,8 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
             )}
             {infoSubTab === 'credits' && (
               <div className="dashboard-section-inner">
-                <h3>Credits & Acknowledgments</h3>
-                <p className="credits-intro">
-                  ChironAI is built with contributions from multiple projects and technologies.
-                  We gratefully acknowledge the following:
-                </p>
+                <h3>{t('dashboard.credits.title')}</h3>
+                <p className="credits-intro">{t('dashboard.credits.intro')}</p>
 
                 <div className="credits-section">
                   <h4>Core Projects</h4>
@@ -358,31 +340,25 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
           </div>
         </section>
 
-        <section className="dashboard-info-card dashboard-proxy-hint-card" aria-label="RAG Fusion Proxy HTTP clients">
+        <section className="dashboard-info-card dashboard-proxy-hint-card" aria-label={t('dashboard.proxy_card_aria')}>
           <div className="dashboard-info-card-header">
-            <h2 className="dashboard-info-card-title">RAG Fusion Proxy</h2>
-            <p className="dashboard-info-card-subtitle">
-              HTTP client setup (OpenAI and Anthropic-style endpoints, build ids, env vars) is on{' '}
-              <strong>RAG Fusion Proxy</strong> → <strong>Overview</strong>.
-              API keys live in <strong>Tokens and Security</strong>.
-            </p>
+            <h2 className="dashboard-info-card-title">{t('dashboard.proxy_card.title')}</h2>
+            <p className="dashboard-info-card-subtitle">{t('dashboard.proxy_card.subtitle')}</p>
           </div>
           <div className="dashboard-section-inner">
-            <p className="dashboard-card-muted">
-              Open the tab for base URL, models list, and integration notes. Logs and traces stay in their respective tabs.
-            </p>
+            <p className="dashboard-card-muted">{t('dashboard.proxy_card.body')}</p>
             <div className="dashboard-proxy-hint-actions">
               <button type="button" className="dashboard-text-btn" onClick={() => go('rag-fusion-proxy')}>
-                Open RAG Fusion Proxy
+                {t('dashboard.proxy_card.open_proxy')}
               </button>
               {typeof onOpenLogs === 'function' && (
                 <button type="button" className="dashboard-text-btn" onClick={() => onOpenLogs()}>
-                  View Logs
+                  {t('dashboard.proxy_card.view_logs')}
                 </button>
               )}
               {typeof onOpenLlmProxyAutocomplete === 'function' && (
                 <button type="button" className="dashboard-text-btn" onClick={() => onOpenLlmProxyAutocomplete()}>
-                  Autocomplete settings
+                  {t('dashboard.proxy_card.autocomplete')}
                 </button>
               )}
             </div>
@@ -392,7 +368,7 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
 
       {showProxyKeyModal && (
         <CoreUIModal
-          title="Proxy API Key"
+          title={t('dashboard.proxy_modal.title')}
           className="proxy-api-key-modal"
           onClose={() => setShowProxyKeyModal(false)}
           footer={
@@ -403,16 +379,16 @@ function DashboardTab({ onNavigate, onOpenLogs, onOpenLlmProxyAutocomplete, onOp
                 typeof onOpenLlmProxySecurity === 'function' ? onOpenLlmProxySecurity() : go('tokens-security');
               }}
             >
-              Open key generator
+              {t('dashboard.proxy_modal.open_generator')}
             </CoreUIButton>
           }
         >
           <div className="proxy-key-modal-tabs-wrapper">
             <CoreUIPillTabs
-              tabs={PROXY_KEY_MODAL_TABS}
+              tabs={proxyKeyModalTabs}
               value={proxyKeyModalTab}
               onChange={setProxyKeyModalTab}
-              ariaLabel="Proxy API Key sections"
+              ariaLabel={t('dashboard.proxy_modal.sections_aria')}
             />
           </div>
 

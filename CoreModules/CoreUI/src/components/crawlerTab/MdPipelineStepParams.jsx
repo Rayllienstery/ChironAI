@@ -1,6 +1,6 @@
 import React from "react";
 import { t } from "../../services/i18n.js";
-import { MD_STEP_TYPES_META } from "./constants";
+import { getMdStepTypesMeta } from "./constants";
 
 export default function MdPipelineStepParams({
   step,
@@ -357,7 +357,7 @@ export default function MdPipelineStepParams({
                           {(step.type === "strip_meta_block" ||
                             step.type === "normalize_whitespace") &&
                             (() => {
-                              const meta = MD_STEP_TYPES_META.find(
+                              const meta = getMdStepTypesMeta().find(
                                 (m) => m.type === step.type,
                               );
                               if (!meta)

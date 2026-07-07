@@ -1,6 +1,6 @@
 import React from "react";
 import { t } from "../../services/i18n.js";
-import { MD_STEP_TYPES_META } from "./constants";
+import { getMdStepTypesMeta } from "./constants";
 
 export default function MdPipelineAddStepModal({ open, onClose, onAddStep }) {
   if (!open) return null;
@@ -29,7 +29,7 @@ export default function MdPipelineAddStepModal({ open, onClose, onAddStep }) {
                         {t("crawler.md_pipeline.add_step_intro")}
                       </p>
                       <div className="md-pipeline-add-modal-grid">
-                        {MD_STEP_TYPES_META.map((item) => (
+                        {getMdStepTypesMeta().map((item) => (
                           <div
                             key={item.type}
                             className="md-pipeline-step-option bordered-view"

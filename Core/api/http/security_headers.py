@@ -11,7 +11,7 @@ SECURITY_HEADERS: dict[str, str] = {
     "X-Frame-Options": "SAMEORIGIN",
     "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": (
-        # See docs/CSP_RISK_ACCEPTANCE.md — unsafe-* accepted for 0.8.x; tighten under P1.4.
+        # P1.4: documented risk acceptance — docs/CSP_RISK_ACCEPTANCE.md (0.8.49)
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
         "style-src 'self' 'unsafe-inline'; "

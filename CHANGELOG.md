@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.49] - 2026-07-07
+### Changed
+- Close P1.10/P1.4: MD pipeline step i18n, uk catalog sync, Dashboard chrome i18n, CSP risk acceptance documented.
+- i18n-lint: exclude Storybook/dev-doc surfaces; 596 catalog keys (en/uk).
+
 ## [0.8.48] - 2026-07-07
 ### Changed
 - Localize Indexer Tester UI including batch LLM evaluation (P1.10).
