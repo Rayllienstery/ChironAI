@@ -2,6 +2,21 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
+## Release candidate 0.8.52 notes
+
+Status: pre-tag ready on Windows local gates as of 2026-07-07.
+
+Highlights (0.8.52):
+
+- **P2 closed:** route test coverage (P2.1), axe a11y e2e smoke (P2.2), `create_production_app()` factory (P2.5), mutation baseline CI (P2.6), oversized-file audit policy (P2.7), Storybook on PR minimal CI (P2.8).
+- Production entrypoint: `webui_backend.app_factory.create_production_app` via `start_webui.bat` / `python -m webui_backend.rag_proxy`.
+
+Verification snapshot (2026-07-07):
+
+- `python scripts/check_version_drift.py` — passed (0.8.52).
+- `python scripts/audit_oversized_files.py --mode check` — passed.
+- `python -m pytest tests/webui/test_production_app_factory.py -q` — passed.
+
 ## Release candidate 0.8.40 notes
 
 Status: pre-tag ready on Windows local gates as of 2026-07-07.
