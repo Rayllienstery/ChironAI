@@ -355,7 +355,10 @@ def _get_autocomplete_provider_model() -> str | None:
 def _build_extension_manager(
     *,
     deps: RAGDependencies,
+    bootstrap_extensions: bool = True,
 ) -> tuple[Any | None, Any | None, Any | None, Any | None, str | None]:
+    if not bootstrap_extensions:
+        return None, None, None, None, None
     try:
         from extensions_host import build_extension_host_stack
     except Exception as e:
@@ -399,6 +402,7 @@ def build_llm_proxy_wiring(
     webui_dir: str | None,
     system_prefix: str | None,
     system_suffix: str | None,
+    bootstrap_extensions: bool = True,
 ) -> LlmProxyWiring:
     import api.http.rag_routes as rr
 
@@ -409,7 +413,10 @@ def build_llm_proxy_wiring(
     provider_registry = None
     runtime_chat_client = None
     default_provider_id = DEFAULT_LLM_PROVIDER_ID
-    extension_manager, llm_runtime, provider_registry, runtime_chat_client, default_provider_id = _build_extension_manager(deps=deps)
+    extension_manager, llm_runtime, provider_registry, runtime_chat_client, default_provider_id = _build_extension_manager(
+        deps=deps,
+        bootstrap_extensions=bootstrap_extensions,
+    )
     default_provider_id = default_provider_id or DEFAULT_LLM_PROVIDER_ID
     runtime_embed_provider = _runtime_backed_embed_provider(
         delegate=deps.embed_provider,

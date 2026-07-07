@@ -89,11 +89,14 @@ def create_app(
     webui_dir: str | None = None,
     system_prefix: str | None = None,
     system_suffix: str | None = None,
+    *,
+    bootstrap_extensions: bool = True,
 ) -> Flask:
     """
     Create Flask app with RAG routes.
     webui_dir: directory containing last_collection.txt (e.g. Core/data/webui).
     system_prefix/suffix: optional overrides for RAG system prompt; if None use config (same as rag_client).
+    bootstrap_extensions: when False, skip extension host bootstrap (OpenAPI/doc generation).
     """
     import time as _time
 
@@ -121,6 +124,7 @@ def create_app(
         webui_dir=webui_dir,
         system_prefix=system_prefix,
         system_suffix=system_suffix,
+        bootstrap_extensions=bootstrap_extensions,
     )
     _wiring_ms = (_time.perf_counter() - _t_wiring_start) * 1000
 
@@ -143,13 +147,13 @@ def create_app(
         return resolve_llm_runtime(
             extension_manager=manager,
             llm_runtime=get_extensions_runtime(app, svc),
-            sync_bootstrap=True,
+            sync_bootstrap=bootstrap_extensions,
         )
 
     set_llm_runtime_getter(_app_llm_runtime)
 
     extension_manager = getattr(wiring, "extension_manager", None)
-    if extension_manager is not None:
+    if bootstrap_extensions and extension_manager is not None:
         try:
             resolve_llm_runtime(extension_manager=extension_manager, sync_bootstrap=True)
             _sync_llm_extension_runtime(app)

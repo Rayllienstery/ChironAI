@@ -221,8 +221,8 @@ def rag_routes_llm_proxy_app_settings(monkeypatch: pytest.MonkeyPatch, request: 
 
     nodeid = request.node.nodeid.replace("\\", "/")
     if nodeid not in _REAL_EXTENSION_WIRING_TESTS:
-        def _skip_extension_bootstrap(*, deps: Any) -> tuple[None, None, None, None, str]:
-            del deps
+        def _skip_extension_bootstrap(*, deps: Any, bootstrap_extensions: bool = True) -> tuple[None, None, None, None, str]:
+            del deps, bootstrap_extensions
             return None, None, None, None, "ollama"
 
         monkeypatch.setattr(

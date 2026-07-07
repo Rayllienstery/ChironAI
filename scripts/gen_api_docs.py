@@ -23,7 +23,7 @@ def build_generated_spec() -> dict[str, Any]:
     from api.http.rag_routes import create_app
     from core.openapi import build_openapi_spec
 
-    return build_openapi_spec(create_app())
+    return build_openapi_spec(create_app(bootstrap_extensions=False))
 
 
 def _escape_table(value: object) -> str:

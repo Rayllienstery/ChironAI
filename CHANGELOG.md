@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.28] - 2026-07-07
+### Added
+- `create_app(bootstrap_extensions=False)` skips extension host wiring for OpenAPI/doc generation without touching Docker or `logs/extensions/installed/`.
+
+### Changed
+- `gen_api_docs.py`, `validate_openapi.py`, and `check_api_drift.py` use no-bootstrap app creation.
+
 ## [0.8.27] - 2026-07-07
 ### Fixed
 - `scripts/quality_gate.py` mirrors pytest `pythonpath` in subprocess `PYTHONPATH` so advisory `lint-imports` resolves Core and CoreModules packages on Windows and Linux.

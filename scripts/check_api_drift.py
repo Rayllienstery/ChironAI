@@ -88,7 +88,7 @@ def collect_openapi_paths_from_spec() -> set[str]:
         from api.http.rag_routes import create_app
         from core.openapi import build_openapi_spec
 
-        app = create_app()
+        app = create_app(bootstrap_extensions=False)
         spec = build_openapi_spec(app)
         return {str(path).rstrip("/") or "/" for path in spec.get("paths", {})}
     except Exception:

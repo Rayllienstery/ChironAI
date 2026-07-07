@@ -3902,7 +3902,8 @@ def test_chat_completions_non_stream_uses_ollama_provider_runtime(
     monkeypatch.setattr(ExtensionManager, "start_background_bootstrap", bootstrap_runtime)
     _patch_rag_answer_params(monkeypatch, fake_params, fake_deps)
 
-    def _fake_build_extension_manager(*, deps: Any) -> tuple[Any, Any, Any, Any, str]:
+    def _fake_build_extension_manager(*, deps: Any, bootstrap_extensions: bool = True) -> tuple[Any, Any, Any, Any, str]:
+        del bootstrap_extensions
         from rag_service.infrastructure.provider_runtime import RuntimeResolvingChatClient
 
         runtime_chat = RuntimeResolvingChatClient(
@@ -4039,7 +4040,8 @@ def test_chat_completions_stream_uses_ollama_provider_runtime(
     monkeypatch.setattr(ExtensionManager, "start_background_bootstrap", bootstrap_runtime)
     _patch_rag_answer_params(monkeypatch, fake_params, fake_deps)
 
-    def _fake_build_extension_manager(*, deps: Any) -> tuple[Any, Any, Any, Any, str]:
+    def _fake_build_extension_manager(*, deps: Any, bootstrap_extensions: bool = True) -> tuple[Any, Any, Any, Any, str]:
+        del bootstrap_extensions
         from rag_service.infrastructure.provider_runtime import RuntimeResolvingChatClient
 
         runtime_chat = RuntimeResolvingChatClient(
