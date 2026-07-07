@@ -279,6 +279,22 @@ _OPERATION_DETAILS: dict[tuple[str, str], dict[str, str]] = {
         "summary": "Stop WebUI backend server",
         "description": "Requests a graceful shutdown of the local WebUI backend process.",
     },
+    ("/api/webui/notifications", "GET"): {
+        "summary": "List CoreUI notifications",
+        "description": "Returns persisted notification center entries for a browser session. Query parameter ``session_id`` is required.",
+    },
+    ("/api/webui/notifications", "POST"): {
+        "summary": "Create CoreUI notification",
+        "description": "Persists an error, event, or info notification for the CoreUI notification center.",
+    },
+    ("/api/webui/notifications/{nid}/dismiss", "PATCH"): {
+        "summary": "Dismiss CoreUI notification",
+        "description": "Marks a persisted notification as dismissed for the requesting session.",
+    },
+    ("/api/webui/notifications/clear", "POST"): {
+        "summary": "Clear CoreUI notifications",
+        "description": "Deletes all persisted notifications for a session. Live activity cards are unaffected.",
+    },
     ("/api/webui/crawler/sources", "GET"): {
         "summary": "List crawler sources",
         "description": "Returns configured crawl sources with status metadata for CoreUI.",
@@ -414,6 +430,10 @@ def _basic_responses(path: str, method: str) -> dict[str, Any]:
         ("/api/webui/performance/startup", "GET"): ("StartupPerformanceResponse", "Startup timing report."),
         ("/api/webui/rag/status", "GET"): ("RagStatusResponse", "RAG service status."),
         ("/api/webui/rag/collections", "GET"): ("RagCollectionsResponse", "RAG collections."),
+        ("/api/webui/notifications", "GET"): ("NotificationsListResponse", "CoreUI notification list."),
+        ("/api/webui/notifications", "POST"): ("NotificationCreateResponse", "Created notification id."),
+        ("/api/webui/notifications/{nid}/dismiss", "PATCH"): ("NotificationDismissResponse", "Dismiss acknowledgement."),
+        ("/api/webui/notifications/clear", "POST"): ("NotificationsClearResponse", "Clear result."),
         ("/v1", "GET"): ("GenericObject", "OpenAI-compatible API root."),
         ("/v1/models", "GET"): ("OpenAiModelListResponse", "OpenAI-compatible model list."),
         ("/v1/models/{model_id}", "GET"): ("OpenAiModelResponse", "OpenAI-compatible model metadata."),
@@ -440,6 +460,9 @@ def _request_body_for(path: str, method: str) -> dict[str, Any] | None:
         ("/api/webui/settings", "POST"): "#/components/schemas/GenericObject",
         ("/api/webui/llm-proxy/builds", "PUT"): "#/components/schemas/GenericObject",
         ("/api/webui/performance/browser-timing", "POST"): "#/components/schemas/GenericObject",
+        ("/api/webui/notifications", "POST"): "#/components/schemas/NotificationCreateRequest",
+        ("/api/webui/notifications/{nid}/dismiss", "PATCH"): "#/components/schemas/NotificationDismissRequest",
+        ("/api/webui/notifications/clear", "POST"): "#/components/schemas/NotificationsClearRequest",
     }
     return _json_request_body(exact.get((path, method), "#/components/schemas/GenericObject"))
 
@@ -452,6 +475,72 @@ def _components() -> dict[str, Any]:
                 "type": "object",
                 "properties": {"error": {"oneOf": [{"type": "string"}, {"type": "object"}]}},
                 "additionalProperties": True,
+            },
+            "CoreUiNotification": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "session_id": {"type": "string"},
+                    "kind": {"type": "string", "enum": ["error", "event", "info"]},
+                    "source": {"type": "string"},
+                    "title": {"type": "string"},
+                    "message": {"type": "string"},
+                    "metadata": {"type": "object", "additionalProperties": True, "nullable": True},
+                    "aggregation_key": {"type": "string", "nullable": True},
+                    "occurrence_count": {"type": "integer"},
+                    "is_console_error": {"type": "integer"},
+                    "created_at": {"type": "string"},
+                    "last_occurrence_at": {"type": "string", "nullable": True},
+                    "dismissed_at": {"type": "string", "nullable": True},
+                },
+            },
+            "NotificationsListResponse": {
+                "type": "object",
+                "required": ["notifications"],
+                "properties": {
+                    "notifications": {
+                        "type": "array",
+                        "items": {"$ref": "#/components/schemas/CoreUiNotification"},
+                    },
+                },
+            },
+            "NotificationCreateRequest": {
+                "type": "object",
+                "required": ["session_id", "source", "title"],
+                "properties": {
+                    "session_id": {"type": "string"},
+                    "kind": {"type": "string", "enum": ["error", "event", "info"]},
+                    "source": {"type": "string"},
+                    "title": {"type": "string"},
+                    "message": {"type": "string"},
+                    "metadata": {"type": "object", "additionalProperties": True},
+                    "aggregation_key": {"type": "string"},
+                },
+            },
+            "NotificationCreateResponse": {
+                "type": "object",
+                "required": ["id"],
+                "properties": {"id": {"type": "integer"}},
+            },
+            "NotificationDismissRequest": {
+                "type": "object",
+                "required": ["session_id"],
+                "properties": {"session_id": {"type": "string"}},
+            },
+            "NotificationDismissResponse": {
+                "type": "object",
+                "required": ["ok"],
+                "properties": {"ok": {"type": "boolean"}},
+            },
+            "NotificationsClearRequest": {
+                "type": "object",
+                "required": ["session_id"],
+                "properties": {"session_id": {"type": "string"}},
+            },
+            "NotificationsClearResponse": {
+                "type": "object",
+                "required": ["deleted"],
+                "properties": {"deleted": {"type": "integer"}},
             },
             "VersionResponse": {
                 "type": "object",

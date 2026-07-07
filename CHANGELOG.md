@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.34] - 2026-07-07
+### Added
+- OpenAPI notification schemas for `/api/webui/notifications*` routes (P2.11b).
+- Streaming `/v1/responses` vision test preserving `input_image` multipart mapping (P2.12a).
+- `NotificationCenterShell` smoke test for live `headerLeading` layout (P2.11a).
+
 ## [0.8.33] - 2026-07-07
 ### Fixed
 - Welcome notification title uses API `display_name` only (P2.11c).

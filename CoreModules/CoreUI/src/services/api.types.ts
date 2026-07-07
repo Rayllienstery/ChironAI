@@ -14,6 +14,21 @@ interface components {
       status?: string;
       [key: string]: unknown;
     };
+    CoreUiNotification: {
+      aggregation_key?: string | null;
+      created_at?: string;
+      dismissed_at?: string | null;
+      id?: number;
+      is_console_error?: number;
+      kind?: "error" | "event" | "info";
+      last_occurrence_at?: string | null;
+      message?: string;
+      metadata?: Record<string, unknown> | null;
+      occurrence_count?: number;
+      session_id?: string;
+      source?: string;
+      title?: string;
+    };
     DependenciesResponse: {
       counts?: Record<string, number>;
       dependencies?: components["schemas"]["Dependency"][];
@@ -181,6 +196,33 @@ interface components {
     };
     ModelsListResponse: {
       models: components["schemas"]["ProviderModelEntry"][];
+    };
+    NotificationCreateRequest: {
+      aggregation_key?: string;
+      kind?: "error" | "event" | "info";
+      message?: string;
+      metadata?: Record<string, unknown>;
+      session_id: string;
+      source: string;
+      title: string;
+    };
+    NotificationCreateResponse: {
+      id: number;
+    };
+    NotificationDismissRequest: {
+      session_id: string;
+    };
+    NotificationDismissResponse: {
+      ok: boolean;
+    };
+    NotificationsClearRequest: {
+      session_id: string;
+    };
+    NotificationsClearResponse: {
+      deleted: number;
+    };
+    NotificationsListResponse: {
+      notifications: components["schemas"]["CoreUiNotification"][];
     };
     OpenAiChatCompletionRequest: {
       messages: Record<string, unknown>[];
@@ -917,6 +959,15 @@ export interface paths {
       };
     };
   };
+  "/api/webui/health": {
+    get: {
+      parameters: never;
+      requestBody: never;
+      responses: {
+        "200": components["schemas"]["GenericObject"];
+      };
+    };
+  };
   "/api/webui/help": {
     get: {
       parameters: never;
@@ -1090,14 +1141,14 @@ export interface paths {
       parameters: never;
       requestBody: never;
       responses: {
-        "200": components["schemas"]["GenericObject"];
+        "200": components["schemas"]["NotificationsListResponse"];
       };
     };
     post: {
       parameters: never;
-      requestBody: components["schemas"]["GenericObject"];
+      requestBody: components["schemas"]["NotificationCreateRequest"];
       responses: {
-        "200": components["schemas"]["GenericObject"];
+        "200": components["schemas"]["NotificationCreateResponse"];
         "400": components["schemas"]["ErrorResponse"];
       };
     };
@@ -1105,9 +1156,9 @@ export interface paths {
   "/api/webui/notifications/clear": {
     post: {
       parameters: never;
-      requestBody: components["schemas"]["GenericObject"];
+      requestBody: components["schemas"]["NotificationsClearRequest"];
       responses: {
-        "200": components["schemas"]["GenericObject"];
+        "200": components["schemas"]["NotificationsClearResponse"];
         "400": components["schemas"]["ErrorResponse"];
       };
     };
@@ -1119,9 +1170,9 @@ export interface paths {
           nid: number;
         };
       };
-      requestBody: components["schemas"]["GenericObject"];
+      requestBody: components["schemas"]["NotificationDismissRequest"];
       responses: {
-        "200": components["schemas"]["GenericObject"];
+        "200": components["schemas"]["NotificationDismissResponse"];
         "400": components["schemas"]["ErrorResponse"];
       };
     };
@@ -1837,6 +1888,15 @@ export interface paths {
     };
   };
   "/health": {
+    get: {
+      parameters: never;
+      requestBody: never;
+      responses: {
+        "200": components["schemas"]["GenericObject"];
+      };
+    };
+  };
+  "/live": {
     get: {
       parameters: never;
       requestBody: never;
