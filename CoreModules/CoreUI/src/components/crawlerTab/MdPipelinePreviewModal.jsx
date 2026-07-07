@@ -1,4 +1,5 @@
 import React from "react";
+import { t } from "../../services/i18n.js";
 import {
   exportMdPreview,
   formatMdPreviewSize,
@@ -22,7 +23,7 @@ export default function MdPipelinePreviewModal({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-header">
-              <h3>Preview result</h3>
+              <h3>{t("crawler.md_pipeline.preview.title")}</h3>
               <div className="md-pipeline-preview-actions">
                 <button
                   type="button"
@@ -32,13 +33,13 @@ export default function MdPipelinePreviewModal({
                   <span className="material-symbols-outlined" aria-hidden="true">
                     download
                   </span>
-                  Export MD
+                  {t("crawler.md_pipeline.preview.export")}
                 </button>
                 <button
                   type="button"
                   className="modal-close"
                   onClick={() => onClose()}
-                  aria-label="Close"
+                  aria-label={t("common.close")}
                 >
                   <span className="material-symbols-outlined" aria-hidden="true">
                     close
@@ -50,10 +51,14 @@ export default function MdPipelinePreviewModal({
               <p className="md-pipeline-preview-meta">
                 <span>{previewResult.filename}</span>
                 <span>
-                  processed length: {getMdPreviewText(previewResult).length} chars
+                  {t("crawler.md_pipeline.preview.processed_length", {
+                    count: getMdPreviewText(previewResult).length,
+                  })}
                 </span>
                 <span>
-                  result size: {formatMdPreviewSize(getMdPreviewSize(previewResult))}
+                  {t("crawler.md_pipeline.preview.result_size", {
+                    size: formatMdPreviewSize(getMdPreviewSize(previewResult)),
+                  })}
                 </span>
               </p>
               <pre className="coreui-card-shell md-pipeline-preview-code">

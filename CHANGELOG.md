@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.45] - 2026-07-07
+### Changed
+- Localize MD Pipeline editor UI (preview modal, step cards, step params) for crawler tab (P1.10).
+
 ## [0.8.44] - 2026-07-07
 ### Added
 - P1.25 Crawler / Indexer deep onboarding: 14-step contextual tour, first-run Crawler sidebar step, `data-tour` anchors, InfoButton field help, expanded `indexing.md`, full crawler UI i18n (en/uk).

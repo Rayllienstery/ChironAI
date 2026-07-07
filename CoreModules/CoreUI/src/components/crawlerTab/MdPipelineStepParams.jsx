@@ -1,4 +1,5 @@
 import React from "react";
+import { t } from "../../services/i18n.js";
 import { MD_STEP_TYPES_META } from "./constants";
 
 export default function MdPipelineStepParams({
@@ -14,7 +15,7 @@ export default function MdPipelineStepParams({
                           {step.type === "delete_lines_exact" && (
                             <div className="md-pipeline-param-list">
                               <span className="md-pipeline-param-list-label">
-                                Lines (add or remove):
+                                {t("crawler.md_pipeline.params.lines_label")}
                               </span>
                               {(step.params?.lines || []).map(
                                 (line, lineIdx) => (
@@ -34,7 +35,7 @@ export default function MdPipelineStepParams({
                                         )
                                       }
                                       className="md-pipeline-param-input md-pipeline-param-list-input"
-                                      placeholder="Line to delete (exact match)"
+                                      placeholder={t("crawler.md_pipeline.params.line_placeholder")}
                                     />
                                     <button
                                       type="button"
@@ -46,9 +47,9 @@ export default function MdPipelineStepParams({
                                           lineIdx,
                                         )
                                       }
-                                      aria-label="Remove line"
+                                      aria-label={t("crawler.md_pipeline.params.remove_line")}
                                     >
-                                      Remove
+                                      {t("crawler.md_pipeline.params.remove")}
                                     </button>
                                   </div>
                                 ),
@@ -58,14 +59,14 @@ export default function MdPipelineStepParams({
                                 className="crawler-button small"
                                 onClick={() => onAddLine(index, "lines")}
                               >
-                                + Add line
+                                {t("crawler.md_pipeline.params.add_line")}
                               </button>
                             </div>
                           )}
                           {step.type === "delete_lines_containing" && (
                             <div className="md-pipeline-param-list">
                               <span className="md-pipeline-param-list-label">
-                                Substrings (add or remove):
+                                {t("crawler.md_pipeline.params.substrings_label")}
                               </span>
                               {(step.params?.substrings || []).map(
                                 (sub, lineIdx) => (
@@ -85,7 +86,7 @@ export default function MdPipelineStepParams({
                                         )
                                       }
                                       className="md-pipeline-param-input md-pipeline-param-list-input"
-                                      placeholder="Substring (line containing this will be deleted)"
+                                      placeholder={t("crawler.md_pipeline.params.substring_placeholder")}
                                     />
                                     <button
                                       type="button"
@@ -97,9 +98,9 @@ export default function MdPipelineStepParams({
                                           lineIdx,
                                         )
                                       }
-                                      aria-label="Remove line"
+                                      aria-label={t("crawler.md_pipeline.params.remove_line")}
                                     >
-                                      Remove
+                                      {t("crawler.md_pipeline.params.remove")}
                                     </button>
                                   </div>
                                 ),
@@ -111,14 +112,14 @@ export default function MdPipelineStepParams({
                                   onAddLine(index, "substrings")
                                 }
                               >
-                                + Add line
+                                {t("crawler.md_pipeline.params.add_line")}
                               </button>
                             </div>
                           )}
                           {(step.type === "delete_lines_regex" ||
                             step.type === "delete_regex_match") && (
                             <label>
-                              Pattern:
+                              {t("crawler.md_pipeline.params.pattern_label")}
                               <input
                                 type="text"
                                 value={step.params?.pattern || ""}
@@ -131,14 +132,14 @@ export default function MdPipelineStepParams({
                                   })
                                 }
                                 className="md-pipeline-param-input"
-                                placeholder="Regex pattern"
+                                placeholder={t("crawler.md_pipeline.params.pattern_placeholder")}
                               />
                             </label>
                           )}
                           {step.type === "delete_sentences_starting_with" && (
                             <div className="md-pipeline-param-list">
                               <span className="md-pipeline-param-list-label">
-                                Sentence prefixes (add or remove):
+                                {t("crawler.md_pipeline.params.prefixes_label")}
                               </span>
                               {(step.params?.prefixes || []).map(
                                 (prefix, lineIdx) => (
@@ -158,7 +159,7 @@ export default function MdPipelineStepParams({
                                         )
                                       }
                                       className="md-pipeline-param-input md-pipeline-param-list-input"
-                                      placeholder="Sentence starts with..."
+                                      placeholder={t("crawler.md_pipeline.params.prefix_placeholder")}
                                     />
                                     <button
                                       type="button"
@@ -170,9 +171,9 @@ export default function MdPipelineStepParams({
                                           lineIdx,
                                         )
                                       }
-                                      aria-label="Remove prefix"
+                                      aria-label={t("crawler.md_pipeline.params.remove_prefix")}
                                     >
-                                      Remove
+                                      {t("crawler.md_pipeline.params.remove")}
                                     </button>
                                   </div>
                                 ),
@@ -182,14 +183,14 @@ export default function MdPipelineStepParams({
                                 className="crawler-button small"
                                 onClick={() => onAddLine(index, "prefixes")}
                               >
-                                + Add prefix
+                                {t("crawler.md_pipeline.params.add_prefix")}
                               </button>
                             </div>
                           )}
                           {step.type === "delete_range_regex" && (
                             <>
                               <label>
-                                Start regex:
+                                {t("crawler.md_pipeline.params.start_regex")}
                                 <input
                                   type="text"
                                   value={step.params?.start_regex || ""}
@@ -202,11 +203,11 @@ export default function MdPipelineStepParams({
                                     })
                                   }
                                   className="md-pipeline-param-input"
-                                  placeholder="^## Section"
+                                  placeholder={t("crawler.md_pipeline.params.start_regex_placeholder")}
                                 />
                               </label>
                               <label>
-                                End regex:
+                                {t("crawler.md_pipeline.params.end_regex")}
                                 <input
                                   type="text"
                                   value={step.params?.end_regex || ""}
@@ -219,7 +220,7 @@ export default function MdPipelineStepParams({
                                     })
                                   }
                                   className="md-pipeline-param-input"
-                                  placeholder="^## "
+                                  placeholder={t("crawler.md_pipeline.params.end_regex_placeholder")}
                                 />
                               </label>
                             </>
@@ -227,7 +228,7 @@ export default function MdPipelineStepParams({
                           {step.type === "strip_sections_by_heading" && (
                             <div className="md-pipeline-param-list">
                               <span className="md-pipeline-param-list-label">
-                                Headings (add or remove, lower):
+                                {t("crawler.md_pipeline.params.headings_label")}
                               </span>
                               {(step.params?.headings || []).map(
                                 (h, lineIdx) => (
@@ -247,7 +248,7 @@ export default function MdPipelineStepParams({
                                         )
                                       }
                                       className="md-pipeline-param-input md-pipeline-param-list-input"
-                                      placeholder="Section heading to strip"
+                                      placeholder={t("crawler.md_pipeline.params.heading_placeholder")}
                                     />
                                     <button
                                       type="button"
@@ -259,9 +260,9 @@ export default function MdPipelineStepParams({
                                           lineIdx,
                                         )
                                       }
-                                      aria-label="Remove line"
+                                      aria-label={t("crawler.md_pipeline.params.remove_line")}
                                     >
-                                      Remove
+                                      {t("crawler.md_pipeline.params.remove")}
                                     </button>
                                   </div>
                                 ),
@@ -271,14 +272,14 @@ export default function MdPipelineStepParams({
                                 className="crawler-button small"
                                 onClick={() => onAddLine(index, "headings")}
                               >
-                                + Add line
+                                {t("crawler.md_pipeline.params.add_line")}
                               </button>
                             </div>
                           )}
                           {step.type === "replace_regex" && (
                             <>
                               <label>
-                                Pattern:
+                                {t("crawler.md_pipeline.params.pattern_label")}
                                 <input
                                   type="text"
                                   value={step.params?.pattern || ""}
@@ -294,7 +295,7 @@ export default function MdPipelineStepParams({
                                 />
                               </label>
                               <label>
-                                Replacement:
+                                {t("crawler.md_pipeline.params.replacement_label")}
                                 <input
                                   type="text"
                                   value={step.params?.replacement || ""}
@@ -314,7 +315,7 @@ export default function MdPipelineStepParams({
                           {step.type === "wrap_indented_code" && (
                             <>
                               <label>
-                                Language (optional):
+                                {t("crawler.md_pipeline.params.language_label")}
                                 <input
                                   type="text"
                                   value={step.params?.language || ""}
@@ -327,11 +328,11 @@ export default function MdPipelineStepParams({
                                     })
                                   }
                                   className="md-pipeline-param-input"
-                                  placeholder="e.g. swift"
+                                  placeholder={t("crawler.md_pipeline.params.language_placeholder")}
                                 />
                               </label>
                               <label>
-                                Min block lines:
+                                {t("crawler.md_pipeline.params.min_block_lines")}
                                 <input
                                   type="number"
                                   min="1"
@@ -362,7 +363,7 @@ export default function MdPipelineStepParams({
                               if (!meta)
                                 return (
                                   <span className="md-pipeline-step-no-params">
-                                    No parameters
+                                    {t("crawler.md_pipeline.params.no_params")}
                                   </span>
                                 );
                               return (
@@ -371,7 +372,8 @@ export default function MdPipelineStepParams({
                                     {meta.description}
                                   </p>
                                   <p className="md-pipeline-step-desc-example-example">
-                                    <strong>Example:</strong> {meta.example}
+                                    <strong>{t("crawler.md_pipeline.add_step_example")}</strong>{" "}
+                                    {meta.example}
                                   </p>
                                 </div>
                               );

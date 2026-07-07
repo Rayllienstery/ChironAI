@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import Card from "../Card";
+import { t } from "../../services/i18n.js";
 import {
   addCrawlerSource,
   crawlSource,
@@ -125,7 +126,7 @@ export function useCrawlerSection({ nc, activeSection }) {
       <Card className="crawler-progress-panel" role="status" aria-live="polite">
         <div className="crawler-progress-header">
           <span className="crawler-progress-spinner" aria-hidden="true" />
-          <span className="crawler-progress-title">Crawling…</span>
+          <span className="crawler-progress-title">{t("crawler.sources.crawling")}</span>
           <span className="crawler-progress-sources">
             {Array.from(crawlingSources).join(", ")}
           </span>

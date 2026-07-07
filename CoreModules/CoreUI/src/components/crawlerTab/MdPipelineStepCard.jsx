@@ -1,4 +1,5 @@
 import React from "react";
+import { t } from "../../services/i18n.js";
 import { MD_STEP_TYPES_META } from "./constants";
 import MdPipelineStepParams from "./MdPipelineStepParams";
 
@@ -28,7 +29,9 @@ export default function MdPipelineStepCard({
                           className="md-pipeline-step-toggle"
                           onClick={() => onToggleExpanded(stepKey)}
                           aria-label={
-                            isExpanded ? "Collapse step" : "Expand step"
+                            isExpanded
+                              ? t("crawler.md_pipeline.step.collapse")
+                              : t("crawler.md_pipeline.step.expand")
                           }
                         >
                           <span className="material-symbols-outlined" aria-hidden="true">
@@ -37,7 +40,7 @@ export default function MdPipelineStepCard({
                         </button>
                         <label className="md-pipeline-step-type-label">
                           <span className="md-pipeline-step-type-caption">
-                            Step type:
+                            {t("crawler.md_pipeline.step.type_label")}
                           </span>
                           <select
                             value={step.type}
@@ -45,7 +48,7 @@ export default function MdPipelineStepCard({
                               onChangeStepType(index, e.target.value)
                             }
                             className="coreui-select coreui-select--dense md-pipeline-step-type-select"
-                            aria-label="Change step type"
+                            aria-label={t("crawler.md_pipeline.step.type_aria")}
                           >
                             {MD_STEP_TYPES_META.map((item) => (
                               <option key={item.type} value={item.type}>
@@ -60,8 +63,8 @@ export default function MdPipelineStepCard({
                             className="crawler-button small md-pipeline-icon-button"
                             onClick={() => onMoveStep(index, -1)}
                             disabled={index === 0}
-                            aria-label="Move up"
-                            title="Move up"
+                            aria-label={t("crawler.md_pipeline.step.move_up")}
+                            title={t("crawler.md_pipeline.step.move_up")}
                           >
                             <span className="material-symbols-outlined" aria-hidden="true">
                               arrow_upward
@@ -72,8 +75,8 @@ export default function MdPipelineStepCard({
                             className="crawler-button small md-pipeline-icon-button"
                             onClick={() => onMoveStep(index, 1)}
                             disabled={index === stepsLength - 1}
-                            aria-label="Move down"
-                            title="Move down"
+                            aria-label={t("crawler.md_pipeline.step.move_down")}
+                            title={t("crawler.md_pipeline.step.move_down")}
                           >
                             <span className="material-symbols-outlined" aria-hidden="true">
                               arrow_downward
@@ -83,9 +86,9 @@ export default function MdPipelineStepCard({
                             type="button"
                             className="crawler-button small"
                             onClick={() => onRemoveStep(index)}
-                            aria-label="Remove step"
+                            aria-label={t("crawler.md_pipeline.step.remove")}
                           >
-                            Delete
+                            {t("crawler.md_pipeline.step.delete")}
                           </button>
                         </div>
                       </div>
