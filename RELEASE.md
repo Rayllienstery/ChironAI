@@ -2,9 +2,21 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
-## Release candidate 0.8.17 notes
+## Release candidate 0.8.34 notes
 
-Status: pre-tag ready on Windows local gates as of 2026-07-06.
+Status: pre-tag ready on Windows local gates as of 2026-07-07.
+
+Highlights:
+
+- Notification OpenAPI schemas and typed `api.types.ts` for `/api/webui/notifications*`.
+- Streaming `/v1/responses` vision test; `NotificationCenterShell` `headerLeading` smoke test.
+- Docker `/live` liveness, macOS CI (`macos-fast`), OpenAPI bootstrap without extension install.
+- `APP_STAGE` is `STABLE`; quality gates `full` and `release` pass locally.
+
+### Supply chain (P2.10c)
+
+- `@alerix/m3-loading-indicator@^1.0.5` — no advisories in `npm audit` (2026-07-07).
+- Remaining npm findings are dev-only (Storybook/uuid, Vite/esbuild); see `Core/config/dependency_audit_exceptions.json`.
 
 ### LLM proxy vision environment (P2.12c)
 
@@ -18,6 +30,16 @@ Configure on the server host when clients send images through `/v1/chat/completi
 | `LLM_PROXY_VISION_ALLOW_ABS_PATHS` | `0` | Allow absolute paths when local file read is enabled |
 
 See `CoreModules/LlmProxy/README.md` for OpenCode vision setup and `file_id` limitations.
+
+Verification snapshot (2026-07-07):
+
+- `python scripts/quality_gate.py --profile release --include-advisory` — passed locally.
+- `python scripts/validate_openapi.py` and `python scripts/check_api_drift.py --strict` — passed.
+- `npm run test:run` from `CoreModules/CoreUI` — passed (includes notification smoke tests).
+
+## Release candidate 0.8.17 notes (archive)
+
+Status: pre-tag ready on Windows local gates as of 2026-07-06.
 
 Highlights:
 
@@ -68,7 +90,7 @@ Known release notes:
 
 ```bash
 python scripts/quality_gate.py --profile minimal
-python scripts/quality_gate.py --profile release   # before tags
+python scripts/quality_gate.py --profile release --include-advisory   # before tags
 ```
 
 ## Backend

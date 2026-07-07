@@ -79,7 +79,9 @@ Everything in `full`, plus:
 | `docker build` | when Docker Desktop available | yes |
 | `startup_smoke.sh` | skipped (`os.name == nt`) | required when `bash` available |
 | `startup_smoke_bat.ps1` | advisory with `--include-advisory` | skipped |
-| `mutmut` | advisory; prefer WSL/CI Linux | advisory |
+| `mutmut` | advisory; prefer WSL/CI Linux | advisory with `--include-advisory` |
+| Trivy image scan | advisory locally | advisory (`continue-on-error: true` in CI) |
+| Codecov upload | n/a locally | advisory (`fail_ci_if_error: false` in CI) |
 
 The `macos-fast` workflow job (`.github/workflows/quality.yml`) runs on `macos-latest` for pull requests and `main`/`master` pushes: `pytest -m fast`, CoreUI `npm run build`, and `npm run test:run`.
 

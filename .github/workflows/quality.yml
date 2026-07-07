@@ -191,7 +191,7 @@ jobs:
         run: npm run test:coverage
 
       - name: Run release quality gate
-        run: python scripts/quality_gate.py --profile release
+        run: python scripts/quality_gate.py --profile release --include-advisory
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

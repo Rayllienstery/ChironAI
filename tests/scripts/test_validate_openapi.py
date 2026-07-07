@@ -9,6 +9,18 @@ from scripts import validate_openapi
 
 @pytest.mark.fast
 @pytest.mark.scripts
+def test_openapi_info_description_includes_app_stage() -> None:
+    from core.version import APP_NAME, APP_STAGE
+
+    spec = validate_openapi.build_generated_spec()
+    description = spec["info"]["description"]
+
+    assert APP_NAME in description
+    assert APP_STAGE in description
+
+
+@pytest.mark.fast
+@pytest.mark.scripts
 def test_generated_openapi_spec_is_valid() -> None:
     spec = validate_openapi.build_generated_spec()
 

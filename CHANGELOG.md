@@ -1,6 +1,15 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.35] - 2026-07-07
+### Changed
+- CI `release` job runs `quality_gate.py --include-advisory` for local parity (P2.14a).
+- Sync `RELEASE.md` to 0.8.34 candidate notes; document m3-loading-indicator supply chain (P2.10c, P2.19).
+- Document Trivy/CodeCov advisory policy in `QUALITY_GATE_PROFILES.md` (P2.14b partial).
+
+### Added
+- OpenAPI test asserting `info.description` includes `APP_STAGE` (P3.2).
+
 ## [0.8.34] - 2026-07-07
 ### Added
 - OpenAPI notification schemas for `/api/webui/notifications*` routes (P2.11b).
