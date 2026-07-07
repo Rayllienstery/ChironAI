@@ -13,6 +13,7 @@ const allowIdentical = new Set([
   'nav.rag',
   'nav.rag_fusion_proxy',
   'nav.swagger',
+  'settings.db_path.placeholder',
 ]);
 
 function readJson(file) {

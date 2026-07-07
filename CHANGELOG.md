@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.42] - 2026-07-07
+### Changed
+- P1.10 incremental i18n: App header GPU metrics, session retry banner, HelpPanel strings (en/uk).
+- i18n-lint: allow identical `settings.db_path.placeholder`; catalog 186 keys.
+
 ## [0.8.41] - 2026-07-07
 ### Changed
 - RELEASE.md 0.8.40 highlights; Pre-Release ticket registry P2.3–P2.8 sync (P2.19).

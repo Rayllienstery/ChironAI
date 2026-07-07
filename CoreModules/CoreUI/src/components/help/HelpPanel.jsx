@@ -3,6 +3,7 @@ import CoreUIButton from '../CoreUIButton';
 import M3LoadingIndicator from '../M3LoadingIndicator';
 import ActionableError from '../ActionableError';
 import { getHelpArticle } from '../../services/api.js';
+import { t } from '../../services/i18n';
 import { renderHelpMarkdown } from '../../utils/helpMarkdown.js';
 import { helpArticleIcon } from './helpArticles.js';
 import '../../styles/components/HelpPanel.css';
@@ -41,7 +42,7 @@ export default function HelpPanel({
       .catch((err) => {
         if (!cancelled) {
           setArticle(null);
-          setError(err?.message || 'Failed to load help article');
+          setError(err?.message || t('help.panel.load_failed'));
         }
       })
       .finally(() => {
@@ -86,7 +87,7 @@ export default function HelpPanel({
       <button
         type="button"
         className="help-panel-scrim"
-        aria-label="Close help panel"
+        aria-label={t('help.panel.close')}
         onClick={onClose}
       />
       <aside className="help-panel" role="dialog" aria-modal="true" aria-label={title}>
@@ -105,7 +106,7 @@ export default function HelpPanel({
             variant="icon"
             size="icon"
             className="help-panel__close"
-            aria-label="Close help panel"
+            aria-label={t('help.panel.close')}
             onClick={onClose}
           >
             <span className="material-symbols-outlined" aria-hidden="true">
@@ -126,7 +127,7 @@ export default function HelpPanel({
             <span className="material-symbols-outlined coreui-icon--sm" aria-hidden="true">
               menu_book
             </span>
-            Open in Help tab
+            {t('help.panel.open_full')}
           </CoreUIButton>
         </div>
 
@@ -137,7 +138,7 @@ export default function HelpPanel({
               setLoading(true);
               void getHelpArticle(slug)
                 .then(setArticle)
-                .catch((err) => setError(err?.message || 'Failed to load help article'))
+                .catch((err) => setError(err?.message || t('help.panel.load_failed')))
                 .finally(() => setLoading(false));
             }}
             />

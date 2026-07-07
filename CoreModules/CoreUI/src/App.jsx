@@ -1015,7 +1015,7 @@ function App() {
             {dashboardMetrics?.gpu != null && (
               <>
                 <Card className="metric-card">
-                  <span className="metric-label">GPU util</span>
+                  <span className="metric-label">{t("app.metrics.gpu_util")}</span>
                   <span className="metric-value">
                     {dashboardMetrics.gpu.utilization_pct != null
                       ? `${dashboardMetrics.gpu.utilization_pct}%`
@@ -1024,7 +1024,7 @@ function App() {
                   <Sparkline data={metricsHistory.gpu_util} />
                 </Card>
                 <Card className="metric-card">
-                  <span className="metric-label">GPU memory</span>
+                  <span className="metric-label">{t("app.metrics.gpu_memory")}</span>
                   <span className="metric-value">
                     {dashboardMetrics.gpu.memory_used_mb != null &&
                     dashboardMetrics.gpu.memory_total_mb != null
@@ -1034,7 +1034,7 @@ function App() {
                   <Sparkline data={metricsHistory.gpu_mem_used} />
                 </Card>
                 <Card className="metric-card">
-                  <span className="metric-label">GPU temp</span>
+                  <span className="metric-label">{t("app.metrics.gpu_temp")}</span>
                   <span className="metric-value">
                     {dashboardMetrics.gpu.temperature_c != null
                       ? `${dashboardMetrics.gpu.temperature_c}°C`
@@ -1097,9 +1097,9 @@ function App() {
           </TabErrorBoundary>
           {sessionError && !sessionId && (
             <div className="session-error session-error--inline">
-              <p>Backend session is unavailable. Tabs will work once the server finishes starting — click Retry or wait a moment.</p>
+              <p>{t("app.session.unavailable")}</p>
               <button className="session-retry-btn" onClick={initSession}>
-                Retry
+                {t("app.session.retry")}
               </button>
             </div>
           )}
