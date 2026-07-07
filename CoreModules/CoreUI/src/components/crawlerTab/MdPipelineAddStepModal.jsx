@@ -1,4 +1,5 @@
 import React from "react";
+import { t } from "../../services/i18n.js";
 import { MD_STEP_TYPES_META } from "./constants";
 
 export default function MdPipelineAddStepModal({ open, onClose, onAddStep }) {
@@ -13,20 +14,19 @@ export default function MdPipelineAddStepModal({ open, onClose, onAddStep }) {
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="modal-header">
-                      <h3>Add pipeline step</h3>
+                      <h3>{t("crawler.md_pipeline.add_step_title")}</h3>
                       <button
                         type="button"
                         className="modal-close"
                         onClick={() => onClose()}
-                        aria-label="Close"
+                        aria-label={t("common.close")}
                       >
                         ×
                       </button>
                     </div>
                     <div className="modal-body md-pipeline-add-modal-body">
                       <p className="md-pipeline-add-modal-intro">
-                        Choose a step type. Each card shows a short description
-                        and an example.
+                        {t("crawler.md_pipeline.add_step_intro")}
                       </p>
                       <div className="md-pipeline-add-modal-grid">
                         {MD_STEP_TYPES_META.map((item) => (
@@ -41,14 +41,15 @@ export default function MdPipelineAddStepModal({ open, onClose, onAddStep }) {
                               {item.description}
                             </p>
                             <p className="md-pipeline-step-option-example">
-                              <strong>Example:</strong> {item.example}
+                              <strong>{t("crawler.md_pipeline.add_step_example")}</strong>{" "}
+                              {item.example}
                             </p>
                             <button
                               type="button"
                               className="crawler-button primary small"
                               onClick={() => onAddStep(item.type)}
                             >
-                              Add this step
+                              {t("crawler.md_pipeline.add_this_step")}
                             </button>
                           </div>
                         ))}

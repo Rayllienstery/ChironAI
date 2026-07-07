@@ -84,7 +84,7 @@ See **Proxy Clients & API** for IDE-specific setup.
 
 ## 6. Enable RAG (when Qdrant is ready)
 
-1. **Crawler / Indexer** — ingest documents into a collection (or use your existing pipeline).
+1. **Crawler / Indexer** — follow [Indexing Content](indexing) from **Add Source** through **Create Collection** (see `#sources`, `#crawl-actions`, `#create-collection`).
 2. **RAG / Qdrant** — confirm the collection appears and run a retrieval test.
 3. Attach the collection on the build **or** set defaults under **RAG Fusion Proxy → Model settings**.
 4. Re-test in **Model Tester** with a question that should hit your docs.

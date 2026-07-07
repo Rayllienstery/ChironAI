@@ -127,15 +127,142 @@ const CRAWLER_TOUR_STEP_DEFS = [
     target: '[data-tour="crawler-header"]',
   },
   {
-    id: 'crawler-sources',
-    titleKey: 'onboarding.tour.crawler.sources.title',
-    bodyKey: 'onboarding.tour.crawler.sources.body',
+    id: 'crawler-section-tabs',
+    titleKey: 'onboarding.tour.crawler.section_tabs.title',
+    bodyKey: 'onboarding.tour.crawler.section_tabs.body',
+    target: '[data-tour="crawler-section-tabs"]',
+  },
+  {
+    id: 'crawler-sources-panel',
+    titleKey: 'onboarding.tour.crawler.sources_panel.title',
+    bodyKey: 'onboarding.tour.crawler.sources_panel.body',
     target: '[data-tour="crawler-sources"]',
+  },
+  {
+    id: 'crawler-add-source',
+    titleKey: 'onboarding.tour.crawler.add_source.title',
+    bodyKey: 'onboarding.tour.crawler.add_source.body',
+    target: '[data-tour="crawler-add-source"]',
+  },
+  {
+    id: 'crawler-crawl-one',
+    titleKey: 'onboarding.tour.crawler.crawl_one.title',
+    bodyKey: 'onboarding.tour.crawler.crawl_one.body',
+    target: '[data-tour="crawler-crawl-btn"]',
+  },
+  {
+    id: 'crawler-crawl-batch',
+    titleKey: 'onboarding.tour.crawler.crawl_batch.title',
+    bodyKey: 'onboarding.tour.crawler.crawl_batch.body',
+    target: '[data-tour="crawler-crawl-selected"]',
+  },
+  {
+    id: 'crawler-source-detail',
+    titleKey: 'onboarding.tour.crawler.source_detail.title',
+    bodyKey: 'onboarding.tour.crawler.source_detail.body',
+    target: '[data-tour="crawler-source-pages"]',
+  },
+  {
+    id: 'crawler-create-collection',
+    titleKey: 'onboarding.tour.crawler.create_collection.title',
+    bodyKey: 'onboarding.tour.crawler.create_collection.body',
+    target: '[data-tour="crawler-create-collection"]',
+  },
+  {
+    id: 'crawler-collection-embed',
+    titleKey: 'onboarding.tour.crawler.collection_embed.title',
+    bodyKey: 'onboarding.tour.crawler.collection_embed.body',
+    target: '[data-tour="crawler-collection-embed"]',
+  },
+  {
+    id: 'crawler-collection-chunking',
+    titleKey: 'onboarding.tour.crawler.collection_chunking.title',
+    bodyKey: 'onboarding.tour.crawler.collection_chunking.body',
+    target: '[data-tour="crawler-collection-chunking"]',
+  },
+  {
+    id: 'crawler-md-pipeline-tab',
+    titleKey: 'onboarding.tour.crawler.md_pipeline_tab.title',
+    bodyKey: 'onboarding.tour.crawler.md_pipeline_tab.body',
+    target: '[data-tour="crawler-md-pipeline-tab"]',
+  },
+  {
+    id: 'crawler-pipeline-select',
+    titleKey: 'onboarding.tour.crawler.pipeline_select.title',
+    bodyKey: 'onboarding.tour.crawler.pipeline_select.body',
+    target: '[data-tour="crawler-pipeline-select"]',
+  },
+  {
+    id: 'crawler-pipeline-steps',
+    titleKey: 'onboarding.tour.crawler.pipeline_steps.title',
+    bodyKey: 'onboarding.tour.crawler.pipeline_steps.body',
+    target: '[data-tour="crawler-pipeline-steps"]',
+  },
+  {
+    id: 'crawler-next-rag',
+    titleKey: 'onboarding.tour.crawler.next_rag.title',
+    bodyKey: 'onboarding.tour.crawler.next_rag.body',
+    target: '[data-tour="rag"]',
   },
 ];
 
+export function createCrawlerTourSteps({
+  setActiveSection,
+  openCreateCollectionModal,
+  closeModals,
+  selectFirstSource,
+  expandFirstMdStep,
+} = {}) {
+  const onEnterById = {
+    'crawler-sources-panel': () => {
+      closeModals?.();
+      setActiveSection?.('crawler');
+    },
+    'crawler-crawl-one': () => {
+      closeModals?.();
+      setActiveSection?.('crawler');
+      selectFirstSource?.();
+    },
+    'crawler-source-detail': () => {
+      closeModals?.();
+      setActiveSection?.('crawler');
+      selectFirstSource?.();
+    },
+    'crawler-create-collection': () => {
+      closeModals?.();
+      setActiveSection?.('crawler');
+    },
+    'crawler-collection-embed': () => {
+      setActiveSection?.('crawler');
+      openCreateCollectionModal?.();
+    },
+    'crawler-collection-chunking': () => {
+      setActiveSection?.('crawler');
+      openCreateCollectionModal?.();
+    },
+    'crawler-md-pipeline-tab': () => {
+      closeModals?.();
+      setActiveSection?.('md-pipeline');
+    },
+    'crawler-pipeline-select': () => {
+      closeModals?.();
+      setActiveSection?.('md-pipeline');
+    },
+    'crawler-pipeline-steps': () => {
+      closeModals?.();
+      setActiveSection?.('md-pipeline');
+      expandFirstMdStep?.();
+    },
+    'crawler-next-rag': () => closeModals?.(),
+  };
+  return resolveTourSteps(CRAWLER_TOUR_STEP_DEFS).map((step) => ({
+    ...step,
+    onEnter: onEnterById[step.id],
+  }));
+}
+
 export function resolveCrawlerTourSteps() {
-  return resolveTourSteps(CRAWLER_TOUR_STEP_DEFS);
+  return createCrawlerTourSteps();
 }
 
 /** @deprecated Use resolve*TourSteps() — kept for tests that assert step metadata. */

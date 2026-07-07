@@ -9,7 +9,7 @@ test.describe('onboarding tour', () => {
 
     const tourDialog = page.getByRole('dialog', { name: 'Choose your language' });
     await expect(tourDialog).toBeVisible();
-    await expect(tourDialog.getByText(/Step 1 of 7/i)).toBeVisible();
+    await expect(tourDialog.getByText(/Step 1 of 8/i)).toBeVisible();
 
     await page.getByRole('button', { name: 'Skip tour' }).click();
     await expect(tourDialog).toBeHidden();

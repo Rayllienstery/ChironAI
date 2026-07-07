@@ -29,7 +29,7 @@ export default function CrawlerSourcesPanel({
   return (
             <div className="crawler-sources" data-tour="crawler-sources">
               <div className="sources-header">
-                <h3>Crawl Sources</h3>
+                <h3>{t("crawler.sources.title")}</h3>
               </div>
               <table className="sources-table">
                 <thead>
@@ -37,7 +37,7 @@ export default function CrawlerSourcesPanel({
                     <th className="select-cell">
                       <input
                         type="checkbox"
-                        aria-label="Select all sources"
+                        aria-label={t("crawler.sources.select_all")}
                         checked={
                           sources.length > 0 &&
                           sources.every((s) => selectedSourceIds.has(s.id))
@@ -45,12 +45,12 @@ export default function CrawlerSourcesPanel({
                         onChange={onToggleSelectAll}
                       />
                     </th>
-                    <th>Source ID</th>
-                    <th>URL</th>
-                    <th>Last Crawled</th>
-                    <th>Total Pages</th>
-                    <th>Indexed</th>
-                    <th>Actions</th>
+                    <th>{t("crawler.sources.col_id")}</th>
+                    <th>{t("crawler.sources.col_url")}</th>
+                    <th>{t("crawler.sources.col_last_crawled")}</th>
+                    <th>{t("crawler.sources.col_total_pages")}</th>
+                    <th>{t("crawler.sources.col_indexed")}</th>
+                    <th>{t("crawler.sources.col_actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -60,7 +60,7 @@ export default function CrawlerSourcesPanel({
                         <td className="select-cell">
                           <input
                             type="checkbox"
-                            aria-label={`Select source ${source.id}`}
+                            aria-label={t("crawler.sources.select_source", { id: source.id })}
                             checked={selectedSourceIds.has(source.id)}
                             onChange={() => onToggleSourceSelected(source.id)}
                           />
@@ -86,30 +86,32 @@ export default function CrawlerSourcesPanel({
                                <span className="material-symbols-outlined" style={{ fontSize: '16px', marginRight: '4px', verticalAlign: 'middle' }}>
                                  {selectedSource === source.id ? "visibility_off" : "visibility"}
                                </span>
-                               {selectedSource === source.id ? "Hide" : "View"} Details
+                               {selectedSource === source.id
+                                 ? t("crawler.sources.hide_details")
+                                 : t("crawler.sources.view_details")}
                              </button>
                             <button
                               type="button"
                               className="crawler-button small"
                               onClick={() => onEditSource(source.id)}
-                              title="Edit source configuration"
+                              title={t("crawler.sources.edit_hint")}
                             >
-                              <span className="material-symbols-outlined" style={{ fontSize: '16px', marginRight: '4px', verticalAlign: 'middle' }}>edit</span> Edit
+                              <span className="material-symbols-outlined" style={{ fontSize: '16px', marginRight: '4px', verticalAlign: 'middle' }}>edit</span> {t("crawler.sources.edit")}
                             </button>
                             <button
                               type="button"
                               className="crawler-button small refresh"
                               onClick={() => onCrawlSource(source.id)}
                               disabled={crawlingSources.has(source.id)}
-                              title="Refresh/Crawl this source"
+                              title={t("crawler.sources.refresh_hint")}
                             >
                               {crawlingSources.has(source.id) ? (
                                 <>
-                                  <span className="spinner"></span> Crawling...
+                                  <span className="spinner"></span> {t("crawler.sources.crawling")}
                                 </>
                                 ) : (
                                   <>
-                                    <span className="material-symbols-outlined" style={{ fontSize: '16px', marginRight: '4px', verticalAlign: 'middle' }}>refresh</span> Refresh
+                                    <span className="material-symbols-outlined" style={{ fontSize: '16px', marginRight: '4px', verticalAlign: 'middle' }}>refresh</span> {t("crawler.sources.refresh")}
                                   </>
                                 )}
                             </button>
@@ -120,11 +122,11 @@ export default function CrawlerSourcesPanel({
                         <tr>
                           <td colSpan="7" className="details-cell">
                             <div className="source-details">
-                              <h4>Source Details</h4>
+                              <h4>{t("crawler.sources.details_title")}</h4>
                               <div className="details-grid">
                                 <div className="detail-item">
                                   <span className="detail-label">
-                                    Source ID:
+                                    {t("crawler.sources.col_id")}:
                                   </span>
                                   <span className="detail-value">
                                     {source.id}
@@ -133,7 +135,7 @@ export default function CrawlerSourcesPanel({
                                 {source.max_depth && (
                                   <div className="detail-item">
                                     <span className="detail-label">
-                                      Max Depth:
+                                      {t("crawler.modal.max_depth")}:
                                     </span>
                                     <span className="detail-value">
                                       {source.max_depth}
@@ -143,7 +145,7 @@ export default function CrawlerSourcesPanel({
                                 {source.crawler && (
                                   <div className="detail-item">
                                     <span className="detail-label">
-                                      Crawler:
+                                      {t("crawler.modal.crawler_engine")}:
                                     </span>
                                     <span className="detail-value">
                                       {source.crawler}
@@ -154,7 +156,7 @@ export default function CrawlerSourcesPanel({
                                   source.seed_urls.length > 0 && (
                                     <div className="detail-item full-width">
                                       <span className="detail-label">
-                                        Seed URLs:
+                                        {t("crawler.modal.seed_urls")}:
                                       </span>
                                       <ul className="seed-urls-list">
                                         {source.seed_urls
@@ -164,8 +166,9 @@ export default function CrawlerSourcesPanel({
                                           ))}
                                         {source.seed_urls.length > 10 && (
                                           <li className="more-urls">
-                                            ... and{" "}
-                                            {source.seed_urls.length - 10} more
+                                            {t("crawler.sources.more_urls", {
+                                              count: source.seed_urls.length - 10,
+                                            })}
                                           </li>
                                         )}
                                       </ul>
@@ -173,9 +176,11 @@ export default function CrawlerSourcesPanel({
                                   )}
                               </div>
                               {sourcePages.length > 0 && (
-                                <div className="pages-section">
+                                <div className="pages-section" data-tour="crawler-source-pages">
                                   <h5>
-                                    Recent Pages ({sourcePages.length} total)
+                                    {t("crawler.sources.recent_pages", {
+                                      count: sourcePages.length,
+                                    })}
                                   </h5>
                                   <div className="pages-list">
                                     {sourcePages
@@ -190,15 +195,18 @@ export default function CrawlerSourcesPanel({
                                           </span>
                                           {page.has_chunks && (
                                             <span className="page-chunks">
-                                              {page.chunk_count} chunks
+                                              {t("crawler.sources.page_chunks", {
+                                                count: page.chunk_count,
+                                              })}
                                             </span>
                                           )}
                                         </div>
                                       ))}
                                     {sourcePages.length > 20 && (
                                       <div className="more-pages">
-                                        ... and {sourcePages.length - 20} more
-                                        pages
+                                        {t("crawler.sources.more_pages", {
+                                          count: sourcePages.length - 20,
+                                        })}
                                       </div>
                                     )}
                                   </div>

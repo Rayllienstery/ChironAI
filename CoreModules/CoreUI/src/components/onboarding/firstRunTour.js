@@ -28,6 +28,12 @@ const FIRST_RUN_TOUR_STEP_DEFS = [
     target: '[data-tour="providers"]',
   },
   {
+    id: 'crawler',
+    titleKey: 'onboarding.first_run.crawler.title',
+    bodyKey: 'onboarding.first_run.crawler.body',
+    target: '[data-tour="crawler"]',
+  },
+  {
     id: 'help',
     titleKey: 'onboarding.first_run.help.title',
     bodyKey: 'onboarding.first_run.help.body',

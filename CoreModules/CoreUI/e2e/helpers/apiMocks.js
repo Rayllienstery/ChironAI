@@ -83,6 +83,41 @@ function baseResponses(onboardingState, builds) {
         },
       ],
     },
+    '/crawler/sources': {
+      sources: [
+        {
+          id: 'docs-sample',
+          url: 'https://example.com/docs',
+          last_crawled: '2026-01-01T00:00:00Z',
+          total_pages: 12,
+          indexed_pages: 10,
+          max_depth: 2,
+          crawler: 'playwright',
+          seed_urls: ['https://example.com/docs/start'],
+        },
+      ],
+    },
+    '/crawler/md-pipelines': { pipelines: ['default'] },
+    '/crawler/md-pipelines/default': {
+      name: 'default',
+      steps: [
+        {
+          id: 'step-1',
+          type: 'strip_meta_block',
+          params: {},
+        },
+      ],
+    },
+    '/crawler/sources/docs-sample/pages': {
+      pages: [
+        {
+          filename: 'intro.md',
+          url: 'https://example.com/docs/intro',
+          has_chunks: true,
+          chunk_count: 4,
+        },
+      ],
+    },
     '/provider-catalog': {
       providers: [{ provider_id: 'ollama', title: 'Ollama' }],
       models: [{ provider_id: 'ollama', id: 'llama3', name: 'Llama 3' }],
@@ -238,6 +273,32 @@ export async function installApiMocks(page, options = {}) {
 
     if (path === '/logs') {
       await route.fulfill({ json: responses['/logs'] });
+      return;
+    }
+
+    if (path === '/crawler/sources') {
+      await route.fulfill({ json: responses['/crawler/sources'] });
+      return;
+    }
+
+    if (path === '/crawler/md-pipelines') {
+      await route.fulfill({ json: responses['/crawler/md-pipelines'] });
+      return;
+    }
+
+    const mdPipelineMatch = path.match(/^\/crawler\/md-pipelines\/([^/]+)$/);
+    if (mdPipelineMatch) {
+      const name = decodeURIComponent(mdPipelineMatch[1]);
+      const pipeline = responses['/crawler/md-pipelines/default'];
+      await route.fulfill({
+        json: name === 'default' ? pipeline : { name, steps: [] },
+      });
+      return;
+    }
+
+    const sourcePagesMatch = path.match(/^\/crawler\/sources\/([^/]+)\/pages$/);
+    if (sourcePagesMatch) {
+      await route.fulfill({ json: responses['/crawler/sources/docs-sample/pages'] });
       return;
     }
 

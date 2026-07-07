@@ -2,6 +2,7 @@ import React from "react";
 import ActionableError from "../ActionableError";
 import MdPipelineAddStepModal from "./MdPipelineAddStepModal";
 import MdPipelineStepCard from "./MdPipelineStepCard";
+import { t } from "../../services/i18n.js";
 
 export default function MdPipelineSection({
   pipelineError,
@@ -41,22 +42,22 @@ export default function MdPipelineSection({
 }) {
   return (
     <div className="md-pipeline-section">
-      <h3>MD Pipeline</h3>
+      <h3>{t("crawler.md_pipeline.title")}</h3>
       {pipelineError && (
         <ActionableError error={pipelineError} onRetry={onRetryPipeline} />
       )}
-          <div className="md-pipeline-toolbar">
+          <div className="md-pipeline-toolbar" data-tour="crawler-pipeline-select">
             <label className="indexer-select-label">
-              Pipeline:
+              {t("crawler.md_pipeline.pipeline_label")}
               <select
                 value={selectedPipelineName}
                 onChange={(e) => setSelectedPipelineName(e.target.value)}
-                aria-label="Select pipeline"
+                aria-label={t("crawler.md_pipeline.select_pipeline_aria")}
                 disabled={pipelineLoading}
                 className="coreui-select coreui-select--dense"
               >
                 {pipelineList.length === 0 && (
-                  <option value="">— No pipelines —</option>
+                  <option value="">{t("crawler.md_pipeline.no_pipelines")}</option>
                 )}
                 {pipelineList.map((n) => (
                   <option key={n} value={n}>
@@ -70,7 +71,7 @@ export default function MdPipelineSection({
               className="crawler-button primary"
               onClick={onCreatePipeline}
             >
-              Create a new pipeline
+              {t("crawler.md_pipeline.create_pipeline")}
             </button>
             <button
               type="button"
@@ -80,39 +81,42 @@ export default function MdPipelineSection({
                 pipelineSaving || !selectedPipelineName || pipelineLoading
               }
             >
-              {pipelineSaving ? "Saving…" : "Save"}
+              {pipelineSaving ? t("crawler.md_pipeline.saving") : t("common.save")}
             </button>
             {pipelineSaveToast && (
               <span className="md-pipeline-toast" role="status">
-                Saved.
+                {t("crawler.md_pipeline.saved_toast")}
               </span>
             )}
             <label className="indexer-select-label md-pipeline-preview-source">
-              Preview source:
+              {t("crawler.md_pipeline.preview_source")}
               <select
                 value={pipelinePreviewSourceId}
                 onChange={(e) => setPipelinePreviewSourceId(e.target.value)}
-                aria-label="Source for pipeline preview"
+                aria-label={t("crawler.md_pipeline.preview_source_aria")}
                 disabled={pipelinePreviewSourcesLoading}
                 className="coreui-select coreui-select--dense"
               >
                 {pipelinePreviewSources.length === 0 &&
                   !pipelinePreviewSourcesLoading && (
-                    <option value="">— No sources —</option>
+                    <option value="">{t("crawler.md_pipeline.no_sources")}</option>
                   )}
                 {pipelinePreviewSources.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.id} ({s.page_count} pages)
+                    {t("crawler.md_pipeline.source_option", {
+                      id: s.id,
+                      count: s.page_count,
+                    })}
                   </option>
                 ))}
               </select>
             </label>
             <label className="indexer-select-label md-pipeline-preview-file">
-              Preview file:
+              {t("crawler.md_pipeline.preview_file")}
               <select
                 value={pipelinePreviewFilename}
                 onChange={(e) => setPipelinePreviewFilename(e.target.value)}
-                aria-label="File for pipeline preview"
+                aria-label={t("crawler.md_pipeline.preview_file_aria")}
                 className="coreui-select coreui-select--dense"
                 disabled={
                   pipelinePreviewFilesLoading || !pipelinePreviewSourceId
@@ -120,7 +124,7 @@ export default function MdPipelineSection({
               >
                 {pipelinePreviewFiles.length === 0 &&
                   !pipelinePreviewFilesLoading && (
-                    <option value="">— No files —</option>
+                    <option value="">{t("crawler.md_pipeline.no_files")}</option>
                   )}
                 {pipelinePreviewFiles.map((f) => (
                   <option key={f.filename} value={f.filename}>
@@ -138,29 +142,32 @@ export default function MdPipelineSection({
                 !pipelinePreviewSourceId ||
                 !pipelinePreviewFilename
               }
-              title="Run this pipeline on the selected file"
+              title={t("crawler.md_pipeline.preview_hint")}
             >
-              {previewLoading ? "Preview…" : "Preview on file"}
+              {previewLoading
+                ? t("crawler.md_pipeline.preview_loading")
+                : t("crawler.md_pipeline.preview_btn")}
             </button>
             <button
               type="button"
               className="crawler-button"
               onClick={onDeletePipeline}
               disabled={!selectedPipelineName || pipelineLoading}
-              title="Delete this pipeline"
+              title={t("crawler.md_pipeline.delete_hint")}
             >
-              Delete this pipeline
+              {t("crawler.md_pipeline.delete_pipeline")}
             </button>
           </div>
 
           {pipelineLoading ? (
-            <div className="loading">Loading pipeline…</div>
+            <div className="loading">{t("crawler.md_pipeline.loading")}</div>
           ) : (
             <>
               <div
                 className="md-pipeline-steps"
                 role="list"
-                aria-label="Pipeline steps"
+                aria-label={t("crawler.md_pipeline.steps_aria")}
+                data-tour="crawler-pipeline-steps"
               >
                 {(pipelineData.steps || []).map((step, index) => {
                   const stepKey = step.id || `idx-${index}`;
@@ -191,7 +198,7 @@ export default function MdPipelineSection({
                   className="crawler-button primary"
                   onClick={() => setShowAddStepMenu(true)}
                 >
-                  + Add step
+                  {t("crawler.md_pipeline.add_step")}
                 </button>
               </div>
 

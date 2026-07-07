@@ -1,4 +1,6 @@
 import CreateCollectionIndexProgress from "./CreateCollectionIndexProgress";
+import { FieldLabelWithHelp } from "./common/InfoButton.jsx";
+import { t } from "../services/i18n.js";
 
 function ModalShell({ title, onClose, className = "", children, footer, closeDisabled = false }) {
   return (
@@ -16,7 +18,7 @@ function ModalShell({ title, onClose, className = "", children, footer, closeDis
             type="button"
             className="modal-close"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("common.close")}
             disabled={closeDisabled}
           >
             &times;
@@ -63,11 +65,10 @@ function SeedUrlsEditor({ seedUrls, onChange }) {
         className="crawler-button small"
         onClick={() => onChange([...seedUrls, ""])}
       >
-        + Add Seed URL
+        {t("crawler.modal.add_seed_url")}
       </button>
       <div className="form-hint">
-        Additional entry points for the crawler. Each URL should be on a new
-        line or separate entry.
+        {t("crawler.modal.seed_urls_hint")}
       </div>
     </div>
   );
@@ -82,24 +83,24 @@ export function CreatePipelineModal({
 }) {
   if (!open) return null;
   return (
-    <ModalShell title="Create a new pipeline" onClose={onClose}>
+    <ModalShell title={t("crawler.pipeline.create_title")} onClose={onClose}>
       <label className="indexer-select-label">
-        Pipeline name (letters, numbers, underscores, hyphens):
+        {t("crawler.pipeline.name_label")}
         <input
           type="text"
           value={newPipelineName}
           onChange={(e) => onChangeName(e.target.value)}
           className="md-pipeline-param-input"
-          placeholder="e.g. apple_docs"
+          placeholder={t("crawler.pipeline.name_placeholder")}
           onKeyDown={(e) => e.key === "Enter" && onConfirm()}
         />
       </label>
       <div className="md-pipeline-modal-actions">
         <button type="button" className="crawler-button primary" onClick={onConfirm}>
-          Create
+          {t("crawler.pipeline.create_btn")}
         </button>
         <button type="button" className="crawler-button ghost" onClick={onClose}>
-          Cancel
+          {t("common.cancel")}
         </button>
       </div>
     </ModalShell>
@@ -115,24 +116,23 @@ export function DeletePipelineConfirmModal({
   if (!open) return null;
   return (
     <ModalShell
-      title="Delete pipeline"
+      title={t("crawler.pipeline.delete_title")}
       onClose={onClose}
       className="md-pipeline-delete-confirm"
     >
       <p className="md-pipeline-delete-message">
-        Are you sure you want to delete the pipeline &quot;{pipelineName}
-        &quot;? This cannot be undone.
+        {t("crawler.pipeline.delete_message", { name: pipelineName })}
       </p>
       <div className="md-pipeline-modal-actions">
         <button type="button" className="crawler-button" onClick={onClose}>
-          Cancel
+          {t("common.cancel")}
         </button>
         <button
           type="button"
           className="crawler-button primary danger"
           onClick={onConfirm}
         >
-          Delete
+          {t("crawler.pipeline.delete_btn")}
         </button>
       </div>
     </ModalShell>
@@ -188,7 +188,7 @@ export function CreateCollectionModal({
   );
   return (
     <ModalShell
-      title="Create New Collection"
+      title={t("crawler.modal.create_collection_title")}
       onClose={onClose}
       closeDisabled={isRunning}
       className={`create-collection-modal${isRunning ? " create-collection-modal--running" : ""}`}
@@ -200,7 +200,7 @@ export function CreateCollectionModal({
             onClick={onCancelCreate}
             disabled={createCanceling}
           >
-            {createCanceling ? "Cancelling..." : "Cancel indexing"}
+            {createCanceling ? t("crawler.modal.cancelling_indexing") : t("crawler.modal.cancel_indexing")}
           </button>
         ) : (
           <>
@@ -209,14 +209,14 @@ export function CreateCollectionModal({
               className="crawler-button"
               onClick={onClose}
             >
-              Cancel
+              {t("common.cancel")}
             </button>
             <button
               type="button"
               className="crawler-button primary"
               onClick={onCreate}
             >
-              Create Collection
+              {t("crawler.modal.create_collection_btn")}
             </button>
           </>
         )
@@ -227,12 +227,12 @@ export function CreateCollectionModal({
           {createProgress.status === "failed" && (
             <div className="create-collection-index-error-banner">
               {(createProgress.error && String(createProgress.error).slice(0, 400)) ||
-                "Collection creation failed."}
+                t("crawler.modal.collection_failed")}
             </div>
           )}
           <CreateCollectionIndexProgress
             progress={createProgress}
-            collectionName={createForm.collection_name || "Collection"}
+            collectionName={createForm.collection_name || t("crawler.modal.collection_default_name")}
             variant="modal"
           />
         </div>
@@ -240,7 +240,11 @@ export function CreateCollectionModal({
       {isRunning ? null : (
         <>
       <div className="form-group">
-        <label>Collection Name *</label>
+        <label>
+          <FieldLabelWithHelp helpRef="indexing#create-collection" helpLabel={t("crawler.modal.collection_name")}>
+            {t("crawler.modal.collection_name")} *
+          </FieldLabelWithHelp>
+        </label>
         <input
           type="text"
           value={createForm.collection_name}
@@ -253,8 +257,12 @@ export function CreateCollectionModal({
           placeholder="my_collection"
         />
       </div>
-      <div className="form-group">
-        <label htmlFor="create-collection-embed-provider">Embedding provider</label>
+      <div className="form-group" data-tour="crawler-collection-embed">
+        <label htmlFor="create-collection-embed-provider">
+          <FieldLabelWithHelp helpRef="indexing#embedding" helpLabel={t("crawler.modal.embed_provider")}>
+            {t("crawler.modal.embed_provider")}
+          </FieldLabelWithHelp>
+        </label>
         <select
           id="create-collection-embed-provider"
           value={createForm.rag_embed_provider_id}
@@ -269,7 +277,7 @@ export function CreateCollectionModal({
           disabled={!embedProviderOptions.length && !defaultEmbedProviderId}
         >
           <option value="">
-            Select provider
+            {t("crawler.modal.select_provider")}
           </option>
           {embedProviderOptions.map((provider) => (
             <option key={provider.provider_id} value={provider.provider_id}>
@@ -279,7 +287,11 @@ export function CreateCollectionModal({
         </select>
       </div>
       <div className="form-group">
-        <label htmlFor="create-collection-embed-model">Embedding model</label>
+        <label htmlFor="create-collection-embed-model">
+          <FieldLabelWithHelp helpRef="indexing#embedding" helpLabel={t("crawler.modal.embed_model")}>
+            {t("crawler.modal.embed_model")}
+          </FieldLabelWithHelp>
+        </label>
         <select
           id="create-collection-embed-model"
           value={createForm.rag_embed_model}
@@ -294,13 +306,15 @@ export function CreateCollectionModal({
         >
           <option value="">
             {currentEmbedProviderId
-              ? "Select model"
-              : "Select provider first"}
+              ? t("crawler.modal.select_model")
+              : t("crawler.modal.select_provider_first")}
           </option>
           {createForm.rag_embed_model &&
             !filteredEmbedModels.some((m) => m.id === createForm.rag_embed_model) && (
               <option value={createForm.rag_embed_model}>
-                {createForm.rag_embed_model} (saved - not in current provider list)
+                {t("crawler.modal.saved_model_suffix", {
+                  model: createForm.rag_embed_model,
+                })}
               </option>
             )}
           {filteredEmbedModels.map((m) => (
@@ -310,13 +324,14 @@ export function CreateCollectionModal({
           ))}
         </select>
         <p className="create-collection-embed-hint">
-          Same pool as in RAG / Qdrant. Choose a model for this indexing run, or
-          leave Server default to use the saved RAG embedding model.
+          {t("crawler.modal.embed_hint")}
         </p>
       </div>
       <div className="form-group">
         <label htmlFor="create-collection-parallel-workers">
-          Parallel embedding requests
+          <FieldLabelWithHelp helpRef="indexing#embedding#parallel" helpLabel={t("crawler.modal.parallel_workers")}>
+            {t("crawler.modal.parallel_workers")}
+          </FieldLabelWithHelp>
         </label>
         <input
           id="create-collection-parallel-workers"
@@ -340,12 +355,15 @@ export function CreateCollectionModal({
           disabled={creating}
         />
         <p className="create-collection-embed-hint">
-          Higher values can speed up indexing, but may increase provider timeouts
-          on limited GPU/VRAM.
+          {t("crawler.modal.parallel_workers_hint")}
         </p>
       </div>
       <div className="form-group">
-        <label>Select Sources *</label>
+        <label>
+          <FieldLabelWithHelp helpRef="indexing#sources" helpLabel={t("crawler.modal.select_sources")}>
+            {t("crawler.modal.select_sources")} *
+          </FieldLabelWithHelp>
+        </label>
         <div className="sources-checkboxes">
           {sources.map((source) => (
             <label key={source.id} className="checkbox-label">
@@ -361,9 +379,13 @@ export function CreateCollectionModal({
           ))}
         </div>
       </div>
-      <div className="form-row">
+      <div className="form-row" data-tour="crawler-collection-chunking">
         <div className="form-group">
-          <label>Chunk Max Size</label>
+          <label>
+            <FieldLabelWithHelp helpRef="indexing#chunking" helpLabel={t("crawler.modal.chunk_max")}>
+              {t("crawler.modal.chunk_max")}
+            </FieldLabelWithHelp>
+          </label>
           <input
             type="number"
             value={createForm.chunk_max_size}
@@ -378,7 +400,11 @@ export function CreateCollectionModal({
           />
         </div>
         <div className="form-group">
-          <label>Chunk Min Size</label>
+          <label>
+            <FieldLabelWithHelp helpRef="indexing#chunking" helpLabel={t("crawler.modal.chunk_min")}>
+              {t("crawler.modal.chunk_min")}
+            </FieldLabelWithHelp>
+          </label>
           <input
             type="number"
             value={createForm.chunk_min_size}
@@ -395,7 +421,11 @@ export function CreateCollectionModal({
       </div>
       <div className="form-row">
         <div className="form-group">
-          <label>Confidence Threshold</label>
+          <label>
+            <FieldLabelWithHelp helpRef="indexing#chunking" helpLabel={t("crawler.modal.confidence_threshold")}>
+              {t("crawler.modal.confidence_threshold")}
+            </FieldLabelWithHelp>
+          </label>
           <input
             type="number"
             step="0.01"
@@ -411,7 +441,11 @@ export function CreateCollectionModal({
           />
         </div>
         <div className="form-group">
-          <label>Top K</label>
+          <label>
+            <FieldLabelWithHelp helpRef="indexing#chunking" helpLabel={t("crawler.modal.top_k")}>
+              {t("crawler.modal.top_k")}
+            </FieldLabelWithHelp>
+          </label>
           <input
             type="number"
             value={createForm.top_k}
@@ -447,7 +481,11 @@ export function SourceModal({
 
   return (
     <ModalShell
-      title={isEdit ? `Edit Source: ${sourceId}` : "Add New Source"}
+      title={
+        isEdit
+          ? t("crawler.modal.edit_source_title", { id: sourceId })
+          : t("crawler.modal.add_source_title")
+      }
       onClose={onClose}
       footer={
         <>
@@ -457,7 +495,7 @@ export function SourceModal({
             onClick={onClose}
             disabled={loading}
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -467,29 +505,33 @@ export function SourceModal({
           >
             {loading
               ? isEdit
-                ? "Updating..."
-                : "Adding..."
+                ? t("crawler.modal.updating")
+                : t("crawler.modal.adding")
               : isEdit
-                ? "Update Source"
-                : "Add Source"}
+                ? t("crawler.modal.update_source_btn")
+                : t("crawler.modal.add_source_btn")}
           </button>
         </>
       }
     >
       {isEdit ? (
         <div className="form-group">
-          <label>Source ID</label>
+          <label>{t("crawler.modal.source_id")}</label>
           <input
             type="text"
             value={form.id}
             disabled
             className="crawler-input-disabled"
           />
-          <div className="form-hint">Source ID cannot be changed</div>
+          <div className="form-hint">{t("crawler.modal.source_id_immutable")}</div>
         </div>
       ) : (
         <div className="form-group">
-          <label>Source ID *</label>
+          <label>
+            <FieldLabelWithHelp helpRef="indexing#sources" helpLabel={t("crawler.modal.source_id")}>
+              {t("crawler.modal.source_id")} *
+            </FieldLabelWithHelp>
+          </label>
           <input
             type="text"
             value={form.id}
@@ -501,14 +543,16 @@ export function SourceModal({
             }
             placeholder="my_source"
           />
-          <div className="form-hint">
-            Alphanumeric, underscores, and hyphens only
-          </div>
+          <div className="form-hint">{t("crawler.modal.source_id_hint")}</div>
         </div>
       )}
 
       <div className="form-group">
-        <label>URL *</label>
+        <label>
+          <FieldLabelWithHelp helpRef="indexing#sources" helpLabel={t("crawler.modal.url")}>
+            {t("crawler.modal.url")} *
+          </FieldLabelWithHelp>
+        </label>
         <input
           type="url"
           value={form.url}
@@ -524,7 +568,11 @@ export function SourceModal({
 
       <div className="form-row">
         <div className="form-group">
-          <label>Max Depth</label>
+          <label>
+            <FieldLabelWithHelp helpRef="indexing#sources" helpLabel={t("crawler.modal.max_depth")}>
+              {t("crawler.modal.max_depth")}
+            </FieldLabelWithHelp>
+          </label>
           <input
             type="number"
             value={form.max_depth}
@@ -539,7 +587,11 @@ export function SourceModal({
           />
         </div>
         <div className="form-group">
-          <label>Crawler</label>
+          <label>
+            <FieldLabelWithHelp helpRef="indexing#sources" helpLabel={t("crawler.modal.crawler_engine")}>
+              {t("crawler.modal.crawler_engine")}
+            </FieldLabelWithHelp>
+          </label>
           <select
             value={form.crawler}
             className="coreui-select"
@@ -550,7 +602,7 @@ export function SourceModal({
               }))
             }
           >
-            <option value="playwright">Playwright</option>
+            <option value="playwright">{t("crawler.engine.playwright")}</option>
           </select>
         </div>
       </div>
@@ -567,12 +619,18 @@ export function SourceModal({
               }))
             }
           />
-          Doc Only (restrict to documentation pages)
+          <FieldLabelWithHelp helpRef="indexing#sources#seed-urls" helpLabel={t("crawler.modal.doc_only")}>
+            {t("crawler.modal.doc_only")}
+          </FieldLabelWithHelp>
         </label>
       </div>
 
       <div className="form-group">
-        <label>Seed URLs (optional)</label>
+        <label>
+          <FieldLabelWithHelp helpRef="indexing#sources#seed-urls" helpLabel={t("crawler.modal.seed_urls")}>
+            {t("crawler.modal.seed_urls")}
+          </FieldLabelWithHelp>
+        </label>
         <SeedUrlsEditor
           seedUrls={form.seed_urls}
           onChange={(seedUrls) =>

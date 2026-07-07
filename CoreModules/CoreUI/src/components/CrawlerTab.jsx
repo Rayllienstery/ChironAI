@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from "react";
+﻿import React, { useMemo, useRef, useState } from "react";
 import {
   CreateCollectionModal,
   CreatePipelineModal,
@@ -17,7 +17,7 @@ import MdPipelineSection from "./crawlerTab/MdPipelineSection";
 import { useCreateCollectionFlow } from "./crawlerTab/useCreateCollectionFlow";
 import { useCrawlerSection } from "./crawlerTab/useCrawlerSection";
 import { useMdPipelineSection } from "./crawlerTab/useMdPipelineSection";
-import { resolveCrawlerTourSteps } from "./onboarding/contextualTours.js";
+import { createCrawlerTourSteps } from "./onboarding/contextualTours.js";
 import { useContextualTour } from "./onboarding/useContextualTour.js";
 
 function CrawlerTab() {
@@ -34,7 +34,42 @@ function CrawlerTab() {
   });
   const mdPipeline = useMdPipelineSection({ activeSection });
 
-  const crawlerTourSteps = useMemo(() => resolveCrawlerTourSteps(), []);
+  const tourActionsRef = useRef({});
+  tourActionsRef.current = {
+    setActiveSection,
+    openCreateCollectionModal: () => createCollection.setShowCreateModal(true),
+    closeModals: () => {
+      crawler.setShowAddSourceModal(false);
+      createCollection.setShowCreateModal(false);
+    },
+    selectFirstSource: () => {
+      const first = crawler.sources[0];
+      if (first && crawler.selectedSource !== first.id) {
+        crawler.handleSourceClick(first.id);
+      }
+    },
+    expandFirstMdStep: () => {
+      const steps = mdPipeline.pipelineData?.steps || [];
+      if (steps.length === 0) return;
+      const stepKey = steps[0].id || "idx-0";
+      if (!mdPipeline.expandedMdSteps.has(stepKey)) {
+        mdPipeline.toggleMdStepExpanded(stepKey);
+      }
+    },
+  };
+
+  const crawlerTourSteps = useMemo(
+    () =>
+      createCrawlerTourSteps({
+        setActiveSection: (...args) => tourActionsRef.current.setActiveSection?.(...args),
+        openCreateCollectionModal: () =>
+          tourActionsRef.current.openCreateCollectionModal?.(),
+        closeModals: () => tourActionsRef.current.closeModals?.(),
+        selectFirstSource: () => tourActionsRef.current.selectFirstSource?.(),
+        expandFirstMdStep: () => tourActionsRef.current.expandFirstMdStep?.(),
+      }),
+    [],
+  );
   useContextualTour("crawler", crawlerTourSteps, !crawler.loading);
 
   return (
