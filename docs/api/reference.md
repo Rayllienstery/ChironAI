@@ -3,8 +3,8 @@
 > Generated from the live OpenAPI document. Do not edit by hand; run `python scripts/gen_api_docs.py`.
 
 - OpenAPI: `3.1.0`
-- Version: `0.8.19`
-- Paths: `133`
+- Version: `0.8.39`
+- Paths: `135`
 
 Chiron AI STABLE OpenAPI description generated from Flask routes.
 
@@ -1177,6 +1177,22 @@ Responses:
 
 ### Health
 
+#### `GET /api/webui/health`
+
+**Summary:** Get health
+
+Registered Flask endpoint `webui.webui_health` for `GET /api/webui/health`. Payload shape is currently described generically until the route is promoted into core contracts.
+
+- Operation ID: `webui_webui_health_get`
+- Flask endpoint: `webui.webui_health`
+- Request body: `-`
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | OK | application/json: GenericObject |
+
 #### `GET /health`
 
 **Summary:** Check ChironAI stack health
@@ -1242,6 +1258,24 @@ Parameters:
 | Name | In | Required | Schema |
 |------|----|----------|--------|
 | slug | path | True | string |
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | OK | application/json: GenericObject |
+
+### Live
+
+#### `GET /live`
+
+**Summary:** Get live
+
+Registered Flask endpoint `live` for `GET /live`. Payload shape is currently described generically until the route is promoted into core contracts.
+
+- Operation ID: `live_get`
+- Flask endpoint: `live`
+- Request body: `-`
 
 Responses:
 
@@ -1689,9 +1723,9 @@ Responses:
 
 #### `GET /api/webui/notifications`
 
-**Summary:** Get notifications
+**Summary:** List CoreUI notifications
 
-Registered Flask endpoint `webui.get_coreui_notifications` for `GET /api/webui/notifications`. Payload shape is currently described generically until the route is promoted into core contracts.
+Returns persisted notification center entries for a browser session. Query parameter ``session_id`` is required.
 
 - Operation ID: `webui_get_coreui_notifications_get`
 - Flask endpoint: `webui.get_coreui_notifications`
@@ -1701,51 +1735,51 @@ Responses:
 
 | Status | Description | Schema |
 |--------|-------------|--------|
-| 200 | OK | application/json: GenericObject |
+| 200 | CoreUI notification list. | application/json: NotificationsListResponse |
 
 #### `POST /api/webui/notifications`
 
-**Summary:** Create notifications
+**Summary:** Create CoreUI notification
 
-Registered Flask endpoint `webui.create_coreui_notification` for `POST /api/webui/notifications`. Payload shape is currently described generically until the route is promoted into core contracts.
+Persists an error, event, or info notification for the CoreUI notification center.
 
 - Operation ID: `webui_create_coreui_notification_post`
 - Flask endpoint: `webui.create_coreui_notification`
-- Request body: `application/json: GenericObject`
+- Request body: `application/json: NotificationCreateRequest`
 
 Responses:
 
 | Status | Description | Schema |
 |--------|-------------|--------|
-| 200 | OK | application/json: GenericObject |
+| 200 | Created notification id. | application/json: NotificationCreateResponse |
 | 400 | Bad request | application/json: ErrorResponse |
 
 #### `POST /api/webui/notifications/clear`
 
-**Summary:** Create notifications clear
+**Summary:** Clear CoreUI notifications
 
-Registered Flask endpoint `webui.clear_coreui_notifications` for `POST /api/webui/notifications/clear`. Payload shape is currently described generically until the route is promoted into core contracts.
+Deletes all persisted notifications for a session. Live activity cards are unaffected.
 
 - Operation ID: `webui_clear_coreui_notifications_post`
 - Flask endpoint: `webui.clear_coreui_notifications`
-- Request body: `application/json: GenericObject`
+- Request body: `application/json: NotificationsClearRequest`
 
 Responses:
 
 | Status | Description | Schema |
 |--------|-------------|--------|
-| 200 | OK | application/json: GenericObject |
+| 200 | Clear result. | application/json: NotificationsClearResponse |
 | 400 | Bad request | application/json: ErrorResponse |
 
 #### `PATCH /api/webui/notifications/{nid}/dismiss`
 
-**Summary:** Patch notifications nid dismiss
+**Summary:** Dismiss CoreUI notification
 
-Registered Flask endpoint `webui.dismiss_coreui_notification` for `PATCH /api/webui/notifications/{nid}/dismiss`. Payload shape is currently described generically until the route is promoted into core contracts.
+Marks a persisted notification as dismissed for the requesting session.
 
 - Operation ID: `webui_dismiss_coreui_notification_patch`
 - Flask endpoint: `webui.dismiss_coreui_notification`
-- Request body: `application/json: GenericObject`
+- Request body: `application/json: NotificationDismissRequest`
 
 Parameters:
 
@@ -1757,7 +1791,7 @@ Responses:
 
 | Status | Description | Schema |
 |--------|-------------|--------|
-| 200 | OK | application/json: GenericObject |
+| 200 | Dismiss acknowledgement. | application/json: NotificationDismissResponse |
 | 400 | Bad request | application/json: ErrorResponse |
 
 ### Performance
@@ -3127,6 +3161,7 @@ Responses:
 | Name | Type | Required Fields |
 |------|------|-----------------|
 | AppSettingsResponse | object | - |
+| CoreUiNotification | object | - |
 | DependenciesResponse | object | - |
 | Dependency | object | - |
 | DependencyJobResponse | object | - |
@@ -3151,6 +3186,13 @@ Responses:
 | ModelSettingsGetResponse | object | - |
 | ModelSettingsPostResponse | object | - |
 | ModelsListResponse | object | models |
+| NotificationCreateRequest | object | session_id, source, title |
+| NotificationCreateResponse | object | id |
+| NotificationDismissRequest | object | session_id |
+| NotificationDismissResponse | object | ok |
+| NotificationsClearRequest | object | session_id |
+| NotificationsClearResponse | object | deleted |
+| NotificationsListResponse | object | notifications |
 | OpenAiChatCompletionRequest | object | messages |
 | OpenAiChatCompletionResponse | object | - |
 | OpenAiModelListResponse | object | - |

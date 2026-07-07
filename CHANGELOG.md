@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.40] - 2026-07-07
+### Changed
+- Regenerated `docs/api/reference.md` for OpenAPI 0.8.39 (135 paths; health/live/notifications) (P0.6).
+- Advisory Storybook build on `macos-fast` CI (P2.8).
+
 ## [0.8.39] - 2026-07-07
 ### Added
 - Advisory `coreui-storybook` step in full quality gate profile (P2.8).
