@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.43] - 2026-07-07
+### Changed
+- Localize `AgentTraceSummaryCards` (52 trace.summary keys, en/uk) (P1.10).
+- i18n catalog: 240 keys; `common.yes` / `common.no`.
+
 ## [0.8.42] - 2026-07-07
 ### Changed
 - P1.10 incremental i18n: App header GPU metrics, session retry banner, HelpPanel strings (en/uk).

@@ -1,4 +1,5 @@
 import '../styles/components/DashboardTab.css';
+import { t } from '../services/i18n';
 
 function kv(label, value, key) {
   return (
@@ -22,13 +23,23 @@ function chipList(items) {
   if (!items || items.length === 0) return <span className="dashboard-card-muted">—</span>;
   return (
     <span className="agent-trace-summary-chips">
-      {items.map((t, i) => (
-        <code key={`${t}-${i}`} className="agent-trace-summary-chip">
-          {t}
+      {items.map((item, i) => (
+        <code key={`${item}-${i}`} className="agent-trace-summary-chip">
+          {item}
         </code>
       ))}
     </span>
   );
+}
+
+function statusLabel(ok) {
+  return ok ? t('trace.summary.status_ok') : t('trace.summary.status_failed');
+}
+
+function yesNoLabel(value) {
+  if (value === true) return t('common.yes');
+  if (value === false) return t('common.no');
+  return '—';
 }
 
 /**
@@ -36,7 +47,7 @@ function chipList(items) {
  */
 export default function AgentTraceSummaryCards({ summary }) {
   if (!summary || summary.empty) {
-    return <p className="dashboard-card-muted">No trace data to summarize.</p>;
+    return <p className="dashboard-card-muted">{t('trace.summary.empty')}</p>;
   }
 
   const perRows = summary.perModelCallTokenRows || [];
@@ -44,8 +55,7 @@ export default function AgentTraceSummaryCards({ summary }) {
   const skillLoads = summary.skillLoads || [];
   const passThrough = summary.passThrough || [];
   const skillsSnap = summary.skillsSnapshot;
-  const mergeLabel =
-    summary.mergeClientTools === true ? 'yes' : summary.mergeClientTools === false ? 'no' : '—';
+  const mergeLabel = yesNoLabel(summary.mergeClientTools);
 
   const tokenMismatch =
     perRows.length > 0 &&
@@ -55,28 +65,31 @@ export default function AgentTraceSummaryCards({ summary }) {
   return (
     <div className="agent-trace-summary-root">
       <p className="agent-trace-summary-lead dashboard-card-muted">
-        Token figures are <strong>internal estimates</strong> (serialized message size / 4), not provider billing usage.
+        {t('trace.summary.token_lead_prefix')}{' '}
+        <strong>{t('trace.summary.token_lead_emphasis')}</strong>{' '}
+        {t('trace.summary.token_lead_suffix')}
       </p>
 
       <section className="agent-trace-summary-section" aria-labelledby="agent-sum-overview">
         <h4 id="agent-sum-overview" className="dashboard-proxy-block-title">
-          Overview
+          {t('trace.summary.overview')}
         </h4>
         {summary.traceId ? (
           <p className="coreui-text-break-all">
-            <strong>trace_id</strong> <code>{summary.traceId}</code>
+            <strong>{t('trace.summary.trace_id')}</strong> <code>{summary.traceId}</code>
           </p>
         ) : null}
         <div className="dashboard-rag-status-grid">
-          {pill('Steps', summary.stepCount)}
-          {pill('Duration', `${summary.durationMs} ms`)}
-          {pill('Model', summary.resolvedModel)}
+          {pill(t('trace.summary.steps'), summary.stepCount)}
+          {pill(t('trace.summary.duration'), t('trace.summary.duration_ms', { value: summary.durationMs }))}
+          {pill(t('trace.summary.model'), summary.resolvedModel)}
         </div>
-        {summary.clientModel != null && summary.clientModel !== '' && kv('Client model', summary.clientModel, 'cm')}
+        {summary.clientModel != null && summary.clientModel !== '' &&
+          kv(t('trace.summary.client_model'), summary.clientModel, 'cm')}
         {summary.thinkRequested != null &&
-          kv('Provider think requested', summary.thinkRequested ? 'yes' : 'no', 'think')}
-        {kv('Messages in request', summary.requestMessageCount, 'msg')}
-        {kv('merge_client_tools', mergeLabel, 'mct')}
+          kv(t('trace.summary.think_requested'), yesNoLabel(summary.thinkRequested), 'think')}
+        {kv(t('trace.summary.messages_in_request'), summary.requestMessageCount, 'msg')}
+        {kv(t('trace.summary.merge_client_tools'), mergeLabel, 'mct')}
         {summary.error != null && (
           <p className="dashboard-card-error">
             {summary.error}
@@ -86,30 +99,35 @@ export default function AgentTraceSummaryCards({ summary }) {
 
       <section className="agent-trace-summary-section" aria-labelledby="agent-sum-tokens">
         <h4 id="agent-sum-tokens" className="dashboard-proxy-block-title">
-          Tokens (estimate)
+          {t('trace.summary.tokens')}
         </h4>
         <div className="dashboard-rag-status-grid">
-          {pill('Prompt total', summary.totalPromptTokensEst)}
-          {pill('Completion total', summary.totalCompletionTokensEst)}
-          {pill('Prompt + completion', summary.totalPromptTokensEst + summary.totalCompletionTokensEst)}
+          {pill(t('trace.summary.prompt_total'), summary.totalPromptTokensEst)}
+          {pill(t('trace.summary.completion_total'), summary.totalCompletionTokensEst)}
+          {pill(
+            t('trace.summary.prompt_plus_completion'),
+            summary.totalPromptTokensEst + summary.totalCompletionTokensEst,
+          )}
         </div>
         {tokenMismatch && (
           <p className="coreui-text-muted-sm">
-            Sum of per-step model estimates (prompt {summary.sumPromptFromSteps}, completion{' '}
-            {summary.sumCompletionFromSteps}) differs from trace totals — partial run or legacy trace.
+            {t('trace.summary.token_mismatch', {
+              prompt: summary.sumPromptFromSteps,
+              completion: summary.sumCompletionFromSteps,
+            })}
           </p>
         )}
         {perRows.length > 0 && (
           <details className="dashboard-trace-item coreui-section-block">
-            <summary>Per model_call step</summary>
+            <summary>{t('trace.summary.per_model_call')}</summary>
             <table className="agent-trace-summary-table">
               <thead>
                 <tr>
-                  <th>Agent step</th>
-                  <th>Prompt est.</th>
-                  <th>Completion est.</th>
-                  <th>Prompt eval</th>
-                  <th>Eval</th>
+                  <th>{t('trace.summary.agent_step')}</th>
+                  <th>{t('trace.summary.prompt_est')}</th>
+                  <th>{t('trace.summary.completion_est')}</th>
+                  <th>{t('trace.summary.prompt_eval')}</th>
+                  <th>{t('trace.summary.eval')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -130,37 +148,41 @@ export default function AgentTraceSummaryCards({ summary }) {
 
       <section className="agent-trace-summary-section" aria-labelledby="agent-sum-ctx">
         <h4 id="agent-sum-ctx" className="dashboard-proxy-block-title">
-          Context volume
+          {t('trace.summary.context_volume')}
         </h4>
         <div className="dashboard-rag-status-grid">
-          {pill('RAG context (chars)', summary.ragContextCharsTotal)}
-          {pill('Skills context (chars)', summary.skillContextCharsTotal)}
-          {pill('RAG chunks (sum)', summary.ragChunksTotal)}
+          {pill(t('trace.summary.rag_context_chars'), summary.ragContextCharsTotal)}
+          {pill(t('trace.summary.skills_context_chars'), summary.skillContextCharsTotal)}
+          {pill(t('trace.summary.rag_chunks_sum'), summary.ragChunksTotal)}
         </div>
       </section>
 
       {summary.processRssMb != null && (
         <section className="agent-trace-summary-section" aria-labelledby="agent-sum-rss">
           <h4 id="agent-sum-rss" className="dashboard-proxy-block-title">
-            Process
+            {t('trace.summary.process')}
           </h4>
-          <div className="dashboard-rag-status-grid">{pill('RSS (MB)', summary.processRssMb)}</div>
+          <div className="dashboard-rag-status-grid">{pill(t('trace.summary.rss_mb'), summary.processRssMb)}</div>
         </section>
       )}
 
       <section className="agent-trace-summary-section" aria-labelledby="agent-sum-rag">
         <h4 id="agent-sum-rag" className="dashboard-proxy-block-title">
-          RAG
+          {t('trace.summary.rag')}
         </h4>
         {ragCalls.length === 0 ? (
-          <p className="dashboard-card-muted">No rag_query steps in this trace.</p>
+          <p className="dashboard-card-muted">{t('trace.summary.no_rag_steps')}</p>
         ) : (
           <ul className="agent-trace-summary-list">
             {ragCalls.map((r, i) => (
               <li key={i}>
                 <span className={r.ok ? '' : 'dashboard-card-error'}>
-                  {r.ok ? 'OK' : 'Failed'} · chunks {r.chunks} · {r.contextChars} chars
-                  {r.step != null ? ` · step ${r.step}` : ''}
+                  {t('trace.summary.rag_result', {
+                    status: statusLabel(r.ok),
+                    chunks: r.chunks,
+                    chars: r.contextChars,
+                  })}
+                  {r.step != null ? t('trace.summary.step_suffix', { step: r.step }) : ''}
                 </span>
                 {r.query ? (
                   <div className="dashboard-card-muted agent-trace-summary-query">{r.query}</div>
@@ -174,18 +196,21 @@ export default function AgentTraceSummaryCards({ summary }) {
 
       <section className="agent-trace-summary-section" aria-labelledby="agent-sum-skills">
         <h4 id="agent-sum-skills" className="dashboard-proxy-block-title">
-          Skills
+          {t('trace.summary.skills')}
         </h4>
         {skillsSnap && (
           <div className="dashboard-card-muted">
-            Enabled: {skillsSnap.enabledCount} · Loaded invocations: {skillsSnap.loadedCount}
+            {t('trace.summary.skills_enabled', {
+              enabled: skillsSnap.enabledCount,
+              loaded: skillsSnap.loadedCount,
+            })}
             {skillsSnap.loadedInvocations.length > 0 ? (
               <div className="coreui-section-block">{chipList(skillsSnap.loadedInvocations)}</div>
             ) : null}
           </div>
         )}
         {!skillsSnap && skillLoads.length === 0 && (
-          <p className="dashboard-card-muted">No skills metadata or load_skill steps.</p>
+          <p className="dashboard-card-muted">{t('trace.summary.no_skills')}</p>
         )}
         {skillLoads.length > 0 && (
           <ul className="agent-trace-summary-list">
@@ -199,8 +224,11 @@ export default function AgentTraceSummaryCards({ summary }) {
                   </>
                 ) : null}
                 {' · '}
-                {s.ok ? 'OK' : 'Failed'} · {s.contextChars} chars
-                {s.step != null ? ` · step ${s.step}` : ''}
+                {t('trace.summary.skill_result', {
+                  status: statusLabel(s.ok),
+                  chars: s.contextChars,
+                })}
+                {s.step != null ? t('trace.summary.step_suffix', { step: s.step }) : ''}
                 {s.error ? <div className="dashboard-card-error">{s.error}</div> : null}
               </li>
             ))}
@@ -210,16 +238,16 @@ export default function AgentTraceSummaryCards({ summary }) {
 
       <section className="agent-trace-summary-section" aria-labelledby="agent-sum-tools">
         <h4 id="agent-sum-tools" className="dashboard-proxy-block-title">
-          Server tools (assistant requested)
+          {t('trace.summary.server_tools')}
         </h4>
         <p className="coreui-text-muted-sm">
-          Order of tool_calls across all model turns (includes rag_query / load_skill when the model asked for them).
+          {t('trace.summary.server_tools_hint')}
         </p>
         {chipList(summary.serverToolCallsOrdered)}
         {summary.serverToolCallsUnique && summary.serverToolCallsUnique.length > 0 && (
           <div className="coreui-section-block">
             <span className="coreui-text-muted-sm">
-              Unique:{' '}
+              {t('trace.summary.unique')}{' '}
             </span>
             {chipList(summary.serverToolCallsUnique)}
           </div>
@@ -229,15 +257,15 @@ export default function AgentTraceSummaryCards({ summary }) {
       {passThrough.length > 0 && (
         <section className="agent-trace-summary-section" aria-labelledby="agent-sum-pt">
           <h4 id="agent-sum-pt" className="dashboard-proxy-block-title">
-            IDE pass-through
+            {t('trace.summary.ide_passthrough')}
           </h4>
           <p className="coreui-text-muted-sm">
-            Tool batch returned to the client for execution outside the proxy process.
+            {t('trace.summary.ide_passthrough_hint')}
           </p>
           <ul className="agent-trace-summary-list">
             {passThrough.map((p, i) => (
               <li key={i}>
-                Step {p.step != null ? p.step : '—'}: {chipList(p.names)}
+                {t('trace.summary.passthrough_step', { step: p.step != null ? p.step : '—' })} {chipList(p.names)}
               </li>
             ))}
           </ul>
@@ -246,18 +274,23 @@ export default function AgentTraceSummaryCards({ summary }) {
 
       <section className="agent-trace-summary-section" aria-labelledby="agent-sum-ide">
         <h4 id="agent-sum-ide" className="dashboard-proxy-block-title">
-          IDE tool schema
+          {t('trace.summary.ide_tool_schema')}
         </h4>
         <p>
-          <strong>{summary.clientToolNamesCount}</strong> tools in request schema
-          {summary.clientToolNamesPreview && summary.clientToolNamesPreview.length > 0 ? ':' : '.'}
+          <strong>{summary.clientToolNamesCount}</strong>{' '}
+          {t('trace.summary.tools_in_schema_label')}
+          {summary.clientToolNamesPreview && summary.clientToolNamesPreview.length > 0
+            ? t('trace.summary.tools_in_schema_suffix')
+            : t('trace.summary.tools_in_schema_end')}
         </p>
         {summary.clientToolNamesPreview && summary.clientToolNamesPreview.length > 0 && (
           <div className="coreui-section-block">{chipList(summary.clientToolNamesPreview)}</div>
         )}
         {summary.clientToolNamesCount > (summary.clientToolNamesPreview || []).length && (
           <p className="coreui-text-muted-sm">
-            …and {summary.clientToolNamesCount - summary.clientToolNamesPreview.length} more (see request JSON).
+            {t('trace.summary.tools_in_schema_more', {
+              count: summary.clientToolNamesCount - summary.clientToolNamesPreview.length,
+            })}
           </p>
         )}
       </section>

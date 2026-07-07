@@ -14,6 +14,13 @@ const allowIdentical = new Set([
   'nav.rag_fusion_proxy',
   'nav.swagger',
   'settings.db_path.placeholder',
+  'trace.summary.trace_id',
+  'trace.summary.merge_client_tools',
+  'trace.summary.rag',
+  'trace.summary.status_ok',
+  'trace.summary.eval',
+  'trace.summary.tools_in_schema_suffix',
+  'trace.summary.tools_in_schema_end',
 ]);
 
 function readJson(file) {
