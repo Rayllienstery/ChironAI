@@ -226,6 +226,13 @@ RELEASE_GATE_EXTRA: tuple[GateStep, ...] = (
         180,
         required=False,
     ),
+    GateStep(
+        "coreui-e2e",
+        _npm_command("run", "e2e"),
+        COREUI_ROOT,
+        900,
+        required=False,
+    ),
 )
 
 RELEASE_GATE: tuple[GateStep, ...] = FULL_GATE + RELEASE_TYPING_GATE + RELEASE_GATE_EXTRA

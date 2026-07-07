@@ -69,6 +69,7 @@ Everything in `full`, plus:
 | `trivy image chironai:gate` | advisory | With `--include-advisory` |
 | `scripts/startup_smoke.sh` | yes on Linux/WSL | Skipped on native Windows |
 | `scripts/startup_smoke_bat.ps1` | advisory | Windows smoke helper |
+| CoreUI `npm run e2e` | advisory | With `--include-advisory`; Playwright smoke |
 
 ## Platform parity
 

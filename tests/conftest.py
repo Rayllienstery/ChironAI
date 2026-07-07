@@ -99,6 +99,27 @@ def tmp_path() -> Path:
 
 
 @pytest.fixture(autouse=True)
+def _reset_webui_sqlite_singletons() -> Iterator[None]:
+    """Drop cached SQLite repository singletons so connections are not leaked across tests."""
+    yield
+    import gc
+
+    for module_name, attr in (
+        ("infrastructure.database.notifications_repository", "_notifications_repository"),
+        ("infrastructure.database.session_manager", "_session_manager"),
+        ("infrastructure.database.logs_repository", "_logs_repository"),
+        ("infrastructure.database.settings_repository", "_settings_repository"),
+        ("infrastructure.database.rag_test_runs_repository", "_rag_test_runs_repository"),
+    ):
+        try:
+            module = __import__(module_name, fromlist=[attr])
+            setattr(module, attr, None)
+        except Exception:
+            pass
+    gc.collect()
+
+
+@pytest.fixture(autouse=True)
 def _disable_extension_background_bootstrap_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep tests from leaking long-lived extension bootstrap threads."""
     try:

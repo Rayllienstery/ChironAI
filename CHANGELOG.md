@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.36] - 2026-07-07
+### Changed
+- Add advisory `coreui-e2e` step to release quality gate profile (P2.14c).
+- Reset WebUI SQLite repository singletons after each test to avoid connection leaks (P3.4).
+
+### Added
+- Document Trivy/CodeCov advisory CI policy; mark `v1_responses.py` coverage target met at ~78% (P2.14b, P2.16).
+
 ## [0.8.35] - 2026-07-07
 ### Changed
 - CI `release` job runs `quality_gate.py --include-advisory` for local parity (P2.14a).
