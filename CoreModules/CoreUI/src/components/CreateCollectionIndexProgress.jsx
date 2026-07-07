@@ -1,27 +1,39 @@
-const INDEXING_PHASE_LABELS = {
-  reading: "Reading file",
-  prepare: "Preparing markdown",
-  chunking: "Chunking markdown",
-  embedding: "Embedding vectors",
-  saving: "Writing to Qdrant",
-  cancelling: "Cancelling",
-  cancelled: "Cancelled",
+import { t } from "../services/i18n.js";
+
+const INDEXING_PHASE_KEYS = {
+  reading: "crawler.index_progress.phase.reading",
+  prepare: "crawler.index_progress.phase.prepare",
+  chunking: "crawler.index_progress.phase.chunking",
+  embedding: "crawler.index_progress.phase.embedding",
+  saving: "crawler.index_progress.phase.saving",
+  cancelling: "crawler.index_progress.phase.cancelling",
+  cancelled: "crawler.index_progress.phase.cancelled",
   idle: "",
-  complete: "Complete",
+  complete: "crawler.index_progress.phase.complete",
 };
 
-const SKIP_REASON_LABELS = {
-  read_error: "Read error",
-  too_short: "Too short / empty file",
-  empty_after_prepare: "Empty after prepare (incl. reject_low_signal pipeline step)",
-  filename_excluded: "Filename excluded",
-  content_excluded: "Content excluded",
-  chunk_failed: "Chunking failed",
-  no_valid_chunks: "No quality chunks",
-  embed_failed: "Embedding failed",
-  dim_mismatch: "Vector dimension mismatch",
-  other: "Other",
+const SKIP_REASON_KEYS = {
+  read_error: "crawler.index_progress.skip.read_error",
+  too_short: "crawler.index_progress.skip.too_short",
+  empty_after_prepare: "crawler.index_progress.skip.empty_after_prepare",
+  filename_excluded: "crawler.index_progress.skip.filename_excluded",
+  content_excluded: "crawler.index_progress.skip.content_excluded",
+  chunk_failed: "crawler.index_progress.skip.chunk_failed",
+  no_valid_chunks: "crawler.index_progress.skip.no_valid_chunks",
+  embed_failed: "crawler.index_progress.skip.embed_failed",
+  dim_mismatch: "crawler.index_progress.skip.dim_mismatch",
+  other: "crawler.index_progress.skip.other",
 };
+
+function getPhaseLabel(phaseKey) {
+  const messageKey = INDEXING_PHASE_KEYS[phaseKey];
+  return messageKey ? t(messageKey) : phaseKey;
+}
+
+function getSkipReasonLabel(reason) {
+  const messageKey = SKIP_REASON_KEYS[reason];
+  return messageKey ? t(messageKey) : reason;
+}
 
 function formatIndexNumber(value) {
   const n = Number(value || 0);
@@ -73,20 +85,33 @@ function embeddingHistoryRows(progress, currentFile) {
 }
 
 function activityStatusLabel(row) {
-  if (row.status === "error") return "Error";
-  if (row.status === "skipped") return "Skipped";
-  return "Embedding";
+  if (row.status === "error") return t("crawler.index_progress.status.error");
+  if (row.status === "skipped") return t("crawler.index_progress.status.skipped");
+  return t("crawler.index_progress.status.embedding");
 }
 
 function activityMetrics(row) {
   if (row.status === "skipped" || row.status === "error") {
-    const reason = SKIP_REASON_LABELS[row.reason] || row.reason || activityStatusLabel(row);
-    const chars = row.chars > 0 ? ` / ${formatIndexNumber(row.chars)} chars` : "";
+    const reason = getSkipReasonLabel(row.reason) || activityStatusLabel(row);
+    const chars =
+      row.chars > 0
+        ? t("crawler.index_progress.metrics.chars_suffix", {
+            chars: formatIndexNumber(row.chars),
+          })
+        : "";
     return `${reason}${chars}`;
   }
-  return `${formatIndexNumber(row.chars)} chars / ${formatIndexNumber(row.chunks)} chunks${
-    row.chunkMs > 0 ? ` / cut ${formatDurationMs(row.chunkMs)}` : ""
-  }`;
+  const cut =
+    row.chunkMs > 0
+      ? t("crawler.index_progress.metrics.cut_suffix", {
+          duration: formatDurationMs(row.chunkMs),
+        })
+      : "";
+  return t("crawler.index_progress.metrics.active", {
+    chars: formatIndexNumber(row.chars),
+    chunks: formatIndexNumber(row.chunks),
+    cut,
+  });
 }
 
 export function createCollectionFinalLogMetadata(progress, jobId, collectionName) {
@@ -103,7 +128,8 @@ export function createCollectionFinalLogMetadata(progress, jobId, collectionName
         : [];
   return {
     job_id: jobId || "",
-    collection_name: collectionName || progress?.collection_name || "Collection",
+    collection_name:
+      collectionName || progress?.collection_name || t("crawler.modal.collection_default_name"),
     status: progress?.status || "unknown",
     source_ids: progress?.source_ids || stats.source_ids || [],
     processed_pages: progress?.processed_pages ?? stats.processed_pages ?? 0,
@@ -157,7 +183,7 @@ export default function CreateCollectionIndexProgress({
   const sr = progress.skip_reasons || {};
   const skipEntries = Object.entries(sr).filter(([, n]) => n > 0);
   const phaseKey = progress.current_phase || "";
-  const phaseLabel = INDEXING_PHASE_LABELS[phaseKey] || phaseKey;
+  const phaseLabel = getPhaseLabel(phaseKey);
   const phaseElapsedMs = Number(progress.current_phase_elapsed_ms || 0);
   const total = progress.total_pages || 0;
   const processed = progress.processed_pages ?? 0;
@@ -185,22 +211,32 @@ export default function CreateCollectionIndexProgress({
   const phaseDurations = progress.phase_durations_ms || {};
   const elapsedMs = Number(progress.elapsed_ms || 0);
   const extraStats = [
-    ["Removed chars", progress.prepare_removed_chars],
-    ["Prepared chars", progress.prepare_output_chars],
-    ["Empty-page removed chars", progress.empty_after_prepare_removed_chars],
-    ["Deduped chunks", progress.deduped_chunks],
+    ["crawler.index_progress.extra.removed_chars", progress.prepare_removed_chars],
+    ["crawler.index_progress.extra.prepared_chars", progress.prepare_output_chars],
+    [
+      "crawler.index_progress.extra.empty_page_removed",
+      progress.empty_after_prepare_removed_chars,
+    ],
+    ["crawler.index_progress.extra.deduped_chunks", progress.deduped_chunks],
   ].filter(([, value]) => Number(value || 0) > 0);
   const timeStats = [
-    ["elapsed", elapsedMs],
-    ["embedding", phaseDurations.embedding],
-    ["chunking", phaseDurations.chunking],
-    ["prepare", phaseDurations.prepare],
-    ["saving", phaseDurations.saving],
+    ["crawler.index_progress.time.elapsed", elapsedMs],
+    ["crawler.index_progress.time.embedding", phaseDurations.embedding],
+    ["crawler.index_progress.time.chunking", phaseDurations.chunking],
+    ["crawler.index_progress.time.prepare", phaseDurations.prepare],
+    ["crawler.index_progress.time.saving", phaseDurations.saving],
   ].filter(([, value]) => Number(value || 0) > 0);
   const recentIssues =
     Array.isArray(progress.recent_skips) && progress.recent_skips.length > 0
       ? progress.recent_skips
       : (progress.errors || []).map((err) => ({ detail: String(err) }));
+  const defaultCollectionName = t("crawler.modal.collection_default_name");
+  const doneDuration =
+    elapsedMs > 0
+      ? t("crawler.index_progress.done_duration", {
+          duration: formatDurationMs(elapsedMs),
+        })
+      : "";
 
   if (variant === "toast") {
     const sourceCount = (progress.source_ids || []).length;
@@ -214,35 +250,41 @@ export default function CreateCollectionIndexProgress({
             <div
               className="create-collection-toast-spinner"
               aria-hidden="true"
-              title="Indexing in progress"
+              title={t("crawler.index_progress.indexing_in_progress")}
             />
             <div className="create-collection-toast-compact-status-text">
               <span>
-                {phaseLabel || "Indexing"}
+                {phaseLabel || t("crawler.index_progress.indexing")}
                 {phaseElapsedMs > 0 ? ` / ${formatDurationMs(phaseElapsedMs)}` : ""}
               </span>
               {sourceCount > 0 && (
                 <span className="create-collection-toast-compact-muted">
-                  {sourceCount} sources
+                  {t("crawler.index_progress.source_count", { count: sourceCount })}
                 </span>
               )}
             </div>
           </div>
         )}
 
-        <div className="create-collection-toast-metrics" aria-label="Indexing progress">
+        <div
+          className="create-collection-toast-metrics"
+          aria-label={t("crawler.index_progress.aria.progress")}
+        >
           <span>
-            <strong>{livePages}</strong>/{total || "..."} processed
+            <strong>{livePages}</strong>/{total || "..."}{" "}
+            {t("crawler.index_progress.toast.processed")}
           </span>
           <span>
-            <strong>{progress.skipped_pages ?? 0}</strong> skipped
+            <strong>{progress.skipped_pages ?? 0}</strong>{" "}
+            {t("crawler.index_progress.stat.skipped")}
           </span>
           <span>
-            <strong>{liveChunks}</strong> chunks
+            <strong>{liveChunks}</strong> {t("crawler.index_progress.stat.chunks")}
           </span>
           {elapsedMs > 0 && (
             <span>
-              <strong>{formatDurationMs(elapsedMs)}</strong> elapsed
+              <strong>{formatDurationMs(elapsedMs)}</strong>{" "}
+              {t("crawler.index_progress.time.elapsed")}
             </span>
           )}
         </div>
@@ -255,7 +297,7 @@ export default function CreateCollectionIndexProgress({
 
         {topSkip && (
           <div className="create-collection-toast-skip">
-            {SKIP_REASON_LABELS[topSkip[0]] || topSkip[0]}:{" "}
+            {getSkipReasonLabel(topSkip[0]) || topSkip[0]}:{" "}
             <strong>{topSkip[1]}</strong>
           </div>
         )}
@@ -271,21 +313,26 @@ export default function CreateCollectionIndexProgress({
 
         {isSuccess && (
           <div className="create-collection-toast-text">
-            Indexed {progress.indexed_pages ?? 0} pages,{" "}
-            {progress.total_chunks ?? 0} chunks
-            {elapsedMs > 0 ? ` in ${formatDurationMs(elapsedMs)}` : ""}.
+            {t("crawler.index_progress.toast.success", {
+              pages: progress.indexed_pages ?? 0,
+              chunks: progress.total_chunks ?? 0,
+              duration: doneDuration,
+            })}
           </div>
         )}
 
         {isCancelled && (
           <div className="create-collection-toast-text">
-            Cancelled after {processed} / {total || "..."} pages.
+            {t("crawler.index_progress.toast.cancelled", {
+              processed,
+              total: total || "...",
+            })}
           </div>
         )}
 
         {errorsCount > 0 && (
           <div className="create-collection-toast-errors">
-            Recent errors: {errorsCount}
+            {t("crawler.index_progress.toast.recent_errors", { count: errorsCount })}
           </div>
         )}
 
@@ -296,7 +343,7 @@ export default function CreateCollectionIndexProgress({
               className="notification-center-card-action-btn create-collection-toast-action"
               onClick={onOpenDetails}
             >
-              Open details
+              {t("crawler.index_progress.open_details")}
             </button>
           </div>
         )}
@@ -313,7 +360,7 @@ export default function CreateCollectionIndexProgress({
           <span
             className="create-collection-activity-ring"
             aria-hidden="true"
-            title="Indexing in progress"
+            title={t("crawler.index_progress.indexing_in_progress")}
           >
             <svg
               className="create-collection-activity-ring__svg"
@@ -330,11 +377,11 @@ export default function CreateCollectionIndexProgress({
           <div className="create-collection-index-progress__hero-text">
             {variant === "modal" && (
               <div className="create-collection-index-progress__collection">
-                {collectionName || "Collection"}
+                {collectionName || defaultCollectionName}
               </div>
             )}
             <div className="create-collection-index-progress__sources">
-              Sources: {sourcesLabel}
+              {t("crawler.index_progress.sources", { sources: sourcesLabel })}
             </div>
           </div>
         </div>
@@ -346,28 +393,34 @@ export default function CreateCollectionIndexProgress({
             {livePages} / {total || "…"}
           </span>
           <span className="create-collection-index-stat__label">
-            {isRunning ? "processed / total" : "indexed / total"}
+            {isRunning
+              ? t("crawler.index_progress.stat.processed_total")
+              : t("crawler.index_progress.stat.indexed_total")}
           </span>
         </div>
         <div className="create-collection-index-stat">
           <span className="create-collection-index-stat__value create-collection-index-stat__value--skip">
             {progress.skipped_pages ?? 0}
           </span>
-          <span className="create-collection-index-stat__label">skipped</span>
+          <span className="create-collection-index-stat__label">
+            {t("crawler.index_progress.stat.skipped")}
+          </span>
         </div>
         <div className="create-collection-index-stat">
           <span className="create-collection-index-stat__value">
             {liveChunks}
           </span>
-          <span className="create-collection-index-stat__label">chunks</span>
+          <span className="create-collection-index-stat__label">
+            {t("crawler.index_progress.stat.chunks")}
+          </span>
         </div>
       </div>
 
       {extraStats.length > 0 && (
         <div className="create-collection-index-extra-stats">
-          {extraStats.map(([label, value]) => (
-            <span key={label}>
-              <strong>{formatIndexNumber(value)}</strong> {label}
+          {extraStats.map(([labelKey, value]) => (
+            <span key={labelKey}>
+              <strong>{formatIndexNumber(value)}</strong> {t(labelKey)}
             </span>
           ))}
         </div>
@@ -375,9 +428,9 @@ export default function CreateCollectionIndexProgress({
 
       {timeStats.length > 0 && (
         <div className="create-collection-index-extra-stats create-collection-index-extra-stats--timing">
-          {timeStats.map(([label, value]) => (
-            <span key={label}>
-              <strong>{formatDurationMs(value)}</strong> {label}
+          {timeStats.map(([labelKey, value]) => (
+            <span key={labelKey}>
+              <strong>{formatDurationMs(value)}</strong> {t(labelKey)}
             </span>
           ))}
         </div>
@@ -390,7 +443,10 @@ export default function CreateCollectionIndexProgress({
             {phaseLabel}
             {phaseElapsedMs > 0 ? ` / ${formatDurationMs(phaseElapsedMs)}` : ""}
           </div>
-          <div className="create-collection-embedding-history" aria-label="Recent indexing activity">
+          <div
+            className="create-collection-embedding-history"
+            aria-label={t("crawler.index_progress.embedding_history_aria")}
+          >
             {embeddingRows.map((row, index) => (
               <div
                 key={`${row.path}:${row.status}:${row.reason}:${row.chars}:${row.chunks}:${row.chunkMs}`}
@@ -439,11 +495,13 @@ export default function CreateCollectionIndexProgress({
 
       {skipEntries.length > 0 && (
         <div className="create-collection-index-skips">
-          <div className="create-collection-index-skips__title">Skip reasons</div>
+          <div className="create-collection-index-skips__title">
+            {t("crawler.index_progress.skip_reasons_title")}
+          </div>
           <div className="create-collection-index-skips__pills">
             {skipEntries.map(([key, n]) => (
               <span key={key} className="create-collection-index-skip-pill">
-                {SKIP_REASON_LABELS[key] || key}: <strong>{n}</strong>
+                {getSkipReasonLabel(key) || key}: <strong>{n}</strong>
               </span>
             ))}
           </div>
@@ -461,22 +519,30 @@ export default function CreateCollectionIndexProgress({
 
       {isSuccess && (
         <div className="create-collection-index-done">
-          Done: {progress.indexed_pages ?? 0} pages indexed into Qdrant,{" "}
-          {progress.skipped_pages ?? 0} skipped, {progress.total_chunks ?? 0}{" "}
-          chunks total{elapsedMs > 0 ? ` in ${formatDurationMs(elapsedMs)}` : ""}.
+          {t("crawler.index_progress.done_success", {
+            indexed: progress.indexed_pages ?? 0,
+            skipped: progress.skipped_pages ?? 0,
+            chunks: progress.total_chunks ?? 0,
+            duration: doneDuration,
+          })}
         </div>
       )}
 
       {isCancelled && (
         <div className="create-collection-index-done">
-          Cancelled after {processed} / {total || "..."} pages.
+          {t("crawler.index_progress.done_cancelled", {
+            processed,
+            total: total || "...",
+          })}
         </div>
       )}
 
       {recentIssues.length > 0 && (
         <details className="create-collection-index-errors">
           <summary>
-            Recent issues ({recentIssues.length})
+            {t("crawler.index_progress.recent_issues", {
+              count: recentIssues.length,
+            })}
           </summary>
           <div className="create-collection-index-errors__list">
             {recentIssues.map((issue, i) => (
@@ -488,7 +554,7 @@ export default function CreateCollectionIndexProgress({
                 )}
                 {issue.reason && (
                   <span className="create-collection-index-error-reason">
-                    {SKIP_REASON_LABELS[issue.reason] || issue.reason}
+                    {getSkipReasonLabel(issue.reason) || issue.reason}
                   </span>
                 )}
                 {issue.detail && (
@@ -498,7 +564,9 @@ export default function CreateCollectionIndexProgress({
                 )}
                 {Number(issue.removed_chars || 0) > 0 && (
                   <span className="create-collection-index-error-meta">
-                    removed {formatIndexNumber(issue.removed_chars)} chars
+                    {t("crawler.index_progress.removed_chars", {
+                      count: formatIndexNumber(issue.removed_chars),
+                    })}
                   </span>
                 )}
               </div>
