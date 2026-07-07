@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.41] - 2026-07-07
+### Changed
+- RELEASE.md 0.8.40 highlights; Pre-Release ticket registry P2.3–P2.8 sync (P2.19).
+
 ## [0.8.40] - 2026-07-07
 ### Changed
 - Regenerated `docs/api/reference.md` for OpenAPI 0.8.39 (135 paths; health/live/notifications) (P0.6).

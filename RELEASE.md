@@ -2,6 +2,15 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
+## Release candidate 0.8.40 notes
+
+Status: pre-tag ready on Windows local gates as of 2026-07-07.
+
+Highlights (0.8.40):
+
+- Regenerated `docs/api/reference.md` (OpenAPI 0.8.39, 135 paths; `/api/webui/health`, `/live`, notification schemas).
+- Advisory Storybook build on `macos-fast` CI (extends P2.8).
+
 ## Release candidate 0.8.34 notes
 
 Status: pre-tag ready on Windows local gates as of 2026-07-07.
