@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.24] - 2026-07-07
+### Changed
+- Docker runtime hardening: run the app as a non-root user, pin `node` and `python` base images by digest, and harden `docker-compose.yml` with `read_only`, `cap_drop`, and a port-aware healthcheck.
+
 ## [0.8.23] - 2026-07-07
 ### Fixed
 - `configure_opencode_chiron_vision.py` no longer hardcodes Windows paths; resolves `webui.db` from `WEBUI_DB_PATH` or `<repo>/logs/webui.db`, writes `~/.config/opencode/opencode.jsonc`, and accepts `--db-path`, `--output`, and `--base-url`.

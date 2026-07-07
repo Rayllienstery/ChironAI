@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:20-bookworm-slim AS coreui-build
+FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS coreui-build
 WORKDIR /build
 COPY CoreModules/CoreUI/package.json CoreModules/CoreUI/package-lock.json ./CoreModules/CoreUI/
 RUN cd CoreModules/CoreUI && npm ci
@@ -9,7 +9,7 @@ COPY CoreModules/Localization ./CoreModules/Localization
 WORKDIR /build/CoreModules/CoreUI
 RUN npm run build
 
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.12-slim-bookworm@sha256:8a7e7cc04fd3e2bd787f7f24e22d5d119aa590d429b50c95dfe12b3abe52f48b AS runtime
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -41,6 +41,16 @@ RUN pip install --upgrade pip \
     && pip install ./CoreModules/LlmProxy \
     && pip install ./CoreModules/LlmInteractor \
     && pip install ./CoreModules/ErrorManager
+
+ARG APP_UID=10001
+ARG APP_GID=10001
+RUN groupadd --gid ${APP_GID} app \
+    && useradd --uid ${APP_UID} --gid ${APP_GID} --create-home --home-dir /home/app --shell /usr/sbin/nologin app \
+    && mkdir -p /app/logs /app/tmp /app/Core/data/webui \
+    && chown -R app:app /app
+
+USER app
+ENV HOME=/home/app
 
 EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
