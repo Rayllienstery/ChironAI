@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.23] - 2026-07-07
+### Fixed
+- `configure_opencode_chiron_vision.py` no longer hardcodes Windows paths; resolves `webui.db` from `WEBUI_DB_PATH` or `<repo>/logs/webui.db`, writes `~/.config/opencode/opencode.jsonc`, and accepts `--db-path`, `--output`, and `--base-url`.
+
 ## [0.8.22] - 2026-07-06
 ### Added
 - Loopback-only guard for WebUI proxy API key generate/reveal/delete routes; unit and API tests for non-local clients.

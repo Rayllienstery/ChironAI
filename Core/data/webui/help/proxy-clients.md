@@ -82,6 +82,8 @@ Vision clients must declare image modalities or attachments may be stripped **be
 python scripts/configure_opencode_chiron_vision.py
 ```
 
+Defaults: read `logs/webui.db` (or `WEBUI_DB_PATH`), write `~/.config/opencode/opencode.jsonc`, use `http://127.0.0.1:8080/v1`. Override with `--db-path`, `--output`, and `--base-url` when needed.
+
 Pick a vision-capable build under the generated provider entry. Restart OpenCode after config changes.
 
 ## Anthropic-compatible clients

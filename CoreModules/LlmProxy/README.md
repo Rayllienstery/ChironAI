@@ -57,6 +57,8 @@ If you see that string inside the **user message** (as opposed to an HTTP error 
 python scripts/configure_opencode_chiron_vision.py
 ```
 
+Defaults: `WEBUI_DB_PATH` or `<repo>/logs/webui.db` → `~/.config/opencode/opencode.jsonc`. Use `--db-path`, `--output`, and `--base-url` to override.
+
 Then restart OpenCode and pick a build id (e.g. `Hard-worker`) under the `chiron` provider.
 
 #### Vision flags
