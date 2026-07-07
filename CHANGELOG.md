@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.48] - 2026-07-07
+### Changed
+- Localize Indexer Tester UI including batch LLM evaluation (P1.10).
+
 ## [0.8.47] - 2026-07-07
 ### Changed
 - Localize collection indexing progress UI (phases, skip reasons, toast/modal) (P1.10).

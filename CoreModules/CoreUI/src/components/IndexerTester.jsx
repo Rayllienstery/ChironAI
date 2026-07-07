@@ -10,6 +10,7 @@ import {
   getProviderCatalog,
 } from '../services/api';
 import { isLogicalRagModelId } from '../constants/llmProxyModels';
+import { t } from '../services/i18n.js';
 import '../styles/components/IndexerTester.css';
 
 function computeIndexerDiff(sourceText, processedText) {
@@ -347,7 +348,7 @@ function IndexerTester() {
       );
       setBatchEvalPatterns(data.patterns ?? '');
     } catch (e) {
-      setBatchEvalPatterns(`Error: ${e.message}`);
+      setBatchEvalPatterns(t('indexer.patterns_error', { message: e.message }));
     } finally {
       setBatchEvalPatternsLoading(false);
     }
@@ -401,26 +402,30 @@ function IndexerTester() {
   return (
     <>
       <div className="indexer-tester">
-        {testerError && <div className="indexer-tester-error">Error: {testerError}</div>}
+        {testerError && (
+          <div className="indexer-tester-error">
+            {t('indexer.error_prefix', { message: testerError })}
+          </div>
+        )}
         <div className="indexer-tester-layout">
           <div className="indexer-tester-sources">
-            <h3>Indexer Tester</h3>
+            <h3>{t('indexer.title')}</h3>
             {testerLoading ? (
-              <div className="indexer-tester-loading">Loading sources...</div>
+              <div className="indexer-tester-loading">{t('indexer.loading_sources')}</div>
             ) : testerSources.length === 0 ? (
-              <div className="indexer-tester-empty">No sources with markdown pages found.</div>
+              <div className="indexer-tester-empty">{t('indexer.empty_sources')}</div>
             ) : (
               <>
                 <label className="indexer-select-label">
-                  Source:
+                  {t('indexer.source_label')}
                   <select
                     value={testerSelectedSourceId}
                     onChange={(e) => setTesterSelectedSourceId(e.target.value)}
-                    aria-label="Select source for Indexer Tester"
+                    aria-label={t('indexer.source_aria')}
                   >
                     {testerSources.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.id} ({s.page_count} pages)
+                        {t('indexer.source_pages', { id: s.id, count: s.page_count })}
                       </option>
                     ))}
                   </select>
@@ -429,26 +434,26 @@ function IndexerTester() {
                   type="button"
                   className="indexer-tester-btn primary"
                   onClick={openBatchEvalModal}
-                  aria-label="Open Batch LLM Evaluation"
+                  aria-label={t('indexer.batch_eval_aria')}
                 >
-                  Batch LLM Evaluation
+                  {t('indexer.batch_eval_btn')}
                 </button>
               </>
             )}
           </div>
           <div className="indexer-tester-files">
-            <h4>Markdown files</h4>
+            <h4>{t('indexer.files_title')}</h4>
             {testerFilesLoading ? (
-              <div className="indexer-tester-loading">Loading files...</div>
+              <div className="indexer-tester-loading">{t('indexer.loading_files')}</div>
             ) : !testerFiles.length ? (
-              <div className="indexer-tester-empty">No .md files found for this source.</div>
+              <div className="indexer-tester-empty">{t('indexer.empty_files')}</div>
             ) : (
-              <table className="indexer-files-table" role="table" aria-label="Indexer tester files">
+              <table className="indexer-files-table" role="table" aria-label={t('indexer.files_table_aria')}>
                 <thead>
                   <tr>
                     <th>
                       <button type="button" className="indexer-sort-button" onClick={() => handleTesterSort('name')}>
-                        Filename
+                        {t('indexer.col_filename')}
                         {testerSortBy === 'name' && (
                           <span className="indexer-sort-indicator">{testerSortOrder === 'asc' ? ' ▲' : ' ▼'}</span>
                         )}
@@ -456,13 +461,13 @@ function IndexerTester() {
                     </th>
                     <th className="indexer-size-column">
                       <button type="button" className="indexer-sort-button" onClick={() => handleTesterSort('size')}>
-                        Size (KB)
+                        {t('indexer.col_size')}
                         {testerSortBy === 'size' && (
                           <span className="indexer-sort-indicator">{testerSortOrder === 'asc' ? ' ▲' : ' ▼'}</span>
                         )}
                       </button>
                     </th>
-                    <th>Inspect</th>
+                    <th>{t('indexer.col_inspect')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -472,7 +477,7 @@ function IndexerTester() {
                       <td className="indexer-size-column">{(file.size_bytes / 1024).toFixed(1)}</td>
                       <td>
                         <button type="button" className="indexer-tester-btn small" onClick={() => handleTesterSelectFile(file)}>
-                          View
+                          {t('indexer.view_btn')}
                         </button>
                       </td>
                     </tr>
@@ -489,15 +494,17 @@ function IndexerTester() {
           <div className="indexer-modal-content indexer-detail-modal" onClick={(e) => e.stopPropagation()}>
             <div className="indexer-modal-header">
               <h3>
-                {testerSelectedFile ? `${testerSelectedSourceId} / ${testerSelectedFile}` : 'Indexer Tester — Details'}
+                {testerSelectedFile
+                  ? `${testerSelectedSourceId} / ${testerSelectedFile}`
+                  : t('indexer.detail_title_fallback')}
               </h3>
-              <button type="button" className="indexer-modal-close" onClick={handleCloseIndexerDetailModal} aria-label="Close">
+              <button type="button" className="indexer-modal-close" onClick={handleCloseIndexerDetailModal} aria-label={t('common.close')}>
                 ×
               </button>
             </div>
             <div className="indexer-modal-body indexer-detail-modal-body">
               {testerDetailLoading ? (
-                <div className="indexer-tester-loading">Loading details…</div>
+                <div className="indexer-tester-loading">{t('indexer.loading_details')}</div>
               ) : testerFileDetail ? (
                 <div className="indexer-detail-panels">
                   <div className="indexer-panel indexer-panel-collapsible">
@@ -509,7 +516,7 @@ function IndexerTester() {
                       aria-controls="indexer-section-original"
                     >
                       <span className="indexer-panel-chevron" aria-hidden>{indexerSectionOpen.original ? '▼' : '▶'}</span>
-                      <h5>Original markdown</h5>
+                      <h5>{t('indexer.panel_original')}</h5>
                     </button>
                     {indexerSectionOpen.original && (
                       <div id="indexer-section-original" className="indexer-panel-body">
@@ -517,7 +524,7 @@ function IndexerTester() {
                       </div>
                     )}
                   </div>
-                  <div className="indexer-panel indexer-panel-collapsible" aria-label="Diff between original and processed markdown">
+                  <div className="indexer-panel indexer-panel-collapsible" aria-label={t('indexer.panel_diff_aria')}>
                     <button
                       type="button"
                       className="indexer-panel-header"
@@ -526,7 +533,7 @@ function IndexerTester() {
                       aria-controls="indexer-section-diff"
                     >
                       <span className="indexer-panel-chevron" aria-hidden>{indexerSectionOpen.diff ? '▼' : '▶'}</span>
-                      <h5>Diff (removed lines highlighted)</h5>
+                      <h5>{t('indexer.panel_diff')}</h5>
                     </button>
                     {indexerSectionOpen.diff && (
                       <div id="indexer-section-diff" className="indexer-panel-body">
@@ -558,7 +565,7 @@ function IndexerTester() {
                       aria-controls="indexer-section-processed"
                     >
                       <span className="indexer-panel-chevron" aria-hidden>{indexerSectionOpen.processed ? '▼' : '▶'}</span>
-                      <h5>Processed markdown</h5>
+                      <h5>{t('indexer.panel_processed')}</h5>
                     </button>
                     {indexerSectionOpen.processed && (
                       <div id="indexer-section-processed" className="indexer-panel-body">
@@ -575,13 +582,13 @@ function IndexerTester() {
                       aria-controls="indexer-section-llm"
                     >
                       <span className="indexer-panel-chevron" aria-hidden>{indexerSectionOpen.llm ? '▼' : '▶'}</span>
-                      <h5>Evaluate with LLM</h5>
+                      <h5>{t('indexer.panel_llm')}</h5>
                     </button>
                     {indexerSectionOpen.llm && (
                       <div id="indexer-section-llm" className="indexer-panel-body">
                         {llmCatalog.providers.length > 0 && (
                           <label className="indexer-select-label">
-                            Provider:
+                            {t('indexer.provider_label')}
                             <select
                               value={llmSelectedProviderId}
                               onChange={(e) => {
@@ -592,7 +599,7 @@ function IndexerTester() {
                                 );
                                 setLlmSelectedModel(nextModels[0]?.id || nextModels[0]?.name || '');
                               }}
-                              aria-label="Provider for evaluation"
+                              aria-label={t('indexer.provider_eval_aria')}
                               disabled={llmEvaluateLoading}
                             >
                               {llmCatalog.providers.map((provider) => (
@@ -605,11 +612,11 @@ function IndexerTester() {
                         )}
                         {llmModels.length > 0 && (
                           <label className="indexer-select-label">
-                            Model:
+                            {t('indexer.model_label')}
                             <select
                               value={llmSelectedModel}
                               onChange={(e) => setLlmSelectedModel(e.target.value)}
-                              aria-label="Model for evaluation"
+                              aria-label={t('indexer.model_eval_aria')}
                               disabled={llmEvaluateLoading}
                             >
                               {llmModels.map((m) => (
@@ -626,11 +633,11 @@ function IndexerTester() {
                           onClick={handleAskLlm}
                           disabled={llmEvaluateLoading || !testerFileDetail?.source_md}
                         >
-                          {llmEvaluateLoading ? 'Evaluating…' : 'Ask LLM'}
+                          {llmEvaluateLoading ? t('indexer.evaluating') : t('indexer.ask_llm')}
                         </button>
                         {llmEvaluateError && <div className="indexer-tester-error">{llmEvaluateError}</div>}
                         {llmEvaluateReply != null && llmEvaluateReply !== '' && (
-                          <div className="indexer-llm-reply" role="region" aria-label="LLM evaluation reply">
+                          <div className="indexer-llm-reply" role="region" aria-label={t('indexer.llm_reply_aria')}>
                             <pre className="indexer-code-block indexer-llm-reply-text">{llmEvaluateReply}</pre>
                           </div>
                         )}
@@ -639,7 +646,7 @@ function IndexerTester() {
                   </div>
                 </div>
               ) : (
-                <div className="indexer-tester-empty">No file selected or failed to load.</div>
+                <div className="indexer-tester-empty">{t('indexer.no_file_selected')}</div>
               )}
             </div>
           </div>
@@ -650,22 +657,22 @@ function IndexerTester() {
         <div className="indexer-modal-overlay" onClick={handleCloseBatchEvalModal}>
           <div className="indexer-modal-content indexer-detail-modal batch-eval-modal" onClick={(e) => e.stopPropagation()}>
             <div className="indexer-modal-header">
-              <h3>Batch LLM Evaluation</h3>
-              <button type="button" className="indexer-modal-close" onClick={handleCloseBatchEvalModal} aria-label="Close">×</button>
+              <h3>{t('indexer.batch_modal_title')}</h3>
+              <button type="button" className="indexer-modal-close" onClick={handleCloseBatchEvalModal} aria-label={t('common.close')}>×</button>
             </div>
             <div className="indexer-modal-body">
               {!batchEvalJobId ? (
                 <>
                   <label className="indexer-select-label">
-                    Source:
-                    <select value={batchEvalSourceId} onChange={(e) => setBatchEvalSourceId(e.target.value)} aria-label="Source for batch evaluation">
+                    {t('indexer.source_label')}
+                    <select value={batchEvalSourceId} onChange={(e) => setBatchEvalSourceId(e.target.value)} aria-label={t('indexer.batch_source_aria')}>
                       {testerSources.map((s) => (
-                        <option key={s.id} value={s.id}>{s.id} ({s.page_count} pages)</option>
+                        <option key={s.id} value={s.id}>{t('indexer.source_pages', { id: s.id, count: s.page_count })}</option>
                       ))}
                     </select>
                   </label>
                   <label className="indexer-select-label">
-                    Provider:
+                    {t('indexer.provider_label')}
                     <select
                       value={batchEvalProviderId}
                       onChange={(e) => {
@@ -676,7 +683,7 @@ function IndexerTester() {
                         );
                         setBatchEvalModel(nextModels[0]?.id || nextModels[0]?.name || '');
                       }}
-                      aria-label="Provider for batch evaluation"
+                      aria-label={t('indexer.batch_provider_aria')}
                     >
                       {batchEvalCatalog.providers.map((provider) => (
                         <option key={provider.provider_id} value={provider.provider_id}>
@@ -686,60 +693,60 @@ function IndexerTester() {
                     </select>
                   </label>
                   <label className="indexer-select-label">
-                    Model:
-                    <select value={batchEvalModel} onChange={(e) => setBatchEvalModel(e.target.value)} aria-label="Model for batch evaluation">
-                      <option value="">Default (RAG)</option>
+                    {t('indexer.model_label')}
+                    <select value={batchEvalModel} onChange={(e) => setBatchEvalModel(e.target.value)} aria-label={t('indexer.batch_model_aria')}>
+                      <option value="">{t('indexer.batch_model_default')}</option>
                       {batchEvalModels.map((m) => (
                         <option key={m.id || m.name} value={m.id || m.name}>{m.name || m.id || m.model || '—'}</option>
                       ))}
                     </select>
                   </label>
                   <label className="indexer-select-label">
-                    Number of files:
+                    {t('indexer.batch_file_count')}
                     <input
                       type="number"
                       min={1}
                       max={500}
                       value={batchEvalCount}
                       onChange={(e) => setBatchEvalCount(Number(e.target.value) || 5)}
-                      aria-label="Number of files to evaluate"
+                      aria-label={t('indexer.batch_file_count_aria')}
                     />
-                    <span className="batch-eval-hint">(random files &gt; 1.1 KB, &gt; 200 chars after cleanup)</span>
+                    <span className="batch-eval-hint">{t('indexer.batch_file_hint')}</span>
                   </label>
                   <div className="batch-eval-limits">
-                    <span className="batch-eval-limits-label">Context limits (chars, ~4 chars/token):</span>
+                    <span className="batch-eval-limits-label">{t('indexer.batch_limits_label')}</span>
                     <div className="batch-eval-limits-row">
                       <label className="indexer-select-label batch-eval-limit-field">
-                        ORIGINAL:
+                        {t('indexer.batch_limit_original')}
                         <input
                           type="number"
                           min={1000}
                           max={500000}
                           value={evalLimits.original_max_chars}
                           onChange={(e) => setEvalLimitsAndSave((prev) => ({ ...prev, original_max_chars: Math.max(1000, Math.min(500000, Number(e.target.value) || 40000)) }))}
-                          aria-label="Max chars for ORIGINAL block"
+                          aria-label={t('indexer.batch_limit_original_aria')}
                         />
                       </label>
                       <label className="indexer-select-label batch-eval-limit-field">
-                        PROCESSED:
+                        {t('indexer.batch_limit_processed')}
                         <input
                           type="number"
                           min={1000}
                           max={500000}
                           value={evalLimits.processed_max_chars}
                           onChange={(e) => setEvalLimitsAndSave((prev) => ({ ...prev, processed_max_chars: Math.max(1000, Math.min(500000, Number(e.target.value) || 40000)) }))}
-                          aria-label="Max chars for PROCESSED block"
+                          aria-label={t('indexer.batch_limit_processed_aria')}
                         />
                       </label>
                       <label className="indexer-select-label batch-eval-limit-field">
-                        REMOVED:
+                        {t('indexer.batch_limit_removed')}
                         <input
                           type="number"
                           min={1000}
                           max={500000}
                           value={evalLimits.removed_max_chars}
                           onChange={(e) => setEvalLimitsAndSave((prev) => ({ ...prev, removed_max_chars: Math.max(1000, Math.min(500000, Number(e.target.value) || 24000)) }))}
-                          aria-label="Max chars for REMOVED block"
+                          aria-label={t('indexer.batch_limit_removed_aria')}
                         />
                       </label>
                     </div>
@@ -750,7 +757,7 @@ function IndexerTester() {
                     onClick={handleStartBatchEval}
                     disabled={!batchEvalSourceId && !testerSelectedSourceId}
                   >
-                    Start
+                    {t('indexer.batch_start')}
                   </button>
                   {batchEvalStatus?.status === 'error' && batchEvalStatus?.error && (
                     <div className="indexer-tester-error">{batchEvalStatus.error}</div>
@@ -760,24 +767,46 @@ function IndexerTester() {
                 <>
                   <div className="batch-eval-progress" role="status" aria-live="polite">
                     {batchEvalStatus?.total > 0 && (
-                      <div className="batch-eval-progress-bar" aria-label={`Progress ${batchEvalStatus.done} of ${batchEvalStatus.total} files`}>
+                      <div
+                        className="batch-eval-progress-bar"
+                        aria-label={t('indexer.batch_progress_aria', {
+                          done: batchEvalStatus.done,
+                          total: batchEvalStatus.total,
+                        })}
+                      >
                         {Array.from({ length: batchEvalStatus.total }, (_, i) => (
                           <div
                             key={i}
                             className={`batch-eval-progress-segment ${i < batchEvalStatus.done ? 'filled' : ''} ${batchEvalStatus.status === 'running' && i === batchEvalStatus.done ? 'current' : ''}`}
-                            title={i < batchEvalStatus.done ? `Done ${i + 1}` : i === batchEvalStatus.done ? 'In progress' : `Pending ${i + 1}`}
+                            title={
+                              i < batchEvalStatus.done
+                                ? t('indexer.batch_segment_done', { n: i + 1 })
+                                : i === batchEvalStatus.done
+                                  ? t('indexer.batch_segment_current')
+                                  : t('indexer.batch_segment_pending', { n: i + 1 })
+                            }
                           />
                         ))}
                       </div>
                     )}
                     {batchEvalStatus?.status === 'running' && (
                       <p className="batch-eval-progress-text">
-                        {batchEvalStatus.done} / {batchEvalStatus.total} files
-                        {batchEvalStatus.current_file && <span className="batch-eval-current"> — {batchEvalStatus.current_file}</span>}
+                        {t('indexer.batch_progress_running', {
+                          done: batchEvalStatus.done,
+                          total: batchEvalStatus.total,
+                        })}
+                        {batchEvalStatus.current_file && (
+                          <span className="batch-eval-current"> — {batchEvalStatus.current_file}</span>
+                        )}
                       </p>
                     )}
                     {batchEvalStatus?.status === 'done' && (
-                      <p className="batch-eval-progress-text">Done: {batchEvalStatus.done} / {batchEvalStatus.total} files evaluated.</p>
+                      <p className="batch-eval-progress-text">
+                        {t('indexer.batch_progress_done', {
+                          done: batchEvalStatus.done,
+                          total: batchEvalStatus.total,
+                        })}
+                      </p>
                     )}
                     {batchEvalStatus?.status === 'error' && batchEvalStatus?.error && (
                       <div className="indexer-tester-error">{batchEvalStatus.error}</div>
@@ -790,21 +819,21 @@ function IndexerTester() {
                         className="indexer-tester-btn primary"
                         onClick={handleDetectBatchPatterns}
                         disabled={batchEvalPatternsLoading}
-                        aria-label="Detect cross-document patterns"
+                        aria-label={t('indexer.batch_detect_patterns_aria')}
                       >
-                        {batchEvalPatternsLoading ? 'Analyzing…' : 'Detect patterns'}
+                        {batchEvalPatternsLoading ? t('indexer.batch_analyzing') : t('indexer.batch_detect_patterns')}
                       </button>
                       {batchEvalPatterns != null && batchEvalPatterns !== '' && (
                         <div className="batch-eval-patterns-result">
-                          <h4>Patterns & suggested steps</h4>
+                          <h4>{t('indexer.batch_patterns_title')}</h4>
                           <pre className="batch-eval-reply indexer-code-block">{batchEvalPatterns}</pre>
                         </div>
                       )}
                     </div>
                   )}
                   <div className="batch-eval-results">
-                    <h4>Results</h4>
-                    <ul className="batch-eval-list" aria-label="Batch evaluation results">
+                    <h4>{t('indexer.batch_results_title')}</h4>
+                    <ul className="batch-eval-list" aria-label={t('indexer.batch_results_aria')}>
                       {(batchEvalStatus?.results || []).map((item, idx) => (
                         <li key={item.filename + String(idx)} className="batch-eval-item">
                           <div className="batch-eval-item-header">
@@ -813,14 +842,14 @@ function IndexerTester() {
                               type="button"
                               className="indexer-tester-btn small"
                               onClick={() => handleViewProcessed(item.filename)}
-                              aria-label={`View processed content for ${item.filename}`}
-                              title="View processed .md (pipeline output)"
+                              aria-label={t('indexer.batch_view_processed_aria', { filename: item.filename })}
+                              title={t('indexer.batch_view_processed_title')}
                             >
-                              View processed
+                              {t('indexer.batch_view_processed')}
                             </button>
                           </div>
                           <pre className="batch-eval-reply indexer-code-block">
-                            {item.reply != null && item.reply !== '' ? item.reply : '(no response)'}
+                            {item.reply != null && item.reply !== '' ? item.reply : t('indexer.batch_no_response')}
                           </pre>
                         </li>
                       ))}
@@ -837,17 +866,17 @@ function IndexerTester() {
         <div className="indexer-modal-overlay batch-eval-view-processed-overlay" onClick={() => setBatchEvalViewProcessed(null)}>
           <div className="indexer-modal-content indexer-detail-modal batch-eval-view-processed-modal" onClick={(e) => e.stopPropagation()}>
             <div className="indexer-modal-header">
-              <h3>Processed content — {batchEvalViewProcessed.filename}</h3>
-              <button type="button" className="indexer-modal-close" onClick={() => setBatchEvalViewProcessed(null)} aria-label="Close">×</button>
+              <h3>{t('indexer.processed_modal_title', { filename: batchEvalViewProcessed.filename })}</h3>
+              <button type="button" className="indexer-modal-close" onClick={() => setBatchEvalViewProcessed(null)} aria-label={t('common.close')}>×</button>
             </div>
             <div className="indexer-modal-body">
-              {batchEvalViewProcessed.loading && <p className="batch-eval-view-loading">Loading…</p>}
+              {batchEvalViewProcessed.loading && <p className="batch-eval-view-loading">{t('indexer.processed_loading')}</p>}
               {batchEvalViewProcessed.error && <div className="indexer-tester-error">{batchEvalViewProcessed.error}</div>}
               {!batchEvalViewProcessed.loading && !batchEvalViewProcessed.error && batchEvalViewProcessed.processed_md != null && (
                 <>
                   <div className="batch-eval-view-toolbar">
-                    <button type="button" className="indexer-tester-btn primary" onClick={handleDownloadProcessedMd} aria-label="Download as Markdown file">
-                      Download .md
+                    <button type="button" className="indexer-tester-btn primary" onClick={handleDownloadProcessedMd} aria-label={t('indexer.download_md_aria')}>
+                      {t('indexer.download_md')}
                     </button>
                   </div>
                   <pre className="batch-eval-view-content indexer-code-block">{batchEvalViewProcessed.processed_md}</pre>
