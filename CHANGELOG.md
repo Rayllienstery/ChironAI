@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.32] - 2026-07-07
+### Added
+- CoreUI `developerMode` helpers with unit tests documenting default-off Developer Tools behavior (P1.14).
+
+### Fixed
+- Preboot loader fades out on React mount with shared standby a11y attributes (P2.10b).
+- Docker Compose keeps in-container `SERVER_PORT=5000` while `WEBUI_PORT` maps the host port only (P2.15).
+
 ## [0.8.31] - 2026-07-07
 ### Fixed
 - Remove unused `icon` prop from `StandByScreen` usage in `App.jsx` (P2.10a).

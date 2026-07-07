@@ -35,11 +35,7 @@ function clampServiceStatusPollSec(raw) {
   return Math.min(SERVICE_STATUS_POLL_MAX, Math.max(SERVICE_STATUS_POLL_MIN, n));
 }
 
-function parseDeveloperMode(value) {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'string') return value.toLowerCase() === 'true';
-  return false;
-}
+import { parseDeveloperMode } from '../utils/developerMode';
 
 function SettingsTab({
   themeMode,

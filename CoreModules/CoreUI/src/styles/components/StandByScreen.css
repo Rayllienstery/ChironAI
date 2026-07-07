@@ -27,6 +27,12 @@
     ),
     var(--md-sys-color-surface);
   z-index: 9999;
+  transition: opacity 180ms ease;
+}
+
+.standby-screen--fade-out {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .standby--sm {

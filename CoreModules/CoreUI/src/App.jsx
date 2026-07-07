@@ -209,17 +209,16 @@ import "./styles/default-card.css";
 import "./styles/sidebar.css";
 import StandByScreen from "./components/StandByScreen";
 import "./styles/components/StandByScreen.css";
+import {
+  filterSidebarTabs,
+  normalizeActiveTab,
+  parseDeveloperMode,
+  removePrebootLoader,
+} from "./utils/developerMode";
 
 const METRICS_HISTORY_LEN = 30;
 const SHELL_REQUEST_BOOT_DELAY_MS = 800;
 const PERFORMANCE_SHELL_REQUEST_DELAY_MS = 1500;
-const DEVELOPER_TOOL_TAB_IDS = [
-  "testing",
-  "coreui-showcase",
-  "dev-documentation",
-  "swagger",
-  "performance",
-];
 
 function scheduleIdleWork(callback, timeout = 3000) {
   if (typeof window === "undefined") return null;
@@ -382,11 +381,7 @@ function App() {
     }
 
     // Remove the stand-by loader now that React has rendered
-    try {
-      document.getElementById('app-loader')?.remove();
-    } catch {
-      // ignore
-    }
+    removePrebootLoader();
 
     let cancelSessionInit = null;
     const shellRequestTimer = window.setTimeout(() => {
@@ -751,9 +746,7 @@ function App() {
       const mode = settings.theme_mode || "system";
       const light = settings.theme_light_accent || "purple";
       const dark = settings.theme_dark_accent || "cyan";
-      const devMode =
-        settings.developer_mode === true ||
-        String(settings.developer_mode).toLowerCase() === "true";
+      const devMode = parseDeveloperMode(settings.developer_mode);
       setThemeMode(mode);
       setLightAccent(light);
       setDarkAccent(dark);
@@ -832,9 +825,7 @@ function App() {
     { id: "swagger", label: t("nav.swagger"), section: "Developer Tools" },
     { id: "performance", label: t("nav.performance"), section: "Developer Tools" },
   ];
-  const tabs = developerMode
-    ? allTabs
-    : allTabs.filter((tab) => tab.section !== "Developer Tools");
+  const tabs = filterSidebarTabs(allTabs, developerMode);
   const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || activeTab;
 
   useEffect(() => {
@@ -851,8 +842,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!developerMode && DEVELOPER_TOOL_TAB_IDS.includes(activeTab)) {
-      setActiveTab("dashboard");
+    const nextTab = normalizeActiveTab(activeTab, developerMode);
+    if (nextTab !== activeTab) {
+      setActiveTab(nextTab);
     }
   }, [developerMode, activeTab]);
 
